@@ -160,11 +160,11 @@ const AVAILABLE_BREAKPOINTS = [
       generalEvent("control", "focus"),
       generalEvent("control", "focusin"),
       generalEvent("control", "focusout"),
-      // The condition should be removed when "dom.element.invokers.enabled" is removed
+      // The condition should be removed when "dom.element.commandfor.enabled" is removed
       generalEvent(
         "control",
-        "invoke",
-        global => global && "InvokeEvent" in global
+        "command",
+        global => global && "CommandEvent" in global
       ),
       generalEvent("control", "reset"),
       generalEvent("control", "resize"),
@@ -190,7 +190,7 @@ const AVAILABLE_BREAKPOINTS = [
       nodeEvent("dom-mutation", "DOMNodeInserted"),
       nodeEvent("dom-mutation", "DOMNodeInsertedIntoDocument"),
       nodeEvent("dom-mutation", "DOMNodeRemoved"),
-      nodeEvent("dom-mutation", "DOMNodeRemovedIntoDocument"),
+      nodeEvent("dom-mutation", "DOMNodeRemovedFromDocument"),
       nodeEvent("dom-mutation", "DOMSubtreeModified"),
 
       // DOM load events.

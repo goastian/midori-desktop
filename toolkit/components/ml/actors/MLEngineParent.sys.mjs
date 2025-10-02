@@ -10,6 +10,7 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
  * @property {typeof import("../content/Utils.sys.mjs").getRuntimeWasmFilename} getRuntimeWasmFilename
  * @property {typeof import("../../../../services/settings/remote-settings.sys.mjs").RemoteSettings} RemoteSettings
  * @property {typeof import("../../translations/actors/TranslationsParent.sys.mjs").TranslationsParent} TranslationsParent
+ * @typedef {import("../../translations").WasmRecord} WasmRecord
  */
 
 /** @type {Lazy} */
@@ -24,12 +25,14 @@ ChromeUtils.defineLazyGetter(lazy, "console", () => {
 
 ChromeUtils.defineESModuleGetters(lazy, {
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
+  Utils: "resource://services-settings/Utils.sys.mjs",
   TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   ModelHub: "chrome://global/content/ml/ModelHub.sys.mjs",
   Progress: "chrome://global/content/ml/Utils.sys.mjs",
   isAddonEngineId: "chrome://global/content/ml/Utils.sys.mjs",
+  OPFS: "chrome://global/content/ml/OPFS.sys.mjs",
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -56,6 +59,10 @@ const RS_RUNTIME_COLLECTION = "ml-onnx-runtime";
 const RS_INFERENCE_OPTIONS_COLLECTION = "ml-inference-options";
 const RS_ALLOW_DENY_COLLECTION = "ml-model-allow-deny-list";
 const TERMINATE_TIMEOUT = 5000;
+const RS_FALLBACK_BASE_URL =
+  "https://firefox-settings-attachments.cdn.mozilla.net";
+
+const RUNTIME_ROOT_IN_OPFS = "mlRuntimeFiles";
 
 /**
  * Custom error class for handling insufficient memory errors.
@@ -129,11 +136,12 @@ export class MLEngineParent extends JSProcessActorParent {
    * - 5 => Transformers >= 3.5.1
    *
    * wllama:
-   * - 3 => wllama 2.x
+   * - 3 => wllama 2.2.x
+   * - 4 => wllama 2.3.x
    */
   static WASM_MAJOR_VERSION = {
     onnx: 5,
-    wllama: 3,
+    wllama: 4,
   };
 
   /**
@@ -604,6 +612,51 @@ export class MLEngineParent extends JSProcessActorParent {
   }
 
   /**
+   * Downloads and verifies a Remote Settings attachment.
+   *
+   * This method fetches a file from a remote base URL (either resolved from `lazy.Utils.baseAttachmentsURL()` or a fallback CDN),
+   * verifies its hash and size, and returns its binary data as an `ArrayBuffer`.
+   *
+   * @param {object} options - The input options.
+   * @param {WasmRecord} options.wasmRecord - wasm records
+   * @param {localRoot} options.localRoot - The root where to save the attachment.
+   *
+   * @returns {Promise<ArrayBuffer>} A promise that resolves to the downloaded file's binary content as an ArrayBuffer.
+   *
+   * @throws {Error} If the content hash of the downloaded file does not match the expected hash.
+   */
+  static async downloadRSAttachment({ wasmRecord, localRoot }) {
+    const { attachment, version } = wasmRecord;
+    const { location, filename, hash, size } = attachment;
+    let baseURL = RS_FALLBACK_BASE_URL;
+    try {
+      baseURL = await lazy.Utils.baseAttachmentsURL();
+    } catch (error) {
+      console.error(
+        `Error fetching remote settings base url from CDN. Falling back to ${RS_FALLBACK_BASE_URL}`,
+        error
+      );
+    }
+
+    // Validate inputs
+    let checkError = lazy.ModelHub.checkInput(localRoot, version, filename);
+    if (checkError) {
+      throw checkError;
+    }
+
+    const fileObject = await lazy.OPFS.download({
+      savePath: `${RUNTIME_ROOT_IN_OPFS}/${localRoot}/${version}/${filename}`,
+      deletePreviousVersions: true,
+      skipIfExists: true,
+      source: baseURL + location,
+      sha256Hash: hash,
+      fileSize: size,
+    });
+
+    return fileObject.arrayBuffer();
+  }
+
+  /**
    * Download the wasm for the ML inference engine.
    *
    * @param {string} backend - The ML engine for which the WASM buffer is requested.
@@ -635,7 +688,17 @@ export class MLEngineParent extends JSProcessActorParent {
     }
 
     /** @type {{buffer: ArrayBuffer}} */
-    const { buffer } = await client.attachments.download(wasmRecord);
+    let buffer;
+
+    if (wasmRecord.attachment) {
+      buffer = await MLEngineParent.downloadRSAttachment({
+        wasmRecord,
+        localRoot: backend,
+      });
+    } else {
+      // fallback for mocked unit tests.
+      buffer = (await client.attachments.download(wasmRecord)).buffer;
+    }
 
     return buffer;
   }
@@ -809,10 +872,10 @@ class ResponseOrChunkResolvers {
  * the engine.
  *
  * @typedef {object} Request
- * @property {?string} id - The identifier for tracking this request. If not provided, an id will be auto-generated. Each inference callback will reference this id.
+ * @property {?string} [id] - The identifier for tracking this request. If not provided, an id will be auto-generated. Each inference callback will reference this id.
  * @property {any[]} args - The arguments to pass to the pipeline. The required arguments depend on your model. See [Hugging Face Transformers documentation](https://huggingface.co/docs/transformers.js/en/api/models) for more details.
  * @property {?object} options - The generation options to pass to the model. Refer to the [GenerationConfigType documentation](https://huggingface.co/docs/transformers.js/en/api/utils/generation#module_utils/generation..GenerationConfigType) for available options.
- * @property {?Uint8Array} data - For the imagetoText model, this is the array containing the image data.
+ * @property {?Uint8Array} [data] - For the imagetoText model, this is the array containing the image data.
  *
  * @template Response
  */
@@ -1147,8 +1210,8 @@ class MLEngine {
   /**
    * Terminates the engine.
    *
-   * @param {boolean} shutdown - Flag indicating whether to shutdown the engine.
-   * @param {boolean} replacement - Flag indicating whether the engine is being replaced.
+   * @param {boolean} [shutdown] - Flag indicating whether to shutdown the engine.
+   * @param {boolean} [replacement] - Flag indicating whether the engine is being replaced.
    * @returns {Promise<void>} A promise that resolves once the engine is terminated.
    */
   async terminate(shutdown, replacement) {

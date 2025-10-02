@@ -13,10 +13,11 @@ ChromeUtils.defineESModuleGetters(lazy, {
   CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
   ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
   FxAccounts: "resource://gre/modules/FxAccounts.sys.mjs",
+  GenAI: "resource:///modules/GenAI.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.sys.mjs",
   // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
-  PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
+  PlacesUIUtils: "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
   SelectableProfileService:
@@ -164,7 +165,6 @@ export const SpecialMessageActions = {
           [
             "browser.newtabpage.activity-stream.section.highlights.rows",
             "browser.newtabpage.activity-stream.section.highlights.includeVisited",
-            "browser.newtabpage.activity-stream.section.highlights.includePocket",
             "browser.newtabpage.activity-stream.section.highlights.includeDownloads",
             "browser.newtabpage.activity-stream.section.highlights.includeBookmarks",
           ],
@@ -756,6 +756,10 @@ export const SpecialMessageActions = {
       case "SET_SEARCH_MODE":
         window.gURLBar.searchMode = action.data;
         window.gURLBar.focus();
+        break;
+      case "SUMMARIZE_PAGE":
+        const entry = action.data ?? "message";
+        await lazy.GenAI.summarizeCurrentPage(window, entry);
         break;
     }
     return undefined;

@@ -639,9 +639,11 @@ bool js::TestIntegrityLevel(JSContext* cx, HandleObject obj,
       return false;
     }
 
-    // Typed array elements are configurable, writable properties, so if any
-    // elements are present, the typed array can neither be sealed nor frozen.
+    // Typed array elements are configurable, writable properties if the backing
+    // buffer is mutable, so if any elements are present, the typed array can
+    // neither be sealed nor frozen.
     if (nobj->is<TypedArrayObject>() &&
+        !nobj->is<ImmutableTypedArrayObject>() &&
         nobj->as<TypedArrayObject>().length().valueOr(0) > 0) {
       *result = false;
       return true;
@@ -2239,6 +2241,14 @@ JS_PUBLIC_API bool js::ShouldIgnorePropertyDefinition(JSContext* cx,
       return true;
     }
   }
+  if (key == JSProto_ArrayBuffer &&
+      !JS::Prefs::experimental_arraybuffer_immutable()) {
+    if (id == NameToId(cx->names().immutable) ||
+        id == NameToId(cx->names().sliceToImmutable) ||
+        id == NameToId(cx->names().transferToImmutable)) {
+      return true;
+    }
+  }
 #endif
 
   if (key == JSProto_Function &&
@@ -2451,10 +2461,11 @@ bool js::ToPrimitiveSlow(JSContext* cx, JSType preferredType,
   // (2015 Mar 17) 7.1.1 ToPrimitive.
   MOZ_ASSERT(preferredType == JSTYPE_UNDEFINED ||
              preferredType == JSTYPE_STRING || preferredType == JSTYPE_NUMBER);
-  RootedObject obj(cx, &vp.toObject());
+  RootedTuple<JSObject*, Value, Value> roots(cx);
+  RootedField<JSObject*, 0> obj(roots, &vp.toObject());
 
   // Steps 4-5.
-  RootedValue method(cx);
+  RootedField<Value, 1> method(roots);
   if (!GetInterestingSymbolProperty(cx, obj, cx->wellKnownSymbols().toPrimitive,
                                     &method)) {
     return false;
@@ -2470,8 +2481,8 @@ bool js::ToPrimitiveSlow(JSContext* cx, JSType preferredType,
     }
 
     // Steps 1-3, 6.a-b.
-    RootedValue arg0(
-        cx,
+    RootedField<Value, 2> arg0(
+        roots,
         StringValue(preferredType == JSTYPE_STRING   ? cx->names().string
                     : preferredType == JSTYPE_NUMBER ? cx->names().number
                                                      : cx->names().default_));

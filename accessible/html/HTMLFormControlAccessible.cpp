@@ -206,9 +206,8 @@ uint64_t HTMLButtonAccessible::NativeState() const {
     if (!popoverAcc || !popoverAcc->IsAncestorOf(this)) {
       if (popover->IsPopoverOpen()) {
         state |= states::EXPANDED;
-      } else {
-        state |= states::COLLAPSED;
       }
+      state |= states::EXPANDABLE;
     }
   }
 
@@ -688,7 +687,7 @@ ENameValueFlag HTMLGroupboxAccessible::NativeName(nsString& aName) const {
   }
 
   aName.CompressWhitespace();
-  return eNameOK;
+  return aName.IsEmpty() ? eNameOK : eNameFromRelations;
 }
 
 Relation HTMLGroupboxAccessible::RelationByType(RelationType aType) const {
@@ -737,7 +736,7 @@ ENameValueFlag HTMLFigureAccessible::NativeName(nsString& aName) const {
   }
 
   aName.CompressWhitespace();
-  return eNameOK;
+  return aName.IsEmpty() ? eNameOK : eNameFromRelations;
 }
 
 Relation HTMLFigureAccessible::RelationByType(RelationType aType) const {

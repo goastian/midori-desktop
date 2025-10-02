@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "js/ForOfIterator.h"
+
+#include "js/Exception.h"
 #include "js/friend/ErrorMessages.h"  // js::GetErrorMessage, JSMSG_*
 #include "vm/Interpreter.h"
 #include "vm/Iteration.h"
@@ -142,56 +144,22 @@ bool ForOfIterator::next(MutableHandleValue vp, bool* done) {
   return GetProperty(cx_, resultObj, resultObj, cx_->names().value, vp);
 }
 
-// ES 2017 draft 0f10dba4ad18de92d47d421f378233a2eae8f077 7.4.6.
-// When completion.[[Type]] is throw.
 void ForOfIterator::closeThrow() {
   MOZ_ASSERT(iterator);
 
-  RootedValue completionException(cx_);
-  Rooted<SavedFrame*> completionExceptionStack(cx_);
-  if (cx_->isExceptionPending()) {
-    if (!GetAndClearExceptionAndStack(cx_, &completionException,
-                                      &completionExceptionStack)) {
-      completionException.setUndefined();
-      completionExceptionStack = nullptr;
-    }
-  }
-
-  // Steps 1-2 (implicit)
-
-  // Step 3 (partial).
-  RootedValue returnVal(cx_);
-  if (!GetProperty(cx_, iterator, iterator, cx_->names().return_, &returnVal)) {
+  // Don't handle uncatchable exceptions to match `for-of` bytecode behavior,
+  // which also doesn't run IteratorClose when an interrupt was requested.
+  if (!cx_->isExceptionPending()) {
     return;
   }
 
-  // Step 4.
-  if (returnVal.isUndefined()) {
-    cx_->setPendingException(completionException, completionExceptionStack);
-    return;
-  }
+  // Save the current exception state. The destructor restores the saved
+  // exception state, unless there's a new pending exception.
+  JS::AutoSaveExceptionState savedExc(cx_);
 
-  // Step 3 (remaining part)
-  if (!returnVal.isObject()) {
-    JS_ReportErrorNumberASCII(cx_, GetErrorMessage, nullptr,
-                              JSMSG_RETURN_NOT_CALLABLE);
-    return;
-  }
-  RootedObject returnObj(cx_, &returnVal.toObject());
-  if (!returnObj->isCallable()) {
-    JS_ReportErrorNumberASCII(cx_, GetErrorMessage, nullptr,
-                              JSMSG_RETURN_NOT_CALLABLE);
-    return;
-  }
+  // Perform IteratorClose on the iterator.
+  MOZ_ALWAYS_TRUE(CloseIterOperation(cx_, iterator, CompletionKind::Throw));
 
-  // Step 5.
-  RootedValue innerResultValue(cx_);
-  if (!js::Call(cx_, returnVal, iterator, &innerResultValue)) {
-    if (cx_->isExceptionPending()) {
-      cx_->clearPendingException();
-    }
-  }
-
-  // Step 6.
-  cx_->setPendingException(completionException, completionExceptionStack);
+  // CloseIterOperation clears any pending exception.
+  MOZ_ASSERT(!cx_->isExceptionPending());
 }

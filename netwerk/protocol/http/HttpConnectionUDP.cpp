@@ -207,6 +207,21 @@ nsresult HttpConnectionUDP::Activate(nsAHttpTransaction* trans, uint32_t caps,
   LOG1(("HttpConnectionUDP::Activate [this=%p trans=%p caps=%x]\n", this, trans,
         caps));
 
+  nsHttpTransaction* hTrans = trans->QueryHttpTransaction();
+  nsHttpConnectionInfo* transCI = trans->ConnectionInfo();
+  NetAddr peerAddr;
+  if (!transCI->UsingProxy() && hTrans &&
+      NS_SUCCEEDED(GetPeerAddr(&peerAddr))) {
+    if (!hTrans->AllowedToConnectToIpAddressSpace(
+            peerAddr.GetIpAddressSpace())) {
+      // we could probably fail early and avoid recreating the H3 session
+      // See Bug 1968908
+      CloseTransaction(mHttp3Session, NS_ERROR_LOCAL_NETWORK_ACCESS_DENIED);
+      trans->Close(NS_ERROR_LOCAL_NETWORK_ACCESS_DENIED);
+      return NS_ERROR_LOCAL_NETWORK_ACCESS_DENIED;
+    }
+  }
+
   if (!mExperienced && !trans->IsNullTransaction()) {
     mHasFirstHttpTransaction = true;
     // For QUIC we have HttpConnecitonUDP before the actual connection
@@ -217,7 +232,6 @@ nsresult HttpConnectionUDP::Activate(nsAHttpTransaction* trans, uint32_t caps,
     }
     if (mBootstrappedTimingsSet) {
       mBootstrappedTimingsSet = false;
-      nsHttpTransaction* hTrans = trans->QueryHttpTransaction();
       if (hTrans) {
         hTrans->BootstrapTimings(mBootstrappedTimings);
       }

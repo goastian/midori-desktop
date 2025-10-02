@@ -308,7 +308,7 @@ const POSTPROCESSORS = {
         ? '"service_worker", '
         : ""
     }"scripts" or "page".`;
-    context.logWarning(msg);
+    context.logWarning(context.makeError(msg));
     return null;
   },
 
@@ -316,8 +316,10 @@ const POSTPROCESSORS = {
     if (value.length > 1 && value.includes("none")) {
       const normalizedValue = value.filter(perm => perm !== "none");
       context.logWarning(
-        `Data collection permission "none" is ignored because other data collection permissions have been specified. ` +
-          `Either remove "none" from the required list, or do not include other required data collection permissions.`
+        context.makeError(
+          `Data collection permission "none" is ignored because other data collection permissions have been specified. ` +
+            `Either remove "none" from the required list, or do not include other required data collection permissions.`
+        )
       );
       return normalizedValue;
     }
@@ -456,7 +458,6 @@ class Context {
 
     this.currentChoices = new Set();
     this.choicePathIndex = 0;
-    this.suppressedWarnings = null;
 
     for (let method of overridableMethods) {
       if (method in params) {
@@ -592,7 +593,7 @@ class Context {
    * @param {string} message
    * @param {object} [options]
    * @param {boolean} [options.warning = false]
-   * @returns {Error|string}
+   * @returns {Error}
    */
   makeError(message, { warning = false } = {}) {
     let error = forceString(this.error(message, null, warning).error);
@@ -627,28 +628,13 @@ class Context {
   }
 
   /**
-   * Logs a warning message. An error might be thrown when we treat warnings as
-   * errors.
+   * Logs a warning. An error might be thrown when we treat warnings as errors.
    *
    * @param {string} warningMessage
    */
   logWarning(warningMessage) {
     let error = this.makeError(warningMessage, { warning: true });
-    this._logNormalizedWarning(error);
-  }
-
-  /**
-   * Logs a normalized warning object. An error might be thrown when we treat
-   * warnings as errors.
-   *
-   * @param {Error|string} warningObject
-   */
-  _logNormalizedWarning(warningObject) {
-    if (this.suppressedWarnings) {
-      this.suppressedWarnings.push(warningObject);
-      return;
-    }
-    this.logError(warningObject);
+    this.logError(error);
 
     if (lazy.treatWarningsAsErrors) {
       // This pref is false by default, and true by default in tests to
@@ -659,35 +645,10 @@ class Context {
         "Treating warning as error because the preference " +
           "extensions.webextensions.warnings-as-errors is set to true"
       );
-      if (typeof warningObject === "string") {
-        warningObject = new Error(warningObject);
+      if (typeof error === "string") {
+        error = new Error(error);
       }
-      throw warningObject;
-    }
-  }
-
-  /**
-   * Suppresses warnings logged during the execution of `callback` and returns
-   * them along with the callback's result. Any warnings that would normally be
-   * logged by `this.logWarning()` are instead collected and returned to the
-   * caller.
-   *
-   * @param {Function} callback - A function whose execution may log warnings.
-   * @returns {object}
-   * @property {any} result - The return value of the callback.
-   * @property {string[]} suppressedWarnings - An array of suppressed warnings.
-   */
-  suppressWarnings(callback) {
-    let oldWarnings = this.suppressedWarnings;
-    let suppressedWarnings = [];
-    this.suppressedWarnings = suppressedWarnings;
-    try {
-      return {
-        result: callback(),
-        suppressedWarnings,
-      };
-    } finally {
-      this.suppressedWarnings = oldWarnings;
+      throw error;
     }
   }
 
@@ -1682,13 +1643,8 @@ class ChoiceType extends Type {
           continue;
         }
 
-        let { result: r, suppressedWarnings } = context.suppressWarnings(() =>
-          choice.normalize(value, context)
-        );
+        let r = choice.normalize(value, context);
         if (!r.error) {
-          for (let w of suppressedWarnings) {
-            context._logNormalizedWarning(w);
-          }
           return r;
         }
 

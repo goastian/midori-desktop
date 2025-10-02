@@ -112,19 +112,6 @@ var gMoreFromMozillaPane = {
           },
         },
       },
-      {
-        id: "mozilla-monitor",
-        title_string_id: "more-from-moz-mozilla-monitor-title",
-        description_string_id: isRegionUS
-          ? "more-from-moz-mozilla-monitor-us-description"
-          : "more-from-moz-mozilla-monitor-global-description",
-        region: isRegionUS ? "us" : "global",
-        button: {
-          id: "mozillaMonitor",
-          label_string_id: "more-from-moz-mozilla-monitor-button",
-          actionURL: "https://monitor.mozilla.org/",
-        },
-      },
     ];
 
     if (BrowserUtils.shouldShowVPNPromo()) {
@@ -140,21 +127,6 @@ var gMoreFromMozillaPane = {
         },
       };
       products.push(vpn);
-    }
-
-    if (BrowserUtils.shouldShowPromo(BrowserUtils.PromoType.RELAY)) {
-      const relay = {
-        id: "firefox-relay",
-        title_string_id: "more-from-moz-firefox-relay-title",
-        description_string_id: "more-from-moz-firefox-relay-description",
-        region: "global",
-        button: {
-          id: "firefoxRelay",
-          label_string_id: "more-from-moz-firefox-relay-button",
-          actionURL: "https://relay.firefox.com/",
-        },
-      };
-      products.push(relay);
     }
 
     products.push({

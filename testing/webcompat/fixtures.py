@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import math
 import os
 import re
 import subprocess
@@ -32,6 +33,7 @@ UA_OVERRIDES_PREF = "extensions.webcompat.perform_ua_overrides"
 SYSTEM_ADDON_UPDATES_PREF = "extensions.systemAddon.update.enabled"
 DOWNLOAD_TO_TEMP_PREF = "browser.download.start_downloads_in_tmp_dir"
 DELETE_DOWNLOADS_PREF = "browser.helperApps.deleteTempFileOnExit"
+PLATFORM_OVERRIDE_PREF = "extensions.webcompat.platform_override"
 
 
 class WebDriver:
@@ -51,7 +53,7 @@ class WebDriver:
     def command_line_driver(self):
         raise NotImplementedError
 
-    def capabilities(self, test_config):
+    def capabilities(self, request, test_config):
         raise NotImplementedError
 
     def __enter__(self):
@@ -78,8 +80,12 @@ class FirefoxWebDriver(WebDriver):
             rv.append("-v")
         return rv
 
-    def capabilities(self, test_config):
+    def capabilities(self, request, test_config):
         prefs = {}
+
+        override = request.config.getoption("platform_override")
+        if override:
+            prefs[PLATFORM_OVERRIDE_PREF] = override
 
         if "use_interventions" in test_config:
             value = test_config["use_interventions"]
@@ -98,6 +104,7 @@ class FirefoxWebDriver(WebDriver):
 
         if "no_overlay_scrollbars" in test_config:
             prefs["widget.gtk.overlay-scrollbars.enabled"] = False
+            prefs["widget.windows.overlay-scrollbars.enabled"] = False
 
         if "enable_moztransform" in test_config:
             prefs["layout.css.prefixes.transforms"] = True
@@ -107,8 +114,6 @@ class FirefoxWebDriver(WebDriver):
         # keep system addon updates off to prevent bug 1882562
         prefs[SYSTEM_ADDON_UPDATES_PREF] = False
 
-        # remote/cdp/CDP.sys.mjs sets cookieBehavior to 0,
-        # which we definitely do not want, so set it back to 5.
         cookieBehavior = 4 if test_config.get("without_tcp") else 5
         prefs[CB_PREF] = cookieBehavior
         prefs[CB_PBM_PREF] = cookieBehavior
@@ -318,8 +323,8 @@ def install_addon(session, addon_file_path):
 
 
 @pytest.fixture(scope="function")
-async def session(driver, test_config):
-    caps = driver.capabilities(test_config)
+async def session(driver, request, test_config):
+    caps = driver.capabilities(request, test_config)
     caps.update(
         {
             "acceptInsecureCerts": True,
@@ -367,8 +372,11 @@ def firefox_version(session):
 
 
 @pytest.fixture(autouse=True)
-def platform(session):
-    return session.capabilities["platformName"]
+def platform(request, session, test_config):
+    return (
+        request.config.getoption("platform_override")
+        or session.capabilities["platformName"]
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -412,26 +420,40 @@ def need_visible_scrollbars(bug_number, check_visible_scrollbars, request, sessi
 def only_firefox_versions(bug_number, firefox_version, request):
     if request.node.get_closest_marker("only_firefox_versions"):
         kwargs = request.node.get_closest_marker("only_firefox_versions").kwargs
+
         min = float(kwargs["min"]) if "min" in kwargs else 0.0
-        max = float(kwargs["max"]) if "max" in kwargs else firefox_version
-        if firefox_version > max:
-            pytest.skip(
-                f"Bug #{bug_number} skipped on this Firefox version ({firefox_version} > {max})"
-            ) @ pytest.fixture(autouse=True)
-        elif firefox_version < min:
+        if firefox_version < min:
             pytest.skip(
                 f"Bug #{bug_number} skipped on this Firefox version ({firefox_version} < {min})"
             ) @ pytest.fixture(autouse=True)
+
+        if "max" in kwargs:
+            max = kwargs["max"]
+
+            # if we don't care about the minor version, ignore it
+            bad = False
+            if isinstance(max, float):
+                bad = firefox_version > max
+            else:
+                bad = math.floor(firefox_version) > max
+
+            if bad:
+                pytest.skip(
+                    f"Bug #{bug_number} skipped on this Firefox version ({firefox_version} > {max})"
+                ) @ pytest.fixture(autouse=True)
 
 
 @pytest.fixture(autouse=True)
 def only_platforms(bug_number, platform, request, session):
     is_fenix = "org.mozilla.fenix" in session.capabilities.get("moz:profile", "")
+    actualPlatform = session.capabilities["platformName"]
+    actualPlatformRequired = request.node.get_closest_marker("actual_platform_required")
     if request.node.get_closest_marker("only_platforms"):
         plats = request.node.get_closest_marker("only_platforms").args
         for only in plats:
             if only == platform or (only == "fenix" and is_fenix):
-                return
+                if actualPlatform == platform or not actualPlatformRequired:
+                    return
         pytest.skip(
             f"Bug #{bug_number} skipped on platform ({platform}, test only for {' or '.join(plats)})"
         )

@@ -2,9 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { UrlbarUtils } from "resource:///modules/UrlbarUtils.sys.mjs";
+
 // NOTE: This units table need to be localized upon supporting multi locales
 //       since it supports en-US only.
 //       e.g. Should support plugada or funty as well for pound.
+/**
+ * @type {{[key: string]: any}[]}
+ */
 const UNITS_GROUPS = [
   {
     // Angle
@@ -163,8 +168,6 @@ const QUERY_REGEX = new RegExp(
   "i"
 );
 
-const DECIMAL_PRECISION = 10;
-
 /**
  * This module converts simple unit such as angle and length.
  */
@@ -191,20 +194,22 @@ export class UnitConverterSimple {
     const { group, inputUnit, outputUnit } = target;
     const inputNumber = Number(regexResult[1]);
     const outputNumber = parseFloat(
-      ((inputNumber / group[inputUnit]) * group[outputUnit]).toPrecision(
-        DECIMAL_PRECISION
-      )
+      (inputNumber / group[inputUnit]) * group[outputUnit]
     );
 
+    let formattedUnit;
     try {
-      return new Intl.NumberFormat("en-US", {
+      const formatter = new Intl.NumberFormat("en-US", {
         style: "unit",
         unit: outputUnit,
-        maximumFractionDigits: DECIMAL_PRECISION,
-      }).format(outputNumber);
-    } catch (e) {}
+      });
+      const parts = formatter.formatToParts(1);
+      formattedUnit = parts.find(part => part.type == "unit").value;
+    } catch (e) {
+      formattedUnit = outputUnit;
+    }
 
-    return `${outputNumber} ${outputUnit}`;
+    return `${UrlbarUtils.formatUnitConversionResult(outputNumber)} ${formattedUnit}`;
   }
 }
 
@@ -216,7 +221,6 @@ export class UnitConverterSimple {
  *    A set of units to convert, mapped to the `inputUnit` value on the return
  * @param {string} outputUnit
  *    A set of units to convert, mapped to the `outputUnit` value on the return
- * @returns {{ inputUnit: string, outputUnit: string }} The suitable units.
  */
 function findUnitGroup(inputUnit, outputUnit) {
   inputUnit = toSuitableUnit(inputUnit);
@@ -238,6 +242,11 @@ function findUnitGroup(inputUnit, outputUnit) {
   };
 }
 
+/**
+ * Converts the unit value to an appropriate case if necessary.
+ *
+ * @param {string} unit
+ */
 function toSuitableUnit(unit) {
   return CASE_SENSITIVE_UNITS.includes(unit) ? unit : unit.toLowerCase();
 }

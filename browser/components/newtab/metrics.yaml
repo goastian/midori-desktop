@@ -235,8 +235,8 @@ newtab:
     expires: never
     extra_keys:
       newtab_visit_id: *newtab_visit_id
-      feature:
-        description: The feature that was clicked on.
+      feature: &feature
+        description: The feature highlight that was interacted with.
         type: string
     send_in_pings:
       - newtab
@@ -1057,6 +1057,123 @@ newtab:
       - mconley@mozilla.com
     expires: never
 
+  trending_search_impression:
+    type: event
+    description: >
+      records an impression when a trending search widget is visible to the user
+    bugs:
+      - https://bugzil.la/1969595
+    data_reviews:
+      - https://bugzil.la/1969595
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - nbarrett@mozilla.com
+    expires: never
+    extra_keys:
+      variant: &variant
+        description: Variant of widget rendered ("a" || "b")
+        type: string
+      newtab_visit_id: *newtab_visit_id
+    send_in_pings:
+      - newtab
+
+  trending_search_dismiss:
+    type: event
+    description: >
+      recorded when a user either collapses or dismisses the
+      trending search widget
+    bugs:
+      - https://bugzil.la/1969595
+    data_reviews:
+      - https://bugzil.la/1969595
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - nbarrett@mozilla.com
+    expires: never
+    extra_keys:
+      variant: *variant
+      newtab_visit_id: *newtab_visit_id
+    send_in_pings:
+      - newtab
+
+  trending_search_suggestion_open:
+    type: event
+    description: >
+      recorded when a user opens a suggested search link
+    bugs:
+      - https://bugzil.la/1969595
+    data_reviews:
+      - https://bugzil.la/1969595
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - nbarrett@mozilla.com
+    expires: never
+    extra_keys:
+      variant: *variant
+      newtab_visit_id: *newtab_visit_id
+    send_in_pings:
+      - newtab
+
+  feature_highlight_dismiss:
+    type: event
+    description: >
+      recorded when a feature highlight is dismissed
+    bugs:
+      - https://bugzil.la/1972931
+    data_reviews:
+      - https://bugzil.la/1972931
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - mcrawford@mozilla.com
+    expires: never
+    extra_keys:
+      newtab_visit_id: *newtab_visit_id
+      feature: *feature
+    send_in_pings:
+      - newtab
+
+  feature_highlight_impression:
+    type: event
+    description: >
+        recorded when a feature highlight impression occurs
+    bugs:
+      - https://bugzil.la/1972931
+    data_reviews:
+      - https://bugzil.la/1972931
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - mcrawford@mozilla.com
+    expires: never
+    extra_keys:
+      newtab_visit_id: *newtab_visit_id
+      feature: *feature
+    send_in_pings:
+      - newtab
+
+  feature_highlight_open:
+    type: event
+    description: >
+        recorded when a feature highlight is opened
+    bugs:
+      - https://bugzil.la/1972931
+    data_reviews:
+      - https://bugzil.la/1972931
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - mcrawford@mozilla.com
+    expires: never
+    extra_keys:
+      newtab_visit_id: *newtab_visit_id
+      feature: *feature
+    send_in_pings:
+      - newtab
+
 newtab.search:
   enabled:
     lifetime: application
@@ -1237,6 +1354,104 @@ topsites:
       newtab_visit_id: *newtab_visit_id
       is_sponsored: *is_sponsored
       position: *topsite_position
+    send_in_pings:
+      - newtab
+
+  pin:
+    type: event
+    description: >
+      Recorded when a topsite tile is pinned.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968053
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968053
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - sdowne@mozilla.com
+      - achurchwell@mozilla.com
+    expires: never
+    extra_keys:
+      advertiser_name: *advertiser_name
+      tile_id: *tile_id
+      newtab_visit_id: *newtab_visit_id
+      is_sponsored: *is_sponsored
+      position: *topsite_position
+    send_in_pings:
+      - newtab
+
+  unpin:
+    type: event
+    description: >
+      Recorded when a topsite tile is unpinned.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968053
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968053
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - sdowne@mozilla.com
+      - achurchwell@mozilla.com
+    expires: never
+    extra_keys:
+      advertiser_name: *advertiser_name
+      tile_id: *tile_id
+      newtab_visit_id: *newtab_visit_id
+      is_sponsored: *is_sponsored
+      position: *topsite_position
+    send_in_pings:
+      - newtab
+
+  add:
+    type: event
+    description: >
+      Recorded when a topsite tile is added
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968053
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968053
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - sdowne@mozilla.com
+      - achurchwell@mozilla.com
+    expires: never
+    extra_keys:
+      advertiser_name: *advertiser_name
+      tile_id: *tile_id
+      newtab_visit_id: *newtab_visit_id
+      is_sponsored: *is_sponsored
+      position: *topsite_position
+    send_in_pings:
+      - newtab
+
+  edit:
+    type: event
+    description: >
+      Recorded when a topsite tile is edited
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968053
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968053
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - sdowne@mozilla.com
+      - achurchwell@mozilla.com
+    expires: never
+    extra_keys:
+      advertiser_name: *advertiser_name
+      tile_id: *tile_id
+      newtab_visit_id: *newtab_visit_id
+      is_sponsored: *is_sponsored
+      position: *topsite_position
+      has_title_changed: &has_title_changed
+        description: Whether the topsite title was changed.
+        type: boolean
+      has_url_changed: &has_url_changed
+        description: Whether the topsite URL was changed.
+        type: boolean
     send_in_pings:
       - newtab
 
@@ -2546,13 +2761,13 @@ activity_stream:
         type: quantity
     telemetry_mirror: Activity_stream_End_Session
 
-  event_archive_from_pocket:
+  event_block:
     type: event
     description: >
       This is recorded with every user interaction on Activity Stream
       elements.
       This event was generated to correspond to the Legacy Telemetry event
-      activity_stream.event#ARCHIVE_FROM_POCKET.
+      activity_stream.event#BLOCK.
     bugs: &activity_stream_event_bugs
       - https://bugzil.la/1429497
       - https://bugzil.la/1429489
@@ -2592,20 +2807,6 @@ activity_stream:
         description: >
           The index of card receiving interactions.
         type: quantity
-    telemetry_mirror: Activity_stream_Event_ArchiveFromPocket
-
-  event_block:
-    type: event
-    description: >
-      This is recorded with every user interaction on Activity Stream
-      elements.
-      This event was generated to correspond to the Legacy Telemetry event
-      activity_stream.event#BLOCK.
-    bugs: *activity_stream_event_bugs
-    data_reviews: *activity_stream_event_data_reviews
-    notification_emails: *activity_stream_event_emails
-    expires: never
-    extra_keys: *activity_stream_event_extra
     telemetry_mirror: Activity_stream_Event_Block
 
   event_bookmark_add:
@@ -2719,20 +2920,6 @@ activity_stream:
     expires: never
     extra_keys: *activity_stream_event_extra
     telemetry_mirror: Activity_stream_Event_Delete
-
-  event_delete_from_pocket:
-    type: event
-    description: >
-      This is recorded with every user interaction on Activity Stream
-      elements.
-      This event was generated to correspond to the Legacy Telemetry event
-      activity_stream.event#DELETE_FROM_POCKET.
-    bugs: *activity_stream_event_bugs
-    data_reviews: *activity_stream_event_data_reviews
-    notification_emails: *activity_stream_event_emails
-    expires: never
-    extra_keys: *activity_stream_event_extra
-    telemetry_mirror: Activity_stream_Event_DeleteFromPocket
 
   event_delete_confirm:
     type: event
@@ -2985,20 +3172,6 @@ activity_stream:
     expires: never
     extra_keys: *activity_stream_event_extra
     telemetry_mirror: Activity_stream_Event_PreviewRequest
-
-  event_save_to_pocket:
-    type: event
-    description: >
-      This is recorded with every user interaction on Activity Stream
-      elements.
-      This event was generated to correspond to the Legacy Telemetry event
-      activity_stream.event#SAVE_TO_POCKET.
-    bugs: *activity_stream_event_bugs
-    data_reviews: *activity_stream_event_data_reviews
-    notification_emails: *activity_stream_event_emails
-    expires: never
-    extra_keys: *activity_stream_event_extra
-    telemetry_mirror: Activity_stream_Event_SaveToPocket
 
   event_search:
     type: event

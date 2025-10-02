@@ -311,6 +311,9 @@ skip-if = ["release_or_beta"] # requires Selection.getComposedRanges to be enabl
 ["test_selection_doubleclick.html"]
 
 ["test_selection_expanding.html"]
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 1968678
+]
 
 ["test_selection_multiclick_drag.html"]
 

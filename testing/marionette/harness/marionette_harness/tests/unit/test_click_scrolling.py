@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from six.moves.urllib.parse import quote
+from urllib.parse import quote
 
 from marionette_driver.by import By
 from marionette_driver.errors import MoveTargetOutOfBoundsException
@@ -15,6 +15,12 @@ def inline(doc):
 
 
 class TestClickScrolling(MarionetteTestCase):
+    def setUp(self):
+        super(TestClickScrolling, self).setUp()
+
+        # Reset the scroll position for each test
+        self.marionette.execute_script("window.scrollTo(0, 0);")
+
     def test_clicking_on_anchor_scrolls_page(self):
         self.marionette.navigate(
             inline(

@@ -66,6 +66,7 @@ enum class SkipTransitionReason : uint8_t {
   DuplicateTransitionNameCapturingNewState,
   PseudoUpdateFailure,
   Resize,
+  PageSwap,
 };
 
 // https://drafts.csswg.org/css-view-transitions-1/#viewtransition-phase
@@ -121,6 +122,8 @@ class ViewTransition final : public nsISupports, public nsWrapperCache {
   [[nodiscard]] bool GetGroupKeyframes(nsAtom* aAnimationName,
                                        const StyleComputedTimingFunction&,
                                        nsTArray<Keyframe>&);
+
+  bool MatchClassList(nsAtom*, const nsTArray<StyleAtom>&) const;
 
   nsIGlobalObject* GetParentObject() const;
   JSObject* WrapObject(JSContext*, JS::Handle<JSObject*> aGivenProto) override;

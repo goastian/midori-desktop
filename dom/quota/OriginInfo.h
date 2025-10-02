@@ -58,6 +58,12 @@ class OriginInfo final {
     return mAccessTime;
   }
 
+  bool LockedAccessed() const {
+    AssertCurrentThreadOwnsQuotaMutex();
+
+    return mAccessed;
+  }
+
   bool LockedPersisted() const {
     AssertCurrentThreadOwnsQuotaMutex();
 
@@ -73,6 +79,8 @@ class OriginInfo final {
   }
 
   OriginMetadata FlattenToOriginMetadata() const;
+
+  OriginStateMetadata LockedFlattenToOriginStateMetadata() const;
 
   FullOriginMetadata LockedFlattenToFullOriginMetadata() const;
 
@@ -96,6 +104,14 @@ class OriginInfo final {
     AssertCurrentThreadOwnsQuotaMutex();
 
     mAccessTime = aAccessTime;
+    if (!mAccessed) {
+      mAccessed = true;
+    }
+  }
+
+  void LockedUpdateAccessed() {
+    AssertCurrentThreadOwnsQuotaMutex();
+
     if (!mAccessed) {
       mAccessed = true;
     }

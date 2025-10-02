@@ -770,15 +770,15 @@ impl<'b> Cascade<'b> {
         }
 
         if apply!(Zoom) {
-            context.builder.effective_zoom = context
-                .builder
-                .inherited_effective_zoom()
-                .compute_effective(context.builder.specified_zoom());
-            // NOTE(emilio): This is a bit of a hack, but matches the shipped WebKit and Blink
-            // behavior for now. Ideally, in the future, we have a pass over all
-            // implicitly-or-explicitly-inherited properties that can contain lengths and
-            // re-compute them properly, see https://github.com/w3c/csswg-drafts/issues/9397.
-            self.recompute_font_size_for_zoom_change(&mut context.builder);
+            context.builder.recompute_effective_zooms();
+            if !context.builder.effective_zoom_for_inheritance.is_one() {
+                // NOTE(emilio): This is a bit of a hack, but matches the shipped WebKit and Blink
+                // behavior for now. Ideally, in the future, we have a pass over all
+                // implicitly-or-explicitly-inherited properties that can contain lengths and
+                // re-compute them properly, see https://github.com/w3c/csswg-drafts/issues/9397.
+                // TODO(emilio): we need to eagerly do this for line-height as well, probably.
+                self.recompute_font_size_for_zoom_change(&mut context.builder);
+            }
         }
 
         // Compute font-family.
@@ -881,6 +881,24 @@ impl<'b> Cascade<'b> {
                 }
             }
         }
+
+        if !context.builder.effective_zoom_for_inheritance.is_one() {
+            self.recompute_zoom_dependent_inherited_lengths(context);
+        }
+    }
+
+    #[cold]
+    fn recompute_zoom_dependent_inherited_lengths(&self, context: &mut computed::Context) {
+        debug_assert!(self.seen.contains(LonghandId::Zoom));
+        for prop in LonghandIdSet::zoom_dependent_inherited_properties().iter() {
+            if self.seen.contains(prop) {
+                continue;
+            }
+            let declaration = PropertyDeclaration::css_wide_keyword(prop, CSSWideKeyword::Inherit);
+            unsafe {
+                self.do_apply_declaration(context, prop, &declaration);
+            }
+        }
     }
 
     fn apply_one_longhand(
@@ -918,20 +936,26 @@ impl<'b> Cascade<'b> {
                 &mut self.declarations_to_apply_unless_overridden,
             );
         }
-
-        let is_unset = match declaration.get_css_wide_keyword() {
-            Some(keyword) => match keyword {
-                CSSWideKeyword::RevertLayer | CSSWideKeyword::Revert => {
+        let can_skip_apply = match declaration.get_css_wide_keyword() {
+            Some(keyword) => {
+                if matches!(keyword, CSSWideKeyword::RevertLayer | CSSWideKeyword::Revert) {
                     let origin_revert = keyword == CSSWideKeyword::Revert;
                     // We intentionally don't want to insert it into `self.seen`, `reverted` takes
                     // care of rejecting other declarations as needed.
                     self.reverted_set.insert(longhand_id);
                     self.reverted.insert(longhand_id, (priority, origin_revert));
                     return;
-                },
-                CSSWideKeyword::Unset => true,
-                CSSWideKeyword::Inherit => longhand_id.inherited(),
-                CSSWideKeyword::Initial => !longhand_id.inherited(),
+                }
+
+                let inherited = longhand_id.inherited();
+                let zoomed = !context.builder.effective_zoom_for_inheritance.is_one() &&
+                    longhand_id.zoom_dependent();
+                match keyword {
+                    CSSWideKeyword::Revert | CSSWideKeyword::RevertLayer => unreachable!(),
+                    CSSWideKeyword::Unset => !zoomed || !inherited,
+                    CSSWideKeyword::Inherit => inherited && !zoomed,
+                    CSSWideKeyword::Initial => !inherited,
+                }
             },
             None => false,
         };
@@ -941,11 +965,9 @@ impl<'b> Cascade<'b> {
             self.author_specified.insert(longhand_id);
         }
 
-        if is_unset {
-            return;
+        if !can_skip_apply {
+            unsafe { self.do_apply_declaration(context, longhand_id, &declaration) }
         }
-
-        unsafe { self.do_apply_declaration(context, longhand_id, &declaration) }
     }
 
     #[inline]
@@ -1281,7 +1303,7 @@ impl<'b> Cascade<'b> {
         // NOTE(emilio): Intentionally not using the effective zoom here, since all the inherited
         // zooms are already applied.
         let old_size = builder.get_font().clone_font_size();
-        let new_size = old_size.zoom(builder.resolved_specified_zoom());
+        let new_size = old_size.zoom(builder.effective_zoom_for_inheritance);
         if old_size == new_size {
             return;
         }

@@ -80,8 +80,11 @@ BaselineCompilerHandler::BaselineCompilerHandler(MacroAssembler& masm,
 #endif
       script_(snapshot->script()),
       pc_(snapshot->script()->code()),
+      nargs_(snapshot->nargs()),
       globalLexicalEnvironment_(snapshot->globalLexical()),
       globalThis_(snapshot->globalThis()),
+      callObjectTemplate_(snapshot->callObjectTemplate()),
+      namedLambdaTemplate_(snapshot->namedLambdaTemplate()),
       icEntryIndex_(0),
       baseWarmUpThreshold_(snapshot->baseWarmUpThreshold()),
       compileDebugInstrumentation_(snapshot->compileDebugInstrumentation()),
@@ -245,8 +248,6 @@ MethodStatus BaselineCompiler::compile(JSContext* cx) {
   JitSpew(JitSpew_Codegen, "# Emitting baseline code for script %s:%u:%u",
           script->filename(), script->lineno(),
           script->column().oneOriginValue());
-
-  AutoIncrementalTimer timer(cx->realm()->timers.baselineCompileTime);
 
   MOZ_ASSERT(!script->hasBaselineScript());
 
@@ -1268,7 +1269,7 @@ void BaselineCompilerCodeGen::emitInitFrameFields(Register nonFunctionEnv) {
       handler.realmIndependentJitcode() ? BaselineFrame::REALM_INDEPENDENT : 0;
   masm.store32(Imm32(flags), frame.addressOfFlags());
 
-  if (handler.function()) {
+  if (handler.isFunction()) {
     masm.loadFunctionFromCalleeToken(frame.addressOfCalleeToken(), scratch);
     masm.unboxObject(Address(scratch, JSFunction::offsetOfEnvironment()),
                      scratch2);
@@ -1393,7 +1394,7 @@ static void AssertCanElidePostWriteBarrier(MacroAssembler& masm,
 
 template <>
 bool BaselineCompilerCodeGen::initEnvironmentChain() {
-  if (!handler.function()) {
+  if (!handler.isFunction()) {
     return true;
   }
   if (!handler.script()->needsFunctionEnvironmentObjects()) {
@@ -1408,9 +1409,8 @@ bool BaselineCompilerCodeGen::initEnvironmentChain() {
     // both, the NamedLambdaObject must enclose the CallObject. If one of the
     // allocations fails, we perform the whole operation in C++.
 
-    auto [callObjectTemplate, namedLambdaTemplate] =
-        handler.script()->jitScript()->functionEnvironmentTemplates(
-            handler.function());
+    auto callObjectTemplate = handler.callObjectTemplate();
+    auto namedLambdaTemplate = handler.namedLambdaTemplate();
     MOZ_ASSERT(namedLambdaTemplate || callObjectTemplate);
 
     Register newEnv = regs.takeAny();
@@ -1785,11 +1785,13 @@ bool BaselineInterpreterCodeGen::emitWarmUpCounterIncrement() {
     // We just need to update our frame, find the OSR address, and jump to it.
     saveInterpreterPCReg();
 
-    using Fn = uint8_t* (*)(BaselineFrame*);
-    masm.setupUnalignedABICall(R0.scratchReg());
-    masm.loadBaselineFramePtr(FramePointer, R0.scratchReg());
-    masm.passABIArg(R0.scratchReg());
-    masm.callWithABI<Fn, BaselineScript::OSREntryForFrame>();
+    prepareVMCall();
+    masm.PushBaselineFramePtr(FramePointer, R0.scratchReg());
+
+    using Fn = bool (*)(JSContext*, BaselineFrame*, uint8_t**);
+    if (!callVMNonOp<Fn, BaselineScript::OSREntryForFrame>()) {
+      return false;
+    }
 
     // If we are a debuggee frame, and our baseline script was compiled
     // without debug instrumentation, and recompilation failed, we may
@@ -1839,7 +1841,7 @@ bool BaselineInterpreterCodeGen::emitWarmUpCounterIncrement() {
     prepareVMCall();
 
     using Fn2 = bool (*)(JSContext*);
-    if (!callVM<Fn2, DispatchOffThreadBaselineBatch>()) {
+    if (!callVMNonOp<Fn2, DispatchOffThreadBaselineBatch>()) {
       return false;
     }
     masm.bind(&done);
@@ -2551,8 +2553,6 @@ bool BaselineCodeGen<Handler>::emit_CheckReturn() {
 
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_FunctionThis() {
-  MOZ_ASSERT_IF(handler.maybeFunction(), !handler.maybeFunction()->isArrow());
-
   frame.pushThis();
 
   auto boxThis = [this]() {
@@ -4586,7 +4586,7 @@ bool BaselineCodeGen<Handler>::emit_GetActualArg() {
 
 template <>
 void BaselineCompilerCodeGen::loadNumFormalArguments(Register dest) {
-  masm.move32(Imm32(handler.function()->nargs()), dest);
+  masm.move32(Imm32(handler.nargs()), dest);
 }
 
 template <>
@@ -4597,8 +4597,6 @@ void BaselineInterpreterCodeGen::loadNumFormalArguments(Register dest) {
 
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_NewTarget() {
-  MOZ_ASSERT_IF(handler.maybeFunction(), !handler.maybeFunction()->isArrow());
-
   frame.syncStack(0);
 
 #ifdef DEBUG

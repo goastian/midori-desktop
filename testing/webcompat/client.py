@@ -24,6 +24,95 @@ class Client:
         self.subscriptions = {}
         self.content_blocker_loaded = False
 
+        platform_override = request.config.getoption("platform_override")
+        if (
+            platform_override
+            and platform_override != session.capabilities["platformName"]
+        ):
+            self.platform_override = platform_override
+
+    async def maybe_override_platform(self):
+        if hasattr(self, "_platform_override_checked"):
+            return
+        self._platform_override_checked = True
+
+        if not hasattr(self, "platform_override"):
+            return False
+
+        target = self.platform_override
+
+        with self.using_context("chrome"):
+            self.execute_script(
+                r"""
+                    const [ target ] = arguments;
+
+                    // Start responsive design mode if emulating an Android device.
+                    if (target === "android") {
+                        Services.prefs.setBoolPref("devtools.responsive.touchSimulation.enabled", true);
+                        Services.prefs.setIntPref("devtools.responsive.viewport.pixelRatio", 2);
+                        Services.prefs.setIntPref("devtools.responsive.viewport.width", 400);
+                        Services.prefs.setIntPref("devtools.responsive.viewport.height", 640);
+                        ChromeUtils.defineESModuleGetters(this, {
+                          loader: "resource://devtools/shared/loader/Loader.sys.mjs",
+                        });
+                        loader.lazyRequireGetter(
+                          this,
+                          "ResponsiveUIManager",
+                          "resource://devtools/client/responsive/manager.js"
+                        );
+                        const tab = gBrowser.selectedTab;
+                        ResponsiveUIManager.toggle(gBrowser.ownerDocument.defaultView, tab, {
+                          trigger: "toolbox",
+                        });
+                    }
+
+                    const ver = navigator.userAgent.match(/Firefox\/([0-9.]+)/)[1];
+                    const overrides = {
+                        android: {
+                            appVersion: "5.0 (Android 11)",
+                            oscpu: "Linux armv81",
+                            platform: "Linux armv81",
+                            userAgent: `Mozilla/5.0 (Android 15; Mobile; rv:${ver}) Gecko/${ver} Firefox/${ver}`,
+                        },
+                        linux: {
+                            appVersion: "5.0 (X11)",
+                            oscpu: "Linux x86_64",
+                            platform: "Linux x86_64",
+                            userAgent: `Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:${ver}) Gecko/20100101 Firefox/${ver}`,
+                        },
+                        mac: {
+                            appVersion: "5.0 (Macintosh)",
+                            oscpu: "Intel Mac OS X 10.15",
+                            platform: "MacIntel",
+                            userAgent: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:${ver}) Gecko/20100101 Firefox/${ver}`,
+                        },
+                        windows: {
+                            appVersion: "5.0 (Windows)",
+                            oscpu: "Windows NT 10.0; Win64; x64",
+                            platform: "Win32",
+                            userAgent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:${ver}) Gecko/20100101 Firefox/${ver}`,
+                        },
+                    }[target];
+                    if (overrides) {
+                        const { appVersion, oscpu, platform, userAgent } = overrides;
+                        Services.prefs.setCharPref("general.appversion.override", appVersion);
+                        Services.prefs.setCharPref("general.oscpu.override", oscpu);
+                        Services.prefs.setCharPref("general.platform.override", platform);
+
+                        // We must override the userAgent as a header, like our addon does.
+                        const defaultUA = navigator.userAgent;
+                        Services.obs.addObserver(function (subject) {
+                            const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+                            // If we raced with the webcompat addon, and it changed the UA already, leave it alone.
+                            if (defaultUA === channel.getRequestHeader("user-agent")) {
+                                channel.setRequestHeader("user-agent", userAgent, true);
+                            }
+                        }, "http-on-modify-request");
+                    }
+                    """,
+                target,
+            )
+
     @property
     def current_url(self):
         return self.session.url
@@ -55,6 +144,8 @@ class Client:
                 self.context = orig_context
 
     def set_screen_size(self, width, height):
+        if self.request.config.getoption("platform_override") == "android":
+            return False
         if self.session.capabilities.get("setWindowRect"):
             self.session.window.size = (width, height)
             return True
@@ -121,7 +212,7 @@ class Client:
             )
 
     async def send_apz_mouse_event(
-        self, event_type, coords=None, element=None, button=0
+        self, event_type, coords=None, element=None, offset=None, button=0
     ):
         # note: use button=2 for context menu/right click (0 is left button)
         if event_type == "down":
@@ -136,6 +227,9 @@ class Client:
             if element is None:
                 raise ValueError("require coords and/or element")
             coords = self.get_element_screen_position(element)
+            if offset:
+                coords[0] += offset[0]
+                coords[1] += offset[1]
         with self.using_context("chrome"):
             return self.execute_async_script(
                 """
@@ -415,6 +509,7 @@ class Client:
 
     async def navigate(self, url, timeout=90, no_skip=False, **kwargs):
         await self.await_interventions_started()
+        await self.maybe_override_platform()
         try:
             return await asyncio.wait_for(
                 asyncio.ensure_future(self._navigate(url, **kwargs)), timeout=timeout
@@ -431,7 +526,7 @@ class Client:
                 raise e
                 return
             s = str(e)
-            if "Address rejected" in s:
+            if "Address rejected" in s or "NS_ERROR_NET_TIMEOUT" in s:
                 pytest.skip(
                     f"{self.request.fspath.basename}: Site not responding. Please try again later."
                 )
@@ -446,6 +541,8 @@ class Client:
                     f"{self.request.fspath.basename}: Site is stuck in a redirect loop. Please try again later."
                 )
                 return
+            elif "NS_ERROR_CONNECTION_REFUSED" in s:
+                raise ConnectionRefusedError("Connection refused")
             raise e
 
     async def _navigate(self, url, wait="complete", await_console_message=None):
@@ -1299,6 +1396,7 @@ class Client:
             """,
                 trending_list,
             )
+            time.sleep(0.5)
             with_scrollbar = trending_list.screenshot()
             self.execute_script(
                 """
@@ -1306,6 +1404,7 @@ class Client:
             """,
                 trending_list,
             )
+            time.sleep(0.5)
             without_scrollbar = trending_list.screenshot()
             assert (
                 with_scrollbar == without_scrollbar
@@ -1331,10 +1430,14 @@ class Client:
         )
         self.scroll_into_view(element)
         self.clear_covering_elements(element)
-        # tap a few times in case the site's other code interferes
-        self.touch.click(element=element).perform()
-        self.touch.click(element=element).perform()
-        self.touch.click(element=element).perform()
+        # tap a few times in case the site's other code interferes, but
+        # FastClick can move the element out of bounds, so take care.
+        try:
+            self.touch.click(element=element).perform()
+            self.touch.click(element=element).perform()
+            self.touch.click(element=element).perform()
+        except webdriver.error.MoveTargetOutOfBoundsException:
+            pass
         return self.execute_script("return window.fastclicked")
 
     def is_displayed(self, element):
@@ -1363,3 +1466,54 @@ class Client:
             if max - min > max_fuzz:
                 return False
         return True
+
+    def add_stylesheet(self, sheet):
+        self.execute_script(
+            """
+           const s = document.createElement("style");
+           s.textContent = arguments[0];
+           document.head.appendChild(s);
+        """,
+            sheet,
+        )
+
+    def hide_elements(self, selector):
+        self.add_stylesheet(
+            f"""{selector} {{ opacity:0 !important; pointer-events:none !important; }}"""
+        )
+
+    def set_clipboard(self, string):
+        with self.using_context("chrome"):
+            self.execute_script(
+                """
+                  Cc["@mozilla.org/widget/clipboardhelper;1"]
+                    .getService(Ci.nsIClipboardHelper)
+                    .copyString(arguments[0]);
+            """,
+                string,
+            )
+
+    def do_paste(self):
+        with self.using_context("chrome"):
+            self.execute_script(
+                """
+                function _getEventUtils(win) {
+                    const eventUtilsObject = {
+                      window: win,
+                      parent: win,
+                      _EU_Ci: Ci,
+                      _EU_Cc: Cc,
+                    };
+                    Services.scriptloader.loadSubScript(
+                      "chrome://remote/content/external/EventUtils.js",
+                      eventUtilsObject
+                    );
+                    return eventUtilsObject;
+                }
+                const win = browser.ownerGlobal;
+                if (!win.EventUtils) {
+                    win.EventUtils = _getEventUtils(win);
+                }
+                win.EventUtils.synthesizeKey("v", { accelKey: true }, win);
+            """
+            )

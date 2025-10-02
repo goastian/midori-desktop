@@ -103,13 +103,13 @@ class Device final : public DOMEventTargetHelper, public SupportsWeakPtr {
   already_AddRefed<Texture> InitSwapChain(
       const dom::GPUCanvasConfiguration* const aConfig,
       const layers::RemoteTextureOwnerId aOwnerId,
+      mozilla::Span<RawId const> aBufferIds,
       bool aUseExternalTextureInSwapChain, gfx::SurfaceFormat aFormat,
       gfx::IntSize aCanvasSize);
   bool CheckNewWarning(const nsACString& aMessage);
 
   void CleanupUnregisteredInParent();
 
-  void GenerateValidationError(const nsCString& aMessage);
   void TrackBuffer(Buffer* aBuffer);
   void UntrackBuffer(Buffer* aBuffer);
 

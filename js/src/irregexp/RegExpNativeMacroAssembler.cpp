@@ -218,7 +218,7 @@ void SMRegExpMacroAssembler::CheckNotCharacterAfterMinusAnd(
 
 // If the current position matches the position stored on top of the backtrack
 // stack, pops the backtrack stack and branches to the given label.
-void SMRegExpMacroAssembler::CheckGreedyLoop(Label* on_equal) {
+void SMRegExpMacroAssembler::CheckFixedLengthLoop(Label* on_equal) {
   js::jit::Label fallthrough;
   masm_.load32SignExtendToPtr(Address(backtrack_stack_pointer_, 0), temp0_);
   masm_.branchPtr(Assembler::NotEqual, temp0_, current_position_, &fallthrough);
@@ -1151,8 +1151,10 @@ void SMRegExpMacroAssembler::initFrameAndRegs() {
   masm_.store32(extraTemp, numMatches());
 
 #ifdef DEBUG
-  // Bounds-check numMatches.
+  // Bounds-check numMatches. Note that callers that won't look at the captures
+  // can always pass numMatches == 1.
   js::jit::Label enoughRegisters;
+  masm_.branchPtr(Assembler::Equal, extraTemp, ImmWord(1), &enoughRegisters);
   masm_.branchPtr(Assembler::GreaterThanOrEqual, extraTemp,
                   ImmWord(num_capture_registers_ / 2), &enoughRegisters);
   masm_.assumeUnreachable("Not enough output pairs for RegExp");
@@ -1251,13 +1253,32 @@ void SMRegExpMacroAssembler::successHandler() {
   Register inputStartReg = extraTemp;
   masm_.loadPtr(inputStart(), inputStartReg);
 
-  for (int i = 0; i < num_capture_registers_; i++) {
-    masm_.loadPtr(register_location(i), temp0_);
+  auto copyRegister = [&](int reg) {
+    masm_.loadPtr(register_location(reg), temp0_);
     masm_.subPtr(inputStartReg, temp0_);
     if (mode_ == UC16) {
       masm_.rshiftPtrArithmetic(Imm32(1), temp0_);
     }
-    masm_.store32(temp0_, Address(matchesReg, i * sizeof(int32_t)));
+    masm_.store32(temp0_, Address(matchesReg, reg * sizeof(int32_t)));
+  };
+
+  // Copy first match pair.
+  MOZ_ASSERT(num_capture_registers_ >= 2);
+  copyRegister(0);
+  copyRegister(1);
+
+  if (num_capture_registers_ > 2) {
+    // We always need the first match pair to update the `lastIndex` slot,
+    // but we can skip copying the capture groups if we won't look at them.
+    // This also allows our caller to avoid allocating space for unused results.
+    js::jit::Label earlyExitForTest;
+    masm_.branch32(Assembler::Equal, numMatches(), Imm32(1), &earlyExitForTest);
+
+    for (int i = 2; i < num_capture_registers_; i++) {
+      copyRegister(i);
+    }
+
+    masm_.bind(&earlyExitForTest);
   }
 
   masm_.movePtr(ImmWord(int32_t(js::RegExpRunStatus::Success)), temp0_);

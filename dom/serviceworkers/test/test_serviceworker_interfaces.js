@@ -1,5 +1,7 @@
 /* eslint-disable mozilla/no-comparison-or-assignment-inside-ok */
 
+importScripts("../../tests/mochitest/general/interface_exposure_checker.js");
+
 // This is a list of all interfaces that are exposed to workers.
 // Please only add things to this list with great care and proper review
 // from the associated module peers.
@@ -11,15 +13,16 @@
 // properties which qualify the exposure of that interface. For example:
 //
 // [
-//   "AGlobalInterface",
+//   "AGlobalInterface", // secure context only
+//   { name: "DesktopOnlyThing", desktop: true },
+//   { name: "DisabledEverywhere", disabled: true },
 //   { name: "ExperimentalThing", release: false },
 //   { name: "ReallyExperimentalThing", nightly: true },
-//   { name: "DesktopOnlyThing", desktop: true },
-//   { name: "FancyControl", xbl: true },
-//   { name: "DisabledEverywhere", disabled: true },
 // ];
 //
-// See createInterfaceMap() below for a complete list of properties.
+// Note that the items are alphabetically sorted. This is a requirement.
+// See createInterfaceMap() in interface_exposure_checker.js for a complete
+// list of properties.
 
 // IMPORTANT: Do not change this list without review from
 //            a JavaScript Engine peer!
@@ -29,18 +32,18 @@ let wasmGlobalEntry = {
   disabled: !getJSTestingFunctions().wasmIsSupportedByHardware(),
 };
 let wasmGlobalInterfaces = [
-  { name: "Module", insecureContext: true },
-  { name: "Instance", insecureContext: true },
-  { name: "Memory", insecureContext: true },
-  { name: "Table", insecureContext: true },
-  { name: "Global", insecureContext: true },
   { name: "CompileError", insecureContext: true },
-  { name: "LinkError", insecureContext: true },
-  { name: "RuntimeError", insecureContext: true },
-  { name: "Function", insecureContext: true, nightly: true },
   { name: "Exception", insecureContext: true },
-  { name: "Tag", insecureContext: true },
+  { name: "Function", insecureContext: true, nightly: true },
+  { name: "Global", insecureContext: true },
+  { name: "Instance", insecureContext: true },
   { name: "JSTag", insecureContext: true },
+  { name: "LinkError", insecureContext: true },
+  { name: "Memory", insecureContext: true },
+  { name: "Module", insecureContext: true },
+  { name: "RuntimeError", insecureContext: true },
+  { name: "Table", insecureContext: true },
+  { name: "Tag", insecureContext: true },
   { name: "compile", insecureContext: true },
   { name: "compileStreaming", insecureContext: true },
   { name: "instantiate", insecureContext: true },
@@ -53,13 +56,15 @@ let ecmaGlobals = [
   "AggregateError",
   "Array",
   "ArrayBuffer",
+  "AsyncDisposableStack",
   "Atomics",
-  "Boolean",
   "BigInt",
   "BigInt64Array",
   "BigUint64Array",
+  "Boolean",
   "DataView",
   "Date",
+  "DisposableStack",
   "Error",
   "EvalError",
   "FinalizationRegistry",
@@ -87,20 +92,18 @@ let ecmaGlobals = [
   "Reflect",
   "RegExp",
   "Set",
-  {
-    name: "SharedArrayBuffer",
-    crossOriginIsolated: true,
-  },
+  { name: "SharedArrayBuffer", crossOriginIsolated: true },
   "String",
+  "SuppressedError",
   "Symbol",
   "SyntaxError",
   "Temporal",
   "TypeError",
+  "URIError",
   "Uint16Array",
   "Uint32Array",
   "Uint8Array",
   "Uint8ClampedArray",
-  "URIError",
   "WeakMap",
   "WeakRef",
   "WeakSet",
@@ -151,21 +154,17 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "CompressionStream",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  "CountQueuingStrategy",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
   "CookieStore",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "CookieStoreManager",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "CountQueuingStrategy",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "Crypto",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "CryptoKey",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "CustomEvent",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  "DecompressionStream",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  "Directory",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "DOMException",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -184,6 +183,10 @@ let interfaceNamesInGlobalScope = [
   "DOMRectReadOnly",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "DOMStringList",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "DecompressionStream",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "Directory",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "ErrorEvent",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -345,9 +348,9 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "MessagePort",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "NetworkInformation", disabled: true },
-  // IMPORTANT: Do not change this list without review from a DOM peer!
   "NavigationPreloadManager",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "NetworkInformation", disabled: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "Notification",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -375,9 +378,9 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "PerformanceServerTiming",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  "Permissions",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
   "PermissionStatus",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "Permissions",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "ProgressEvent",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -449,19 +452,7 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "URLSearchParams",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  "WebSocket",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  "WebTransport",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  "WebTransportBidirectionalStream",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  "WebTransportDatagramDuplexStream",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  "WebTransportError",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  "WebTransportReceiveStream",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
-  "WebTransportSendStream",
+  { name: "WGSLLanguageFeatures", earlyBetaOrEarlier: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "WebGL2RenderingContext",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -497,9 +488,21 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "WebGLVertexArrayObject",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  "WindowClient",
+  "WebSocket",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "WGSLLanguageFeatures", earlyBetaOrEarlier: true },
+  "WebTransport",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "WebTransportBidirectionalStream",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "WebTransportDatagramDuplexStream",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "WebTransportError",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "WebTransportReceiveStream",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "WebTransportSendStream",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "WindowClient",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "WorkerGlobalScope",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -560,112 +563,17 @@ let testFunctions = [
   "runTest",
 ];
 
-function entryDisabled(
-  entry,
-  {
-    isNightly,
-    isEarlyBetaOrEarlier,
-    isRelease,
-    isDesktop,
-    isAndroid,
-    isInsecureContext,
-    isFennec,
-    isCrossOriginIsolated,
-  }
-) {
-  return (
-    entry.nightly === !isNightly ||
-    (entry.nightlyAndroid === !(isAndroid && isNightly) && isAndroid) ||
-    (entry.nonReleaseAndroid === !(isAndroid && !isRelease) && isAndroid) ||
-    entry.desktop === !isDesktop ||
-    (entry.android === !isAndroid &&
-      !entry.nonReleaseAndroid &&
-      !entry.nightlyAndroid) ||
-    entry.fennecOrDesktop === (isAndroid && !isFennec) ||
-    entry.fennec === !isFennec ||
-    entry.release === !isRelease ||
-    entry.earlyBetaOrEarlier === !isEarlyBetaOrEarlier ||
-    entry.crossOriginIsolated === !isCrossOriginIsolated ||
-    entry.disabled
-  );
-}
-
-function createInterfaceMap(data, ...interfaceGroups) {
-  var interfaceMap = {};
-
-  function addInterfaces(interfaces) {
-    for (var entry of interfaces) {
-      if (typeof entry === "string") {
-        ok(!(entry in interfaceMap), "duplicate entry for " + entry);
-        interfaceMap[entry] = true;
-      } else {
-        ok(!(entry.name in interfaceMap), "duplicate entry for " + entry.name);
-        ok(!("pref" in entry), "Bogus pref annotation for " + entry.name);
-        if (entryDisabled(entry, data)) {
-          interfaceMap[entry.name] = false;
-        } else if (entry.optional) {
-          interfaceMap[entry.name] = "optional";
-        } else {
-          interfaceMap[entry.name] = true;
-        }
-      }
-    }
-  }
-
-  for (let interfaceGroup of interfaceGroups) {
-    addInterfaces(interfaceGroup);
-  }
-
-  return interfaceMap;
-}
-
-function runTest(parentName, parent, data, ...interfaceGroups) {
-  var interfaceMap = createInterfaceMap(data, ...interfaceGroups);
-  for (var name of Object.getOwnPropertyNames(parent)) {
-    // Ignore functions on the global that are part of the test (harness).
-    if (parent === self && testFunctions.includes(name)) {
-      continue;
-    }
-    ok(
-      interfaceMap[name] === "optional" || interfaceMap[name],
-      "If this is failing: DANGER, are you sure you want to expose the new interface " +
-        name +
-        " to all webpages as a property on " +
-        parentName +
-        "? Do not make a change to this file without a " +
-        " review from a DOM peer for that specific change!!! (or a JS peer for changes to ecmaGlobals)"
-    );
-    delete interfaceMap[name];
-  }
-  for (var name of Object.keys(interfaceMap)) {
-    if (interfaceMap[name] === "optional") {
-      delete interfaceMap[name];
-    } else {
-      ok(
-        name in parent === interfaceMap[name],
-        name +
-          " should " +
-          (interfaceMap[name] ? "" : " NOT") +
-          " be defined on " +
-          parentName
-      );
-      if (!interfaceMap[name]) {
-        delete interfaceMap[name];
-      }
-    }
-  }
-  is(
-    Object.keys(interfaceMap).length,
-    0,
-    "The following interface(s) are not enumerated: " +
-      Object.keys(interfaceMap).join(", ")
-  );
-}
-
 workerTestGetHelperData(function (data) {
-  runTest("self", self, data, ecmaGlobals, interfaceNamesInGlobalScope);
+  runTest("self", self, {
+    data,
+    testFunctions,
+    interfaceGroups: [ecmaGlobals, interfaceNamesInGlobalScope],
+  });
   if (WebAssembly && !entryDisabled(wasmGlobalEntry, data)) {
-    runTest("WebAssembly", WebAssembly, data, wasmGlobalInterfaces);
+    runTest("WebAssembly", WebAssembly, {
+      data,
+      interfaceGroups: [wasmGlobalInterfaces],
+    });
   }
   workerTestDone();
 });

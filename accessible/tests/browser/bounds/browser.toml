@@ -7,6 +7,10 @@ support-files = [
   "!/accessible/tests/mochitest/letters.gif",
   "!/gfx/layers/apz/test/mochitest/apz_test_native_event_utils.js",
 ]
+prefs = [
+  # Required for the eval in invokeContentTask in shared-head.js
+  "security.allow_eval_with_system_principal=true"
+]
 
 ["browser_accessible_moved.js"]
 
@@ -24,6 +28,9 @@ support-files = [
 skip-if = ["os == 'win'"] # bug 1372296
 
 ["browser_test_simple_transform.js"]
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt", # Bug 1784767
+]
 
 ["browser_test_zoom.js"]
 skip-if = ["true"] # Bug 1734271

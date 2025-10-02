@@ -1182,6 +1182,10 @@ static MOZ_ALWAYS_INLINE bool CallAddPropertyHook(JSContext* cx,
       return false;
     }
   }
+  if (MOZ_UNLIKELY(obj->hasUnpreservedWrapper())) {
+    MaybePreserveDOMWrapper(cx, obj);
+    return JSObject::setFlag(cx, obj, ObjectFlag::HasPreservedWrapper);
+  }
   return true;
 }
 
@@ -1206,6 +1210,11 @@ static MOZ_ALWAYS_INLINE bool CallAddPropertyHookDense(
       return false;
     }
   }
+
+  if (MOZ_UNLIKELY(obj->hasUnpreservedWrapper())) {
+    MaybePreserveDOMWrapper(cx, obj);
+    return JSObject::setFlag(cx, obj, ObjectFlag::HasPreservedWrapper);
+  }
   return true;
 }
 
@@ -1216,6 +1225,17 @@ static MOZ_ALWAYS_INLINE bool CallAddPropertyHookDense(
  */
 static bool WouldDefinePastNonwritableLength(ArrayObject* arr, uint32_t index) {
   return !arr->lengthIsWritable() && index >= arr->length();
+}
+
+static bool CheckForNonFunctionGetterSetter(JSContext* cx,
+                                            Handle<GetterSetter*> gs,
+                                            Handle<NativeObject*> obj) {
+  bool nonFunctionGetter = gs->getter() && !gs->getter()->is<JSFunction>();
+  bool nonFunctionSetter = gs->setter() && !gs->setter()->is<JSFunction>();
+  if (MOZ_UNLIKELY(nonFunctionGetter || nonFunctionSetter)) {
+    return JSObject::setHasNonFunctionAccessor(cx, obj);
+  }
+  return true;
 }
 
 static bool ChangeProperty(JSContext* cx, Handle<NativeObject*> obj,
@@ -1241,6 +1261,9 @@ static bool ChangeProperty(JSContext* cx, Handle<NativeObject*> obj,
   if (!gs) {
     gs = GetterSetter::create(cx, getter, setter);
     if (!gs) {
+      return false;
+    }
+    if (!CheckForNonFunctionGetterSetter(cx, gs, obj)) {
       return false;
     }
   }
@@ -1331,6 +1354,10 @@ static MOZ_ALWAYS_INLINE bool AddOrChangeProperty(
       if (!gs) {
         return false;
       }
+      if (!CheckForNonFunctionGetterSetter(cx, gs, obj)) {
+        return false;
+      }
+
       if (!NativeObject::addProperty(cx, obj, id, flags, &slot)) {
         return false;
       }
@@ -1422,17 +1449,23 @@ static MOZ_ALWAYS_INLINE bool AddDataProperty(JSContext* cx,
 
 bool js::AddSlotAndCallAddPropHook(JSContext* cx, Handle<NativeObject*> obj,
                                    HandleValue v, Handle<Shape*> newShape) {
-  MOZ_ASSERT(obj->getClass()->getAddProperty());
   MOZ_ASSERT(newShape->asShared().lastProperty().isDataProperty());
 
   RootedId id(cx, newShape->asShared().lastProperty().key());
   MOZ_ASSERT(!id.isInt());
+
+  bool hasUnpreservedWrapper = obj->hasUnpreservedWrapper();
 
   uint32_t slot = newShape->asShared().lastProperty().slot();
   if (!obj->setShapeAndAddNewSlot(cx, &newShape->asShared(), slot)) {
     return false;
   }
   obj->initSlot(slot, v);
+
+  if (MOZ_UNLIKELY(hasUnpreservedWrapper)) {
+    MaybePreserveDOMWrapper(cx, obj);
+    MOZ_ASSERT(!obj->hasUnpreservedWrapper());
+  }
 
   return CallAddPropertyHook(cx, obj, id, v);
 }
@@ -2140,72 +2173,62 @@ enum IsNameLookup { NotNameLookup = false, NameLookup = true };
  * so we need to figure out if that's what's happening and throw
  * a ReferenceError if so.
  */
-static bool GetNonexistentProperty(JSContext* cx, HandleId id,
-                                   IsNameLookup nameLookup,
-                                   MutableHandleValue vp) {
-  vp.setUndefined();
-
+template <AllowGC allowGC>
+static bool GetNonexistentProperty(
+    JSContext* cx, typename MaybeRooted<jsid, allowGC>::HandleType id,
+    IsNameLookup nameLookup,
+    typename MaybeRooted<Value, allowGC>::MutableHandleType vp) {
   // If we are doing a name lookup, this is a ReferenceError.
   if (nameLookup) {
-    ReportIsNotDefined(cx, id);
+    if constexpr (allowGC == AllowGC::CanGC) {
+      ReportIsNotDefined(cx, id);
+    }
     return false;
   }
 
   // Otherwise, just return |undefined|.
+  vp.setUndefined();
   return true;
 }
 
-// The NoGC version of GetNonexistentProperty, present only to make types line
-// up.
-bool GetNonexistentProperty(JSContext* cx, const jsid& id,
-                            IsNameLookup nameLookup,
-                            FakeMutableHandle<Value> vp) {
-  return false;
-}
+template <AllowGC allowGC>
+static inline bool GeneralizedGetProperty(
+    JSContext* cx, typename MaybeRooted<JSObject*, allowGC>::HandleType obj,
+    typename MaybeRooted<jsid, allowGC>::HandleType id,
+    typename MaybeRooted<Value, allowGC>::HandleType receiver,
+    IsNameLookup nameLookup,
+    typename MaybeRooted<Value, allowGC>::MutableHandleType vp) {
+  MOZ_ASSERT(obj->getOpsGetProperty());
 
-static inline bool GeneralizedGetProperty(JSContext* cx, HandleObject obj,
-                                          HandleId id, HandleValue receiver,
-                                          IsNameLookup nameLookup,
-                                          MutableHandleValue vp) {
-  AutoCheckRecursionLimit recursion(cx);
-  if (!recursion.check(cx)) {
-    return false;
-  }
-  if (nameLookup) {
-    // When nameLookup is true, GeneralizedGetProperty implements 9.1.1.2.6
-    // GetBindingValue, ES2025 rev ac21460fedf4b926520b06c9820bdbebad596a8b,
-    // with step 2 (the call to HasProperty) and step 4 (the call to Get) fused
-    // so that only a single lookup is needed.
-    //
-    // If we get here, we've reached a non-native object. Fall back on the
-    // algorithm as specified, with two separate lookups. (Note that we
-    // throw ReferenceErrors regardless of strictness, technically a bug.)
-
-    bool found;
-    if (!HasProperty(cx, obj, id, &found)) {
+  if constexpr (allowGC == AllowGC::CanGC) {
+    AutoCheckRecursionLimit recursion(cx);
+    if (!recursion.check(cx)) {
       return false;
     }
-    if (!found) {
-      ReportIsNotDefined(cx, id);
-      return false;
+    if (nameLookup) {
+      // When nameLookup is true, GeneralizedGetProperty implements 9.1.1.2.6
+      // GetBindingValue, ES2025 rev ac21460fedf4b926520b06c9820bdbebad596a8b,
+      // with step 2 (the call to HasProperty) and step 4 (the call to Get)
+      // fused so that only a single lookup is needed.
+      //
+      // If we get here, we've reached a non-native object. Fall back on the
+      // algorithm as specified, with two separate lookups. (Note that we
+      // throw ReferenceErrors regardless of strictness, technically a bug.)
+
+      bool found;
+      if (!HasProperty(cx, obj, id, &found)) {
+        return false;
+      }
+      if (!found) {
+        ReportIsNotDefined(cx, id);
+        return false;
+      }
     }
-  }
 
-  return GetProperty(cx, obj, receiver, id, vp);
-}
-
-static inline bool GeneralizedGetProperty(JSContext* cx, JSObject* obj, jsid id,
-                                          const Value& receiver,
-                                          IsNameLookup nameLookup,
-                                          FakeMutableHandle<Value> vp) {
-  AutoCheckRecursionLimit recursion(cx);
-  if (!recursion.checkDontReport(cx)) {
+    return GetProperty(cx, obj, receiver, id, vp);
+  } else {
     return false;
   }
-  if (nameLookup) {
-    return false;
-  }
-  return GetPropertyNoGC(cx, obj, receiver, id, vp.address());
 }
 
 bool js::GetSparseElementHelper(JSContext* cx, Handle<NativeObject*> obj,
@@ -2280,7 +2303,7 @@ static MOZ_ALWAYS_INLINE bool NativeGetPropertyInline(
     // Step 2.b. The spec algorithm simply returns undefined if proto is
     // null, but see the comment on GetNonexistentProperty.
     if (!proto || prop.shouldIgnoreProtoChain()) {
-      return GetNonexistentProperty(cx, id, nameLookup, vp);
+      return GetNonexistentProperty<allowGC>(cx, id, nameLookup, vp);
     }
 
     // Step 2. If the prototype is also native, this step is a recursive tail
@@ -2288,9 +2311,9 @@ static MOZ_ALWAYS_INLINE bool NativeGetPropertyInline(
     // the top of the loop is where we're going to end up anyway. But if |proto|
     // is non-native, that optimization would be incorrect.
     if (proto->getOpsGetProperty()) {
-      RootedObject protoRoot(cx, proto);
-      return GeneralizedGetProperty(cx, protoRoot, id, receiver, nameLookup,
-                                    vp);
+      typename MaybeRooted<JSObject*, allowGC>::RootType protoRoot(cx, proto);
+      return GeneralizedGetProperty<allowGC>(cx, protoRoot, id, receiver,
+                                             nameLookup, vp);
     }
 
     pobj = &proto->as<NativeObject>();
@@ -2346,7 +2369,7 @@ bool js::GetNameBoundInEnvironment(JSContext* cx, HandleObject envArg,
   RootedObject env(cx, MaybeUnwrapWithEnvironment(envArg));
   RootedValue receiver(cx, ObjectValue(*env));
   if (env->getOpsGetProperty()) {
-    return GeneralizedGetProperty(cx, env, id, receiver, NameLookup, vp);
+    return GeneralizedGetProperty<CanGC>(cx, env, id, receiver, NameLookup, vp);
   }
   return NativeGetPropertyInline<CanGC>(cx, env.as<NativeObject>(), receiver,
                                         id, NameLookup, vp);
@@ -2514,12 +2537,18 @@ static bool SetNonexistentProperty(JSContext* cx, Handle<NativeObject*> obj,
       MOZ_ASSERT(pobj == obj || !obj->is<TypedArrayObject>(),
                  "prototype chain not traversed for typed array indices");
 
-      // 10.4.5.5, step 1.b.i.
+      auto tobj = HandleObject(pobj).as<TypedArrayObject>();
+
+      // Additional step from Immutable ArrayBuffer proposal.
+      if (tobj->is<ImmutableTypedArrayObject>()) {
+        return result.fail(JSMSG_ARRAYBUFFER_IMMUTABLE);
+      }
+
+      // 10.4.5.6 [[Set]], step 1.b.i.
       if (receiver.isObject() && pobj == &receiver.toObject()) {
         mozilla::Maybe<uint64_t> index = ToTypedArrayIndex(id);
         MOZ_ASSERT(index, "typed array out-of-range reported by non-index?");
 
-        auto tobj = HandleObject(pobj).as<TypedArrayObject>();
         return SetTypedArrayElement(cx, tobj, *index, v, result);
       }
 
@@ -2588,8 +2617,8 @@ static bool SetExistingProperty(JSContext* cx, HandleId id, HandleValue v,
                                 ObjectOpResult& result) {
   // Step 1. (Performed in caller)
 
-  // Step 2 for dense and typed array elements.
-  if (prop.isDenseElement() || prop.isTypedArrayElement()) {
+  // Step 2 for dense elements.
+  if (prop.isDenseElement()) {
     // Step 2.a.
     if (pobj->denseElementsAreFrozen()) {
       return result.fail(JSMSG_READ_ONLY);
@@ -2597,16 +2626,39 @@ static bool SetExistingProperty(JSContext* cx, HandleId id, HandleValue v,
 
     // Pure optimization for the common case:
     if (receiver.isObject() && pobj == &receiver.toObject()) {
-      if (prop.isTypedArrayElement()) {
-        Rooted<TypedArrayObject*> tobj(cx, &pobj->as<TypedArrayObject>());
-        size_t idx = prop.typedArrayElementIndex();
-        return SetTypedArrayElement(cx, tobj, idx, v, result);
-      }
-
       return SetDenseElement(cx, pobj, prop.denseElementIndex(), v, result);
     }
 
     // Steps 2.b-e.
+    return SetPropertyByDefining(cx, id, v, receiver, result);
+  }
+
+  // 10.4.5.6 [[Set]], step 1.b and 10.1.9.2, step 2 for typed array elements.
+  if (prop.isTypedArrayElement()) {
+    auto tobj = HandleObject(pobj).as<TypedArrayObject>();
+
+    // Step 2.a.
+    //
+    // Typed arrays don't have dense elements.
+    MOZ_ASSERT(!tobj->denseElementsAreFrozen());
+
+    // Additional step from Immutable ArrayBuffer proposal.
+    if (tobj->is<ImmutableTypedArrayObject>()) {
+      return result.fail(JSMSG_ARRAYBUFFER_IMMUTABLE);
+    }
+
+    // 10.4.5.6 [[Set]], step 1.b.i.
+    if (receiver.isObject() && pobj == &receiver.toObject()) {
+      size_t idx = prop.typedArrayElementIndex();
+      return SetTypedArrayElement(cx, tobj, idx, v, result);
+    }
+
+    // 10.4.5.6 [[Set]], step 1.b.ii.
+    //
+    // Implemented in SetNonexistentProperty.
+
+    // 10.4.5.6 [[Set]], step 2.
+    // 10.1.9.2, steps 2.b-e.
     return SetPropertyByDefining(cx, id, v, receiver, result);
   }
 

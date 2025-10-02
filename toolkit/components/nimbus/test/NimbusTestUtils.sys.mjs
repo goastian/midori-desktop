@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/** @import { NimbusEnrollments } from "../lib/Enrollments.sys.mjs" */
+/** @import { _ExperimentFeature } from "../ExperimentAPI.sys.mjs" */
+/** @import { Phase } from "../lib/Migrations.sys.mjs" */
+
 import {
   ExperimentAPI,
   NimbusFeatures,
@@ -15,6 +19,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FeatureManifest: "resource://nimbus/FeatureManifest.sys.mjs",
   JsonSchema: "resource://gre/modules/JsonSchema.sys.mjs",
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
+  NimbusEnrollments: "resource://nimbus/lib/Enrollments.sys.mjs",
+  NimbusMigrations: "resource://nimbus/lib/Migrations.sys.mjs",
   ExperimentManager: "resource://nimbus/lib/ExperimentManager.sys.mjs",
   ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   ProfilesDatastoreService:
@@ -145,10 +151,14 @@ export const NimbusTestUtils = {
         "Store should have no active enrollments"
       );
 
+      // Do *not* queue a removal from the store yet -- we'll handle that in
+      // cleanupEnrollmentDatabase.
       store
         .getAll()
         .filter(e => !e.active)
-        .forEach(e => store._deleteForTests(e.slug));
+        .forEach(e =>
+          store._deleteForTests(e.slug, { removeFromNimbusEnrollments: false })
+        );
 
       NimbusTestUtils.Assert.deepEqual(
         store
@@ -161,7 +171,7 @@ export const NimbusTestUtils = {
 
       NimbusTestUtils.cleanupStorePrefCache();
 
-      await NimbusTestUtils.cleanupEnrollmentDatabase();
+      await NimbusTestUtils.cleanupEnrollmentDatabase(store?._db);
     },
 
     /**
@@ -278,8 +288,6 @@ export const NimbusTestUtils = {
           firefoxLabsTitle: null,
         },
         source: "NimbusTestUtils",
-        isEnrollmentPaused: true,
-        experimentType,
         userFacingName,
         userFacingDescription,
         lastSeen: new Date().toJSON(),
@@ -376,10 +384,12 @@ export const NimbusTestUtils = {
 
       // We want calls to `store.addEnrollment` to implicitly validate the
       // enrollment before saving to store
-      lazy.sinon.stub(manager.store, "addEnrollment").callsFake(enrollment => {
-        NimbusTestUtils.validateEnrollment(enrollment);
-        return addEnrollment(enrollment);
-      });
+      lazy.sinon
+        .stub(manager.store, "addEnrollment")
+        .callsFake((enrollment, recipe) => {
+          NimbusTestUtils.validateEnrollment(enrollment);
+          return addEnrollment(enrollment, recipe);
+        });
 
       return manager;
     },
@@ -394,6 +404,7 @@ export const NimbusTestUtils = {
           value: {
             collectionName: "nimbus-desktop-experiments (stubbed)",
             get: () => Promise.resolve([]),
+            db: { getLastModified: () => Promise.resolve(0) },
           },
         },
 
@@ -401,12 +412,104 @@ export const NimbusTestUtils = {
           value: {
             collectionName: "nimbus-secure-experiments (stubbed)",
             get: () => Promise.resolve([]),
+            db: { getLastModified: () => Promise.resolve(0) },
           },
         },
       });
 
       return loader;
     },
+  },
+
+  migrationState: {
+    get IMPORTED_ENROLLMENTS_TO_SQL() {
+      const { Phase } = lazy.NimbusMigrations;
+
+      return NimbusTestUtils.makeMigrationState({
+        [Phase.INIT_STARTED]: "multi-phase-migrations",
+        [Phase.AFTER_STORE_INITIALIZED]: "import-enrollments-to-sql",
+        [Phase.AFTER_REMOTE_SETTINGS_UPDATE]: "firefox-labs-enrollments",
+      });
+    },
+  },
+
+  /**
+   * Create a migration state to pass to NimbusTestUtils.setupTest.
+   *
+   * @param {Record<Phase, string>} migrationsByPhase A map of the latest
+   * completed migration by phase.
+   */
+  makeMigrationState(migrationsByPhase) {
+    const state = {};
+
+    for (const [phase, migrationName] of Object.entries(migrationsByPhase)) {
+      state[phase] = lazy.NimbusMigrations.MIGRATIONS[phase].findIndex(
+        m => m.name === migrationName
+      );
+    }
+
+    return state;
+  },
+
+  /**
+   * Add an enrollment to the store without going through the entire enroll
+   * flow.
+   *
+   * Using `ExperimentAPI.manager.enroll()` or {@link NimbusTestUtils.enroll}
+   * (or similar hlpers) should be preferred in most cases.
+   *
+   * N.B.: The JSON store will not be immediately saved to disk, nor will the
+   * NimbusEnrollments table. You must call {@link NimbusTestUtils.saveStore} or
+   * wait for it to save on its own.
+   *
+   * @param {object} recipe The recipe to add an enrollment for.
+   * @param {object} options
+   * @param {ExperimentStore} options.store The store to add the enrollment to.
+   * Defaults to the global ExperimentStore (`ExperimentAPI.manager.store`).
+   * @param {string} options.branchSlug The slug of the branch to enroll in.
+   * Must be provided if there is more than once branch.
+   * @param {object} options.extra Extra properties to override on the
+   * enrollment object.
+   *
+   * @returns {object} The enrollment.
+   */
+  addEnrollmentForRecipe(recipe, { store, branchSlug, extra = {} } = {}) {
+    let branch;
+    if (branchSlug) {
+      branch = recipe.branches.find(b => b.slug === branchSlug);
+    } else if (recipe.branches.length === 1) {
+      branch = recipe.branches[0];
+    } else {
+      throw new Error("branchSlug required for recipes with > 1 branch");
+    }
+
+    if (!branch) {
+      throw new Error("No branch");
+    }
+
+    const enrollment = {
+      slug: recipe.slug,
+      branch,
+      active: true,
+      source: "NimbusTestUtils",
+      userFacingName: recipe.userFacingName,
+      userFacingDescription: recipe.userFacingDescription,
+      lastSeen: new Date().toJSON(),
+      featureIds: recipe.featureIds,
+      isRollout: recipe.isRollout,
+      isFirefoxLabsOptIn: recipe.isFirefoxLabsOptIn,
+      firefoxLabsTitle: recipe.firefoxLabsTitle,
+      firefoxLabsDescription: recipe.firefoxLabsDescription,
+      firefoxLabsDescriptionLinks: recipe.firefoxLabsDescriptionLinks,
+      firefoxLabsGroup: recipe.firefoxLabsGroup,
+      requiresRestart: recipe.requiresRestart,
+      localizations: recipe.localizations ?? null,
+      ...extra,
+    };
+
+    (store ?? ExperimentAPI.manager.store).addEnrollment(enrollment, recipe);
+
+    return enrollment;
   },
 
   /**
@@ -482,19 +585,22 @@ export const NimbusTestUtils = {
     const experimentManager = manager ?? ExperimentAPI.manager;
 
     for (const slug of slugs) {
-      await experimentManager.unenroll(slug);
+      experimentManager.unenroll(slug);
     }
 
     await NimbusTestUtils.assert.storeIsEmpty(experimentManager.store);
   },
 
-  async cleanupEnrollmentDatabase() {
-    if (
-      !Services.prefs.getBoolPref(
-        "nimbus.profilesdatastoreservice.enabled",
-        false
-      )
-    ) {
+  /**
+   * Clean up the enrollments database, removing all enrollments for the current
+   * profile ID.
+   *
+   * The database flushing task will be finalized, preventing further writes.
+   *
+   * @param {NimbusEnrollments} db The NimbusEnrollments object.
+   */
+  async cleanupEnrollmentDatabase(db) {
+    if (!lazy.NimbusEnrollments.databaseEnabled) {
       // We are in an xpcshell test that has not initialized the
       // ProfilesDatastoreService.
       //
@@ -502,6 +608,10 @@ export const NimbusTestUtils = {
       // and remove this check.
       return;
     }
+
+    // Wait for all pending writes to complete and clean up shutdown blocker
+    // state.
+    await db.finalize();
 
     const profileId = ExperimentAPI.profileId;
 
@@ -552,6 +662,28 @@ export const NimbusTestUtils = {
     } catch (e) {}
   },
 
+  enableNimbusEnrollments({ read = false } = {}) {
+    const writePref = "nimbus.profilesdatastoreservice.enabled";
+    const readPref = "nimbus.profilesdatastoreservice.read.enabled";
+
+    const originalWriteValue = Services.prefs.getBoolPref(writePref, false);
+    const originalReadValue = Services.prefs.getBoolPref(readPref, false);
+
+    Services.prefs.setBoolPref(writePref, true);
+
+    if (!originalReadValue && read) {
+      Services.prefs.setBoolPref(readPref, true);
+    }
+
+    lazy.NimbusEnrollments._reloadPrefsForTests();
+
+    return function () {
+      Services.prefs.setBoolPref(writePref, originalWriteValue);
+      Services.prefs.setBoolPref(readPref, originalReadValue);
+      lazy.NimbusEnrollments._reloadPrefsForTests();
+    };
+  },
+
   /**
    * Enroll in the given recipe.
    *
@@ -600,8 +732,10 @@ export const NimbusTestUtils = {
     experimentManager.store._syncToChildren({ flush: true });
 
     return async function doEnrollmentCleanup() {
-      await experimentManager.unenroll(enrollment.slug);
+      experimentManager.unenroll(enrollment.slug);
       experimentManager.store._deleteForTests(enrollment.slug);
+
+      await NimbusTestUtils.flushStore(experimentManager.store);
     };
   },
 
@@ -675,6 +809,70 @@ export const NimbusTestUtils = {
   },
 
   /**
+   *
+   * @param {string} slug
+   * @param {object} options
+   * @param {string} options.profileId
+   */
+  async queryEnrollment(slug, { profileId } = {}) {
+    const conn = await lazy.ProfilesDatastoreService.getConnection();
+    const result = await conn.execute(
+      `
+      SELECT
+        profileId,
+        slug,
+        branchSlug,
+        json(recipe) AS recipe,
+        active,
+        unenrollReason,
+        lastSeen,
+        json(setPrefs) AS setPrefs,
+        json(prefFlips) AS prefFlips,
+        source
+      FROM NimbusEnrollments
+      WHERE
+        slug = :slug AND
+        profileId = :profileId;
+      `,
+      {
+        slug,
+        profileId: profileId ?? ExperimentAPI.profileId,
+      }
+    );
+
+    if (!result.length) {
+      return null;
+    }
+
+    const row = result[0];
+
+    const fields = [
+      "profileId",
+      "slug",
+      "branchSlug",
+      "recipe",
+      "active",
+      "unenrollReason",
+      "lastSeen",
+      "setPrefs",
+      "prefFlips",
+      "source",
+    ];
+
+    const enrollment = {};
+
+    for (const field of fields) {
+      enrollment[field] = row.getResultByName(field);
+    }
+
+    enrollment.recipe = JSON.parse(enrollment.recipe);
+    enrollment.setPrefs = JSON.parse(enrollment.setPrefs);
+    enrollment.prefFlips = JSON.parse(enrollment.prefFlips);
+
+    return enrollment;
+  },
+
+  /**
    * Remove the ExperimentStore file.
    *
    * If the store contains active enrollments this function will cause the test
@@ -687,20 +885,22 @@ export const NimbusTestUtils = {
     await NimbusTestUtils.assert.storeIsEmpty(store);
 
     // Prevent the next save from happening.
-    store._store._saver.disarm();
+    store._jsonFile._saver.disarm();
 
     // If we're too late to stop the save from happening then we need to wait
     // for it to finish. Otherwise the saver might recreate the file on disk
     // after we delete it.
-    if (store._store._saver.isRunning) {
-      await store._store._saver._runningPromise;
+    if (store._jsonFile._saver.isRunning) {
+      await store._jsonFile._saver._runningPromise;
     }
 
-    await IOUtils.remove(store._store.path);
+    await IOUtils.remove(store._jsonFile.path);
   },
 
   /**
-   * Save the store to disk
+   * Save the store to disk.
+   *
+   * This will also flush the NimbusEnrollments table.
    *
    * @param {ExperimentStore} store
    *        The store to save.
@@ -708,7 +908,7 @@ export const NimbusTestUtils = {
    * @returns {string} The path to the file on disk.
    */
   async saveStore(store) {
-    const jsonFile = store._store;
+    const jsonFile = store._jsonFile;
 
     if (jsonFile._saver.isRunning) {
       // It is possible that the store has been updated since we started writing
@@ -720,8 +920,9 @@ export const NimbusTestUtils = {
     }
 
     await jsonFile._save();
+    await store._db?._flushNow();
 
-    return store._store.path;
+    return jsonFile.path;
   },
 
   /**
@@ -746,7 +947,7 @@ export const NimbusTestUtils = {
    */
 
   /**
-   * @param {object?} options
+   * @param {object} options
    * @param {boolean?} options.init
    *        Initialize the Experiment API.
    *
@@ -765,8 +966,15 @@ export const NimbusTestUtils = {
    *        If provided, these recipes will be returned by the RemoteSetings
    *        secureExperiments client.
    *
-   * @param {boolean?} clearTelemetry
+   * @param {boolean?} options.clearTelemetry
    *        If true, telemetry will be reset in the cleanup function.
+   *
+   * @param {_ExperimentFeature[] | undefined} options.features
+   *        Features to add to NimbusFeatures.
+   *
+   * @param {Record<Phase, number>?} options.migrationState
+   *        The value that should be set for the Nimbus migration prefs. If
+   *        not provided, the pref will be unset.
    *
    * @returns {TestContext}
    *          Everything you need to write a test using Nimbus.
@@ -778,6 +986,7 @@ export const NimbusTestUtils = {
     secureExperiments,
     clearTelemetry = false,
     features,
+    migrationState,
   } = {}) {
     const sandbox = lazy.sinon.createSandbox();
 
@@ -799,10 +1008,20 @@ export const NimbusTestUtils = {
       .stub(loader.remoteSettingsClients.secureExperiments, "get")
       .resolves(Array.isArray(secureExperiments) ? secureExperiments : []);
 
+    if (migrationState) {
+      for (const [phase, value] of Object.entries(migrationState)) {
+        Services.prefs.setIntPref(
+          lazy.NimbusMigrations.NIMBUS_MIGRATION_PREFS[phase],
+          value
+        );
+      }
+    }
+
     const ctx = {
       sandbox,
       loader,
       manager,
+      store,
       async cleanup() {
         await NimbusTestUtils.assert.storeIsEmpty(manager.store);
 
@@ -964,6 +1183,12 @@ export const NimbusTestUtils = {
       return slugs.length === 0;
     }, "Waiting for unenrollments to sync to database");
   },
+
+  async flushStore(store = null) {
+    const db = (store ?? ExperimentAPI.manager.store)._db;
+
+    await db?._flushNow();
+  },
 };
 
 Object.defineProperties(NimbusTestUtils.factories.experiment, {
@@ -983,6 +1208,7 @@ Object.defineProperties(NimbusTestUtils.factories.experiment, {
               value,
             },
           ],
+          firefoxLabsTitle: null,
         },
         ...props,
       });
@@ -1007,6 +1233,7 @@ Object.defineProperties(NimbusTestUtils.factories.rollout, {
               value,
             },
           ],
+          firefoxLabsTitle: null,
         },
         ...props,
       });

@@ -2,10 +2,6 @@
 http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
-ChromeUtils.defineESModuleGetters(this, {
-  AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
-});
-
 // Given a window, check if it meets all requirements
 // of the taskbar tab chrome UI
 function checkWindowChrome(win) {
@@ -31,12 +27,6 @@ function checkWindowChrome(win) {
 
   ok(!win.menubar.visible, "menubar barprop should not be visible");
   ok(!win.personalbar.visible, "personalbar barprop should not be visible");
-
-  is(
-    document.getAttribute("pocketdisabled"),
-    "true",
-    "Pocket button should be disabled"
-  );
 
   let starButton = win.document.querySelector("#star-button-box");
   is(
@@ -110,33 +100,12 @@ async function checkHamburgerMenu(win) {
   );
 }
 
-add_task(async function testWindowChrome() {
-  let win = await openTaskbarTabWindow();
+// Creates a Taskbar Tab window and verifies UI elements match expectations.
+add_task(async function testOpenWindowChrome() {
+  const win = await openTaskbarTabWindow();
 
   checkWindowChrome(win);
   await checkHamburgerMenu(win);
-  await BrowserTestUtils.closeWindow(win);
 
-  // Simulate opening a taskbar tab window via
-  // command line flag
-  let cmdLine = Cu.createCommandLine(
-    ["-taskbar-tab", "about:blank"],
-    null,
-    Ci.nsICommandLine.STATE_INITIAL_LAUNCH
-  );
-
-  let newWinPromise = BrowserTestUtils.waitForNewWindow({
-    url: "about:blank",
-  });
-
-  let cmdLineHandler = Cc["@mozilla.org/browser/taskbar-tabs-clh;1"].getService(
-    Ci.nsICommandLineHandler
-  );
-  cmdLineHandler.handle(cmdLine);
-
-  win = await newWinPromise;
-
-  checkWindowChrome(win);
-  await checkHamburgerMenu(win);
   await BrowserTestUtils.closeWindow(win);
 });

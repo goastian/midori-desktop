@@ -43,13 +43,10 @@ const TESTS = [
     action: "/search",
     method: "POST",
     charset: "UTF-8",
-
     fields: [
-
       { name: "q", value: "Some initial value", main: true },
       { name: "utf8✓", value: "✓", hidden: true },
     ],
-
     submission: "kitten",
     expected: "https://example.org/search",
     expectedPost: "q=kitten&utf8%E2%9C%93=%E2%9C%93",
@@ -62,7 +59,6 @@ const TESTS = [
       { name: "q", main: true },
       { name: "foo", value: "bar" },
     ],
-
     submission: "caff\u00E8+",
     expected: "https://example.org/search",
     expectedPost: "q=caff%E8%2B&foo=bar",

@@ -416,6 +416,8 @@ TEST_F(TestQuotaManager,
 // Test simple OpenClientDirectory behavior and verify that origin access time
 // updates are triggered as expected.
 TEST_F(TestQuotaManager, OpenClientDirectory_Simple) {
+  auto testOriginMetadata = GetTestOriginMetadata();
+
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
@@ -423,6 +425,12 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Simple) {
   const auto saveOriginAccessTimeCountBefore = SaveOriginAccessTimeCount();
   const auto saveOriginAccessTimeCountInternalBefore =
       SaveOriginAccessTimeCountInternal();
+
+  // Can't check origin state metadata since storage is not yet initialized.
+
+  auto directoryMetadataHeaderBefore =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_FALSE(directoryMetadataHeaderBefore);
 
   PerformOnBackgroundThread([]() {
     QuotaManager* quotaManager = QuotaManager::Get();
@@ -450,13 +458,20 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Simple) {
   const auto saveOriginAccessTimeCountInternalAfter =
       SaveOriginAccessTimeCountInternal();
 
-  // XXX We currently observe only one access time update (on last access), but
-  // it should have been updated twice!
   ASSERT_EQ(saveOriginAccessTimeCountAfter - saveOriginAccessTimeCountBefore,
-            1u);
+            2u);
   ASSERT_EQ(saveOriginAccessTimeCountInternalAfter -
                 saveOriginAccessTimeCountInternalBefore,
-            1u);
+            2u);
+
+  auto originStateMetadataAfter = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_TRUE(originStateMetadataAfter);
+  ASSERT_TRUE(originStateMetadataAfter->mAccessed);
+
+  auto directoryMetadataHeaderAfter =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_TRUE(directoryMetadataHeaderAfter);
+  ASSERT_TRUE(directoryMetadataHeaderAfter->mAccessed);
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
 
@@ -466,6 +481,8 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Simple) {
 // Test simple OpenClientDirectory behavior when the origin directory exists,
 // and verify that access time updates are triggered on first and last access.
 TEST_F(TestQuotaManager, OpenClientDirectory_Simple_OriginDirectoryExists) {
+  auto testOriginMetadata = GetTestOriginMetadata();
+
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
@@ -480,6 +497,15 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Simple_OriginDirectoryExists) {
   const auto saveOriginAccessTimeCountInternalBefore =
       SaveOriginAccessTimeCountInternal();
 
+  auto originStateMetadataBefore = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_TRUE(originStateMetadataBefore);
+  ASSERT_FALSE(originStateMetadataBefore->mAccessed);
+
+  auto directoryMetadataHeaderBefore =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_TRUE(directoryMetadataHeaderBefore);
+  ASSERT_FALSE(directoryMetadataHeaderBefore->mAccessed);
+
   PerformOnBackgroundThread([]() {
     QuotaManager* quotaManager = QuotaManager::Get();
     ASSERT_TRUE(quotaManager);
@@ -512,6 +538,15 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Simple_OriginDirectoryExists) {
                 saveOriginAccessTimeCountInternalBefore,
             2u);
 
+  auto originStateMetadataAfter = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_TRUE(originStateMetadataAfter);
+  ASSERT_TRUE(originStateMetadataAfter->mAccessed);
+
+  auto directoryMetadataHeaderAfter =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_TRUE(directoryMetadataHeaderAfter);
+  ASSERT_TRUE(directoryMetadataHeaderAfter->mAccessed);
+
   ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
 
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
@@ -522,6 +557,8 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Simple_OriginDirectoryExists) {
 // solely for updating access time.
 TEST_F(TestQuotaManager,
        OpenClientDirectory_Simple_NonExistingOriginDirectory) {
+  auto testOriginMetadata = GetTestOriginMetadata();
+
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
@@ -535,6 +572,14 @@ TEST_F(TestQuotaManager,
   const auto saveOriginAccessTimeCountBefore = SaveOriginAccessTimeCount();
   const auto saveOriginAccessTimeCountInternalBefore =
       SaveOriginAccessTimeCountInternal();
+
+  auto originStateMetadataBefore = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_TRUE(originStateMetadataBefore);
+  ASSERT_FALSE(originStateMetadataBefore->mAccessed);
+
+  auto directoryMetadataHeaderBefore =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_FALSE(directoryMetadataHeaderBefore);
 
   PerformOnBackgroundThread([]() {
     QuotaManager* quotaManager = QuotaManager::Get();
@@ -573,6 +618,14 @@ TEST_F(TestQuotaManager,
                 saveOriginAccessTimeCountInternalBefore,
             0u);
 
+  auto originStateMetadataAfter = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_TRUE(originStateMetadataAfter);
+  ASSERT_TRUE(originStateMetadataAfter->mAccessed);
+
+  auto directoryMetadataHeaderAfter =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_FALSE(directoryMetadataHeaderAfter);
+
   ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
 
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
@@ -598,6 +651,15 @@ TEST_F(TestQuotaManager,
   const auto saveOriginAccessTimeCountBefore = SaveOriginAccessTimeCount();
   const auto saveOriginAccessTimeCountInternalBefore =
       SaveOriginAccessTimeCountInternal();
+
+  auto originStateMetadataBefore = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_TRUE(originStateMetadataBefore);
+  ASSERT_FALSE(originStateMetadataBefore->mAccessed);
+
+  auto directoryMetadataHeaderBefore =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_TRUE(directoryMetadataHeaderBefore);
+  ASSERT_FALSE(directoryMetadataHeaderBefore->mAccessed);
 
   PerformOnBackgroundThread([testOriginMetadata]() {
     QuotaManager* quotaManager = QuotaManager::Get();
@@ -638,13 +700,18 @@ TEST_F(TestQuotaManager,
   const auto saveOriginAccessTimeCountInternalAfter =
       SaveOriginAccessTimeCountInternal();
 
-  // XXX We currently observe only one access time update, but it should have
-  // been updated twice!
   ASSERT_EQ(saveOriginAccessTimeCountAfter - saveOriginAccessTimeCountBefore,
-            1u);
+            2u);
   ASSERT_EQ(saveOriginAccessTimeCountInternalAfter -
                 saveOriginAccessTimeCountInternalBefore,
-            1u);
+            2u);
+
+  auto originStateMetadataAfter = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_FALSE(originStateMetadataAfter);
+
+  auto directoryMetadataHeaderAfter =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_FALSE(directoryMetadataHeaderAfter);
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
 
@@ -656,6 +723,8 @@ TEST_F(TestQuotaManager,
 // after the origin access time update triggered by first access has finished,
 // and that access time is updated only on first and last access as expected.
 TEST_F(TestQuotaManager, OpenClientDirectory_Ongoing_OriginDirectoryExists) {
+  auto testOriginMetadata = GetTestOriginMetadata();
+
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
@@ -669,6 +738,15 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Ongoing_OriginDirectoryExists) {
   const auto saveOriginAccessTimeCountBefore = SaveOriginAccessTimeCount();
   const auto saveOriginAccessTimeCountInternalBefore =
       SaveOriginAccessTimeCountInternal();
+
+  auto originStateMetadataBefore = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_TRUE(originStateMetadataBefore);
+  ASSERT_FALSE(originStateMetadataBefore->mAccessed);
+
+  auto directoryMetadataHeaderBefore =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_TRUE(directoryMetadataHeaderBefore);
+  ASSERT_FALSE(directoryMetadataHeaderBefore->mAccessed);
 
   PerformOnBackgroundThread([saveOriginAccessTimeCountBefore,
                              saveOriginAccessTimeCountInternalBefore]() {
@@ -699,17 +777,9 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Ongoing_OriginDirectoryExists) {
                      const auto saveOriginAccessTimeCountNow =
                          quotaManager->SaveOriginAccessTimeCount();
 
-                     const auto saveOriginAccessTimeCountDelta =
-                         saveOriginAccessTimeCountNow -
-                         saveOriginAccessTimeCountBefore;
-
-                     // XXX This callback should only be called once the access
-                     // time update has completed, but it's currently triggered
-                     // inconsistently — sometimes before the update finishes.
-                     // For now, we allow either 0 or 1 updates to reflect this
-                     // timing issue.
-                     EXPECT_TRUE(saveOriginAccessTimeCountDelta == 0u ||
-                                 saveOriginAccessTimeCountDelta == 1u);
+                     EXPECT_EQ(saveOriginAccessTimeCountNow -
+                                   saveOriginAccessTimeCountBefore,
+                               1u);
 
                      directoryLockHandle = std::move(aValue.ResolveValue());
 
@@ -752,17 +822,9 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Ongoing_OriginDirectoryExists) {
                      const auto saveOriginAccessTimeCountNow =
                          quotaManager->SaveOriginAccessTimeCount();
 
-                     const auto saveOriginAccessTimeCountDelta =
-                         saveOriginAccessTimeCountNow -
-                         saveOriginAccessTimeCountBefore;
-
-                     // XXX This callback should only be called once the access
-                     // time update has completed, but it's currently triggered
-                     // inconsistently — sometimes before the update finishes.
-                     // For now, we allow either 0 or 1 updates to reflect this
-                     // timing issue.
-                     EXPECT_TRUE(saveOriginAccessTimeCountDelta == 0u ||
-                                 saveOriginAccessTimeCountDelta == 1u);
+                     EXPECT_EQ(saveOriginAccessTimeCountNow -
+                                   saveOriginAccessTimeCountBefore,
+                               1u);
 
                      directoryLockHandle2 = std::move(aValue.ResolveValue());
 
@@ -817,6 +879,15 @@ TEST_F(TestQuotaManager, OpenClientDirectory_Ongoing_OriginDirectoryExists) {
   ASSERT_EQ(saveOriginAccessTimeCountInternalAfter -
                 saveOriginAccessTimeCountInternalBefore,
             2u);
+
+  auto originStateMetadataAfter = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_TRUE(originStateMetadataAfter);
+  ASSERT_TRUE(originStateMetadataAfter->mAccessed);
+
+  auto directoryMetadataHeaderAfter =
+      LoadDirectoryMetadataHeader(testOriginMetadata);
+  ASSERT_TRUE(directoryMetadataHeaderAfter);
+  ASSERT_TRUE(directoryMetadataHeaderAfter->mAccessed);
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
 
@@ -2449,55 +2520,210 @@ TEST_F(TestQuotaManager,
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 }
 
-// Tests the availability of SaveOriginAccessTime and verifies that calling it
-// does not trigger temporary storage or origin initialization.
-TEST_F(TestQuotaManager, SaveOriginAccessTime_Simple) {
-  auto testOriginMetadata = GetTestOriginMetadata();
-
+TEST_F(TestQuotaManager,
+       InitializePersistentClient_FinishedWithScheduledShutdown) {
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
-  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
-  ASSERT_NO_FATAL_FAILURE(
-      AssertTemporaryOriginNotInitialized(testOriginMetadata));
 
-  SaveOriginAccessTime(testOriginMetadata, PR_Now());
+  PerformOnBackgroundThread([]() {
+    auto testClientMetadata = GetTestPersistentClientMetadata();
+
+    nsTArray<RefPtr<BoolPromise>> promises;
+
+    QuotaManager* quotaManager = QuotaManager::Get();
+    ASSERT_TRUE(quotaManager);
+
+    promises.AppendElement(quotaManager->InitializeStorage());
+    promises.AppendElement(
+        quotaManager->InitializePersistentOrigin(testClientMetadata));
+    promises.AppendElement(
+        quotaManager->InitializePersistentClient(testClientMetadata));
+
+    {
+      auto value =
+          Await(BoolPromise::All(GetCurrentSerialEventTarget(), promises));
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(
+          quotaManager->IsPersistentOriginInitialized(testClientMetadata));
+      ASSERT_TRUE(
+          quotaManager->IsPersistentClientInitialized(testClientMetadata));
+    }
+
+    promises.Clear();
+
+    promises.AppendElement(quotaManager->ShutdownStorage());
+    promises.AppendElement(quotaManager->InitializeStorage());
+    promises.AppendElement(
+        quotaManager->InitializePersistentOrigin(testClientMetadata));
+    promises.AppendElement(
+        quotaManager->InitializePersistentClient(testClientMetadata));
+
+    {
+      auto value =
+          Await(BoolPromise::All(GetCurrentSerialEventTarget(), promises));
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(
+          quotaManager->IsPersistentOriginInitialized(testClientMetadata));
+      ASSERT_TRUE(
+          quotaManager->IsPersistentClientInitialized(testClientMetadata));
+    }
+  });
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
-  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
-  ASSERT_NO_FATAL_FAILURE(
-      AssertTemporaryOriginNotInitialized(testOriginMetadata));
 
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 }
 
-// Test SaveOriginAccessTime when saving of origin access time already finished
-// with an exclusive client directory lock for a different client scope
-// acquired in between.
 TEST_F(TestQuotaManager,
-       SaveOriginAccessTime_FinishedWithOtherExclusiveClientDirectoryLock) {
-  auto testOriginMetadata = GetTestOriginMetadata();
-
+       InitializeTemporaryClient_FinishedWithScheduledShutdown) {
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
-  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
-  ASSERT_NO_FATAL_FAILURE(
-      AssertTemporaryOriginNotInitialized(testOriginMetadata));
 
-  PerformOnBackgroundThread([testOriginMetadata]() {
+  PerformOnBackgroundThread([]() {
+    auto testClientMetadata = GetTestClientMetadata();
+
+    nsTArray<RefPtr<BoolPromise>> promises;
+
     QuotaManager* quotaManager = QuotaManager::Get();
     ASSERT_TRUE(quotaManager);
 
-    // Save origin access time first to ensure required initialization is
-    // complete. Otherwise, the exclusive directory lock below may not be
-    // acquirable.
-    {
-      int64_t timestamp = PR_Now();
+    promises.AppendElement(quotaManager->InitializeStorage());
+    promises.AppendElement(quotaManager->InitializeTemporaryStorage());
+    promises.AppendElement(quotaManager->InitializeTemporaryOrigin(
+        testClientMetadata,
+        /* aCreateIfNonExistent */ true));
+    promises.AppendElement(quotaManager->InitializeTemporaryClient(
+        testClientMetadata,
+        /* aCreateIfNonExistent */ true));
 
-      auto value = Await(
-          quotaManager->SaveOriginAccessTime(testOriginMetadata, timestamp));
+    {
+      auto value =
+          Await(BoolPromise::All(GetCurrentSerialEventTarget(), promises));
       ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_TRUE(
+          quotaManager->IsTemporaryOriginInitialized(testClientMetadata));
+      ASSERT_TRUE(
+          quotaManager->IsTemporaryClientInitialized(testClientMetadata));
+    }
+
+    promises.Clear();
+
+    promises.AppendElement(quotaManager->ShutdownStorage());
+    promises.AppendElement(quotaManager->InitializeStorage());
+    promises.AppendElement(quotaManager->InitializeTemporaryStorage());
+    promises.AppendElement(quotaManager->InitializeTemporaryOrigin(
+        testClientMetadata,
+        /* aCreateIfNonExistent */ true));
+    promises.AppendElement(quotaManager->InitializeTemporaryClient(
+        testClientMetadata,
+        /* aCreateIfNonExistent */ true));
+
+    {
+      auto value =
+          Await(BoolPromise::All(GetCurrentSerialEventTarget(), promises));
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_TRUE(
+          quotaManager->IsTemporaryOriginInitialized(testClientMetadata));
+      ASSERT_TRUE(
+          quotaManager->IsTemporaryClientInitialized(testClientMetadata));
+    }
+  });
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
+// Test simple SaveOriginAccessTime behavior.
+TEST_F(TestQuotaManager, SaveOriginAccessTime_Simple) {
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
+
+  PerformOnBackgroundThread([]() {
+    auto testOriginMetadata = GetTestOriginMetadata();
+
+    nsTArray<RefPtr<BoolPromise>> promises;
+
+    QuotaManager* quotaManager = QuotaManager::Get();
+    ASSERT_TRUE(quotaManager);
+
+    promises.AppendElement(quotaManager->InitializeStorage());
+    promises.AppendElement(quotaManager->InitializeTemporaryStorage());
+    promises.AppendElement(quotaManager->InitializeTemporaryOrigin(
+        testOriginMetadata,
+        /* aCreateIfNonExistent */ false));
+
+    {
+      auto value =
+          Await(BoolPromise::All(GetCurrentSerialEventTarget(), promises));
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_TRUE(
+          quotaManager->IsTemporaryOriginInitialized(testOriginMetadata));
+    }
+
+    {
+      auto value =
+          Await(quotaManager->SaveOriginAccessTime(testOriginMetadata));
+      ASSERT_TRUE(value.IsResolve());
+    }
+  });
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
+// Test SaveOriginAccessTime when an exclusive client directory lock for a
+// different client scope is acquired.
+TEST_F(TestQuotaManager,
+       SaveOriginAccessTime_SimpleWithOtherExclusiveClientDirectoryLock) {
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
+
+  PerformOnBackgroundThread([]() {
+    auto testOriginMetadata = GetTestOriginMetadata();
+
+    nsTArray<RefPtr<BoolPromise>> promises;
+
+    QuotaManager* quotaManager = QuotaManager::Get();
+    ASSERT_TRUE(quotaManager);
+
+    // Storage, temporary storage and temporary origin must be initialized
+    // before saving the origin access time. This also needs to happen before
+    // acquiring the exclusive directory lock below, otherwise it would lead to
+    // a hang.
+    promises.AppendElement(quotaManager->InitializeStorage());
+    promises.AppendElement(quotaManager->InitializeTemporaryStorage());
+    promises.AppendElement(quotaManager->InitializeTemporaryOrigin(
+        testOriginMetadata,
+        /* aCreateIfNonExistent */ false));
+
+    {
+      auto value =
+          Await(BoolPromise::All(GetCurrentSerialEventTarget(), promises));
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_TRUE(
+          quotaManager->IsTemporaryOriginInitialized(testOriginMetadata));
     }
 
     // Acquire an exclusive directory lock for the SimpleDB quota client.
@@ -2514,10 +2740,8 @@ TEST_F(TestQuotaManager,
     // is held. Verifies that saving origin access time uses a lock that does
     // not overlap with quota client directory locks.
     {
-      int64_t timestamp = PR_Now();
-
-      auto value = Await(
-          quotaManager->SaveOriginAccessTime(testOriginMetadata, timestamp));
+      auto value =
+          Await(quotaManager->SaveOriginAccessTime(testOriginMetadata));
       ASSERT_TRUE(value.IsResolve());
     }
 
@@ -2525,9 +2749,6 @@ TEST_F(TestQuotaManager,
   });
 
   ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
-  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
-  ASSERT_NO_FATAL_FAILURE(
-      AssertTemporaryOriginNotInitialized(testOriginMetadata));
 
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 }
@@ -2624,6 +2845,116 @@ TEST_F(TestQuotaManager, ClearStoragesForOrigin_NonExistentOriginDirectory) {
       ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
       ASSERT_FALSE(
           quotaManager->IsTemporaryOriginInitialized(testOriginMetadata));
+    }
+  });
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
+TEST_F(TestQuotaManager, ClearStoragesForOrigin_ClientDirectoryExists) {
+  auto testClientMetadata = GetTestClientMetadata();
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertTemporaryOriginNotInitialized(testClientMetadata));
+
+  ASSERT_NO_FATAL_FAILURE(InitializeStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryStorage());
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryOrigin(testClientMetadata,
+                                /* aCreateIfNonExistent */ true));
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryClient(testClientMetadata,
+                                /* aCreateIfNonExistent */ true));
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryOriginInitialized(testClientMetadata));
+
+  PerformOnBackgroundThread([testClientMetadata]() {
+    nsCOMPtr<nsIPrincipal> principal =
+        BasePrincipal::CreateContentPrincipal(testClientMetadata.mOrigin);
+    QM_TRY(MOZ_TO_RESULT(principal), QM_TEST_FAIL);
+
+    mozilla::ipc::PrincipalInfo principalInfo;
+    QM_TRY(MOZ_TO_RESULT(PrincipalToPrincipalInfo(principal, &principalInfo)),
+           QM_TEST_FAIL);
+
+    QuotaManager* quotaManager = QuotaManager::Get();
+    ASSERT_TRUE(quotaManager);
+
+    {
+      auto value = Await(quotaManager->ClearStoragesForOrigin(
+          /* aPersistenceType */ Nothing(), principalInfo));
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_FALSE(
+          quotaManager->IsTemporaryOriginInitialized(testClientMetadata));
+      ASSERT_FALSE(
+          quotaManager->IsTemporaryClientInitialized(testClientMetadata));
+    }
+  });
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
+// Test simple ClearStoragesForClient.
+TEST_F(TestQuotaManager, ClearStoragesForClient_Simple) {
+  auto testClientMetadata = GetTestClientMetadata();
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertTemporaryOriginNotInitialized(testClientMetadata));
+
+  ASSERT_NO_FATAL_FAILURE(InitializeStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryStorage());
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryOrigin(testClientMetadata,
+                                /* aCreateIfNonExistent */ true));
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryClient(testClientMetadata,
+                                /* aCreateIfNonExistent */ true));
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryOriginInitialized(testClientMetadata));
+
+  PerformOnBackgroundThread([testClientMetadata]() {
+    nsCOMPtr<nsIPrincipal> principal =
+        BasePrincipal::CreateContentPrincipal(testClientMetadata.mOrigin);
+    QM_TRY(MOZ_TO_RESULT(principal), QM_TEST_FAIL);
+
+    mozilla::ipc::PrincipalInfo principalInfo;
+    QM_TRY(MOZ_TO_RESULT(PrincipalToPrincipalInfo(principal, &principalInfo)),
+           QM_TEST_FAIL);
+
+    QuotaManager* quotaManager = QuotaManager::Get();
+    ASSERT_TRUE(quotaManager);
+
+    {
+      auto value = Await(quotaManager->ClearStoragesForClient(
+          /* aPersistenceType */ Nothing(), principalInfo,
+          testClientMetadata.mClientType));
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_TRUE(
+          quotaManager->IsTemporaryOriginInitialized(testClientMetadata));
+      ASSERT_FALSE(
+          quotaManager->IsTemporaryClientInitialized(testClientMetadata));
     }
   });
 
@@ -2824,6 +3155,91 @@ TEST_F(TestQuotaManager,
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 }
 
+TEST_F(TestQuotaManager, ClearPrivateRepository_OriginDirectoryExists) {
+  auto testOriginMetadata = GetTestPrivateOriginMetadata();
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertTemporaryOriginNotInitialized(testOriginMetadata));
+
+  ASSERT_NO_FATAL_FAILURE(InitializeStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryStorage());
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryOrigin(testOriginMetadata,
+                                /* aCreateIfNonExistent */ true));
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryOriginInitialized(testOriginMetadata));
+
+  PerformOnBackgroundThread([testOriginMetadata]() {
+    QuotaManager* quotaManager = QuotaManager::Get();
+    ASSERT_TRUE(quotaManager);
+
+    {
+      auto value = Await(quotaManager->ClearPrivateRepository());
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_FALSE(
+          quotaManager->IsTemporaryOriginInitialized(testOriginMetadata));
+    }
+  });
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
+TEST_F(TestQuotaManager, ClearPrivateRepository_ClientDirectoryExists) {
+  auto testClientMetadata = GetTestPrivateClientMetadata();
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertTemporaryOriginNotInitialized(testClientMetadata));
+
+  ASSERT_NO_FATAL_FAILURE(InitializeStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryStorage());
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryOrigin(testClientMetadata,
+                                /* aCreateIfNonExistent */ true));
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryClient(testClientMetadata,
+                                /* aCreateIfNonExistent */ true));
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryOriginInitialized(testClientMetadata));
+
+  PerformOnBackgroundThread([testClientMetadata]() {
+    QuotaManager* quotaManager = QuotaManager::Get();
+    ASSERT_TRUE(quotaManager);
+
+    {
+      auto value = Await(quotaManager->ClearPrivateRepository());
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_FALSE(
+          quotaManager->IsTemporaryOriginInitialized(testClientMetadata));
+      ASSERT_FALSE(
+          quotaManager->IsTemporaryClientInitialized(testClientMetadata));
+    }
+  });
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
 // Test simple ShutdownStoragesForOrigin.
 TEST_F(TestQuotaManager, ShutdownStoragesForOrigin_Simple) {
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
@@ -2915,6 +3331,114 @@ TEST_F(TestQuotaManager, ShutdownStoragesForOrigin_NonExistentOriginDirectory) {
       ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
       ASSERT_FALSE(
           quotaManager->IsTemporaryOriginInitialized(testOriginMetadata));
+    }
+  });
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
+TEST_F(TestQuotaManager, ShutdownStoragesForOrigin_ClientDirectoryExists) {
+  auto testClientMetadata = GetTestClientMetadata();
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertTemporaryOriginNotInitialized(testClientMetadata));
+
+  ASSERT_NO_FATAL_FAILURE(InitializeStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryOrigin(
+      testClientMetadata, /* aCreateIfNonExistent */ true));
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryClient(testClientMetadata,
+                                /* aCreateIfNonExistent */ true));
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryOriginInitialized(testClientMetadata));
+
+  PerformOnBackgroundThread([testClientMetadata]() {
+    nsCOMPtr<nsIPrincipal> principal =
+        BasePrincipal::CreateContentPrincipal(testClientMetadata.mOrigin);
+    QM_TRY(MOZ_TO_RESULT(principal), QM_TEST_FAIL);
+
+    mozilla::ipc::PrincipalInfo principalInfo;
+    QM_TRY(MOZ_TO_RESULT(PrincipalToPrincipalInfo(principal, &principalInfo)),
+           QM_TEST_FAIL);
+
+    QuotaManager* quotaManager = QuotaManager::Get();
+    ASSERT_TRUE(quotaManager);
+
+    {
+      auto value = Await(quotaManager->ShutdownStoragesForOrigin(
+          /* aPersistenceType */ Nothing(), principalInfo));
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_FALSE(
+          quotaManager->IsTemporaryOriginInitialized(testClientMetadata));
+      ASSERT_FALSE(
+          quotaManager->IsTemporaryClientInitialized(testClientMetadata));
+    }
+  });
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
+// Test simple ShutdownStoragesForClient.
+TEST_F(TestQuotaManager, ShutdownStoragesForClient_Simple) {
+  auto testClientMetadata = GetTestClientMetadata();
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageNotInitialized());
+  ASSERT_NO_FATAL_FAILURE(
+      AssertTemporaryOriginNotInitialized(testClientMetadata));
+
+  ASSERT_NO_FATAL_FAILURE(InitializeStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryOrigin(
+      testClientMetadata, /* aCreateIfNonExistent */ true));
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryClient(testClientMetadata,
+                                /* aCreateIfNonExistent */ true));
+
+  ASSERT_NO_FATAL_FAILURE(AssertStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryStorageInitialized());
+  ASSERT_NO_FATAL_FAILURE(AssertTemporaryOriginInitialized(testClientMetadata));
+
+  PerformOnBackgroundThread([testClientMetadata]() {
+    nsCOMPtr<nsIPrincipal> principal =
+        BasePrincipal::CreateContentPrincipal(testClientMetadata.mOrigin);
+    QM_TRY(MOZ_TO_RESULT(principal), QM_TEST_FAIL);
+
+    mozilla::ipc::PrincipalInfo principalInfo;
+    QM_TRY(MOZ_TO_RESULT(PrincipalToPrincipalInfo(principal, &principalInfo)),
+           QM_TEST_FAIL);
+
+    QuotaManager* quotaManager = QuotaManager::Get();
+    ASSERT_TRUE(quotaManager);
+
+    {
+      auto value = Await(quotaManager->ShutdownStoragesForClient(
+          /* aPersistenceType */ Nothing(), principalInfo,
+          testClientMetadata.mClientType));
+      ASSERT_TRUE(value.IsResolve());
+
+      ASSERT_TRUE(quotaManager->IsStorageInitialized());
+      ASSERT_TRUE(quotaManager->IsTemporaryStorageInitialized());
+      ASSERT_TRUE(
+          quotaManager->IsTemporaryOriginInitialized(testClientMetadata));
+      ASSERT_FALSE(
+          quotaManager->IsTemporaryClientInitialized(testClientMetadata));
     }
   });
 
@@ -3089,6 +3613,41 @@ TEST_F(TestQuotaManager, ProcessPendingNormalOriginOperations_Basic) {
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 }
 
+TEST_F(TestQuotaManager, GetOriginStateMetadata_EmptyRepository) {
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(InitializeStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryStorage());
+
+  const auto maybeOriginStateMetadata =
+      GetOriginStateMetadata(GetTestOriginMetadata());
+  ASSERT_FALSE(maybeOriginStateMetadata);
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
+TEST_F(TestQuotaManager, GetOriginStateMetadata_OriginDirectoryExists) {
+  auto testOriginMetadata = GetTestOriginMetadata();
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(InitializeStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryStorage());
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryOrigin(testOriginMetadata,
+                                /* aCreateIfNonExistent */ true));
+
+  auto maybeOriginStateMetadata = GetOriginStateMetadata(testOriginMetadata);
+  ASSERT_TRUE(maybeOriginStateMetadata);
+
+  auto originStateMetadata = maybeOriginStateMetadata.extract();
+  ASSERT_GT(originStateMetadata.mLastAccessTime, 0);
+  ASSERT_FALSE(originStateMetadata.mAccessed);
+  ASSERT_FALSE(originStateMetadata.mPersisted);
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
 TEST_F(TestQuotaManager, TotalDirectoryIterations_ClearingEmptyRepository) {
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 
@@ -3136,7 +3695,14 @@ TEST_F(TestQuotaManager, SaveOriginAccessTimeCount_EmptyRepository) {
   const auto saveOriginAccessTimeCountInternalBefore =
       SaveOriginAccessTimeCountInternal();
 
-  SaveOriginAccessTime(GetTestOriginMetadata(), PR_Now());
+  PerformOnBackgroundThread([]() {
+    QuotaManager* quotaManager = QuotaManager::Get();
+    MOZ_RELEASE_ASSERT(quotaManager);
+
+    auto value =
+        Await(quotaManager->SaveOriginAccessTime(GetTestOriginMetadata()));
+    MOZ_RELEASE_ASSERT(value.IsReject());
+  });
 
   const auto saveOriginAccessTimeCountAfter = SaveOriginAccessTimeCount();
   const auto saveOriginAccessTimeCountInternalAfter =
@@ -3167,7 +3733,7 @@ TEST_F(TestQuotaManager, SaveOriginAccessTimeCount_OriginDirectoryExists) {
   const auto saveOriginAccessTimeCountInternalBefore =
       SaveOriginAccessTimeCountInternal();
 
-  SaveOriginAccessTime(testOriginMetadata, PR_Now());
+  SaveOriginAccessTime(testOriginMetadata);
 
   const auto saveOriginAccessTimeCountAfter = SaveOriginAccessTimeCount();
   const auto saveOriginAccessTimeCountInternalAfter =
@@ -3179,6 +3745,37 @@ TEST_F(TestQuotaManager, SaveOriginAccessTimeCount_OriginDirectoryExists) {
   ASSERT_EQ(saveOriginAccessTimeCountInternalAfter -
                 saveOriginAccessTimeCountInternalBefore,
             1u);
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+}
+
+TEST_F(TestQuotaManager, SaveOriginAccessTimeCount_NonExistingOriginDirectory) {
+  auto testOriginMetadata = GetTestOriginMetadata();
+
+  ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
+
+  ASSERT_NO_FATAL_FAILURE(InitializeStorage());
+  ASSERT_NO_FATAL_FAILURE(InitializeTemporaryStorage());
+  ASSERT_NO_FATAL_FAILURE(
+      InitializeTemporaryOrigin(testOriginMetadata,
+                                /* aCreateIfNonExistent */ false));
+
+  const auto saveOriginAccessTimeCountBefore = SaveOriginAccessTimeCount();
+  const auto saveOriginAccessTimeCountInternalBefore =
+      SaveOriginAccessTimeCountInternal();
+
+  SaveOriginAccessTime(testOriginMetadata);
+
+  const auto saveOriginAccessTimeCountAfter = SaveOriginAccessTimeCount();
+  const auto saveOriginAccessTimeCountInternalAfter =
+      SaveOriginAccessTimeCountInternal();
+
+  // Ensure access time update doesn't occur when origin doesn't exist.
+  ASSERT_EQ(saveOriginAccessTimeCountAfter - saveOriginAccessTimeCountBefore,
+            0u);
+  ASSERT_EQ(saveOriginAccessTimeCountInternalAfter -
+                saveOriginAccessTimeCountInternalBefore,
+            0u);
 
   ASSERT_NO_FATAL_FAILURE(ShutdownStorage());
 }

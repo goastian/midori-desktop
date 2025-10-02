@@ -1678,7 +1678,10 @@ addUiaTask(
  * Test the Text pattern's TextSelectionChanged event.
  */
 addUiaTask(
-  `<input id="input" value="abc">`,
+  `
+<input id="input" value="abc">
+<div id="editable" contenteditable role="textbox"><p>de</p><p>f</p></div>
+  `,
   async function testTextTextSelectionChanged(browser) {
     info("Focusing input");
     await setUpWaitForUiaEvent("Text_TextSelectionChanged", "input");
@@ -1701,6 +1704,31 @@ addUiaTask(
     });
     await waitForUiaEvent();
     ok(true, "input got TextSelectionChanged event");
+
+    info("Focusing editable");
+    await setUpWaitForUiaEvent("Text_TextSelectionChanged", "editable");
+    await invokeContentTask(browser, [], () => {
+      content._editable = content.document.getElementById("editable");
+      content._editable.focus();
+    });
+    await waitForUiaEvent();
+    ok(true, "editable got TextSelectionChanged event");
+    info("Moving caret to e");
+    await setUpWaitForUiaEvent("Text_TextSelectionChanged", "editable");
+    await invokeContentTask(browser, [], () => {
+      content._de = content._editable.firstChild.firstChild;
+      content.getSelection().setBaseAndExtent(content._de, 1, content._de, 1);
+    });
+    await waitForUiaEvent();
+    ok(true, "editable got TextSelectionChanged event");
+    info("Selecting ef");
+    await setUpWaitForUiaEvent("Text_TextSelectionChanged", "editable");
+    await invokeContentTask(browser, [], () => {
+      const f = content._editable.children[1].firstChild;
+      content.getSelection().setBaseAndExtent(content._de, 1, f, 1);
+    });
+    await waitForUiaEvent();
+    ok(true, "editable got TextSelectionChanged event");
   }
 );
 
@@ -1708,7 +1736,13 @@ addUiaTask(
  * Test the Text pattern's TextChanged event.
  */
 addUiaTask(
-  `<input id="input" value="abc">`,
+  `
+<input id="input" value="abc">
+<div id="editable" contenteditable role="textbox">
+  <p id="de">de</p>
+  <p>f</p>
+</div>
+  `,
   async function testTextTextChanged(browser) {
     info("Focusing input");
     let moved = waitForEvent(EVENT_TEXT_CARET_MOVED, "input");
@@ -1730,6 +1764,27 @@ addUiaTask(
     });
     await waitForUiaEvent();
     ok(true, "input got TextChanged event");
+
+    info("Focusing editable");
+    moved = waitForEvent(EVENT_TEXT_CARET_MOVED, "de");
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("editable").focus();
+    });
+    await moved;
+    info("Deleting a");
+    await setUpWaitForUiaEvent("Text_TextChanged", "editable");
+    await invokeContentTask(browser, [], () => {
+      content.document.execCommand("forwardDelete");
+    });
+    await waitForUiaEvent();
+    ok(true, "editable got TextChanged event");
+    info("Inserting a");
+    await setUpWaitForUiaEvent("Text_TextChanged", "editable");
+    await invokeContentTask(browser, [], () => {
+      content.document.execCommand("insertText", false, "a");
+    });
+    await waitForUiaEvent();
+    ok(true, "editable got TextChanged event");
   }
 );
 
@@ -2283,7 +2338,7 @@ addUiaTask(
  */
 addUiaTask(
   `
-<p id="p">ab</p>
+<p id="p">ab<a id="link" href="/">c</a></p>
 <input id="input" type="text" value="ab">
 <div id="contenteditable" contenteditable role="textbox">ab</div>
   `,
@@ -2296,17 +2351,54 @@ addUiaTask(
       doc = getDocUia()
       p = findUiaByDomId(doc, "p")
       textChild = getUiaPattern(p, "TextChild")
-      global range
-      range = textChild.TextRange
+      global pbRange
+      pbRange = textChild.TextRange
       # Encompass "b".
-      range.Move(TextUnit_Character, 1)
+      pbRange.Move(TextUnit_Character, 1)
       # Collapse.
-      range.MoveEndpointByRange(TextPatternRangeEndpoint_End, range, TextPatternRangeEndpoint_Start)
-      range.Select()
+      pbRange.MoveEndpointByRange(TextPatternRangeEndpoint_End, pbRange, TextPatternRangeEndpoint_Start)
+      pbRange.Select()
     `);
     await moved;
     testTextSelectionCount(p, 0);
     is(p.caretOffset, 1, "caret at 1");
+    // When using the IA2 -> UIA proxy, the focus changes when moving the caret,
+    // but this isn't what UIA clients want.
+    if (gIsUiaEnabled) {
+      info("Moving caret to c in link");
+      const link = findAccessibleChildByID(docAcc, "link", [nsIAccessibleText]);
+      moved = waitForEvents({
+        expected: [[EVENT_TEXT_CARET_MOVED, link]],
+        unexpected: [[EVENT_FOCUS, link]],
+      });
+      await runPython(`
+        link = findUiaByDomId(doc, "link")
+        textChild = getUiaPattern(link, "TextChild")
+        range = textChild.TextRange
+        # Collapse to "a".
+        range.MoveEndpointByRange(TextPatternRangeEndpoint_End, range, TextPatternRangeEndpoint_Start)
+        range.Select()
+      `);
+      await moved;
+      testTextSelectionCount(link, 0);
+      is(p.caretOffset, 2, "p caret at 2");
+      is(link.caretOffset, 0, "link caret at 0");
+      info("Focusing link");
+      moved = waitForEvent(EVENT_FOCUS, link);
+      link.takeFocus();
+      await moved;
+      info("Moving caret back to b in p");
+      moved = waitForEvents({
+        expected: [[EVENT_TEXT_CARET_MOVED, p]],
+        unexpected: [[EVENT_FOCUS, docAcc]],
+      });
+      await runPython(`
+        pbRange.Select()
+      `);
+      await moved;
+      testTextSelectionCount(p, 0);
+      is(p.caretOffset, 1, "p caret at 1");
+    }
 
     // <input> and contentEditable should behave the same.
     for (const id of ["input", "contenteditable"]) {

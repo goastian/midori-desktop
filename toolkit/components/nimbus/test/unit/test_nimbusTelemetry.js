@@ -36,6 +36,14 @@ function setupTest({ ...args } = {}) {
 add_task(
   { skip_if: nimbusTargetingContextTelemetryDisabled },
   async function test_enrollAndUnenroll_gleanMetricConfiguration() {
+    Services.fog.applyServerKnobsConfig(
+      JSON.stringify({
+        metrics_enabled: {
+          "nimbus_events.enrollment_status": true,
+        },
+      })
+    );
+
     info(
       "Testing the interaction of gleanMetricConfiguration with submission of enrollment status and targeting context telemetry"
     );
@@ -101,7 +109,7 @@ add_task(
     // Now the listener triggers again and the metric re-enables. We should see
     // telemetry for this unenrollment but not setting the targeting context
     // value.
-    await manager.unenroll(experiment.slug, { reason: "recipe-not-seen" });
+    manager.unenroll(experiment.slug, { reason: "recipe-not-seen" });
 
     Glean.nimbusTargetingEnvironment.targetingContextValue.set(
       "rollout-active-3"

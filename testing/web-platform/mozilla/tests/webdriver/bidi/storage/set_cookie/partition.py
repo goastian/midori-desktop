@@ -42,6 +42,8 @@ async def test_partition_context(
             domain=cookie_domain,
             name=cookie_name,
             value=NetworkStringValue(cookie_value),
+            same_site="none",
+            secure=True,
         ),
         partition=new_tab_partition,
     )
@@ -62,7 +64,7 @@ async def test_partition_context(
                     "name": cookie_name,
                     "path": "/",
                     "sameSite": "none",
-                    "secure": False,
+                    "secure": True,
                     "size": 6,
                     "value": {"type": "string", "value": cookie_value},
                 }
@@ -109,6 +111,8 @@ async def test_partition_context_iframe(
             domain=domain_value(domain),
             name=cookie_name,
             value=NetworkStringValue(cookie_value),
+            same_site="none",
+            secure=True,
         ),
         partition=iframe_partition,
     )
@@ -123,7 +127,7 @@ async def test_partition_context_iframe(
             "name": cookie_name,
             "path": "/",
             "sameSite": "none",
-            "secure": False,
+            "secure": True,
             "size": 6,
             "value": {"type": "string", "value": cookie_value},
         }

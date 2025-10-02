@@ -14,7 +14,6 @@
 #include "nsContentCreatorFunctions.h"
 #include "nsStyledElement.h"
 #include "mozilla/dom/BindingDeclarations.h"
-#include "mozilla/dom/HTMLElementBinding.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/DOMRect.h"
 #include "mozilla/dom/ValidityState.h"
@@ -40,9 +39,13 @@ class EventChainVisitor;
 class EventListenerManager;
 class PresState;
 namespace dom {
+class BooleanOrUnrestrictedDoubleOrString;
 class ElementInternals;
 class HTMLFormElement;
+class OwningBooleanOrUnrestrictedDoubleOrString;
+class TogglePopoverOptionsOrBoolean;
 enum class FetchPriority : uint8_t;
+struct ShowPopoverOptions;
 }  // namespace dom
 }  // namespace mozilla
 
@@ -54,9 +57,9 @@ using nsGenericHTMLElementBase = nsStyledElement;
 class nsGenericHTMLElement : public nsGenericHTMLElementBase {
  public:
   using ContentEditableState = mozilla::ContentEditableState;
+  using Element::Command;
   using Element::Focus;
   using Element::SetTabIndex;
-  using InvokeAction = mozilla::dom::InvokeAction;
 
   explicit nsGenericHTMLElement(
       already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
@@ -206,7 +209,8 @@ class nsGenericHTMLElement : public nsGenericHTMLElementBase {
   MOZ_CAN_RUN_SCRIPT void RunPopoverToggleEventTask(
       mozilla::dom::PopoverToggleEventTask* aTask,
       mozilla::dom::PopoverVisibilityState aOldState);
-  MOZ_CAN_RUN_SCRIPT void ShowPopover(ErrorResult& aRv);
+  MOZ_CAN_RUN_SCRIPT void ShowPopover(
+      const mozilla::dom::ShowPopoverOptions& aOptions, ErrorResult& aRv);
   MOZ_CAN_RUN_SCRIPT void ShowPopoverInternal(Element* aInvoker,
                                               ErrorResult& aRv);
   MOZ_CAN_RUN_SCRIPT_BOUNDARY void HidePopoverWithoutRunningScript();
@@ -215,16 +219,17 @@ class nsGenericHTMLElement : public nsGenericHTMLElementBase {
                                               ErrorResult& aRv);
   MOZ_CAN_RUN_SCRIPT void HidePopover(ErrorResult& aRv);
   MOZ_CAN_RUN_SCRIPT bool TogglePopover(
-      const mozilla::dom::Optional<bool>& aForce, ErrorResult& aRv);
+      const mozilla::dom::TogglePopoverOptionsOrBoolean& aOptions,
+      ErrorResult& aRv);
   MOZ_CAN_RUN_SCRIPT void FocusPopover();
   void ForgetPreviouslyFocusedElementAfterHidingPopover();
   MOZ_CAN_RUN_SCRIPT void FocusPreviousElementAfterHidingPopover();
 
-  bool IsValidInvokeAction(mozilla::dom::InvokeAction aAction) const override;
+  bool IsValidCommandAction(Command aCommand) const override;
 
-  MOZ_CAN_RUN_SCRIPT bool HandleInvokeInternal(
-      Element* aInvoker, mozilla::dom::InvokeAction aAction,
-      ErrorResult& aRv) override;
+  MOZ_CAN_RUN_SCRIPT bool HandleCommandInternal(Element* aSource,
+                                                Command aCommand,
+                                                ErrorResult& aRv) override;
 
   MOZ_CAN_RUN_SCRIPT void FocusCandidate(Element*, bool aClearUpFocus);
 
@@ -1299,21 +1304,10 @@ class nsGenericHTMLFormControlElementWithState
     SetHTMLAttr(nsGkAtoms::popovertargetaction, aValue);
   }
 
-  // InvokerElement
-  mozilla::dom::Element* GetInvokeTargetElement() const;
-  void SetInvokeTargetElement(mozilla::dom::Element*);
-  void GetInvokeAction(nsAString& aValue) const;
-  InvokeAction GetInvokeAction(nsAtom* aAtom) const;
-  void SetInvokeAction(const nsAString& aValue) {
-    SetHTMLAttr(nsGkAtoms::invokeaction, aValue);
-  }
-
   /**
    * https://html.spec.whatwg.org/#popover-target-attribute-activation-behavior
    */
   MOZ_CAN_RUN_SCRIPT void HandlePopoverTargetAction();
-
-  MOZ_CAN_RUN_SCRIPT void HandleInvokeTargetAction();
 
   /**
    * Get the presentation state for a piece of content, or create it if it does

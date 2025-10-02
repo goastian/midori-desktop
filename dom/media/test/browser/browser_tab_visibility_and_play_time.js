@@ -10,12 +10,6 @@
 const PAGE_URL =
   "https://example.com/browser/dom/media/test/browser/file_media.html";
 
-// This HDR tests will only pass on platforms that accurately report color
-// depth in their VideoInfo structures. Presently, that is only true for
-// macOS.
-
-const reportsColorDepthFromVideoData = AppConstants.platform == "macosx";
-
 add_task(async function testChangingTabVisibilityAffectsInvisiblePlayTime() {
   const originalTab = gBrowser.selectedTab;
   const mediaTab = await openMediaTab(PAGE_URL);
@@ -25,7 +19,7 @@ add_task(async function testChangingTabVisibilityAffectsInvisiblePlayTime() {
     mediaTab,
     shouldAccumulateTime: true,
     shouldAccumulateInvisibleTime: false,
-    shouldAccumulateHDRTime: reportsColorDepthFromVideoData,
+    shouldAccumulateHDRTime: true,
   });
   await pauseMedia(mediaTab);
 
@@ -35,7 +29,7 @@ add_task(async function testChangingTabVisibilityAffectsInvisiblePlayTime() {
     mediaTab,
     shouldAccumulateTime: true,
     shouldAccumulateInvisibleTime: true,
-    shouldAccumulateHDRTime: reportsColorDepthFromVideoData,
+    shouldAccumulateHDRTime: true,
   });
   await pauseMedia(mediaTab);
 
@@ -52,13 +46,16 @@ async function openMediaTab(url) {
   await SpecialPowers.spawn(tab.linkedBrowser, [], _ => {
     content.waitForOnTimeUpdate = element => {
       return new Promise(resolve => {
-        element.addEventListener(
-          "timeupdate",
-          () => {
+        // Wait longer to ensure the system clock has actually moved forward,
+        // preventing intermittent failures.
+        let count = 0;
+        const listener = () => {
+          if (++count > 2) {
+            element.removeEventListener("timeupdate", listener);
             resolve();
-          },
-          { once: true }
-        );
+          }
+        };
+        element.addEventListener("timeupdate", listener);
       });
     };
 
@@ -148,39 +145,13 @@ function startMedia({
       }
 
       const videoHDR = content.document.getElementById("videoHDR");
-
-      // HDR test video might not decode on all platforms, so catch
-      // the play() command and exit early in such a case. Failure to
-      // decode might manifest as a timeout, so add a rejection race
-      // to catch that.
-      let didDecode = true;
-      const playPromise = videoHDR.play().then(
-        () => true,
-        () => false
+      ok(
+        videoHDR.play().then(
+          () => true,
+          () => false
+        ),
+        "videoHDR started playing"
       );
-      /* eslint-disable mozilla/no-arbitrary-setTimeout */
-      const tooSlowPromise = new Promise(resolve =>
-        setTimeout(() => {
-          info("videoHDR timed out.");
-          didDecode = false;
-          resolve(false);
-        }, 1000)
-      );
-      /* eslint-enable mozilla/no-arbitrary-setTimeout */
-
-      let didPlay = await Promise.race([playPromise, tooSlowPromise]).catch(
-        err => {
-          info("videoHDR failed to decode with error: " + err.message);
-          didDecode = false;
-          return false;
-        }
-      );
-
-      if (!didDecode) {
-        return;
-      }
-
-      ok(didPlay, "videoHDR started playing");
       const videoHDRChrome = SpecialPowers.wrap(videoHDR);
       if (accumulateHDRTime) {
         await content.assertValueConstantlyIncreases(

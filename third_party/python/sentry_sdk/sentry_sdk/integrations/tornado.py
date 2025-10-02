@@ -1,29 +1,27 @@
 import weakref
 import contextlib
 from inspect import iscoroutinefunction
-from sentry_sdk.consts import OP
 
-from sentry_sdk.hub import Hub, _should_send_default_pii
-from sentry_sdk.tracing import (
-    TRANSACTION_SOURCE_COMPONENT,
-    TRANSACTION_SOURCE_ROUTE,
-    Transaction,
-)
+import sentry_sdk
+from sentry_sdk.api import continue_trace
+from sentry_sdk.consts import OP
+from sentry_sdk.scope import should_send_default_pii
+from sentry_sdk.tracing import TransactionSource
 from sentry_sdk.utils import (
     HAS_REAL_CONTEXTVARS,
     CONTEXTVARS_ERROR_MESSAGE,
+    ensure_integration_enabled,
     event_from_exception,
     capture_internal_exceptions,
     transaction_from_function,
 )
-from sentry_sdk.integrations import Integration, DidNotEnable
+from sentry_sdk.integrations import _check_minimum_version, Integration, DidNotEnable
 from sentry_sdk.integrations._wsgi_common import (
     RequestExtractor,
     _filter_headers,
     _is_json_content_type,
 )
 from sentry_sdk.integrations.logging import ignore_logger
-from sentry_sdk._compat import iteritems
 
 try:
     from tornado import version_info as TORNADO_VERSION
@@ -32,26 +30,26 @@ try:
 except ImportError:
     raise DidNotEnable("Tornado not installed")
 
-from sentry_sdk._types import MYPY
+from typing import TYPE_CHECKING
 
-if MYPY:
+if TYPE_CHECKING:
     from typing import Any
     from typing import Optional
     from typing import Dict
     from typing import Callable
     from typing import Generator
 
-    from sentry_sdk._types import EventProcessor
+    from sentry_sdk._types import Event, EventProcessor
 
 
 class TornadoIntegration(Integration):
     identifier = "tornado"
+    origin = f"auto.http.{identifier}"
 
     @staticmethod
     def setup_once():
         # type: () -> None
-        if TORNADO_VERSION < (5, 0):
-            raise DidNotEnable("Tornado 5+ required")
+        _check_minimum_version(TornadoIntegration, TORNADO_VERSION)
 
         if not HAS_REAL_CONTEXTVARS:
             # Tornado is async. We better have contextvars or we're going to leak
@@ -78,7 +76,7 @@ class TornadoIntegration(Integration):
         else:
 
             @coroutine  # type: ignore
-            def sentry_execute_request_handler(self, *args, **kwargs):  # type: ignore
+            def sentry_execute_request_handler(self, *args, **kwargs):
                 # type: (RequestHandler, *Any, **Any) -> Any
                 with _handle_request_impl(self):
                     result = yield from old_execute(self, *args, **kwargs)
@@ -99,61 +97,57 @@ class TornadoIntegration(Integration):
 @contextlib.contextmanager
 def _handle_request_impl(self):
     # type: (RequestHandler) -> Generator[None, None, None]
-    hub = Hub.current
-    integration = hub.get_integration(TornadoIntegration)
+    integration = sentry_sdk.get_client().get_integration(TornadoIntegration)
 
     if integration is None:
         yield
 
     weak_handler = weakref.ref(self)
 
-    with Hub(hub) as hub:
-        with hub.configure_scope() as scope:
-            scope.clear_breadcrumbs()
-            processor = _make_event_processor(weak_handler)
-            scope.add_event_processor(processor)
+    with sentry_sdk.isolation_scope() as scope:
+        headers = self.request.headers
 
-        transaction = Transaction.continue_from_headers(
-            self.request.headers,
+        scope.clear_breadcrumbs()
+        processor = _make_event_processor(weak_handler)
+        scope.add_event_processor(processor)
+
+        transaction = continue_trace(
+            headers,
             op=OP.HTTP_SERVER,
             # Like with all other integrations, this is our
             # fallback transaction in case there is no route.
             # sentry_urldispatcher_resolve is responsible for
             # setting a transaction name later.
             name="generic Tornado request",
-            source=TRANSACTION_SOURCE_ROUTE,
+            source=TransactionSource.ROUTE,
+            origin=TornadoIntegration.origin,
         )
 
-        with hub.start_transaction(
+        with sentry_sdk.start_transaction(
             transaction, custom_sampling_context={"tornado_request": self.request}
         ):
             yield
 
 
+@ensure_integration_enabled(TornadoIntegration)
 def _capture_exception(ty, value, tb):
     # type: (type, BaseException, Any) -> None
-    hub = Hub.current
-    if hub.get_integration(TornadoIntegration) is None:
-        return
     if isinstance(value, HTTPError):
         return
 
-    # If an integration is there, a client has to be there.
-    client = hub.client  # type: Any
-
     event, hint = event_from_exception(
         (ty, value, tb),
-        client_options=client.options,
+        client_options=sentry_sdk.get_client().options,
         mechanism={"type": "tornado", "handled": False},
     )
 
-    hub.capture_event(event, hint=hint)
+    sentry_sdk.capture_event(event, hint=hint)
 
 
 def _make_event_processor(weak_handler):
     # type: (Callable[[], RequestHandler]) -> EventProcessor
     def tornado_processor(event, hint):
-        # type: (Dict[str, Any], Dict[str, Any]) -> Dict[str, Any]
+        # type: (Event, dict[str, Any]) -> Event
         handler = weak_handler()
         if handler is None:
             return event
@@ -162,8 +156,8 @@ def _make_event_processor(weak_handler):
 
         with capture_internal_exceptions():
             method = getattr(handler, handler.request.method.lower())
-            event["transaction"] = transaction_from_function(method)
-            event["transaction_info"] = {"source": TRANSACTION_SOURCE_COMPONENT}
+            event["transaction"] = transaction_from_function(method) or ""
+            event["transaction_info"] = {"source": TransactionSource.COMPONENT}
 
         with capture_internal_exceptions():
             extractor = TornadoRequestExtractor(request)
@@ -183,7 +177,7 @@ def _make_event_processor(weak_handler):
             request_info["headers"] = _filter_headers(dict(request.headers))
 
         with capture_internal_exceptions():
-            if handler.current_user and _should_send_default_pii():
+            if handler.current_user and should_send_default_pii():
                 event.setdefault("user", {}).setdefault("is_authenticated", True)
 
         return event
@@ -200,7 +194,7 @@ class TornadoRequestExtractor(RequestExtractor):
 
     def cookies(self):
         # type: () -> Dict[str, str]
-        return {k: v.value for k, v in iteritems(self.request.cookies)}
+        return {k: v.value for k, v in self.request.cookies.items()}
 
     def raw_data(self):
         # type: () -> bytes
@@ -210,7 +204,7 @@ class TornadoRequestExtractor(RequestExtractor):
         # type: () -> Dict[str, Any]
         return {
             k: [v.decode("latin1", "replace") for v in vs]
-            for k, vs in iteritems(self.request.body_arguments)
+            for k, vs in self.request.body_arguments.items()
         }
 
     def is_json(self):
@@ -219,7 +213,7 @@ class TornadoRequestExtractor(RequestExtractor):
 
     def files(self):
         # type: () -> Dict[str, Any]
-        return {k: v[0] for k, v in iteritems(self.request.files) if v}
+        return {k: v[0] for k, v in self.request.files.items() if v}
 
     def size_of_file(self, file):
         # type: (Any) -> int

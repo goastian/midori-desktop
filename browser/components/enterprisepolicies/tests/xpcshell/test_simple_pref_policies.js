@@ -80,7 +80,6 @@ const POLICIES_TESTS = [
         Cryptomining: true,
         Fingerprinting: true,
         EmailTracking: true,
-        SuspectedFingerprinting: true,
         Locked: true,
       },
     },
@@ -89,8 +88,6 @@ const POLICIES_TESTS = [
       "privacy.trackingprotection.fingerprinting.enabled": true,
       "privacy.trackingprotection.emailtracking.enabled": true,
       "privacy.trackingprotection.emailtracking.pbmode.enabled": true,
-      "privacy.fingerprintingProtection": true,
-      "privacy.fingerprintingProtection.pbmode": true,
     },
   },
 

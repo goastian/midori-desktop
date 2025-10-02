@@ -12,9 +12,8 @@ const COLLECTION_NAME = "fingerprinting-protection-overrides";
 
 // The javascript bitwise operator only support 32bits. So, we only test
 // RFPTargets that is under low 32 bits.
-const TARGET_DEFAULT = extractLow32Bits(
-  Services.rfp.enabledFingerprintingProtections.low
-);
+const TARGET_DEFAULT =
+  Services.rfp.enabledFingerprintingProtections.getNth32BitSet(0);
 const TARGET_PointerEvents = 1 << 2;
 const TARGET_CanvasRandomization = 1 << 9;
 const TARGET_WindowOuterSize = 1 << 26;
@@ -31,11 +30,6 @@ const TEST_ANOTHER_PAGE =
     "chrome://mochitests/content",
     "https://example.net"
   ) + "empty.html";
-
-// A helper function to filter high 32 bits.
-function extractLow32Bits(value) {
-  return value & 0xffffffff;
-}
 
 const TEST_CASES = [
   // Test simple addition.
@@ -309,12 +303,16 @@ add_task(async function test_remote_settings() {
     for (let expect of test.expects) {
       // Get the addition and subtraction flags for the domain.
       try {
-        let overrides = extractLow32Bits(
-          Services.rfp.getFingerprintingOverrides(expect.domain + ",0").low
+        let overrides = Services.rfp.getFingerprintingOverrides(
+          expect.domain + ",0"
         );
 
         // Verify if the flags are matching to expected values.
-        is(overrides, expect.overrides, "The override value is correct.");
+        is(
+          overrides.getNth32BitSet(0),
+          expect.overrides,
+          "The override value is correct."
+        );
       } catch (e) {
         ok(expect.noEntry, "The override entry doesn't exist.");
       }
@@ -344,7 +342,7 @@ add_task(async function test_remote_settings_pref() {
     for (let expect of test.expects) {
       try {
         // Check for the existance of RFP overrides
-        Services.rfp.getFingerprintingOverrides(expect.domain + ",0").low;
+        Services.rfp.getFingerprintingOverrides(expect.domain + ",0");
         ok(
           false,
           "This line should never run as the override should not exist and the previous line would throw an exception"
@@ -381,12 +379,16 @@ add_task(async function test_pref() {
     for (let expect of test.expects) {
       try {
         // Get the addition and subtraction flags for the domain.
-        let overrides = extractLow32Bits(
-          Services.rfp.getFingerprintingOverrides(expect.domain + ",0").low
+        let overrides = Services.rfp.getFingerprintingOverrides(
+          expect.domain + ",0"
         );
 
         // Verify if the flags are matching to expected values.
-        is(overrides, expect.overrides, "The override value is correct.");
+        is(
+          overrides.getNth32BitSet(0),
+          expect.overrides,
+          "The override value is correct."
+        );
       } catch (e) {
         ok(expect.noEntry, "The override entry doesn't exist.");
       }
@@ -430,17 +432,77 @@ add_task(async function test_pref_override_remote_settings() {
   await promise;
 
   // Get the addition and subtraction flags for the domain.
-  let overrides = extractLow32Bits(
-    Services.rfp.getFingerprintingOverrides("example.org,0").low
-  );
+  let overrides = Services.rfp.getFingerprintingOverrides("example.org,0");
 
   // Verify if the flags are matching to the pref settings.
   is(
-    overrides,
+    overrides.getNth32BitSet(0),
     (TARGET_DEFAULT | TARGET_PointerEvents) &
       ~TARGET_Gamepad &
       ~TARGET_WindowOuterSize,
     "The override addition value is correct."
+  );
+
+  db.clear();
+});
+
+// Verify if the pref overrides the remote settings (again).
+add_task(async function test_pref_override_remote_settings2() {
+  // Add initial empty record.
+  let db = RemoteSettings(COLLECTION_NAME).db;
+  await db.importChanges({}, Date.now(), []);
+
+  // Trigger a remote settings sync.
+  await addRemoteOverrides([
+    {
+      id: "1",
+      last_modified: 1000000000000001,
+      overrides: "+PointerEvents,+Gamepad",
+      firstPartyDomain: "example.org",
+    },
+  ]);
+
+  // Then, setting the pref.
+  const promise = promiseObserver("fpp-test:set-overrides-finishes");
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      [
+        "privacy.fingerprintingProtection.granularOverrides",
+        JSON.stringify([
+          {
+            id: "1",
+            last_modified: 1000000000000001,
+            overrides: "+WindowOuterSize",
+            firstPartyDomain: "example.org",
+          },
+        ]),
+      ],
+    ],
+  });
+  await promise;
+
+  // Get the addition and subtraction flags for the domain.
+  let overrides = Services.rfp
+    .getFingerprintingOverrides("example.org,0")
+    .getNth32BitSet(0);
+
+  // Verify if the flags are matching to the pref settings.
+  is(
+    overrides & TARGET_PointerEvents,
+    0,
+    "The override addition value should not have TARGET_PointerEvents."
+  );
+
+  is(
+    overrides & TARGET_Gamepad,
+    0,
+    "The override addition value should not have TARGET_Gamepad."
+  );
+
+  is(
+    overrides & TARGET_WindowOuterSize,
+    TARGET_WindowOuterSize,
+    "The override addition value should have TARGET_WindowOuterSize."
   );
 
   db.clear();

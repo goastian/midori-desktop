@@ -1,7 +1,7 @@
 .ds-dismiss.ds-dismiss-ds-collection {
   .ds-dismiss-button {
-    margin: 15px 0 0;
-    inset-inline-end: 25px;
+    margin: var(--space-xlarge) 0 0;
+    inset-inline-end: var(--space-xlarge);
   }
 
   &.hovering {
@@ -10,16 +10,17 @@
 }
 
 .ds-collection-card-grid {
-  padding: 10px 25px 25px;
-  margin: 0 0 20px;
+  padding: var(--space-small) var(--space-xlarge) var(--space-xlarge);
+  margin: 0 0 var(--space-large);
 
   .story-footer {
     display: none;
   }
 
   .ds-header {
-    padding: 0 40px 0 0;
-    margin-bottom: 12px;
+    padding: 0;
+    padding-inline-end: var(--space-xxlarge);
+    margin-block-end: var(--space-medium);
 
     .title {
       color: var(--newtab-text-primary-color);
@@ -29,7 +30,7 @@
 
     .ds-context {
       color: var(--newtab-text-secondary-color);
-      font-weight: normal;
+      font-weight: var(--font-weight);
       font-size: var(--font-size-small);
     }
   }

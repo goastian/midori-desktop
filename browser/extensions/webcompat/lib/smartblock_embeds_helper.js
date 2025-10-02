@@ -87,7 +87,7 @@ const embedHelperLib = (() => {
         <style>
           #smartblock-placeholder-wrapper {
             min-height: 137px;
-            min-width: 216px;
+            min-width: 150px;
             max-height: 225px;
             max-width: 400px;
             padding: 32px 24px;
@@ -128,7 +128,7 @@ const embedHelperLib = (() => {
               https://searchfox.org/mozilla-central/source/browser/themes/addons/dark/manifest.json */
             background-color: light-dark(rgb(2, 80, 187), rgb(128, 235, 255));
           }
-  
+
           #smartblock-placeholder-button:hover:active {
             /* Colours match light/dark theme from
               https://searchfox.org/mozilla-central/source/browser/themes/addons/light/manifest.json
@@ -220,11 +220,15 @@ const embedHelperLib = (() => {
       for (let { addedNodes, target, type } of mutations) {
         const nodes = type === "attributes" ? [target] : addedNodes;
         for (const node of nodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) {
+            // node is not an element, skip
+            continue;
+          }
           if (node.matches(embedSelector)) {
-            // If node is an embed, replace with placeholder
+            // If element is an embed, replace with placeholder
             createShimPlaceholders([node], SHIM_INFO);
           } else {
-            // If node is not an embed, check if any children are
+            // If element is not an embed, check if any children are
             // and replace if needed
             let maybeEmbedNodeList = node.querySelectorAll?.(embedSelector);
             if (maybeEmbedNodeList) {

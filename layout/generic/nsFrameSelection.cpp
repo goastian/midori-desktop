@@ -1641,8 +1641,7 @@ void nsFrameSelection::AddHighlightSelection(
   }
 }
 
-void nsFrameSelection::RepaintHighlightSelection(
-    nsAtom* aHighlightName) {
+void nsFrameSelection::RepaintHighlightSelection(nsAtom* aHighlightName) {
   if (auto iter =
           std::find_if(mHighlightSelections.begin(), mHighlightSelections.end(),
                        [&aHighlightName](auto const& aElm) {

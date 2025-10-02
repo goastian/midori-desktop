@@ -163,8 +163,8 @@ ObjectRealm::getOrCreateNonSyntacticLexicalEnvironment(JSContext* cx,
   MOZ_ASSERT(key->is<NonSyntacticVariablesObject>() ||
              !key->is<EnvironmentObject>());
 
-  Rooted<NonSyntacticLexicalEnvironmentObject*> lexicalEnv(
-      cx, NonSyntacticLexicalEnvironmentObject::create(cx, enclosing, thisv));
+  NonSyntacticLexicalEnvironmentObject* lexicalEnv =
+      NonSyntacticLexicalEnvironmentObject::create(cx, enclosing, thisv);
   if (!lexicalEnv) {
     return nullptr;
   }
@@ -651,6 +651,10 @@ JS_PUBLIC_API JS::Realm* JS::GetObjectRealmOrNull(JSObject* obj) {
 
 JS_PUBLIC_API void* JS::GetRealmPrivate(JS::Realm* realm) {
   return realm->realmPrivate();
+}
+
+JS_PUBLIC_API bool JS::HasRealmInitializedGlobal(JS::Realm* realm) {
+  return realm->hasInitializedGlobal();
 }
 
 JS_PUBLIC_API void JS::SetRealmPrivate(JS::Realm* realm, void* data) {

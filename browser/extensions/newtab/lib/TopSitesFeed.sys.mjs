@@ -82,8 +82,6 @@ const PREF_UNIFIED_ADS_PLACEMENTS = "discoverystream.placements.tiles";
 const PREF_UNIFIED_ADS_COUNTS = "discoverystream.placements.tiles.counts";
 const PREF_UNIFIED_ADS_BLOCKED_LIST = "unifiedAds.blockedAds";
 const PREF_UNIFIED_ADS_ADSFEED_ENABLED = "unifiedAds.adsFeed.enabled";
-const PREF_UNIFIED_ADS_ADSFEED_TILES_ENABLED =
-  "unifiedAds.adsFeed.tiles.enabled";
 
 // Search experiment stuff
 const FILTER_DEFAULT_SEARCH_PREF = "improvesearch.noDefaultSearchTile";
@@ -126,6 +124,22 @@ const SPONSORED_TILE_PARTNERS = new Set([
 const DISPLAY_FAIL_REASON_OVERSOLD = "oversold";
 const DISPLAY_FAIL_REASON_DISMISSED = "dismissed";
 const DISPLAY_FAIL_REASON_UNRESOLVED = "unresolved";
+
+// Thompson sampling of top sites
+import { tsampleTopSites } from "resource://newtab/lib/ShortcutsRanker.sys.mjs";
+
+const PREF_SYSTEM_SHORTCUTS_PERSONALIZATION =
+  "discoverystream.shortcuts.personalization.enabled";
+
+function smartshortcutsEnabled(values) {
+  const systemPref = values[PREF_SYSTEM_SHORTCUTS_PERSONALIZATION];
+  const experimentVariable = values.smartShortcutsConfig?.enabled;
+  return systemPref || experimentVariable;
+}
+const OVERSAMPLE_MULTIPLIER = 5;
+const SHORTCUT_POSITIVE_PRIOR = 1;
+const SHORTCUT_NEGATIVE_PRIOR = 1;
+const SHORTCUT_THOM_WEIGHT = 90;
 
 function getShortHostnameForCurrentSearch() {
   return lazy.NewTabUtils.shortHostname(
@@ -506,14 +520,11 @@ export class ContileIntegration {
 
     const adsFeedEnabled = state.Prefs.values[PREF_UNIFIED_ADS_ADSFEED_ENABLED];
 
-    const adsFeedTilesEnabled =
-      state.Prefs.values[PREF_UNIFIED_ADS_ADSFEED_TILES_ENABLED];
-
     const debugServiceName = unifiedAdsTilesEnabled ? "MARS" : "Contile";
 
     try {
       // Fetch Data via TopSitesFeed.sys.mjs
-      if (!adsFeedEnabled || !adsFeedTilesEnabled) {
+      if (!adsFeedEnabled) {
         // Fetch tiles via UAPI service directly from TopSitesFeed.sys.mjs
         if (unifiedAdsTilesEnabled) {
           let fetchPromise;
@@ -643,9 +654,9 @@ export class ContileIntegration {
 
       // If using UAPI, normalize the data
       if (unifiedAdsTilesEnabled) {
-        if (adsFeedEnabled && adsFeedTilesEnabled) {
+        if (adsFeedEnabled) {
           // IMPORTANT: Ignore all previous fetch logic and get ads data from AdsFeed
-          const { tiles } = state.Ads.topsites;
+          const { tiles } = state.Ads;
           body = { tiles };
         } else {
           // Converts UAPI response into normalized tiles[] array
@@ -1292,6 +1303,15 @@ export class TopSitesFeed {
   // eslint-disable-next-line max-statements
   async getLinksWithDefaults(isStartup = false) {
     const prefValues = this.store.getState().Prefs.values;
+    // switch on top_sites thompson sampling experiment
+    const overSampleMultiplier =
+      prefValues.smartShortcutsConfig?.over_sample_multiplier ??
+      OVERSAMPLE_MULTIPLIER;
+    const numFetch =
+      (smartshortcutsEnabled(this.store.getState().Prefs.values)
+        ? overSampleMultiplier
+        : 1) *
+      (prefValues[ROWS_PREF] * TOP_SITES_MAX_SITES_PER_ROW);
     const numItems = prefValues[ROWS_PREF] * TOP_SITES_MAX_SITES_PER_ROW;
     const searchShortcutsExperiment = prefValues[SEARCH_SHORTCUTS_EXPERIMENT];
     // We must wait for search services to initialize in order to access default
@@ -1308,7 +1328,7 @@ export class TopSitesFeed {
     let frecent = [];
     const cache = await this.frecentCache.request({
       // We need to overquery due to the top 5 alexa search + default search possibly being removed
-      numItems: numItems + SEARCH_FILTERS.length + 1,
+      numItems: numFetch + SEARCH_FILTERS.length + 1,
       topsiteFrecency: FRECENCY_THRESHOLD,
     });
     for (let link of cache) {
@@ -1462,8 +1482,25 @@ export class TopSitesFeed {
     // Remove adult sites if we need to
     const checkedAdult = lazy.FilterAdult.filter(dedupedUnpinned);
 
+    // Sample topsites via thompson sampling, if in experiment
+    let sampledSites;
+    if (smartshortcutsEnabled(this.store.getState().Prefs.values)) {
+      sampledSites = await tsampleTopSites(
+        checkedAdult,
+        prefValues.smartShortcutsConfig?.positive_prior ??
+          SHORTCUT_POSITIVE_PRIOR,
+        prefValues.smartShortcutsConfig?.negative_prior ??
+          SHORTCUT_NEGATIVE_PRIOR,
+        (prefValues.smartShortcutsConfig?.thom_weight ?? SHORTCUT_THOM_WEIGHT) /
+          100
+      );
+    } else {
+      sampledSites = checkedAdult;
+    }
+
     // Insert the original pinned sites into the deduped frecent and defaults.
-    let withPinned = insertPinned(checkedAdult, pinned);
+    let withPinned = insertPinned(sampledSites, pinned);
+
     // Insert sponsored sites at their desired position.
     dedupedSponsored.forEach(link => {
       if (!link) {
@@ -2143,7 +2180,7 @@ export class TopSitesFeed {
       case at.UPDATE_PINNED_SEARCH_SHORTCUTS:
         this.updatePinnedSearchShortcuts(action.data);
         break;
-      case at.ADS_UPDATE_DATA:
+      case at.ADS_UPDATE_TILES:
         this._contile.refresh();
         break;
       case at.DISCOVERY_STREAM_SPOCS_UPDATE:

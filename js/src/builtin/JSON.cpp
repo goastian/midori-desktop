@@ -519,11 +519,9 @@ static bool SerializeJSONObject(JSContext* cx, HandleObject obj,
                  prop.propertyInfo().isDataDescriptor());
     }
 #endif  // DEBUG
-    {
-      RootedValue objValue(cx, ObjectValue(*obj));
-      if (!GetProperty(cx, obj, objValue, id, &outputValue)) {
-        return false;
-      }
+    RootedValue objValue(cx, ObjectValue(*obj));
+    if (!GetProperty(cx, obj, objValue, id, &outputValue)) {
+      return false;
     }
 
     if (!PreprocessValue(cx, obj, HandleId(id), &outputValue, scx)) {
@@ -652,7 +650,7 @@ static bool SerializeJSONArray(JSContext* cx, HandleObject obj,
          */
         MOZ_ASSERT(obj->is<ArrayObject>());
         MOZ_ASSERT(obj->is<NativeObject>());
-        Rooted<NativeObject*> nativeObj(cx, &obj->as<NativeObject>());
+        auto* nativeObj = &obj->as<NativeObject>();
         if (i <= PropertyKey::IntMax) {
           MOZ_ASSERT(
               nativeObj->containsDenseElement(i) != nativeObj->isIndexed(),
@@ -1718,13 +1716,12 @@ static bool InternalizeJSONProperty(JSContext* cx, HandleObject holder,
   }
 
   RootedObject context(cx);
-  Rooted<ParseRecordObject::EntryMap*> entries(cx);
+  Rooted<ParseRecordObject*> entries(cx);
   if (JS::Prefs::experimental_json_parse_with_source()) {
     // https://tc39.es/proposal-json-parse-with-source/#sec-internalizejsonproperty
     if (parseRecord) {
       bool sameVal = false;
-      Rooted<Value> parsedValue(cx, parseRecord->getValue());
-      if (!SameValue(cx, parsedValue, val, &sameVal)) {
+      if (!SameValue(cx, parseRecord->getValue(), val, &sameVal)) {
         return false;
       }
       if (parseRecord->hasValue() && sameVal) {
@@ -1741,7 +1738,7 @@ static bool InternalizeJSONProperty(JSContext* cx, HandleObject holder,
             return false;
           }
         }
-        parseRecord->getEntries(cx, &entries);
+        entries.set(parseRecord);
       }
     }
     if (!context) {

@@ -937,10 +937,9 @@ nsIFrame* nsLayoutUtils::GetPageFrame(nsIFrame* aFrame) {
 /* static */
 nsIFrame* nsLayoutUtils::GetStyleFrame(nsIFrame* aPrimaryFrame) {
   MOZ_ASSERT(aPrimaryFrame);
-  if (aPrimaryFrame->IsTableWrapperFrame()) {
-    nsIFrame* inner = aPrimaryFrame->PrincipalChildList().FirstChild();
-    // inner may be null, if aPrimaryFrame is mid-destruction
-    return inner;
+  if (const nsTableWrapperFrame* const table = do_QueryFrame(aPrimaryFrame)) {
+    // The inner table may be null, if aPrimaryFrame is mid-destruction
+    return table->InnerTableFrame();
   }
 
   return aPrimaryFrame;
@@ -991,8 +990,8 @@ bool nsLayoutUtils::IsPrimaryStyleFrame(const nsIFrame* aFrame) {
   }
 
   const nsIFrame* parent = aFrame->GetParent();
-  if (parent && parent->IsTableWrapperFrame()) {
-    return parent->PrincipalChildList().FirstChild() == aFrame;
+  if (const nsTableWrapperFrame* const tableWrapper = do_QueryFrame(parent)) {
+    return tableWrapper->InnerTableFrame() == aFrame;
   }
 
   return aFrame->IsPrimaryFrame();
@@ -1263,24 +1262,18 @@ SideBits nsLayoutUtils::GetSideBitsForFixedPositionContent(
   SideBits sides = SideBits::eNone;
   if (aFixedPosFrame) {
     const nsStylePosition* position = aFixedPosFrame->StylePosition();
-    if (!position
-             ->GetAnchorResolvedInset(eSideRight, StylePositionProperty::Fixed)
-             ->IsAuto()) {
+    const auto params = AnchorPosOffsetResolutionParams::UseCBFrameSize(
+        {aFixedPosFrame, StylePositionProperty::Fixed});
+    if (!position->GetAnchorResolvedInset(eSideRight, params)->IsAuto()) {
       sides |= SideBits::eRight;
     }
-    if (!position
-             ->GetAnchorResolvedInset(eSideLeft, StylePositionProperty::Fixed)
-             ->IsAuto()) {
+    if (!position->GetAnchorResolvedInset(eSideLeft, params)->IsAuto()) {
       sides |= SideBits::eLeft;
     }
-    if (!position
-             ->GetAnchorResolvedInset(eSideBottom, StylePositionProperty::Fixed)
-             ->IsAuto()) {
+    if (!position->GetAnchorResolvedInset(eSideBottom, params)->IsAuto()) {
       sides |= SideBits::eBottom;
     }
-    if (!position
-             ->GetAnchorResolvedInset(eSideTop, StylePositionProperty::Fixed)
-             ->IsAuto()) {
+    if (!position->GetAnchorResolvedInset(eSideTop, params)->IsAuto()) {
       sides |= SideBits::eTop;
     }
   }
@@ -2288,8 +2281,8 @@ nsLayoutUtils::TransformResult nsLayoutUtils::TransformRect(
   return TRANSFORM_SUCCEEDED;
 }
 
-nsRect nsLayoutUtils::GetRectRelativeToFrame(Element* aElement,
-                                             nsIFrame* aFrame) {
+nsRect nsLayoutUtils::GetRectRelativeToFrame(const Element* aElement,
+                                             const nsIFrame* aFrame) {
   if (!aElement || !aFrame) {
     return nsRect();
   }
@@ -3460,9 +3453,11 @@ struct BoxToRect : public nsLayoutUtils::BoxCallback {
         nsMargin usedMargin =
             aFrame->GetUsedMargin().ApplySkipSides(aFrame->GetSkipSides());
         const auto* styleMargin = aFrame->StyleMargin();
-        const auto positionProperty = aFrame->StyleDisplay()->mPosition;
+        const auto anchorResolutionParams =
+            AnchorPosResolutionParams::From(aFrame);
         for (const Side side : AllPhysicalSides()) {
-          if (styleMargin->GetMargin(side, positionProperty)->IsAuto()) {
+          if (styleMargin->GetMargin(side, anchorResolutionParams.mPosition)
+                  ->IsAuto()) {
             usedMargin.Side(side) = 0;
           }
         }
@@ -4094,8 +4089,9 @@ static Maybe<nscoord> GetPercentBSize(const LengthPercentage& aSize,
 
   WritingMode wm = f->GetWritingMode();
   const nsStylePosition* pos = f->StylePosition();
-  const auto positionProperty = f->StyleDisplay()->mPosition;
-  Maybe<nscoord> bSize = GetBSize(pos->BSize(wm, positionProperty));
+  const auto anchorResolutionParams = AnchorPosResolutionParams::From(f);
+  Maybe<nscoord> bSize =
+      GetBSize(pos->BSize(wm, anchorResolutionParams.mPosition));
   if (!bSize) {
     LayoutFrameType fType = f->Type();
     if (fType != LayoutFrameType::Viewport &&
@@ -4117,13 +4113,15 @@ static Maybe<nscoord> GetPercentBSize(const LengthPercentage& aSize,
     }
   }
 
-  if (Maybe<nscoord> maxBSize = GetBSize(pos->MaxBSize(wm, positionProperty))) {
+  if (Maybe<nscoord> maxBSize =
+          GetBSize(pos->MaxBSize(wm, anchorResolutionParams.mPosition))) {
     if (*maxBSize < *bSize) {
       *bSize = *maxBSize;
     }
   }
 
-  if (Maybe<nscoord> minBSize = GetBSize(pos->MinBSize(wm, positionProperty))) {
+  if (Maybe<nscoord> minBSize =
+          GetBSize(pos->MinBSize(wm, anchorResolutionParams.mPosition))) {
     if (*minBSize > *bSize) {
       *bSize = *minBSize;
     }
@@ -4634,10 +4632,10 @@ nscoord nsLayoutUtils::IntrinsicForAxis(
       aFrame->GetWritingMode().PhysicalAxis(LogicalAxis::Inline);
   const bool isInlineAxis = aAxis == ourInlineAxis;
 
-  const auto positionProperty = aFrame->StyleDisplay()->mPosition;
-  auto styleMinISize = horizontalAxis
-                           ? stylePos->GetMinWidth(positionProperty)
-                           : stylePos->GetMinHeight(positionProperty);
+  const auto anchorResolutionParams = AnchorPosResolutionParams::From(aFrame);
+  auto styleMinISize =
+      horizontalAxis ? stylePos->GetMinWidth(anchorResolutionParams.mPosition)
+                     : stylePos->GetMinHeight(anchorResolutionParams.mPosition);
   auto styleISize = [&]() {
     if (aFlags & MIN_INTRINSIC_ISIZE) {
       return AnchorResolvedSizeHelper::Overridden(*styleMinISize);
@@ -4646,15 +4644,16 @@ nscoord nsLayoutUtils::IntrinsicForAxis(
         isInlineAxis ? aSizeOverrides.mStyleISize : aSizeOverrides.mStyleBSize;
     return styleISizeOverride
                ? AnchorResolvedSizeHelper::Overridden(*styleISizeOverride)
-               : (horizontalAxis ? stylePos->GetWidth(positionProperty)
-                                 : stylePos->GetHeight(positionProperty));
+               : (horizontalAxis
+                      ? stylePos->GetWidth(anchorResolutionParams.mPosition)
+                      : stylePos->GetHeight(anchorResolutionParams.mPosition));
   }();
   MOZ_ASSERT(!(aFlags & MIN_INTRINSIC_ISIZE) || styleISize->IsAuto() ||
                  nsIFrame::ToExtremumLength(*styleISize),
              "should only use MIN_INTRINSIC_ISIZE for intrinsic values");
-  auto styleMaxISize = horizontalAxis
-                           ? stylePos->GetMaxWidth(positionProperty)
-                           : stylePos->GetMaxHeight(positionProperty);
+  auto styleMaxISize =
+      horizontalAxis ? stylePos->GetMaxWidth(anchorResolutionParams.mPosition)
+                     : stylePos->GetMaxHeight(anchorResolutionParams.mPosition);
 
   auto ResetIfKeywords = [](AnchorResolvedSize& aSize,
                             AnchorResolvedSize& aMinSize,
@@ -4712,12 +4711,15 @@ nscoord nsLayoutUtils::IntrinsicForAxis(
   auto styleBSize =
       styleBSizeOverride
           ? AnchorResolvedSizeHelper::Overridden(*styleBSizeOverride)
-          : (horizontalAxis ? stylePos->GetHeight(positionProperty)
-                            : stylePos->GetWidth(positionProperty));
-  auto styleMinBSize = horizontalAxis ? stylePos->GetMinHeight(positionProperty)
-                                      : stylePos->GetMinWidth(positionProperty);
-  auto styleMaxBSize = horizontalAxis ? stylePos->GetMaxHeight(positionProperty)
-                                      : stylePos->GetMaxWidth(positionProperty);
+          : (horizontalAxis
+                 ? stylePos->GetHeight(anchorResolutionParams.mPosition)
+                 : stylePos->GetWidth(anchorResolutionParams.mPosition));
+  auto styleMinBSize =
+      horizontalAxis ? stylePos->GetMinHeight(anchorResolutionParams.mPosition)
+                     : stylePos->GetMinWidth(anchorResolutionParams.mPosition);
+  auto styleMaxBSize =
+      horizontalAxis ? stylePos->GetMaxHeight(anchorResolutionParams.mPosition)
+                     : stylePos->GetMaxWidth(anchorResolutionParams.mPosition);
 
   // According to the spec, max-content and min-content should behave as the
   // property's initial values in block axis.
@@ -5008,13 +5010,13 @@ nscoord nsLayoutUtils::MinSizeContributionForAxis(
 
   // Note: this method is only meant for grid/flex items.
   const nsStylePosition* const stylePos = aFrame->StylePosition();
-  const auto positionProperty = aFrame->StyleDisplay()->mPosition;
+  const auto anchorResolutionParams = AnchorPosResolutionParams::From(aFrame);
   auto size = aAxis == PhysicalAxis::Horizontal
-                  ? stylePos->GetMinWidth(positionProperty)
-                  : stylePos->GetMinHeight(positionProperty);
+                  ? stylePos->GetMinWidth(anchorResolutionParams.mPosition)
+                  : stylePos->GetMinHeight(anchorResolutionParams.mPosition);
   auto maxSize = aAxis == PhysicalAxis::Horizontal
-                     ? stylePos->GetMaxWidth(positionProperty)
-                     : stylePos->GetMaxHeight(positionProperty);
+                     ? stylePos->GetMaxWidth(anchorResolutionParams.mPosition)
+                     : stylePos->GetMaxHeight(anchorResolutionParams.mPosition);
   auto childWM = aFrame->GetWritingMode();
   PhysicalAxis ourInlineAxis = childWM.PhysicalAxis(LogicalAxis::Inline);
   // According to the spec, max-content and min-content should behave as the
@@ -5039,8 +5041,8 @@ nscoord nsLayoutUtils::MinSizeContributionForAxis(
       fixedMinSize.emplace(0);
     } else {
       size = aAxis == PhysicalAxis::Horizontal
-                 ? stylePos->GetWidth(positionProperty)
-                 : stylePos->GetHeight(positionProperty);
+                 ? stylePos->GetWidth(anchorResolutionParams.mPosition)
+                 : stylePos->GetHeight(anchorResolutionParams.mPosition);
       // This is same as above: keywords should behaves as property's initial
       // values in block axis.
       if (aAxis != ourInlineAxis &&
@@ -5292,11 +5294,16 @@ nscolor nsLayoutUtils::DarkenColorIfNeeded(nsIFrame* aFrame, nscolor aColor) {
   return ShouldDarkenColors(aFrame) ? DarkenColor(aColor) : aColor;
 }
 
-gfxFloat nsLayoutUtils::GetSnappedBaselineY(nsIFrame* aFrame,
-                                            gfxContext* aContext, nscoord aY,
-                                            nscoord aAscent) {
-  gfxFloat appUnitsPerDevUnit = aFrame->PresContext()->AppUnitsPerDevPixel();
+gfxFloat nsLayoutUtils::GetMaybeSnappedBaselineY(nsIFrame* aFrame,
+                                                 gfxContext* aContext,
+                                                 nscoord aY, nscoord aAscent) {
   gfxFloat baseline = gfxFloat(aY) + aAscent;
+  // TODO: Remove this funciton when this pref is being removed.
+  if (StaticPrefs::layout_disable_pixel_alignment()) {
+    return baseline;
+  }
+
+  gfxFloat appUnitsPerDevUnit = aFrame->PresContext()->AppUnitsPerDevPixel();
   gfxRect putativeRect(0, baseline / appUnitsPerDevUnit, 1, 1);
   if (!aContext->UserToDevicePixelSnapped(
           putativeRect, gfxContext::SnapOption::IgnoreScale)) {
@@ -5305,11 +5312,16 @@ gfxFloat nsLayoutUtils::GetSnappedBaselineY(nsIFrame* aFrame,
   return aContext->DeviceToUser(putativeRect.TopLeft()).y * appUnitsPerDevUnit;
 }
 
-gfxFloat nsLayoutUtils::GetSnappedBaselineX(nsIFrame* aFrame,
-                                            gfxContext* aContext, nscoord aX,
-                                            nscoord aAscent) {
-  gfxFloat appUnitsPerDevUnit = aFrame->PresContext()->AppUnitsPerDevPixel();
+gfxFloat nsLayoutUtils::GetMaybeSnappedBaselineX(nsIFrame* aFrame,
+                                                 gfxContext* aContext,
+                                                 nscoord aX, nscoord aAscent) {
   gfxFloat baseline = gfxFloat(aX) + aAscent;
+  // TODO: Remove this funciton when this pref is being removed.
+  if (StaticPrefs::layout_disable_pixel_alignment()) {
+    return baseline;
+  }
+
+  gfxFloat appUnitsPerDevUnit = aFrame->PresContext()->AppUnitsPerDevPixel();
   gfxRect putativeRect(baseline / appUnitsPerDevUnit, 0, 1, 1);
   if (!aContext->UserToDevicePixelSnapped(
           putativeRect, gfxContext::SnapOption::IgnoreScale)) {
@@ -7947,11 +7959,11 @@ float nsLayoutUtils::FontSizeInflationInner(const nsIFrame* aFrame,
         return FontSizeInflationFor(grandparent);
       }
       WritingMode wm = f->GetWritingMode();
-      const auto positionProperty = f->StyleDisplay()->mPosition;
+      const auto anchorResolutionParams = AnchorPosResolutionParams::From(f);
       const auto stylePosISize =
-          f->StylePosition()->ISize(wm, positionProperty);
+          f->StylePosition()->ISize(wm, anchorResolutionParams.mPosition);
       const auto stylePosBSize =
-          f->StylePosition()->BSize(wm, positionProperty);
+          f->StylePosition()->BSize(wm, anchorResolutionParams.mPosition);
       if (!stylePosISize->IsAuto() ||
           !stylePosBSize->BehavesLikeInitialValueOnBlockAxis()) {
         return 1.0;

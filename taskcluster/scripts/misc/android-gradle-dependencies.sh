@@ -14,8 +14,8 @@ export MOZCONFIG=mobile/android/config/mozconfigs/android-arm-gradle-dependencie
 ./mach build
 ./mach gradle downloadDependencies --no-configuration-cache
 ./mach android gradle-dependencies --no-configuration-cache
-./mach gradle -p mobile/android/fenix detekt lint assembleDebug :benchmark:assembleBenchmark
+./mach gradle -p mobile/android/fenix lint :benchmark:assembleBenchmark
 ./mach gradle -p mobile/android/focus-android lint
-./mach gradle -p mobile/android/android-components -Pcoverage detekt lint service-nimbus:testReleaseUnitTest samples-browser:testGeckoDebugUnitTest tooling-lint:test
+./mach gradle -p mobile/android/android-components -Pcoverage detekt lint :components:tooling-lint:test :components:lib-auth:assemble :components:lib-auth:assembleAndroidTest :components:lib-auth:testRelease :components:lib-auth:lintRelease :components:lib-auth:publish
 
 . taskcluster/scripts/misc/android-gradle-dependencies/after.sh

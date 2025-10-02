@@ -276,21 +276,6 @@ class TrustedHTMLOrTrustedScriptOrTrustedScriptURLOrString;
     ExplicitlySetAttrElements(nsGkAtoms::attr, aElements);                  \
   }
 
-// TODO(keithamus): Reference the spec link once merged.
-// https://github.com/whatwg/html/pull/9841/files#diff-41cf6794ba4200b839c53531555f0f3998df4cbb01a4d5cb0b94e3ca5e23947dR86024
-enum class InvokeAction : uint8_t {
-  Invalid,
-  Custom,
-  Auto,
-  TogglePopover,
-  ShowPopover,
-  HidePopover,
-  ShowModal,
-  Toggle,
-  Close,
-  Open,
-};
-
 class Element : public FragmentOrElement {
  public:
 #ifdef MOZILLA_INTERNAL_API
@@ -1171,21 +1156,35 @@ class Element : public FragmentOrElement {
     return FindAttributeDependence(aAttribute, aMaps, N);
   }
 
-  virtual bool IsValidInvokeAction(InvokeAction aAction) const {
-    return aAction == InvokeAction::Auto;
+  // https://html.spec.whatwg.org/#attr-button-command
+  enum class Command : uint8_t {
+    Invalid,
+    Custom,
+    Auto,
+    TogglePopover,
+    ShowPopover,
+    HidePopover,
+    ShowModal,
+    Toggle,
+    Close,
+    Open,
+  };
+
+  virtual bool IsValidCommandAction(Command aCommand) const {
+    return aCommand == Command::Auto;
   }
 
   /**
    * Elements can provide their own default behaviours for "Invoke" (see
-   * invoketarget/invokeaction attributes).
+   * command/commandfor attributes).
    * If the action is not recognised, they can choose to ignore it and `return
    * false`. If an action is recognised then they should `return true` to
    * indicate to sub-classes that this has been handled and no further steps
    * should be run.
    */
-  MOZ_CAN_RUN_SCRIPT virtual bool HandleInvokeInternal(Element* invoker,
-                                                       InvokeAction aAction,
-                                                       ErrorResult& aRv) {
+  MOZ_CAN_RUN_SCRIPT virtual bool HandleCommandInternal(Element* aSource,
+                                                        Command aCommand,
+                                                        ErrorResult& aRv) {
     return false;
   }
 
@@ -1577,10 +1576,10 @@ class Element : public FragmentOrElement {
   MOZ_CAN_RUN_SCRIPT void ScrollTo(const ScrollToOptions& aOptions);
   MOZ_CAN_RUN_SCRIPT void ScrollBy(double aXScrollDif, double aYScrollDif);
   MOZ_CAN_RUN_SCRIPT void ScrollBy(const ScrollToOptions& aOptions);
-  MOZ_CAN_RUN_SCRIPT int32_t ScrollTop();
-  MOZ_CAN_RUN_SCRIPT void SetScrollTop(int32_t aScrollTop);
-  MOZ_CAN_RUN_SCRIPT int32_t ScrollLeft();
-  MOZ_CAN_RUN_SCRIPT void SetScrollLeft(int32_t aScrollLeft);
+  MOZ_CAN_RUN_SCRIPT double ScrollTop();
+  MOZ_CAN_RUN_SCRIPT void SetScrollTop(double aScrollTop);
+  MOZ_CAN_RUN_SCRIPT double ScrollLeft();
+  MOZ_CAN_RUN_SCRIPT void SetScrollLeft(double aScrollLeft);
   MOZ_CAN_RUN_SCRIPT int32_t ScrollWidth();
   MOZ_CAN_RUN_SCRIPT int32_t ScrollHeight();
   MOZ_CAN_RUN_SCRIPT void MozScrollSnap();
@@ -1601,10 +1600,10 @@ class Element : public FragmentOrElement {
   MOZ_CAN_RUN_SCRIPT int32_t ScreenY();
   MOZ_CAN_RUN_SCRIPT already_AddRefed<nsIScreen> GetScreen();
 
-  MOZ_CAN_RUN_SCRIPT int32_t ScrollTopMin();
-  MOZ_CAN_RUN_SCRIPT int32_t ScrollTopMax();
-  MOZ_CAN_RUN_SCRIPT int32_t ScrollLeftMin();
-  MOZ_CAN_RUN_SCRIPT int32_t ScrollLeftMax();
+  MOZ_CAN_RUN_SCRIPT double ScrollTopMin();
+  MOZ_CAN_RUN_SCRIPT double ScrollTopMax();
+  MOZ_CAN_RUN_SCRIPT double ScrollLeftMin();
+  MOZ_CAN_RUN_SCRIPT double ScrollLeftMax();
 
   MOZ_CAN_RUN_SCRIPT double ClientHeightDouble() {
     return CSSPixel::FromAppUnits(GetClientAreaRect().Height());

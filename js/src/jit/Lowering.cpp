@@ -5836,6 +5836,25 @@ void LIRGenerator::visitSmallObjectVariableKeyHasProp(
   assignSafepoint(lir, ins);
 }
 
+void LIRGenerator::visitGuardToArrayBuffer(MGuardToArrayBuffer* ins) {
+  MOZ_ASSERT(ins->object()->type() == MIRType::Object);
+
+  auto* lir = new (alloc())
+      LGuardToArrayBuffer(useRegisterAtStart(ins->object()), temp());
+  assignSnapshot(lir, ins->bailoutKind());
+  defineReuseInput(lir, ins, 0);
+}
+
+void LIRGenerator::visitGuardToSharedArrayBuffer(
+    MGuardToSharedArrayBuffer* ins) {
+  MOZ_ASSERT(ins->object()->type() == MIRType::Object);
+
+  auto* lir = new (alloc())
+      LGuardToSharedArrayBuffer(useRegisterAtStart(ins->object()), temp());
+  assignSnapshot(lir, ins->bailoutKind());
+  defineReuseInput(lir, ins, 0);
+}
+
 void LIRGenerator::visitGuardIsNotArrayBufferMaybeShared(
     MGuardIsNotArrayBufferMaybeShared* ins) {
   MOZ_ASSERT(ins->object()->type() == MIRType::Object);
@@ -5857,12 +5876,12 @@ void LIRGenerator::visitGuardIsTypedArray(MGuardIsTypedArray* ins) {
   redefine(ins, ins->object());
 }
 
-void LIRGenerator::visitGuardIsFixedLengthTypedArray(
-    MGuardIsFixedLengthTypedArray* ins) {
+void LIRGenerator::visitGuardIsNonResizableTypedArray(
+    MGuardIsNonResizableTypedArray* ins) {
   MOZ_ASSERT(ins->object()->type() == MIRType::Object);
 
   auto* lir = new (alloc())
-      LGuardIsFixedLengthTypedArray(useRegister(ins->object()), temp());
+      LGuardIsNonResizableTypedArray(useRegister(ins->object()), temp());
   assignSnapshot(lir, ins->bailoutKind());
   add(lir, ins);
   redefine(ins, ins->object());
@@ -6427,15 +6446,6 @@ void LIRGenerator::visitGuardToClass(MGuardToClass* ins) {
   defineReuseInput(lir, ins, 0);
 }
 
-void LIRGenerator::visitGuardToEitherClass(MGuardToEitherClass* ins) {
-  MOZ_ASSERT(ins->object()->type() == MIRType::Object);
-  MOZ_ASSERT(ins->type() == MIRType::Object);
-  auto* lir = new (alloc())
-      LGuardToEitherClass(useRegisterAtStart(ins->object()), temp());
-  assignSnapshot(lir, ins->bailoutKind());
-  defineReuseInput(lir, ins, 0);
-}
-
 void LIRGenerator::visitGuardToFunction(MGuardToFunction* ins) {
   MOZ_ASSERT(ins->object()->type() == MIRType::Object);
   MOZ_ASSERT(ins->type() == MIRType::Object);
@@ -6688,13 +6698,12 @@ void LIRGenerator::visitWasmStoreStackResult(MWasmStoreStackResult* ins) {
   LInstruction* lir;
   if (value->type() == MIRType::Int64) {
     lir = new (alloc())
-        LWasmStoreSlotI64(useInt64Register(value), useRegister(stackResultArea),
-                          offs, mozilla::Nothing());
+        LWasmStoreStackResultI64(useInt64Register(value), useRegister(stackResultArea),
+                          offs);
   } else {
-    MOZ_ASSERT(value->type() != MIRType::WasmAnyRef);
     lir = new (alloc())
-        LWasmStoreSlot(useRegister(value), useRegister(stackResultArea), offs,
-                       value->type(), MNarrowingOp::None, mozilla::Nothing());
+        LWasmStoreStackResult(useRegister(value), useRegister(stackResultArea), offs,
+                              value->type());
   }
   add(lir, ins);
 }
@@ -6855,6 +6864,16 @@ void LIRGenerator::visitWasmRegisterResult(MWasmRegisterResult* ins) {
 
 void LIRGenerator::visitWasmFloatRegisterResult(MWasmFloatRegisterResult* ins) {
   auto* lir = new (alloc()) LWasmRegisterResult();
+  uint32_t vreg = getVirtualRegister();
+  auto type = LDefinition::TypeFrom(ins->type());
+  lir->setDef(0, LDefinition(vreg, type, LFloatReg(ins->loc())));
+  ins->setVirtualRegister(vreg);
+  add(lir, ins);
+}
+
+void LIRGenerator::visitWasmBuiltinFloatRegisterResult(
+    MWasmBuiltinFloatRegisterResult* ins) {
+  auto* lir = new (alloc()) LWasmBuiltinFloatRegisterResult();
   uint32_t vreg = getVirtualRegister();
   auto type = LDefinition::TypeFrom(ins->type());
   lir->setDef(0, LDefinition(vreg, type, LFloatReg(ins->loc())));
@@ -7443,6 +7462,18 @@ void LIRGenerator::visitLoadWrapperTarget(MLoadWrapperTarget* ins) {
   if (ins->fallible()) {
     assignSnapshot(lir, ins->bailoutKind());
   }
+  define(lir, ins);
+}
+
+void LIRGenerator::visitLoadGetterSetterFunction(
+    MLoadGetterSetterFunction* ins) {
+  MDefinition* getterSetter = ins->getterSetter();
+
+  LDefinition classGuardTemp =
+      ins->needsClassGuard() ? temp() : LDefinition::BogusTemp();
+  auto* lir = new (alloc())
+      LLoadGetterSetterFunction(useBoxAtStart(getterSetter), classGuardTemp);
+  assignSnapshot(lir, ins->bailoutKind());
   define(lir, ins);
 }
 
@@ -8199,7 +8230,7 @@ void LIRGenerator::visitIonToWasmCall(MIonToWasmCall* ins) {
     return;
   }
 
-  ABIArgGenerator abi;
+  ABIArgGenerator abi(ABIKind::Wasm);
   for (unsigned i = 0; i < ins->numOperands(); i++) {
     MDefinition* argDef = ins->getOperand(i);
     ABIArg arg = abi.next(ToMIRType(argDef->type()));

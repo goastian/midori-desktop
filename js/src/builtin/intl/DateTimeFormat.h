@@ -126,16 +126,6 @@ class DateTimeFormatObject : public NativeObject {
 };
 
 /**
- * Returns a new instance of the standard built-in DateTimeFormat constructor.
- *
- * Usage: dateTimeFormat = intl_CreateDateTimeFormat(locales, options, required,
- * defaults)
- */
-[[nodiscard]] extern bool intl_CreateDateTimeFormat(JSContext* cx,
-                                                    unsigned argc,
-                                                    JS::Value* vp);
-
-/**
  * Returns an array with the calendar type identifiers per Unicode
  * Technical Standard 35, Unicode Locale Data Markup Language, for the
  * supported calendars for the given locale. The default calendar is
@@ -239,13 +229,57 @@ class DateTimeFormatObject : public NativeObject {
                                                                unsigned argc,
                                                                JS::Value* vp);
 
+namespace intl {
+
+enum class DateTimeFormatKind {
+  /**
+   * Call CreateDateTimeFormat with `required = Any` and `defaults = All`.
+   */
+  All,
+
+  /**
+   * Call CreateDateTimeFormat with `required = Date` and `defaults = Date`.
+   */
+  Date,
+
+  /**
+   * Call CreateDateTimeFormat with `required = Time` and `defaults = Time`.
+   */
+  Time,
+};
+
+/**
+ * Returns a new instance of the standard built-in DateTimeFormat constructor.
+ */
+[[nodiscard]] extern DateTimeFormatObject* CreateDateTimeFormat(
+    JSContext* cx, JS::Handle<JS::Value> locales, JS::Handle<JS::Value> options,
+    DateTimeFormatKind kind);
+
+/**
+ * Returns a possibly cached instance of the standard built-in DateTimeFormat
+ * constructor.
+ */
+[[nodiscard]] extern DateTimeFormatObject* GetOrCreateDateTimeFormat(
+    JSContext* cx, JS::Handle<JS::Value> locales, JS::Handle<JS::Value> options,
+    DateTimeFormatKind kind);
+
+/**
+ * Returns a String value representing |millis| (which must be a valid time
+ * value) according to the effective locale and the formatting options of the
+ * given DateTimeFormat.
+ */
+[[nodiscard]] extern bool FormatDateTime(
+    JSContext* cx, JS::Handle<DateTimeFormatObject*> dateTimeFormat,
+    double millis, JS::MutableHandle<JS::Value> result);
+
 /**
  * Shared `toLocaleString` implementation for Temporal objects.
  */
 [[nodiscard]] extern bool TemporalObjectToLocaleString(
-    JSContext* cx, const JS::CallArgs& args, JS::Handle<JSString*> required,
-    JS::Handle<JSString*> defaults,
+    JSContext* cx, const JS::CallArgs& args, DateTimeFormatKind formatKind,
     JS::Handle<JS::Value> toLocaleStringTimeZone = JS::UndefinedHandleValue);
+
+}  // namespace intl
 
 }  // namespace js
 

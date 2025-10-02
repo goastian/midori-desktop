@@ -66,7 +66,7 @@ const SameSiteType = {
   [Ci.nsICookie.SAMESITE_NONE]: "none",
   [Ci.nsICookie.SAMESITE_LAX]: "lax",
   [Ci.nsICookie.SAMESITE_STRICT]: "strict",
-  [Ci.nsICookie.SAMESITE_UNSET]: "none",
+  [Ci.nsICookie.SAMESITE_UNSET]: "default",
 };
 
 class StorageModule extends RootBiDiModule {
@@ -301,8 +301,9 @@ class StorageModule extends RootBiDiModule {
 
     const isPartitioned = originAttributes.partitionKey?.length > 0;
 
+    let cv;
     try {
-      Services.cookies.add(
+      cv = Services.cookies.add(
         domain,
         path === null ? "/" : path,
         name,
@@ -319,6 +320,12 @@ class StorageModule extends RootBiDiModule {
       );
     } catch (e) {
       throw new lazy.error.UnableToSetCookieError(e);
+    }
+
+    if (cv.result !== Ci.nsICookieValidation.eOK) {
+      throw new lazy.error.UnableToSetCookieError(
+        `Invalid cookie: ${cv.errorString}`
+      );
     }
 
     return {
@@ -790,9 +797,12 @@ class StorageModule extends RootBiDiModule {
       case "strict": {
         return Ci.nsICookie.SAMESITE_STRICT;
       }
+      case "none": {
+        return Ci.nsICookie.SAMESITE_NONE;
+      }
     }
 
-    return Ci.nsICookie.SAMESITE_NONE;
+    return Ci.nsICookie.SAMESITE_UNSET;
   }
 
   /**
@@ -886,14 +896,6 @@ class StorageModule extends RootBiDiModule {
       // so we have to calculate it to match.
       if (fieldName === "size") {
         storedCookieValue = this.#getCookieSize(storedCookie);
-      }
-
-      // Let's map any SAMESITE_UNSET to SAMESITE_NONE.
-      if (
-        fieldName === "sameSite" &&
-        storedCookieValue === Ci.nsICookie.SAMESITE_UNSET
-      ) {
-        storedCookieValue = Ci.nsICookie.SAMESITE_NONE;
       }
 
       if (storedCookieValue !== value) {

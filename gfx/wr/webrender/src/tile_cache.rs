@@ -29,7 +29,7 @@ use std::mem;
 // scrolling isn't occurring. Scrolling regions will be handled reasonably
 // efficiently by the dirty rect tracking (since it's likely that if the
 // page has so many slices there isn't a single major scroll region).
-const MAX_CACHE_SLICES: usize = 12;
+const MAX_CACHE_SLICES: usize = 16;
 
 struct SliceDescriptor {
     prim_list: PrimitiveList,
@@ -574,8 +574,7 @@ fn create_tile_cache(
                     if BorderRadius::from(radius).can_use_fast_path_in(&rect.into()) {
                         rounded_rect_count += 1;
 
-                        // TODO(gw): Enable this once also supported by native and swgl compositors
-                        false
+                        true
                     } else {
                         false
                     }

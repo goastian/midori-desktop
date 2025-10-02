@@ -91,6 +91,7 @@ add_task(async function test_auto_reauthentication_doesnt_show_ui() {
             {
               configURL:
                 "https://example.net/browser/dom/credentialmanagement/identity/tests/browser/server_manifest.json",
+              clientId: "test",
               nonce: "nonce",
             },
           ],
@@ -141,6 +142,9 @@ add_task(async function test_auto_reauthentication_doesnt_show_ui() {
   );
 
   is(approvedAndLinked, "result", "Result obtained!");
+
+  // Clear state
+  IdentityCredentialStorageService.disconnect(rpPrincipal, idpPrincipal);
 
   // Close tabs.
   await BrowserTestUtils.removeTab(tab);

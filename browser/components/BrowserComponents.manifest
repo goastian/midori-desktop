@@ -15,7 +15,6 @@ category browser-before-ui-startup resource:///modules/BuiltInThemes.sys.mjs Bui
 #ifdef MOZ_NORMANDY
 category browser-before-ui-startup resource://normandy/Normandy.sys.mjs Normandy.init
 #endif
-category browser-before-ui-startup chrome://pocket/content/SaveToPocket.sys.mjs SaveToPocket.init
 category browser-before-ui-startup resource:///modules/ResetPBMPanel.sys.mjs ResetPBMPanel.init
 category browser-before-ui-startup resource:///modules/AboutHomeStartupCache.sys.mjs AboutHomeStartupCache.init
 category browser-before-ui-startup resource:///modules/AccountsGlue.sys.mjs AccountsGlue.init
@@ -30,10 +29,10 @@ category browser-window-delayed-startup resource:///modules/HomePage.sys.mjs Hom
 category browser-window-delayed-startup moz-src:///browser/components/genai/LinkPreview.sys.mjs LinkPreview.init
 category browser-window-delayed-startup resource:///modules/ReportBrokenSite.sys.mjs ReportBrokenSite.init
 category browser-window-delayed-startup moz-src:///browser/components/search/SearchUIUtils.sys.mjs SearchUIUtils.init
+category browser-window-delayed-startup resource:///modules/taskbartabs/TaskbarTabsPageAction.sys.mjs TaskbarTabsPageAction.init
 
 category browser-window-unload resource:///modules/BrowserDOMWindow.sys.mjs BrowserDOMWindow.teardownInWindow
 category browser-window-unload moz-src:///browser/components/tabbrowser/NewTabPagePreloading.sys.mjs NewTabPagePreloading.removePreloadedBrowser
-category browser-window-delayed-startup resource:///modules/taskbartabs/TaskbarTabs.sys.mjs TaskbarTabs.init
 
 # App startup consumers
 
@@ -43,7 +42,7 @@ category browser-first-window-ready resource:///modules/ProcessHangMonitor.sys.m
 category browser-first-window-ready resource://gre/modules/PageThumbs.sys.mjs PageThumbs.init
 category browser-first-window-ready resource://gre/modules/NewTabUtils.sys.mjs NewTabUtils.init
 category browser-first-window-ready resource:///modules/PageActions.sys.mjs PageActions.init
-category browser-first-window-ready resource://gre/modules/DoHController.sys.mjs DoHController.init
+category browser-first-window-ready moz-src:///toolkit/components/doh/DoHController.sys.mjs DoHController.init
 category browser-first-window-ready moz-src:///toolkit/profile/ProfilesDatastoreService.sys.mjs ProfilesDatastoreService.init
 category browser-first-window-ready resource:///modules/profiles/SelectableProfileService.sys.mjs SelectableProfileService.init
 category browser-first-window-ready moz-src:///browser/components/protections/ContentBlockingPrefs.sys.mjs ContentBlockingPrefs.init
@@ -54,7 +53,7 @@ category browser-first-window-ready resource://gre/modules/SandboxUtils.sys.mjs 
 #endif
 #endif
 
-category browser-idle-startup resource:///modules/PlacesUIUtils.sys.mjs PlacesUIUtils.unblockToolbars
+category browser-idle-startup moz-src:///browser/components/places/PlacesUIUtils.sys.mjs PlacesUIUtils.unblockToolbars
 category browser-idle-startup resource:///modules/BuiltInThemes.sys.mjs BuiltInThemes.ensureBuiltInThemes
 category browser-idle-startup resource://gre/modules/RFPHelper.sys.mjs RFPHelper.init
 category browser-idle-startup resource://gre/modules/Blocklist.sys.mjs Blocklist.loadBlocklistAsync
@@ -82,7 +81,7 @@ category browser-best-effort-idle-startup moz-src:///browser/components/StartupT
 
 # App shutdown consumers
 category browser-quit-application-granted resource:///modules/BrowserUsageTelemetry.sys.mjs BrowserUsageTelemetry.uninit
-category browser-quit-application-granted resource:///modules/Interactions.sys.mjs Interactions.uninit
+category browser-quit-application-granted moz-src:///browser/components/places/Interactions.sys.mjs Interactions.uninit
 category browser-quit-application-granted resource:///modules/pagedata/PageDataService.sys.mjs PageDataService.uninit
 category browser-quit-application-granted resource://gre/modules/PageThumbs.sys.mjs PageThumbs.uninit
 category browser-quit-application-granted resource://gre/modules/NewTabUtils.sys.mjs NewTabUtils.uninit

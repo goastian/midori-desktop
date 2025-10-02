@@ -281,7 +281,9 @@ class nsHttpConnectionMgr final : public HttpConnectionMgrShell,
                                                      HttpConnectionBase*,
                                                      int32_t);
   [[nodiscard]] nsresult EnsureSocketThreadTarget();
-  void ReportProxyTelemetry(ConnectionEntry* ent);
+  [[nodiscard]] nsresult TryDispatchExtendedCONNECTransaction(
+      ConnectionEntry* aEnt, nsHttpTransaction* aTrans,
+      nsHttpConnection* aConn);
   void StartedConnect();
   void RecvdConnect();
 

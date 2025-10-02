@@ -22,27 +22,43 @@ const SETTINGS_UI = Object.freeze({
   OFFLINE_ONLY: 2,
 });
 
-// This defines the home regions and locales where Suggest will be enabled.
-// Suggest will remain disabled for regions and locales not defined here. More
-// generally it defines important Suggest prefs that require special handling.
-// Each entry in this object defines a pref name and information about that
-// pref. Pref names are relative to `browser.urlbar.` The value in each entry is
-// an object with the following properties:
-//
-// {object} defaultValues
-//   This controls the home regions and locales where Suggest and each of its
-//   subfeatures will be enabled. If the pref should be initialized on the
-//   default branch depending on the user's home region and locale, then this
-//   should be set to an object where each entry maps a region name to a tuple
-//   `[localPrefixes, prefValue]`. `localePrefixes` is an array of strings and
-//   `prefValue` is the value that should be set when the region and locale
-//   prefixes match the user's region and locale. If the user's region and
-//   locale do not match any of the entries in `defaultValues`, then the pref
-//   will retain its default value as defined in `firefox.js`.
-// {string} nimbusVariableIfExposedInUi
-//   If the pref is exposed in the settings UI and it's a fallback for a Nimbus
-//   variable, then this should be set to the variable's name. See point 3 in
-//   the comment in `#initDefaultPrefs()` for more.
+const EN_LOCALES = ["en-CA", "en-GB", "en-US", "en-ZA"];
+
+/**
+ * @typedef {[string[], boolean|number]} RegionLocaleDefault
+ *   The first element is an array of locales (e.g. "en-US"), the second is the
+ *   value of the preference.
+ */
+
+/**
+ * @typedef {object} SuggestPrefsRecord
+ * @property {Record<string, RegionLocaleDefault>} [defaultValues]
+ *   This controls the home regions and locales where Suggest and each of its
+ *   subfeatures will be enabled. If the pref should be initialized on the
+ *   default branch depending on the user's home region and locale, then this
+ *   should be set to an object where each entry maps a region name to a tuple
+ *   `[locales, prefValue]`. `locales` is an array of strings and `prefValue` is
+ *   the value that should be set when the region and locale match the user's
+ *   region and locale. If the user's region and locale do not match any of the
+ *   entries in `defaultValues`, then the pref will retain its default value as
+ *   defined in `firefox.js`.
+ * @property {string} [nimbusVariableIfExposedInUi]
+ *   If the pref is exposed in the settings UI and it's a fallback for a Nimbus
+ *   variable, then this should be set to the variable's name. See point 3 in
+ *   the comment in `#initDefaultPrefs()` for more.
+ */
+
+/**
+ * This defines the home regions and locales where Suggest will be enabled.
+ * Suggest will remain disabled for regions and locales not defined here. More
+ * generally it defines important Suggest prefs that require special handling.
+ * Each entry in this object defines a pref name and information about that
+ * pref. Pref names are relative to `browser.urlbar.` The value in each entry is
+ * an object with the following properties:
+ *
+ * @type {{[key: string]: SuggestPrefsRecord}}
+ * {object} defaultValues
+ */
 const SUGGEST_PREFS = Object.freeze({
   // Prefs related to Suggest overall
   "quicksuggest.dataCollection.enabled": {
@@ -50,51 +66,78 @@ const SUGGEST_PREFS = Object.freeze({
   },
   "quicksuggest.enabled": {
     defaultValues: {
-      GB: [["en"], true],
-      US: [["en"], true],
+      DE: [["de"], true],
+      FR: [["fr"], true],
+      GB: [EN_LOCALES, true],
+      IT: [["it"], true],
+      US: [EN_LOCALES, true],
     },
   },
   "quicksuggest.settingsUi": {
     defaultValues: {
-      GB: [["en"], SETTINGS_UI.OFFLINE_ONLY],
-      US: [["en"], SETTINGS_UI.FULL],
+      DE: [["de"], SETTINGS_UI.OFFLINE_ONLY],
+      FR: [["fr"], SETTINGS_UI.OFFLINE_ONLY],
+      GB: [EN_LOCALES, SETTINGS_UI.OFFLINE_ONLY],
+      IT: [["it"], SETTINGS_UI.OFFLINE_ONLY],
+      US: [EN_LOCALES, SETTINGS_UI.FULL],
     },
   },
   "suggest.quicksuggest.nonsponsored": {
     nimbusVariableIfExposedInUi: "quickSuggestNonSponsoredEnabled",
     defaultValues: {
-      GB: [["en"], true],
-      US: [["en"], true],
+      DE: [["de"], true],
+      FR: [["fr"], true],
+      GB: [EN_LOCALES, true],
+      IT: [["it"], true],
+      US: [EN_LOCALES, true],
     },
   },
   "suggest.quicksuggest.sponsored": {
     nimbusVariableIfExposedInUi: "quickSuggestSponsoredEnabled",
     defaultValues: {
-      GB: [["en"], true],
-      US: [["en"], true],
+      DE: [["de"], true],
+      FR: [["fr"], true],
+      GB: [EN_LOCALES, true],
+      IT: [["it"], true],
+      US: [EN_LOCALES, true],
     },
   },
 
   // Prefs related to individual features
   "addons.featureGate": {
     defaultValues: {
-      US: [["en"], true],
+      US: [EN_LOCALES, true],
+    },
+  },
+  "amp.featureGate": {
+    defaultValues: {
+      GB: [EN_LOCALES, true],
+      US: [EN_LOCALES, true],
     },
   },
   "mdn.featureGate": {
     defaultValues: {
-      US: [["en"], true],
+      US: [EN_LOCALES, true],
     },
   },
   "weather.featureGate": {
     defaultValues: {
-      GB: [["en"], true],
-      US: [["en"], true],
+      DE: [["de"], true],
+      FR: [["fr"], true],
+      GB: [EN_LOCALES, true],
+      IT: [["it"], true],
+      US: [EN_LOCALES, true],
+    },
+  },
+  "wikipedia.featureGate": {
+    defaultValues: {
+      GB: [EN_LOCALES, true],
+      US: [EN_LOCALES, true],
     },
   },
   "yelp.featureGate": {
     defaultValues: {
-      US: [["en"], true],
+      US: [EN_LOCALES, true],
     },
   },
 });
@@ -111,8 +154,6 @@ const FEATURES = {
     "resource:///modules/urlbar/private/DynamicSuggestions.sys.mjs",
   ImpressionCaps: "resource:///modules/urlbar/private/ImpressionCaps.sys.mjs",
   MDNSuggestions: "resource:///modules/urlbar/private/MDNSuggestions.sys.mjs",
-  OfflineWikipediaSuggestions:
-    "resource:///modules/urlbar/private/OfflineWikipediaSuggestions.sys.mjs",
   SuggestBackendMerino:
     "resource:///modules/urlbar/private/SuggestBackendMerino.sys.mjs",
   SuggestBackendMl:
@@ -121,13 +162,27 @@ const FEATURES = {
     "resource:///modules/urlbar/private/SuggestBackendRust.sys.mjs",
   WeatherSuggestions:
     "resource:///modules/urlbar/private/WeatherSuggestions.sys.mjs",
+  WikipediaSuggestions:
+    "resource:///modules/urlbar/private/WikipediaSuggestions.sys.mjs",
   YelpSuggestions: "resource:///modules/urlbar/private/YelpSuggestions.sys.mjs",
 };
+
+/**
+ * @import {SuggestBackendRust} from "resource:///modules/urlbar/private/SuggestBackendRust.sys.mjs"
+ * @import {SuggestFeature} from "resource:///modules/urlbar/private/SuggestFeature.sys.mjs"
+ * @import {SuggestProvider} from "resource:///modules/urlbar/private/SuggestFeature.sys.mjs"
+ * @import {ImpressionCaps} from "resource:///modules/urlbar/private/ImpressionCaps.sys.mjs"
+ */
 
 /**
  * This class manages Firefox Suggest and has related helpers.
  */
 class _QuickSuggest {
+  /**
+   * Test-only variable to skip telemetry environment initialisation.
+   */
+  _testSkipTelemetryEnvironmentInit = false;
+
   /**
    * @returns {string}
    *   The help URL for Suggest.
@@ -419,7 +474,7 @@ class _QuickSuggest {
    *
    * @param {UrlbarResult} result
    *   The result to check.
-   * @returns {boolean}
+   * @returns {Promise<boolean>}
    *   Whether the result has been dismissed.
    */
   async isResultDismissed(result) {
@@ -490,7 +545,7 @@ class _QuickSuggest {
    * Whether there are any dismissed suggestions that can be cleared, including
    * individually dismissed suggestions and dismissed suggestion types.
    *
-   * @returns {boolean}
+   * @returns {Promise<boolean>}
    *   Whether dismissals can be cleared.
    */
   async canClearDismissedSuggestions() {
@@ -541,8 +596,8 @@ class _QuickSuggest {
       Object.entries(SUGGEST_PREFS)
         .map(([prefName, { defaultValues }]) => {
           if (defaultValues?.hasOwnProperty(region)) {
-            let [localePrefixes, prefValue] = defaultValues[region];
-            if (localePrefixes.some(p => locale.startsWith(p))) {
+            let [enablingLocales, prefValue] = defaultValues[region];
+            if (enablingLocales.includes(locale)) {
               return [prefName, prefValue];
             }
           }
@@ -748,7 +803,7 @@ class _QuickSuggest {
     }
 
     // 3. Set default-branch values for prefs that are both exposed in the
-    // settings UI and configurable via Nimbus.
+    //    settings UI and configurable via Nimbus.
     this.#syncNimbusVariablesToUiPrefs();
 
     // 4. Migrate prefs across app versions.
@@ -919,6 +974,14 @@ class _QuickSuggest {
       this.#initStarted = false;
       this.#initResolvers = Promise.withResolvers();
     }
+
+    if (this.rustBackend) {
+      // Make sure to await any queued ingests before re-initializing.  Otherwise there could be a race
+      // between when that ingestion finishes and when the test finishes and calls
+      // `SharedRemoteSettingsService.updateServer()` to reset the remote settings server.
+      await this.rustBackend.ingestPromise;
+    }
+
     await this.init(testOverrides);
   }
 

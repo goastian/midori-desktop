@@ -3,10 +3,10 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
-import json
 import os
 import re
 
+from taskgraph.util import json
 from taskgraph.util.schema import Schema
 from taskgraph.util.taskcluster import get_artifact_path, get_artifact_url
 from voluptuous import Extra, Optional, Required
@@ -139,6 +139,14 @@ def mozharness_test_on_docker(config, job, taskdesc):
             }
             for (prefix, path) in artifacts
         ]
+    )
+    worker["artifacts"].append(
+        {
+            "name": "public/xsession-errors.log",
+            "path": "{workdir}/.xsession-errors".format(**run),
+            "type": "file",
+            "expires-after": get_expiration(config, "default"),
+        }
     )
 
     env = worker.setdefault("env", {})

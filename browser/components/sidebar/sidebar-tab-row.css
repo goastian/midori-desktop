@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
- #fxview-tab-row-secondary-button {
+#fxview-tab-row-secondary-button {
   display: none;
 
   :host(:hover) & {
@@ -18,6 +18,11 @@
   display: flex;
 }
 
+:host([selected]) {
+  background-color: var(--button-background-color-primary);
+  color: var(--button-text-color-primary);
+}
+
 .fxview-tab-row-main {
   padding-block: 4px;
   padding-inline: 8px 4px;
@@ -25,7 +30,8 @@
   gap: 8px;
   flex: 1;
 
-  &:hover, &:hover:active {
+  &:hover,
+  &:hover:active {
     background-color: unset;
   }
 }

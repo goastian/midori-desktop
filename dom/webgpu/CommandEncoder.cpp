@@ -73,7 +73,10 @@ static ffi::WGPUTexelCopyTextureInfo ConvertTextureCopyView(
 
 CommandEncoder::CommandEncoder(Device* const aParent,
                                WebGPUChild* const aBridge, RawId aId)
-    : ChildOf(aParent), mId(aId), mBridge(aBridge) {
+    : ChildOf(aParent),
+      mId(aId),
+      mState(CommandEncoderState::Open),
+      mBridge(aBridge) {
   MOZ_RELEASE_ASSERT(aId);
 }
 
@@ -96,24 +99,42 @@ void CommandEncoder::Cleanup() {
   wgpu_client_free_command_encoder_id(mBridge->GetClient(), mId);
 }
 
-void CommandEncoder::TrackPresentationContext(CanvasContext* aTargetContext) {
+RefPtr<WebGPUChild> CommandEncoder::GetBridge() { return mBridge; }
+
+void CommandEncoder::TrackPresentationContext(
+    WeakPtr<CanvasContext> aTargetContext) {
   if (aTargetContext) {
     mPresentationContexts.AppendElement(aTargetContext);
   }
 }
 
-void CommandEncoder::CopyBufferToBuffer(const Buffer& aSource,
-                                        BufferAddress aSourceOffset,
-                                        const Buffer& aDestination,
-                                        BufferAddress aDestinationOffset,
-                                        BufferAddress aSize) {
+void CommandEncoder::CopyBufferToBuffer(
+    const Buffer& aSource, BufferAddress aSourceOffset,
+    const Buffer& aDestination, BufferAddress aDestinationOffset,
+    const dom::Optional<BufferAddress>& aSize) {
   if (!mBridge->CanSend()) {
     return;
   }
 
+  // In Javascript, `size === undefined` means "copy from source offset to end
+  // of buffer". wgpu_command_encoder_copy_buffer_to_buffer uses a value of
+  // UINT64_MAX to encode this. If the requested copy size was UINT64_MAX, fudge
+  // it to a different value that will still be rejected for misalignment on the
+  // device timeline.
+  BufferAddress size;
+  if (aSize.WasPassed()) {
+    if (aSize.Value() == std::numeric_limits<uint64_t>::max()) {
+      size = std::numeric_limits<uint64_t>::max() - 4;
+    } else {
+      size = aSize.Value();
+    }
+  } else {
+    size = std::numeric_limits<uint64_t>::max();
+  }
+
   ipc::ByteBuf bb;
   ffi::wgpu_command_encoder_copy_buffer_to_buffer(
-      aSource.mId, aSourceOffset, aDestination.mId, aDestinationOffset, aSize,
+      aSource.mId, aSourceOffset, aDestination.mId, aDestinationOffset, size,
       ToFFI(&bb));
   mBridge->SendCommandEncoderAction(mId, mParent->mId, std::move(bb));
 }
@@ -218,6 +239,22 @@ already_AddRefed<ComputePassEncoder> CommandEncoder::BeginComputePass(
     const dom::GPUComputePassDescriptor& aDesc) {
   RefPtr<ComputePassEncoder> pass = new ComputePassEncoder(this, aDesc);
   pass->SetLabel(aDesc.mLabel);
+  if (mState == CommandEncoderState::Ended) {
+    // Because we do not call wgpu until the pass is ended, we need to generate
+    // this error ourselves in order to report it at the correct time.
+    if (mBridge->CanSend()) {
+      mBridge->SendReportError(mParent->mId, dom::GPUErrorFilter::Validation,
+                               "Encoding must not have ended"_ns);
+    }
+    pass->Invalidate();
+  } else if (mState == CommandEncoderState::Locked) {
+    // This is not sufficient to handle this case properly. Invalidity
+    // needs to be transferred from the pass to the encoder when the pass
+    // ends. Bug 1971650.
+    pass->Invalidate();
+  } else {
+    mState = CommandEncoderState::Locked;
+  }
   return pass.forget();
 }
 
@@ -232,6 +269,22 @@ already_AddRefed<RenderPassEncoder> CommandEncoder::BeginRenderPass(
 
   RefPtr<RenderPassEncoder> pass = new RenderPassEncoder(this, aDesc);
   pass->SetLabel(aDesc.mLabel);
+  if (mState == CommandEncoderState::Ended) {
+    // Because we do not call wgpu until the pass is ended, we need to generate
+    // this error ourselves in order to report it at the correct time.
+    if (mBridge->CanSend()) {
+      mBridge->SendReportError(mParent->mId, dom::GPUErrorFilter::Validation,
+                               "Encoding must not have ended"_ns);
+    }
+    pass->Invalidate();
+  } else if (mState == CommandEncoderState::Locked) {
+    // This is not sufficient to handle this case properly. Invalidity
+    // needs to be transferred from the pass to the encoder when the pass
+    // ends. Bug 1971650.
+    pass->Invalidate();
+  } else {
+    mState = CommandEncoderState::Locked;
+  }
   return pass.forget();
 }
 
@@ -250,11 +303,23 @@ void CommandEncoder::ResolveQuerySet(QuerySet& aQuerySet, uint32_t aFirstQuery,
   mBridge->SendCommandEncoderAction(mId, mParent->mId, std::move(bb));
 }
 
-void CommandEncoder::EndComputePass(ffi::WGPURecordedComputePass& aPass) {
+void CommandEncoder::EndComputePass(ffi::WGPURecordedComputePass& aPass,
+                                    CanvasContextArray& aCanvasContexts) {
   // Because this can be called during child Cleanup, we need to check
   // that the bridge is still alive.
   if (!mBridge || !mBridge->CanSend()) {
     return;
+  }
+
+  if (mState != CommandEncoderState::Locked) {
+    mBridge->SendReportError(mParent->mId, dom::GPUErrorFilter::Validation,
+                             "Encoder is not currently locked"_ns);
+    return;
+  }
+  mState = CommandEncoderState::Open;
+
+  for (const auto& context : aCanvasContexts) {
+    TrackPresentationContext(context);
   }
 
   ipc::ByteBuf byteBuf;
@@ -262,11 +327,23 @@ void CommandEncoder::EndComputePass(ffi::WGPURecordedComputePass& aPass) {
   mBridge->SendComputePass(mId, mParent->mId, std::move(byteBuf));
 }
 
-void CommandEncoder::EndRenderPass(ffi::WGPURecordedRenderPass& aPass) {
+void CommandEncoder::EndRenderPass(ffi::WGPURecordedRenderPass& aPass,
+                                   CanvasContextArray& aCanvasContexts) {
   // Because this can be called during child Cleanup, we need to check
   // that the bridge is still alive.
   if (!mBridge || !mBridge->CanSend()) {
     return;
+  }
+
+  if (mState != CommandEncoderState::Locked) {
+    mBridge->SendReportError(mParent->mId, dom::GPUErrorFilter::Validation,
+                             "Encoder is not currently locked"_ns);
+    return;
+  }
+  mState = CommandEncoderState::Open;
+
+  for (const auto& context : aCanvasContexts) {
+    TrackPresentationContext(context);
   }
 
   ipc::ByteBuf byteBuf;
@@ -282,8 +359,17 @@ already_AddRefed<CommandBuffer> CommandEncoder::Finish(
   // type aliasing at the place that introduces it: `wgpu-core`.
   RawId deviceId = mParent->mId;
   if (mBridge->CanSend()) {
+    if (mState == CommandEncoderState::Locked) {
+      // Most errors that could occur here will be raised by wgpu. But since we
+      // don't tell wgpu about passes until they are ended, we need to raise an
+      // error if the application left a pass open.
+      mBridge->SendReportError(
+          mParent->mId, dom::GPUErrorFilter::Validation,
+          "Encoder is locked by a previously created render/compute pass"_ns);
+    }
     mBridge->SendCommandEncoderFinish(mId, deviceId, aDesc);
   }
+  mState = CommandEncoderState::Ended;
 
   RefPtr<CommandEncoder> me(this);
   RefPtr<CommandBuffer> comb = new CommandBuffer(

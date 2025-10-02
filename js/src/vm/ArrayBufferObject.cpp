@@ -332,10 +332,16 @@ static const JSPropertySpec arraybuffer_properties[] = {
 
 static const JSFunctionSpec arraybuffer_proto_functions[] = {
     JS_FN("slice", ArrayBufferObject::slice, 2, 0),
+#ifdef NIGHTLY_BUILD
+    JS_FN("sliceToImmutable", ArrayBufferObject::sliceToImmutable, 2, 0),
+#endif
     JS_FN("resize", ArrayBufferObject::resize, 1, 0),
     JS_FN("transfer", ArrayBufferObject::transfer, 0, 0),
     JS_FN("transferToFixedLength", ArrayBufferObject::transferToFixedLength, 0,
           0),
+#ifdef NIGHTLY_BUILD
+    JS_FN("transferToImmutable", ArrayBufferObject::transferToImmutable, 0, 0),
+#endif
     JS_FS_END,
 };
 
@@ -344,6 +350,9 @@ static const JSPropertySpec arraybuffer_proto_properties[] = {
     JS_PSG("maxByteLength", ArrayBufferObject::maxByteLengthGetter, 0),
     JS_PSG("resizable", ArrayBufferObject::resizableGetter, 0),
     JS_PSG("detached", ArrayBufferObject::detachedGetter, 0),
+#ifdef NIGHTLY_BUILD
+    JS_PSG("immutable", ArrayBufferObject::immutableGetter, 0),
+#endif
     JS_STRING_SYM_PS(toStringTag, "ArrayBuffer", JSPROP_READONLY),
     JS_PS_END,
 };
@@ -372,6 +381,11 @@ static const ClassExtension FixedLengthArrayBufferObjectClassExtension = {
 static const ClassExtension ResizableArrayBufferObjectClassExtension = {
     ArrayBufferObject::objectMoved<
         ResizableArrayBufferObject>,  // objectMovedOp
+};
+
+static const ClassExtension ImmutableArrayBufferObjectClassExtension = {
+    ArrayBufferObject::objectMoved<
+        ImmutableArrayBufferObject>,  // objectMovedOp
 };
 
 const JSClass ArrayBufferObject::protoClass_ = {
@@ -403,6 +417,17 @@ const JSClass ResizableArrayBufferObject::class_ = {
     &ResizableArrayBufferObjectClassExtension,
 };
 
+const JSClass ImmutableArrayBufferObject::class_ = {
+    "ArrayBuffer",
+    JSCLASS_DELAY_METADATA_BUILDER |
+        JSCLASS_HAS_RESERVED_SLOTS(RESERVED_SLOTS) |
+        JSCLASS_HAS_CACHED_PROTO(JSProto_ArrayBuffer) |
+        JSCLASS_BACKGROUND_FINALIZE,
+    &ArrayBufferObjectClassOps,
+    &ArrayBufferObjectClassSpec,
+    &ImmutableArrayBufferObjectClassExtension,
+};
+
 static bool IsArrayBuffer(HandleValue v) {
   return v.isObject() && v.toObject().is<ArrayBufferObject>();
 }
@@ -425,7 +450,7 @@ bool ArrayBufferObject::byteLengthGetter(JSContext* cx, unsigned argc,
   return CallNonGenericMethod<IsArrayBuffer, byteLengthGetterImpl>(cx, args);
 }
 
-enum class PreserveResizability : bool { No, Yes };
+enum class PreserveResizability { No, Yes, Immutable };
 
 /**
  * ArrayBufferCopyAndDetach ( arrayBuffer, newLength, preserveResizability )
@@ -455,18 +480,15 @@ static ArrayBufferObject* ArrayBufferCopyAndDetach(
                               JSMSG_TYPED_ARRAY_DETACHED);
     return nullptr;
   }
+  if (arrayBuffer->isImmutable()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_ARRAYBUFFER_IMMUTABLE);
+    return nullptr;
+  }
   if (arrayBuffer->isLengthPinned()) {
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                               JSMSG_ARRAYBUFFER_LENGTH_PINNED);
     return nullptr;
-  }
-
-  // Steps 6-7.
-  mozilla::Maybe<size_t> maxByteLength;
-  if (preserveResizability == PreserveResizability::Yes &&
-      arrayBuffer->isResizable()) {
-    auto* resizableBuffer = &arrayBuffer->as<ResizableArrayBufferObject>();
-    maxByteLength = mozilla::Some(resizableBuffer->maxByteLength());
   }
 
   // Step 8.
@@ -484,21 +506,33 @@ static ArrayBufferObject* ArrayBufferCopyAndDetach(
     return nullptr;
   }
 
-  if (maxByteLength) {
-    if (size_t(newByteLength) > *maxByteLength) {
+#ifdef NIGHTLY_BUILD
+  // Additional step from Immutable ArrayBuffer proposal.
+  if (preserveResizability == PreserveResizability::Immutable) {
+    return ImmutableArrayBufferObject::copyAndDetach(cx, size_t(newByteLength),
+                                                     arrayBuffer);
+  }
+#endif
+
+  // Steps 6-7.
+  if (preserveResizability == PreserveResizability::Yes &&
+      arrayBuffer->isResizable()) {
+    Rooted<ResizableArrayBufferObject*> resizableBuffer(
+        cx, &arrayBuffer->as<ResizableArrayBufferObject>());
+
+    size_t maxByteLength = resizableBuffer->maxByteLength();
+    if (size_t(newByteLength) > maxByteLength) {
       JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                                 JSMSG_ARRAYBUFFER_LENGTH_LARGER_THAN_MAXIMUM);
       return nullptr;
     }
 
-    Rooted<ResizableArrayBufferObject*> resizableBuffer(
-        cx, &arrayBuffer->as<ResizableArrayBufferObject>());
     return ResizableArrayBufferObject::copyAndDetach(cx, size_t(newByteLength),
                                                      resizableBuffer);
   }
 
-  return ArrayBufferObject::copyAndDetach(cx, size_t(newByteLength),
-                                          arrayBuffer);
+  return FixedLengthArrayBufferObject::copyAndDetach(cx, size_t(newByteLength),
+                                                     arrayBuffer);
 }
 
 /**
@@ -587,6 +621,35 @@ bool ArrayBufferObject::detachedGetter(JSContext* cx, unsigned argc,
   return CallNonGenericMethod<IsArrayBuffer, detachedGetterImpl>(cx, args);
 }
 
+#ifdef NIGHTLY_BUILD
+/**
+ * get ArrayBuffer.prototype.immutable
+ *
+ * https://tc39.es/proposal-immutable-arraybuffer/#sec-get-arraybuffer.prototype.immutable
+ */
+bool ArrayBufferObject::immutableGetterImpl(JSContext* cx,
+                                            const CallArgs& args) {
+  MOZ_ASSERT(IsArrayBuffer(args.thisv()));
+
+  // Step 4.
+  auto* buffer = &args.thisv().toObject().as<ArrayBufferObject>();
+  args.rval().setBoolean(buffer->isImmutable());
+  return true;
+}
+
+/**
+ * get ArrayBuffer.prototype.immutable
+ *
+ * https://tc39.es/proposal-immutable-arraybuffer/#sec-get-arraybuffer.prototype.immutable
+ */
+bool ArrayBufferObject::immutableGetter(JSContext* cx, unsigned argc,
+                                        Value* vp) {
+  // Steps 1-3.
+  CallArgs args = CallArgsFromVp(argc, vp);
+  return CallNonGenericMethod<IsArrayBuffer, immutableGetterImpl>(cx, args);
+}
+#endif
+
 /**
  * ArrayBuffer.prototype.transfer ( [ newLength ] )
  *
@@ -652,6 +715,41 @@ bool ArrayBufferObject::transferToFixedLength(JSContext* cx, unsigned argc,
                                                                         args);
 }
 
+#ifdef NIGHTLY_BUILD
+/**
+ * ArrayBuffer.prototype.transferToImmutable ( [ newLength ] )
+ *
+ * https://tc39.es/proposal-immutable-arraybuffer/#sec-arraybuffer.prototype.transfertoimmutable
+ */
+bool ArrayBufferObject::transferToImmutableImpl(JSContext* cx,
+                                                const CallArgs& args) {
+  MOZ_ASSERT(IsArrayBuffer(args.thisv()));
+
+  // Steps 1-2.
+  Rooted<ArrayBufferObject*> buffer(
+      cx, &args.thisv().toObject().as<ArrayBufferObject>());
+  auto* newBuffer = ArrayBufferCopyAndDetach(cx, buffer, args.get(0),
+                                             PreserveResizability::Immutable);
+  if (!newBuffer) {
+    return false;
+  }
+
+  args.rval().setObject(*newBuffer);
+  return true;
+}
+
+/**
+ * ArrayBuffer.prototype.transferToImmutable ( [ newLength ] )
+ *
+ * https://tc39.es/proposal-immutable-arraybuffer/#sec-arraybuffer.prototype.transfertoimmutable
+ */
+bool ArrayBufferObject::transferToImmutable(JSContext* cx, unsigned argc,
+                                            Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  return CallNonGenericMethod<IsArrayBuffer, transferToImmutableImpl>(cx, args);
+}
+#endif
+
 /**
  * ArrayBuffer.prototype.resize ( newLength )
  *
@@ -680,6 +778,9 @@ bool ArrayBufferObject::resizeImpl(JSContext* cx, const CallArgs& args) {
                               JSMSG_ARRAYBUFFER_LENGTH_PINNED);
     return false;
   }
+
+  // Additional step from Immutable ArrayBuffer proposal.
+  MOZ_ASSERT(!obj->isImmutable(), "resizable array buffers aren't immutable");
 
   // Step 6.
   if (newByteLength > obj->maxByteLength()) {
@@ -852,6 +953,13 @@ bool ArrayBufferObject::sliceImpl(JSContext* cx, const CallArgs& args) {
       return false;
     }
 
+    // Additional step from Immutable ArrayBuffer proposal.
+    if (unwrappedResult->isImmutable()) {
+      JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                JSMSG_ARRAYBUFFER_IMMUTABLE);
+      return false;
+    }
+
     // Step 20.
     if (unwrappedResult == obj) {
       JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
@@ -912,6 +1020,92 @@ bool ArrayBufferObject::slice(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   return CallNonGenericMethod<IsArrayBuffer, sliceImpl>(cx, args);
 }
+
+#ifdef NIGHTLY_BUILD
+/**
+ * ArrayBuffer.prototype.sliceToImmutable ( start, end )
+ *
+ * https://tc39.es/proposal-immutable-arraybuffer/#sec-arraybuffer.prototype.slicetoimmutable
+ */
+bool ArrayBufferObject::sliceToImmutableImpl(JSContext* cx,
+                                             const CallArgs& args) {
+  MOZ_ASSERT(IsArrayBuffer(args.thisv()));
+
+  Rooted<ArrayBufferObject*> obj(
+      cx, &args.thisv().toObject().as<ArrayBufferObject>());
+
+  // Step 4.
+  if (obj->isDetached()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_TYPED_ARRAY_DETACHED);
+    return false;
+  }
+
+  // Step 5.
+  size_t len = obj->byteLength();
+
+  // Steps 6 and 7.
+  size_t first = 0;
+  if (args.hasDefined(0)) {
+    if (!ToIntegerIndex(cx, args[0], len, &first)) {
+      return false;
+    }
+  }
+
+  // Steps 6 and 8.
+  size_t final_ = len;
+  if (args.hasDefined(1)) {
+    if (!ToIntegerIndex(cx, args[1], len, &final_)) {
+      return false;
+    }
+  }
+
+  // Step 9.
+  size_t newLen = final_ >= first ? final_ - first : 0;
+  MOZ_ASSERT(newLen <= ArrayBufferObject::ByteLengthLimit);
+
+  // Steps 10-11.
+  if (obj->isDetached()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_TYPED_ARRAY_DETACHED);
+    return false;
+  }
+
+  // Step 13.
+  //
+  // Reacquire the length in case the buffer has been resized.
+  size_t currentLen = obj->byteLength();
+
+  // Step 14.
+  if (currentLen < final_) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_ARRAYBUFFER_COPY_RANGE);
+    return false;
+  }
+
+  // Steps 12 and 15.
+  auto* newBuffer = ImmutableArrayBufferObject::slice(cx, newLen, obj, first);
+  if (!newBuffer) {
+    return false;
+  }
+
+  // Step 16.
+  args.rval().setObject(*newBuffer);
+  return true;
+}
+
+/**
+ * ArrayBuffer.prototype.sliceToImmutable ( start, end )
+ *
+ * https://tc39.es/proposal-immutable-arraybuffer/#sec-arraybuffer.prototype.slicetoimmutable
+ */
+bool ArrayBufferObject::sliceToImmutable(JSContext* cx, unsigned argc,
+                                         Value* vp) {
+  // Steps 1-3.
+  CallArgs args = CallArgsFromVp(argc, vp);
+  return CallNonGenericMethod<IsArrayBuffer, sliceToImmutableImpl>(cx, args);
+}
+#endif
 
 /*
  * ArrayBuffer.isView(obj); ES6 (Dec 2013 draft) 24.1.3.1
@@ -1083,6 +1277,7 @@ void ArrayBufferObject::detach(JSContext* cx,
   cx->check(buffer);
   MOZ_ASSERT(!buffer->isPreparedForAsmJS());
   MOZ_ASSERT(!buffer->isLengthPinned());
+  MOZ_ASSERT(!buffer->isImmutable());
 
   // Update all views of the buffer to account for the buffer having been
   // detached, and clear the buffer's data and list of views.
@@ -1118,6 +1313,7 @@ void ResizableArrayBufferObject::resize(size_t newByteLength) {
   MOZ_ASSERT(!isPreparedForAsmJS());
   MOZ_ASSERT(!isWasm());
   MOZ_ASSERT(!isDetached());
+  MOZ_ASSERT(!isImmutable());
   MOZ_ASSERT(!isLengthPinned());
   MOZ_ASSERT(isResizable());
   MOZ_ASSERT(newByteLength <= maxByteLength());
@@ -1583,6 +1779,8 @@ bool ArrayBufferObject::prepareForAsmJS() {
              "prior size checking should have excluded empty buffers");
   MOZ_ASSERT(!isResizable(),
              "prior checks should have excluded resizable buffers");
+  MOZ_ASSERT(!isImmutable(),
+             "prior checks should have excluded immutable buffers");
 
   switch (bufferKind()) {
     case MALLOCED_ARRAYBUFFER_CONTENTS_ARENA:
@@ -1637,6 +1835,10 @@ uint8_t* ResizableArrayBufferObject::inlineDataPointer() const {
   return static_cast<uint8_t*>(fixedData(JSCLASS_RESERVED_SLOTS(&class_)));
 }
 
+uint8_t* ImmutableArrayBufferObject::inlineDataPointer() const {
+  return static_cast<uint8_t*>(fixedData(JSCLASS_RESERVED_SLOTS(&class_)));
+}
+
 uint8_t* ArrayBufferObject::dataPointer() const {
   return static_cast<uint8_t*>(getFixedSlot(DATA_SLOT).toPrivate());
 }
@@ -1648,6 +1850,7 @@ SharedMem<uint8_t*> ArrayBufferObject::dataPointerShared() const {
 ArrayBufferObject::FreeInfo* ArrayBufferObject::freeInfo() const {
   MOZ_ASSERT(isExternal());
   MOZ_ASSERT(!isResizable());
+  MOZ_ASSERT(!isImmutable());
   auto* data = as<FixedLengthArrayBufferObject>().inlineDataPointer();
   return reinterpret_cast<FreeInfo*>(data);
 }
@@ -1801,6 +2004,7 @@ static void CheckStealPreconditions(Handle<ArrayBufferObject*> buffer,
   cx->check(buffer);
 
   MOZ_ASSERT(!buffer->isDetached(), "can't steal from a detached buffer");
+  MOZ_ASSERT(!buffer->isImmutable(), "can't steal from an immutable buffer");
   MOZ_ASSERT(!buffer->isLengthPinned(),
              "can't steal from a buffer with a pinned length");
   MOZ_ASSERT(!buffer->isPreparedForAsmJS(),
@@ -1977,7 +2181,8 @@ static ArrayBufferType* NewArrayBufferObject(JSContext* cx, HandleObject proto_,
              allocKind == gc::AllocKind::ARRAYBUFFER16);
 
   static_assert(std::is_same_v<ArrayBufferType, FixedLengthArrayBufferObject> ||
-                std::is_same_v<ArrayBufferType, ResizableArrayBufferObject>);
+                std::is_same_v<ArrayBufferType, ResizableArrayBufferObject> ||
+                std::is_same_v<ArrayBufferType, ImmutableArrayBufferObject>);
 
   RootedObject proto(cx, proto_);
   if (!proto) {
@@ -2020,17 +2225,22 @@ static ArrayBufferType* NewArrayBufferObject(JSContext* cx, HandleObject proto_,
 
 // Creates a new ArrayBufferObject with %ArrayBuffer.prototype% as proto and no
 // space for inline data.
-static ArrayBufferObject* NewArrayBufferObject(JSContext* cx) {
+static auto* NewArrayBufferObject(JSContext* cx) {
   constexpr auto allocKind =
       GetArrayBufferGCObjectKind(FixedLengthArrayBufferObject::RESERVED_SLOTS);
   return NewArrayBufferObject<FixedLengthArrayBufferObject>(cx, nullptr,
                                                             allocKind);
 }
-static ResizableArrayBufferObject* NewResizableArrayBufferObject(
-    JSContext* cx) {
+static auto* NewResizableArrayBufferObject(JSContext* cx) {
   constexpr auto allocKind =
       GetArrayBufferGCObjectKind(ResizableArrayBufferObject::RESERVED_SLOTS);
   return NewArrayBufferObject<ResizableArrayBufferObject>(cx, nullptr,
+                                                          allocKind);
+}
+static auto* NewImmutableArrayBufferObject(JSContext* cx) {
+  constexpr auto allocKind =
+      GetArrayBufferGCObjectKind(ImmutableArrayBufferObject::RESERVED_SLOTS);
+  return NewArrayBufferObject<ImmutableArrayBufferObject>(cx, nullptr,
                                                           allocKind);
 }
 
@@ -2109,7 +2319,8 @@ ArrayBufferObject::createUninitializedBufferAndData(
              "caller must validate the byte count it passes");
 
   static_assert(std::is_same_v<ArrayBufferType, FixedLengthArrayBufferObject> ||
-                std::is_same_v<ArrayBufferType, ResizableArrayBufferObject>);
+                std::is_same_v<ArrayBufferType, ResizableArrayBufferObject> ||
+                std::is_same_v<ArrayBufferType, ImmutableArrayBufferObject>);
 
   // Try fitting the data inline with the object by repurposing fixed-slot
   // storage.  Add extra fixed slots if necessary to accomplish this, but don't
@@ -2160,16 +2371,19 @@ ArrayBufferObject::createUninitializedBufferAndData(
   return {buffer, nullptr};
 }
 
-template <ArrayBufferObject::FillContents FillType>
-/* static */ std::tuple<ArrayBufferObject*, uint8_t*>
+template <class ArrayBufferType, ArrayBufferObject::FillContents FillType>
+/* static */ std::tuple<ArrayBufferType*, uint8_t*>
 ArrayBufferObject::createBufferAndData(
     JSContext* cx, size_t nbytes, AutoSetNewObjectMetadata& metadata,
     JS::Handle<JSObject*> proto /* = nullptr */) {
   MOZ_ASSERT(nbytes <= ArrayBufferObject::ByteLengthLimit,
              "caller must validate the byte count it passes");
 
+  static_assert(!std::is_same_v<ArrayBufferType, ResizableArrayBufferObject>,
+                "Use ResizableArrayBufferObject::createBufferAndData");
+
   auto [buffer, data] =
-      createUninitializedBufferAndData<FixedLengthArrayBufferObject, FillType>(
+      createUninitializedBufferAndData<ArrayBufferType, FillType>(
           cx, nbytes, metadata, proto);
   if (!buffer) {
     return {nullptr, nullptr};
@@ -2221,7 +2435,8 @@ ResizableArrayBufferObject::createBufferAndData(
   return {buffer, data};
 }
 
-/* static */ ArrayBufferObject* ArrayBufferObject::copy(
+template <class ArrayBufferType>
+/* static */ ArrayBufferType* ArrayBufferObject::copy(
     JSContext* cx, size_t newByteLength,
     JS::Handle<ArrayBufferObject*> source) {
   MOZ_ASSERT(!source->isDetached());
@@ -2233,8 +2448,9 @@ ResizableArrayBufferObject::createBufferAndData(
   if (newByteLength > sourceByteLength) {
     // Copy into a larger buffer.
     AutoSetNewObjectMetadata metadata(cx);
-    auto [buffer, toFill] = createBufferAndData<FillContents::Zero>(
-        cx, newByteLength, metadata, nullptr);
+    auto [buffer, toFill] =
+        createBufferAndData<ArrayBufferType, FillContents::Zero>(
+            cx, newByteLength, metadata, nullptr);
     if (!buffer) {
       return nullptr;
     }
@@ -2246,8 +2462,9 @@ ResizableArrayBufferObject::createBufferAndData(
 
   // Copy into a smaller or same size buffer.
   AutoSetNewObjectMetadata metadata(cx);
-  auto [buffer, toFill] = createBufferAndData<FillContents::Uninitialized>(
-      cx, newByteLength, metadata, nullptr);
+  auto [buffer, toFill] =
+      createBufferAndData<ArrayBufferType, FillContents::Uninitialized>(
+          cx, newByteLength, metadata, nullptr);
   if (!buffer) {
     return nullptr;
   }
@@ -2300,26 +2517,28 @@ ResizableArrayBufferObject::createBufferAndData(
   return buffer;
 }
 
-/* static */ ArrayBufferObject* ArrayBufferObject::copyAndDetach(
+template <class ArrayBufferType>
+/* static */ ArrayBufferType* ArrayBufferObject::copyAndDetach(
     JSContext* cx, size_t newByteLength,
     JS::Handle<ArrayBufferObject*> source) {
   MOZ_ASSERT(!source->isDetached());
+  MOZ_ASSERT(!source->isImmutable());
   MOZ_ASSERT(!source->isLengthPinned());
   MOZ_ASSERT(newByteLength <= ArrayBufferObject::ByteLengthLimit,
              "caller must validate the byte count it passes");
 
-  if (newByteLength > FixedLengthArrayBufferObject::MaxInlineBytes &&
-      source->isMalloced()) {
+  if (newByteLength > ArrayBufferType::MaxInlineBytes && source->isMalloced()) {
     if (newByteLength == source->associatedBytes()) {
-      return copyAndDetachSteal(cx, source);
+      return copyAndDetachSteal<ArrayBufferType>(cx, source);
     }
     if (source->bufferKind() ==
         ArrayBufferObject::MALLOCED_ARRAYBUFFER_CONTENTS_ARENA) {
-      return copyAndDetachRealloc(cx, newByteLength, source);
+      return copyAndDetachRealloc<ArrayBufferType>(cx, newByteLength, source);
     }
   }
 
-  auto* newBuffer = ArrayBufferObject::copy(cx, newByteLength, source);
+  auto* newBuffer =
+      ArrayBufferObject::copy<ArrayBufferType>(cx, newByteLength, source);
   if (!newBuffer) {
     return nullptr;
   }
@@ -2328,19 +2547,21 @@ ResizableArrayBufferObject::createBufferAndData(
   return newBuffer;
 }
 
-/* static */ ArrayBufferObject* ArrayBufferObject::copyAndDetachSteal(
+template <class ArrayBufferType>
+/* static */ ArrayBufferType* ArrayBufferObject::copyAndDetachSteal(
     JSContext* cx, JS::Handle<ArrayBufferObject*> source) {
   MOZ_ASSERT(!source->isDetached());
+  MOZ_ASSERT(!source->isImmutable());
   MOZ_ASSERT(!source->isLengthPinned());
   MOZ_ASSERT(source->isMalloced());
 
   size_t newByteLength = source->associatedBytes();
-  MOZ_ASSERT(newByteLength > FixedLengthArrayBufferObject::MaxInlineBytes,
+  MOZ_ASSERT(newByteLength > ArrayBufferType::MaxInlineBytes,
              "prefer copying small buffers");
   MOZ_ASSERT(source->byteLength() <= newByteLength,
              "source length is less-or-equal to |newByteLength|");
 
-  auto* newBuffer = ArrayBufferObject::createEmpty(cx);
+  auto* newBuffer = ArrayBufferType::createEmpty(cx);
   if (!newBuffer) {
     return nullptr;
   }
@@ -2365,13 +2586,15 @@ ResizableArrayBufferObject::createBufferAndData(
   return newBuffer;
 }
 
-/* static */ ArrayBufferObject* ArrayBufferObject::copyAndDetachRealloc(
+template <class ArrayBufferType>
+/* static */ ArrayBufferType* ArrayBufferObject::copyAndDetachRealloc(
     JSContext* cx, size_t newByteLength,
     JS::Handle<ArrayBufferObject*> source) {
   MOZ_ASSERT(!source->isDetached());
+  MOZ_ASSERT(!source->isImmutable());
   MOZ_ASSERT(!source->isLengthPinned());
   MOZ_ASSERT(source->bufferKind() == MALLOCED_ARRAYBUFFER_CONTENTS_ARENA);
-  MOZ_ASSERT(newByteLength > FixedLengthArrayBufferObject::MaxInlineBytes,
+  MOZ_ASSERT(newByteLength > ArrayBufferType::MaxInlineBytes,
              "prefer copying small buffers");
   MOZ_ASSERT(newByteLength <= ArrayBufferObject::ByteLengthLimit,
              "caller must validate the byte count it passes");
@@ -2382,7 +2605,7 @@ ResizableArrayBufferObject::createBufferAndData(
   MOZ_ASSERT(source->byteLength() <= oldByteLength,
              "source length is less-or-equal to |oldByteLength|");
 
-  Rooted<ArrayBufferObject*> newBuffer(cx, ArrayBufferObject::createEmpty(cx));
+  Rooted<ArrayBufferType*> newBuffer(cx, ArrayBufferType::createEmpty(cx));
   if (!newBuffer) {
     return nullptr;
   }
@@ -2427,6 +2650,7 @@ ResizableArrayBufferObject::copyAndDetach(
     JSContext* cx, size_t newByteLength,
     JS::Handle<ResizableArrayBufferObject*> source) {
   MOZ_ASSERT(!source->isDetached());
+  MOZ_ASSERT(!source->isImmutable());
   MOZ_ASSERT(!source->isLengthPinned());
   MOZ_ASSERT(newByteLength <= source->maxByteLength());
 
@@ -2449,6 +2673,7 @@ ResizableArrayBufferObject::copyAndDetachSteal(
     JSContext* cx, size_t newByteLength,
     JS::Handle<ResizableArrayBufferObject*> source) {
   MOZ_ASSERT(!source->isDetached());
+  MOZ_ASSERT(!source->isImmutable());
   MOZ_ASSERT(!source->isLengthPinned());
   MOZ_ASSERT(newByteLength <= source->maxByteLength());
   MOZ_ASSERT(source->isMalloced());
@@ -2489,7 +2714,30 @@ ResizableArrayBufferObject::copyAndDetachSteal(
   return newBuffer;
 }
 
-ArrayBufferObject* ArrayBufferObject::createZeroed(
+/* static */ ImmutableArrayBufferObject* ImmutableArrayBufferObject::slice(
+    JSContext* cx, size_t newByteLength, JS::Handle<ArrayBufferObject*> source,
+    size_t sourceByteOffset) {
+  MOZ_ASSERT(newByteLength <= ArrayBufferObject::ByteLengthLimit,
+             "caller must validate the byte count it passes");
+  MOZ_ASSERT(!source->isDetached());
+  MOZ_ASSERT(source->byteLength() >= sourceByteOffset);
+  MOZ_ASSERT(source->byteLength() >= sourceByteOffset + newByteLength);
+
+  AutoSetNewObjectMetadata metadata(cx);
+  auto [newBuffer, toFill] = createBufferAndData<ImmutableArrayBufferObject,
+                                                 FillContents::Uninitialized>(
+      cx, newByteLength, metadata);
+  if (!newBuffer) {
+    return nullptr;
+  }
+
+  std::uninitialized_copy_n(source->dataPointer() + sourceByteOffset,
+                            newByteLength, toFill);
+
+  return newBuffer;
+}
+
+FixedLengthArrayBufferObject* ArrayBufferObject::createZeroed(
     JSContext* cx, size_t nbytes, HandleObject proto /* = nullptr */) {
   // 24.1.1.1, step 3 (Inlined 6.2.6.1 CreateByteDataBlock, step 2).
   if (!CheckArrayBufferTooLarge(cx, nbytes)) {
@@ -2499,7 +2747,8 @@ ArrayBufferObject* ArrayBufferObject::createZeroed(
 
   AutoSetNewObjectMetadata metadata(cx);
   auto [buffer, toFill] =
-      createBufferAndData<FillContents::Zero>(cx, nbytes, metadata, proto);
+      createBufferAndData<FixedLengthArrayBufferObject, FillContents::Zero>(
+          cx, nbytes, metadata, proto);
   (void)toFill;
   return buffer;
 }
@@ -2525,9 +2774,25 @@ ResizableArrayBufferObject* ResizableArrayBufferObject::createZeroed(
   return buffer;
 }
 
-ArrayBufferObject* ArrayBufferObject::createEmpty(JSContext* cx) {
+ImmutableArrayBufferObject* ImmutableArrayBufferObject::createZeroed(
+    JSContext* cx, size_t byteLength, HandleObject proto /* = nullptr */) {
+  // 24.1.1.1, step 3 (Inlined 6.2.6.1 CreateByteDataBlock, step 2).
+  if (!CheckArrayBufferTooLarge(cx, byteLength)) {
+    MOZ_DIAGNOSTIC_ASSERT(!cx->brittleMode, "buffer too large");
+    return nullptr;
+  }
+
   AutoSetNewObjectMetadata metadata(cx);
-  ArrayBufferObject* obj = NewArrayBufferObject(cx);
+  auto [buffer, toFill] =
+      createBufferAndData<ImmutableArrayBufferObject, FillContents::Zero>(
+          cx, byteLength, metadata, proto);
+  (void)toFill;
+  return buffer;
+}
+
+FixedLengthArrayBufferObject* ArrayBufferObject::createEmpty(JSContext* cx) {
+  AutoSetNewObjectMetadata metadata(cx);
+  auto* obj = NewArrayBufferObject(cx);
   if (!obj) {
     return nullptr;
   }
@@ -2545,6 +2810,18 @@ ResizableArrayBufferObject* ResizableArrayBufferObject::createEmpty(
   }
 
   obj->initialize(0, 0, BufferContents::createNoData());
+  return obj;
+}
+
+ImmutableArrayBufferObject* ImmutableArrayBufferObject::createEmpty(
+    JSContext* cx) {
+  AutoSetNewObjectMetadata metadata(cx);
+  auto* obj = NewImmutableArrayBufferObject(cx);
+  if (!obj) {
+    return nullptr;
+  }
+
+  obj->initialize(0, BufferContents::createNoData());
   return obj;
 }
 
@@ -3274,6 +3551,11 @@ JS_PUBLIC_API bool JS::DetachArrayBuffer(JSContext* cx, HandleObject obj) {
                               JSMSG_WASM_NO_TRANSFER);
     return false;
   }
+  if (unwrappedBuffer->isImmutable()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_ARRAYBUFFER_IMMUTABLE);
+    return false;
+  }
   if (unwrappedBuffer->isLengthPinned()) {
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                               JSMSG_ARRAYBUFFER_LENGTH_PINNED);
@@ -3364,8 +3646,8 @@ JS_PUBLIC_API JSObject* JS::CopyArrayBuffer(JSContext* cx,
     return nullptr;
   }
 
-  return ArrayBufferObject::copy(cx, unwrappedSource->byteLength(),
-                                 unwrappedSource);
+  return FixedLengthArrayBufferObject::copy(cx, unwrappedSource->byteLength(),
+                                            unwrappedSource);
 }
 
 JS_PUBLIC_API JSObject* JS::NewExternalArrayBuffer(
@@ -3436,6 +3718,11 @@ JS_PUBLIC_API void* JS::StealArrayBufferContents(JSContext* cx,
   if (unwrappedBuffer->isDetached()) {
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                               JSMSG_TYPED_ARRAY_DETACHED);
+    return nullptr;
+  }
+  if (unwrappedBuffer->isImmutable()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_ARRAYBUFFER_IMMUTABLE);
     return nullptr;
   }
   if (unwrappedBuffer->isLengthPinned()) {
@@ -3515,6 +3802,8 @@ const JSClass* const JS::ArrayBuffer::FixedLengthUnsharedClass =
     &FixedLengthArrayBufferObject::class_;
 const JSClass* const JS::ArrayBuffer::ResizableUnsharedClass =
     &ResizableArrayBufferObject::class_;
+const JSClass* const JS::ArrayBuffer::ImmutableUnsharedClass =
+    &ImmutableArrayBufferObject::class_;
 const JSClass* const JS::ArrayBuffer::FixedLengthSharedClass =
     &FixedLengthSharedArrayBufferObject::class_;
 const JSClass* const JS::ArrayBuffer::GrowableSharedClass =
@@ -3576,6 +3865,10 @@ bool JS::ArrayBufferCopyData(JSContext* cx, Handle<JSObject*> toBlock,
                               JSMSG_ARRAYBUFFER_COPY_RANGE);
     return false;
   }
+
+  MOZ_ASSERT(!unwrappedToBlock->isDetached());
+  MOZ_ASSERT(!unwrappedToBlock->isImmutable());
+  MOZ_ASSERT(!unwrappedFromBlock->isDetached());
 
   // If both are array buffers, can use ArrayBufferCopyData
   if (unwrappedToBlock->is<ArrayBufferObject>() &&

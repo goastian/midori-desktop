@@ -20,7 +20,7 @@ import subprocess
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Optional, Union
 from urllib.parse import urlparse
 
 
@@ -29,11 +29,13 @@ class Worker(Enum):
     JAVA_BIN = "/usr/bin/java"
     FLANK_BIN = "/builds/worker/test-tools/flank.jar"
     RESULTS_DIR = "/builds/worker/artifacts/results"
-    ARTIFACTS_DIR = "/builds/worker/artifacts"
 
 
-ANDROID_TEST = "./automation/taskcluster/androidTest"
+# Locate other scripts and configs relative to this script. The actual
+# invocation of Flank will be relative to ANDROID_TEST path below.
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+TOPSRCDIR = os.path.join(SCRIPT_DIR, "../../..")
+ANDROID_TEST = os.path.join(TOPSRCDIR, "mobile/android/test_infra")
 
 
 def setup_logging():
@@ -43,7 +45,7 @@ def setup_logging():
 
 
 def run_command(
-    command: List[Union[str, bytes]], log_path: Optional[str] = None
+    command: list[Union[str, bytes]], log_path: Optional[str] = None
 ) -> int:
     """Execute a command, log its output, and check for errors.
 
@@ -55,7 +57,11 @@ def run_command(
     """
 
     with subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=ANDROID_TEST,
     ) as process:
         if log_path:
             with open(log_path, "a") as log_file:
@@ -111,7 +117,7 @@ def execute_tests(
         "android",
         "run",
         "--config",
-        f"{ANDROID_TEST}/flank-{flank_config}.yml",
+        f"{ANDROID_TEST}/flank-configs/{flank_config}",
         "--app",
         str(apk_app),
         "--local-result-dir",
@@ -149,57 +155,26 @@ def process_results(flank_config: str, test_type: str = "instrumentation") -> No
         flank_config: The YML configuration for Flank to use e.g, automation/taskcluster/androidTest/flank-<config>.yml
     """
 
-    # Ensure directories exist and scripts are executable
-    github_dir = os.path.join(Worker.ARTIFACTS_DIR.value, "github")
-    os.makedirs(github_dir, exist_ok=True)
-
-    parse_ui_test_script = os.path.join(ANDROID_TEST, "parse-ui-test.py")
-    parse_ui_test_fromfile_script = os.path.join(
-        ANDROID_TEST, "parse-ui-test-fromfile.py"
-    )
+    parse_junit_results_artifact = os.path.join(SCRIPT_DIR, "parse-junit-results.py")
     copy_robo_crash_artifacts_script = os.path.join(
         SCRIPT_DIR, "copy-artifacts-from-ftl.py"
     )
 
-    os.chmod(parse_ui_test_script, 0o755)
-    os.chmod(parse_ui_test_fromfile_script, 0o755)
+    os.chmod(parse_junit_results_artifact, 0o755)
     os.chmod(copy_robo_crash_artifacts_script, 0o755)
 
-    # Run parsing scripts and check for errors
-
-    # Process the results differently based on the test type: robo or instrumentation
-    exit_code = 0
+    # Process the results differently based on the test type: instrumentation or robo
+    #
+    # Instrumentation (i.e, Android UI Tests): parse the JUnit results for CI logging
+    # Robo Test (i.e, self-crawling): copy crash artifacts from Google Cloud Storage over
     if test_type == "instrumentation":
-        exit_code = run_command(
-            [parse_ui_test_fromfile_script, "--results", Worker.RESULTS_DIR.value],
+        run_command(
+            [parse_junit_results_artifact, "--results", Worker.RESULTS_DIR.value],
             "flank.log",
         )
 
-    # If the test type is robo, run a script that copies the crash artifacts from Cloud Storage over (if there are any from failed devices)
     if test_type == "robo":
-        exit_code = run_command([copy_robo_crash_artifacts_script, "crash_log"])
-
-    command = [
-        parse_ui_test_script,
-        "--exit-code",
-        str(0),
-        "--log",
-        "flank.log",
-        "--results",
-        Worker.RESULTS_DIR.value,
-        "--output-md",
-        os.path.join(github_dir, "customCheckRunText.md"),
-        "--device-type",
-        flank_config,
-    ]
-    if exit_code == 0:
-        # parse_ui_test_script error messages are pretty generic; only
-        # report them if errors have not already been reported
-        command.append("--report-treeherder-failures")
-    run_command(
-        command,
-        "flank.log",
-    )
+        run_command([copy_robo_crash_artifacts_script, "crash_log"])
 
 
 def main():
@@ -209,7 +184,8 @@ def main():
     )
     parser.add_argument(
         "flank_config",
-        help="The YML configuration for Flank to use e.g, automation/taskcluster/androidTest/flank-<config>.yml",
+        help="The YML configuration for Flank to use e.g, 'fenix/flank-arm-debug.yml'."
+        + " This is relative to 'mobile/android/test_infra/flank-configs'.",
     )
     parser.add_argument(
         "apk_app", help="Absolute path to a Android APK application package"

@@ -1010,6 +1010,12 @@ bool Font::ParseTable(const TableEntry& table_entry, const uint8_t* data,
       ret = table->Parse(table_data, table_length);
       if (ret)
         AddTable(table_entry, table);
+      else if (action == TABLE_ACTION_SANITIZE_SOFT) {
+        // We're dropping the table (having reported whatever errors we found),
+        // but do not return failure, so that processing continues.
+        delete table;
+        ret = true;
+      }
     }
   }
 

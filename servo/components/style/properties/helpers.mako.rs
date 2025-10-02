@@ -184,7 +184,7 @@
                 pub UnderlyingList<single_value::T>,
             );
 
-            type ResolvedList = OwnedList<<single_value::T as ToResolvedValue>::ResolvedValue>;
+            type ResolvedList = <OwnedList<single_value::T> as ToResolvedValue>::ResolvedValue;
             impl ToResolvedValue for ComputedList {
                 type ResolvedValue = ResolvedList;
 
@@ -231,7 +231,7 @@
             // FIXME(emilio): For some reason rust thinks that this alias is
             // unused, even though it's clearly used below?
             #[allow(unused)]
-            type AnimatedList = OwnedList<<single_value::T as ToAnimatedValue>::AnimatedValue>;
+            type AnimatedList = <OwnedList<single_value::T> as ToAnimatedValue>::AnimatedValue;
             % if is_shared_list:
             impl ToAnimatedValue for ComputedList {
                 type AnimatedValue = AnimatedList;
@@ -438,16 +438,33 @@
                         CSSWideKeyword::Unset |
                         % endif
                         CSSWideKeyword::Inherit => {
-                            % if property.style_struct.inherited:
-                                declaration.debug_crash("Unexpected inherit or unset for inherited property");
-                            % else:
+                            % if not property.style_struct.inherited:
                                 context.rule_cache_conditions.borrow_mut().set_uncacheable();
+                            % endif
+                            % if property.is_zoom_dependent():
+                                if !context.builder.effective_zoom_for_inheritance.is_one() {
+                                    let old_zoom = context.builder.effective_zoom;
+                                    context.builder.effective_zoom = context.builder.effective_zoom_for_inheritance;
+                                    let computed = context.builder.inherited_style.clone_${property.ident}();
+                                    let specified = ToComputedValue::from_computed_value(&computed);
+                                    % if property.boxed:
+                                    let specified = Box::new(specified);
+                                    % endif
+                                    let decl = PropertyDeclaration::${property.camel_case}(specified);
+                                    cascade_property(&decl, context);
+                                    context.builder.effective_zoom = old_zoom;
+                                    return;
+                                }
+                            % endif
+                            % if property.style_struct.inherited:
+                                declaration.debug_crash("Unexpected inherit or unset for non-zoom-dependent inherited property");
+                            % else:
                                 context.builder.inherit_${property.ident}();
                             % endif
                         }
                         CSSWideKeyword::RevertLayer |
                         CSSWideKeyword::Revert => {
-                            declaration.debug_crash("Found revert/revert-layer not deal with");
+                            declaration.debug_crash("Found revert/revert-layer not dealt with");
                         },
                     }
                     return;
@@ -720,7 +737,7 @@
                 // Define all of the expected variables that correspond to the shorthand
                 % for sub_property in shorthand.sub_properties:
                     let mut ${sub_property.ident} =
-                        None::< &'a longhands::${sub_property.ident}::SpecifiedValue>;
+                        None::<&'a longhands::${sub_property.ident}::SpecifiedValue>;
                 % endfor
 
                 // Attempt to assign the incoming declarations to the expected variables

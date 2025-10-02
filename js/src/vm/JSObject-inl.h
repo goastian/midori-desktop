@@ -132,6 +132,7 @@ inline bool ClassCanHaveFixedData(const JSClass* clasp) {
   return !clasp->isNativeObject() ||
          clasp == &js::FixedLengthArrayBufferObject::class_ ||
          clasp == &js::ResizableArrayBufferObject::class_ ||
+         clasp == &js::ImmutableArrayBufferObject::class_ ||
          js::IsTypedArrayClass(clasp);
 }
 #endif
@@ -550,7 +551,13 @@ inline bool IsConstructor(const Value& v) {
 }
 
 static inline bool MaybePreserveDOMWrapper(JSContext* cx, HandleObject obj) {
-  if (!obj->getClass()->isDOMClass()) {
+  const JSClass* clasp = obj->getClass();
+  // If this ever changes, we'll just need to reevaluate the check below
+  MOZ_ASSERT_IF(clasp->preservesWrapper(), clasp->isDOMClass());
+  if (!clasp->isDOMClass()) {
+    return true;
+  }
+  if (JS::GetReservedSlot(obj, JS_OBJECT_WRAPPER_SLOT).isUndefined()) {
     return true;
   }
 

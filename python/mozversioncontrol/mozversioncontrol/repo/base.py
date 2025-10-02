@@ -8,7 +8,7 @@ import re
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 from mach.util import to_optional_path
 from mozfile import which
@@ -85,12 +85,14 @@ class Repository(abc.ABC):
             return "src"
 
         (cmd, return_codes, env) = self._process_run_args(*args, **runargs)
+        stderr = runargs.get("stderr", None)
         try:
             return subprocess.check_output(
                 cmd,
                 cwd=self.path,
                 encoding=encoding,
                 env=env,
+                stderr=stderr,
             )
         except subprocess.CalledProcessError as e:
             if e.returncode in return_codes:
@@ -267,7 +269,7 @@ class Repository(abc.ABC):
     def push_to_try(
         self,
         message: str,
-        changed_files: Dict[str, str] = {},
+        changed_files: dict[str, str] = {},
         allow_log_capture: bool = False,
     ):
         """Create a temporary commit, push it to try and clean it up
@@ -343,18 +345,18 @@ class Repository(abc.ABC):
         self,
         head: Optional[str] = None,
         limit: Optional[int] = None,
-        follow: Optional[List[str]] = None,
-    ) -> List[str]:
+        follow: Optional[list[str]] = None,
+    ) -> list[str]:
         """Return a list of commit SHAs for nodes on the current branch."""
 
     @abc.abstractmethod
-    def get_commit_patches(self, nodes: str) -> List[bytes]:
+    def get_commit_patches(self, nodes: str) -> list[bytes]:
         """Return the contents of the patch `node` in the VCS's standard format."""
 
     @contextmanager
     @abc.abstractmethod
     def try_commit(
-        self, commit_message: str, changed_files: Optional[Dict[str, str]] = None
+        self, commit_message: str, changed_files: Optional[dict[str, str]] = None
     ):
         """Create a temporary try commit as a context manager.
 
@@ -365,7 +367,7 @@ class Repository(abc.ABC):
         see `stage_changes`.
         """
 
-    def stage_changes(self, changed_files: Dict[str, str]):
+    def stage_changes(self, changed_files: dict[str, str]):
         """Stage a set of file changes
 
         `changed_files` is a dict that contains the paths of files to change or
@@ -385,4 +387,9 @@ class Repository(abc.ABC):
     @abc.abstractmethod
     def get_last_modified_time_for_file(self, path: Path):
         """Return last modified in VCS time for the specified file."""
+        pass
+
+    @abc.abstractmethod
+    def configure(self, state_dir: Path, update_only: bool = False):
+        """Perform initial VCS setup, applying sensible defaults for configuration."""
         pass

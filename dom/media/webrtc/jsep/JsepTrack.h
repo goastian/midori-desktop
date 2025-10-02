@@ -136,7 +136,7 @@ class JsepTrack {
       mVideoPreferredCodec = rhs.mVideoPreferredCodec;
       mUniqueReceivePayloadTypes = rhs.mUniqueReceivePayloadTypes;
       mReceivePayloadTypes = rhs.mReceivePayloadTypes;
-      mDuplicateReceivePayloadTypes = rhs.mDuplicateReceivePayloadTypes;
+      mOtherReceivePayloadTypes = rhs.mOtherReceivePayloadTypes;
 
       mPrototypeCodecs.clear();
       for (const auto& codec : rhs.mPrototypeCodecs) {
@@ -217,8 +217,8 @@ class JsepTrack {
   virtual nsresult Negotiate(const SdpMediaSection& answer,
                              const SdpMediaSection& remote,
                              const SdpMediaSection& local);
-  static void SetUniqueReceivePayloadTypes(std::vector<JsepTrack*>& tracks,
-                                           bool localOffer = false);
+  static void SetReceivePayloadTypes(std::vector<JsepTrack*>& tracks,
+                                     bool localOffer = false);
   virtual void GetNegotiatedPayloadTypes(
       std::vector<uint16_t>* payloadTypes) const;
 
@@ -261,12 +261,17 @@ class JsepTrack {
     return mVideoPreferredCodec;
   }
 
-  std::vector<uint8_t> GetUniqueReceivePayloadTypes() const {
+  void ResetReceivePayloadTypes() {
+    mUniqueReceivePayloadTypes.clear();
+    mOtherReceivePayloadTypes.clear();
+  }
+
+  const std::vector<uint8_t>& GetUniqueReceivePayloadTypes() const {
     return mUniqueReceivePayloadTypes;
   }
 
-  std::vector<uint8_t> GetDuplicateReceivePayloadTypes() const {
-    return mDuplicateReceivePayloadTypes;
+  const std::vector<uint8_t>& GetOtherReceivePayloadTypes() const {
+    return mOtherReceivePayloadTypes;
   }
 
  private:
@@ -341,8 +346,8 @@ class JsepTrack {
   // Used for matching SSRC to PT as only unique PTs support for this.
   std::vector<uint8_t> mUniqueReceivePayloadTypes;
   std::vector<uint16_t> mReceivePayloadTypes;
-  // Payload types that are duplicate
-  std::vector<uint8_t> mDuplicateReceivePayloadTypes;
+  // Payload types that are registered to some track but not us.
+  std::vector<uint8_t> mOtherReceivePayloadTypes;
 };
 
 }  // namespace mozilla

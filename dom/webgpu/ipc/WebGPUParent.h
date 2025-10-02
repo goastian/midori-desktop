@@ -122,16 +122,12 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
                                 const ipc::ByteBuf& aByteBuf);
   ipc::IPCResult RecvComputePass(RawId aEncoderId, RawId aDeviceId,
                                  const ipc::ByteBuf& aByteBuf);
-  ipc::IPCResult RecvBumpImplicitBindGroupLayout(RawId aPipelineId,
-                                                 bool aIsCompute,
-                                                 uint32_t aIndex,
-                                                 RawId aAssignId);
 
   ipc::IPCResult RecvDevicePushErrorScope(RawId aDeviceId, dom::GPUErrorFilter);
   ipc::IPCResult RecvDevicePopErrorScope(
       RawId aDeviceId, DevicePopErrorScopeResolver&& aResolver);
-  ipc::IPCResult RecvGenerateError(Maybe<RawId> aDeviceId, dom::GPUErrorFilter,
-                                   const nsCString& message);
+  ipc::IPCResult RecvReportError(RawId aDeviceId, GPUErrorFilter aType,
+                                 const nsCString& aMessage);
 
   ipc::IPCResult GetFrontBufferSnapshot(
       IProtocol* aProtocol, const layers::RemoteTextureOwnerId& aOwnerId,

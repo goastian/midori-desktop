@@ -28,11 +28,13 @@ class MockJsepCodecPreferences : public JsepCodecPreferences {
         mUseRemb(Prefs::kDefaultUseRemb) {}
 
   bool AV1Enabled() const override { return mAv1Enabled; }
+  bool AV1Preferred() const override { return mAv1Preferred; }
   bool H264Enabled() const override { return mH264Enabled; }
   bool SoftwareH264Enabled() const override { return mSoftwareH264Enabled; }
-  bool H264PacketizationModeZeroSupported() const override {
+  bool SendingH264PacketizationModeZeroSupported() const override {
     return mH264PacketizationModeZeroSupported;
   }
+  bool H264BaselineDisabled() const override { return mH264BaselineDisabled; }
   int32_t H264Level() const override { return mH264Level; }
   int32_t H264MaxBr() const override { return mH264MaxBr; }
   int32_t H264MaxMbps() const override { return mH264MaxMbps; }
@@ -48,9 +50,11 @@ class MockJsepCodecPreferences : public JsepCodecPreferences {
   bool RedUlpfecEnabled() const override { return mRedUlpfecEnabled; }
 
   bool mAv1Enabled = true;
+  bool mAv1Preferred = false;
   bool mH264Enabled = true;
   bool mSoftwareH264Enabled = true;
   bool mH264PacketizationModeZeroSupported = true;
+  bool mH264BaselineDisabled = Prefs::kDefaultH264BaselineDisabled;
   int32_t mH264Level = Prefs::kDefaultH264Level;
   int32_t mH264MaxBr = Prefs::kDefaultH264MaxBr;
   int32_t mH264MaxMbps = Prefs::kDefaultH264MaxMbps;

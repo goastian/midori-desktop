@@ -46,7 +46,6 @@ parent:
   async CommandEncoderAction(RawId selfId, RawId aDeviceId, ByteBuf buf);
   async RenderPass(RawId selfId, RawId aDeviceId, ByteBuf buf);
   async ComputePass(RawId selfId, RawId aDeviceId, ByteBuf buf);
-  async BumpImplicitBindGroupLayout(RawId pipelineId, bool isCompute, uint32_t index, RawId assignId);
 
   async DeviceCreateBuffer(RawId deviceId, RawId bufferId, GPUBufferDescriptor desc, MutableSharedMemoryHandle shm);
 
@@ -93,14 +92,10 @@ parent:
 
   async DevicePushErrorScope(RawId selfId, GPUErrorFilter aFilter);
   async DevicePopErrorScope(RawId selfId) returns (PopErrorScopeResult result);
-
-  // Generate an error on the Device timeline for `deviceId`.
-  // The `message` parameter is interpreted as UTF-8.
-  async GenerateError(RawId? deviceId, GPUErrorFilter type, nsCString message);
+  async ReportError(RawId selfId, GPUErrorFilter aType, nsCString message);
 
 child:
   async UncapturedError(RawId? aDeviceId, nsCString message);
-  async DropAction(ByteBuf buf);
   async DeviceLost(RawId aDeviceId, uint8_t? reason, nsCString message);
   async __delete__();
 };

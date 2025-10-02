@@ -531,7 +531,7 @@ export class FormAutofillHandler {
 
     this.registerFormChangeHandler();
 
-    this.ensureValuesRefilledIfCleared(filledValuesByElement);
+    this.reassignValuesIfModified(filledValuesByElement, false);
   }
 
   registerFormChangeHandler() {
@@ -588,39 +588,48 @@ export class FormAutofillHandler {
   }
 
   /**
-   * Re-fills any previously autofilled element if the website cleared the element
-   * immediately after it has been autofilled (not if cleared by the user).
-   * This is to avoid having elements that are empty but highlighted.
+   * After a refill or clear action, the website might adjust the value of an
+   * element immediately afterwards. If this happens, fill or clear the value
+   * a second time to avoid having elements that are empty but highlighted, or
+   * vice versa.
    *
    * @param {Map<HTMLElement,string>} filledValuesByElement
+   * @param {boolean} onClear true for a clear action
    */
-  ensureValuesRefilledIfCleared(filledValuesByElement) {
+  reassignValuesIfModified(filledValuesByElement, onClear) {
     if (!FormAutofill.refillOnSiteClearingFields) {
       return;
     }
 
-    const filledElementValues = this.fieldDetails
-      .filter(fd => fd.element.autofillState == FIELD_STATES.AUTO_FILLED)
-      // Using the cached filled value here instead of fd.element.value, because
-      // fd.element.value is not always the property that the site stores the value at.
-      .map(fd => [fd.element, filledValuesByElement.get(fd.element) ?? ""]);
-
     this.#refillTimeoutId = lazy.setTimeout(() => {
-      for (let [e, v] of filledElementValues) {
-        if (e.autofillState == FIELD_STATES.AUTO_FILLED && e.value === v) {
+      for (let [e, v] of filledValuesByElement) {
+        if (onClear) {
+          if (e.autofillState != FIELD_STATES.NORMAL || e.value !== v) {
+            // Only reclear if the value was changed back to the original value.
+            continue;
+          }
+        } else if (
+          e.autofillState == FIELD_STATES.AUTO_FILLED &&
+          e.value === v
+        ) {
           // Nothing to do if the autofilled value wasn't cleared or the
           // element's autofill state has changed to NORMAL in the meantime
           continue;
         }
 
         this.#isAutofillInProgress = true;
-        FormAutofillHandler.fillFieldValue(e, v, { ignoreFocus: true });
+        FormAutofillHandler.fillFieldValue(e, onClear ? "" : v, {
+          ignoreFocus: true,
+        });
         // Although the field should already be in the autofilled state at this point,
         // still setting autofilled state to re-highlight the element.
-        e.autofillState = FIELD_STATES.AUTO_FILLED;
+        e.autofillState = onClear
+          ? FIELD_STATES.NORMAL
+          : FIELD_STATES.AUTO_FILLED;
         this.#isAutofillInProgress = false;
-        this.#refillTimeoutId = null;
       }
+
+      this.#refillTimeoutId = null;
     }, FormAutofill.refillOnSiteClearingFieldsTimeout);
   }
 
@@ -1377,6 +1386,9 @@ export class FormAutofillHandler {
     const fieldDetails = elementIds.map(id =>
       this.getFieldDetailByElementId(id)
     );
+
+    const filledValuesByElement = new Map();
+
     for (const fieldDetail of fieldDetails) {
       const element = fieldDetail?.element;
       if (!element) {
@@ -1396,7 +1408,10 @@ export class FormAutofillHandler {
             option.hasAttribute("selected")
           );
           value = selected ? selected.value : element.options[0].value;
+        } else {
+          filledValuesByElement.set(element, element.value);
         }
+
         FormAutofillHandler.fillFieldValue(element, value);
         this.changeFieldState(fieldDetail, FIELD_STATES.NORMAL);
       }
@@ -1404,6 +1419,8 @@ export class FormAutofillHandler {
 
     this.focusPreviouslyFocusedElement(focusedId);
     this.#isAutofillInProgress = false;
+
+    this.reassignValuesIfModified(filledValuesByElement, true);
   }
 
   focusPreviouslyFocusedElement(focusedId) {

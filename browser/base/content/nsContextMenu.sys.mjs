@@ -19,9 +19,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   LoginManagerContextMenu:
     "resource://gre/modules/LoginManagerContextMenu.sys.mjs",
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
-  PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
+  PlacesUIUtils: "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
-  ReaderMode: "moz-src:///toolkit/components/reader/ReaderMode.sys.mjs",
   ScreenshotsUtils: "resource:///modules/ScreenshotsUtils.sys.mjs",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
   TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
@@ -37,13 +36,6 @@ ChromeUtils.defineLazyGetter(lazy, "ReferrerInfo", () =>
     "nsIReferrerInfo",
     "init"
   )
-);
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "SCREENSHOT_BROWSER_COMPONENT",
-  "screenshots.browser.component.enabled",
-  false
 );
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -345,7 +337,6 @@ export class nsContextMenu {
     this.initViewItems();
     this.initImageItems();
     this.initMiscItems();
-    this.initPocketItems();
     this.initSpellingItems();
     this.initSaveItems();
     this.initSyncItems();
@@ -916,18 +907,6 @@ export class nsContextMenu {
       let frameOsPid =
         this.actor.manager.browsingContext.currentWindowGlobal.osPid;
       this.setItemAttr("context-frameOsPid", "label", "PID: " + frameOsPid);
-
-      // We need to check if "Take Screenshot" should be displayed in the "This Frame"
-      // context menu
-      let shouldShowTakeScreenshotFrame = this.shouldShowTakeScreenshot();
-      this.showItem(
-        "context-take-frame-screenshot",
-        shouldShowTakeScreenshotFrame
-      );
-      this.showItem(
-        "context-sep-frame-screenshot",
-        shouldShowTakeScreenshotFrame
-      );
     }
 
     this.showAndFormatSearchContextItem();
@@ -964,52 +943,6 @@ export class nsContextMenu {
       "context-bidi-page-direction-toggle",
       !this.onTextInput && window.top.gBidiUI
     );
-  }
-
-  initPocketItems() {
-    const pocketEnabled = Services.prefs.getBoolPref(
-      "extensions.pocket.enabled"
-    );
-    let showSaveCurrentPageToPocket = false;
-    let showSaveLinkToPocket = false;
-
-    // We can skip all this is Pocket is not enabled.
-    if (pocketEnabled) {
-      let targetURL, targetURI;
-      // If the context menu is opened over a link, we target the link,
-      // if not, we target the page.
-      if (this.onLink) {
-        targetURL = this.linkURL;
-        // linkURI may be null if the URL is invalid.
-        targetURI = this.linkURI;
-      } else {
-        targetURL = this.browser?.currentURI?.spec;
-        targetURI = Services.io.newURI(targetURL);
-      }
-
-      const canPocket =
-        targetURI?.schemeIs("http") ||
-        targetURI?.schemeIs("https") ||
-        (targetURI?.schemeIs("about") &&
-          lazy.ReaderMode?.getOriginalUrl(targetURL));
-
-      // If the target is valid, decide which menu item to enable.
-      if (canPocket) {
-        showSaveLinkToPocket = this.onLink;
-        showSaveCurrentPageToPocket = !(
-          this.onTextInput ||
-          this.onLink ||
-          this.isContentSelected ||
-          this.onImage ||
-          this.onCanvas ||
-          this.onVideo ||
-          this.onAudio
-        );
-      }
-    }
-
-    this.showItem("context-pocket", showSaveCurrentPageToPocket);
-    this.showItem("context-savelinktopocket", showSaveLinkToPocket);
   }
 
   initSpellingItems() {
@@ -1440,7 +1373,7 @@ export class nsContextMenu {
   }
 
   initScreenshotItem() {
-    let shouldShow = this.shouldShowTakeScreenshot() && !this.inFrame;
+    let shouldShow = this.shouldShowTakeScreenshot();
 
     this.showItem("context-sep-screenshots", shouldShow);
     this.showItem("context-take-screenshot", shouldShow);
@@ -1648,19 +1581,11 @@ export class nsContextMenu {
   }
 
   takeScreenshot() {
-    if (lazy.SCREENSHOT_BROWSER_COMPONENT) {
-      Services.obs.notifyObservers(
-        this.window,
-        "menuitem-screenshot",
-        "ContextMenu"
-      );
-    } else {
-      Services.obs.notifyObservers(
-        null,
-        "menuitem-screenshot-extension",
-        "contextMenu"
-      );
-    }
+    Services.obs.notifyObservers(
+      this.window,
+      "menuitem-screenshot",
+      "ContextMenu"
+    );
   }
 
   pdfJSCmd(aName) {

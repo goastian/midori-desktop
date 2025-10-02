@@ -561,11 +561,15 @@ add_task(async function search_synced_tabs() {
     );
 
     info("Clear the search query.");
-    EventUtils.synthesizeMouseAtCenter(
-      syncedTabsComponent.searchTextbox.clearButton,
-      {},
-      content
+    let inputChildren = SpecialPowers.InspectorUtils.getChildrenForNode(
+      syncedTabsComponent.searchTextbox.inputEl,
+      true,
+      false
     );
+    info(`INPUT CHILDREN: ${inputChildren}`);
+    let clearButton = inputChildren.find(e => e.localName == "button");
+    info(`CLEAR BUTTON: ${clearButton}`);
+    EventUtils.synthesizeMouseAtCenter(clearButton, {}, content);
     await TestUtils.waitForCondition(
       () => syncedTabsComponent.fullyUpdated,
       "Synced Tabs component is done updating."
@@ -626,18 +630,14 @@ add_task(async function search_synced_tabs() {
       "There are no matching search results for the second device."
     );
 
-    info("Clear the search query with keyboard.");
-    is(
-      syncedTabsComponent.shadowRoot.activeElement,
-      syncedTabsComponent.searchTextbox,
-      "Search input is focused"
+    info("Clear the search query.");
+    inputChildren = SpecialPowers.InspectorUtils.getChildrenForNode(
+      syncedTabsComponent.searchTextbox.inputEl,
+      true,
+      false
     );
-    EventUtils.synthesizeKey("KEY_Tab", {}, content);
-    ok(
-      syncedTabsComponent.searchTextbox.clearButton.matches(":focus-visible"),
-      "Clear Search button is focused"
-    );
-    EventUtils.synthesizeKey("KEY_Enter", {}, content);
+    clearButton = inputChildren.find(e => e.localName == "button");
+    EventUtils.synthesizeMouseAtCenter(clearButton, {}, content);
     await TestUtils.waitForCondition(
       () => syncedTabsComponent.fullyUpdated,
       "Synced Tabs component is done updating."

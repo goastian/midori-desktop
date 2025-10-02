@@ -2355,6 +2355,28 @@
   alias_set: custom
   generate_lir: true
 
+- name: GuardToArrayBuffer
+  operands:
+    object: Object
+  result_type: Object
+  guard: true
+  movable: true
+  congruent_to: if_operands_equal
+  alias_set: none
+  generate_lir: true
+  lir_temps: 1
+
+- name: GuardToSharedArrayBuffer
+  operands:
+    object: Object
+  result_type: Object
+  guard: true
+  movable: true
+  congruent_to: if_operands_equal
+  alias_set: none
+  generate_lir: true
+  lir_temps: 1
+
 - name: GuardIsNotArrayBufferMaybeShared
   operands:
     object: Object
@@ -2374,7 +2396,7 @@
   congruent_to: if_operands_equal
   alias_set: none
 
-- name: GuardIsFixedLengthTypedArray
+- name: GuardIsNonResizableTypedArray
   operands:
     object: Object
   result_type: Object
@@ -3005,9 +3027,6 @@
 - name: GuardToClass
   gen_boilerplate: false
 
-- name: GuardToEitherClass
-  gen_boilerplate: false
-
 - name: GuardToFunction
   gen_boilerplate: false
 
@@ -3265,6 +3284,17 @@
   # TODO: Investigate using a narrower or a custom alias set.
   alias_set: custom
   generate_lir: true
+
+- name: LoadGetterSetterFunction
+  operands:
+    getterSetter: Value
+  arguments:
+    isGetter: bool
+    needsClassGuard: bool
+  result_type: Object
+  generate_lir: true
+  lir_temps: 1
+  alias_set: none
 
 # Guard the accessor shape is present on the object or its prototype chain.
 - name: GuardHasGetterSetter
@@ -3895,6 +3925,9 @@
   gen_boilerplate: false
 
 - name: WasmFloatRegisterResult
+  gen_boilerplate: false
+
+- name: WasmBuiltinFloatRegisterResult
   gen_boilerplate: false
 
 - name: WasmRegister64Result

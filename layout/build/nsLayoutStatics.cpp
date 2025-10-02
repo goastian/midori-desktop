@@ -10,6 +10,7 @@
 #include "nscore.h"
 
 #include "mozilla/intl/AppDateTimeFormat.h"
+#include "mozilla/intl/EncodingToLang.h"
 #include "mozilla/dom/ServiceWorkerRegistrar.h"
 #include "nsAttrValue.h"
 #include "nsComputedDOMStyle.h"
@@ -69,6 +70,9 @@
 
 #include "mozilla/dom/UIDirectionManager.h"
 
+#ifdef XP_WIN
+#  include "mozilla/widget/AudioSession.h"
+#endif
 #include "CubebUtils.h"
 #include "WebAudioUtils.h"
 
@@ -218,6 +222,12 @@ nsresult nsLayoutStatics::Initialize() {
   }
 
   DecoderDoctorLogger::Init();
+
+#ifdef XP_WIN
+  if (XRE_IsParentProcess()) {
+    widget::CreateAudioSession();
+  }
+#endif
   CubebUtils::InitLibrary();
 
   nsHtml5Module::InitializeStatics();
@@ -290,6 +300,8 @@ nsresult nsLayoutStatics::Initialize() {
   }
 #endif
 
+  mozilla::intl::EncodingToLang::Initialize();
+
   return NS_OK;
 }
 
@@ -347,6 +359,11 @@ void nsLayoutStatics::Shutdown() {
 
   CubebUtils::ShutdownLibrary();
   WebAudioUtils::Shutdown();
+#ifdef XP_WIN
+  if (XRE_IsParentProcess()) {
+    widget::DestroyAudioSession();
+  }
+#endif
 
   nsCORSListenerProxy::Shutdown();
 
@@ -387,4 +404,6 @@ void nsLayoutStatics::Shutdown() {
   RestoreTabContentObserver::Shutdown();
 
   mozilla::intl::LineBreakCache::Shutdown();
+
+  mozilla::intl::EncodingToLang::Shutdown();
 }

@@ -25,20 +25,17 @@ class DefaultCodecPreferences final : public JsepCodecPreferences {
       : mOverrideRtxEnabled(aOverrideRtxPreference) {}
 
   bool AV1Enabled() const override { return mAV1Enabled; }
+  bool AV1Preferred() const override { return mAV1Preferred; }
   bool H264Enabled() const override { return mH264Enabled; }
 
   bool SoftwareH264Enabled() const override { return mSoftwareH264Enabled; }
   bool HardwareH264Enabled() const { return mHardwareH264Enabled; }
 
-  bool H264PacketizationModeZeroSupported() const override {
-#ifdef MOZ_WIDGET_ANDROID
-    return false;
-#else
-    // We're assuming packetization mode 0 is unsupported by
-    // hardware.
-    return SoftwareH264Enabled();
-#endif
+  bool SendingH264PacketizationModeZeroSupported() const override {
+    return mSendingH264PacketizationModeZeroSupported;
   }
+
+  bool H264BaselineDisabled() const override { return mH264BaselineDisabled; }
 
   int32_t H264Level() const override { return mH264Level; }
 
@@ -73,11 +70,21 @@ class DefaultCodecPreferences final : public JsepCodecPreferences {
 
   static bool AV1EnabledStatic();
 
+  static bool AV1PreferredStatic();
+
   static bool H264EnabledStatic();
 
   static bool SoftwareH264EnabledStatic();
 
   static bool HardwareH264EnabledStatic();
+
+  static bool SendingH264PacketizationModeZeroSupportedStatic();
+
+  static constexpr bool kDefaultH264BaselineDisabled = false;
+  static bool H264BaselineDisabledStatic() {
+    return Preferences::GetBool("media.navigator.video.disable_h264_baseline",
+                                kDefaultH264BaselineDisabled);
+  }
 
   // minimum suggested for WebRTC spec
   static constexpr int32_t kDefaultH264Level = 31;
@@ -184,9 +191,13 @@ class DefaultCodecPreferences final : public JsepCodecPreferences {
       OverrideRtxPreference::NoOverride;
 
   const bool mAV1Enabled = AV1EnabledStatic();
+  const bool mAV1Preferred = AV1PreferredStatic();
   const bool mH264Enabled = H264EnabledStatic();
   const bool mSoftwareH264Enabled = SoftwareH264EnabledStatic();
   const bool mHardwareH264Enabled = HardwareH264EnabledStatic();
+  const bool mSendingH264PacketizationModeZeroSupported =
+      SendingH264PacketizationModeZeroSupportedStatic();
+  const bool mH264BaselineDisabled = H264BaselineDisabledStatic();
   const int32_t mH264Level = H264LevelStatic();
   const int32_t mH264MaxBr = H264MaxBrStatic();
   const int32_t mH264MaxMbps = H264MaxMbpsStatic();

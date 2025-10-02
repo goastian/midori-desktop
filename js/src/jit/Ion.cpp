@@ -1778,9 +1778,9 @@ static AbortReason IonCompile(JSContext* cx, HandleScript script,
     return AbortReason::Alloc;
   }
 
-  CompileInfo* info = alloc->new_<CompileInfo>(
-      CompileRuntime::get(cx->runtime()), script, script->function(), osrPc,
-      script->needsArgsObj(), inlineScriptTree);
+  CompileInfo* info =
+      alloc->new_<CompileInfo>(CompileRuntime::get(cx->runtime()), script,
+                               osrPc, script->needsArgsObj(), inlineScriptTree);
   if (!info) {
     return AbortReason::Alloc;
   }
@@ -2370,7 +2370,7 @@ bool jit::IonCompileScriptForBaselineOSR(JSContext* cx, BaselineFrame* frame,
     return false;
   }
 
-  RootedScript script(cx, frame->script());
+  JSScript* script = frame->script();
   if (!script->hasIonScript() || script->ionScript()->osrPc() != pc ||
       frame->isDebuggee()) {
     return true;

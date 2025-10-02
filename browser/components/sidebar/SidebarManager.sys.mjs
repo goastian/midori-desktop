@@ -8,6 +8,7 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 const BACKUP_STATE_PREF = "sidebar.backupState";
 const VISIBILITY_SETTING_PREF = "sidebar.visibility";
 const SIDEBAR_TOOLS = "sidebar.main.tools";
+const VERTICAL_TABS_PREF = "sidebar.verticalTabs";
 
 // New panels that are ready to be introduced to new sidebar users should be added to this list;
 // ensure your feature flag is enabled at the same time you do this and that its the same value as
@@ -31,7 +32,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
 XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
   "verticalTabsEnabled",
-  "sidebar.verticalTabs",
+  VERTICAL_TABS_PREF,
   false,
   (pref, oldVal, newVal) => {
     SidebarManager.handleVerticalTabsPrefChange(newVal, true);
@@ -132,7 +133,8 @@ export const SidebarManager = {
       // know if we were _really_ removed or just moved elsewhere.
       await Promise.resolve();
       if (!lazy.CustomizableUI.getPlacementOfWidget(aWidgetId)) {
-        Services.prefs.setStringPref(VISIBILITY_SETTING_PREF, "hide-sidebar");
+        // Removing sidebar button should force horizontal tabs (Bug 1970015).
+        Services.prefs.setBoolPref(VERTICAL_TABS_PREF, false);
         this.closeAllSidebars();
       }
     }
@@ -244,6 +246,19 @@ export const SidebarManager = {
     if (tools.length > lazy.sidebarTools.length) {
       Services.prefs.setStringPref(SIDEBAR_TOOLS, tools);
     }
+  },
+
+  /**
+   * Return a list of tool IDs that have registered a badge for notification.
+   * This reads all prefs under "sidebar.notification.badge."
+   *
+   * @returns {Array}
+   */
+  getBadgeTools() {
+    const BADGE_PREF_BRANCH = "sidebar.notification.badge.";
+    const badgePrefs = Services.prefs.getChildList(BADGE_PREF_BRANCH);
+
+    return badgePrefs.map(pref => pref.slice(BADGE_PREF_BRANCH.length));
   },
 
   /**

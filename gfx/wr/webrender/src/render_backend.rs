@@ -35,7 +35,7 @@ use crate::hit_test::{HitTest, HitTester, SharedHitTester};
 use crate::intern::DataStore;
 #[cfg(any(feature = "capture", feature = "replay"))]
 use crate::internal_types::DebugOutput;
-use crate::internal_types::{FastHashMap, FrameId, FrameMemory, FrameStamp, RenderedDocument, ResultMsg};
+use crate::internal_types::{FastHashMap, FrameId, FrameStamp, RenderedDocument, ResultMsg};
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use crate::picture::{PictureScratchBuffer, SliceId, TileCacheInstance, TileCacheParams, SurfaceInfo, RasterConfig};
 use crate::picture::PicturePrimitive;
@@ -517,7 +517,7 @@ impl Document {
         frame_stats: Option<FullFrameStats>,
         present: bool,
         render_reasons: RenderReasons,
-        frame_memory: FrameMemory,
+        chunk_pool: Arc<ChunkPool>,
     ) -> RenderedDocument {
         let frame_build_start_time = precise_time_ns();
 
@@ -548,7 +548,7 @@ impl Document {
                 // on the next frame, it will add new entries to the minimap
                 // data during sampling.
                 mem::take(&mut self.minimap_data),
-                frame_memory,
+                chunk_pool,
             );
 
             frame
@@ -576,6 +576,69 @@ impl Document {
             render_reasons,
         }
     }
+
+    /// Build a frame without changing the state of the current scene.
+    ///
+    /// This is useful to render arbitrary content into to images in
+    /// the resource cache for later use without affecting what is
+    /// currently being displayed.
+    fn process_offscreen_scene(
+        &mut self,
+        mut txn: OffscreenBuiltScene,
+        resource_cache: &mut ResourceCache,
+        gpu_cache: &mut GpuCache,
+        chunk_pool: Arc<ChunkPool>,
+        debug_flags: DebugFlags,
+    ) -> RenderedDocument {
+        let mut profile = TransactionProfile::new();
+        self.stamp.advance();
+
+        let mut data_stores = DataStores::default();
+        data_stores.apply_updates(txn.interner_updates, &mut profile);
+
+        let mut spatial_tree = SpatialTree::new();
+        spatial_tree.apply_updates(txn.spatial_tree_updates);
+
+        let mut tile_caches = FastHashMap::default();
+        self.update_tile_caches_for_new_scene(
+            mem::take(&mut txn.scene.tile_cache_config.tile_caches),
+            &mut tile_caches,
+            resource_cache,
+        );
+
+        let present = false;
+
+        let frame = self.frame_builder.build(
+            &mut txn.scene,
+            present,
+            resource_cache,
+            gpu_cache,
+            &mut self.rg_builder,
+            self.stamp, // TODO(nical)
+            self.view.scene.device_rect.min,
+            &self.dynamic_properties,
+            &mut data_stores,
+            &mut self.scratch,
+            debug_flags,
+            &mut tile_caches,
+            &mut spatial_tree,
+            self.dirty_rects_are_valid,
+            &mut profile,
+            // Consume the minimap data. If APZ wants a minimap rendered
+            // on the next frame, it will add new entries to the minimap
+            // data during sampling.
+            mem::take(&mut self.minimap_data),
+            chunk_pool,
+        );
+
+        RenderedDocument {
+            frame,
+            profile,
+            render_reasons: RenderReasons::SNAPSHOT,
+            frame_stats: None,
+        }
+    }
+
 
     fn rebuild_hit_tester(&mut self) {
         self.spatial_tree.update_tree(&self.dynamic_properties);
@@ -945,6 +1008,33 @@ impl RenderBackend {
                     &mut doc.profile,
                 );
 
+                for offscreen_scene in txn.offscreen_scenes.drain(..) {
+                    self.resource_cache.post_scene_building_update(
+                        txn.resource_updates.take(),
+                        &mut doc.profile,
+                    );
+
+                    let rendered_document = doc.process_offscreen_scene(
+                        offscreen_scene,
+                        &mut self.resource_cache,
+                        &mut self.gpu_cache,
+                        self.chunk_pool.clone(),
+                        self.debug_flags,
+                    );
+
+                    let msg = ResultMsg::UpdateGpuCache(self.gpu_cache.extract_updates());
+                    self.result_tx.send(msg).unwrap();
+
+                    let pending_update = self.resource_cache.pending_updates();
+
+                    let msg = ResultMsg::PublishDocument(
+                        self.frame_publish_id,
+                        txn.document_id,
+                        rendered_document,
+                        pending_update,
+                    );
+                    self.result_tx.send(msg).unwrap();
+                }
             } else {
                 // The document was removed while we were building it, skip it.
                 // TODO: we might want to just ensure that removed documents are
@@ -1475,8 +1565,6 @@ impl RenderBackend {
 
                 let frame_stats = doc.frame_stats.take();
 
-                let frame_memory = FrameMemory::new(self.chunk_pool.clone());
-
                 let rendered_document = doc.build_frame(
                     &mut self.resource_cache,
                     &mut self.gpu_cache,
@@ -1485,7 +1573,7 @@ impl RenderBackend {
                     frame_stats,
                     present,
                     render_reasons,
-                    frame_memory,
+                    self.chunk_pool.clone(),
                 );
 
                 debug!("generated frame for document {:?} with {} passes",
@@ -1688,7 +1776,6 @@ impl RenderBackend {
             if config.bits.contains(CaptureBits::FRAME) {
                 // Temporarily force invalidation otherwise the render task graph dump is empty.
                 let force_invalidation = std::mem::replace(&mut doc.scene.config.force_invalidation, true);
-                let frame_memory = FrameMemory::new(self.chunk_pool.clone());
                 let rendered_document = doc.build_frame(
                     &mut self.resource_cache,
                     &mut self.gpu_cache,
@@ -1697,7 +1784,7 @@ impl RenderBackend {
                     None,
                     true,
                     RenderReasons::empty(),
-                    frame_memory,
+                    self.chunk_pool.clone(),
                 );
 
                 doc.scene.config.force_invalidation = force_invalidation;

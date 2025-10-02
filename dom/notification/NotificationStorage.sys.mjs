@@ -23,6 +23,12 @@ export class NotificationStorage {
   constructor() {
     Services.obs.addObserver(this, "xpcom-shutdown");
 
+    ChromeUtils.importESModule(
+      "resource://gre/modules/MemoryNotificationDB.sys.mjs"
+    );
+
+    ChromeUtils.importESModule("resource://gre/modules/NotificationDB.sys.mjs");
+
     // Register for message listeners.
     this.registerListeners();
   }
@@ -100,6 +106,13 @@ export class NotificationStorage {
     Services.cpmm.sendAsyncMessage(this.formatMessageType("Delete"), {
       origin,
       id,
+    });
+  }
+
+  deleteAllExcept(ids) {
+    lazy.console.debug(`DELETEALLEXCEPT: ${ids}`);
+    Services.cpmm.sendAsyncMessage(this.formatMessageType("DeleteAllExcept"), {
+      ids,
     });
   }
 

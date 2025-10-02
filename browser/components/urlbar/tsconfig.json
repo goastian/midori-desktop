@@ -1,9 +1,8 @@
 {
-  "include": ["*.sys.mjs", "types/*.ts"],
+  "include": ["**/*.sys.mjs", "types/*.ts"],
   "exclude": [
     "ActionsProviderQuickActions.sys.mjs",
     "MerinoClient.sys.mjs",
-    "QuickSuggest.sys.mjs",
     "SearchModeSwitcher.sys.mjs",
     "UrlbarController.sys.mjs",
     "UrlbarEventBufferer.sys.mjs",
@@ -11,7 +10,6 @@
     "UrlbarMuxerUnifiedComplete.sys.mjs",
     "UrlbarPrefs.sys.mjs",
     "UrlbarProviderAutofill.sys.mjs",
-    "UrlbarProviderCalculator.sys.mjs",
     "UrlbarProviderGlobalActions.sys.mjs",
     "UrlbarProviderHeuristicFallback.sys.mjs",
     "UrlbarProviderInterventions.sys.mjs",
@@ -26,11 +24,17 @@
     "UrlbarProvidersManager.sys.mjs",
     "UrlbarProviderTopSites.sys.mjs",
     "UrlbarSearchOneOffs.sys.mjs",
-    "UrlbarSearchTermsPersistence.sys.mjs",
     "UrlbarSearchUtils.sys.mjs",
     "UrlbarTokenizer.sys.mjs",
     "UrlbarValueFormatter.sys.mjs",
-    "UrlbarView.sys.mjs"
+    "UrlbarView.sys.mjs",
+    "private/GeolocationUtils.sys.mjs",
+    "private/MLSuggest.sys.mjs",
+    "private/SuggestBackendRust.sys.mjs",
+    "tests/quicksuggest/MerinoTestUtils.sys.mjs",
+    "tests/quicksuggest/QuickSuggestTestUtils.sys.mjs",
+    "tests/quicksuggest/RemoteSettingsServer.sys.mjs",
+    "tests/UrlbarTestUtils.sys.mjs"
   ],
   "extends": "../../../tools/@types/tsconfig.json",
 

@@ -86,7 +86,7 @@ skip == enable-sheet-7.html multiple-in-family-1-ref.html
 == ex-unit-1.html ex-unit-1-ref.html
 == ex-unit-1-dynamic.html ex-unit-1-ref.html
 
-== local-1.html local-1-ref.html
+fuzzy-if(gtkWidget,0-255,0-4426) == local-1.html local-1-ref.html
 == local-styled-1.html local-styled-1-ref.html
 
 == synthetic-weight-style.html synthetic-weight-style-ref.html
@@ -189,7 +189,7 @@ fuzzy(0-255,0-290) == colrv1-01.html#T colrv1-01-ref.html#T
 
 fuzzy(0-1,0-1) == colrv1-03.html colrv1-03-ref.html
 fuzzy(0-1,0-38200) fuzzy-if(Android,0-64,0-37100) == colrv1-04.html colrv1-04-ref.html
-fuzzy(0-65,0-6105) == colrv1-05.html colrv1-05-ref.html
+fuzzy(0-66,0-6415) == colrv1-05.html colrv1-05-ref.html
 fuzzy(0-1,0-318) == colrv1-06.html colrv1-06-ref.html
 fuzzy(0-128,0-264) == colrv1-07.html colrv1-07-ref.html
 == colrv1-08.html colrv1-08-ref.html

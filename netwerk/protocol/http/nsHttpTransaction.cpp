@@ -171,7 +171,9 @@ nsresult nsHttpTransaction::Init(
     uint64_t browserId, HttpTrafficCategory trafficCategory,
     nsIRequestContext* requestContext, ClassOfService classOfService,
     uint32_t initialRwin, bool responseTimeoutEnabled, uint64_t channelId,
-    TransactionObserverFunc&& transactionObserver) {
+    TransactionObserverFunc&& transactionObserver,
+    nsILoadInfo::IPAddressSpace aParentIpAddressSpace,
+    const struct LNAPerms& aLnaPermissionStatus) {
   nsresult rv;
 
   LOG1(("nsHttpTransaction::Init [this=%p caps=%x]\n", this, caps));
@@ -213,6 +215,9 @@ nsresult nsHttpTransaction::Init(
   mCallbacks = callbacks;
   mConsumerTarget = target;
   mCaps = caps;
+
+  mParentIPAddressSpace = aParentIpAddressSpace;
+  mLnaPermissionStatus = aLnaPermissionStatus;
   // eventsink is a nsHttpChannel when we expect "103 Early Hints" responses.
   // We expect it in document requests and not e.g. in TRR requests.
   mEarlyHintObserver = do_QueryInterface(eventsink);
@@ -484,6 +489,7 @@ void nsHttpTransaction::SetConnection(nsAHttpConnection* conn) {
 }
 
 void nsHttpTransaction::OnActivated() {
+  nsresult rv;
   MOZ_ASSERT(OnSocketThread());
 
   if (mActivated) {
@@ -510,12 +516,24 @@ void nsHttpTransaction::OnActivated() {
     // of the header happens in the h2 compression code. We still have to
     // add the header to the request head here, though, so that devtools can
     // show that we sent the header. FUN!
-    Unused << mRequestHead->SetHeader(nsHttp::TE, "trailers"_ns);
+    nsAutoCString teHeader;
+    rv = mRequestHead->GetHeader(nsHttp::TE, teHeader);
+    if (NS_FAILED(rv) || !teHeader.Equals("moz_no_te_trailers"_ns)) {
+      // If the request already has TE:moz_no_te_trailers then
+      // Http2Compressor::EncodeHeaderBlock won't actually add this header.
+      Unused << mRequestHead->SetHeader(nsHttp::TE, "trailers"_ns);
+    }
   }
 
   mActivated = true;
   gHttpHandler->ConnMgr()->AddActiveTransaction(this);
   FinalizeConnInfo();
+  if (mConnection) {
+    RefPtr<HttpConnectionBase> conn = mConnection->HttpConnection();
+    if (conn) {
+      conn->RecordConnectionAddressType();
+    }
+  }
 }
 
 void nsHttpTransaction::GetSecurityCallbacks(nsIInterfaceRequestor** cb) {
@@ -1377,6 +1395,7 @@ void nsHttpTransaction::Close(nsresult reason) {
   if ((reason == NS_ERROR_NET_RESET || reason == NS_OK ||
        reason ==
            psm::GetXPCOMFromNSSError(SSL_ERROR_DOWNGRADE_WITH_EARLY_DATA) ||
+       reason == NS_ERROR_HTTP2_FALLBACK_TO_HTTP1 ||
        ShouldRestartOn0RttError(reason) ||
        shouldRestartTransactionForHTTPSRR) &&
       (!(mCaps & NS_HTTP_STICKY_CONNECTION) ||
@@ -3637,6 +3656,44 @@ void nsHttpTransaction::SetIsForWebTransport(bool aIsForWebTransport) {
 void nsHttpTransaction::RemoveConnection() {
   MutexAutoLock lock(mLock);
   mConnection = nullptr;
+}
+
+bool nsHttpTransaction::AllowedToConnectToIpAddressSpace(
+    nsILoadInfo::IPAddressSpace aTargetIpAddressSpace) {
+  // skip checks if LNA feature is disabled
+  if (!StaticPrefs::network_lna_enabled()) {
+    return true;
+  }
+  // Deny access to a request moving to a more private addresspsace.
+  // Specifically,
+  // 1. local host resources cannot be accessed from Private or Public
+  // network
+  // 2. private network resources cannot be accessed from Public
+  // network
+  // Refer
+  // https://wicg.github.io/private-network-access/#private-network-request-heading
+  // for private network access
+  // XXX add link to LNA spec once it is published
+
+  if (mozilla::net::IsLocalNetworkAccess(mParentIPAddressSpace,
+                                         aTargetIpAddressSpace)) {
+    if (aTargetIpAddressSpace == nsILoadInfo::IPAddressSpace::Local &&
+        mLnaPermissionStatus.mLocalHostPermission == LNAPermission::Denied) {
+      return false;
+    }
+    if (aTargetIpAddressSpace == nsILoadInfo::IPAddressSpace::Private &&
+        mLnaPermissionStatus.mLocalNetworkPermission == LNAPermission::Denied) {
+      return false;
+    }
+
+    if (StaticPrefs::network_lna_blocking()) {
+      // If LNA blocking is enabled, we block any LNA requests. Currently we
+      // should hit this case for tests
+      return false;
+    }
+  }
+
+  return true;
 }
 
 }  // namespace mozilla::net

@@ -42,6 +42,12 @@ TRRLoadInfo::GetTriggeringPrincipal(nsIPrincipal** aTriggeringPrincipal) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+NS_IMETHODIMP
+TRRLoadInfo::SetTriggeringPrincipalForTesting(
+    nsIPrincipal* aTriggeringPrincipal) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
 nsIPrincipal* TRRLoadInfo::TriggeringPrincipal() { return nullptr; }
 
 NS_IMETHODIMP
@@ -141,6 +147,26 @@ TRRLoadInfo::GetTriggeringStorageAccess(bool* aResult) {
 }
 NS_IMETHODIMP
 TRRLoadInfo::SetTriggeringStorageAccess(bool aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::GetTriggeringFirstPartyClassificationFlags(uint32_t* aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetTriggeringFirstPartyClassificationFlags(uint32_t aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::GetTriggeringThirdPartyClassificationFlags(uint32_t* aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetTriggeringThirdPartyClassificationFlags(uint32_t aResult) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -873,6 +899,16 @@ TRRLoadInfo::GetParserCreatedScript(bool* aParserCreatedScript) {
 
 NS_IMETHODIMP
 TRRLoadInfo::SetParserCreatedScript(bool aParserCreatedScript) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::GetRequestMode(Maybe<RequestMode>* aRequestMode) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetRequestMode(Maybe<RequestMode> aRequestMode) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 

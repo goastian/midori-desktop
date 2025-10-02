@@ -83,6 +83,17 @@ sidebar-pins-callout-title = Losing track of your important tabs?
 sidebar-pins-callout-subtitle = Try pinning them, which keeps them at the top of your list of tabs. Right-click on a tab you want to pin, then choose Pin Tab.
 sidebar-pins-callout-cta-button = Pin tab
 
+## Pinning Tabs Strings
+
+pin-tabs-callout-1-title = Keep important tabs within reach
+pin-tabs-callout-1-subtitle = Drag a tab to the start of the tab strip to pin it. Or right-click and choose Pin Tab.
+pin-tabs-callout-cta-1-button = Pin this tab
+pin-tabs-callout-2-title = Pin tabs you visit the most
+pin-tabs-callout-2-subtitle = To pin any tab, drag it to the start of the tab strip. Or right-click and choose Pin Tab.
+pin-tabs-callout-cta-2-button = Pin this tab
+pin-tabs-callout-3-title = Keep important sites within reach
+pin-tabs-callout-4-title = Pin sites you visit the most
+
 ## Sidebar Onboarding Strings
 
 sidebar-customization-callout-1-title = Sidebar: your spot for tools and tabs
@@ -201,3 +212,11 @@ perplexity-callout-theme-2-subtitle-2 = Ask questions. Get complete, well-cited 
 perplexity-callout-primary-label = Ask Perplexity
 perplexity-callout-secondary-label-1 = Dismiss
 perplexity-callout-secondary-label-2 = Got it
+
+## Account Adoption Passwords callout strings
+
+# Suggestion to backup passwords by signing up for Mozilla account and using sync
+fxa-adoption-passwords-title = Password saved. Let’s back it up.
+fxa-adoption-passwords-subtitle = Protect your passwords by syncing them to your devices with encryption.
+# Opens Mozilla accounts sign-up page
+fxa-adoption-passwords-primary-button-label = Sign up

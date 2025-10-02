@@ -15,11 +15,12 @@ import os
 import re
 import time
 
-import attr
 from mozbuild.util import memoize
+from mozilla_taskgraph.util.signed_artifacts import get_signed_artifacts
 from taskcluster.utils import fromNow
 from taskgraph import MAX_DEPENDENCIES
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.transforms.task import payload_builder, payload_builders
 from taskgraph.util.copy import deepcopy
 from taskgraph.util.keyed_by import evaluate_keyed_by
 from taskgraph.util.schema import (
@@ -41,7 +42,6 @@ from gecko_taskgraph.util.chunking import TEST_VARIANTS
 from gecko_taskgraph.util.hash import hash_path
 from gecko_taskgraph.util.partners import get_partners_to_be_published
 from gecko_taskgraph.util.scriptworker import BALROG_ACTIONS, get_release_config
-from gecko_taskgraph.util.signed_artifacts import get_signed_artifacts
 from gecko_taskgraph.util.workertypes import get_worker_type, worker_type_implementation
 
 RUN_TASK = os.path.join(GECKO, "taskcluster", "scripts", "run-task")
@@ -285,29 +285,6 @@ def get_default_priority(graph_config, project):
     return evaluate_keyed_by(
         graph_config["task-priority"], "Graph Config", {"project": project}
     )
-
-
-# define a collection of payload builders, depending on the worker implementation
-payload_builders = {}
-
-
-@attr.s(frozen=True)
-class PayloadBuilder:
-    schema = attr.ib(type=Schema)
-    builder = attr.ib()
-
-
-def payload_builder(name, schema):
-    schema = Schema({Required("implementation"): name, Optional("os"): str}).extend(
-        schema
-    )
-
-    def wrap(func):
-        assert name not in payload_builders, f"duplicate payload builder name {name}"
-        payload_builders[name] = PayloadBuilder(schema, func)
-        return func
-
-    return wrap
 
 
 # define a collection of index builders, depending on the type implementation
@@ -835,8 +812,9 @@ def build_generic_worker_payload(config, task, task_def):
 
 
 @payload_builder(
-    "scriptworker-signing",
+    "iscript",
     schema={
+        Required("signing-type"): str,
         # the maximum time to run, in seconds
         Required("max-run-time"): int,
         # list of artifact URLs for the artifacts that should be signed
@@ -884,7 +862,7 @@ def build_generic_worker_payload(config, task, task_def):
         ],
     },
 )
-def build_scriptworker_signing_payload(config, task, task_def):
+def build_iscript_payload(config, task, task_def):
     worker = task["worker"]
 
     task_def["payload"] = {
@@ -901,6 +879,12 @@ def build_scriptworker_signing_payload(config, task, task_def):
         ):
             if worker.get(attribute):
                 task_def["payload"][attribute] = worker[attribute]
+
+    # Set scopes
+    scope_prefix = config.graph_config["scriptworker"]["scope-prefix"]
+    scopes = set(task_def.get("scopes", []))
+    scopes.add(f"{scope_prefix}:signing:cert:{worker['signing-type']}")
+    task_def["scopes"] = sorted(scopes)
 
     artifacts = set(task.setdefault("attributes", {}).get("release_artifacts", []))
     for upstream_artifact in worker["upstream-artifacts"]:
@@ -952,7 +936,6 @@ def build_beetmover_payload(config, task, task_def):
     release_properties = worker["release-properties"]
 
     task_def["payload"] = {
-        "maxRunTime": worker["max-run-time"],
         "releaseProperties": {
             "appName": release_properties["app-name"],
             "appVersion": release_properties["app-version"],
@@ -986,7 +969,6 @@ def build_beetmover_push_to_release_payload(config, task, task_def):
     partners = [f"{p}/{s}" for p, s, _ in get_partners_to_be_published(config)]
 
     task_def["payload"] = {
-        "maxRunTime": worker["max-run-time"],
         "product": worker["product"],
         "version": release_config["version"],
         "build_number": release_config["build_number"],
@@ -1539,6 +1521,7 @@ def build_treescript_payload(config, task, task_def):
         Optional("dontbuild"): bool,
         Optional("tags"): [Any("buildN", "release", None)],
         Optional("force-dry-run"): bool,
+        Optional("push"): bool,
         Optional("android-l10n-import-info"): {
             Required("from-repo-url"): str,
             Required("toml-info"): [
@@ -1701,29 +1684,6 @@ def build_landoscript_payload(config, task, task_def):
     task_def["scopes"] = sorted(scopes)
 
 
-@payload_builder(
-    "invalid",
-    schema={
-        # an invalid task is one which should never actually be created; this is used in
-        # release automation on branches where the task just doesn't make sense
-        Extra: object,
-    },
-)
-def build_invalid_payload(config, task, task_def):
-    task_def["payload"] = "invalid task - should never be created"
-
-
-@payload_builder(
-    "always-optimized",
-    schema={
-        Extra: object,
-    },
-)
-@payload_builder("succeed", schema={})
-def build_dummy_payload(config, task, task_def):
-    task_def["payload"] = {}
-
-
 transforms = TransformSequence()
 
 
@@ -1809,11 +1769,12 @@ def set_defaults(config, tasks):
                 )
             worker.setdefault("chain-of-trust", False)
         elif worker["implementation"] in (
-            "scriptworker-signing",
             "beetmover",
             "beetmover-push-to-release",
             "beetmover-maven",
             "beetmover-import-from-gcs-to-artifact-registry",
+            "iscript",
+            "scriptworker-signing",
         ):
             worker.setdefault("max-run-time", 600)
         elif worker["implementation"] == "push-apk":

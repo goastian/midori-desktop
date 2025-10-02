@@ -33,10 +33,6 @@ void gfxConfigManager::Init() {
   mWrSoftwareForceEnabled = StaticPrefs::gfx_webrender_software_AtStartup();
   mWrCompositorForceEnabled =
 #ifdef MOZ_WAYLAND
-      StaticPrefs::gfx_wayland_hdr_AtStartup() ||
-      StaticPrefs::gfx_wayland_hdr_force_enabled_AtStartup() ||
-#endif
-#ifdef MOZ_WAYLAND
       StaticPrefs::gfx_wayland_hdr_AtStartup();
 #else
       StaticPrefs::gfx_webrender_compositor_force_enabled_AtStartup();
@@ -68,7 +64,6 @@ void gfxConfigManager::Init() {
 #ifdef XP_WIN
   DeviceManagerDx::Get()->CheckHardwareStretchingSupport(mHwStretchingSupport);
   mScaledResolution = HasScaledResolution();
-  mIsWin11OrLater = IsWin11OrLater();
   mWrCompositorDCompRequired = true;
 #else
   ++mHwStretchingSupport.mBoth;
@@ -106,6 +101,8 @@ void gfxConfigManager::Init() {
   mFeatureD3D11Compositing = &gfxConfig::GetFeature(Feature::D3D11_COMPOSITING);
 #endif
   mFeatureGPUProcess = &gfxConfig::GetFeature(Feature::GPU_PROCESS);
+  mFeatureGLNorm16Textures =
+      &gfxConfig::GetFeature(Feature::GL_NORM16_TEXTURES);
 }
 
 void gfxConfigManager::EmplaceUserPref(const char* aPrefName,
@@ -157,6 +154,7 @@ void gfxConfigManager::ConfigureWebRender() {
   MOZ_ASSERT(mFeatureWrScissoredCacheClears);
   MOZ_ASSERT(mFeatureHwCompositing);
   MOZ_ASSERT(mFeatureGPUProcess);
+  MOZ_ASSERT(mFeatureGLNorm16Textures);
 
   // Initialize WebRender native compositor usage
   mFeatureWrCompositor->SetDefaultFromPref("gfx.webrender.compositor", true,
@@ -264,30 +262,17 @@ void gfxConfigManager::ConfigureWebRender() {
   }
 
   mFeatureWrDComp->EnableByDefault();
+
   if (!mWrDCompWinEnabled) {
     mFeatureWrDComp->UserDisable("User disabled via pref",
                                  "FEATURE_FAILURE_DCOMP_PREF_DISABLED"_ns);
   }
 
+  ConfigureFromBlocklist(nsIGfxInfo::FEATURE_WEBRENDER_DCOMP, mFeatureWrDComp);
+
   if (!mFeatureGPUProcess->IsEnabled()) {
     mFeatureWrDComp->Disable(FeatureStatus::Unavailable, "Requires GPU process",
                              "FEATURE_FAILURE_NO_GPU_PROCESS"_ns);
-  }
-
-  if (!mIsWin11OrLater) {
-    // Disable DirectComposition for NVIDIA users on Windows 10 with high/mixed
-    // refresh rate monitors due to rendering artifacts. (See bug 1638709.)
-    nsAutoString adapterVendorID;
-    mGfxInfo->GetAdapterVendorID(adapterVendorID);
-    if (adapterVendorID == u"0x10de") {
-      bool mixed = false;
-      int32_t maxRefreshRate = mGfxInfo->GetMaxRefreshRate(&mixed);
-      if (maxRefreshRate > 60 && mixed) {
-        mFeatureWrDComp->Disable(FeatureStatus::Blocked,
-                                 "Monitor refresh rate too high/mixed",
-                                 "NVIDIA_REFRESH_RATE_MIXED"_ns);
-      }
-    }
   }
 
   mFeatureWrDComp->MaybeSetFailed(
@@ -347,6 +332,10 @@ void gfxConfigManager::ConfigureWebRender() {
   }
   ConfigureFromBlocklist(nsIGfxInfo::FEATURE_WEBRENDER_SCISSORED_CACHE_CLEARS,
                          mFeatureWrScissoredCacheClears);
+
+  mFeatureGLNorm16Textures->EnableByDefault();
+  ConfigureFromBlocklist(nsIGfxInfo::FEATURE_GL_NORM16_TEXTURES,
+                         mFeatureGLNorm16Textures);
 }
 
 }  // namespace gfx

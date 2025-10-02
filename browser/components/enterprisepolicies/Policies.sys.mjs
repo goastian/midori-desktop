@@ -606,6 +606,7 @@ export var Policies = {
       }
       let interceptionPointPrefs = [
         ["Clipboard", "clipboard"],
+        ["Download", "download"],
         ["DragAndDrop", "drag_and_drop"],
         ["FileUpload", "file_upload"],
         ["Print", "print"],
@@ -1197,7 +1198,6 @@ export var Policies = {
         let { ContentBlockingPrefs } = ChromeUtils.importESModule(
           "moz-src:///browser/components/protections/ContentBlockingPrefs.sys.mjs"
         );
-
         // These are always locked because they would reset at
         // startup anyway.
         ContentBlockingPrefs.setPrefsToCategory(
@@ -1253,19 +1253,6 @@ export var Policies = {
         PoliciesUtils.setDefaultPref(
           "privacy.trackingprotection.emailtracking.pbmode.enabled",
           param.EmailTracking,
-          param.Locked
-        );
-      }
-      if ("SuspectedFingerprinting" in param) {
-
-        PoliciesUtils.setDefaultPref(
-          "privacy.fingerprintingProtection",
-          param.SuspectedFingerprinting,
-          param.Locked
-        );
-        PoliciesUtils.setDefaultPref(
-          "privacy.fingerprintingProtection.pbmode",
-          param.SuspectedFingerprinting,
           param.Locked
         );
       }

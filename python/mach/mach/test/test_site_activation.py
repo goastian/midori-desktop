@@ -11,7 +11,6 @@ import sys
 import tempfile
 from pathlib import Path
 from subprocess import CompletedProcess
-from typing import List
 
 import buildconfig
 import mozunit
@@ -26,10 +25,10 @@ class ActivationContext:
         topsrcdir: Path,
         work_dir: Path,
         original_python_path: str,
-        stdlib_paths: List[Path],
-        system_paths: List[Path],
-        required_mach_sys_paths: List[Path],
-        mach_requirement_paths: List[Path],
+        stdlib_paths: list[Path],
+        system_paths: list[Path],
+        required_mach_sys_paths: list[Path],
+        mach_requirement_paths: list[Path],
         command_requirement_path: Path,
     ):
         self.topsrcdir = topsrcdir
@@ -50,14 +49,16 @@ class ActivationContext:
 
 
 def test_new_package_metadta_is_found():
+    pkg = "xdg"
+    version = "5.1.1"
     try:
-        # "carrot" was chosen as the package to use because:
+        # "xdg" was chosen as the package to use because:
         # * It has to be a package that doesn't exist in-scope at the start (so,
-        #   all vendored modules included in the test virtualenv aren't usage).
+        #   all vendored modules included in the test virtualenv aren't usable).
         # * It must be on our internal PyPI mirror.
-        # Of the options, "carrot" is a small install that fits these requirements.
-        importlib.metadata.distribution("carrot")
-        assert False, "Expected to not find 'carrot' as the initial state of the test"
+        # Of the options, "xdg" is a small install that fits these requirements.
+        importlib.metadata.distribution(pkg)
+        assert False, f"Expected to not find '{pkg}' as the initial state of the test"
     except importlib.metadata.PackageNotFoundError:
         pass
 
@@ -72,7 +73,7 @@ def test_new_package_metadta_is_found():
         )
 
         venv = PythonVirtualenv(venv_dir)
-        venv.pip_install(["carrot==0.10.7"])
+        venv.pip_install([f"{pkg}=={version}"])
 
         initial_metadata = MozSiteMetadata.from_runtime()
         try:
@@ -80,7 +81,7 @@ def test_new_package_metadta_is_found():
             with metadata.update_current_site(venv.python_path):
                 activate_virtualenv(venv)
 
-            assert importlib.metadata.distribution("carrot").version == "0.10.7"
+            assert importlib.metadata.distribution(pkg).version == version
         finally:
             MozSiteMetadata.current = initial_metadata
 
@@ -313,6 +314,7 @@ def _activation_context():
     topsrcdir = Path(buildconfig.topsrcdir)
     required_mach_sys_paths = [
         topsrcdir / "python" / "mach",
+        topsrcdir / "testing" / "mozbase" / "mozfile",
         topsrcdir / "third_party" / "python" / "filelock",
         topsrcdir / "third_party" / "python" / "packaging",
         topsrcdir / "third_party" / "python" / "pip",
@@ -341,7 +343,7 @@ def _activation_context():
         )
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _original_python():
     current_site = MozSiteMetadata.from_runtime()
     stdlib_paths, system_paths = current_site.original_python.sys_path()
@@ -355,7 +357,7 @@ def _run_activation_script(
     source: str,
     site_name: str,
     invoking_python: str,
-    **kwargs
+    **kwargs,
 ) -> CompletedProcess:
     return subprocess.run(
         [
@@ -387,7 +389,7 @@ def _run_activation_script(
 
 def _run_activation_script_for_paths(
     context: ActivationContext, source: str, site_name: str, invoking_python: str = None
-) -> List[List[Path]]:
+) -> list[list[Path]]:
     """Return the states of the sys.path when activating Mach-managed sites
 
     Three sys.path states are returned:
@@ -412,7 +414,7 @@ def _run_activation_script_for_paths(
     ]
 
 
-def _assert_original_python_sys_path(context: ActivationContext, original: List[Path]):
+def _assert_original_python_sys_path(context: ActivationContext, original: list[Path]):
     # Assert that initial sys.path (prior to any activations) matches expectations.
     assert original == [
         Path(__file__).parent,
@@ -422,7 +424,7 @@ def _assert_original_python_sys_path(context: ActivationContext, original: List[
     ]
 
 
-def _sys_path_of_virtualenv(virtualenv: PythonVirtualenv) -> List[Path]:
+def _sys_path_of_virtualenv(virtualenv: PythonVirtualenv) -> list[Path]:
     output = subprocess.run(
         [virtualenv.python_path, "-c", "import sys; print(sys.path)"],
         stdout=subprocess.PIPE,
@@ -436,7 +438,7 @@ def _sys_path_of_virtualenv(virtualenv: PythonVirtualenv) -> List[Path]:
     return [Path(path) for path in _filter_pydev_from_paths(ast.literal_eval(output))]
 
 
-def _filter_pydev_from_paths(paths: List[str]) -> List[str]:
+def _filter_pydev_from_paths(paths: list[str]) -> list[str]:
     # Filter out injected "pydev" debugging tool if running within a JetBrains
     # debugging context.
     return [path for path in paths if "pydev" not in path and "JetBrains" not in path]

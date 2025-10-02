@@ -338,6 +338,12 @@ add_task(function test_Proxy_fromJSON() {
     /InvalidArgumentError/
   );
 
+  // missing required socks proxy
+  Assert.throws(
+    () => Proxy.fromJSON({ proxyType: "manual", socksVersion: 4 }),
+    /InvalidArgumentError/
+  );
+
   // Bug 1703805: Since Firefox 90 ftpProxy is no longer supported
   Assert.throws(
     () => Proxy.fromJSON({ proxyType: "manual", ftpProxy: "foo:21" }),
@@ -392,7 +398,6 @@ add_task(function test_Capabilities_ctor_http() {
 
   equal(false, caps.get("moz:accessibilityChecks"));
   ok(caps.has("moz:buildID"));
-  ok(caps.has("moz:debuggerAddress"));
   ok(caps.has("moz:platformVersion"));
   ok(caps.has("moz:processID"));
   ok(caps.has("moz:profile"));
@@ -416,7 +421,6 @@ add_task(function test_Capabilities_ctor_bidi() {
 
   ok(!caps.has("moz:accessibilityChecks"));
   ok(caps.has("moz:buildID"));
-  ok(!caps.has("moz:debuggerAddress"));
   ok(caps.has("moz:platformVersion"));
   ok(caps.has("moz:processID"));
   ok(caps.has("moz:profile"));
@@ -444,7 +448,6 @@ add_task(function test_Capabilities_toJSON() {
 
   equal(caps.get("moz:accessibilityChecks"), json["moz:accessibilityChecks"]);
   equal(caps.get("moz:buildID"), json["moz:buildID"]);
-  equal(caps.get("moz:debuggerAddress"), json["moz:debuggerAddress"]);
   equal(caps.get("moz:platformVersion"), json["moz:platformVersion"]);
   equal(caps.get("moz:processID"), json["moz:processID"]);
   equal(caps.get("moz:profile"), json["moz:profile"]);
@@ -491,14 +494,6 @@ add_task(function test_Capabilities_fromJSON_http() {
 
   caps = fromJSON({ "moz:webdriverClick": true }, false);
   equal(true, caps.get("moz:webdriverClick"));
-
-  // capability is always populated with null if remote agent is not listening
-  caps = fromJSON({}, false);
-  equal(null, caps.get("moz:debuggerAddress"));
-  caps = fromJSON({ "moz:debuggerAddress": "foo" }, false);
-  equal(null, caps.get("moz:debuggerAddress"));
-  caps = fromJSON({ "moz:debuggerAddress": true }, false);
-  equal(null, caps.get("moz:debuggerAddress"));
 
   // Extension capabilities
   caps = fromJSON({ "webauthn:virtualAuthenticators": true }, false);
@@ -578,14 +573,6 @@ add_task(function test_Capabilities_fromJSON_bidi() {
   caps = fromJSON({ "moz:webdriverClick": true }, true);
   equal(undefined, caps.get("moz:webdriverClick"));
 
-  // capability is always populated with null if remote agent is not listening
-  caps = fromJSON({}, true);
-  equal(null, caps.get("moz:debuggerAddress"));
-  caps = fromJSON({ "moz:debuggerAddress": "foo" }, true);
-  equal(null, caps.get("moz:debuggerAddress"));
-  caps = fromJSON({ "moz:debuggerAddress": true }, true);
-  equal(null, caps.get("moz:debuggerAddress"));
-
   // Extension capabilities
   caps = fromJSON({ "webauthn:virtualAuthenticators": true }, true);
   ok(!caps.has("webauthn:virtualAuthenticators"));
@@ -645,7 +632,6 @@ add_task(function test_validateCapabilities_invalid() {
     { "moz:accessibilityChecks": "foo" },
     { "moz:webdriverClick": "foo" },
     { "moz:webdriverClick": 1 },
-    { "moz:debuggerAddress": "foo" },
     { "moz:someRandomString": {} },
   ];
   for (const capabilities of invalidCapabilities) {
@@ -674,7 +660,6 @@ add_task(function test_validateCapabilities_valid() {
     { "moz:firefoxOptions": {} },
     { "moz:accessibilityChecks": true },
     { "moz:webdriverClick": true },
-    { "moz:debuggerAddress": true },
     { "test:extension": "foo" },
   ];
   for (const validCapability of validCapabilities) {

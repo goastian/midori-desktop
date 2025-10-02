@@ -1155,6 +1155,39 @@ impl Renderer {
 
                     self.device.end_frame();
                 }
+                ResultMsg::RenderDocumentOffscreen(document_id, mut offscreen_doc, resources) => {
+                    // Flush pending operations if needed (See comment in the match arm for
+                    // PublishPipelineInfo).
+
+                    // Borrow-ck dance.
+                    let prev_doc = self.active_documents.remove(&document_id);
+                    if let Some(mut prev_doc) = prev_doc {
+                        if prev_doc.frame.must_be_drawn() {
+                            prev_doc.render_reasons |= RenderReasons::TEXTURE_CACHE_FLUSH;
+                            self.render_impl(
+                                document_id,
+                                &mut prev_doc,
+                                None,
+                                0,
+                            ).ok();
+                        }
+
+                        self.active_documents.insert(document_id, prev_doc);
+                    }
+
+                    // Now update resources and render the offscreen frame.
+
+                    self.pending_texture_cache_updates |= !resources.texture_updates.updates.is_empty();
+                    self.pending_texture_updates.push(resources.texture_updates);
+                    self.pending_native_surface_updates.extend(resources.native_surface_updates);
+
+                    self.render_impl(
+                        document_id,
+                        &mut offscreen_doc,
+                        None,
+                        0,
+                    ).unwrap();
+                }
                 ResultMsg::AppendNotificationRequests(mut notifications) => {
                     // We need to know specifically if there are any pending
                     // TextureCacheUpdate updates in any of the entries in
@@ -1425,7 +1458,7 @@ impl Renderer {
                 }
                 CompositorKind::Layer { .. } => {
                     let compositor = self.compositor_config.layer_compositor().unwrap();
-                    compositor.bind_layer(self.debug_overlay_state.layer_index);
+                    compositor.bind_layer(self.debug_overlay_state.layer_index, &[]);
 
                     self.device.clear_target(
                         Some([0.0, 0.0, 0.0, 0.0]),
@@ -1474,7 +1507,7 @@ impl Renderer {
                 CompositorKind::Draw { .. } => {}
                 CompositorKind::Layer { .. } => {
                     let compositor = self.compositor_config.layer_compositor().unwrap();
-                    compositor.present_layer(self.debug_overlay_state.layer_index);
+                    compositor.present_layer(self.debug_overlay_state.layer_index, &[]);
                 }
             }
         }
@@ -3540,6 +3573,27 @@ impl Renderer {
         let mut swapchain_layers = Vec::new();
         let cap = composite_state.tiles.len();
         let mut segment_builder = SegmentBuilder::new();
+        let mut tile_index_to_layer_index = vec![None; composite_state.tiles.len()];
+        let mut use_external_composite = false;
+
+        // Calculate layers with full device rect
+
+        // Add a debug overlay request if enabled
+        if self.debug_overlay_state.is_enabled {
+            self.debug_overlay_state.layer_index = input_layers.len();
+
+            input_layers.push(CompositorInputLayer {
+                usage: CompositorSurfaceUsage::DebugOverlay,
+                is_opaque: false,
+                offset: DeviceIntPoint::zero(),
+                clip_rect: device_size.into(),
+            });
+
+            swapchain_layers.push(SwapChainLayer {
+                clear_tiles: Vec::new(),
+                occlusion: occlusion::FrontToBackBuilder::with_capacity(cap, cap),
+            });
+        }
 
         // NOTE: Tiles here are being iterated in front-to-back order by
         //       z-id, due to the sort in composite_state.end_frame()
@@ -3549,20 +3603,12 @@ impl Renderer {
                 tile.transform_index
             );
 
-            // Determine a clip rect to apply to this tile, depending on what
-            // the partial present mode is.
-            let partial_clip_rect = match partial_present_mode {
-                Some(PartialPresentMode::Single { dirty_rect }) => dirty_rect,
-                None => device_tile_box,
-            };
-
             // Simple compositor needs the valid rect in device space to match clip rect
             let device_valid_rect = composite_state
                 .get_device_rect(&tile.local_valid_rect, tile.transform_index);
 
             let rect = device_tile_box
                 .intersection_unchecked(&tile.device_clip_rect)
-                .intersection_unchecked(&partial_clip_rect)
                 .intersection_unchecked(&device_valid_rect);
 
             if rect.is_empty() {
@@ -3631,9 +3677,11 @@ impl Renderer {
                                 }
                             }
                         }
-
-                        // Should not encounter debug layers here
-                        (CompositorSurfaceUsage::DebugOverlay, _) | (_, CompositorSurfaceUsage::DebugOverlay) => {
+                        (CompositorSurfaceUsage::DebugOverlay, _) => {
+                            Some(usage)
+                        }
+                        // Should not encounter debug layers as new layer
+                        (_, CompositorSurfaceUsage::DebugOverlay) => {
                             unreachable!();
                         }
                     }
@@ -3654,6 +3702,7 @@ impl Renderer {
                         )
                     }
                     CompositorSurfaceUsage::External { .. } => {
+                        use_external_composite = true;
                         let rect = composite_state.get_device_rect(
                             &tile.local_rect,
                             tile.transform_index
@@ -3679,63 +3728,10 @@ impl Renderer {
                     occlusion: occlusion::FrontToBackBuilder::with_capacity(cap, cap),
                 })
             }
-
-            // For normal tiles, add to occlusion tracker. For clear tiles, add directly
-            // to the swapchain tile list
-            let layer = swapchain_layers.last_mut().unwrap();
-
-            // Clear tiles overwrite whatever is under them, so they are treated as opaque.
-            match tile.kind {
-                TileKind::Opaque | TileKind::Alpha => {
-                    let is_opaque = tile.kind != TileKind::Alpha;
-
-                    match tile.clip_index {
-                        Some(clip_index) => {
-                            let clip = composite_state.get_compositor_clip(clip_index);
-
-                                // TODO(gw): Make segment builder generic on unit to avoid casts below.
-                            segment_builder.initialize(
-                                rect.cast_unit(),
-                                None,
-                                rect.cast_unit(),
-                            );
-                            segment_builder.push_clip_rect(
-                                clip.rect.cast_unit(),
-                                Some(clip.radius),
-                                ClipMode::Clip,
-                            );
-                            segment_builder.build(|segment| {
-                                let key = OcclusionItemKey { tile_index: idx, needs_mask: segment.has_mask };
-
-                                layer. occlusion.add(
-                                    &segment.rect.cast_unit(),
-                                    is_opaque && !segment.has_mask,
-                                    key,
-                                );
-                            });
-                        }
-                        None => {
-                            layer.occlusion.add(&rect, is_opaque, OcclusionItemKey {
-                                tile_index: idx,
-                                needs_mask: false,
-                            });
-                        }
-                    }
-                }
-                TileKind::Clear => {
-                    // Clear tiles are specific to how we render the window buttons on
-                    // Windows 8. They clobber what's under them so they can be treated as opaque,
-                    // but require a different blend state so they will be rendered after the opaque
-                    // tiles and before transparent ones.
-                    layer.clear_tiles.push(occlusion::Item { rectangle: rect, key: OcclusionItemKey { tile_index: idx, needs_mask: false } });
-                }
-            }
+            tile_index_to_layer_index[idx] = Some(input_layers.len() - 1);
         }
 
-        // Reverse the layers - we're now working in back-to-front order from here onwards
         assert_eq!(swapchain_layers.len(), input_layers.len());
-        input_layers.reverse();
-        swapchain_layers.reverse();
 
         if window_is_opaque {
             match input_layers.first_mut() {
@@ -3768,22 +3764,7 @@ impl Renderer {
             }
         }
 
-        // Add a debug overlay request if enabled
-        if self.debug_overlay_state.is_enabled {
-            self.debug_overlay_state.layer_index = input_layers.len();
-
-            input_layers.push(CompositorInputLayer {
-                usage: CompositorSurfaceUsage::DebugOverlay,
-                is_opaque: false,
-                offset: DeviceIntPoint::zero(),
-                clip_rect: device_size.into(),
-            });
-
-            swapchain_layers.push(SwapChainLayer {
-                clear_tiles: Vec::new(),
-                occlusion: occlusion::FrontToBackBuilder::with_capacity(cap, cap),
-            });
-        }
+        let mut full_render = false;
 
         // Start compositing if using OS compositor
         if let Some(ref mut compositor) = self.compositor_config.layer_compositor() {
@@ -3791,8 +3772,169 @@ impl Renderer {
                 enable_screenshot,
                 layers: &input_layers,
             };
-            compositor.begin_frame(&input);
+            full_render = compositor.begin_frame(&input);
         }
+
+        // Full render is requested when layer tree is updated.
+        let mut partial_present_mode = if full_render {
+            None
+        } else {
+            partial_present_mode
+        };
+
+        assert_eq!(swapchain_layers.len(), input_layers.len());
+
+        // Recalculate dirty rect if external composite is used with layer compositor
+        if let Some(ref _compositor) = self.compositor_config.layer_compositor() {
+            if partial_present_mode.is_some() && use_external_composite {
+                let mut combined_dirty_rect = DeviceRect::zero();
+                let fb_rect = DeviceRect::from_size(frame_device_size.to_f32());
+
+                // Work out how many dirty rects WR produced, and if that's more than
+                // what the device supports.
+                for (idx, tile) in composite_state.tiles.iter().enumerate() {
+                    if tile.kind == TileKind::Clear {
+                        continue;
+                    }
+
+                    let layer_index = match tile_index_to_layer_index[idx] {
+                        None => {
+                            continue;
+                        }
+                        Some(layer_index) => layer_index,
+                    };
+
+                    let layer = &mut input_layers[layer_index];
+                    // Skip compositing external images
+                    match layer.usage {
+                        CompositorSurfaceUsage::Content | CompositorSurfaceUsage::DebugOverlay => {}
+                        CompositorSurfaceUsage::External { .. } => {
+                            match tile.surface {
+                                CompositeTileSurface::ExternalSurface { .. } => {}
+                                CompositeTileSurface::Texture { .. }  |
+                                CompositeTileSurface::Color { .. } |
+                                CompositeTileSurface::Clear => {
+                                    unreachable!();
+                                },
+                            }
+                            continue;
+                        }
+                    }
+
+                    let dirty_rect = composite_state.get_device_rect(
+                        &tile.local_dirty_rect,
+                        tile.transform_index,
+                    );
+
+                    // In pathological cases where a tile is extremely zoomed, it
+                    // may end up with device coords outside the range of an i32,
+                    // so clamp it to the frame buffer rect here, before it gets
+                    // casted to an i32 rect below.
+                    if let Some(dirty_rect) = dirty_rect.intersection(&fb_rect) {
+                        combined_dirty_rect = combined_dirty_rect.union(&dirty_rect);
+                    }
+                }
+
+                let combined_dirty_rect = combined_dirty_rect.round();
+                // layer compositor does not expect to draw previsou partial present regtions
+                partial_present_mode = Some(PartialPresentMode::Single {
+                    dirty_rect: combined_dirty_rect,
+                });
+            }
+        }
+
+        // Check tiles handling with partial_present_mode
+
+        // NOTE: Tiles here are being iterated in front-to-back order by
+        //       z-id, due to the sort in composite_state.end_frame()
+        for (idx, tile) in composite_state.tiles.iter().enumerate() {
+            let device_tile_box = composite_state.get_device_rect(
+                &tile.local_rect,
+                tile.transform_index
+            );
+
+            // Determine a clip rect to apply to this tile, depending on what
+            // the partial present mode is.
+            let partial_clip_rect = match partial_present_mode {
+                Some(PartialPresentMode::Single { dirty_rect }) => dirty_rect,
+                None => device_tile_box,
+            };
+
+            // Simple compositor needs the valid rect in device space to match clip rect
+            let device_valid_rect = composite_state
+                .get_device_rect(&tile.local_valid_rect, tile.transform_index);
+
+            let rect = device_tile_box
+                .intersection_unchecked(&tile.device_clip_rect)
+                .intersection_unchecked(&partial_clip_rect)
+                .intersection_unchecked(&device_valid_rect);
+
+            if rect.is_empty() {
+                continue;
+            }
+
+            let layer_index = match tile_index_to_layer_index[idx] {
+                None => {
+                    // The rect of partial present should be subset of the rect of full render.
+                    error!("rect {:?} should have valid layer index", rect);
+                    continue;
+                }
+                Some(layer_index) => layer_index,
+            };
+
+            // For normal tiles, add to occlusion tracker. For clear tiles, add directly
+            // to the swapchain tile list
+            let layer = &mut swapchain_layers[layer_index];
+
+            // Clear tiles overwrite whatever is under them, so they are treated as opaque.
+            match tile.kind {
+                TileKind::Opaque | TileKind::Alpha => {
+                    let is_opaque = tile.kind != TileKind::Alpha;
+
+                    match tile.clip_index {
+                        Some(clip_index) => {
+                            let clip = composite_state.get_compositor_clip(clip_index);
+
+                                // TODO(gw): Make segment builder generic on unit to avoid casts below.
+                            segment_builder.initialize(
+                                rect.cast_unit(),
+                                None,
+                                rect.cast_unit(),
+                            );
+                            segment_builder.push_clip_rect(
+                                clip.rect.cast_unit(),
+                                Some(clip.radius),
+                                ClipMode::Clip,
+                            );
+                            segment_builder.build(|segment| {
+                                let key = OcclusionItemKey { tile_index: idx, needs_mask: segment.has_mask };
+
+                                layer.occlusion.add(
+                                    &segment.rect.cast_unit(),
+                                    is_opaque && !segment.has_mask,
+                                    key,
+                                );
+                            });
+                        }
+                        None => {
+                            layer.occlusion.add(&rect, is_opaque, OcclusionItemKey {
+                                tile_index: idx,
+                                needs_mask: false,
+                            });
+                        }
+                    }
+                }
+                TileKind::Clear => {
+                    // Clear tiles are specific to how we render the window buttons on
+                    // Windows 8. They clobber what's under them so they can be treated as opaque,
+                    // but require a different blend state so they will be rendered after the opaque
+                    // tiles and before transparent ones.
+                    layer.clear_tiles.push(occlusion::Item { rectangle: rect, key: OcclusionItemKey { tile_index: idx, needs_mask: false } });
+                }
+            }
+        }
+
+        assert_eq!(swapchain_layers.len(), input_layers.len());
 
         for (layer_index, (layer, swapchain_layer)) in input_layers.iter().zip(swapchain_layers.iter()).enumerate() {
             self.device.reset_state();
@@ -3811,9 +3953,24 @@ impl Renderer {
                 ColorF::TRANSPARENT
             };
 
+            if let Some(ref mut _compositor) = self.compositor_config.layer_compositor() {
+                if let Some(PartialPresentMode::Single { dirty_rect }) = partial_present_mode {
+                    if dirty_rect.is_empty() {
+                        continue;
+                    }
+                }
+            }
+
             let draw_target = match self.compositor_config {
                 CompositorConfig::Layer { ref mut compositor } => {
-                    compositor.bind_layer(layer_index);
+                    match partial_present_mode {
+                        Some(PartialPresentMode::Single { dirty_rect }) => {
+                            compositor.bind_layer(layer_index, &[dirty_rect.to_i32()]);
+                        }
+                        None => {
+                            compositor.bind_layer(layer_index, &[]);
+                        }
+                    };
 
                     DrawTarget::NativeSurface {
                         offset: -layer.offset,
@@ -3841,7 +3998,14 @@ impl Renderer {
             );
 
             if let Some(ref mut compositor) = self.compositor_config.layer_compositor() {
-                compositor.present_layer(layer_index);
+                match partial_present_mode {
+                    Some(PartialPresentMode::Single { dirty_rect }) => {
+                        compositor.present_layer(layer_index, &[dirty_rect.to_i32()]);
+                    }
+                    None => {
+                        compositor.present_layer(layer_index, &[]);
+                    }
+                };
             }
         }
 
@@ -4607,7 +4771,7 @@ impl Renderer {
                 (max_partial_present_rects, draw_previous_partial_present_regions)
             }
             CompositorKind::Layer { .. } => {
-                (0, false)
+                (1, false)
             }
         };
 

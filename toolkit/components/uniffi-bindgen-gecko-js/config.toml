@@ -10,94 +10,217 @@
 # TODO: Upgrade the TOML crate and switch to array of tables syntax.
 
 [context_id.async_wrappers]
-enable = true
-main_thread = [
-  "ContextIDComponent.new",
-]
+"ContextIDComponent.new" = "Sync"
+"ContextIDComponent.unset_callback" = "AsyncWrapped"
+"ContextIDComponent.force_rotation" = "AsyncWrapped"
+"ContextIDComponent.request" = "AsyncWrapped"
+
+[filter_adult.async_wrappers]
+"FilterAdultComponent.new" = "Sync"
+"FilterAdultComponent.contains" = "Sync"
 
 [search.async_wrappers]
-# All functions/methods are wrapped to be async by default and must be `await`ed.
-enable = true
-# These are exceptions to the async wrapping.  These functions must not be `await`ed.
-main_thread = [
-  "SearchEngineSelector.new",
-  "SearchEngineSelector.clear_search_config",
-  "SearchEngineSelector.filter_engine_configuration",
-  "SearchEngineSelector.set_search_config",
-  "SearchEngineSelector.set_config_overrides",
-]
+"SearchEngineSelector.new" = "Sync"
+"SearchEngineSelector.clear_search_config" = "Sync"
+"SearchEngineSelector.filter_engine_configuration" = "Sync"
+"SearchEngineSelector.set_search_config" = "Sync"
+"SearchEngineSelector.set_config_overrides" = "Sync"
+"SearchEngineSelector.use_remote_settings_server" = "AsyncWrapped"
 
 [suggest.async_wrappers]
-# All functions/methods are wrapped to be async by default and must be `await`ed.
-enable = true
-# These are exceptions to the async wrapping.  These functions must not be `await`ed.
-main_thread = [
-  "raw_suggestion_url_matches",
-  "SuggestStore.new",
-  "SuggestStore.interrupt",
-  "SuggestStoreBuilder.new",
-  "SuggestStoreBuilder.data_path",
-  "SuggestStoreBuilder.load_extension",
-  "SuggestStoreBuilder.remote_settings_bucket_name",
-  "SuggestStoreBuilder.remote_settings_server",
-  "SuggestStoreBuilder.remote_settings_service",
-  "SuggestStoreBuilder.build",
-]
+"SuggestStore.any_dismissed_suggestions" = "AsyncWrapped"
+"SuggestStore.clear" = "AsyncWrapped"
+"SuggestStore.clear_dismissed_suggestions" = "AsyncWrapped"
+"SuggestStore.dismiss_by_key" = "AsyncWrapped"
+"SuggestStore.dismiss_by_suggestion" = "AsyncWrapped"
+"SuggestStore.dismiss_suggestion" = "AsyncWrapped"
+"SuggestStore.fetch_geoname_alternates" = "AsyncWrapped"
+"SuggestStore.fetch_geonames" = "AsyncWrapped"
+"SuggestStore.fetch_global_config" = "AsyncWrapped"
+"SuggestStore.fetch_provider_config" = "AsyncWrapped"
+"SuggestStore.ingest" = "AsyncWrapped"
+"SuggestStore.interrupt" = "Sync"
+"SuggestStore.is_dismissed_by_key" = "AsyncWrapped"
+"SuggestStore.is_dismissed_by_suggestion" = "AsyncWrapped"
+"SuggestStore.new" = "Sync"
+"SuggestStore.query" = "AsyncWrapped"
+"SuggestStore.query_with_metrics" = "AsyncWrapped"
+"SuggestStoreBuilder.build" = "Sync"
+"SuggestStoreBuilder.cache_path" = "AsyncWrapped"
+"SuggestStoreBuilder.data_path" = "Sync"
+"SuggestStoreBuilder.load_extension" = "Sync"
+"SuggestStoreBuilder.new" = "Sync"
+"SuggestStoreBuilder.remote_settings_bucket_name" = "Sync"
+"SuggestStoreBuilder.remote_settings_server" = "Sync"
+"SuggestStoreBuilder.remote_settings_service" = "Sync"
+"raw_suggestion_url_matches" = "Sync"
 
 [relevancy.async_wrappers]
-# All functions/methods are wrapped to be async by default and must be `await`ed.
-enable = true
-# These are exceptions to the async wrapping.  These functions must not be `await`ed.
-main_thread = [
-  "RelevancyStore.new",
-  "RelevancyStore.close",
-  "RelevancyStore.interrupt",
-  "score",
-]
+"RelevancyStore.new" = "Sync"
+"RelevancyStore.close" = "Sync"
+"RelevancyStore.interrupt" = "Sync"
+"score" = "Sync"
+"RelevancyStore.bandit_init" = "AsyncWrapped"
+"RelevancyStore.bandit_select" = "AsyncWrapped"
+"RelevancyStore.bandit_update" = "AsyncWrapped"
+"RelevancyStore.ensure_interest_data_populated" = "AsyncWrapped"
+"RelevancyStore.get_bandit_data" = "AsyncWrapped"
+"RelevancyStore.ingest" = "AsyncWrapped"
+"RelevancyStore.user_interest_vector" = "AsyncWrapped"
 
 [remote_settings.async_wrappers]
-# All functions/methods are wrapped to be async by default and must be `await`ed.
-enable = true
-# These are exceptions to the async wrapping.  These functions must not be `await`ed.
-main_thread = [
-  "RemoteSettings.new",
-  "RemoteSettingsService.new",
-]
+"RemoteSettings.new" = "Sync"
+"RemoteSettingsService.new" = "Sync"
+"RemoteSettings.download_attachment_to_path" = "AsyncWrapped"
+"RemoteSettings.get_records" = "AsyncWrapped"
+"RemoteSettings.get_records_since" = "AsyncWrapped"
+"RemoteSettingsClient.collection_name" = "AsyncWrapped"
+"RemoteSettingsClient.get_attachment" = "AsyncWrapped"
+"RemoteSettingsClient.get_records" = "AsyncWrapped"
+"RemoteSettingsClient.get_records_map" = "AsyncWrapped"
+"RemoteSettingsClient.shutdown" = "AsyncWrapped"
+"RemoteSettingsClient.sync" = "AsyncWrapped"
+"RemoteSettingsService.make_client" = "AsyncWrapped"
+"RemoteSettingsService.sync" = "AsyncWrapped"
+"RemoteSettingsService.update_config" = "Sync"
 
 [error_support.async_wrappers]
-# All functions/methods are wrapped to be async by default and must be `await`ed.
-enable = true
+"set_application_error_reporter" = "AsyncWrapped"
+"unset_application_error_reporter" = "AsyncWrapped"
+"ApplicationErrorReporter.report_error" = "AsyncWrapped"
+"ApplicationErrorReporter.report_breadcrumb" = "AsyncWrapped"
 
 [tabs.async_wrappers]
-# All functions/methods are wrapped to be async by default and must be `await`ed.
-enable = true
+"RemoteCommandStore.add_remote_command" = "AsyncWrapped"
+"RemoteCommandStore.add_remote_command_at" = "AsyncWrapped"
+"RemoteCommandStore.get_unsent_commands" = "AsyncWrapped"
+"RemoteCommandStore.remove_remote_command" = "AsyncWrapped"
+"RemoteCommandStore.set_pending_command_sent" = "AsyncWrapped"
+"TabsBridgedEngine.apply" = "AsyncWrapped"
+"TabsBridgedEngine.ensure_current_sync_id" = "AsyncWrapped"
+"TabsBridgedEngine.last_sync" = "AsyncWrapped"
+"TabsBridgedEngine.prepare_for_sync" = "AsyncWrapped"
+"TabsBridgedEngine.reset" = "AsyncWrapped"
+"TabsBridgedEngine.reset_sync_id" = "AsyncWrapped"
+"TabsBridgedEngine.set_last_sync" = "AsyncWrapped"
+"TabsBridgedEngine.set_uploaded" = "AsyncWrapped"
+"TabsBridgedEngine.store_incoming" = "AsyncWrapped"
+"TabsBridgedEngine.sync_finished" = "AsyncWrapped"
+"TabsBridgedEngine.sync_id" = "AsyncWrapped"
+"TabsBridgedEngine.sync_started" = "AsyncWrapped"
+"TabsBridgedEngine.wipe" = "AsyncWrapped"
+"TabsStore.new" = "AsyncWrapped"
+"TabsStore.bridged_engine" = "AsyncWrapped"
+"TabsStore.close_connection" = "AsyncWrapped"
+"TabsStore.get_all" = "AsyncWrapped"
+"TabsStore.new_remote_command_store" = "AsyncWrapped"
+"TabsStore.register_with_sync_manager" = "AsyncWrapped"
+"TabsStore.set_local_tabs" = "AsyncWrapped"
 
 [webext_storage.async_wrappers]
-enable = true
+"WebExtStorageBridgedEngine.apply" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.ensure_current_sync_id" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.last_sync" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.prepare_for_sync" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.reset" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.reset_sync_id" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.set_last_sync" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.set_uploaded" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.store_incoming" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.sync_finished" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.sync_id" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.sync_started" = "AsyncWrapped"
+"WebExtStorageBridgedEngine.wipe" = "AsyncWrapped"
+"WebExtStorageStore.new" = "AsyncWrapped"
+"WebExtStorageStore.bridged_engine" = "AsyncWrapped"
+"WebExtStorageStore.clear" = "AsyncWrapped"
+"WebExtStorageStore.close" = "AsyncWrapped"
+"WebExtStorageStore.get" = "AsyncWrapped"
+"WebExtStorageStore.get_bytes_in_use" = "AsyncWrapped"
+"WebExtStorageStore.get_synced_changes" = "AsyncWrapped"
+"WebExtStorageStore.remove" = "AsyncWrapped"
+"WebExtStorageStore.set" = "AsyncWrapped"
 
-[arithmetical.async_wrappers]
-enable = true
+[uniffi_bindings_tests.async_wrappers]
+"clone_interface" = "Sync"
+"create_async_test_trait_interface" = "AsyncWrapped"
+"create_test_trait_interface" = "Sync"
+"func_with_default" = "Sync"
+"func_with_error" = "Sync"
+"func_with_flat_error" = "Sync"
+"func_with_multi_word_arg" = "Sync"
+"get_custom_types_demo" = "AsyncWrapped"
+"invoke_test_callback_interface_get_value" = "AsyncWrapped"
+"invoke_test_callback_interface_noop" = "AsyncWrapped"
+"invoke_test_callback_interface_set_value" = "AsyncWrapped"
+"invoke_test_callback_interface_throw_if_equal" = "AsyncWrapped"
+"invoke_test_trait_interface_get_value" = "Sync"
+"invoke_test_trait_interface_noop" = "Sync"
+"invoke_test_trait_interface_set_value" = "Sync"
+"invoke_test_trait_interface_throw_if_equal" = "Sync"
+"roundtrip_bool" = "Sync"
+"roundtrip_complex_compound" = "Sync"
+"roundtrip_complex_enum" = "Sync"
+"roundtrip_complex_rec" = "Sync"
+"roundtrip_custom_type" = "Sync"
+"roundtrip_enum_no_data" = "Sync"
+"roundtrip_enum_with_data" = "Sync"
+"roundtrip_f32" = "Sync"
+"roundtrip_f64" = "Sync"
+"roundtrip_hash_map" = "Sync"
+"roundtrip_i16" = "Sync"
+"roundtrip_i32" = "Sync"
+"roundtrip_i64" = "Sync"
+"roundtrip_i8" = "Sync"
+"roundtrip_option" = "Sync"
+"roundtrip_simple_rec" = "AsyncWrapped"
+"roundtrip_string" = "Sync"
+"roundtrip_time_interval_ms" = "AsyncWrapped"
+"roundtrip_time_interval_sec_dbl" = "AsyncWrapped"
+"roundtrip_time_interval_sec_flt" = "AsyncWrapped"
+"roundtrip_u16" = "Sync"
+"roundtrip_u32" = "Sync"
+"roundtrip_u64" = "Sync"
+"roundtrip_u8" = "Sync"
+"roundtrip_url" = "AsyncWrapped"
+"roundtrip_vec" = "Sync"
+"sum_with_many_types" = "Sync"
+"swap_test_interfaces" = "Sync"
+"test_func" = "Sync"
+"TestInterface.new" = "Sync"
+"TestInterface.get_value" = "Sync"
+"TestInterface.ref_count" = "Sync"
+"AsyncInterface.new" = "Sync"
+"ComplexMethods.new" = "Sync"
+"ComplexMethods.method_with_default" = "Sync"
+"ComplexMethods.method_with_multi_word_arg" = "Sync"
+"TestTraitInterface.noop" = "Sync"
+"TestTraitInterface.get_value" = "Sync"
+"TestTraitInterface.set_value" = "Sync"
+"TestTraitInterface.throw_if_equal" = "Sync"
 
-[uniffi_custom_types.async_wrappers]
-enable = true
+[uniffi_bindings_tests_collision.async_wrappers]
+"invoke_collision_callback" = "Sync"
 
-[uniffi_fixture_callbacks.async_wrappers]
-enable = true
-main_thread = [
-  "log_even_numbers_main_thread",
-]
+[uniffi_bindings_tests_external_types.async_wrappers]
+"roundtrip_ext_custom_type" = "Sync"
+"roundtrip_ext_enum" = "Sync"
+"roundtrip_ext_interface" = "Sync"
+"roundtrip_ext_record" = "Sync"
 
-[uniffi_fixture_external_types.async_wrappers]
-enable = true
+[uniffi_bindings_tests.custom_types.Url]
+type_name = "URL"
+lift = "new URL({})"
+lower = "{}.toString()"
 
-[uniffi_geometry.async_wrappers]
-enable = true
+[uniffi_bindings_tests.custom_types.TimeIntervalMs]
+# Convert milliseconds to Date
+type_name = "Date"
+lift = "new Date({})"
+lower = "{}.getTime()"
 
-[uniffi_rondpoint.async_wrappers]
-enable = true
-
-[uniffi_sprites.async_wrappers]
-enable = true
-
-[uniffi_todolist.async_wrappers]
-enable = true
+[uniffi_bindings_tests.custom_types.TimeIntervalSecDbl]
+# Convert seconds (as float) to Date
+type_name = "Date"
+lift = "new Date({} * 1000)"
+lower = "{}.getTime() / 1000"

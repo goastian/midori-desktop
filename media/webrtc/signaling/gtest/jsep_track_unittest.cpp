@@ -1799,7 +1799,7 @@ TEST(JsepTrackRecvPayloadTypesTest, SingleTrackPTsAreUnique)
 
   std::vector<UniquePtr<JsepCodecDescription>> codecs;
   codecs.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1));
 
   SipccSdp offer1(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
   SdpMediaSection& offer1Msection1 = offer1.AddMediaSection(
@@ -1828,9 +1828,9 @@ TEST(JsepTrackRecvPayloadTypesTest, SingleTrackPTsAreUnique)
             NS_OK);
 
   std::vector tracks{&t1};
-  JsepTrack::SetUniqueReceivePayloadTypes(tracks);
+  JsepTrack::SetReceivePayloadTypes(tracks);
   EXPECT_THAT(t1.GetUniqueReceivePayloadTypes(), UnorderedElementsAre(1));
-  EXPECT_THAT(t1.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre());
+  EXPECT_THAT(t1.GetOtherReceivePayloadTypes(), UnorderedElementsAre());
 }
 
 TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreUnique)
@@ -1839,11 +1839,11 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreUnique)
 
   std::vector<UniquePtr<JsepCodecDescription>> codecs1;
   codecs1.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1));
 
   std::vector<UniquePtr<JsepCodecDescription>> codecs2;
   codecs2.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("2", "codec1", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("2", "codec1", 48000, 1));
 
   SipccSdp offer1(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
   SdpMediaSection& offer1Msection1 = offer1.AddMediaSection(
@@ -1894,11 +1894,11 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreUnique)
             NS_OK);
 
   std::vector tracks{&t1, &t2};
-  JsepTrack::SetUniqueReceivePayloadTypes(tracks);
+  JsepTrack::SetReceivePayloadTypes(tracks);
   EXPECT_THAT(t1.GetUniqueReceivePayloadTypes(), UnorderedElementsAre(1));
-  EXPECT_THAT(t1.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre());
+  EXPECT_THAT(t1.GetOtherReceivePayloadTypes(), UnorderedElementsAre(2));
   EXPECT_THAT(t2.GetUniqueReceivePayloadTypes(), UnorderedElementsAre(2));
-  EXPECT_THAT(t2.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre());
+  EXPECT_THAT(t2.GetOtherReceivePayloadTypes(), UnorderedElementsAre(1));
 }
 
 TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreDuplicates)
@@ -1907,11 +1907,11 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreDuplicates)
 
   std::vector<UniquePtr<JsepCodecDescription>> codecs1;
   codecs1.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1));
 
   std::vector<UniquePtr<JsepCodecDescription>> codecs2;
   codecs2.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1));
 
   SipccSdp offer1(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
   SdpMediaSection& offer1Msection1 = offer1.AddMediaSection(
@@ -1961,11 +1961,11 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsAreDuplicates)
             NS_OK);
 
   std::vector tracks{&t1, &t2};
-  JsepTrack::SetUniqueReceivePayloadTypes(tracks);
+  JsepTrack::SetReceivePayloadTypes(tracks);
   EXPECT_THAT(t1.GetUniqueReceivePayloadTypes(), UnorderedElementsAre());
-  EXPECT_THAT(t1.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre(1));
+  EXPECT_THAT(t1.GetOtherReceivePayloadTypes(), UnorderedElementsAre(1));
   EXPECT_THAT(t2.GetUniqueReceivePayloadTypes(), UnorderedElementsAre());
-  EXPECT_THAT(t2.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre(1));
+  EXPECT_THAT(t2.GetOtherReceivePayloadTypes(), UnorderedElementsAre(1));
 }
 
 TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsOverlap)
@@ -1974,15 +1974,15 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsOverlap)
 
   std::vector<UniquePtr<JsepCodecDescription>> codecs1;
   codecs1.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1));
   codecs1.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("2", "codec2", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("2", "codec2", 48000, 1));
 
   std::vector<UniquePtr<JsepCodecDescription>> codecs2;
   codecs2.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1));
   codecs2.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("3", "codec2", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("3", "codec2", 48000, 1));
 
   SipccSdp offer1(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
   SdpMediaSection& offer1Msection1 = offer1.AddMediaSection(
@@ -2033,11 +2033,11 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsOverlap)
             NS_OK);
 
   std::vector tracks{&t1, &t2};
-  JsepTrack::SetUniqueReceivePayloadTypes(tracks);
+  JsepTrack::SetReceivePayloadTypes(tracks);
   EXPECT_THAT(t1.GetUniqueReceivePayloadTypes(), UnorderedElementsAre(2));
-  EXPECT_THAT(t1.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre(1));
+  EXPECT_THAT(t1.GetOtherReceivePayloadTypes(), UnorderedElementsAre(1, 3));
   EXPECT_THAT(t2.GetUniqueReceivePayloadTypes(), UnorderedElementsAre(3));
-  EXPECT_THAT(t2.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre(1));
+  EXPECT_THAT(t2.GetOtherReceivePayloadTypes(), UnorderedElementsAre(1, 2));
 }
 
 TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsDuplicateAfterRenegotiation)
@@ -2046,15 +2046,15 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsDuplicateAfterRenegotiation)
 
   std::vector<UniquePtr<JsepCodecDescription>> codecs1;
   codecs1.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("1", "codec1", 48000, 1));
   codecs1.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("2", "codec2", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("2", "codec2", 48000, 1));
 
   std::vector<UniquePtr<JsepCodecDescription>> codecs2;
   codecs2.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("3", "codec1", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("3", "codec1", 48000, 1));
   codecs2.emplace_back(
-      MakeUnique<JsepAudioCodecDescription>("4", "codec2", 48000, 1, true));
+      MakeUnique<JsepAudioCodecDescription>("4", "codec2", 48000, 1));
 
   // First negotiation.
   SipccSdp offer1(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
@@ -2107,11 +2107,11 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsDuplicateAfterRenegotiation)
             NS_OK);
 
   std::vector tracks{&t1, &t2};
-  JsepTrack::SetUniqueReceivePayloadTypes(tracks);
+  JsepTrack::SetReceivePayloadTypes(tracks);
   EXPECT_THAT(t1.GetUniqueReceivePayloadTypes(), UnorderedElementsAre(1, 2));
-  EXPECT_THAT(t1.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre());
+  EXPECT_THAT(t1.GetOtherReceivePayloadTypes(), UnorderedElementsAre(3, 4));
   EXPECT_THAT(t2.GetUniqueReceivePayloadTypes(), UnorderedElementsAre(3, 4));
-  EXPECT_THAT(t2.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre());
+  EXPECT_THAT(t2.GetOtherReceivePayloadTypes(), UnorderedElementsAre(1, 2));
 
   // Second negotiation.
   SipccSdp offer2(SdpOrigin("", 0, 0, sdp::kIPv4, ""));
@@ -2163,10 +2163,10 @@ TEST(JsepTrackRecvPayloadTypesTest, DoubleTrackPTsDuplicateAfterRenegotiation)
             NS_OK);
 
   std::vector newTracks{&t1, &t2};
-  JsepTrack::SetUniqueReceivePayloadTypes(newTracks);
+  JsepTrack::SetReceivePayloadTypes(newTracks);
   EXPECT_THAT(t1.GetUniqueReceivePayloadTypes(), UnorderedElementsAre());
-  EXPECT_THAT(t1.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre(1, 2));
+  EXPECT_THAT(t1.GetOtherReceivePayloadTypes(), UnorderedElementsAre(1, 2));
   EXPECT_THAT(t2.GetUniqueReceivePayloadTypes(), UnorderedElementsAre());
-  EXPECT_THAT(t2.GetDuplicateReceivePayloadTypes(), UnorderedElementsAre(1, 2));
+  EXPECT_THAT(t2.GetOtherReceivePayloadTypes(), UnorderedElementsAre(1, 2));
 }
 }  // namespace mozilla

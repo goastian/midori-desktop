@@ -30,6 +30,7 @@ class gfxConfigManager {
         mFeatureD3D11HwAngle(nullptr),
         mFeatureD3D11Compositing(nullptr),
         mFeatureGPUProcess(nullptr),
+        mFeatureGLNorm16Textures(nullptr),
         mWrForceEnabled(false),
         mWrSoftwareForceEnabled(false),
         mWrCompositorForceEnabled(false),
@@ -48,8 +49,7 @@ class gfxConfigManager {
         mDisableHwCompositingNoWr(false),
         mIsNightly(false),
         mIsEarlyBetaOrEarlier(false),
-        mSafeMode(false),
-        mIsWin11OrLater(false) {}
+        mSafeMode(false) {}
 
   void Init();
 
@@ -75,6 +75,7 @@ class gfxConfigManager {
   FeatureState* mFeatureD3D11HwAngle;
   FeatureState* mFeatureD3D11Compositing;
   FeatureState* mFeatureGPUProcess;
+  FeatureState* mFeatureGLNorm16Textures;
 
   /**
    * Prefs
@@ -109,7 +110,6 @@ class gfxConfigManager {
   bool mIsNightly;
   bool mIsEarlyBetaOrEarlier;
   bool mSafeMode;
-  bool mIsWin11OrLater;
 };
 
 }  // namespace gfx

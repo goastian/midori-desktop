@@ -5,8 +5,8 @@
 use crate::{
     command::{RecordedComputePass, RecordedRenderPass},
     error::{ErrMsg, ErrorBuffer, ErrorBufferType},
-    wgpu_string, AdapterInformation, ByteBuf, CommandEncoderAction, DeviceAction, DropAction,
-    QueueWriteAction, SwapChainId, TextureAction,
+    wgpu_string, AdapterInformation, ByteBuf, CommandEncoderAction, DeviceAction, QueueWriteAction,
+    SwapChainId, TextureAction,
 };
 
 use nsstring::{nsACString, nsCString, nsString};
@@ -113,7 +113,7 @@ impl std::ops::Deref for Global {
 }
 
 #[no_mangle]
-pub extern "C" fn wgpu_server_new(owner: *mut c_void, use_dxc: bool) -> *mut Global {
+pub extern "C" fn wgpu_server_new(owner: *mut c_void) -> *mut Global {
     log::info!("Initializing WGPU server");
     let backends_pref = static_prefs::pref!("dom.webgpu.wgpu-backend").to_string();
     let backends = if backends_pref.is_empty() {
@@ -138,13 +138,9 @@ pub extern "C" fn wgpu_server_new(owner: *mut c_void, use_dxc: bool) -> *mut Glo
         instance_flags.insert(wgt::InstanceFlags::DISCARD_HAL_LABELS);
     }
 
-    let dx12_shader_compiler = if use_dxc {
-        wgt::Dx12Compiler::DynamicDxc {
-            dxc_path: "dxcompiler.dll".into(),
-            max_shader_model: wgt::DxcShaderModel::V6_6,
-        }
-    } else {
-        wgt::Dx12Compiler::Fxc
+    let dx12_shader_compiler = wgt::Dx12Compiler::DynamicDxc {
+        dxc_path: "dxcompiler.dll".into(),
+        max_shader_model: wgt::DxcShaderModel::V6_6,
     };
 
     let global = wgc::global::Global::new(
@@ -168,7 +164,10 @@ pub extern "C" fn wgpu_server_new(owner: *mut c_void, use_dxc: bool) -> *mut Glo
             },
         },
     );
-    let global = Global { global, webgpu_parent: owner };
+    let global = Global {
+        global,
+        webgpu_parent: owner,
+    };
     Box::into_raw(Box::new(global))
 }
 
@@ -296,12 +295,30 @@ fn support_use_external_texture_in_swap_chain(
 ) -> bool {
     #[cfg(target_os = "windows")]
     {
-        return backend == wgt::Backend::Dx12 && is_hardware;
+        if backend != wgt::Backend::Dx12 {
+            log::info!(
+                "WebGPU: disabling ExternalTexture swapchain: \n\
+                        wgpu backend is not Dx12"
+            );
+            return false;
+        }
+        if !is_hardware {
+            log::info!(
+                "WebGPU: disabling ExternalTexture swapchain: \n\
+                        Dx12 backend is not hardware"
+            );
+            return false;
+        }
+        return true;
     }
 
     #[cfg(target_os = "linux")]
     {
         let support = if backend != wgt::Backend::Vulkan {
+            log::info!(
+                "WebGPU: disabling ExternalTexture swapchain: \n\
+                        wgpu backend is not Vulkan"
+            );
             false
         } else {
             unsafe {
@@ -316,12 +333,23 @@ fn support_use_external_texture_in_swap_chain(
                     };
 
                     let capabilities = hal_adapter.physical_device_capabilities();
-
-                    capabilities.supports_extension(khr::external_memory_fd::NAME)
-                        && capabilities.supports_extension(ash::ext::external_memory_dma_buf::NAME)
-                        && capabilities
-                            .supports_extension(ash::ext::image_drm_format_modifier::NAME)
-                        && capabilities.supports_extension(khr::external_semaphore_fd::NAME)
+                    static REQUIRED: &[&'static std::ffi::CStr] = &[
+                        khr::external_memory_fd::NAME,
+                        ash::ext::external_memory_dma_buf::NAME,
+                        ash::ext::image_drm_format_modifier::NAME,
+                        khr::external_semaphore_fd::NAME,
+                    ];
+                    REQUIRED.iter().all(|extension| {
+                        let supported = capabilities.supports_extension(extension);
+                        if !supported {
+                            log::info!(
+                                "WebGPU: disabling ExternalTexture swapchain: \n\
+                                        Vulkan extension not supported: {:?}",
+                                extension.to_string_lossy()
+                            );
+                        }
+                        supported
+                    })
                 })
             }
         };
@@ -330,7 +358,18 @@ fn support_use_external_texture_in_swap_chain(
 
     #[cfg(target_os = "macos")]
     {
-        if backend != wgt::Backend::Metal || !is_hardware {
+        if backend != wgt::Backend::Metal {
+            log::info!(
+                "WebGPU: disabling ExternalTexture swapchain: \n\
+                        wgpu backend is not Metal"
+            );
+            return false;
+        }
+        if !is_hardware {
+            log::info!(
+                "WebGPU: disabling ExternalTexture swapchain: \n\
+                        Metal backend is not hardware"
+            );
             return false;
         }
 
@@ -340,9 +379,16 @@ fn support_use_external_texture_in_swap_chain(
             msg_send![process_info, operatingSystemVersion]
         };
 
-        let supports_shared_event = version.at_least((10, 14), (12, 0), /* os_is_mac */ true);
+        if !version.at_least((10, 14), (12, 0), /* os_is_mac */ true) {
+            log::info!(
+                "WebGPU: disabling ExternalTexture swapchain:\n\
+                        operating system version is not at least 10.14 (macOS) or 12.0 (iOS)\n\
+                        shared event not supported"
+            );
+            return false;
+        }
 
-        return supports_shared_event;
+        return true;
     }
 
     false
@@ -419,19 +465,22 @@ pub unsafe extern "C" fn wgpu_server_adapter_request_device(
     let mut desc: wgc::device::DeviceDescriptor =
         bincode::deserialize(byte_buf.as_slice()).unwrap();
 
-    desc.trace = match desc.trace {
-        wgt::Trace::Directory(s) => {
-            let idx = TRACE_IDX.fetch_add(1, Ordering::Relaxed);
-            let path = s.join(idx.to_string());
+    if let wgt::Trace::Directory(ref path) = desc.trace {
+        log::warn!("DeviceDescriptor from child process should not request wgpu trace path, but it did request `{}`",
+                   path.display());
+    }
+    desc.trace = wgt::Trace::Off;
+    if let Some(env_dir) = std::env::var_os("WGPU_TRACE") {
+        let mut path = std::path::PathBuf::from(env_dir);
+        let idx = TRACE_IDX.fetch_add(1, Ordering::Relaxed);
+        path.push(idx.to_string());
 
-            if std::fs::create_dir_all(&path).is_err() {
-                log::warn!("Failed to create directory {:?} for wgpu recording.", path);
-            }
-
-            wgt::Trace::Directory(path)
+        if std::fs::create_dir_all(&path).is_err() {
+            log::warn!("Failed to create directory {:?} for wgpu recording.", path);
+        } else {
+            desc.trace = wgt::Trace::Directory(path);
         }
-        other => other,
-    };
+    }
 
     // TODO: in https://github.com/gfx-rs/wgpu/pull/3626/files#diff-033343814319f5a6bd781494692ea626f06f6c3acc0753a12c867b53a646c34eR97
     // which introduced the queue id parameter, the queue id is also the device id. I don't know how applicable this is to
@@ -1592,7 +1641,8 @@ impl Global {
             return false;
         }
 
-        let handle = unsafe { wgpu_server_get_external_texture_handle(self.webgpu_parent, texture_id) };
+        let handle =
+            unsafe { wgpu_server_get_external_texture_handle(self.webgpu_parent, texture_id) };
         if handle.is_null() {
             let msg = c"Failed to get external texture handle";
             unsafe {
@@ -1996,7 +2046,9 @@ impl Global {
                 }
 
                 let use_external_texture = if let Some(id) = swap_chain_id {
-                    unsafe { wgpu_server_use_external_texture_for_swap_chain(self.webgpu_parent, id) }
+                    unsafe {
+                        wgpu_server_use_external_texture_for_swap_chain(self.webgpu_parent, id)
+                    }
                 } else {
                     false
                 };
@@ -2258,15 +2310,11 @@ impl Global {
             CommandEncoderAction::RunComputePass {
                 base,
                 timestamp_writes,
-            } => {
-                if let Err(err) = self.compute_pass_end_with_unresolved_commands(
-                    self_id,
-                    base,
-                    timestamp_writes.as_ref(),
-                ) {
-                    error_buf.init(err);
-                }
-            }
+            } => self.compute_pass_end_with_unresolved_commands(
+                self_id,
+                base,
+                timestamp_writes.as_ref(),
+            ),
             CommandEncoderAction::WriteTimestamp {
                 query_set_id,
                 query_index,
@@ -2301,18 +2349,14 @@ impl Global {
                 target_depth_stencil,
                 timestamp_writes,
                 occlusion_query_set_id,
-            } => {
-                if let Err(err) = self.render_pass_end_with_unresolved_commands(
-                    self_id,
-                    base,
-                    &target_colors,
-                    target_depth_stencil.as_ref(),
-                    timestamp_writes.as_ref(),
-                    occlusion_query_set_id,
-                ) {
-                    error_buf.init(err);
-                }
-            }
+            } => self.render_pass_end_with_unresolved_commands(
+                self_id,
+                base,
+                &target_colors,
+                target_depth_stencil.as_ref(),
+                timestamp_writes.as_ref(),
+                occlusion_query_set_id,
+            ),
             CommandEncoderAction::ClearBuffer { dst, offset, size } => {
                 if let Err(err) = self.command_encoder_clear_buffer(self_id, dst, offset, size) {
                     error_buf.init(err);
@@ -2343,8 +2387,7 @@ impl Global {
                     error_buf.init(err);
                 }
             }
-            CommandEncoderAction::BuildAccelerationStructuresUnsafeTlas { .. }
-            | CommandEncoderAction::BuildAccelerationStructures { .. } => {
+            CommandEncoderAction::BuildAccelerationStructures { .. } => {
                 unreachable!("internal error: attempted to build acceleration structures")
             }
         }
@@ -2760,114 +2803,4 @@ pub extern "C" fn wgpu_server_sampler_drop(global: &Global, self_id: id::Sampler
 #[no_mangle]
 pub extern "C" fn wgpu_server_query_set_drop(global: &Global, self_id: id::QuerySetId) {
     global.query_set_drop(self_id);
-}
-
-#[no_mangle]
-pub extern "C" fn wgpu_server_compute_pipeline_get_bind_group_layout(
-    global: &Global,
-    self_id: id::ComputePipelineId,
-    index: u32,
-    assign_id: id::BindGroupLayoutId,
-    mut error_buf: ErrorBuffer,
-) {
-    let (_, error) = global.compute_pipeline_get_bind_group_layout(self_id, index, Some(assign_id));
-    if let Some(err) = error {
-        error_buf.init(err);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn wgpu_server_render_pipeline_get_bind_group_layout(
-    global: &Global,
-    self_id: id::RenderPipelineId,
-    index: u32,
-    assign_id: id::BindGroupLayoutId,
-    mut error_buf: ErrorBuffer,
-) {
-    let (_, error) = global.render_pipeline_get_bind_group_layout(self_id, index, Some(assign_id));
-    if let Some(err) = error {
-        error_buf.init(err);
-    }
-}
-
-/// Encode the freeing of the selected ID into a byte buf.
-#[no_mangle]
-pub extern "C" fn wgpu_server_adapter_free(id: id::AdapterId, drop_byte_buf: &mut ByteBuf) {
-    *drop_byte_buf = DropAction::Adapter(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_device_free(id: id::DeviceId, drop_byte_buf: &mut ByteBuf) {
-    *drop_byte_buf = DropAction::Device(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_shader_module_free(
-    id: id::ShaderModuleId,
-    drop_byte_buf: &mut ByteBuf,
-) {
-    *drop_byte_buf = DropAction::ShaderModule(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_pipeline_layout_free(
-    id: id::PipelineLayoutId,
-    drop_byte_buf: &mut ByteBuf,
-) {
-    *drop_byte_buf = DropAction::PipelineLayout(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_bind_group_layout_free(
-    id: id::BindGroupLayoutId,
-    drop_byte_buf: &mut ByteBuf,
-) {
-    *drop_byte_buf = DropAction::BindGroupLayout(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_bind_group_free(id: id::BindGroupId, drop_byte_buf: &mut ByteBuf) {
-    *drop_byte_buf = DropAction::BindGroup(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_command_buffer_free(
-    id: id::CommandBufferId,
-    drop_byte_buf: &mut ByteBuf,
-) {
-    *drop_byte_buf = DropAction::CommandBuffer(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_render_bundle_free(
-    id: id::RenderBundleId,
-    drop_byte_buf: &mut ByteBuf,
-) {
-    *drop_byte_buf = DropAction::RenderBundle(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_render_pipeline_free(
-    id: id::RenderPipelineId,
-    drop_byte_buf: &mut ByteBuf,
-) {
-    *drop_byte_buf = DropAction::RenderPipeline(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_compute_pipeline_free(
-    id: id::ComputePipelineId,
-    drop_byte_buf: &mut ByteBuf,
-) {
-    *drop_byte_buf = DropAction::ComputePipeline(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_buffer_free(id: id::BufferId, drop_byte_buf: &mut ByteBuf) {
-    *drop_byte_buf = DropAction::Buffer(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_texture_free(id: id::TextureId, drop_byte_buf: &mut ByteBuf) {
-    *drop_byte_buf = DropAction::Texture(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_texture_view_free(
-    id: id::TextureViewId,
-    drop_byte_buf: &mut ByteBuf,
-) {
-    *drop_byte_buf = DropAction::TextureView(id).to_byte_buf();
-}
-#[no_mangle]
-pub extern "C" fn wgpu_server_sampler_free(id: id::SamplerId, drop_byte_buf: &mut ByteBuf) {
-    *drop_byte_buf = DropAction::Sampler(id).to_byte_buf();
 }

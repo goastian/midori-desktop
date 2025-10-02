@@ -8,7 +8,6 @@
 import ast
 import enum
 import functools
-import json
 import os
 import platform
 import shutil
@@ -19,11 +18,11 @@ import sysconfig
 import tempfile
 import warnings
 from contextlib import contextmanager
-from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Optional
 
 from filelock import FileLock, Timeout
+from mozfile import json
 from packaging.specifiers import SpecifierSet
 
 from mach.requirements import (
@@ -41,24 +40,36 @@ PIP_NETWORK_INSTALL_RESTRICTED_VIRTUALENVS = ("mach", "build", "common")
 _is_windows = sys.platform == "cygwin" or (sys.platform == "win32" and os.sep == "\\")
 
 
-@lru_cache(maxsize=None)
+@functools.cache
 def use_uv():
-    return os.environ.get("MACH_NO_UV", "").lower() not in (
-        "1",
-        "true",
-    ) and shutil.which("uv")
+    return (
+        os.environ.get("MACH_NO_UV", "").lower()
+        not in (
+            "1",
+            "true",
+        )
+        and get_uv_executable()
+    )
 
 
-@lru_cache(maxsize=None)
+@functools.cache
+def get_uv_executable():
+    return shutil.which("uv")
+
+
+@functools.cache
 def show_pip_output():
     return os.environ.get("MACH_SHOW_PIP_OUTPUT", "").lower() in ("1", "true")
 
 
 def pip_command(*, python_executable, subcommand=None, args=None, non_uv_args=None):
     if use_uv():
-        command = ["uv", "pip"]
+        uv_executable = get_uv_executable()
+        command = [uv_executable, "pip"]
         if subcommand:
             command.append(subcommand)
+            python_root = Path(python_executable).parent.parent
+            command.append(f"--python={python_root}")
         full_command = command + (args or [])
     else:
         command = [python_executable, "-m", "pip"]
@@ -1157,7 +1168,7 @@ class ExternalPythonSite:
         self._prefix = os.path.dirname(os.path.dirname(python_executable))
         self.python_path = python_executable
 
-    @functools.lru_cache(maxsize=None)
+    @functools.cache
     def sys_path(self):
         """Return lists of sys.path entries: one for standard library, one for the site
 
@@ -1229,7 +1240,7 @@ class ExternalPythonSite:
         return stdlib
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def resolve_requirements(topsrcdir, site_name):
     thunderbird_dir = Path(topsrcdir, "comm")
     is_thunderbird = thunderbird_dir.exists() and any(thunderbird_dir.iterdir())

@@ -6,15 +6,13 @@
 #ifndef include_dom_media_ipc_RemoteDecoderChild_h
 #define include_dom_media_ipc_RemoteDecoderChild_h
 
-#include <functional>
-
 #include "mozilla/PRemoteDecoderChild.h"
-#include "mozilla/RemoteDecoderManagerChild.h"
+#include "mozilla/RemoteMediaManagerChild.h"
 #include "mozilla/ShmemRecycleAllocator.h"
 
 namespace mozilla {
 
-class RemoteDecoderManagerChild;
+class RemoteMediaManagerChild;
 using mozilla::MediaDataDecoder;
 using mozilla::ipc::IPCResult;
 
@@ -25,7 +23,7 @@ class RemoteDecoderChild : public ShmemRecycleAllocator<RemoteDecoderChild>,
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(RemoteDecoderChild);
 
-  explicit RemoteDecoderChild(RemoteDecodeIn aLocation);
+  explicit RemoteDecoderChild(RemoteMediaIn aLocation);
 
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
@@ -49,7 +47,7 @@ class RemoteDecoderChild : public ShmemRecycleAllocator<RemoteDecoderChild>,
   // Called from IPDL when our actor has been destroyed
   void IPDLActorDestroyed();
 
-  RemoteDecoderManagerChild* GetManager();
+  RemoteMediaManagerChild* GetManager();
 
  protected:
   virtual ~RemoteDecoderChild();
@@ -60,7 +58,7 @@ class RemoteDecoderChild : public ShmemRecycleAllocator<RemoteDecoderChild>,
 
   RefPtr<RemoteDecoderChild> mIPDLSelfRef;
   MediaDataDecoder::DecodedData mDecodedData;
-  const RemoteDecodeIn mLocation;
+  const RemoteMediaIn mLocation;
 
  private:
   const nsCOMPtr<nsISerialEventTarget> mThread;
@@ -71,10 +69,6 @@ class RemoteDecoderChild : public ShmemRecycleAllocator<RemoteDecoderChild>,
   MozPromiseHolder<MediaDataDecoder::DecodePromise> mDrainPromise;
   MozPromiseHolder<MediaDataDecoder::FlushPromise> mFlushPromise;
   MozPromiseHolder<mozilla::ShutdownPromise> mShutdownPromise;
-
-  void HandleRejectionError(
-      const ipc::ResponseRejectReason& aReason,
-      std::function<void(const MediaResult&)>&& aCallback);
 
   nsCString mHardwareAcceleratedReason;
   nsCString mDescription;

@@ -113,6 +113,13 @@ async function isPlaceholder(path) {
 const kProgressUpdateIntervalMs = 400;
 
 /**
+ * These sets represent the current download batch in public and private
+ * contexts.
+ */
+const gPublicBatch = new Set(),
+  gPrivateBatch = new Set();
+
+/**
  * Represents a single download, with associated state and actions.  This object
  * is transient, though it can be included in a DownloadList so that it can be
  * managed by the user interface and persisted across sessions.
@@ -296,6 +303,22 @@ Download.prototype = {
   launcherId: null,
 
   /**
+   * Any download that is running has this property set to true.  The property
+   * remains true until this download is canceled or until all downloads are
+   * stopped.  (If this download completes, isInCurrentBatch remains true for
+   * as long as any other download is running, even if the running download was
+   * started after this download completed.)
+   */
+  get isInCurrentBatch() {
+    return this._batch !== null;
+  },
+
+  /**
+   * Set containing this object, or null.
+   */
+  _batch: null,
+
+  /**
    * Raises the onchange notification.
    */
   _notifyChange: function D_notifyChange() {
@@ -370,10 +393,13 @@ Download.prototype = {
       );
     }
 
-    if (this.error && this.error.becauseBlockedByReputationCheck) {
+    if (
+      this.error?.becauseBlockedByReputationCheck ||
+      this.error?.becauseBlockedByContentAnalysis
+    ) {
       return Promise.reject(
         new DownloadError({
-          message: "Cannot start after being blocked by a reputation check.",
+          message: "Cannot start after being blocked by a safety check.",
         })
       );
     }
@@ -381,6 +407,10 @@ Download.prototype = {
     // Initialize all the status properties for a new or restarted download.
     this.stopped = false;
     this.canceled = false;
+    if (!this._batch) {
+      this._batch = this.source.isPrivate ? gPrivateBatch : gPublicBatch;
+      this._batch.add(this);
+    }
     this.error = null;
     // Avoid serializing the previous error, or it would be restored on the next
     // startup, even if the download was restarted.
@@ -582,7 +612,9 @@ Download.prototype = {
             this._currentAttempt = null;
             this.stopped = true;
             this.speed = 0;
-            this._notifyChange();
+            if (!this._batch || Download._updateBatch(this._batch)) {
+              this._notifyChange();
+            }
             if (this.succeeded) {
               await this._succeed();
             }
@@ -611,8 +643,6 @@ Download.prototype = {
     if (this.launchWhenSucceeded) {
       this.launch().catch(console.error);
 
-      // Always schedule files to be deleted at the end of the private browsing
-      // mode, regardless of the value of the pref.
       if (this.source.isPrivate) {
         lazy.gExternalAppLauncher.deleteTemporaryPrivateFileWhenPossible(
           new lazy.FileUtils.File(this.target.path)
@@ -628,6 +658,19 @@ Download.prototype = {
           new lazy.FileUtils.File(this.target.path)
         );
       }
+    }
+
+    if (
+      Services.prefs.getBoolPref(
+        "browser.download.enableDeletePrivate",
+        false
+      ) &&
+      Services.prefs.getBoolPref("browser.download.deletePrivate", false) &&
+      this.source.isPrivate
+    ) {
+      lazy.gExternalAppLauncher.deletePrivateFileWhenPossible(
+        new lazy.FileUtils.File(this.target.path)
+      );
     }
   },
 
@@ -708,6 +751,10 @@ Download.prototype = {
       return this._promiseUnblock;
     }
 
+    if (this.error?.becauseBlockedByContentAnalysis) {
+      this.respondToContentAnalysisWarnWithAllow();
+    }
+
     if (!this.hasBlockedData) {
       return Promise.reject(
         new Error("unblock may only be called on Downloads with blocked data.")
@@ -716,7 +763,9 @@ Download.prototype = {
 
     this._promiseUnblock = (async () => {
       try {
-        await IOUtils.move(this.target.partFilePath, this.target.path);
+        if (this.target.partFilePath) {
+          await IOUtils.move(this.target.partFilePath, this.target.path);
+        }
         await this.target.refresh();
       } catch (ex) {
         await this.refresh();
@@ -731,6 +780,44 @@ Download.prototype = {
     })();
 
     return this._promiseUnblock;
+  },
+
+  /**
+   * Indicates that the download should be allowed. Will do nothing
+   * if content analysis was not used.
+   */
+  respondToContentAnalysisWarnWithAllow() {
+    if (this.error?.contentAnalysisWarnRequestToken) {
+      lazy.DownloadIntegration.getContentAnalysisService().respondToWarnDialog(
+        this.error.contentAnalysisWarnRequestToken,
+        true
+      );
+      this.error.contentAnalysisWarnRequestToken = undefined;
+    }
+  },
+
+  /**
+   * Indicates that the download should be blocked. Will do nothing
+   * if content analysis was not used.
+   */
+  async respondToContentAnalysisWarnWithBlock() {
+    if (this.error?.contentAnalysisWarnRequestToken) {
+      lazy.DownloadIntegration.getContentAnalysisService().respondToWarnDialog(
+        this.error.contentAnalysisWarnRequestToken,
+        false
+      );
+      this.error.contentAnalysisWarnRequestToken = undefined;
+      if (!this.target.partFilePath) {
+        // Callers will be finalizing the download after this.
+        // But if the download happened in place, we need to
+        // remove the final target file.
+        try {
+          await this.saver.removeData(true);
+        } catch (ex) {
+          console.error(ex);
+        }
+      }
+    }
   },
 
   /**
@@ -773,6 +860,9 @@ Download.prototype = {
     }
 
     this._promiseConfirmBlock = (async () => {
+      if (this.error?.becauseBlockedByContentAnalysis) {
+        await this.respondToContentAnalysisWarnWithBlock();
+      }
       // This call never throws exceptions. If the removal fails, the blocked
       // data remains stored on disk in the ".part" file.
       await this.saver.removeData();
@@ -887,6 +977,10 @@ Download.prototype = {
 
       // Notify that the cancellation request was received.
       this.canceled = true;
+      let batch = this._batch;
+      this._batch = null;
+      batch.delete(this);
+      Download._updateBatch(batch);
       this._notifyChange();
 
       // Execute the actual cancellation through the saver object, in case it
@@ -1432,6 +1526,27 @@ Download.fromSerializable = function (aSerializable) {
 };
 
 /**
+ * Checks a batch for any running downloads, emptying the batch if none are found.
+ * Returns a boolean indicating if _notifyChange() needs to be called on the
+ * triggering download (true) or if _updateBatch did the work of calling
+ * _notifyChange() on all of the downloads in the batch (false).
+ */
+Download._updateBatch = function (batch) {
+  const batchArray = Array.from(batch);
+  for (let download of batchArray) {
+    if (!download.stopped) {
+      return true;
+    }
+  }
+  batch.clear();
+  for (let download of batchArray) {
+    download._batch = null;
+    download._notifyChange();
+  }
+  return false;
+};
+
+/**
  * Represents the source of a download, for example a document or an URI.
  */
 export var DownloadSource = function () {};
@@ -1854,7 +1969,8 @@ export var DownloadError = function (aProperties) {
   } else if (
     aProperties.becauseBlocked ||
     aProperties.becauseBlockedByParentalControls ||
-    aProperties.becauseBlockedByReputationCheck
+    aProperties.becauseBlockedByReputationCheck ||
+    aProperties.becauseBlockedByContentAnalysis
   ) {
     this.message = "Download blocked.";
   } else {
@@ -1882,6 +1998,12 @@ export var DownloadError = function (aProperties) {
     this.becauseBlocked = true;
     this.becauseBlockedByReputationCheck = true;
     this.reputationCheckVerdict = aProperties.reputationCheckVerdict || "";
+  } else if (aProperties.becauseBlockedByContentAnalysis) {
+    this.becauseBlocked = true;
+    this.becauseBlockedByContentAnalysis = true;
+    this.contentAnalysisWarnRequestToken =
+      aProperties.contentAnalysisWarnRequestToken;
+    this.reputationCheckVerdict = aProperties.reputationCheckVerdict;
   } else if (aProperties.becauseBlocked) {
     this.becauseBlocked = true;
   }
@@ -1938,6 +2060,11 @@ DownloadError.prototype = {
    * and may be malware.
    */
   becauseBlockedByReputationCheck: false,
+
+  /**
+   * Indicates the download was blocked by a local content analysis tool.
+   */
+  becauseBlockedByContentAnalysis: false,
 
   /**
    * If becauseBlockedByReputationCheck is true, indicates the detailed reason
@@ -2000,6 +2127,7 @@ DownloadError.fromSerializable = function (aSerializable) {
       property != "becauseBlocked" &&
       property != "becauseBlockedByParentalControls" &&
       property != "becauseBlockedByReputationCheck" &&
+      property != "becauseBlockedByContentAnalysis" &&
       property != "reputationCheckVerdict"
   );
 
@@ -2573,24 +2701,124 @@ DownloadCopySaver.prototype = {
    * @rejects DownloadError if the download should be blocked.
    */
   async _checkReputationAndMove(aSetPropertiesFn) {
+    const REPUTATION_CHECK = 0;
+    const CONTENT_ANALYSIS_CHECK = 1;
+    /**
+     * Maps nsIApplicationReputationService verdicts with the DownloadError ones.
+     */
+    const kVerdictMap = {
+      [Ci.nsIApplicationReputationService.VERDICT_DANGEROUS]:
+        DownloadError.BLOCK_VERDICT_MALWARE,
+      [Ci.nsIApplicationReputationService.VERDICT_UNCOMMON]:
+        DownloadError.BLOCK_VERDICT_UNCOMMON,
+      [Ci.nsIApplicationReputationService.VERDICT_POTENTIALLY_UNWANTED]:
+        DownloadError.BLOCK_VERDICT_POTENTIALLY_UNWANTED,
+      [Ci.nsIApplicationReputationService.VERDICT_DANGEROUS_HOST]:
+        DownloadError.BLOCK_VERDICT_MALWARE,
+    };
+
+    let checkContentAnalysis = download => {
+      // Start an asynchronous content analysis check.
+      return lazy.DownloadIntegration.shouldBlockForContentAnalysis(
+        download
+      ).then(result => {
+        result.check = CONTENT_ANALYSIS_CHECK;
+        return result;
+      });
+    };
+
+    let checkReputation = download => {
+      // Start an asynchronous reputation check.
+      return lazy.DownloadIntegration.shouldBlockForReputationCheck(
+        download
+      ).then(result => {
+        result.check = REPUTATION_CHECK;
+        return result;
+      });
+    };
+
+    let hasMostRestrictiveResult = ([result1, result2]) => {
+      // Verdicts are sorted from least-to-most restrictive.  However, a result that
+      // shouldBlock is always more restrictive than one that does not.  Since
+      // reputation allows shouldBlock to be overridden by prefs but content
+      // analysis does not, we need to be careful of that.
+      if (result1.shouldBlock && !result2.shouldBlock) {
+        return result1;
+      }
+      if (result2.shouldBlock) {
+        return result2;
+      }
+      // Verdicts are in a pre-defined order (see nsIApplicationReputationService),
+      // so find the most restrictive one.
+      const verdictToRestrictiveness = {
+        [Ci.nsIApplicationReputationService.VERDICT_SAFE]: 0,
+        [Ci.nsIApplicationReputationService.VERDICT_POTENTIALLY_UNWANTED]: 1,
+        [Ci.nsIApplicationReputationService.VERDICT_UNCOMMON]: 2,
+        [Ci.nsIApplicationReputationService.VERDICT_DANGEROUS_HOST]: 3,
+        [Ci.nsIApplicationReputationService.VERDICT_DANGEROUS]: 4,
+      };
+      return verdictToRestrictiveness[result1.verdict] >
+        verdictToRestrictiveness[result2.verdict]
+        ? result1
+        : result2;
+    };
+
     let download = this.download;
     let targetPath = this.download.target.path;
     let partFilePath = this.download.target.partFilePath;
 
-    let { shouldBlock, verdict } =
-      await lazy.DownloadIntegration.shouldBlockForReputationCheck(download);
-    if (shouldBlock) {
-      Glean.downloads.userActionOnBlockedDownload[
-        verdict
-      ].accumulateSingleSample(0);
+    let reputationPromise = checkReputation(download);
+    let caPromise = checkContentAnalysis(download);
+
+    let permissionResult = await Promise.any([
+      reputationPromise,
+      caPromise,
+    ]).then(async result => {
+      // If the first result is the most restrictive one, we can return it
+      // immediately.
+      if (
+        result.shouldBlock &&
+        result.verdict == Ci.nsIApplicationReputationService.VERDICT_DANGEROUS
+      ) {
+        return result;
+      }
+      // Otherwise wait for both results and compare them.
+      return await Promise.all([reputationPromise, caPromise]).then(
+        hasMostRestrictiveResult
+      );
+    });
+
+    let downloadErrorVerdict = kVerdictMap[permissionResult.verdict] || "";
+    permissionResult.verdict = downloadErrorVerdict;
+    if (permissionResult.shouldBlock) {
+      if (permissionResult.check === REPUTATION_CHECK) {
+        Glean.downloads.userActionOnBlockedDownload[
+          downloadErrorVerdict
+        ].accumulateSingleSample(0);
+      }
 
       let newProperties = { progress: 100, hasPartialData: false };
 
       // We will remove the potentially dangerous file if instructed by
       // DownloadIntegration. We will always remove the file when the
       // download did not use a partial file path, meaning it
-      // currently has its final filename.
-      if (!lazy.DownloadIntegration.shouldKeepBlockedData() || !partFilePath) {
+      // currently has its final filename, or if it was blocked by
+      // content analysis.
+      let neverRemoveData = false;
+      let alwaysRemoveData = false;
+      if (permissionResult.check === CONTENT_ANALYSIS_CHECK) {
+        if (downloadErrorVerdict === DownloadError.BLOCK_VERDICT_MALWARE) {
+          alwaysRemoveData = true;
+        } else {
+          neverRemoveData = true;
+        }
+      }
+      let removeData =
+        !neverRemoveData &&
+        (alwaysRemoveData ||
+          !lazy.DownloadIntegration.shouldKeepBlockedData() ||
+          !partFilePath);
+      if (removeData) {
         await this.removeData(!partFilePath);
       } else {
         newProperties.hasBlockedData = true;
@@ -2598,10 +2826,19 @@ DownloadCopySaver.prototype = {
 
       aSetPropertiesFn(newProperties);
 
-      throw new DownloadError({
-        becauseBlockedByReputationCheck: true,
-        reputationCheckVerdict: verdict,
-      });
+      if (permissionResult.check == REPUTATION_CHECK) {
+        throw new DownloadError({
+          becauseBlockedByReputationCheck: true,
+          reputationCheckVerdict: downloadErrorVerdict,
+        });
+      } else {
+        throw new DownloadError({
+          becauseBlockedByContentAnalysis: true,
+          reputationCheckVerdict: downloadErrorVerdict,
+          contentAnalysisWarnRequestToken:
+            permissionResult.contentAnalysisWarnRequestToken,
+        });
+      }
     }
 
     if (partFilePath) {

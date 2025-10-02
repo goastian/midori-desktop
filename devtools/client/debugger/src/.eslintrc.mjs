@@ -97,7 +97,7 @@ export default [
       // Require camel case names
       camelcase: ["error", { properties: "never" }],
       // Warn about cyclomatic complexity in functions.
-      complexity: ["error", { max: 22 }],
+      complexity: ["error", { max: 23 }],
       // Don't warn for inconsistent naming when capturing this (not so important
       // with auto-binding fat arrow functions).
       "consistent-this": 0,
@@ -258,7 +258,10 @@ export default [
       "no-unreachable": 2,
       // Disallow global and local variables that arent used. Allow unused function arguments
       // that are prefixed with `_`.
-      "no-unused-vars": [2, { vars: "all", argsIgnorePattern: "^_" }],
+      "no-unused-vars": [
+        2,
+        { vars: "all", caughtErrors: "none", argsIgnorePattern: "^_" },
+      ],
       // Allow using variables before they are defined.
       "no-use-before-define": 0,
       // We use var-only-at-top-level instead of no-var as we allow top level

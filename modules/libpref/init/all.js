@@ -186,6 +186,7 @@ pref("media.volume_scale", "1.0");
 pref("media.play-stand-alone", true);
 
 #ifdef MOZ_WMF
+  pref("media.wmf.dxva.enabled", true);
   pref("media.wmf.play-stand-alone", true);
 #endif
 
@@ -226,11 +227,6 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
 #ifdef MOZ_WEBRTC
   pref("media.navigator.video.enabled", true);
   pref("media.navigator.video.default_fps",30);
-  // Whether to expose the resizeMode constraint/setting/capability to content.
-  // Kept false while implementing the feature in bug 1286945 and dependencies,
-  // to allow for gradually gaining support and test coverage.
-  pref("media.navigator.video.resize_mode.enabled", false);
-  pref("media.navigator.video.default_resize_mode", 0); // 0=none, 1=crop-and-scale
   pref("media.navigator.video.use_remb", true);
   pref("media.navigator.video.use_transport_cc", true);
   pref("media.peerconnection.video.use_rtx", true);
@@ -492,7 +488,7 @@ pref("ui.textHighlightForeground", "#ffffff");
 //
 // Values are -1 always on. 1 always off, 0 is auto as some platform perform
 // further checks.
-pref("accessibility.force_disabled", 0);
+pref("accessibility.force_disabled", 1);
 
 pref("focusmanager.testmode", false);
 
@@ -1792,11 +1788,7 @@ pref("extensions.browser_style_mv3.same_as_mv2", false);
 
 // If set to true, browser.cookies.set() will throw exceptions if the cookie is
 // invalid. Otherwise, a warning message will be shown in the console.
-#ifdef NIGHTLY_BUILD
-pref("extensions.cookie.rejectWhenInvalid", true);
-#else
 pref("extensions.cookie.rejectWhenInvalid", false);
-#endif
 
 // Experimental Inference API
 pref("extensions.ml.enabled", true);
@@ -3124,7 +3116,7 @@ pref("extensions.webextensions.keepStorageOnUninstall", false);
 pref("extensions.webextensions.keepUuidOnUninstall", false);
 // Redirect basedomain used by identity api
 pref("extensions.webextensions.identity.redirectDomain", "extensions.allizom.org");
-pref("extensions.webextensions.restrictedDomains", "accounts-static.cdn.mozilla.net,accounts.firefox.com,addons.cdn.mozilla.net,addons.mozilla.org,api.accounts.firefox.com,content.cdn.mozilla.net,discovery.addons.mozilla.org,oauth.accounts.firefox.com,profile.accounts.firefox.com,support.mozilla.org,sync.services.mozilla.com");
+pref("extensions.webextensions.restrictedDomains", "accounts-static.cdn.mozilla.net,accounts.firefox.com,addons.cdn.mozilla.net,addons.mozilla.org,api.accounts.firefox.com,content.cdn.mozilla.net,discovery.addons.mozilla.org,install.mozilla.org,oauth.accounts.firefox.com,profile.accounts.firefox.com,support.mozilla.org,sync.services.mozilla.com");
 
 // Extensions are prevented from accessing Quarantined Domains by default.
 pref("extensions.quarantinedDomains.enabled", true);
@@ -3341,10 +3333,6 @@ pref("privacy.rejectForeign.allowList", "");
 
 // The list of email webapp sites
 pref("privacy.trackingprotection.emailtracking.webapp.domains", "mail.163.com,mail.aol.com,fastmail.com,webmail.gandi.net,mail.google.com,navigator-bs.gmx.com,app.hey.com,horde.org/apps/webmail,hushmail.com,icloud.com/mail,kolabnow.com,laposte.net/accueil,mail.lycos.com,mail.com/mail/,mail.ru,mailfence.com,outlook.live.com,email-postaci.com/,posteo.de,mail.protonmail.com,app.rackspace.com,mail.rediff.com,emailmg.ipage.com,runbox.com,mail.sina.com.cn,tutanota.com,mail.yahoo.com,mail.yandex.com,mail.zimbra.com,zoho.com/mail/");
-
-// The migration for this pref disables both allow-list categories (convenience
-// and baseline) for users in ETP "strict" and "custom" mode.
-pref("privacy.trackingprotection.allow_list.hasMigratedCategoryPrefs", false);
 
 // Number of random entries to send with a gethash request
 pref("urlclassifier.gethashnoise", 4);
@@ -3750,7 +3738,11 @@ pref("toolkit.legacyUserProfileCustomizations.stylesheets", false);
   pref("datareporting.policy.minimumPolicyVersion", 1);
   pref("datareporting.policy.minimumPolicyVersion.channel-beta", 2);
   pref("datareporting.policy.firstRunURL", "https://www.mozilla.org/privacy/firefox/");
-  pref("datareporting.policy.dataSubmissionPolicyBypassNotification", false);
+  #ifdef MOZILLA_OFFICIAL
+    pref("datareporting.policy.dataSubmissionPolicyBypassNotification", false);
+  #else
+    pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
+  #endif
 #endif
 
 #ifdef MOZ_SERVICES_HEALTHREPORT
@@ -3759,8 +3751,8 @@ pref("toolkit.legacyUserProfileCustomizations.stylesheets", false);
 
     // Health Report is enabled by default on all channels.
     // Do note that the toggle on Fenix and Focus does NOT reflect to this pref.
-    pref("datareporting.healthreport.uploadEnabled", true);
-    pref("datareporting.usage.uploadEnabled", true);
+    pref("datareporting.healthreport.uploadEnabled", false);
+    pref("datareporting.usage.uploadEnabled", false);
   #endif
 #endif
 
@@ -4019,7 +4011,7 @@ pref("extensions.formautofill.addresses.capture.enabled", true);
 #endif
 pref("extensions.formautofill.addresses.ignoreAutocompleteOff", true);
 // Supported countries need to follow ISO 3166-1 to align with "browser.search.region"
-pref("extensions.formautofill.addresses.supportedCountries", "US,CA,GB,FR,DE,BR,ES,JP");
+pref("extensions.formautofill.addresses.supportedCountries", "US,CA,GB,FR,DE");
 pref("extensions.formautofill.creditCards.supported", "on");
 pref("extensions.formautofill.creditCards.enabled", true);
 pref("extensions.formautofill.creditCards.ignoreAutocompleteOff", true);
@@ -4035,6 +4027,8 @@ pref("extensions.formautofill.creditCards.heuristics.mode", 2);
 pref("extensions.formautofill.creditCards.heuristics.fathom.types", "cc-number,cc-name");
 // Defines the threshold to identify whether a field is a cc field
 pref("extensions.formautofill.creditCards.heuristics.fathom.confidenceThreshold", "0.5");
+// Defineis the threshold to mark fields that are "high-confidence", see `isValidSection` for details
+pref("extensions.formautofill.creditCards.heuristics.fathom.highConfidenceThreshold", "0.95");
 // This is Only for testing! Set the confidence value (> 0 && <= 1) after a field is identified by fathom
 pref("extensions.formautofill.creditCards.heuristics.fathom.testConfidence", "0");
 
@@ -4052,6 +4046,11 @@ pref("extensions.formautofill.heuristics.refillOnSiteClearingFields", true);
 pref("extensions.formautofill.heuristics.refillOnSiteClearingFields.timeout", 500);
 
 pref("extensions.formautofill.heuristics.autofillSameOriginWithTop", true);
+
+#ifdef NIGHTLY_BUILD
+  pref("extensions.formautofill.ml.experiment.enabled", true);
+  pref("extensions.formautofill.ml.experiment.modelRevision", "v0.1.3");
+#endif
 
 pref("toolkit.osKeyStore.loglevel", "Warn");
 
@@ -4121,7 +4120,3 @@ pref("privacy.query_stripping.strip_on_share.canDisable", true);
 // Captcha Detection
 pref("captchadetection.loglevel", "Warn");
 pref("captchadetection.actor.enabled", true);
-
-// Make general.smoothScroll sticky to avoid being clobbered by
-// preferes-reduced-motion system setting.
-pref("general.smoothScroll", true, sticky);

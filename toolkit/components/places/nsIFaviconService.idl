@@ -7,8 +7,6 @@
 
 interface nsIURI;
 interface nsIPrincipal;
-interface mozIPlacesPendingOperation;
-interface nsIFaviconDataCallback;
 
 [scriptable, uuid(e81e0b0c-b9f1-4c2e-8f3c-b809933cf73c)]
 interface nsIFaviconService : nsISupports
@@ -141,7 +139,7 @@ interface nsIFaviconService : nsISupports
                             in unsigned short aPreferredWidth);
 
   /**
-   * Copies cached favicons from a page to another one.
+   * Try to copy cached favicons from a page to another one.
    *
    * @param aFromPageURI
    *        URI of the originating page.
@@ -150,57 +148,15 @@ interface nsIFaviconService : nsISupports
    * @param aFaviconLoadType
    *        Set to FAVICON_LOAD_PRIVATE if the copy is started from a private
    *        browsing window.  Set to FAVICON_LOAD_NON_PRIVATE otherwise.
-   * @param [optional] aCallback
-   *        Once we're done copying the favicon, we invoke this callback.
-   *        If a copy has been done, the callback will report one of the
-   *        favicons uri as aFaviconURI, otherwise all the params will be null.
+   * @return Promise that is resolved/rejected when finishing the process.
+   *         If succeeded to copy, the promise resolved with true. Otherwise
+   *         false. Will reject if the paramter value is illeagal or DB access
+   *         fails etc.
    */
-  void copyFavicons(in nsIURI aFromPageURI,
-                    in nsIURI aToPageURI,
-                    in unsigned long aFaviconLoadType,
-                    [optional] in nsIFaviconDataCallback aCallback);
-};
-
-[scriptable, function, uuid(c85e5c82-b70f-4621-9528-beb2aa47fb44)]
-interface nsIFaviconDataCallback : nsISupports
-{
-  /**
-   * Called when the required favicon's information is available.
-   *
-   * It's up to the invoking method to state if the callback is always invoked,
-   * or called on success only.  Check the method documentation to ensure that.
-   *
-   * The caller will receive the most information we can gather on the icon,
-   * but it's not guaranteed that all of them will be set.  For some method
-   * we could not know the favicon's data (it could just be too expensive to
-   * get it, or the method does not require we actually have any data).
-   * It's up to the caller to check aDataLen > 0 before using any data-related
-   * information like mime-type or data itself.
-   *
-   * @param aFaviconURI
-   *        Receives the "favicon URI" (not the "favicon link URI") associated
-   *        to the requested page.  This can be null if there is no associated
-   *        favicon URI, or the callback is notifying a failure.
-   * @param aDataLen
-   *        Size of the icon data in bytes.  Notice that a value of 0 does not
-   *        necessarily mean that we don't have an icon.
-   * @param aData
-   *        Icon data, or an empty array if aDataLen is 0.
-   * @param aMimeType
-   *        Mime type of the icon, or an empty string if aDataLen is 0.
-   * @param aWidth
-   *        Width of the icon. 0 if the width is unknown or if the icon is
-   *        vectorial.
-   *
-   * @note If you want to open a network channel to access the favicon, it's
-   *       recommended that you call the getFaviconLinkForIcon method to convert
-   *       the "favicon URI" into a "favicon link URI".
-   */
-  void onComplete(in nsIURI aFaviconURI,
-                  in unsigned long aDataLen,
-                  [const,array,size_is(aDataLen)] in octet aData,
-                  in AUTF8String aMimeType,
-                  in unsigned short aWidth);
+  [implicit_jscontext, must_use]
+  Promise tryCopyFavicons(in nsIURI aFromPageURI,
+                          in nsIURI aToPageURI,
+                          in unsigned long aFaviconLoadType);
 };
 
 [scriptable, uuid(c23c74d6-9c36-4223-a9c4-c8b95526f4d3)]

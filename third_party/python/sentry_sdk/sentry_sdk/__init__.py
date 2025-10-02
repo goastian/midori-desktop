@@ -1,4 +1,3 @@
-from sentry_sdk.hub import Hub, init
 from sentry_sdk.scope import Scope
 from sentry_sdk.transport import Transport, HttpTransport
 from sentry_sdk.client import Client
@@ -13,24 +12,41 @@ __all__ = [  # noqa
     "Client",
     "Transport",
     "HttpTransport",
-    "init",
     "integrations",
     # From sentry_sdk.api
-    "capture_event",
-    "capture_message",
-    "capture_exception",
+    "init",
+    "add_attachment",
     "add_breadcrumb",
+    "capture_event",
+    "capture_exception",
+    "capture_message",
     "configure_scope",
-    "push_scope",
+    "continue_trace",
     "flush",
+    "get_baggage",
+    "get_client",
+    "get_global_scope",
+    "get_isolation_scope",
+    "get_current_scope",
+    "get_current_span",
+    "get_traceparent",
+    "is_initialized",
+    "isolation_scope",
     "last_event_id",
-    "start_span",
-    "start_transaction",
-    "set_tag",
+    "new_scope",
+    "push_scope",
     "set_context",
     "set_extra",
-    "set_user",
     "set_level",
+    "set_measurement",
+    "set_tag",
+    "set_tags",
+    "set_user",
+    "start_span",
+    "start_transaction",
+    "trace",
+    "monitor",
+    "logger",
 ]
 
 # Initialize the debug support after everything is loaded
@@ -38,3 +54,6 @@ from sentry_sdk.debug import init_debug_support
 
 init_debug_support()
 del init_debug_support
+
+# circular imports
+from sentry_sdk.hub import Hub

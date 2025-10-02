@@ -60,7 +60,7 @@ class ChannelMediaDecoder
 
  protected:
   void ShutdownInternal() override;
-  void OnPlaybackEvent(MediaPlaybackEvent&& aEvent) override;
+  void OnPlaybackEvent(const MediaPlaybackEvent& aEvent) override;
   void DurationChanged() override;
   void MetadataLoaded(UniquePtr<MediaInfo> aInfo, UniquePtr<MetadataTags> aTags,
                       MediaDecoderEventVisibility aEventVisibility) override;
@@ -99,6 +99,34 @@ class ChannelMediaDecoder
   void Resume() override;
 
  private:
+  // A snapshot of the media playback and download state used to determine if
+  // playback can proceed without interruption.
+  struct MediaStatistics {
+    // Estimate of the current playback rate (bytes/second).
+    double mPlaybackByteRate;
+    // Estimate of the current download rate (bytes/second). This
+    // ignores time that the channel was paused by Gecko.
+    double mDownloadByteRate;
+    // Total length of media stream in bytes; -1 if not known
+    int64_t mTotalBytes;
+    // Current position of the download, in bytes. This is the offset of
+    // the first uncached byte after the decoder position.
+    int64_t mDownloadBytePosition;
+    // Current position of playback, in bytes
+    int64_t mPlaybackByteOffset;
+    // If false, then mDownloadRate cannot be considered a reliable
+    // estimate (probably because the download has only been running
+    // a short time).
+    bool mDownloadByteRateReliable;
+    // If false, then mPlaybackRate cannot be considered a reliable
+    // estimate (probably because playback has only been running
+    // a short time).
+    bool mPlaybackByteRateReliable;
+
+    bool CanPlayThrough() const;
+    nsCString ToString() const;
+  };
+
   void DownloadProgressed();
 
   // Create a new state machine to run this decoder.
@@ -122,23 +150,13 @@ class ChannelMediaDecoder
     uint32_t mRate;  // Estimate of the current playback rate (bytes/second).
     bool mReliable;  // True if mRate is a reliable estimate.
   };
-  // The actual playback rate computation.
-  static PlaybackRateInfo ComputePlaybackRate(
+
+  // Return a PlaybackRateInfo and update the expected byte rate per second for
+  // playback in the media resource, which improves cache usage prediction
+  // accuracy. This can only be run off the main thread.
+  static PlaybackRateInfo UpdateResourceOfPlaybackByteRate(
       const MediaChannelStatistics& aStats, BaseMediaResource* aResource,
       const media::TimeUnit& aDuration);
-
-  // Something has changed that could affect the computed playback rate,
-  // so recompute it.
-  static void UpdatePlaybackRate(const PlaybackRateInfo& aInfo,
-                                 BaseMediaResource* aResource);
-
-  // Return statistics. This is used for progress events and other things.
-  // This can be called from any thread. It's only a snapshot of the
-  // current state, since other threads might be changing the state
-  // at any time.
-  static MediaStatistics GetStatistics(const PlaybackRateInfo& aInfo,
-                                       BaseMediaResource* aRes,
-                                       int64_t aPlaybackPosition);
 
   bool ShouldThrottleDownload(const MediaStatistics& aStats);
 
@@ -147,11 +165,10 @@ class ChannelMediaDecoder
   // time of the last decoded video frame).
   MediaChannelStatistics mPlaybackStatistics;
 
-  // Current playback position in the stream. This is (approximately)
-  // where we're up to playing back the stream. This is not adjusted
-  // during decoder seek operations, but it's updated at the end when we
-  // start playing back again.
-  int64_t mPlaybackPosition = 0;
+  // Current playback byte offset in the stream. This is (approximately)
+  // where we're up to playing back the stream. This is not adjusted immediately
+  // after seek happens, but it will be updated when playback starts or stops.
+  int64_t mPlaybackByteOffset = 0;
 
   bool mCanPlayThrough = false;
 

@@ -150,6 +150,10 @@ add_task(async function test_update_login_discard_changes() {
 
   info("Cancelling form.");
   const loginForm = megalist.querySelector("login-form");
+
+  // Only show the discard changes notification if the login form has been modified.
+  setInputValue(loginForm, "login-username-field", login.username + "added");
+
   const cancelButton = loginForm.shadowRoot.querySelector(
     "moz-button[data-l10n-id=login-item-cancel-button]"
   );
@@ -225,4 +229,98 @@ add_task(async function test_update_login_discard_changes() {
   ok(!SidebarController.isOpen, "Sidebar closed");
 
   LoginTestUtils.clearData();
+});
+
+add_task(async function test_update_login_without_changes() {
+  const canTestOSAuth = await resetTelemetryIfKeyStoreTestable();
+  if (!canTestOSAuth) {
+    return;
+  }
+
+  Services.fog.testResetFOG();
+  await Services.fog.testFlushAllChildren();
+
+  const login = TEST_LOGIN_1;
+  await LoginTestUtils.addLogin(login);
+
+  const megalist = await openPasswordsSidebar();
+  await checkAllLoginsRendered(megalist);
+
+  const passwordCard = megalist.querySelector("password-card");
+  await waitForReauth(() => passwordCard.editBtn.click());
+  await BrowserTestUtils.waitForCondition(
+    () => megalist.querySelector("login-form"),
+    "Login form failed to render"
+  );
+
+  info("Cancelling form.");
+  const loginForm = megalist.querySelector("login-form");
+  const cancelButton = loginForm.shadowRoot.querySelector(
+    "moz-button[data-l10n-id=login-item-cancel-button]"
+  );
+  cancelButton.buttonEl.click();
+  await ensureNoNotifications(megalist, "discard-changes");
+
+  await checkAllLoginsRendered(megalist);
+  ok(true, "List view of logins is shown again");
+
+  /* TODO: Fix this in Bug 1946726
+  info("Try closing sidebar while editing a login");
+  await waitForReauth(() => passwordCard.editBtn.click());
+  await BrowserTestUtils.waitForCondition(
+    () => megalist.querySelector("login-form"),
+    "Login form failed to render"
+  );
+  SidebarController.hide();
+
+  await BrowserTestUtils.waitForCondition(() => {
+    return !SidebarController.isOpen;
+  }, "Sidebar did not close.");
+  ok(!SidebarController.isOpen, "Sidebar closed");
+  */
+
+  LoginTestUtils.clearData();
+});
+
+add_task(async function test_update_login_username_notification() {
+  const canTestOSAuth = await resetTelemetryIfKeyStoreTestable();
+  if (!canTestOSAuth) {
+    return;
+  }
+
+  info("Add login with no username");
+  const login = LoginTestUtils.testData.formLogin({
+    username: "",
+    password: "pass1",
+    origin: "https://example1.com",
+  });
+  await LoginTestUtils.addLogin(login);
+
+  const megalist = await openPasswordsSidebar();
+  await checkAllLoginsRendered(megalist);
+
+  const passwordCard = megalist.querySelector("password-card");
+  await waitForReauth(() => passwordCard.editBtn.click());
+
+  await BrowserTestUtils.waitForCondition(
+    () => megalist.querySelector("login-form"),
+    "Login form failed to render"
+  );
+
+  const newUsername = "new_username";
+  const loginForm = megalist.querySelector("login-form");
+  info("Updating login.");
+  setInputValue(loginForm, "login-username-field", newUsername);
+
+  const saveButton = loginForm.shadowRoot.querySelector(
+    "moz-button[type=primary]"
+  );
+  info("Submitting form.");
+  saveButton.buttonEl.click();
+
+  await waitForNotification(megalist, "update-username-success");
+  ok(true, "Got correct username updated notification.");
+
+  LoginTestUtils.clearData();
+  SidebarController.hide();
 });

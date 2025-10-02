@@ -20,11 +20,8 @@
     justify-content: center;
     position: absolute;
     inset-inline-end: 0;
-    top: 0;
-    // border: 10;
-    border: 1px solid red;
+    inset-block-start: 0;
     border-radius: var(--border-radius-circle);
-    // border-radius: 50%;
     background-color: transparent;
 
     .icon {

@@ -179,6 +179,16 @@ using UsePositionIterator = InlineForwardListIterator<UsePosition>;
 class LiveBundle;
 class VirtualRegister;
 
+} /* namespace jit */
+
+// A VirtualRegister may contain malloced memory but can still be LifoAlloc'ed
+// because it is always owned by a BacktrackingAllocator with a destructor that
+// destroys it.
+template <>
+struct CanLifoAlloc<js::jit::VirtualRegister> : std::true_type {};
+
+namespace jit {
+
 class LiveRange : public TempObject, public InlineForwardListNode<LiveRange> {
  public:
   struct Range {
@@ -664,7 +674,11 @@ class VirtualRegister {
 using SplitPositionVector =
     js::Vector<CodePosition, 4, BackgroundSystemAllocPolicy>;
 
-class BacktrackingAllocator : protected RegisterAllocator {
+class MOZ_STACK_CLASS BacktrackingAllocator : protected RegisterAllocator {
+ public:
+  using IsStackAllocated = std::true_type;
+
+ private:
   friend class JSONSpewer;
 
   // Computed data
@@ -672,7 +686,10 @@ class BacktrackingAllocator : protected RegisterAllocator {
   Vector<CodePosition, 12, SystemAllocPolicy> entryPositions;
   Vector<CodePosition, 12, SystemAllocPolicy> exitPositions;
 
-  using VirtualRegBitSet = SparseBitSet<BackgroundSystemAllocPolicy>;
+  // ~BacktrackingAllocator will call ~VirtualRegBitSet and ~VirtualRegister for
+  // everything in these collections.
+  using VirtualRegBitSet =
+      SparseBitSet<BackgroundSystemAllocPolicy, BacktrackingAllocator>;
   Vector<VirtualRegBitSet, 0, JitAllocPolicy> liveIn;
   Vector<VirtualRegister, 0, JitAllocPolicy> vregs;
 

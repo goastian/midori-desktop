@@ -27,6 +27,10 @@ document.addEventListener(
         case "repair-text-encoding":
           BrowserCommands.forceEncodingDetection();
           break;
+        case "enterFullScreenItem":
+        case "exitFullScreenItem":
+          BrowserCommands.fullScreen();
+          break;
         case "documentDirection-swap":
           gBrowser.selectedBrowser.sendMessageToActor(
             "SwitchDocumentDirection",
@@ -62,7 +66,7 @@ document.addEventListener(
           FirefoxViewHandler.openTab();
           break;
         case "hiddenUndoCloseWindow":
-          undoCloseWindow(0);
+          SessionWindowUI.undoCloseWindow(0);
           break;
 
         // == menu_HelpPopup ==

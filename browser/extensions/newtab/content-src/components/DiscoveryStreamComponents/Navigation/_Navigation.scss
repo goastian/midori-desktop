@@ -4,7 +4,7 @@
   color: var(--newtab-contextual-text-primary-color);
   font-size: var(--font-size-small);
   font-weight: var(--font-weight-bold);
-  padding: 4px 0;
+  padding: var(--space-xsmall) 0;
 
   @media (min-width: $break-point-widest) {
     line-height: 32px;
@@ -32,7 +32,7 @@
 
     &::after {
       content: '·';
-      padding: 6px;
+      padding: var(--space-xsmall);
     }
 
     &:last-child::after {
@@ -52,11 +52,11 @@
   }
 
   .ds-navigation-header {
-    padding-inline-end: 6px;
+    padding-inline-end: var(--space-xsmall);
   }
 
   .ds-navigation-privacy {
-    padding-inline-start: 6px;
+    padding-inline-start: var(--space-xsmall);
     float: inline-end;
 
     &:hover {
@@ -66,22 +66,22 @@
 
   &.ds-navigation-new-topics {
     display: block;
-    padding-top: 32px;
+    padding-block-start: var(--space-xxlarge);
 
     .ds-navigation-header {
       font-size: var(--font-size-small);
       font-weight: var(--font-weight-bold);
       display: inline-block;
-      margin-bottom: 8px;
+      margin-block-end: var(--space-small);
     }
 
     .ds-navigation-family {
       text-align: center;
       font-size: var(--font-size-small);
-      margin: 16px auto 28px;
+      margin: var(--space-large) auto var(--space-xlarge);
 
       span {
-        margin: 0 6px;
+        margin: 0 var(--space-small);
       }
 
       .firefox-logo,
@@ -96,7 +96,7 @@
       }
 
       .pocket-logo {
-        background-image: url('chrome://global/skin/icons/pocket.svg');
+        background-image: url('chrome://global/skin/icons/help.svg');
         fill: $pocket-icon-fill;
       }
 
@@ -109,13 +109,14 @@
       }
 
       @media (min-width: $break-point-medium) {
-        margin-top: 43px;
+        // Bug 1967304 - Large number (40px)
+        margin-block-start: calc(var(--space-large) + var(--space-xlarge));
       }
     }
 
     ul {
       display: grid;
-      grid-gap: 0 24px;
+      grid-gap: 0 var(--space-xlarge);
       grid-auto-flow: column;
       grid-template: repeat(8, 1fr) / repeat(1, 1fr);
 

@@ -98,6 +98,24 @@ add_task(async function test_records_obtained_from_server_are_stored_in_db() {
 });
 add_task(clear_state);
 
+add_task(async function test_client_db_throws_if_not_synced() {
+  try {
+    await client.db.list();
+    Assert.ok(false, "db.list() should throw");
+  } catch (e) {
+    Assert.equal(
+      e.toString(),
+      'EmptyDatabaseError: "main/password-fields" has not been synced yet'
+    );
+  }
+
+  await client.maybeSync(2000);
+
+  const list = await client.db.list();
+  Assert.ok(Array.isArray(list), "data is an array");
+});
+add_task(clear_state);
+
 add_task(
   async function test_records_from_dump_are_listed_as_created_in_event() {
     if (IS_ANDROID) {
@@ -165,6 +183,7 @@ add_task(async function test_throws_when_network_is_offline() {
       clientWithDump.identifier
     );
     const expectedIncrements = {
+      [UptakeTelemetry.STATUS.SYNC_START]: 1,
       [UptakeTelemetry.STATUS.NETWORK_OFFLINE_ERROR]: 1,
     };
     checkUptakeTelemetry(startSnapshot, endSnapshot, expectedIncrements);
@@ -202,7 +221,10 @@ add_task(async function test_sync_event_is_sent_even_if_up_to_date() {
     TELEMETRY_COMPONENT,
     clientWithDump.identifier
   );
-  const expectedIncrements = { [UptakeTelemetry.STATUS.UP_TO_DATE]: 1 };
+  const expectedIncrements = {
+    [UptakeTelemetry.STATUS.SYNC_START]: 1,
+    [UptakeTelemetry.STATUS.UP_TO_DATE]: 1,
+  };
   checkUptakeTelemetry(startSnapshot, endSnapshot, expectedIncrements);
 });
 add_task(clear_state);
@@ -235,6 +257,48 @@ add_task(
     equal(data[0].website, "https://some-website.com");
   }
 );
+add_task(clear_state);
+
+add_task(
+  async function test_get_returns_an_empty_list_when_database_is_empty() {
+    const data = await client.get({ syncIfEmpty: false });
+
+    ok(Array.isArray(data), "data is an array");
+    equal(data.length, 0, "data is empty");
+  }
+);
+add_task(clear_state);
+
+add_task(async function test_get_doesnt_affect_other_calls() {
+  const c1 = RemoteSettings("password-fields");
+  const c2 = RemoteSettings("password-fields");
+
+  const result1 = await c1.get({ syncIfEmpty: false });
+  Assert.deepEqual(result1, [], "data1 is empty");
+
+  try {
+    await c2.get({ syncIfEmpty: false, emptyListFallback: false });
+    Assert.ok(false, "get() should throw");
+  } catch (error) {
+    Assert.equal(
+      error.toString(),
+      'EmptyDatabaseError: "main/password-fields" has not been synced yet'
+    );
+  }
+});
+add_task(clear_state);
+
+add_task(async function test_get_throws_if_no_empty_fallback_and_no_sync() {
+  try {
+    await client.get({ syncIfEmpty: false, emptyListFallback: false });
+    Assert.ok(false, ".get() should throw");
+  } catch (error) {
+    Assert.equal(
+      error.toString(),
+      'EmptyDatabaseError: "main/password-fields" has not been synced yet'
+    );
+  }
+});
 add_task(clear_state);
 
 add_task(
@@ -446,16 +510,69 @@ add_task(async function test_get_throws_if_no_empty_fallback() {
 });
 add_task(clear_state);
 
-add_task(async function test_get_verify_signature_no_sync() {
+add_task(
+  async function test_get_throws_on_network_error_with_no_empty_fallback() {
+    const backup = Utils.fetch;
+    Utils.fetch = async () => {
+      throw new Error("Fake Network error");
+    };
+
+    const clientEmpty = RemoteSettings("no-dump-no-local-data");
+    let error;
+    try {
+      await clientEmpty.get({
+        emptyListFallback: false,
+        syncIfEmpty: true, // default value
+      });
+    } catch (exc) {
+      error = exc;
+    }
+
+    equal(error.toString(), "Error: Fake Network error");
+    Utils.fetch = backup;
+  }
+);
+
+add_task(async function test_get_verify_signature_empty_no_sync() {
   client.verifySignature = true;
-  // No signature in metadata, and no sync if empty.
+  // No data, hence no signature in metadata, and no sync if empty.
   let error;
   try {
-    await client.get({ verifySignature: true, syncIfEmpty: false });
+    await client.get({
+      verifySignature: true,
+      syncIfEmpty: false,
+      emptyListFallback: false,
+    });
+    Assert.ok(false, "get() should throw");
   } catch (e) {
     error = e;
   }
-  equal(error.message, "Missing signature (main/password-fields)");
+  equal(
+    error.toString(),
+    'EmptyDatabaseError: "main/password-fields" has not been synced yet'
+  );
+});
+add_task(clear_state);
+
+add_task(async function test_get_verify_signature_no_metadata_no_sync() {
+  client.verifySignature = true;
+  // Store records but no metadata.
+  await client.db.importChanges(undefined, 42, []);
+  let error;
+  try {
+    await client.get({
+      verifySignature: true,
+      syncIfEmpty: false,
+      emptyListFallback: false,
+    });
+    Assert.ok(false, "get() should throw");
+  } catch (e) {
+    error = e;
+  }
+  equal(
+    error.toString(),
+    "MissingSignatureError: Missing signature (main/password-fields)"
+  );
 });
 add_task(clear_state);
 
@@ -860,7 +977,10 @@ add_task(async function test_telemetry_if_sync_succeeds() {
     TELEMETRY_COMPONENT,
     client.identifier
   );
-  const expectedIncrements = { [UptakeTelemetry.STATUS.SUCCESS]: 1 };
+  const expectedIncrements = {
+    [UptakeTelemetry.STATUS.SYNC_START]: 1,
+    [UptakeTelemetry.STATUS.SUCCESS]: 1,
+  };
   checkUptakeTelemetry(startSnapshot, endSnapshot, expectedIncrements);
 });
 add_task(clear_state);
@@ -871,6 +991,16 @@ add_task(
 
     TelemetryTestUtils.assertEvents(
       [
+        [
+          "uptake.remotecontent.result",
+          "uptake",
+          "remotesettings",
+          UptakeTelemetry.STATUS.SYNC_START,
+          {
+            source: client.identifier,
+            trigger: "manual",
+          },
+        ],
         [
           "uptake.remotecontent.result",
           "uptake",
@@ -906,7 +1036,10 @@ add_task(async function test_telemetry_reports_if_application_fails() {
     TELEMETRY_COMPONENT,
     client.identifier
   );
-  const expectedIncrements = { [UptakeTelemetry.STATUS.APPLY_ERROR]: 1 };
+  const expectedIncrements = {
+    [UptakeTelemetry.STATUS.SYNC_START]: 1,
+    [UptakeTelemetry.STATUS.APPLY_ERROR]: 1,
+  };
   checkUptakeTelemetry(startSnapshot, endSnapshot, expectedIncrements);
 });
 add_task(clear_state);
@@ -927,7 +1060,10 @@ add_task(async function test_telemetry_reports_if_sync_fails() {
     TELEMETRY_COMPONENT,
     client.identifier
   );
-  const expectedIncrements = { [UptakeTelemetry.STATUS.SERVER_ERROR]: 1 };
+  const expectedIncrements = {
+    [UptakeTelemetry.STATUS.SYNC_START]: 1,
+    [UptakeTelemetry.STATUS.SERVER_ERROR]: 1,
+  };
   checkUptakeTelemetry(startSnapshot, endSnapshot, expectedIncrements);
 });
 add_task(clear_state);
@@ -948,7 +1084,10 @@ add_task(async function test_telemetry_reports_if_parsing_fails() {
     TELEMETRY_COMPONENT,
     client.identifier
   );
-  const expectedIncrements = { [UptakeTelemetry.STATUS.PARSE_ERROR]: 1 };
+  const expectedIncrements = {
+    [UptakeTelemetry.STATUS.SYNC_START]: 1,
+    [UptakeTelemetry.STATUS.PARSE_ERROR]: 1,
+  };
   checkUptakeTelemetry(startSnapshot, endSnapshot, expectedIncrements);
 });
 add_task(clear_state);
@@ -969,14 +1108,17 @@ add_task(async function test_telemetry_reports_if_fetching_signature_fails() {
     TELEMETRY_COMPONENT,
     client.identifier
   );
-  const expectedIncrements = { [UptakeTelemetry.STATUS.SERVER_ERROR]: 1 };
+  const expectedIncrements = {
+    [UptakeTelemetry.STATUS.SYNC_START]: 1,
+    [UptakeTelemetry.STATUS.SERVER_ERROR]: 1,
+  };
   checkUptakeTelemetry(startSnapshot, endSnapshot, expectedIncrements);
 });
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_unknown_errors() {
-  const backup = client.db.list;
-  client.db.list = () => {
+  const backup = client.db.getLastModified;
+  client.db.getLastModified = () => {
     throw new Error("Internal");
   };
   const startSnapshot = getUptakeTelemetrySnapshot(
@@ -988,12 +1130,15 @@ add_task(async function test_telemetry_reports_unknown_errors() {
     await client.maybeSync(2000);
   } catch (e) {}
 
-  client.db.list = backup;
+  client.db.getLastModified = backup;
   const endSnapshot = getUptakeTelemetrySnapshot(
     TELEMETRY_COMPONENT,
     client.identifier
   );
-  const expectedIncrements = { [UptakeTelemetry.STATUS.UNKNOWN_ERROR]: 1 };
+  const expectedIncrements = {
+    [UptakeTelemetry.STATUS.SYNC_START]: 1,
+    [UptakeTelemetry.STATUS.UNKNOWN_ERROR]: 1,
+  };
   checkUptakeTelemetry(startSnapshot, endSnapshot, expectedIncrements);
 });
 add_task(clear_state);
@@ -1019,14 +1164,17 @@ add_task(async function test_telemetry_reports_indexeddb_as_custom_1() {
     TELEMETRY_COMPONENT,
     client.identifier
   );
-  const expectedIncrements = { [UptakeTelemetry.STATUS.CUSTOM_1_ERROR]: 1 };
+  const expectedIncrements = {
+    [UptakeTelemetry.STATUS.SYNC_START]: 1,
+    [UptakeTelemetry.STATUS.CUSTOM_1_ERROR]: 1,
+  };
   checkUptakeTelemetry(startSnapshot, endSnapshot, expectedIncrements);
 });
 add_task(clear_state);
 
 add_task(async function test_telemetry_reports_error_name_as_event_nightly() {
-  const backup = client.db.list;
-  client.db.list = () => {
+  const backup = client.db.getLastModified;
+  client.db.getLastModified = () => {
     const e = new Error("Some unknown error");
     e.name = "ThrownError";
     throw e;
@@ -1038,6 +1186,16 @@ add_task(async function test_telemetry_reports_error_name_as_event_nightly() {
 
   TelemetryTestUtils.assertEvents(
     [
+      [
+        "uptake.remotecontent.result",
+        "uptake",
+        "remotesettings",
+        UptakeTelemetry.STATUS.SYNC_START,
+        {
+          source: client.identifier,
+          trigger: "manual",
+        },
+      ],
       [
         "uptake.remotecontent.result",
         "uptake",
@@ -1054,7 +1212,7 @@ add_task(async function test_telemetry_reports_error_name_as_event_nightly() {
     TELEMETRY_EVENTS_FILTERS
   );
 
-  client.db.list = backup;
+  client.db.getLastModified = backup;
 });
 add_task(clear_state);
 
@@ -1704,3 +1862,4 @@ add_task(async function test_hasAttachments_works_as_expected() {
   res = await client.db.hasAttachments();
   Assert.equal(res, false, "Should return false after attachments are pruned");
 });
+add_task(clear_state);

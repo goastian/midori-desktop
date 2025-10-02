@@ -151,7 +151,7 @@ urlbar-result-menu-manage-firefox-suggest =
 # detected by Firefox (e.g., weather suggestions), and this menu item lets the
 # user tell Firefox that the location is not accurate. Typically the location
 # will be a city name, or a city name combined with the name of its parent
-# administrative region (e.g., a province, prefecture, or state).
+# administrative division (e.g., a province, prefecture, or state).
 urlbar-result-menu-report-inaccurate-location =
     .label = Report inaccurate location
 urlbar-result-menu-show-less-frequently =
@@ -543,6 +543,11 @@ urlbar-search-mode-indicator-close =
 urlbar-placeholder =
   .placeholder = Search or enter address
 
+# This placeholder is used when not in search mode and searching in the urlbar
+# is disabled via the keyword.enabled pref.
+urlbar-placeholder-keyword-disabled =
+  .placeholder = Enter address
+
 # This placeholder is used in search mode with search engines that search the
 # entire web.
 # Variables
@@ -631,6 +636,8 @@ urlbar-result-action-visit = Visit
 # Variables
 # $container (String): the name of the target container
 urlbar-result-action-switch-tab-with-container = Switch to Tab · <span>{ $container }</span>
+# Used when the target tab is in a tab group that doesn't have a label.
+urlbar-result-action-tab-group-unnamed = Unnamed group
 # Allows the user to visit a URL that was previously copied to the clipboard.
 urlbar-result-action-visit-from-clipboard = Visit from clipboard
 # Directs a user to press the Tab key to perform a search with the specified
@@ -679,6 +686,50 @@ urlbar-result-action-calculator-result-3 = = { NUMBER($result, useGrouping: "fal
 # Variables
 #  $result (String): the string representation for a formula result
 urlbar-result-action-calculator-result-decimal = = { NUMBER($result, maximumSignificantDigits: 9)}
+
+# The title of a weather suggestion in the urlbar. The temperature and unit
+# substring should be inside a <strong> tag. If the temperature and unit are not
+# adjacent in the localization, it's OK to include only the temperature in the
+# tag.
+# Variables:
+#   $temperature (number) - The temperature value
+#   $unit (String) - The unit for the temperature, either "C" or "F"
+#   $city (String) - The name of the city the weather data is for
+#   $region (String) - The name of the city's region or country. Depending on
+#       the user's location in relation to the city, this may be the name or
+#       abbreviation of one of the city's administrative divisions like a
+#       province or state, or it may be the name of the city's country.
+urlbar-result-weather-title = <strong>{ $temperature }°{ $unit }</strong> in { $city }, { $region }
+
+# The title of a weather suggestion in the urlbar including a region and
+# country. The temperature and unit substring should be inside a <strong> tag.
+# If the temperature and unit are not adjacent in the localization, it's OK to
+# include only the temperature in the tag.
+# Variables:
+#   $temperature (number) - The temperature value
+#   $unit (String) - The unit for the temperature, either "C" or "F"
+#   $city (String) - The name of the city the weather data is for
+#   $region (String) - The name or abbreviation of one of the city's
+#       administrative divisions like a province or state.
+#   $country (String) - The name of the city's country.
+urlbar-result-weather-title-with-country = <strong>{ $temperature }°{ $unit }</strong> in { $city }, { $region }, { $country }
+
+# The title of a weather suggestion in the urlbar only including the city. The
+# temperature and unit substring should be inside a <strong> tag. If the
+# temperature and unit are not adjacent in the localization, it's OK to include
+# only the temperature in the tag.
+# Variables:
+#   $temperature (number) - The temperature value
+#   $unit (String) - The unit for the temperature, either "C" or "F"
+#   $city (String) - The name of the city the weather data is for
+urlbar-result-weather-title-city-only = <strong>{ $temperature }°{ $unit }</strong> in { $city }
+
+# Shows the name of the provider of weather data in a weather suggestion in the
+# urlbar.
+# Variables:
+#   $provider (String) - The name of the weather-data provider. It will be the
+#       name of a company, organization, or service.
+urlbar-result-weather-provider-sponsored = { $provider } · Sponsored
 
 ## Strings used for buttons in the urlbar
 
@@ -899,12 +950,6 @@ bookmarks-subview-bookmark-tab =
 library-bookmarks-menu =
   .label = Bookmarks
 
-## Pocket toolbar button
-
-save-to-pocket-button =
-  .label = Save to { -pocket-brand-name }
-  .tooltiptext = Save to { -pocket-brand-name }
-
 ## Repair text encoding toolbar button
 
 repair-text-encoding-button =
@@ -1029,8 +1074,8 @@ navbar-accessible =
 navbar-downloads =
     .label = Downloads
 
-navbar-overflow =
-    .tooltiptext = More tools…
+navbar-overflow-2 =
+    .tooltiptext = More tools
 
 # Variables:
 #   $shortcut (String): keyboard shortcut to print the page
@@ -1242,4 +1287,6 @@ file-picker-crashed-show-in-folder =
 
 ## Onboarding Finish Setup checklist
 
-onboarding-checklist-button-label = Finish setup
+onboarding-aw-finish-setup-button =
+    .label = Finish setup
+    .tooltiptext = Finish setting up { -brand-short-name }

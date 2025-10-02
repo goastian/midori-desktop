@@ -12,7 +12,6 @@ import {
   UrlbarProvider,
   UrlbarUtils,
 } from "resource:///modules/UrlbarUtils.sys.mjs";
-import { PlacesSemanticHistoryManager } from "resource://gre/modules/PlacesSemanticHistoryManager.sys.mjs";
 
 const lazy = {};
 
@@ -21,12 +20,19 @@ ChromeUtils.defineESModuleGetters(lazy, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
+  UrlbarProviderOpenTabs: "resource:///modules/UrlbarProviderOpenTabs.sys.mjs",
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
+  getPlacesSemanticHistoryManager:
+    "resource://gre/modules/PlacesSemanticHistoryManager.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "logger", function () {
   return UrlbarUtils.getLogger({ prefix: "SemanticHistorySearch" });
 });
+
+/**
+ * @typedef {ReturnType<import("resource://gre/modules/PlacesSemanticHistoryManager.sys.mjs").getPlacesSemanticHistoryManager>} PlacesSemanticHistoryManager
+ */
 
 /**
  * Class representing the Semantic History Search provider for the URL bar.
@@ -39,7 +45,9 @@ ChromeUtils.defineLazyGetter(lazy, "logger", function () {
  * @class
  */
 class ProviderSemanticHistorySearch extends UrlbarProvider {
+  /** @type {PlacesSemanticHistoryManager} */
   #semanticManager;
+  /** @type {boolean} */
   #exposureRecorded;
 
   /**
@@ -62,9 +70,9 @@ class ProviderSemanticHistorySearch extends UrlbarProvider {
     if (!this.#semanticManager) {
       const distanceThreshold = Services.prefs.getFloatPref(
         "places.semanticHistory.distanceThreshold",
-        0.75
+        0.6
       );
-      this.#semanticManager = new PlacesSemanticHistoryManager({
+      this.#semanticManager = lazy.getPlacesSemanticHistoryManager({
         embeddingSize: 384,
         rowLimit: 10000,
         samplingAttrib: "frecency",
@@ -134,24 +142,105 @@ class ProviderSemanticHistorySearch extends UrlbarProvider {
     if (!results || instance != this.queryInstance) {
       return;
     }
+
+    let openTabs = lazy.UrlbarProviderOpenTabs.getOpenTabUrls(
+      queryContext.isPrivate
+    );
     for (let res of results) {
-      const result = new lazy.UrlbarResult(
-        UrlbarUtils.RESULT_TYPE.URL,
-        UrlbarUtils.RESULT_SOURCE.HISTORY,
-        ...lazy.UrlbarResult.payloadAndSimpleHighlights(queryContext.tokens, {
-          title: [res.title, UrlbarUtils.HIGHLIGHT.NONE],
-          url: [res.url, UrlbarUtils.HIGHLIGHT.NONE],
-          icon: UrlbarUtils.getIconForUrl(res.url),
-          isBlockable: true,
-          blockL10n: { id: "urlbar-result-menu-remove-from-history" },
-          helpUrl:
-            Services.urlFormatter.formatURLPref("app.support.baseURL") +
-            "awesome-bar-result-menu",
-        })
-      );
-      result.resultGroup = UrlbarUtils.RESULT_GROUP.HISTORY_SEMANTIC;
-      addCallback(this, result);
+      if (
+        !this.#addAsSwitchToTab(
+          openTabs.get(res.url),
+          queryContext,
+          res,
+          addCallback
+        )
+      ) {
+        const result = new lazy.UrlbarResult(
+          UrlbarUtils.RESULT_TYPE.URL,
+          UrlbarUtils.RESULT_SOURCE.HISTORY,
+          ...lazy.UrlbarResult.payloadAndSimpleHighlights(queryContext.tokens, {
+            title: [res.title, UrlbarUtils.HIGHLIGHT.NONE],
+            url: [res.url, UrlbarUtils.HIGHLIGHT.NONE],
+            icon: UrlbarUtils.getIconForUrl(res.url),
+            isBlockable: true,
+            blockL10n: { id: "urlbar-result-menu-remove-from-history" },
+            helpUrl:
+              Services.urlFormatter.formatURLPref("app.support.baseURL") +
+              "awesome-bar-result-menu",
+            frecency: res.frecency,
+          })
+        );
+        addCallback(this, result);
+      }
     }
+  }
+
+  /**
+   * Check if the url is open in tabs, and adds one or multiple switch to tab
+   * results if so.
+   *
+   * @param {Set<[number, string]>|undefined} openTabs
+   *  Tabs open for the result URL, may be undefined.
+   * @param {object} queryContext
+   *  The query context, including the search string.
+   * @param {object} res
+   * The result object containing the URL.
+   * @param {Function} addCallback
+   *  Callback to add results to the URL bar.
+   * @returns {boolean} True if a switch to tab result was added.
+   */
+  #addAsSwitchToTab(openTabs, queryContext, res, addCallback) {
+    if (!openTabs?.size) {
+      return false;
+    }
+
+    let userContextId =
+      lazy.UrlbarProviderOpenTabs.getUserContextIdForOpenPagesTable(
+        queryContext.userContextId,
+        queryContext.isPrivate
+      );
+
+    let added = false;
+    for (let [tabUserContextId, tabGroupId] of openTabs) {
+      // Don't return a switch to tab result for the current page.
+      if (
+        res.url == queryContext.currentPage &&
+        userContextId == tabUserContextId &&
+        queryContext.tabGroup === tabGroupId
+      ) {
+        continue;
+      }
+      // Respect the switchTabs.searchAllContainers pref.
+      if (
+        !lazy.UrlbarPrefs.get("switchTabs.searchAllContainers") &&
+        tabUserContextId != userContextId
+      ) {
+        continue;
+      }
+      let payload = lazy.UrlbarResult.payloadAndSimpleHighlights(
+        queryContext.tokens,
+        {
+          url: [res.url, UrlbarUtils.HIGHLIGHT.NONE],
+          title: [res.title, UrlbarUtils.HIGHLIGHT.NONE],
+          icon: UrlbarUtils.getIconForUrl(res.url),
+          userContextId: tabUserContextId,
+          tabGroup: tabGroupId,
+          lastVisit: res.lastVisit,
+        }
+      );
+      if (lazy.UrlbarPrefs.get("secondaryActions.switchToTab")) {
+        payload[0].action =
+          UrlbarUtils.createTabSwitchSecondaryAction(tabUserContextId);
+      }
+      let result = new lazy.UrlbarResult(
+        UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
+        UrlbarUtils.RESULT_SOURCE.TABS,
+        ...payload
+      );
+      addCallback(this, result);
+      added = true;
+    }
+    return added;
   }
 
   /**

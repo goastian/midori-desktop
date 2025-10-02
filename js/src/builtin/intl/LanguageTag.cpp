@@ -13,11 +13,8 @@
 #include "gc/Tracer.h"
 #include "vm/JSContext.h"
 
-namespace js {
-namespace intl {
-
-[[nodiscard]] bool ParseLocale(JSContext* cx, Handle<JSLinearString*> str,
-                               mozilla::intl::Locale& result) {
+bool js::intl::ParseLocale(JSContext* cx, Handle<JSLinearString*> str,
+                           mozilla::intl::Locale& result) {
   if (StringIsAscii(str)) {
     intl::StringAsciiChars chars(str);
     if (!chars.init(cx)) {
@@ -36,8 +33,8 @@ namespace intl {
   return false;
 }
 
-bool ParseStandaloneLanguageTag(Handle<JSLinearString*> str,
-                                mozilla::intl::LanguageSubtag& result) {
+bool js::intl::ParseStandaloneLanguageTag(
+    Handle<JSLinearString*> str, mozilla::intl::LanguageSubtag& result) {
   // Tell the analysis the |IsStructurallyValidLanguageTag| function can't GC.
   JS::AutoSuppressGCAnalysis nogc;
 
@@ -57,8 +54,8 @@ bool ParseStandaloneLanguageTag(Handle<JSLinearString*> str,
   return true;
 }
 
-bool ParseStandaloneScriptTag(Handle<JSLinearString*> str,
-                              mozilla::intl::ScriptSubtag& result) {
+bool js::intl::ParseStandaloneScriptTag(Handle<JSLinearString*> str,
+                                        mozilla::intl::ScriptSubtag& result) {
   // Tell the analysis the |IsStructurallyValidScriptTag| function can't GC.
   JS::AutoSuppressGCAnalysis nogc;
 
@@ -78,8 +75,8 @@ bool ParseStandaloneScriptTag(Handle<JSLinearString*> str,
   return true;
 }
 
-bool ParseStandaloneRegionTag(Handle<JSLinearString*> str,
-                              mozilla::intl::RegionSubtag& result) {
+bool js::intl::ParseStandaloneRegionTag(Handle<JSLinearString*> str,
+                                        mozilla::intl::RegionSubtag& result) {
   // Tell the analysis the |IsStructurallyValidRegionTag| function can't GC.
   JS::AutoSuppressGCAnalysis nogc;
 
@@ -100,6 +97,59 @@ bool ParseStandaloneRegionTag(Handle<JSLinearString*> str,
 }
 
 template <typename CharT>
+static bool ParseStandaloneVariantTag(
+    mozilla::Span<const CharT> variantSubtags,
+    mozilla::intl::Locale::VariantsVector& result, bool* success) {
+  auto isValidVariantSubtag = [&](auto span) {
+    // Tell the analysis the |IsStructurallyValidVariantTag| function can't GC.
+    JS::AutoSuppressGCAnalysis nogc;
+    return mozilla::intl::IsStructurallyValidVariantTag(span);
+  };
+
+  size_t start = 0;
+  for (size_t index = 0; index < variantSubtags.size(); index++) {
+    if (variantSubtags[index] == '-') {
+      auto span = variantSubtags.FromTo(start, index);
+      if (!isValidVariantSubtag(span)) {
+        *success = false;
+        return true;
+      }
+
+      if (!result.emplaceBack(span)) {
+        return false;
+      }
+
+      start = index + 1;
+    }
+  }
+
+  // Trailing variant subtag.
+  auto span = variantSubtags.From(start);
+  if (!isValidVariantSubtag(span)) {
+    *success = false;
+    return true;
+  }
+
+  if (!result.emplaceBack(span)) {
+    return false;
+  }
+
+  *success = true;
+  return true;
+}
+
+bool js::intl::ParseStandaloneVariantTag(
+    Handle<JSLinearString*> str, mozilla::intl::Locale::VariantsVector& result,
+    bool* success) {
+  JS::AutoCheckCannotGC nogc;
+  return str->hasLatin1Chars()
+             ? ::ParseStandaloneVariantTag(
+                   mozilla::Span{str->latin1Range(nogc)}, result, success)
+             : ::ParseStandaloneVariantTag(
+                   mozilla::Span{str->twoByteRange(nogc)}, result, success);
+}
+
+template <typename CharT>
 static bool IsAsciiLowercaseAlpha(mozilla::Span<const CharT> span) {
   // Tell the analysis the |std::all_of| function can't GC.
   JS::AutoSuppressGCAnalysis nogc;
@@ -112,7 +162,7 @@ static bool IsAsciiLowercaseAlpha(mozilla::Span<const CharT> span) {
 static bool IsAsciiLowercaseAlpha(const JSLinearString* str) {
   JS::AutoCheckCannotGC nogc;
   if (str->hasLatin1Chars()) {
-    return IsAsciiLowercaseAlpha<Latin1Char>(str->latin1Range(nogc));
+    return IsAsciiLowercaseAlpha<JS::Latin1Char>(str->latin1Range(nogc));
   }
   return IsAsciiLowercaseAlpha<char16_t>(str->twoByteRange(nogc));
 }
@@ -130,12 +180,12 @@ static bool IsAsciiAlpha(mozilla::Span<const CharT> span) {
 static bool IsAsciiAlpha(const JSLinearString* str) {
   JS::AutoCheckCannotGC nogc;
   if (str->hasLatin1Chars()) {
-    return IsAsciiAlpha<Latin1Char>(str->latin1Range(nogc));
+    return IsAsciiAlpha<JS::Latin1Char>(str->latin1Range(nogc));
   }
   return IsAsciiAlpha<char16_t>(str->twoByteRange(nogc));
 }
 
-JS::Result<JSString*> ParseStandaloneISO639LanguageTag(
+JS::Result<JSString*> js::intl::ParseStandaloneISO639LanguageTag(
     JSContext* cx, Handle<JSLinearString*> str) {
   // ISO-639 language codes contain either two or three characters.
   size_t length = str->length();
@@ -188,6 +238,3 @@ JS::Result<JSString*> ParseStandaloneISO639LanguageTag(
 void js::intl::UnicodeExtensionKeyword::trace(JSTracer* trc) {
   TraceRoot(trc, &type_, "UnicodeExtensionKeyword::type");
 }
-
-}  // namespace intl
-}  // namespace js

@@ -39,7 +39,7 @@ codespell:
     when:
         files-changed:
             - '**/*.js'
-            - '**/*.jxs'
+            - '**/*.jsx'
             - '**/*.mjs'
             - '**/*.xml'
             - '**/*.html'
@@ -67,7 +67,7 @@ rejected-words:
     when:
         files-changed:
             - '**/*.js'
-            - '**/*.jxs'
+            - '**/*.jsx'
             - '**/*.mjs'
             - '**/*.xml'
             - '**/*.html'
@@ -84,7 +84,36 @@ rejected-words:
             - '**/*.ftl'
             - '**/*.java'
             - '**/*.kt'
+            - '**/*.rs'
             - 'tools/lint/rejected-words.yml'
+
+
+dot-mozilla-reference:
+    description: Give visibility to misuse of ".mozilla" being hardcoded and thus breaking XDG support
+    treeherder:
+        symbol: text(dot-mozilla-reference)
+        # We don't want patches to be backed out because of this, a follow up bug will be
+        # good enough
+        tier: 2
+    run:
+        mach: lint -v -l dot-mozilla-reference -f treeherder -f json:/builds/worker/mozlint.json .
+    when:
+        files-changed:
+            - '**/*.js'
+            - '**/*.jsx'
+            - '**/*.mjs'
+            - '**/*.cpp'
+            - '**/*.c'
+            - '**/*.h'
+            - '**/*.configure'
+            - '**/*.py'
+            - '**/*.properties'
+            - '**/*.yml'
+            - '**/*.yaml'
+            - '**/*.java'
+            - '**/*.kt'
+            - '**/*.rs'
+            - 'tools/lint/dot-mozilla-reference.yml'
 
 eslint:
     description: JS lint check
@@ -322,6 +351,18 @@ py-ruff:
             - 'tools/lint/ruff.yml'
             - 'tools/lint/python/ruff.py'
 
+
+python-sites:
+    description: Lint for python sites
+    treeherder:
+        symbol: misc(pysites)
+    run:
+        mach: lint -v -l python-sites -f treeherder -f json:/builds/worker/mozlint.json .
+    when:
+        files-changed:
+            - 'python/sites/**'
+
+
 test-manifest:
     description: lint test manifests
     treeherder:
@@ -533,6 +574,7 @@ file-perm:
             - '**/*.c'
             - '**/*.cc'
             - '**/*.cpp'
+            - '**/*.css'
             - '**/*.flac'
             - '**/*.h'
             - '**/*.html'

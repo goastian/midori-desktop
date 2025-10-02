@@ -54,6 +54,7 @@
 #include "mozilla/dom/MediaDeviceInfoBinding.h"
 #include "mozilla/fallible.h"
 #include "mozilla/XorShift128PlusRNG.h"
+#include "mozilla/dom/CanvasUtils.h"
 
 #include "nsAboutProtocolUtils.h"
 #include "nsBaseHashtable.h"
@@ -122,6 +123,7 @@ static mozilla::LazyLogModule gTimestamps("Timestamps");
 #define FONT_LIST_INITIALIZED "font-list-initialized"
 #define USER_CHARACTERISTICS_TEST_REQUEST \
   "user-characteristics-testing-please-populate-data"
+#define MOBILE_TELEMETRY_PREF_CHANGE_TOPIC "mobile-telemetry-pref-changed"
 
 static constexpr uint32_t kVideoFramesPerSec = 30;
 static constexpr uint32_t kVideoDroppedRatio = 1;
@@ -226,6 +228,9 @@ nsresult nsRFPService::Init() {
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = obs->AddObserver(this, USER_CHARACTERISTICS_TEST_REQUEST, false);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = obs->AddObserver(this, MOBILE_TELEMETRY_PREF_CHANGE_TOPIC, false);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -405,6 +410,7 @@ void nsRFPService::StartShutdown() {
       obs->RemoveObserver(this, COMPOSITOR_CREATED);
       obs->RemoveObserver(this, FONT_LIST_INITIALIZED);
       obs->RemoveObserver(this, USER_CHARACTERISTICS_TEST_REQUEST);
+      obs->RemoveObserver(this, MOBILE_TELEMETRY_PREF_CHANGE_TOPIC);
     }
   }
 
@@ -507,6 +513,14 @@ nsRFPService::Observe(nsISupports* aObject, const char* aTopic,
 
     rv = mWebCompatService->Init();
     NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  if (!strcmp(MOBILE_TELEMETRY_PREF_CHANGE_TOPIC, aTopic) &&
+      nsDependentString(aMessage).EqualsLiteral(u"disabled")) {
+    // If the user has unset the telemetry pref, wipe out the UUID pref value
+    // (The data will also be erased server-side via the "deletion-request"
+    // ping)
+    Preferences::SetCString(USER_CHARACTERISTICS_UUID_PREF, ""_ns);
   }
 
   return NS_OK;
@@ -1708,8 +1722,9 @@ nsresult nsRFPService::GenerateCanvasKeyFromImageData(
 
 // static
 nsresult nsRFPService::RandomizePixels(nsICookieJarSettings* aCookieJarSettings,
-                                       uint8_t* aData, uint32_t aWidth,
-                                       uint32_t aHeight, uint32_t aSize,
+                                       nsIPrincipal* aPrincipal, uint8_t* aData,
+                                       uint32_t aWidth, uint32_t aHeight,
+                                       uint32_t aSize,
                                        gfx::SurfaceFormat aSurfaceFormat) {
   NS_ENSURE_ARG_POINTER(aData);
 
@@ -1718,6 +1733,11 @@ nsresult nsRFPService::RandomizePixels(nsICookieJarSettings* aCookieJarSettings,
   }
 
   if (aSize <= 4) {
+    return NS_OK;
+  }
+
+  if (aPrincipal && CanvasUtils::GetCanvasExtractDataPermission(*aPrincipal) ==
+                        nsIPermissionManager::ALLOW_ACTION) {
     return NS_OK;
   }
 
@@ -2214,10 +2234,7 @@ nsRFPService::SetFingerprintingOverrides(
                                      ? sEnabledFingerprintingProtectionsBase
                                      : sEnabledFingerprintingProtections;
     RFPTargetSet targets = nsRFPService::CreateOverridesFromText(
-        NS_ConvertUTF8toUTF16(overridesText),
-        mFingerprintingOverrides.Contains(domainKey)
-            ? mFingerprintingOverrides.Get(domainKey)
-            : baseOverrides);
+        NS_ConvertUTF8toUTF16(overridesText), baseOverrides);
 
     // The newly added one will replace the existing one for the given domain
     // key.

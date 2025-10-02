@@ -272,16 +272,6 @@
     obj: ObjId
     kind: GuardClassKindImm
 
-# Guard per GuardClassKind.
-- name: GuardEitherClass
-  shared: true
-  transpile: true
-  cost_estimate: 1
-  args:
-    obj: ObjId
-    kind1: GuardClassKindImm
-    kind2: GuardClassKindImm
-
 # Guard on a realm fuse.
 - name: GuardFuse
   shared: true
@@ -454,6 +444,20 @@
   args:
     obj: ObjId
 
+- name: GuardToArrayBuffer
+  shared: true
+  transpile: true
+  cost_estimate: 1
+  args:
+    obj: ObjId
+
+- name: GuardToSharedArrayBuffer
+  shared: true
+  transpile: true
+  cost_estimate: 1
+  args:
+    obj: ObjId
+
 - name: GuardIsNotArrayBufferMaybeShared
   shared: true
   transpile: true
@@ -468,7 +472,7 @@
   args:
     obj: ObjId
 
-- name: GuardIsFixedLengthTypedArray
+- name: GuardIsNonResizableTypedArray
   shared: true
   transpile: true
   cost_estimate: 1
@@ -611,6 +615,18 @@
   args:
     boolean: BooleanId
     result: NumberId
+
+# Load the getter or setter out of a GetterSetter.
+# Fails if it is null.
+- name: LoadGetterSetterFunction
+  shared: true
+  transpile: true
+  cost_estimate: 1
+  args:
+    getterSetter: ValId
+    isGetter: BoolImm
+    needsClassGuard: BoolImm
+    result: ObjId
 
 - name: GuardHasGetterSetter
   shared: true
@@ -1917,7 +1933,7 @@
   custom_writer: true
   args:
     receiver: ObjId
-    setter: ObjectField
+    callee: ObjId
     rhs: ValId
     sameRealm: BoolImm
     nargsAndFlags: RawInt32Field
@@ -1929,7 +1945,7 @@
   custom_writer: true
   args:
     receiver: ObjId
-    setter: ObjectField
+    callee: ObjId
     rhs: ValId
     icScript: RawPointerField
     sameRealm: BoolImm
@@ -2546,7 +2562,7 @@
   custom_writer: true
   args:
     receiver: ValId
-    getter: ObjectField
+    callee: ObjId
     sameRealm: BoolImm
     nargsAndFlags: RawInt32Field
 
@@ -2557,7 +2573,7 @@
   custom_writer: true
   args:
     receiver: ValId
-    getter: ObjectField
+    callee: ObjId
     icScript: RawPointerField
     sameRealm: BoolImm
     nargsAndFlags: RawInt32Field

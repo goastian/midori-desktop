@@ -79,7 +79,6 @@
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/InputAPZContext.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
-#include "nsBrowserStatusFilter.h"
 #include "nsCommandParams.h"
 #include "nsContentPermissionHelper.h"
 #include "nsContentUtils.h"
@@ -142,6 +141,16 @@ using namespace mozilla::layers;
 using namespace mozilla::layout;
 using namespace mozilla::widget;
 using mozilla::layers::GeckoContentController;
+
+extern mozilla::LazyLogModule sWidgetDragServiceLog;
+#define __DRAGSERVICE_LOG__(logLevel, ...) \
+  MOZ_LOG(sWidgetDragServiceLog, logLevel, __VA_ARGS__)
+#define DRAGSERVICE_LOGD(...) \
+  __DRAGSERVICE_LOG__(mozilla::LogLevel::Debug, (__VA_ARGS__))
+#define DRAGSERVICE_LOGI(...) \
+  __DRAGSERVICE_LOG__(mozilla::LogLevel::Info, (__VA_ARGS__))
+#define DRAGSERVICE_LOGE(...) \
+  __DRAGSERVICE_LOG__(mozilla::LogLevel::Error, (__VA_ARGS__))
 
 static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 
@@ -412,19 +421,6 @@ nsresult BrowserChild::Init(mozIDOMWindowProxy* aParent,
   nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
   MOZ_ASSERT(docShell);
 
-  mStatusFilter = new nsBrowserStatusFilter();
-
-  nsresult rv =
-      mStatusFilter->AddProgressListener(this, nsIWebProgress::NOTIFY_ALL);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  {
-    nsCOMPtr<nsIWebProgress> webProgress = do_QueryInterface(docShell);
-    rv = webProgress->AddProgressListener(mStatusFilter,
-                                          nsIWebProgress::NOTIFY_ALL);
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
-
 #ifdef DEBUG
   nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(WebNavigation());
   MOZ_ASSERT(loadContext);
@@ -485,7 +481,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(BrowserChild)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mBrowserChildMessageManager)
   tmp->nsMessageManagerScriptExecutor::Unlink();
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mWebBrowser)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mStatusFilter)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mWebNav)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mBrowsingContext)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSessionStoreChild)
@@ -496,7 +491,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(BrowserChild)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBrowserChildMessageManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWebBrowser)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mStatusFilter)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWebNav)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBrowsingContext)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSessionStoreChild)
@@ -517,7 +511,6 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserChild)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
   NS_INTERFACE_MAP_ENTRY(nsITooltipListener)
   NS_INTERFACE_MAP_ENTRY(nsIWebProgressListener)
-  NS_INTERFACE_MAP_ENTRY(nsIWebProgressListener2)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIBrowserChild)
 NS_INTERFACE_MAP_END
 
@@ -686,16 +679,6 @@ BrowserChild::ProvideWindow(nsIOpenWindowInfo* aOpenWindowInfo,
 
 void BrowserChild::DestroyWindow() {
   mBrowsingContext = nullptr;
-
-  if (mStatusFilter) {
-    if (nsCOMPtr<nsIWebProgress> webProgress =
-            do_QueryInterface(WebNavigation())) {
-      webProgress->RemoveProgressListener(mStatusFilter);
-    }
-
-    mStatusFilter->RemoveProgressListener(this);
-    mStatusFilter = nullptr;
-  }
 
   if (mCoalescedMouseEventFlusher) {
     mCoalescedMouseEventFlusher->RemoveObserver();
@@ -1212,7 +1195,6 @@ mozilla::ipc::IPCResult BrowserChild::RecvUpdateRemoteStyle(
 
 mozilla::ipc::IPCResult BrowserChild::RecvDynamicToolbarMaxHeightChanged(
     const ScreenIntCoord& aHeight) {
-#if defined(MOZ_WIDGET_ANDROID)
   mDynamicToolbarMaxHeight = aHeight;
 
   RefPtr<Document> document = GetTopLevelDocument();
@@ -1223,13 +1205,11 @@ mozilla::ipc::IPCResult BrowserChild::RecvDynamicToolbarMaxHeightChanged(
   if (RefPtr<nsPresContext> presContext = document->GetPresContext()) {
     presContext->SetDynamicToolbarMaxHeight(aHeight);
   }
-#endif
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult BrowserChild::RecvDynamicToolbarOffsetChanged(
     const ScreenIntCoord& aOffset) {
-#if defined(MOZ_WIDGET_ANDROID)
   RefPtr<Document> document = GetTopLevelDocument();
   if (!document) {
     return IPC_OK();
@@ -1238,7 +1218,6 @@ mozilla::ipc::IPCResult BrowserChild::RecvDynamicToolbarOffsetChanged(
   if (nsPresContext* presContext = document->GetPresContext()) {
     presContext->UpdateDynamicToolbarOffset(aOffset);
   }
-#endif
   return IPC_OK();
 }
 
@@ -1833,9 +1812,78 @@ void BrowserChild::DispatchWheelEvent(const WidgetWheelEvent& aEvent,
   }
 }
 
+namespace {
+
+class SynthesizedEventChildCallback final : public nsISynthesizedEventCallback {
+  NS_DECL_ISUPPORTS
+
+ public:
+  SynthesizedEventChildCallback(BrowserChild* aBrowserChild,
+                                const uint64_t& aCallbackId)
+      : mBrowserChild(aBrowserChild), mCallbackId(aCallbackId) {
+    MOZ_ASSERT(mBrowserChild);
+    MOZ_ASSERT(mCallbackId > 0, "Invalid callback ID");
+  }
+
+  NS_IMETHOD OnCompleteDispatch() override {
+    MOZ_ASSERT(mCallbackId > 0, "Invalid callback ID");
+
+    if (!mBrowserChild) {
+      // We already sent the notification, or we don't actually need to
+      // send any notification at all.
+      MOZ_ASSERT_UNREACHABLE("OnCompleteDispatch called multiple times");
+      return NS_OK;
+    }
+
+    if (mBrowserChild->IsDestroyed()) {
+      // If this happens it's probably a bug in the test that's triggering this.
+      NS_WARNING(
+          "BrowserChild was unexpectedly destroyed during event "
+          "synthesization response!");
+    } else if (!mBrowserChild->SendSynthesizedEventResponse(mCallbackId)) {
+      NS_WARNING("Unable to send event synthesization response!");
+    }
+    // Null out browserChild to indicate we already sent the response
+    mBrowserChild = nullptr;
+    return NS_OK;
+  }
+
+ private:
+  virtual ~SynthesizedEventChildCallback() = default;
+
+  RefPtr<BrowserChild> mBrowserChild;
+  uint64_t mCallbackId;
+};
+
+NS_IMPL_ISUPPORTS(SynthesizedEventChildCallback, nsISynthesizedEventCallback)
+
+class MOZ_RAII AutoSynthesizedWheelEventResponder final {
+ public:
+  AutoSynthesizedWheelEventResponder(BrowserChild* aBrowserChild,
+                                     const WidgetWheelEvent& aEvent) {
+    if (aEvent.mCallbackId.isSome()) {
+      mCallback = MakeAndAddRef<SynthesizedEventChildCallback>(
+          aBrowserChild, aEvent.mCallbackId.ref());
+    }
+  }
+
+  ~AutoSynthesizedWheelEventResponder() {
+    if (mCallback) {
+      mCallback->OnCompleteDispatch();
+    }
+  }
+
+ private:
+  nsCOMPtr<nsISynthesizedEventCallback> mCallback;
+};
+
+}  // namespace
+
 mozilla::ipc::IPCResult BrowserChild::RecvMouseWheelEvent(
     const WidgetWheelEvent& aEvent, const ScrollableLayerGuid& aGuid,
     const uint64_t& aInputBlockId) {
+  AutoSynthesizedWheelEventResponder responder(this, aEvent);
+
   bool isNextWheelEvent = false;
   // We only coalesce the current event when
   // 1. It's eWheel (we don't coalesce eOperationStart and eWheelOperationEnd)
@@ -2079,6 +2127,12 @@ mozilla::ipc::IPCResult BrowserChild::RecvRealDragEvent(
   localEvent.mWidget = mPuppetWidget;
 
   nsCOMPtr<nsIDragSession> dragSession = GetDragSession();
+  DRAGSERVICE_LOGD(
+      "[%p] %s | aEvent.mMessage: %s | aDragAction: %u | aDropEffect: %u | "
+      "dragSession: %p",
+      this, __FUNCTION__,
+      NS_ConvertUTF16toUTF8(dom::Event::GetEventName(aEvent.mMessage)).get(),
+      aDragAction, aDropEffect, dragSession.get());
   if (dragSession) {
     dragSession->SetDragAction(aDragAction);
     dragSession->SetTriggeringPrincipal(aPrincipal);
@@ -2093,6 +2147,8 @@ mozilla::ipc::IPCResult BrowserChild::RecvRealDragEvent(
     bool canDrop = true;
     if (!dragSession || NS_FAILED(dragSession->GetCanDrop(&canDrop)) ||
         !canDrop) {
+      DRAGSERVICE_LOGD("[%p] %s | changed drop to dragexit", this,
+                       __FUNCTION__);
       localEvent.mMessage = eDragExit;
     }
   } else if (aEvent.mMessage == eDragOver) {
@@ -2173,6 +2229,11 @@ mozilla::ipc::IPCResult BrowserChild::RecvInvokeChildDragSession(
       RefPtr<DataTransfer> dataTransfer = ConvertToDataTransfer(
           aPrincipal, std::move(aTransferables), eDragStart);
       session->SetDataTransfer(dataTransfer);
+      DRAGSERVICE_LOGD("[%p] %s | Successfully started dragSession: %p", this,
+                       __FUNCTION__, session.get());
+    } else {
+      DRAGSERVICE_LOGE("[%p] %s | Failed to start dragSession", this,
+                       __FUNCTION__);
     }
   }
   return IPC_OK();
@@ -2185,6 +2246,11 @@ mozilla::ipc::IPCResult BrowserChild::RecvUpdateDragSession(
     nsCOMPtr<DataTransfer> dataTransfer = ConvertToDataTransfer(
         aPrincipal, std::move(aTransferables), aEventMessage);
     session->SetDataTransfer(dataTransfer);
+    DRAGSERVICE_LOGD(
+        "[%p] %s | session: %p | aEventMessage: %s | Updated dragSession "
+        "dataTransfer",
+        this, __FUNCTION__, session.get(),
+        NS_ConvertUTF16toUTF8(dom::Event::GetEventName(aEventMessage)).get());
   }
   return IPC_OK();
 }
@@ -2195,6 +2261,13 @@ mozilla::ipc::IPCResult BrowserChild::RecvEndDragSession(
     const uint32_t& aDropEffect) {
   RefPtr<nsIDragSession> dragSession = GetDragSession();
   if (dragSession) {
+    DRAGSERVICE_LOGD(
+        "[%p] %s | dragSession: %p | aDoneDrag: %s | aUserCancelled: %s | "
+        "aDragEndPoint: (%d, %d) | aKeyModifiers: %u | aDropEffect: %u",
+        this, __FUNCTION__, dragSession.get(), GetBoolName(aDoneDrag),
+        GetBoolName(aUserCancelled), static_cast<int>(aDragEndPoint.x),
+        static_cast<int>(aDragEndPoint.y), aKeyModifiers, aDropEffect);
+
     if (aUserCancelled) {
       dragSession->UserCancelled();
     }
@@ -2215,6 +2288,11 @@ mozilla::ipc::IPCResult BrowserChild::RecvStoreDropTargetAndDelayEndDragSession(
   // cf. RecvRealDragEvent
   nsCOMPtr<nsIDragSession> dragSession = GetDragSession();
   MOZ_ASSERT(dragSession);
+  DRAGSERVICE_LOGD(
+      "[%p] %s | dragSession: %p aPt: (%d, %d) | aDropEffect: %u | "
+      "aDragAction: %u",
+      this, __FUNCTION__, dragSession.get(), static_cast<int>(aPt.x),
+      static_cast<int>(aPt.y), aDropEffect, aDragAction);
   dragSession->SetDragAction(aDragAction);
   dragSession->SetTriggeringPrincipal(aPrincipal);
   dragSession->SetCsp(aCsp);
@@ -2251,6 +2329,8 @@ mozilla::ipc::IPCResult BrowserChild::RecvStoreDropTargetAndDelayEndDragSession(
 mozilla::ipc::IPCResult
 BrowserChild::RecvDispatchToDropTargetAndResumeEndDragSession(
     bool aShouldDrop, nsTHashSet<nsString>&& aAllowedFilesPaths) {
+  DRAGSERVICE_LOGD("[%p] %s | aShouldDrop: %s", this, __FUNCTION__,
+                   GetBoolName(aShouldDrop));
   nsCOMPtr<nsIDragSession> dragSession = GetDragSession();
   MOZ_ASSERT(dragSession);
   RefPtr<nsIWidget> widget = mPuppetWidget;
@@ -2288,10 +2368,11 @@ void BrowserChild::RequestEditCommands(NativeKeyBindingsType aType,
                                &aCommands);
 }
 
-mozilla::ipc::IPCResult BrowserChild::RecvNativeSynthesisResponse(
-    const uint64_t& aObserverId, const nsCString& aResponse) {
-  mozilla::widget::AutoObserverNotifier::NotifySavedObserver(aObserverId,
-                                                             aResponse.get());
+mozilla::ipc::IPCResult BrowserChild::RecvSynthesizedEventResponse(
+    const uint64_t& aCallbackId) {
+  NS_ENSURE_TRUE(xpc::IsInAutomation(), IPC_FAIL(this, "Unexpected event"));
+  mozilla::widget::AutoSynthesizedEventCallbackNotifier::NotifySavedCallback(
+      aCallbackId);
   return IPC_OK();
 }
 
@@ -3787,7 +3868,7 @@ NS_IMETHODIMP BrowserChild::OnStateChange(nsIWebProgress* aWebProgress,
                                           nsIRequest* aRequest,
                                           uint32_t aStateFlags,
                                           nsresult aStatus) {
-  if (!IPCOpen() || !mShouldSendWebProgressEventsToParent) {
+  if (!IPCOpen() || mDestroyed || !mShouldSendWebProgressEventsToParent) {
     return NS_OK;
   }
 
@@ -3845,7 +3926,7 @@ NS_IMETHODIMP BrowserChild::OnProgressChange(nsIWebProgress* aWebProgress,
                                              int32_t aMaxSelfProgress,
                                              int32_t aCurTotalProgress,
                                              int32_t aMaxTotalProgress) {
-  if (!IPCOpen() || !mShouldSendWebProgressEventsToParent) {
+  if (!IPCOpen() || mDestroyed || !mShouldSendWebProgressEventsToParent) {
     return NS_OK;
   }
 
@@ -3856,14 +3937,9 @@ NS_IMETHODIMP BrowserChild::OnProgressChange(nsIWebProgress* aWebProgress,
     return NS_OK;
   }
 
-  // As we're being filtered by nsBrowserStatusFilter, we will be passed either
-  // nullptr or 0 for all arguments other than aCurTotalProgress and
-  // aMaxTotalProgress. Don't bother sending them.
-  MOZ_ASSERT(!aWebProgress);
-  MOZ_ASSERT(!aRequest);
-  MOZ_ASSERT(aCurSelfProgress == 0);
-  MOZ_ASSERT(aMaxSelfProgress == 0);
-
+  // NOTE: ProgressChange notifications delivered here are filtered by
+  // nsBrowserStatusFilter, which passes meaningless values for all other
+  // arguments, so they are ignored here.
   Unused << SendOnProgressChange(aCurTotalProgress, aMaxTotalProgress);
 
   return NS_OK;
@@ -3873,7 +3949,7 @@ NS_IMETHODIMP BrowserChild::OnLocationChange(nsIWebProgress* aWebProgress,
                                              nsIRequest* aRequest,
                                              nsIURI* aLocation,
                                              uint32_t aFlags) {
-  if (!IPCOpen() || !mShouldSendWebProgressEventsToParent) {
+  if (!IPCOpen() || mDestroyed || !mShouldSendWebProgressEventsToParent) {
     return NS_OK;
   }
 
@@ -3965,24 +4041,13 @@ NS_IMETHODIMP BrowserChild::OnStatusChange(nsIWebProgress* aWebProgress,
                                            nsIRequest* aRequest,
                                            nsresult aStatus,
                                            const char16_t* aMessage) {
-  if (!IPCOpen() || !mShouldSendWebProgressEventsToParent) {
+  if (!IPCOpen() || mDestroyed || !mShouldSendWebProgressEventsToParent) {
     return NS_OK;
   }
 
-  // FIXME: We currently ignore StatusChange from out-of-process subframes both
-  // here and in BrowserParent. We may want to change this behaviour in the
-  // future.
-  if (!GetBrowsingContext()->IsTopContent()) {
-    return NS_OK;
-  }
-
-  // As we're being filtered by nsBrowserStatusFilter, we will be passed either
-  // nullptr or NS_OK for all arguments other than aMessage. Don't bother
-  // sending them.
-  MOZ_ASSERT(!aWebProgress);
-  MOZ_ASSERT(!aRequest);
-  MOZ_ASSERT(aStatus == NS_OK);
-
+  // NOTE: StatusChange notifications delivered here are filtered by
+  // nsBrowserStatusFilter, which passes meaningless values for all other
+  // arguments, so they are ignored here.
   Unused << SendOnStatusChange(nsDependentString(aMessage));
 
   return NS_OK;
@@ -4005,28 +4070,6 @@ NS_IMETHODIMP BrowserChild::OnContentBlockingEvent(nsIWebProgress* aWebProgress,
   MOZ_DIAGNOSTIC_ASSERT(
       false, "OnContentBlockingEvent should not be seen in content process.");
   return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP BrowserChild::OnProgressChange64(nsIWebProgress* aWebProgress,
-                                               nsIRequest* aRequest,
-                                               int64_t aCurSelfProgress,
-                                               int64_t aMaxSelfProgress,
-                                               int64_t aCurTotalProgress,
-                                               int64_t aMaxTotalProgress) {
-  // All the events we receive are filtered through an nsBrowserStatusFilter,
-  // which accepts ProgressChange64 events, but truncates the progress values to
-  // uint32_t and calls OnProgressChange.
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP BrowserChild::OnRefreshAttempted(nsIWebProgress* aWebProgress,
-                                               nsIURI* aRefreshURI,
-                                               uint32_t aMillis, bool aSameURI,
-                                               bool* aOut) {
-  NS_ENSURE_ARG_POINTER(aOut);
-  *aOut = true;
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP BrowserChild::NotifyNavigationFinished() {

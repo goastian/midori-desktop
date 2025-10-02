@@ -24,7 +24,6 @@
 obj*/
 
 # These files are generated in some way.
-browser/components/pocket/content/panels/css/main.compiled.css
 browser/components/aboutwelcome/**/*.css
 browser/components/asrouter/**/*.css
 browser/extensions/newtab/**/*.css
@@ -41,12 +40,19 @@ devtools/client/debugger/test/mochitest/examples/
 # no errors at all.
 devtools/client/inspector/rules/test/doc_sourcemaps.css
 
+# This is intended to simulate a css file generated from a scss file in order to
+# test sourcemaps.
+devtools/client/inspector/rules/test/doc_sourcemaps2.css
+
 # Some of these produce parse errors, some have sourcemaps modified.
 # They're tests, so let's just ignore all of them:
 devtools/client/inspector/computed/test/doc_sourcemaps.css
+devtools/client/inspector/rules/test/doc_copystyles.css
 devtools/client/inspector/rules/test/doc_invalid_sourcemap.css
 devtools/client/shared/sourceeditor/test/css_statemachine_testcases.css
 devtools/client/webconsole/test/browser/*.css
+devtools/shared/commands/resource/tests/style_iframe.css
+devtools/shared/commands/resource/tests/style_document.css
 
 # Style editor tests check how it copes with invalid or "special" CSS,
 # so don't try to "fix" those.
@@ -57,6 +63,7 @@ dom/base/test/bug466409-empty.css
 dom/encoding/test/file_utf16_be_bom.css
 dom/encoding/test/file_utf16_le_bom.css
 dom/security/test/cors/file_cors_logging_test.html.css
+dom/security/test/sri/test_bug_1271796.html
 dom/tests/mochitest/general/cssA.css
 dom/tests/mochitest/general/cssC.css
 
@@ -93,7 +100,7 @@ python/mozbuild/mozbuild/test/backend/data/build/foo.css
 toolkit/components/pdfjs/content/web/debugger.css
 toolkit/components/pdfjs/content/web/viewer.css
 toolkit/components/pdfjs/content/web/viewer-geckoview.css
+build/pgo/blueprint/**/*.css
 
 # Ignore web-platform tests as they are not necessarily under our control.
 testing/web-platform/tests/
-

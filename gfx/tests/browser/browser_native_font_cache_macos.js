@@ -3,6 +3,12 @@
 
 "use strict";
 
+add_setup(async function () {
+  await SpecialPowers.pushPrefEnv({
+    set: [["test.wait300msAfterTabSwitch", true]],
+  });
+});
+
 add_task(async () => {
   // Create a tab that loads a system font.
   const CROSS_ORIGIN_DOMAIN = "https://example.com";
@@ -40,7 +46,7 @@ add_task(async () => {
       // Copy the page text and check for an expected start with string.
       let copiedText = await new Promise(resolve => {
         const REPORT_TIMEOUT_MS = 15 * 1e3;
-        const EXPECTED_START_WITH = "Main Process";
+        const EXPECTED_START_WITH = "Total resident memory (approximate)";
         let mostRecentTextOnClipboard = "";
 
         SimpleTest.waitForClipboard(

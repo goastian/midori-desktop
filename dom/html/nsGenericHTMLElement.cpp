@@ -24,6 +24,7 @@
 #include "mozilla/dom/AncestorIterator.h"
 #include "mozilla/dom/FetchPriority.h"
 #include "mozilla/dom/FormData.h"
+#include "mozilla/dom/HTMLElementBinding.h"
 #include "nsCaseTreatment.h"
 #include "nscore.h"
 #include "nsGenericHTMLElement.h"
@@ -81,7 +82,7 @@
 #include "mozilla/dom/ToggleEvent.h"
 #include "mozilla/dom/TouchEvent.h"
 #include "mozilla/dom/InputEvent.h"
-#include "mozilla/dom/InvokeEvent.h"
+#include "mozilla/dom/CommandEvent.h"
 #include "mozilla/ErrorResult.h"
 #include "nsHTMLDocument.h"
 #include "nsGlobalWindowInner.h"
@@ -2968,17 +2969,6 @@ bool nsGenericHTMLFormControlElementWithState::ParseAttribute(
       aResult.ParseAtom(aValue);
       return true;
     }
-
-    if (StaticPrefs::dom_element_invokers_enabled()) {
-      if (aAttribute == nsGkAtoms::invokeaction) {
-        aResult.ParseAtom(aValue);
-        return true;
-      }
-      if (aAttribute == nsGkAtoms::invoketarget) {
-        aResult.ParseAtom(aValue);
-        return true;
-      }
-    }
   }
 
   return nsGenericHTMLFormControlElement::ParseAttribute(
@@ -3022,131 +3012,34 @@ void nsGenericHTMLFormControlElementWithState::HandlePopoverTargetAction() {
   }
 }
 
-void nsGenericHTMLFormControlElementWithState::GetInvokeAction(
-    nsAString& aValue) const {
-  const nsAttrValue* attr = GetParsedAttr(nsGkAtoms::invokeaction);
-  if (attr) {
-    attr->GetAtomValue()->ToString(aValue);
-  }
+bool nsGenericHTMLElement::IsValidCommandAction(Command aCommand) const {
+  return Element::IsValidCommandAction(aCommand) ||
+         aCommand == Command::ShowPopover ||
+         aCommand == Command::TogglePopover || aCommand == Command::HidePopover;
 }
 
-InvokeAction nsGenericHTMLFormControlElementWithState::GetInvokeAction(
-    nsAtom* aAtom) const {
-  if (aAtom == nsGkAtoms::_empty) {
-    return InvokeAction::Auto;
-  }
-  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::showpopover)) {
-    return InvokeAction::ShowPopover;
-  }
-  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::hidepopover)) {
-    return InvokeAction::HidePopover;
-  }
-  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::togglepopover)) {
-    return InvokeAction::TogglePopover;
-  }
-  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::showmodal)) {
-    return InvokeAction::ShowModal;
-  }
-  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::toggle)) {
-    return InvokeAction::Toggle;
-  }
-  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::close)) {
-    return InvokeAction::Close;
-  }
-  if (nsContentUtils::EqualsIgnoreASCIICase(aAtom, nsGkAtoms::open)) {
-    return InvokeAction::Open;
-  }
-  if (nsContentUtils::ContainsChar(aAtom, '-')) {
-    return InvokeAction::Custom;
-  }
-  return InvokeAction::Invalid;
-}
-
-mozilla::dom::Element*
-nsGenericHTMLFormControlElementWithState::GetInvokeTargetElement() const {
-  if (StaticPrefs::dom_element_invokers_enabled()) {
-    return GetAttrAssociatedElement(nsGkAtoms::invoketarget);
-  }
-  return nullptr;
-}
-
-void nsGenericHTMLFormControlElementWithState::SetInvokeTargetElement(
-    mozilla::dom::Element* aElement) {
-  ExplicitlySetAttrElement(nsGkAtoms::invoketarget, aElement);
-}
-
-void nsGenericHTMLFormControlElementWithState::HandleInvokeTargetAction() {
-  RefPtr<Element> invokee = GetInvokeTargetElement();
-
-  if (!invokee) {
-    return;
-  }
-
-  // 1. Let action be element's invokeaction attribute.
-  const nsAttrValue* attr = GetParsedAttr(nsGkAtoms::invokeaction);
-
-  nsAtom* actionRaw = attr ? attr->GetAtomValue() : nsGkAtoms::_empty;
-  InvokeAction action = GetInvokeAction(actionRaw);
-
-  // 5.3. Otherwise, if the result of running invokee's corresponding is valid
-  // invoke action steps given action is not true, then return.
-  if (action != InvokeAction::Custom && !invokee->IsValidInvokeAction(action)) {
-    return;
-  }
-
-  // 6. Let continue be the result of firing an event named invoke at invokee,
-  // using InvokeEvent, with its action attribute initialized to action's value,
-  // its invoker attribute initialized to element, and its cancelable and
-  // composed attributes initialized to true.
-  InvokeEventInit init;
-  actionRaw->ToString(init.mAction);
-  init.mInvoker = this;
-  init.mCancelable = true;
-  init.mComposed = true;
-  RefPtr<Event> event = InvokeEvent::Constructor(this, u"invoke"_ns, init);
-  event->SetTrusted(true);
-  event->SetTarget(invokee);
-
-  EventDispatcher::DispatchDOMEvent(invokee, nullptr, event, nullptr, nullptr);
-
-  // 7. If continue is false, then return.
-  // 8. If isCustom is true, then return.
-  if (action == InvokeAction::Custom || event->DefaultPrevented()) {
-    return;
-  }
-
-  invokee->HandleInvokeInternal(this, action, IgnoreErrors());
-}
-
-bool nsGenericHTMLElement::IsValidInvokeAction(InvokeAction aAction) const {
-  return Element::IsValidInvokeAction(aAction) ||
-         aAction == InvokeAction::ShowPopover ||
-         aAction == InvokeAction::TogglePopover ||
-         aAction == InvokeAction::HidePopover;
-}
-
-MOZ_CAN_RUN_SCRIPT bool nsGenericHTMLElement::HandleInvokeInternal(
-    Element* aInvoker, InvokeAction aAction, ErrorResult& aRv) {
-  if (Element::HandleInvokeInternal(aInvoker, aAction, aRv)) {
+MOZ_CAN_RUN_SCRIPT bool nsGenericHTMLElement::HandleCommandInternal(
+    Element* aSource, Command aCommand, ErrorResult& aRv) {
+  if (Element::HandleCommandInternal(aSource, aCommand, aRv)) {
     return true;
   }
 
   // If the element is a `popover` then we may want to handle the
-  // invokeaction...
+  // command...
   auto popoverState = GetPopoverAttributeState();
   if (popoverState == PopoverAttributeState::None) {
     return false;
   }
 
-  const bool canShow = aAction == InvokeAction::Auto ||
-                       aAction == InvokeAction::TogglePopover ||
-                       aAction == InvokeAction::ShowPopover;
-  const bool canHide = aAction == InvokeAction::Auto ||
-                       aAction == InvokeAction::TogglePopover ||
-                       aAction == InvokeAction::HidePopover;
+  const bool canShow = aCommand == Command::Auto ||
+                       aCommand == Command::TogglePopover ||
+                       aCommand == Command::ShowPopover;
+  const bool canHide = aCommand == Command::Auto ||
+                       aCommand == Command::TogglePopover ||
+                       aCommand == Command::HidePopover;
 
   if (canShow && !IsPopoverOpen()) {
-    ShowPopoverInternal(aInvoker, aRv);
+    ShowPopoverInternal(aSource, aRv);
     return true;
   }
 
@@ -3601,9 +3494,15 @@ void nsGenericHTMLElement::RunPopoverToggleEventTask(
 }
 
 // https://html.spec.whatwg.org/#dom-showpopover
-void nsGenericHTMLElement::ShowPopover(ErrorResult& aRv) {
-  return ShowPopoverInternal(nullptr, aRv);
+void nsGenericHTMLElement::ShowPopover(const ShowPopoverOptions& aOptions,
+                                       ErrorResult& aRv) {
+  Element* source = nullptr;
+  if (aOptions.mSource.WasPassed()) {
+    source = &aOptions.mSource.Value();
+  }
+  return ShowPopoverInternal(MOZ_KnownLive(source), aRv);
 }
+
 void nsGenericHTMLElement::ShowPopoverInternal(Element* aInvoker,
                                                ErrorResult& aRv) {
   if (!CheckPopoverValidity(PopoverVisibilityState::Hidden, nullptr, aRv)) {
@@ -3739,12 +3638,29 @@ void nsGenericHTMLElement::FocusPreviousElementAfterHidingPopover() {
 }
 
 // https://html.spec.whatwg.org/multipage/popover.html#dom-togglepopover
-bool nsGenericHTMLElement::TogglePopover(const Optional<bool>& aForce,
-                                         ErrorResult& aRv) {
-  if (PopoverOpen() && (!aForce.WasPassed() || !aForce.Value())) {
+bool nsGenericHTMLElement::TogglePopover(
+    const TogglePopoverOptionsOrBoolean& aOptions, ErrorResult& aRv) {
+  std::optional<bool> force;
+  // Kept alive by TogglePopoverOptions if non-null.
+  Element* invoker = nullptr;
+
+  if (aOptions.IsBoolean()) {
+    force = std::make_optional(aOptions.GetAsBoolean());
+  } else {
+    const auto& options = aOptions.GetAsTogglePopoverOptions();
+    if (options.mForce.WasPassed()) {
+      force = std::make_optional(options.mForce.Value());
+    }
+    if (options.mSource.WasPassed()) {
+      invoker = &options.mSource.Value();
+    }
+  }
+
+  if (PopoverOpen() && !force.value_or(false)) {
     HidePopover(aRv);
-  } else if (!aForce.WasPassed() || aForce.Value()) {
-    ShowPopover(aRv);
+  } else if (force.value_or(true)) {
+    // Kept alive by TogglePopoverOptions.
+    ShowPopoverInternal(MOZ_KnownLive(invoker), aRv);
   } else {
     CheckPopoverValidity(GetPopoverData()
                              ? GetPopoverData()->GetPopoverVisibilityState()

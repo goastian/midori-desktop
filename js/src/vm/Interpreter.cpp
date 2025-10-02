@@ -435,19 +435,26 @@ bool js::RunScript(JSContext* cx, RunState& state) {
 
   GeckoProfilerEntryMarker marker(cx, state.script());
 
-  bool measuringTime = !cx->isMeasuringExecutionTime();
+  // If the isExecuting flag was not set, then enable it.
+  //  This flag is only set on the initial, outermost RunScript call.
+  //  Also start a timer if measureExecutionTimeEnabled() is true.
+  bool isExecuting = cx->isExecutingRef();
+  bool timerEnabled = cx->measuringExecutionTimeEnabled();
+
   mozilla::TimeStamp startTime;
-  if (measuringTime) {
-    cx->setIsMeasuringExecutionTime(true);
+  if (!isExecuting) {
     cx->setIsExecuting(true);
-    startTime = mozilla::TimeStamp::Now();
+    if (timerEnabled) {
+      startTime = mozilla::TimeStamp::Now();
+    }
   }
-  auto timerEnd = mozilla::MakeScopeExit([&]() {
-    if (measuringTime) {
-      mozilla::TimeDuration delta = mozilla::TimeStamp::Now() - startTime;
-      cx->realm()->timers.executionTime += delta;
-      cx->setIsMeasuringExecutionTime(false);
+  auto onScopeExit = mozilla::MakeScopeExit([&]() {
+    if (!isExecuting) {
       cx->setIsExecuting(false);
+      if (timerEnabled) {
+        mozilla::TimeDuration delta = mozilla::TimeStamp::Now() - startTime;
+        cx->realm()->timers.executionTime += delta;
+      }
     }
   });
 
@@ -629,7 +636,7 @@ bool js::InternalCallOrConstruct(JSContext* cx, const CallArgs& args,
 // means passing the WindowProxy instead of the Window (a GlobalObject) because
 // we must never expose the Window to script. This returns false only for DOM
 // getters or setters.
-static bool CalleeNeedsOuterizedThisObject(const Value& callee) {
+static bool CalleeNeedsOuterizedThisObject(Value callee) {
   if (!callee.isObject() || !callee.toObject().is<JSFunction>()) {
     return true;
   }
@@ -1638,7 +1645,7 @@ bool js::SyncDisposalClosure(JSContext* cx, unsigned argc, JS::Value* vp) {
       cx, callee->getExtendedSlot(uint8_t(SyncDisposalClosureSlots::Method)));
 
   // Step 1.b.ii.1.a. Let O be the this value.
-  JS::Rooted<JS::Value> O(cx, args.thisv());
+  JS::Handle<JS::Value> O = args.thisv();
 
   // Step 1.b.ii.1.b. Let promiseCapability be !
   // NewPromiseCapability(%Promise%).
@@ -2561,8 +2568,8 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
 
 #define STRICT_EQUALITY_OP(OP, COND)                  \
   JS_BEGIN_MACRO                                      \
-    HandleValue lval = REGS.stackHandleAt(-2);        \
-    HandleValue rval = REGS.stackHandleAt(-1);        \
+    const Value& lval = REGS.sp[-2];                  \
+    const Value& rval = REGS.sp[-1];                  \
     bool equal;                                       \
     if (!js::StrictlyEqual(cx, lval, rval, &equal)) { \
       goto error;                                     \
@@ -2588,21 +2595,15 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
 #undef STRICT_EQUALITY_OP
 
     CASE(StrictConstantEq) {
-      JS::Handle<JS::Value> value = REGS.stackHandleAt(-1);
-      bool equal;
-      if (!js::ConstantStrictEqual(cx, value, GET_UINT16(REGS.pc), &equal)) {
-        goto error;
-      }
+      const Value& value = REGS.sp[-1];
+      bool equal = js::ConstantStrictEqual(value, GET_UINT16(REGS.pc));
       REGS.sp[-1].setBoolean(equal);
     }
     END_CASE(StrictConstantEq)
 
     CASE(StrictConstantNe) {
-      JS::Handle<JS::Value> value = REGS.stackHandleAt(-1);
-      bool equal;
-      if (!js::ConstantStrictEqual(cx, value, GET_UINT16(REGS.pc), &equal)) {
-        goto error;
-      }
+      const Value& value = REGS.sp[-1];
+      bool equal = js::ConstantStrictEqual(value, GET_UINT16(REGS.pc));
       REGS.sp[-1].setBoolean(!equal);
     }
     END_CASE(StrictConstantNe)
@@ -5136,7 +5137,7 @@ bool js::OptimizeSpreadCall(JSContext* cx, HandleValue arg,
   return true;
 }
 
-bool js::OptimizeGetIterator(const Value& arg, JSContext* cx) {
+bool js::OptimizeGetIterator(Value arg, JSContext* cx) {
   if (!arg.isObject()) {
     return false;
   }

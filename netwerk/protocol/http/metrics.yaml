@@ -1384,6 +1384,25 @@ networking:
       - no_default_alpn
       - others
 
+  connection_address_type:
+    type: labeled_counter
+    description: Records the IP address family (IPv4 or IPv6) used when an HTTP transaction is dispatched.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968510
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968510
+    notification_emails:
+      - necko@mozilla.com
+      - kershaw@mozilla.com
+    expires: never
+    labels:
+      - http_1_ipv4
+      - http_2_ipv4
+      - http_3_ipv4
+      - http_1_ipv6
+      - http_2_ipv6
+      - http_3_ipv6
+
 opaque.response.blocking:
   javascript_validation_count:
     type: counter
@@ -2130,26 +2149,6 @@ http:
       - necko@mozilla.com
     expires: never
     telemetry_mirror: HTTP_KBREAD_PER_CONN2
-
-  proxy_type:
-    type: custom_distribution
-    description: >
-      HTTP Proxy Type (none, http, socks)
-
-      This metric was generated to correspond to the Legacy Telemetry enumerated
-      histogram HTTP_PROXY_TYPE.
-    range_min: 0
-    range_max: 8
-    bucket_count: 9
-    histogram_type: linear
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
-    notification_emails:
-      - necko@mozilla.com
-    expires: never
-    telemetry_mirror: HTTP_PROXY_TYPE
 
   transaction_is_ssl:
     type: labeled_counter

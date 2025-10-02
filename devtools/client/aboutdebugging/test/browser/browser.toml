@@ -50,6 +50,9 @@ tags = "webextensions"
 
 ["browser_aboutdebugging_addons_debug_storage.js"]
 tags = "webextensions"
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt", # Bug 1767695
+]
 
 ["browser_aboutdebugging_addons_debug_toolbox.js"]
 tags = "webextensions"
@@ -190,6 +193,7 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 
 ["browser_aboutdebugging_serviceworker_start.js"]
 skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan", # Bug 1947358
   "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && tsan", # Bug 1947358
 ]
 

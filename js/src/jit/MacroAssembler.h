@@ -814,8 +814,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
  private:
   // Reinitialize the variables which have to be cleared before making a call
   // with callWithABI.
-  template <class ABIArgGeneratorT>
-  void setupABICallHelper();
+  void setupABICallHelper(ABIKind kind);
 
   // Reinitialize the variables which have to be cleared before making a call
   // with native abi.
@@ -834,6 +833,13 @@ class MacroAssembler : public MacroAssemblerSpecific {
   // Restore the stack to its state before the setup function call.
   void callWithABIPost(uint32_t stackAdjust, ABIType result,
                        bool callFromWasm = false) PER_ARCH;
+
+#ifdef JS_CHECK_UNSAFE_CALL_WITH_ABI
+  // Set the JSContext::inUnsafeCallWithABI flag using InstanceReg.
+  void wasmCheckUnsafeCallWithABIPre();
+  // Check JSContext::inUnsafeCallWithABI was cleared as expected.
+  void wasmCheckUnsafeCallWithABIPost();
+#endif
 
   // Create the signature to be able to decode the arguments of a native
   // function, when calling a function within the simulator.
@@ -1818,21 +1824,6 @@ class MacroAssembler : public MacroAssemblerSpecific {
   inline void branchTestObjClass(Condition cond, Register obj, Register clasp,
                                  Register scratch, Register spectreRegToZero,
                                  Label* label);
-
- private:
-  inline void branchTestClass(Condition cond, Register clasp,
-                              std::pair<const JSClass*, const JSClass*> classes,
-                              Label* label);
-
- public:
-  inline void branchTestObjClass(
-      Condition cond, Register obj,
-      std::pair<const JSClass*, const JSClass*> classes, Register scratch,
-      Register spectreRegToZero, Label* label);
-  inline void branchTestObjClassNoSpectreMitigations(
-      Condition cond, Register obj,
-      std::pair<const JSClass*, const JSClass*> classes, Register scratch,
-      Label* label);
 
   inline void branchTestObjShape(Condition cond, Register obj,
                                  const Shape* shape, Register scratch,
@@ -3897,9 +3888,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
   CodeOffset wasmMarkedSlowCall(const wasm::CallSiteDesc& desc,
                                 const Register reg) PER_SHARED_ARCH;
 
-#ifdef ENABLE_WASM_MEMORY64
   void wasmClampTable64Address(Register64 address, Register out);
-#endif
 
   // WasmTableCallIndexReg must contain the index of the indirect call.  This is
   // for wasm calls only.
@@ -3954,7 +3943,8 @@ class MacroAssembler : public MacroAssemblerSpecific {
   CodeOffset wasmCallBuiltinInstanceMethod(const wasm::CallSiteDesc& desc,
                                            const ABIArg& instanceArg,
                                            wasm::SymbolicAddress builtin,
-                                           wasm::FailureMode failureMode);
+                                           wasm::FailureMode failureMode,
+                                           wasm::Trap failureTrap);
 
   // Performs the appropriate check based on the instance call's FailureMode,
   // and traps if the check fails. The resultRegister should likely be
@@ -3962,6 +3952,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
   // after the call.
   void wasmTrapOnFailedInstanceCall(Register resultRegister,
                                     wasm::FailureMode failureMode,
+                                    wasm::Trap failureTrap,
                                     const wasm::TrapSiteDesc& trapSiteDesc);
 
   // Performs a bounds check for ranged wasm operations like memory.fill or
@@ -5355,10 +5346,16 @@ class MacroAssembler : public MacroAssemblerSpecific {
 
  public:
   void branchIfClassIsNotTypedArray(Register clasp, Label* notTypedArray);
-  void branchIfClassIsNotFixedLengthTypedArray(Register clasp,
-                                               Label* notTypedArray);
+  void branchIfClassIsNotNonResizableTypedArray(Register clasp,
+                                                Label* notTypedArray);
   void branchIfClassIsNotResizableTypedArray(Register clasp,
                                              Label* notTypedArray);
+
+  void branchIfIsNotArrayBuffer(Register obj, Register temp, Label* label);
+  void branchIfIsNotSharedArrayBuffer(Register obj, Register temp,
+                                      Label* label);
+  void branchIfIsArrayBufferMaybeShared(Register obj, Register temp,
+                                        Label* label);
 
  private:
   enum class BranchIfDetached { No, Yes };

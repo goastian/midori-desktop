@@ -5,18 +5,21 @@ Classes Without Boilerplate
 """
 
 from functools import partial
-from typing import Callable
+from typing import Callable, Literal, Protocol
 
 from . import converters, exceptions, filters, setters, validators
 from ._cmp import cmp_using
 from ._config import get_run_validators, set_run_validators
-from ._funcs import asdict, assoc, astuple, evolve, has, resolve_types
+from ._funcs import asdict, assoc, astuple, has, resolve_types
 from ._make import (
     NOTHING,
     Attribute,
+    Converter,
     Factory,
+    _Nothing,
     attrib,
     attrs,
+    evolve,
     fields,
     fields_dict,
     make_class,
@@ -31,15 +34,19 @@ ib = attr = attrib
 dataclass = partial(attrs, auto_attribs=True)  # happy Easter ;)
 
 
-class AttrsInstance:
+class AttrsInstance(Protocol):
     pass
 
 
+NothingType = Literal[_Nothing.NOTHING]
+
 __all__ = [
+    "NOTHING",
     "Attribute",
     "AttrsInstance",
+    "Converter",
     "Factory",
-    "NOTHING",
+    "NothingType",
     "asdict",
     "assoc",
     "astuple",
@@ -78,53 +85,18 @@ def _make_getattr(mod_name: str) -> Callable:
     """
 
     def __getattr__(name: str) -> str:
-        dunder_to_metadata = {
-            "__title__": "Name",
-            "__copyright__": "",
-            "__version__": "version",
-            "__version_info__": "version",
-            "__description__": "summary",
-            "__uri__": "",
-            "__url__": "",
-            "__author__": "",
-            "__email__": "",
-            "__license__": "license",
-        }
-        if name not in dunder_to_metadata.keys():
-            raise AttributeError(f"module {mod_name} has no attribute {name}")
+        if name not in ("__version__", "__version_info__"):
+            msg = f"module {mod_name} has no attribute {name}"
+            raise AttributeError(msg)
 
-        import sys
-        import warnings
-
-        if sys.version_info < (3, 8):
-            from importlib_metadata import metadata
-        else:
-            from importlib.metadata import metadata
-
-        if name != "__version_info__":
-            warnings.warn(
-                f"Accessing {mod_name}.{name} is deprecated and will be "
-                "removed in a future release. Use importlib.metadata directly "
-                "to query for attrs's packaging metadata.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        from importlib.metadata import metadata
 
         meta = metadata("attrs")
-        if name == "__license__":
-            return "MIT"
-        elif name == "__copyright__":
-            return "Copyright (c) 2015 Hynek Schlawack"
-        elif name in ("__uri__", "__url__"):
-            return meta["Project-URL"].split(" ", 1)[-1]
-        elif name == "__version_info__":
-            return VersionInfo._from_version_string(meta["version"])
-        elif name == "__author__":
-            return meta["Author-email"].rsplit(" ", 1)[0]
-        elif name == "__email__":
-            return meta["Author-email"].rsplit("<", 1)[1][:-1]
 
-        return meta[dunder_to_metadata[name]]
+        if name == "__version_info__":
+            return VersionInfo._from_version_string(meta["version"])
+
+        return meta["version"]
 
     return __getattr__
 

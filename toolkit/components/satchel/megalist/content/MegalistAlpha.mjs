@@ -9,6 +9,7 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
+  LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
 });
 
 // Directly import moz-button here, otherwise, moz-button will be loaded and upgraded on DOMContentLoaded, after MegalistAlpha is first updated.
@@ -135,15 +136,42 @@ export class MegalistAlpha extends MozLitElement {
     this.#recordToolbarAction(gleanAction, "toolbar");
   }
 
-  #onCancelLoginForm() {
-    switch (this.viewMode) {
-      case VIEW_MODES.EDIT:
-        this.#sendCommand("DiscardChanges", {
-          value: { passwordIndex: this.selectedRecord.password.lineIndex },
-        });
-        return;
-      default:
+  #hasPendingChange(loginForm) {
+    return !lazy.LoginHelper.doLoginsMatch(
+      {
+        username: this.selectedRecord.username.value,
+        password: this.selectedRecord.password.value,
+        origin: this.selectedRecord.origin.href,
+      },
+      loginForm,
+      {}
+    );
+  }
+
+  #onCancelLoginForm(loginForm) {
+    if (this.viewMode == VIEW_MODES.EDIT && this.#hasPendingChange(loginForm)) {
+      this.#sendCommand("DiscardChanges", {
+        value: { passwordIndex: this.selectedRecord.password.lineIndex },
+      });
+      return;
+    }
+
+    this.viewMode = VIEW_MODES.LIST;
+  }
+
+  #onSaveLoginForm(loginForm) {
+    if (this.viewMode == VIEW_MODES.ADD) {
+      this.#sendCommand("AddLogin", { value: loginForm });
+    } else if (this.viewMode == VIEW_MODES.EDIT) {
+      if (!this.#hasPendingChange(loginForm)) {
         this.viewMode = VIEW_MODES.LIST;
+        return;
+      }
+      loginForm.guid = this.selectedRecord.origin.guid;
+      this.#sendCommand("UpdateLogin", {
+        value: loginForm,
+      });
+      this.#sendCommand("Cancel", {}, this.selectedRecord.password.lineIndex);
     }
   }
 
@@ -495,9 +523,7 @@ export class MegalistAlpha extends MozLitElement {
       case VIEW_MODES.ADD:
         return html` <login-form
           .onClose=${() => this.#onCancelLoginForm()}
-          .onSaveClick=${loginForm => {
-            this.#sendCommand("AddLogin", { value: loginForm });
-          }}
+          .onSaveClick=${loginForm => this.#onSaveLoginForm(loginForm)}
         >
         </login-form>`;
       case VIEW_MODES.EDIT:
@@ -512,19 +538,8 @@ export class MegalistAlpha extends MozLitElement {
               this.selectedRecord.password.concealed,
               this.selectedRecord.password.lineIndex
             )}
-          .onClose=${() => this.#onCancelLoginForm()}
-          .onSaveClick=${loginForm => {
-            loginForm.guid = this.selectedRecord.origin.guid;
-            this.#sendCommand("UpdateLogin", {
-              value: loginForm,
-            });
-            this.#sendCommand(
-              "Cancel",
-              {},
-              this.selectedRecord.password.lineIndex
-            );
-          }}
-          }}
+          .onClose=${loginForm => this.#onCancelLoginForm(loginForm)}
+          .onSaveClick=${loginForm => this.#onSaveLoginForm(loginForm)}
           .onDeleteClick=${() => {
             const login = {
               origin: this.selectedRecord.origin,

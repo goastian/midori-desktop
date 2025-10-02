@@ -565,10 +565,12 @@ enum class GuardClassKind : uint8_t {
   Array,
   PlainObject,
   FixedLengthArrayBuffer,
+  ImmutableArrayBuffer,
   ResizableArrayBuffer,
   FixedLengthSharedArrayBuffer,
   GrowableSharedArrayBuffer,
   FixedLengthDataView,
+  ImmutableDataView,
   ResizableDataView,
   MappedArguments,
   UnmappedArguments,
@@ -584,6 +586,7 @@ const JSClass* ClassFor(GuardClassKind kind);
 
 enum class ArrayBufferViewKind : uint8_t {
   FixedLength,
+  Immutable,
   Resizable,
 };
 
@@ -595,6 +598,8 @@ inline const char* GuardClassKindEnumName(GuardClassKind kind) {
       return "PlainObject";
     case GuardClassKind::FixedLengthArrayBuffer:
       return "FixedLengthArrayBuffer";
+    case GuardClassKind::ImmutableArrayBuffer:
+      return "ImmutableArrayBuffer";
     case GuardClassKind::ResizableArrayBuffer:
       return "ResizableArrayBuffer";
     case GuardClassKind::FixedLengthSharedArrayBuffer:
@@ -603,6 +608,8 @@ inline const char* GuardClassKindEnumName(GuardClassKind kind) {
       return "GrowableSharedArrayBuffer";
     case GuardClassKind::FixedLengthDataView:
       return "FixedLengthDataView";
+    case GuardClassKind::ImmutableDataView:
+      return "ImmutableDataView";
     case GuardClassKind::ResizableDataView:
       return "ResizableDataView";
     case GuardClassKind::MappedArguments:

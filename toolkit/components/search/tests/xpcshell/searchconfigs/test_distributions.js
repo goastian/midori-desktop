@@ -223,6 +223,15 @@ tests.push({
     hasTelemetryId(engines, "Google", "google-b-lm"),
 });
 
+tests.push({
+  region: "ru",
+  distribution: "mint-001",
+  test: engines =>
+    hasDefault(engines, "Google") &&
+    hasEnginesFirst(engines, ["Google"]) &&
+    hasTelemetryId(engines, "Google", "google-com-nocodes"),
+});
+
 // This distribution is used on mobile, but we can test it here as it only
 // needs the distribution id referencing.
 tests.push({
@@ -238,6 +247,16 @@ tests.push({
     hasDefault(engines, "Google") &&
     hasEnginesFirst(engines, ["Google"]) &&
     hasTelemetryId(engines, "Google", "google-b-vv"),
+});
+
+tests.push({
+  region: "ru",
+  distribution: "vivo-001",
+  application: "firefox-android",
+  test: engines =>
+    hasDefault(engines, "Google") &&
+    hasEnginesFirst(engines, ["Google"]) &&
+    hasTelemetryId(engines, "Google", "google-com-nocodes"),
 });
 
 // This distribution is used on mobile, but we can test it here as it only
@@ -267,6 +286,82 @@ tests.push({
     hasDefault(engines, "Google") &&
     hasEnginesFirst(engines, ["Google"]) &&
     hasTelemetryId(engines, "Bing", "bing-MZTOF"),
+});
+
+tests.push({
+  region: "ru",
+  distribution: "dt-001",
+  application: "firefox-android",
+  test: engines =>
+    hasDefault(engines, "Google") &&
+    hasEnginesFirst(engines, ["Google"]) &&
+    hasTelemetryId(engines, "Google", "google-com-nocodes"),
+});
+
+tests.push({
+  region: "US",
+  distribution: "dt-002",
+  application: "firefox-android",
+  test: engines =>
+    hasParams(engines, "Google", "client=firefox-b-1-dt") &&
+    hasDefault(engines, "Google") &&
+    hasEnginesFirst(engines, ["Google"]) &&
+    hasTelemetryId(engines, "Google", "google-b-1-dt"),
+});
+
+tests.push({
+  region: "CA", // Testing for "rest of world" (excluding US, RU, TR, BY, KZ)
+  distribution: "dt-002",
+  application: "firefox-android",
+  test: engines =>
+    hasParams(engines, "Google", "client=firefox-b-dt") &&
+    hasDefault(engines, "Google") &&
+    hasEnginesFirst(engines, ["Google"]) &&
+    hasTelemetryId(engines, "Google", "google-b-dt"),
+});
+
+tests.push({
+  region: "US",
+  distribution: "dt-003",
+  application: "firefox-android",
+  test: engines =>
+    hasParams(engines, "Google", "client=firefox-b-1-dt") &&
+    hasDefault(engines, "Google") &&
+    hasEnginesFirst(engines, ["Google"]) &&
+    hasTelemetryId(engines, "Google", "google-b-1-dt"),
+});
+
+tests.push({
+  region: "CA", // Testing for "rest of world" (excluding US, RU, TR, BY, KZ)
+  distribution: "dt-003",
+  application: "firefox-android",
+  test: engines =>
+    hasParams(engines, "Google", "client=firefox-b-dt") &&
+    hasDefault(engines, "Google") &&
+    hasEnginesFirst(engines, ["Google"]) &&
+    hasTelemetryId(engines, "Google", "google-b-dt"),
+});
+
+tests.push({
+  region: "US",
+  distribution: "aura-001",
+  application: "firefox-android",
+  test: engines =>
+    hasParams(engines, "Google", "client=firefox-b-1-ar") &&
+    hasDefault(engines, "Google") &&
+    hasEnginesFirst(engines, ["Google"]) &&
+    hasTelemetryId(engines, "Google", "google-b-1-ar"),
+});
+
+tests.push({
+  region: "CA", // Testing for "rest of world" (excluding US, RU, TR, BY, KZ)
+  distribution: "aura-001",
+  application: "firefox-android",
+  test: engines =>
+    hasParams(engines, "Google", "client=firefox-b-ar") &&
+    hasDefault(engines, "Google") &&
+    hasEnginesFirst(engines, ["Google"]) &&
+    hasTelemetryId(engines, "Google", "google-b-ar"),
 });
 
 function hasURLs(engines, engineName, url, suggestURL) {

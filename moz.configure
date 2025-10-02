@@ -225,9 +225,6 @@ def check_prog(*args, **kwargs):
     return check_prog(*args, **kwargs)
 
 
-check_prog("WGET", ("wget",), allow_missing=True)
-
-
 include("build/moz.configure/toolchain.configure", when="--enable-compile-environment")
 
 include("build/moz.configure/pkg.configure")
@@ -587,11 +584,19 @@ set_config("LINK_GTEST_DURING_COMPILE", True, when="--enable-gtest-in-build")
 # ==============================================================
 option(
     "--enable-ui-locale",
+    env="MOZ_UI_LOCALE",
     default="en-US",
     help="Select the user interface locale (default: en-US)",
 )
 
-set_config("MOZ_UI_LOCALE", depends("--enable-ui-locale")(lambda x: x))
+
+@depends("--enable-ui-locale")
+def moz_ui_locale(value):
+    return value[0]
+
+
+set_config("MOZ_UI_LOCALE", moz_ui_locale)
+
 
 # clang-plugin location
 # ==============================================================
@@ -706,13 +711,10 @@ def extra_programs(target):
             MKFSHFS=("newfs_hfs", "mkfs.hfsplus"),
             HFS_TOOL=("hfsplus",),
         )
-    if target.os == "GNU" and target.kernel == "Linux":
-        return namespace(RPMBUILD=("rpmbuild",))
 
 
 check_prog("MKFSHFS", extra_programs.MKFSHFS, allow_missing=True)
 check_prog("HFS_TOOL", extra_programs.HFS_TOOL, allow_missing=True)
-check_prog("RPMBUILD", extra_programs.RPMBUILD, allow_missing=True)
 
 
 nsis = check_prog(

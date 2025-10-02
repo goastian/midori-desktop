@@ -31,6 +31,10 @@ XPCOMUtils.defineLazyPreferenceGetter(
 );
 
 add_setup(async function () {
+  await SpecialPowers.pushPrefEnv({
+    set: [["test.wait300msAfterTabSwitch", true]],
+  });
+
   await PlacesUtils.bookmarks.eraseEverything();
 
   let toolbar = document.getElementById("PersonalToolbar");
@@ -521,8 +525,7 @@ add_task(async function test_sidebar_bookmark_search_contextmenu_contents() {
           SidebarController.browser.contentDocument.getElementById(
             "search-box"
           );
-        searchBox.value = SECOND_BOOKMARK_TITLE;
-        searchBox.doCommand();
+        await setSearch(searchBox, SECOND_BOOKMARK_TITLE);
         tree.selectItems([bookmark.guid]);
 
         let contextMenu =
@@ -609,8 +612,7 @@ add_task(async function test_library_bookmark_search_contextmenu_contents() {
         info("Checking bookmark library menu contents in search context");
         // Perform a search first
         let searchBox = right.ownerDocument.getElementById("searchFilter");
-        searchBox.value = SECOND_BOOKMARK_TITLE;
-        searchBox.doCommand();
+        await setSearch(searchBox, SECOND_BOOKMARK_TITLE);
 
         let contextMenu = right.ownerDocument.getElementById("placesContext");
         let popupShownPromise = BrowserTestUtils.waitForEvent(

@@ -31,6 +31,7 @@
 # Ignore Python .egg-info directories.
 # This is only relevant for first-party modules, but adding that directory for
 # third-party packages is dealt with by the script vendoring them.
+# lint-ignore-next-line: syntax-difference
 .*\.egg-info/
 
 # Vim swap files.
@@ -183,6 +184,7 @@ _OPT\.OBJ/
 ^remote/test/puppeteer/lib/
 ^remote/test/puppeteer/node_modules/
 ^remote/test/puppeteer/package-lock\.json
+^remote/test/puppeteer/packages/browsers/src/generated
 ^remote/test/puppeteer/packages/ng-schematics/test/build
 ^remote/test/puppeteer/packages/puppeteer/.*/README\.md
 ^remote/test/puppeteer/packages/puppeteer-core/src/generated
@@ -230,8 +232,8 @@ _OPT\.OBJ/
 # Android local.properties
 ^mobile/android/.*/local.properties
 
-# Android - Web extensions: manifest.json files are generated
-^mobile/android/.*/manifest.json
+# Android - Built-in web extensions: manifest.json files are generated
+^mobile/android/android-components/.*/assets/extensions/.*/manifest\.json
 
 # XCode project cruft
 ^[^/]*\.xcodeproj/

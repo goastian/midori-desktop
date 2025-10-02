@@ -520,6 +520,46 @@ class Longhand(Property):
             ty = "Box<{}>".format(ty)
         return ty
 
+    def is_zoom_dependent(self):
+        if not self.predefined_type:
+            return False
+        # TODO: Get this from SpecifiedValueInfo or so instead; see bug 1887627.
+        return self.predefined_type in {
+            "BorderSpacing",
+            "FontSize",
+            "Inset",
+            "Length",
+            "LengthPercentage",
+            "LengthPercentageOrAuto",
+            "LetterSpacing",
+            "LineHeight",
+            "LineWidth",
+            "MaxSize",
+            "NonNegativeLength",
+            "NonNegativeLengthOrAuto",
+            "NonNegativeLengthOrNumber",
+            "NonNegativeLengthOrNumberRect",
+            "NonNegativeLengthPercentage",
+            "NonNegativeLengthPercentageOrNormal",
+            "Position",
+            "PositionOrAuto",
+            "SimpleShadow",
+            "Size",
+            "SVGLength",
+            "SVGStrokeDashArray",
+            "SVGWidth",
+            "TextDecorationLength",
+            "TextIndent",
+            "WordSpacing",
+        }
+
+    def is_inherited_zoom_dependent_property(self):
+        if self.logical:
+            return False
+        if not self.style_struct.inherited:
+            return False
+        return self.is_zoom_dependent()
+
     def specified_is_copy(self):
         if self.is_vector or self.boxed:
             return False

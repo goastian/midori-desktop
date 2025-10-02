@@ -117,6 +117,7 @@ pwmgr:
       - https://bugzil.la/1714252
       - https://bugzil.la/1754637
       - https://bugzil.la/1850872
+      - https://bugzil.la/1969169
     data_reviews: &pwmgr_doorhanger_submitted_data_reviews
       - https://bugzil.la/1650929
       - https://bugzil.la/1650941
@@ -126,7 +127,7 @@ pwmgr:
       - https://bugzil.la/1850872
     notification_emails: &pwmgr_doorhanger_submitted_emails
       - passwords-dev@mozilla.org
-    expires: 142
+    expires: 148
     extra_keys: &pwmgr_doorhanger_submitted_extra
       did_edit_un:
         description: >
@@ -167,7 +168,7 @@ pwmgr:
     bugs: *pwmgr_doorhanger_submitted_bugs
     data_reviews: *pwmgr_doorhanger_submitted_data_reviews
     notification_emails: *pwmgr_doorhanger_submitted_emails
-    expires: 142
+    expires: 148
     extra_keys: *pwmgr_doorhanger_submitted_extra
     telemetry_mirror: Pwmgr_DoorhangerSubmitted_Update
 
@@ -905,6 +906,9 @@ pwmgr:
       - loines@mozilla.com
     expires: never
     telemetry_mirror: PWMGR_LOGIN_PAGE_SAFETY
+    send_in_pings:
+      - metrics
+      - sync
 
   num_improved_generated_passwords:
     type: labeled_counter
@@ -950,6 +954,9 @@ pwmgr:
       - loines@mozilla.com
     expires: never
     telemetry_mirror: PWMGR_PROMPT_REMEMBER_ACTION
+    send_in_pings:
+      - metrics
+      - sync
 
   prompt_update_action:
     type: custom_distribution
@@ -976,6 +983,9 @@ pwmgr:
       - loines@mozilla.com
     expires: never
     telemetry_mirror: PWMGR_PROMPT_UPDATE_ACTION
+    send_in_pings:
+      - metrics
+      - sync
 
   is_username_only_form:
     type: labeled_counter

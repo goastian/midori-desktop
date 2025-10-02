@@ -13,6 +13,7 @@
 #include "HostWebGLContext.h"
 #include "js/PropertyAndElement.h"  // JS_DefineElement
 #include "js/ScalarType.h"          // js::Scalar::Type
+#include "mozilla/dom/BufferSourceBinding.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "mozilla/dom/TypedArray.h"
@@ -1344,7 +1345,8 @@ UniquePtr<uint8_t[]> ClientWebGLContext::GetImageBuffer(
 
   if (ShouldResistFingerprinting(RFPTarget::CanvasRandomization)) {
     return gfxUtils::GetImageBufferWithRandomNoise(
-        dataSurface, premultAlpha, GetCookieJarSettings(), out_format);
+        dataSurface, premultAlpha, GetCookieJarSettings(), PrincipalOrNull(),
+        out_format);
   }
 
   return gfxUtils::GetImageBuffer(dataSurface, premultAlpha, out_format);
@@ -1365,7 +1367,7 @@ ClientWebGLContext::GetInputStream(const char* mimeType,
   if (ShouldResistFingerprinting(RFPTarget::CanvasRandomization)) {
     return gfxUtils::GetInputStreamWithRandomNoise(
         dataSurface, premultAlpha, mimeType, encoderOptions,
-        GetCookieJarSettings(), out_stream);
+        GetCookieJarSettings(), PrincipalOrNull(), out_stream);
   }
 
   return gfxUtils::GetInputStream(dataSurface, premultAlpha, mimeType,
@@ -3593,6 +3595,20 @@ void ClientWebGLContext::BufferSubData(GLenum target,
     Run<RPROC(BufferSubData)>(target, dstByteOffset, *range,
                               /* unsynchronized */ false);
   });
+}
+
+void ClientWebGLContext::BufferSubData(
+    GLenum target, WebGLsizeiptr dstByteOffset,
+    const dom::AllowSharedBufferSource& src) {
+  if (src.IsArrayBufferView()) {
+    BufferSubData(target, dstByteOffset, src.GetAsArrayBufferView());
+    return;
+  } else if (src.IsArrayBuffer()) {
+    BufferSubData(target, dstByteOffset, src.GetAsArrayBuffer());
+    return;
+  }
+
+  MOZ_ASSERT_UNREACHABLE("Union is uninitialized?");
 }
 
 void ClientWebGLContext::CopyBufferSubData(GLenum readTarget,

@@ -2090,7 +2090,7 @@ add_task(async function test_blocked_applicationReputation_race() {
         // 3. Allow the first attempt to finish with a blocked response.
         return Promise.resolve({
           shouldBlock: true,
-          verdict: Downloads.Error.BLOCK_VERDICT_UNCOMMON,
+          verdict: Ci.nsIApplicationReputationService.VERDICT_UNCOMMON,
         });
       }
 
@@ -2099,7 +2099,7 @@ add_task(async function test_blocked_applicationReputation_race() {
       //      is blocked, but not blocking here makes the test simpler.
       return Promise.resolve({
         shouldBlock: false,
-        verdict: "",
+        verdict: Ci.nsIApplicationReputationService.VERDICT_SAFE,
       });
     },
     shouldKeepBlockedData: () => Promise.resolve(true),
@@ -2984,7 +2984,6 @@ add_task(
 
 add_task(async function test_partitionKey() {
   let targetFile = getTempFile(TEST_TARGET_FILE_NAME);
-  Services.prefs.setBoolPref("privacy.partition.network_state", true);
 
   function promiseVerifyDownloadChannel(url, partitionKey) {
     return TestUtils.topicObserved("http-on-modify-request", subject => {
@@ -3052,6 +3051,92 @@ add_task(async function test_partitionKey() {
   }
 
   await verifyPromise;
+});
 
-  Services.prefs.clearUserPref("privacy.partition.network_state");
+add_task(async function test_isInCurrentBatch() {
+  let i = 0;
+  function promiseControlledDownload(len) {
+    const path = `controlled_${i++}.txt`;
+    const sourcePath = `/${path}`;
+    return new Promise(function (resolve) {
+      promiseNewDownload(httpUrl(path)).then(download => {
+        registerCleanupFunction(() =>
+          gHttpServer.registerPathHandler(sourcePath, null)
+        );
+        gHttpServer.registerPathHandler(
+          sourcePath,
+          function (aRequest, aResponse) {
+            info(`Controlled ${path} request started.`);
+
+            aResponse.processAsync();
+            aResponse.setHeader("Content-Type", "text/plain", false);
+            aResponse.setHeader("Content-Length", "" + len, false);
+
+            let remaining = len;
+            resolve(
+              Object.assign(download, {
+                advance(amount) {
+                  aResponse.write("a".repeat(amount));
+                  remaining -= amount;
+                  if (remaining <= 0) {
+                    aResponse.finish();
+                    info(`Controlled ${path} request finished.`);
+                  }
+                },
+              })
+            );
+          }
+        );
+        download.start();
+      });
+    });
+  }
+
+  const dls = [];
+  function assertCurrentBatch(...expected) {
+    Assert.deepEqual(
+      dls.map(d => d.isInCurrentBatch),
+      expected
+    );
+  }
+  dls.push(await promiseControlledDownload(100));
+  dls[0].advance(50);
+  await promiseDownloadMidway(dls[0]);
+
+  assertCurrentBatch(true);
+
+  dls.push(await promiseControlledDownload(100));
+  dls[1].advance(50);
+  await promiseDownloadMidway(dls[1]);
+
+  assertCurrentBatch(true, true);
+
+  dls[0].advance(50);
+  await promiseDownloadFinished(dls[0]);
+
+  assertCurrentBatch(true, true);
+
+  dls.push(await promiseControlledDownload(100));
+  dls[1].cancel();
+  dls[1].advance(50);
+  dls[2].advance(50);
+  await promiseDownloadMidway(dls[2]);
+
+  assertCurrentBatch(true, false, true);
+
+  dls[2].advance(50);
+  await promiseDownloadFinished(dls[2]);
+
+  assertCurrentBatch(false, false, false);
+
+  dls.push(await promiseControlledDownload(100));
+  dls[3].advance(50);
+  await promiseDownloadMidway(dls[3]);
+
+  assertCurrentBatch(false, false, false, true);
+
+  dls[3].advance(50);
+  await promiseDownloadFinished(dls[3]);
+
+  assertCurrentBatch(false, false, false, false);
 });

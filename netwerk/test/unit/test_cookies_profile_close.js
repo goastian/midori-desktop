@@ -71,7 +71,7 @@ add_task(async () => {
   }, Cr.NS_ERROR_NOT_AVAILABLE);
 
   do_check_throws(function () {
-    Services.cookies.add(
+    const cv = Services.cookies.add(
       "foo.com",
       "",
       "oh4",
@@ -81,9 +81,10 @@ add_task(async () => {
       false,
       0,
       {},
-      Ci.nsICookie.SAMESITE_NONE,
+      Ci.nsICookie.SAMESITE_UNSET,
       Ci.nsICookie.SCHEME_HTTPS
     );
+    Assert.equal(cv.result, Ci.nsICookieValidation.eOK, "Valid cookie");
   }, Cr.NS_ERROR_NOT_AVAILABLE);
 
   do_check_throws(function () {

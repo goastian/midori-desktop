@@ -551,3 +551,250 @@ add_task(async function clear_activeInfobar_on_window_close() {
   testWin.close();
   sinon.restore();
 });
+
+add_task(async function test_buildMessageFragment_withInlineAnchors() {
+  const win = BrowserWindowTracker.getTopWindow();
+  const browser = win.gBrowser.selectedBrowser;
+  const doc = browser.ownerGlobal.document;
+
+  // Stub out the Fluent call to return a string with an inline anchor
+  const { RemoteL10n } = ChromeUtils.importESModule(
+    "resource:///modules/asrouter/RemoteL10n.sys.mjs"
+  );
+  sinon
+    .stub(RemoteL10n, "formatLocalizableText")
+    .resolves('<a data-l10n-name="foo">Click Here</a>');
+
+  const linkUrl = "https://example.com/";
+  const message = {
+    id: "TEST_INLINE_ANCHOR",
+    content: {
+      type: "global",
+      priority: win.gNotificationBox.PRIORITY_INFO_LOW,
+      text: { string_id: "test-id" },
+      linkUrls: { foo: linkUrl },
+      buttons: [{ label: "Close", action: { type: "CANCEL" } }],
+    },
+  };
+  const dispatchStub = sinon.stub();
+  const infobar = await InfoBar.showInfoBarMessage(
+    browser,
+    message,
+    dispatchStub
+  );
+
+  const container = doc.getElementById("infobar-link-templates");
+  Assert.ok(container, "Link template container in doc");
+  const template = container.querySelector('a[data-l10n-name="foo"]');
+  Assert.equal(
+    template.href,
+    linkUrl,
+    "Template anchor carries the correct href"
+  );
+
+  const rendered = infobar.notification.messageText.querySelector(
+    'a[data-l10n-name="foo"]'
+  );
+  Assert.ok(rendered, "Rendered anchor is present in infobar");
+  Assert.equal(rendered.href, linkUrl, "Rendered anchor has correct href");
+  Assert.equal(
+    rendered.textContent,
+    "Click Here",
+    "Rendered anchor text matches"
+  );
+
+  // Cleanup
+  container.remove();
+  RemoteL10n.formatLocalizableText.restore();
+  infobar.notification.closeButton.click();
+  await BrowserTestUtils.waitForCondition(() => !InfoBar._activeInfobar);
+  sinon.restore();
+});
+
+add_task(async function test_buildMessageFragment_withoutInlineAnchors() {
+  const win = BrowserWindowTracker.getTopWindow();
+  const browser = win.gBrowser.selectedBrowser;
+  const box = win.gNotificationBox;
+  const doc = browser.ownerGlobal.document;
+
+  // Stub Fluent to return plain text (no <a data-l10n-name>)
+  const { RemoteL10n } = ChromeUtils.importESModule(
+    "resource:///modules/asrouter/RemoteL10n.sys.mjs"
+  );
+  sinon.stub(RemoteL10n, "formatLocalizableText").resolves("Just plain text");
+
+  let { infobar } = await showInfobar(
+    { string_id: "existing-user-tou-message" },
+    box,
+    browser
+  );
+
+  Assert.ok(
+    !doc.getElementById("infobar-link-templates"),
+    "No link-template container created for a string without anchors"
+  );
+
+  const nodes = getMeaningfulNodes(infobar);
+  Assert.equal(nodes.length, 1, "One meaningful node for string_id fallback");
+  const [remoteTextEl] = nodes;
+  Assert.equal(
+    remoteTextEl.localName,
+    "remote-text",
+    "Renders via <remote-text>"
+  );
+  Assert.equal(
+    remoteTextEl.getAttribute("fluent-remote-id"),
+    "existing-user-tou-message",
+    "Has the correct fluent-remote-id"
+  );
+
+  // Cleanup
+  RemoteL10n.formatLocalizableText.restore();
+  infobar.notification.closeButton.click();
+  await BrowserTestUtils.waitForCondition(() => !InfoBar._activeInfobar);
+  sinon.restore();
+});
+
+add_task(async function test_configurable_background_color() {
+  const win = BrowserWindowTracker.getTopWindow();
+  const browser = win.gBrowser.selectedBrowser;
+  const box = win.gNotificationBox;
+
+  // Pick an arbitrary color string that supports and light and dark mode
+  const customBg = "light-dark(rgb(255, 255, 255), rgb(0, 0, 0))";
+
+  // Build a minimal “infobar” message with the style override
+  const msg = {
+    id: "TEST_CONFIG_BG",
+    content: {
+      type: "global",
+      priority: box.PRIORITY_INFO_LOW,
+      text: "BG Test",
+      buttons: [{ label: "Close", action: { type: "CANCEL" } }],
+      style: {
+        "background-color": customBg,
+      },
+    },
+  };
+
+  let dispatch = sinon.stub();
+  let infobar = await InfoBar.showInfoBarMessage(browser, msg, dispatch);
+  Assert.ok(infobar.notification, "Got a notification");
+
+  let node = infobar.notification;
+  let bg = browser.ownerGlobal
+    .getComputedStyle(node)
+    .getPropertyValue("background-color");
+
+  // Confirm either light or dark mode background was applied
+  Assert.ok(
+    bg === "rgb(255, 255, 255)" || bg === "rgb(0, 0, 0)",
+    `background-color was applied (${bg})`
+  );
+
+  // Cleanup
+  infobar.notification.closeButton.click();
+  await BrowserTestUtils.waitForCondition(() => !InfoBar._activeInfobar);
+});
+
+add_task(async function test_configurable_font_size() {
+  const win = BrowserWindowTracker.getTopWindow();
+  const browser = win.gBrowser.selectedBrowser;
+  const box = win.gNotificationBox;
+  const customSize = "24px";
+
+  const msg = {
+    id: "TEST_CONFIG_FS",
+    content: {
+      type: "global",
+      priority: box.PRIORITY_INFO_LOW,
+      text: "FS Test",
+      buttons: [{ label: "Close", action: { type: "CANCEL" } }],
+      style: {
+        "font-size": customSize,
+      },
+    },
+  };
+
+  let dispatch = sinon.stub();
+  let infobar = await InfoBar.showInfoBarMessage(browser, msg, dispatch);
+  Assert.ok(infobar.notification, "Got a notification");
+
+  let node = infobar.notification;
+  let fs = browser.ownerGlobal
+    .getComputedStyle(node)
+    .getPropertyValue("font-size");
+
+  Assert.equal(fs, customSize, `font-size was applied (${fs})`);
+
+  // Cleanup
+  infobar.notification.closeButton.click();
+  await BrowserTestUtils.waitForCondition(() => !InfoBar._activeInfobar);
+});
+
+add_task(async function test_infobar_css_background_fallback_var() {
+  const win = BrowserWindowTracker.getTopWindow();
+  const browser = win.gBrowser.selectedBrowser;
+  const dispatch = sinon.stub();
+
+  // Show an infobar so its shadowRoot + stylesheet are initialized
+  let infobar = await InfoBar.showInfoBarMessage(
+    browser,
+    {
+      id: "TEST_BG_FALLBACK",
+      content: {
+        type: "global",
+        style: {
+          "background-color": "light-dark(white, black)",
+        },
+        text: "CSS fallback test",
+        buttons: [{ label: "Close", action: { type: "CANCEL" } }],
+      },
+    },
+    dispatch
+  );
+  Assert.ok(infobar.notification, "Got a notification");
+
+  const link = infobar.notification.renderRoot.querySelector(
+    'link[href$="/elements/infobar.css"]'
+  );
+  Assert.ok(link, "Found the infobar.css link in shadowRoot");
+  const { sheet } = link;
+  Assert.ok(sheet, "infobar.css stylesheet loaded");
+
+  // Look for @media not (prefers-contrast) > :host(.infobar) rule
+  let found = false;
+  for (const rule of sheet.cssRules) {
+    if (
+      CSSMediaRule.isInstance(rule) &&
+      rule.conditionText.trim() === "not (prefers-contrast)"
+    ) {
+      for (const inner of rule.cssRules) {
+        if (inner.selectorText === ":host(.infobar)") {
+          const bg = inner.style.getPropertyValue("background-color");
+          if (
+            bg.includes(
+              "--info-bar-background-color-configurable, var(--info-bar-background-color)"
+            )
+          ) {
+            found = true;
+          }
+          break;
+        }
+      }
+      break;
+    }
+  }
+
+  Assert.ok(
+    found,
+    "infobar.css uses fallback `var(--info-bar-background-color-configurable, var(--info-bar-background-color))` in not(prefers-contrast)"
+  );
+
+  // Cleanup
+  infobar.notification.closeButton.click();
+  await BrowserTestUtils.waitForCondition(
+    () => !InfoBar._activeInfobar,
+    "Wait for infobar to close"
+  );
+});

@@ -189,14 +189,15 @@
       ")")
 
 // Note: this should be kept up-to-date with the definition in
-//       nsPlacesAutoComplete.js.
-#define CREATE_MOZ_OPENPAGES_TEMP              \
-  nsLiteralCString(                            \
-      "CREATE TEMP TABLE moz_openpages_temp (" \
-      "  url TEXT"                             \
-      ", userContextId INTEGER"                \
-      ", open_count INTEGER"                   \
-      ", PRIMARY KEY (url, userContextId)"     \
+//       PlacesUtils.sys.mjs.
+#define CREATE_MOZ_OPENPAGES_TEMP                   \
+  nsLiteralCString(                                 \
+      "CREATE TEMP TABLE moz_openpages_temp ("      \
+      "  url TEXT"                                  \
+      ", userContextId INTEGER"                     \
+      ", groupId TEXT"                              \
+      ", open_count INTEGER"                        \
+      ", PRIMARY KEY (url, userContextId, groupId)" \
       ")")
 
 // This table is used to remove orphan origins after pages are removed from
@@ -329,6 +330,18 @@
       "  position INTEGER NOT NULL, "               \
       "  section_position INTEGER NOT NULL, "       \
       "  feature_value REAL NOT NULL DEFAULT 1 "    \
+      ")")
+
+#define CREATE_MOZ_NEWTAB_SHORTCUTS_INTERACTION                          \
+  nsLiteralCString(                                                      \
+      "CREATE TABLE moz_newtab_shortcuts_interaction ( "                 \
+      "  id INTEGER PRIMARY KEY, "                                       \
+      "  place_id INTEGER NOT NULL REFERENCES moz_places(id) ON DELETE " \
+      "CASCADE, "                                                        \
+      "  event_type INTEGER NOT NULL, "                                  \
+      "  timestamp_s INTEGER NOT NULL, "                                 \
+      "  pinned INTEGER NOT NULL CHECK (pinned IN (0, 1)), "             \
+      "  tile_position INTEGER NOT NULL"                                 \
       ")")
 
 #endif  // __nsPlacesTables_h__

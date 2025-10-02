@@ -48,6 +48,16 @@ this.builtin_newtab = class extends ExtensionAPI {
       return;
     }
 
+    const INSTALLED_AS_XPI = this.extension.rootURI.spec.endsWith("newtab@mozilla.org.xpi!/");
+    if (Services.appinfo.inSafeMode && INSTALLED_AS_XPI) {
+      // For safe mode, the XPI (if one exists) might be initially started up
+      // before being shutdown again in favour of the built-in version of the
+      // addon. We should ignore the startup and shutdown in the case that
+      // we're installed as an XPI, so that the built-in version can take
+      // precedence.
+      return;
+    }
+
     try {
       const { rootURI } = this.extension;
 
@@ -73,7 +83,11 @@ this.builtin_newtab = class extends ExtensionAPI {
         "@mozilla.org/network/protocol/about;1?what=newtab"
       ].getService(Ci.nsIAboutModule).wrappedJSObject;
 
-      if (this.extension.rootURI.spec.endsWith("newtab@mozilla.org.xpi!/")) {
+      if (INSTALLED_AS_XPI) {
+        console.log(
+          `Launching New Tab XPI version ${this.extension.version} ` +
+          `on application version ${AppConstants.MOZ_APP_VERSION_DISPLAY}`
+        );
         // We must be a train-hopped XPI running in this app. This means we
         // may have Fluent files or Glean pings/metrics to register dynamically.
         const newtabFileSource = new L10nFileSource(
@@ -98,6 +112,16 @@ this.builtin_newtab = class extends ExtensionAPI {
   onShutdown() {
     if (!AppConstants.BROWSER_NEWTAB_AS_ADDON) {
       // See the note in onStartup for why we're bailing out here.
+      return;
+    }
+
+    const INSTALLED_AS_XPI =  this.extension.rootURI.spec.endsWith("newtab@mozilla.org.xpi!/");
+    if (Services.appinfo.inSafeMode && INSTALLED_AS_XPI) {
+      // For safe mode, the XPI (if one exists) might be initially started up
+      // before being shutdown again in favour of the built-in version of the
+      // addon. We should ignore the startup and shutdown in the case that
+      // we're installed as an XPI, so that the built-in version can take
+      // precedence.
       return;
     }
 

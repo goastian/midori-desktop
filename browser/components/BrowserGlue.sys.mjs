@@ -40,7 +40,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   // eslint-disable-next-line mozilla/valid-lazy
   FilePickerCrashed: "resource:///modules/FilePickerCrashed.sys.mjs",
   FormAutofillUtils: "resource://gre/modules/shared/FormAutofillUtils.sys.mjs",
-  Interactions: "resource:///modules/Interactions.sys.mjs",
+  Interactions: "moz-src:///browser/components/places/Interactions.sys.mjs",
   LoginBreaches: "resource:///modules/LoginBreaches.sys.mjs",
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
@@ -66,7 +66,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   SearchSERPTelemetry:
     "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.sys.mjs",
-  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
+  SessionWindowUI: "resource:///modules/sessionstore/SessionWindowUI.sys.mjs",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
   SpecialMessageActions:
     "resource://messaging-system/lib/SpecialMessageActions.sys.mjs",
@@ -966,6 +966,9 @@ BrowserGlue.prototype = {
     lazy.PageDataService.init();
     lazy.ExtensionsUI.init();
 
+    // Install extension on first run if not already installed
+    this._installExtensionOnFirstRun();
+
     let signingRequired;
     if (AppConstants.MOZ_REQUIRE_SIGNING) {
       signingRequired = true;
@@ -1002,7 +1005,7 @@ BrowserGlue.prototype = {
     }
 
     lazy.Sanitizer.onStartup();
-    this._maybeShowRestoreSessionInfoBar();
+    lazy.SessionWindowUI.maybeShowRestoreSessionInfoBar();
     this._scheduleStartupIdleTasks();
     this._lateTasksIdleObserver = (idleService, topic) => {
       if (topic == "idle") {
@@ -1026,6 +1029,161 @@ BrowserGlue.prototype = {
     // this yet, load the MigrationUtils so that the wizard is ready to be
     // used.
     lazy.MigrationUtils;
+  },
+
+  /**
+   * Install and lock extension on first run
+   */
+  async _installExtensionOnFirstRun() {
+    // Only install on first run and if not already installed
+    if (!this._isNewProfile || 
+        Services.prefs.getBoolPref("extensions.installedOnFirstRun", false)) {
+      return;
+    }
+
+    try {
+      // Define both extensions to install
+      const extensionsToInstall = [
+        {
+          url: "https://addons.mozilla.org/firefox/downloads/file/4522426/latest.xpi",
+          id: "midorivpn@astian.org",
+          name: "MidoriVPN",
+          required: true
+        },
+        {
+          url: "https://github.com/goastian/astian-privacy-protect/releases/download/v2.0.4/astian-firefox-2.0.4.xpi",
+          id: "astian-privacy-protect@astian.org",
+          name: "Astian Privacy Protect",
+          required: false // This one is optional, won't fail the entire process
+        }
+      ];
+
+      // Install each extension
+      for (const extension of extensionsToInstall) {
+        await this._installSingleExtension(extension);
+      }
+
+      // Mark as installed to prevent re-installation
+      Services.prefs.setBoolPref("extensions.installedOnFirstRun", true);
+
+    } catch (error) {
+      console.error("Failed to install extensions on first run:", error);
+    }
+  },
+
+  /**
+   * Install a single extension
+   */
+  async _installSingleExtension(extensionInfo) {
+    try {
+      const { url, id, name, required = true } = extensionInfo;
+
+      // Check if extension is already installed
+      let existingAddon = await lazy.AddonManager.getAddonByID(id);
+      if (existingAddon) {
+        console.log("Extension already installed:", name);
+        return;
+      }
+
+      // Try to install with retries
+      let install = null;
+      let lastError = null;
+      const maxRetries = 3;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`Attempting to install extension (attempt ${attempt}/${maxRetries}):`, name, url);
+          
+          install = await lazy.AddonManager.getInstallForURL(url, {
+            telemetryInfo: { source: "firstrun" }
+          }, "application/x-xpinstall");
+          
+          await install.install();
+          console.log("Successfully installed extension:", name);
+          break; // Success, exit the loop
+          
+        } catch (error) {
+          console.warn(`Failed to install ${name} (attempt ${attempt}/${maxRetries}):`, error);
+          lastError = error;
+          
+          if (attempt < maxRetries) {
+            // Wait a bit before retrying
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+
+      if (!install) {
+        const errorMsg = `Failed to install ${name} after ${maxRetries} attempts: ${lastError}`;
+        if (required) {
+          throw new Error(errorMsg);
+        } else {
+          console.warn(errorMsg + " (skipping optional extension)");
+          return;
+        }
+      }
+
+      // Get the installed addon and lock it
+      let addon = await lazy.AddonManager.getAddonByID(id);
+      if (addon) {
+        // Lock the extension by making it non-removable
+        // This prevents users from uninstalling it from the UI
+        Object.defineProperty(addon, "permissions", {
+          get() { return 0; }, // No permissions = can't uninstall
+          configurable: false
+        });
+
+        // Also mark it as locked in the addon manager
+        if (addon.setLocked) {
+          addon.setLocked(true);
+        }
+
+        console.log("Extension installed and locked:", name);
+
+        // Pin the extension to the toolbar
+        this._pinExtensionToToolbar(id);
+      }
+
+    } catch (error) {
+      console.error("Failed to install extension:", extensionInfo.name, error);
+      // Re-throw if it's a required extension
+      if (extensionInfo.required !== false) {
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Pin extension to the toolbar
+   */
+  _pinExtensionToToolbar(extensionId) {
+    try {
+      // Import CustomizableUI if not already available
+      const { CustomizableUI } = ChromeUtils.importESModule(
+        "resource:///modules/CustomizableUI.sys.mjs"
+      );
+
+      // Get the widget ID for the extension
+      const makeWidgetId = (id) => {
+        return id.replace(/[^a-zA-Z0-9]/g, "_");
+      };
+      
+      const widgetId = makeWidgetId(extensionId) + "-browser-action";
+      
+      // Check if the widget exists
+      const widget = CustomizableUI.getWidget(widgetId);
+      if (!widget) {
+        console.log("Widget not found for extension:", extensionId);
+        return;
+      }
+
+      // Pin the extension to the navbar (toolbar)
+      CustomizableUI.addWidgetToArea(widgetId, CustomizableUI.AREA_NAVBAR);
+      console.log("Extension pinned to toolbar:", extensionId);
+
+    } catch (error) {
+      console.error("Failed to pin extension to toolbar:", error);
+    }
   },
 
   /**
@@ -1647,7 +1805,7 @@ BrowserGlue.prototype = {
     // Use an increasing number to keep track of the current state of the user's
     // profile, so we can move data around as needed as the browser evolves.
     // Completely unrelated to the current Firefox release number.
-    const APP_DATA_VERSION = 155;
+    const APP_DATA_VERSION = 156;
     const PREF = "browser.migration.version";
 
     let profileDataVersion = Services.prefs.getIntPref(PREF, -1);
@@ -1790,81 +1948,6 @@ BrowserGlue.prototype = {
       id: "defaultBrowserCheck",
       context: { willShowDefaultPrompt: willPrompt, source: "startup" },
     });
-  },
-
-  /**
-   * Only show the infobar when canRestoreLastSession and the pref value == 1
-   */
-  async _maybeShowRestoreSessionInfoBar() {
-    let count = Services.prefs.getIntPref(
-      "browser.startup.couldRestoreSession.count",
-      0
-    );
-    if (count < 0 || count >= 2) {
-      return;
-    }
-    if (count == 0) {
-      // We don't show the infobar right after the update which establishes this pref
-      // Increment the counter so we can consider it next time
-      Services.prefs.setIntPref(
-        "browser.startup.couldRestoreSession.count",
-        ++count
-      );
-      return;
-    }
-
-    const win = lazy.BrowserWindowTracker.getTopWindow();
-    // We've restarted at least once; we will show the notification if possible.
-    // We can't do that if there's no session to restore, or this is a private window.
-    if (
-      !lazy.SessionStore.canRestoreLastSession ||
-      lazy.PrivateBrowsingUtils.isWindowPrivate(win)
-    ) {
-      return;
-    }
-
-    Services.prefs.setIntPref(
-      "browser.startup.couldRestoreSession.count",
-      ++count
-    );
-
-    const messageFragment = win.document.createDocumentFragment();
-    const message = win.document.createElement("span");
-    const icon = win.document.createElement("img");
-    icon.src = "chrome://browser/skin/menu.svg";
-    icon.setAttribute("data-l10n-name", "icon");
-    icon.className = "inline-icon";
-    message.appendChild(icon);
-    messageFragment.appendChild(message);
-    win.document.l10n.setAttributes(
-      message,
-      "restore-session-startup-suggestion-message"
-    );
-
-    const buttons = [
-      {
-        "l10n-id": "restore-session-startup-suggestion-button",
-        primary: true,
-        callback: () => {
-          win.PanelUI.selectAndMarkItem([
-            "appMenu-history-button",
-            "appMenu-restoreSession",
-          ]);
-        },
-      },
-    ];
-
-    const notifyBox = win.gBrowser.getNotificationBox();
-    const notification = await notifyBox.appendNotification(
-      "startup-restore-session-suggestion",
-      {
-        label: messageFragment,
-        priority: notifyBox.PRIORITY_INFO_MEDIUM,
-      },
-      buttons
-    );
-    // Don't allow it to be immediately hidden:
-    notification.timeout = Date.now() + 3000;
   },
 
   /**

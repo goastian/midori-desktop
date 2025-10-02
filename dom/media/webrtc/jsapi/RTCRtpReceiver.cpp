@@ -732,10 +732,10 @@ void RTCRtpReceiver::UpdateTransport() {
 
     // Add duplicate payload types
     auto duplicatePts =
-        GetJsepTransceiver().mRecvTrack.GetDuplicateReceivePayloadTypes();
+        GetJsepTransceiver().mRecvTrack.GetOtherReceivePayloadTypes();
 
     for (auto duplicatePt : duplicatePts) {
-      filter->AddDuplicateReceivePT(duplicatePt);
+      filter->AddOtherReceivePT(duplicatePt);
     }
   }
 
@@ -904,6 +904,11 @@ void RTCRtpReceiver::SyncFromJsep(const JsepTransceiver& aJsepTransceiver) {
     mParameters.mCodecs.Construct();
     if (details.GetEncodingCount()) {
       for (const auto& jsepCodec : details.GetEncoding(0).GetCodecs()) {
+        if (!jsepCodec->mEnabled ||
+            !jsepCodec->DirectionSupported(sdp::kRecv)) {
+          // This codec is disabled or receiving it is unsupported.
+          continue;
+        }
         RTCRtpCodecParameters codec;
         RTCRtpTransceiver::ToDomRtpCodecParameters(*jsepCodec, &codec);
         Unused << mParameters.mCodecs.Value().AppendElement(codec, fallible);

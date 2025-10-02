@@ -320,9 +320,8 @@ ContentAnalysisRequest::GetOperationTypeForDisplay(
 }
 
 NS_IMETHODIMP
-ContentAnalysisRequest::GetOperationDisplayString(
-    nsAString& aOperationDisplayString) {
-  aOperationDisplayString = mOperationDisplayString;
+ContentAnalysisRequest::GetFileNameForDisplay(nsAString& aFileNameForDisplay) {
+  aFileNameForDisplay = mFileNameForDisplay;
   return NS_OK;
 }
 
@@ -472,11 +471,12 @@ ContentAnalysisRequest::ContentAnalysisRequest(
   } else {
     mTextContent = std::move(aString);
   }
-  if (mOperationTypeForDisplay == OperationType::eCustomDisplayString) {
+  if (mOperationTypeForDisplay == OperationType::eUpload ||
+      mOperationTypeForDisplay == OperationType::eDownload) {
     MOZ_ASSERT(aStringIsFilePath);
-    nsresult rv = GetFileDisplayName(mFilePath, mOperationDisplayString);
+    nsresult rv = GetFileDisplayName(mFilePath, mFileNameForDisplay);
     if (NS_FAILED(rv)) {
-      mOperationDisplayString = u"file";
+      mFileNameForDisplay = u"file";
     }
   }
 }
@@ -542,7 +542,7 @@ RefPtr<ContentAnalysisRequest> ContentAnalysisRequest::Clone(
   MOZ_ALWAYS_SUCCEEDS(
       aRequest->GetOperationTypeForDisplay(&clone->mOperationTypeForDisplay));
   MOZ_ALWAYS_SUCCEEDS(
-      aRequest->GetOperationDisplayString(clone->mOperationDisplayString));
+      aRequest->GetFileNameForDisplay(clone->mFileNameForDisplay));
   MOZ_ALWAYS_SUCCEEDS(aRequest->GetPrinterName(clone->mPrinterName));
   MOZ_ALWAYS_SUCCEEDS(aRequest->GetWindowGlobalParent(
       getter_AddRefs(clone->mWindowGlobalParent)));
@@ -858,18 +858,27 @@ static void LogRequest(
   ss << "ContentAnalysisRequest:"
      << "\n";
 
-#define ADD_FIELD(PBUF, NAME, FUNC)            \
-  ss << "  " << (NAME) << ": ";                \
-  if ((PBUF)->has_##FUNC()) {                  \
-    LogWithMaxLength(ss, (PBUF)->FUNC(), 500); \
-    ss << "\n";                                \
-  } else                                       \
-    ss << "<none>"                             \
+#define ADD_FIELD_WITH_VALFUNC(PBUF, NAME, FUNC, VALFUNC) \
+  ss << "  " << (NAME) << ": ";                           \
+  if ((PBUF)->has_##FUNC()) {                             \
+    LogWithMaxLength(ss, VALFUNC(), 500);                 \
+    ss << "\n";                                           \
+  } else                                                  \
+    ss << "<none>"                                        \
        << "\n";
+
+#define ADD_FIELD(PBUF, NAME, FUNC) \
+  ADD_FIELD_WITH_VALFUNC(PBUF, NAME, FUNC, (PBUF)->FUNC)
 
 #define ADD_EXISTS(PBUF, NAME, FUNC) \
   ss << "  " << (NAME) << ": "       \
      << ((PBUF)->has_##FUNC() ? "<exists>" : "<none>") << "\n";
+
+#define ADD_NONEMPTY(PBUF, NAME, FUNC)                                      \
+  ss << "  " << (NAME) << ": "                                              \
+     << (((PBUF)->has_##FUNC() && (!(PBUF)->FUNC().empty())) ? "<nonempty>" \
+                                                             : "<none>")    \
+     << "\n";
 
   ADD_FIELD(aPbRequest, "Expires", expires_at);
   ADD_FIELD(aPbRequest, "Analysis Type", analysis_connector);
@@ -878,7 +887,7 @@ static void LogRequest(
   ADD_FIELD(aPbRequest, "User Action Requests Count",
             user_action_requests_count);
   ADD_FIELD(aPbRequest, "File Path", file_path);
-  ADD_FIELD(aPbRequest, "Text Content", text_content);
+  ADD_NONEMPTY(aPbRequest, "Text Content", text_content);
   // TODO: Tags
   ADD_EXISTS(aPbRequest, "Request Data Struct", request_data);
   const auto* requestData =
@@ -886,7 +895,13 @@ static void LogRequest(
   if (requestData) {
     ADD_FIELD(requestData, "  Url", url);
     ADD_FIELD(requestData, "  Email", email);
-    ADD_FIELD(requestData, "  SHA-256 Digest", digest);
+    auto hexDigestFunc = [&requestData]() {
+      return ToHexString(
+          reinterpret_cast<const uint8_t*>(requestData->digest().c_str()),
+          requestData->digest().length());
+    };
+    ADD_FIELD_WITH_VALFUNC(requestData, "  SHA-256 Digest", digest,
+                           hexDigestFunc);
     ADD_FIELD(requestData, "  Filename", filename);
     ADD_EXISTS(requestData, "  Client Download Request struct", csd);
     const auto* csd = requestData->has_csd() ? &requestData->csd() : nullptr;
@@ -1305,7 +1320,10 @@ ContentAnalysis::UrlFilterResult ContentAnalysis::FilterByUrlLists(
 
 NS_IMPL_ISUPPORTS(ContentAnalysisRequest, nsIContentAnalysisRequest);
 NS_IMPL_ISUPPORTS(ContentAnalysisResponse, nsIContentAnalysisResponse,
-                  nsIContentAnalysisResult);
+                  nsIContentAnalysisResult, nsIClassInfo);
+NS_IMPL_CI_INTERFACE_GETTER(ContentAnalysisResponse, nsIContentAnalysisResponse,
+                            nsIContentAnalysisResult);
+NS_IMPL_THREADSAFE_CI(ContentAnalysisResponse);
 NS_IMPL_ISUPPORTS(ContentAnalysisActionResult, nsIContentAnalysisResult);
 NS_IMPL_ISUPPORTS(ContentAnalysisNoResult, nsIContentAnalysisResult);
 
@@ -1854,6 +1872,10 @@ static bool ShouldCheckReason(nsIContentAnalysisRequest::Reason aReason) {
     case nsIContentAnalysisRequest::Reason::eDragAndDrop:
       return mozilla::StaticPrefs::
           browser_contentanalysis_interception_point_drag_and_drop_enabled();
+    case nsIContentAnalysisRequest::Reason::eNormalDownload:
+    case nsIContentAnalysisRequest::Reason::eSaveAsDownload:
+      return mozilla::StaticPrefs::
+          browser_contentanalysis_interception_point_download_enabled();
     default:
       MOZ_ASSERT_UNREACHABLE("Unrecognized content analysis request reason");
       return false;  // don't try to check it
@@ -2209,7 +2231,8 @@ void ContentAnalysis::NotifyResponseObservers(
 
   nsCOMPtr<nsIObserverService> obsServ =
       mozilla::services::GetObserverService();
-  obsServ->NotifyObservers(aResponse, "dlp-response", nullptr);
+  obsServ->NotifyObservers(static_cast<nsIContentAnalysisResponse*>(aResponse),
+                           "dlp-response", nullptr);
 }
 
 void ContentAnalysis::IssueResponse(ContentAnalysisResponse* aResponse,
@@ -2328,12 +2351,12 @@ static void AddCARForText(
   aRequests->AppendElement(contentAnalysisRequest);
 }
 
-void AddCARForFile(nsString&& filePath,
-                   nsIContentAnalysisRequest::Reason aReason, nsIURI* aURI,
-                   mozilla::dom::WindowGlobalParent* aWindowGlobal,
-                   mozilla::dom::WindowGlobalParent* aSourceWindowGlobal,
-                   nsCString&& aUserActionId,
-                   nsTArray<RefPtr<nsIContentAnalysisRequest>>* aRequests) {
+void AddCARForUpload(nsString&& filePath,
+                     nsIContentAnalysisRequest::Reason aReason, nsIURI* aURI,
+                     mozilla::dom::WindowGlobalParent* aWindowGlobal,
+                     mozilla::dom::WindowGlobalParent* aSourceWindowGlobal,
+                     nsCString&& aUserActionId,
+                     nsTArray<RefPtr<nsIContentAnalysisRequest>>* aRequests) {
   if (filePath.IsEmpty()) {
     return;
   }
@@ -2344,8 +2367,8 @@ void AddCARForFile(nsString&& filePath,
   auto contentAnalysisRequest = MakeRefPtr<ContentAnalysisRequest>(
       nsIContentAnalysisRequest::AnalysisType::eFileAttached, aReason,
       std::move(filePath), true, EmptyCString(), aURI,
-      nsIContentAnalysisRequest::OperationType::eCustomDisplayString,
-      aWindowGlobal, aSourceWindowGlobal, std::move(aUserActionId));
+      nsIContentAnalysisRequest::OperationType::eUpload, aWindowGlobal,
+      aSourceWindowGlobal, std::move(aUserActionId));
   aRequests->AppendElement(contentAnalysisRequest);
 }
 
@@ -2438,10 +2461,10 @@ static nsresult AddClipboardCARForFile(
     if (nsCOMPtr<nsIFile> file = do_QueryInterface(transferData)) {
       nsString filePath;
       NS_ENSURE_SUCCESS(file->GetPath(filePath), NS_ERROR_FAILURE);
-      AddCARForFile(std::move(filePath),
-                    nsIContentAnalysisRequest::Reason::eClipboardPaste, aURI,
-                    aWindowGlobal, aSourceWindowGlobal,
-                    std::move(aUserActionId), aRequests);
+      AddCARForUpload(std::move(filePath),
+                      nsIContentAnalysisRequest::Reason::eClipboardPaste, aURI,
+                      aWindowGlobal, aSourceWindowGlobal,
+                      std::move(aUserActionId), aRequests);
     } else {
       MOZ_ASSERT_UNREACHABLE("clipboard data had kFileMime but no nsIFile!");
       return NS_ERROR_FAILURE;
@@ -2543,10 +2566,10 @@ static Result<bool, nsresult> AddRequestsFromDataTransferIfAny(
       file->GetMozFullPathInternal(filePath, error);
       NS_ENSURE_TRUE(!error.Failed(), Err(error.StealNSResult()));
 
-      AddCARForFile(std::move(filePath),
-                    nsIContentAnalysisRequest::Reason::eDragAndDrop, aUri,
-                    aWindowGlobal, aSourceWindowGlobal, nsCString(userActionId),
-                    aNewRequests);
+      AddCARForUpload(std::move(filePath),
+                      nsIContentAnalysisRequest::Reason::eDragAndDrop, aUri,
+                      aWindowGlobal, aSourceWindowGlobal,
+                      nsCString(userActionId), aNewRequests);
     }
   }
   return true;
@@ -2796,9 +2819,8 @@ ContentAnalysis::MultipartRequestCallback::~MultipartRequestCallback() {
 
   // Either we have called our callback and removed our userActionId or we are
   // shutting down.
-  MOZ_ASSERT(!mWeakContentAnalysis ||
-             !mWeakContentAnalysis->mUserActionMap.Contains(mUserActionId) ||
-             mWeakContentAnalysis->IsShutDown());
+  MOZ_ASSERT(!mWeakContentAnalysis || mWeakContentAnalysis->IsShutDown() ||
+             !mWeakContentAnalysis->mUserActionMap.Contains(mUserActionId));
 }
 
 void ContentAnalysis::MultipartRequestCallback::CancelRequests() {
@@ -3465,7 +3487,8 @@ ContentAnalysis::ShowBlockedRequestDialog(nsIContentAnalysisRequest* aRequest) {
       nsIContentAnalysisResponse::Action::eBlock, std::move(token),
       std::move(userActionId));
   response->SetOwner(this);
-  obsServ->NotifyObservers(response, "dlp-response", nullptr);
+  obsServ->NotifyObservers(static_cast<nsIContentAnalysisResponse*>(response),
+                           "dlp-response", nullptr);
   return NS_OK;
 }
 
@@ -3823,7 +3846,7 @@ bool ContentAnalysis::CheckClipboardContentAnalysisSync(
 }
 
 RefPtr<ContentAnalysis::FilesAllowedPromise>
-ContentAnalysis::CheckFilesInBatchMode(
+ContentAnalysis::CheckUploadsInBatchMode(
     nsCOMArray<nsIFile>&& aFiles, bool aAutoAcknowledge,
     mozilla::dom::WindowGlobalParent* aWindow,
     nsIContentAnalysisRequest::Reason aReason, nsIURI* aURI /* = nullptr */) {
@@ -3880,8 +3903,7 @@ ContentAnalysis::CheckFilesInBatchMode(
         new mozilla::contentanalysis::ContentAnalysisRequest(
             nsIContentAnalysisRequest::AnalysisType::eFileAttached, aReason,
             pathString, true /* aStringIsFilePath */, EmptyCString(), uri,
-            nsIContentAnalysisRequest::OperationType::eCustomDisplayString,
-            aWindow);
+            nsIContentAnalysisRequest::OperationType::eUpload, aWindow);
     nsCString userActionId = GenerateUUID();
     MOZ_ALWAYS_SUCCEEDS(request->SetUserActionId(userActionId));
     if (!userActionIds->put(userActionId)) {
@@ -4025,7 +4047,7 @@ ContentAnalysis::AnalyzeBatchContentRequest(nsIContentAnalysisRequest* aRequest,
   auto& systemPrincipal = *nsContentUtils::GetSystemPrincipal();
   if (dataTransfer->HasFile()) {
     // Get any files in the DataTransfer and pass them to
-    // CheckFilesInBatchMode() so they will be analyzed individually.
+    // CheckUploadsInBatchMode() so they will be analyzed individually.
     RefPtr fileList = dataTransfer->GetFiles(systemPrincipal);
     files.SetCapacity(fileList->Length());
     for (uint32_t i = 0; i < fileList->Length(); ++i) {
@@ -4059,8 +4081,8 @@ ContentAnalysis::AnalyzeBatchContentRequest(nsIContentAnalysisRequest* aRequest,
     RefPtr<mozilla::dom::WindowGlobalParent> windowGlobal;
     MOZ_ALWAYS_SUCCEEDS(
         aRequest->GetWindowGlobalParent(getter_AddRefs(windowGlobal)));
-    CheckFilesInBatchMode(std::move(files), aAutoAcknowledge, windowGlobal,
-                          nsIContentAnalysisRequest::Reason::eDragAndDrop)
+    CheckUploadsInBatchMode(std::move(files), aAutoAcknowledge, windowGlobal,
+                            nsIContentAnalysisRequest::Reason::eDragAndDrop)
         ->Then(
             mozilla::GetMainThreadSerialEventTarget(), __func__,
             [filesPromise,
@@ -4325,9 +4347,9 @@ ContentAnalysis::GetURIForDropEvent(dom::DragEvent* aEvent, nsIURI** aURI) {
              widgetEvent->mMessage == eDrop);
   auto* bp =
       dom::BrowserParent::GetBrowserParentFromLayersId(widgetEvent->mLayersId);
-  NS_ENSURE_TRUE(bp, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(bp, NS_ERROR_NOT_AVAILABLE);
   auto* bc = bp->GetBrowsingContext();
-  NS_ENSURE_TRUE(bc, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(bc, NS_ERROR_NO_CONTENT);
   return GetURIForBrowsingContext(bc, aURI);
 }
 

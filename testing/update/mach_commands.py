@@ -3,12 +3,15 @@
 # file, # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import logging
+import re
+import subprocess
 import sys
 import tempfile
+from os import environ, makedirs
 from pathlib import Path
-from platform import uname
 from shutil import copytree, unpack_archive
 
+import mozinfo
 import mozinstall
 import requests
 from mach.decorators import Command, CommandArgument
@@ -22,10 +25,19 @@ elif TEST_UPDATE_CHANNEL.startswith("beta"):
     MAR_CHANNEL = "firefox-mozilla-beta"
 else:
     MAR_CHANNEL = "firefox-mozilla-central"
-TEST_REGION = "en-US"
-TEST_SOURCE_VERSION = "135.0.1"
 FX_DOWNLOAD_DIR_URL = "https://archive.mozilla.org/pub/firefox/releases/"
 APP_DIR_NAME = "fx_test"
+MANIFEST_LOC = "testing/update/manifest.toml"
+DEFAULT_SOURCE_VERSION_POSITION = -3
+# Where in the list of allowable source versions should we default to testing
+DEFAULT_LOCALE = "en-US"
+
+if environ.get("UPLOAD_DIR"):
+    _ARTIFACT_DIR = Path(environ.get("UPLOAD_DIR"), "update-test")
+    makedirs(_ARTIFACT_DIR, exist_ok=True)
+    VERSION_INFO_FILENAME = Path(_ARTIFACT_DIR, environ.get("VERSION_LOG_FILENAME"))
+else:
+    VERSION_INFO_FILENAME = None
 
 
 def setup_update_argument_parser():
@@ -39,47 +51,109 @@ def setup_update_argument_parser():
 
 
 def get_fx_executable_name(version):
-    u = uname()
-
-    if u.system == "Darwin":
-        platform = "mac"
+    if mozinfo.os == "mac":
+        executable_platform = "mac"
         executable_name = f"Firefox {version}.dmg"
 
-    if u.system == "Linux":
-        if "64" in u.machine:
-            platform = "linux-x86_64"
-        else:
-            platform = "linux-x86_64"
+    if mozinfo.os == "linux":
+        executable_platform = "linux-x86_64"
         if int(version.split(".")[0]) < 135:
             executable_name = f"firefox-{version}.tar.bz2"
         else:
             executable_name = f"firefox-{version}.tar.xz"
 
-    if u.system == "Windows":
-        if u.machine == "ARM64":
-            platform = "win64-aarch64"
-        elif "64" in u.machine:
-            platform = "win64"
+    if mozinfo.os == "win":
+        if mozinfo.arch == "aarch64":
+            executable_platform = "win64-aarch64"
+        elif mozinfo.bits == "64":
+            executable_platform = "win64"
         else:
-            platform = "win32"
+            executable_platform = "win32"
         executable_name = f"Firefox Setup {version}.exe"
 
-    return platform, executable_name.replace(" ", "%20")
+    return executable_platform, executable_name.replace(" ", "%20")
+
+
+def fx_version_exists(version, locale):
+    platform, _ = get_fx_executable_name(version)
+    executable_url = rf"{FX_DOWNLOAD_DIR_URL}{version}/{platform}/{locale}/"
+    response = requests.get(executable_url)
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError:
+        return False
+    return True
+
+
+def get_valid_source_versions(current_version, locale):
+    earliest_version = int(current_version.split(".")[0]) - 3
+
+    valid_versions = []
+    for major in range(earliest_version, earliest_version + 3):
+        minor_versions = [0]
+        for minor in range(1, 11):
+            if fx_version_exists(f"{major}.{minor}", locale):
+                minor_versions.append(minor)
+                valid_versions.append(f"{major}.{minor}")
+            else:
+                break
+
+        for minor in minor_versions:
+            for dot in range(1, 15):
+                if fx_version_exists(f"{major}.{minor}.{dot}", locale):
+                    valid_versions.append(f"{major}.{minor}.{dot}")
+
+    valid_versions.sort()
+    return valid_versions
 
 
 def get_binary_path(tempdir, **kwargs) -> str:
     # Install correct Fx and return executable location
-    platform, executable_name = get_fx_executable_name(TEST_SOURCE_VERSION)
+    source_locale = kwargs.get("source_locale") or DEFAULT_LOCALE
+    response = requests.get(
+        "https://product-details.mozilla.org/1.0/firefox_versions.json"
+    )
+    response.raise_for_status()
+    product_details = response.json()
 
-    executable_url = rf"{FX_DOWNLOAD_DIR_URL}{TEST_SOURCE_VERSION}/{platform}/{TEST_REGION}/{executable_name}"
+    source_versions = get_valid_source_versions(
+        product_details.get("LATEST_FIREFOX_VERSION"), source_locale
+    )
+    if kwargs.get("source_versions_back"):
+        # NB below: value 0 will get you the oldest acceptable version, not the newest
+        source_version = source_versions[-int(kwargs.get("source_versions_back"))]
+    else:
+        source_version = (
+            kwargs.get("source_version")
+            or source_versions[DEFAULT_SOURCE_VERSION_POSITION]
+        )
+    platform, executable_name = get_fx_executable_name(source_version)
+
+    os_edition = f"{mozinfo.os} {mozinfo.os_version}"
+    if VERSION_INFO_FILENAME:
+        # Only write the file on non-local runs
+        print(f"Writing source info to {VERSION_INFO_FILENAME.resolve()}...")
+        with VERSION_INFO_FILENAME.open("a") as fh:
+            fh.write(f"Test Type: {kwargs.get('test_type')}\n")
+            fh.write(f"Region: {source_locale}\n")
+            fh.write(f"Source Version: {source_version}\n")
+            fh.write(f"Platform: {os_edition}\n")
+        with VERSION_INFO_FILENAME.open() as fh:
+            print("".join(fh.readlines()))
+    else:
+        print(
+            f"Region: {source_locale}\nSource Version: {source_version}\nPlatform: {os_edition}"
+        )
+
+    executable_url = rf"{FX_DOWNLOAD_DIR_URL}{source_version}/{platform}/{source_locale}/{executable_name}"
 
     installer_filename = Path(tempdir, Path(executable_url).name)
     installed_app_dir = Path(tempdir, APP_DIR_NAME)
     print(f"Downloading Fx from {executable_url}...")
     response = requests.get(executable_url)
-    if 199 < response.status_code < 300:
-        print(f"Download successful, status {response.status_code}")
-    with open(installer_filename, "wb") as fh:
+    response.raise_for_status()
+    print(f"Download successful, status {response.status_code}")
+    with installer_filename.open("wb") as fh:
         fh.write(response.content)
     fx_location = mozinstall.install(installer_filename, installed_app_dir)
     print(f"Firefox installed to {fx_location}")
@@ -93,11 +167,36 @@ def get_binary_path(tempdir, **kwargs) -> str:
     description="Test if the version can be updated to the latest patch successfully,",
     parser=setup_update_argument_parser,
 )
-@CommandArgument("--binary_path", help="Firefox executable path is needed")
+@CommandArgument("--binary-path", help="Firefox executable path is needed")
+@CommandArgument("--test-type", default="Base", help="Base/Background")
+@CommandArgument("--source-version", help="Firefox build version to update from")
+@CommandArgument(
+    "--source-versions-back",
+    help="Update from the version of Fx $N releases before current",
+)
+@CommandArgument("--source-locale", help="Firefox build locale to update from")
 def build(command_context, binary_path, **kwargs):
     tempdir = tempfile.TemporaryDirectory()
     # If we have a symlink to the tmp directory, resolve it
     tempdir_name = str(Path(tempdir.name).resolve())
+    test_type = kwargs.get("test_type")
+
+    # Run the specified test in the suite
+    with open(MANIFEST_LOC) as f:
+        old_content = f.read()
+
+    with open(MANIFEST_LOC, "w") as f:
+        f.write("[DEFAULT]\n")
+        if test_type.lower() == "base":
+            f.write('["test_apply_update.py"]')
+        elif test_type.lower() == "background":
+            f.write('["test_background_update.py"]')
+        else:
+            logging.ERROR("Invalid test type")
+            sys.exit(1)
+
+    if mozinfo.os == "win":
+        log_file = bits_pretest()
     try:
         kwargs["binary"] = set_up(
             binary_path or get_binary_path(tempdir_name, **kwargs), tempdir=tempdir_name
@@ -115,6 +214,10 @@ def build(command_context, binary_path, **kwargs):
         command_context.log(logging.INFO, "update-test", {"help": e.help()}, "{help}")
         return 1
     finally:
+        with open(MANIFEST_LOC, "w") as f:
+            f.write(old_content)
+        if mozinfo.os == "win":
+            bits_posttest(log_file)
         tempdir.cleanup()
 
 
@@ -137,7 +240,7 @@ def run_tests(binary=None, topsrcdir=None, tempdir=None, **kwargs):
     args.tests = [
         Path(
             topsrcdir,
-            "testing/update/manifest.toml",
+            MANIFEST_LOC,
         )
     ]
     args.gecko_log = "-"
@@ -146,6 +249,9 @@ def run_tests(binary=None, topsrcdir=None, tempdir=None, **kwargs):
     parser.verify_usage(args)
 
     failed = MarionetteHarness(MarionetteTestRunner, args=vars(args)).run()
+    if VERSION_INFO_FILENAME:
+        with VERSION_INFO_FILENAME.open("a") as fh:
+            fh.write(f"Status: {'failed' if failed else 'passed'}\n")
     if failed > 0:
         return 1
     return 0
@@ -161,7 +267,7 @@ def copy_macos_channelprefs(tempdir) -> str:
     resp = requests.get(bz_channelprefs_link)
     download_target = Path(tempdir, "channelprefs.zip")
     unpack_target = str(download_target).rsplit(".", 1)[0]
-    with open(download_target, "wb") as fh:
+    with download_target.open("wb") as fh:
         fh.write(resp.content)
 
     unpack_archive(download_target, unpack_target)
@@ -194,7 +300,7 @@ def set_up(binary_path, tempdir):
     print(f"Binary path: {binary_path_str}")
     binary_dir = Path(binary_path_str).absolute().parent
 
-    if uname().system == "Darwin":
+    if mozinfo.os == "mac":
         return copy_macos_channelprefs(tempdir)
     else:
         with Path(binary_dir, "update-settings.ini").open("w") as f:
@@ -205,3 +311,52 @@ def set_up(binary_path, tempdir):
             f.write(f'pref("app.update.channel", "{TEST_UPDATE_CHANNEL}");')
 
     return binary_path_str
+
+
+def bits_pretest():
+    # Check that BITS is enabled
+    for line in subprocess.check_output(["sc", "qc", "BITS"], text=True).split("\n"):
+        if "START_TYPE" in line:
+            assert "DISABLED" not in line
+    # Write all logs to a file to check for results later
+    log_file = tempfile.NamedTemporaryFile(mode="wt", delete=False)
+    sys.stdout = log_file
+    return log_file
+
+
+def bits_posttest(log_file):
+    log_file.close()
+    sys.stdout = sys.__stdout__
+
+    failed = 0
+    try:
+        # Check that all the expected logs are present
+        downloader_regex = r"UpdateService:makeBitsRequest - Starting BITS download with url: https?:\/\/.+, updateDir: .+, filename: .+"
+        bits_download_regex = (
+            r"Downloader:downloadUpdate - BITS download running. BITS ID: {.+}"
+        )
+
+        with open(log_file.name, errors="ignore") as f:
+            logs = f.read()
+            assert re.search(downloader_regex, logs)
+            assert re.search(bits_download_regex, logs)
+            assert (
+                "AUS:SVC Downloader:_canUseBits - Not using BITS because it was already tried"
+                not in logs
+            )
+            assert (
+                "AUS:SVC Downloader:downloadUpdate - Starting nsIIncrementalDownload with url:"
+                not in logs
+            )
+    except (UnicodeDecodeError, AssertionError) as e:
+        failed = 1
+        print(e)
+    finally:
+        Path(log_file.name).unlink()
+
+    if VERSION_INFO_FILENAME:
+        with VERSION_INFO_FILENAME.open("a") as fh:
+            fh.write(f"BITS: {'failed' if failed else 'passed'}\n")
+
+    if failed:
+        sys.exit(1)

@@ -1,10 +1,11 @@
 .category-list {
   border: none;
   display: grid;
-  gap: 48px 16px;
+  // Bug 1967304 - Large number (48px)
+  gap: calc(var(--space-xlarge) * 2) var(--space-large);
   grid-auto-rows: 86px;
   grid-template-columns: 1fr 1fr 1fr;
-  margin-block-end: 20px;
+  margin-block-end: var(--space-large);
   padding: 0;
 
   label {
@@ -33,8 +34,8 @@
 
   border: none;
   cursor: pointer;
-  margin-bottom: 25px;
-  padding-inline-start: 24px;
+  margin-block-end: var(--space-xlarge);
+  padding-inline-start: var(--space-xlarge);
   -moz-context-properties: fill;
   fill: currentColor;
   min-height: 1rem;
@@ -68,8 +69,8 @@
       height: calc(var(--icon-size-default) * 1.25 ); // Custom size: ~20px;
       display: block;
       position: absolute;
-      top: 50%;
-      left: 50%;
+      inset-block-start: 50%;
+      inset-inline-start: 50%;
       transform: translate(-50%, -50%);
     }
   }
@@ -100,7 +101,7 @@
   &:focus {
     border-color: transparent;
     outline-color: var(--color-accent-primary-active);
-    padding: 2px;
+    padding: var(--space-xxsmall);
   }
 }
 
@@ -120,7 +121,7 @@
   &:focus-visible {
     border-color: transparent;
     outline-color: var(--color-accent-primary-active);
-    padding: 2px;
+    padding: var(--space-xxsmall);
   }
 
   // The color picker has a default state where the user has not picked a custom color
@@ -168,8 +169,8 @@
     height: calc(var(--icon-size-default) * 1.25); // Custom size: ~20px;
     display: block;
     position: absolute;
-    top: 50%;
-    left: 50%;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
     transform: translate(-50%, -50%);
     pointer-events: none;
     cursor: pointer;
@@ -190,10 +191,10 @@
 
 .wallpaper-list {
   display: grid;
-  gap: 16px;
+  gap: var(--space-large);
   grid-template-columns: 1fr 1fr 1fr;
   grid-auto-rows: 86px;
-  margin: 16px 0;
+  margin: var(--space-large) 0;
   padding: 0;
   border: none;
 
@@ -208,10 +209,10 @@
     /* XXXdholbert The 32px subtraction here is to account for our 16px of
      * margin on top and bottom. Ideally this should change to use
      * 'height: stretch' when bug 1789477 lands. */
-    height: calc(100% - 32px);
-    inset-inline-start: 25px;
+    height: calc(100% - var(--space-xlarge));
+    inset-inline-start: var(--space-xlarge);
     position: absolute;
-    top: 0;
+    inset-block-start: 0;
     width: 380px;
     z-index: 2;
     transform: translateX(100%);
@@ -223,7 +224,7 @@
     fieldset {
       border: none;
       display: grid;
-      gap: 16px;
+      gap: var(--space-large);
       grid-auto-rows: 86px;
       grid-template-columns: 1fr 1fr 1fr;
     }

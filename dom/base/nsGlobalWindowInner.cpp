@@ -183,6 +183,7 @@
 #include "mozilla/dom/VRDisplayEventBinding.h"
 #include "mozilla/dom/VREventObserver.h"
 #include "mozilla/dom/VisualViewport.h"
+#include "mozilla/dom/WebIdentityHandler.h"
 #include "mozilla/dom/WebIDLGlobalNameHash.h"
 #include "mozilla/dom/WindowBinding.h"
 #include "mozilla/dom/WindowContext.h"
@@ -1443,6 +1444,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsGlobalWindowInner)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDocumentCsp)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBrowserChild)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDoc)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWebIdentityHandler)
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mIdleRequestExecutor)
   for (IdleRequest* request : tmp->mIdleRequestCallbacks) {
@@ -3355,21 +3357,6 @@ bool nsGlobalWindowInner::DeviceSensorsEnabled(JSContext*, JSObject*) {
   return Preferences::GetBool("device.sensors.enabled");
 }
 
-/* static */
-bool nsGlobalWindowInner::IsGleanNeeded(JSContext* aCx, JSObject* aObj) {
-  // Glean is needed in ChromeOnly contexts and also in privileged about pages.
-  nsIPrincipal* principal = nsContentUtils::SubjectPrincipal(aCx);
-  if (principal->IsSystemPrincipal()) {
-    return true;
-  }
-
-  uint32_t flags = 0;
-  if (NS_FAILED(principal->GetAboutModuleFlags(&flags))) {
-    return false;
-  }
-  return flags & nsIAboutModule::IS_SECURE_CHROME_UI;
-}
-
 Crypto* nsGlobalWindowInner::GetCrypto(ErrorResult& aError) {
   if (!mCrypto) {
     mCrypto = new Crypto(this);
@@ -3839,15 +3826,13 @@ void nsGlobalWindowInner::ScrollTo(double aXScroll, double aYScroll) {
 }
 
 void nsGlobalWindowInner::ScrollTo(const ScrollToOptions& aOptions) {
-  Maybe<int32_t> left;
-  Maybe<int32_t> top;
+  Maybe<double> left;
+  Maybe<double> top;
   if (aOptions.mLeft.WasPassed()) {
-    left.emplace(static_cast<int32_t>(
-        mozilla::ToZeroIfNonfinite(aOptions.mLeft.Value())));
+    left.emplace(ToZeroIfNonfinite(aOptions.mLeft.Value()));
   }
   if (aOptions.mTop.WasPassed()) {
-    top.emplace(static_cast<int32_t>(
-        mozilla::ToZeroIfNonfinite(aOptions.mTop.Value())));
+    top.emplace(ToZeroIfNonfinite(aOptions.mTop.Value()));
   }
 
   // When scrolling to a non-zero offset, we need to determine whether that
@@ -3861,7 +3846,7 @@ void nsGlobalWindowInner::ScrollTo(const ScrollToOptions& aOptions) {
   if (!sf) {
     return;
   }
-  CSSIntPoint scrollPos = sf->GetRoundedScrollPositionCSSPixels();
+  CSSPoint scrollPos = sf->GetScrollPositionCSSPixels();
   if (left) {
     scrollPos.x = *left;
   }
@@ -3873,7 +3858,10 @@ void nsGlobalWindowInner::ScrollTo(const ScrollToOptions& aOptions) {
   // twips conversion factor, and subtracting 4, the 4 comes from
   // experimenting with this value, anything less makes the view
   // code not scroll correctly, I have no idea why. -- jst
-  const int32_t maxpx = nsPresContext::AppUnitsToIntCSSPixels(0x7fffffff) - 4;
+  //
+  // FIXME(emilio): This seems like if needed it should be done by the
+  // scrolling code itself...
+  const double maxpx = CSSPixel::FromAppUnits(0x7fffffff) - 4;
   if (scrollPos.x > maxpx) {
     scrollPos.x = maxpx;
   }
@@ -3897,14 +3885,12 @@ void nsGlobalWindowInner::ScrollBy(double aXScrollDif, double aYScrollDif) {
 }
 
 void nsGlobalWindowInner::ScrollBy(const ScrollToOptions& aOptions) {
-  CSSIntPoint scrollDelta;
+  CSSPoint scrollDelta;
   if (aOptions.mLeft.WasPassed()) {
-    scrollDelta.x = static_cast<int32_t>(
-        mozilla::ToZeroIfNonfinite(aOptions.mLeft.Value()));
+    scrollDelta.x = ToZeroIfNonfinite(aOptions.mLeft.Value());
   }
   if (aOptions.mTop.WasPassed()) {
-    scrollDelta.y =
-        static_cast<int32_t>(mozilla::ToZeroIfNonfinite(aOptions.mTop.Value()));
+    scrollDelta.y = ToZeroIfNonfinite(aOptions.mTop.Value());
   }
 
   if (!scrollDelta.x && !scrollDelta.y) {
@@ -7788,6 +7774,18 @@ bool nsPIDOMWindowInner::UsingStorageAccess() {
   }
 
   return wc->GetUsingStorageAccess();
+}
+
+WebIdentityHandler* nsPIDOMWindowInner::GetOrCreateWebIdentityHandler() {
+  if (mWebIdentityHandler) {
+    return mWebIdentityHandler;
+  }
+  mWebIdentityHandler = new WebIdentityHandler(this);
+  bool success = mWebIdentityHandler->MaybeCreateActor();
+  if (!success) {
+    mWebIdentityHandler = nullptr;
+  }
+  return mWebIdentityHandler;
 }
 
 CloseWatcherManager* nsPIDOMWindowInner::EnsureCloseWatcherManager() {

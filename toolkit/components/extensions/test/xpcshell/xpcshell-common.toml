@@ -143,6 +143,8 @@ run-sequentially = "very high failure rate in parallel"
 
 ["test_ext_contentscript_in_background.js"]
 
+["test_ext_contentscript_integritypolicy.js"]
+
 ["test_ext_contentscript_json_api.js"]
 
 ["test_ext_contentscript_module_import.js"]
@@ -187,6 +189,8 @@ skip-if = [
 
 ["test_ext_cookies_errors.js"]
 
+["test_ext_cookies_expirationDate.js"]
+
 ["test_ext_cookies_firstParty.js"]
 skip-if = [
   "appname == 'thunderbird'",
@@ -200,6 +204,8 @@ skip-if = [
 ["test_ext_cookies_samesite.js"]
 
 ["test_ext_cookies_sort.js"]
+
+["test_ext_cookies_validation.js"]
 
 ["test_ext_cors_mozextension.js"]
 

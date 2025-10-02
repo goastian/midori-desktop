@@ -25,7 +25,7 @@ const TYPES = {
 const NATIVE_MANIFEST_SCHEMA =
   "chrome://extensions/content/schemas/native_manifest.json";
 
-const REGPATH = "Software\\Astian";
+const REGPATH = "Software\\Mozilla";
 
 export var NativeManifests = {
   _initializePromise: null,

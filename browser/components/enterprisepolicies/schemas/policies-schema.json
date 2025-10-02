@@ -291,6 +291,14 @@
                 }
               }
             },
+            "Download": {
+              "type": "object",
+              "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                }
+              }
+            },
             "DragAndDrop": {
               "type": "object",
               "properties": {
@@ -632,16 +640,13 @@
         "EmailTracking": {
           "type": "boolean"
         },
-        "SuspectedFingerprinting": {
-          "type": "boolean"
-        },
         "Exceptions": {
           "type": "array",
           "strict": false,
           "items": {
             "type": "origin"
           }
-          },
+        },
         "Category": {
           "type": "string",
           "enum": ["standard", "strict"]

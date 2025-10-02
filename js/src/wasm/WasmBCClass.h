@@ -141,19 +141,41 @@ struct AccessCheck {
 
 // Encapsulate all the information about a function call.
 struct FunctionCall {
-  FunctionCall()
-      : restoreRegisterStateAndRealm(false),
-        usesSystemAbi(false),
+  FunctionCall(ABIKind abiKind, RestoreState restoreState)
+      : abi(abiKind),
+        restoreState(restoreState),
+        abiKind(abiKind),
 #ifdef JS_CODEGEN_ARM
         hardFP(true),
 #endif
         frameAlignAdjustment(0),
         stackArgAreaSize(0) {
+    // The system ABI preserves the instance register (as it's in a
+    // non-volatile register) and realm. We just need to reload the HeapReg in
+    // case the memory has been moved.
+    MOZ_ASSERT_IF(abiKind == ABIKind::System,
+                  restoreState == RestoreState::None ||
+                      restoreState == RestoreState::PinnedRegs);
+    // Our uses of the wasm ABI either preserves everything or nothing.
+    MOZ_ASSERT_IF(abiKind == ABIKind::Wasm,
+                  restoreState == RestoreState::None ||
+                      restoreState == RestoreState::All);
+    if (abiKind == ABIKind::System) {
+      // Builtin calls use the system hardFP setting on ARM32.
+#if defined(JS_CODEGEN_ARM)
+      hardFP = ARMFlags::UseHardFpABI();
+      abi.setUseHardFp(hardFP);
+#endif
+    } else {
+#if defined(JS_CODEGEN_ARM)
+      MOZ_ASSERT(hardFP, "The WASM ABI passes FP arguments in registers");
+#endif
+    }
   }
 
-  WasmABIArgGenerator abi;
-  bool restoreRegisterStateAndRealm;
-  bool usesSystemAbi;
+  ABIArgGenerator abi;
+  RestoreState restoreState;
+  ABIKind abiKind;
 #ifdef JS_CODEGEN_ARM
   bool hardFP;
 #endif
@@ -977,17 +999,45 @@ struct BaseCompiler final {
   //
   // Calls.
 
-  void beginCall(FunctionCall& call, UseABI useABI,
-                 RestoreRegisterStateAndRealm restoreRegisterStateAndRealm);
+  void beginCall(FunctionCall& call);
   void endCall(FunctionCall& call, size_t stackSpace);
+
   void startCallArgs(size_t stackArgAreaSizeUnaligned, FunctionCall* call);
   ABIArg reservePointerArgument(FunctionCall* call);
   void passArg(ValType type, const Stk& arg, FunctionCall* call);
-  CodeOffset callDefinition(uint32_t funcIndex, const FunctionCall& call);
-  CodeOffset callSymbolic(SymbolicAddress callee, const FunctionCall& call);
+
+  // A flag passed to emitCallArgs, describing how the value stack is laid out.
+  enum class CalleeOnStack {
+    // After the arguments to the call, there is a callee pushed onto value
+    // stack.  This is only the case for callIndirect.  To get the arguments to
+    // the call, emitCallArgs has to reach one element deeper into the value
+    // stack, to skip the callee.
+    True,
+
+    // No callee on the stack.
+    False
+  };
+  // The typename T for emitCallArgs can be one of the following:
+  // NormalCallResults, TailCallResults, or NoCallResults.
+  template <typename T>
+  [[nodiscard]] bool emitCallArgs(const ValTypeVector& argTypes, T results,
+                                  FunctionCall* baselineCall,
+                                  CalleeOnStack calleeOnStack);
+
+  [[nodiscard]] bool pushStackResultsForWasmCall(const ResultType& type,
+                                                 RegPtr temp,
+                                                 StackResultsLoc* loc);
+  void popStackResultsAfterWasmCall(const StackResultsLoc& results,
+                                    uint32_t stackArgBytes);
+
+  void pushBuiltinCallResult(const FunctionCall& call, MIRType type);
+  [[nodiscard]] bool pushWasmCallResults(const FunctionCall& call,
+                                         ResultType type,
+                                         const StackResultsLoc& loc);
 
   // Precondition for the call*() methods: sync()
-
+  CodeOffset callDefinition(uint32_t funcIndex, const FunctionCall& call);
+  CodeOffset callSymbolic(SymbolicAddress callee, const FunctionCall& call);
   bool callIndirect(uint32_t funcTypeIndex, uint32_t tableIndex,
                     const Stk& indexVal, const FunctionCall& call,
                     bool tailCall, CodeOffset* fastCallOffset,
@@ -1003,8 +1053,6 @@ struct BaseCompiler final {
   CodeOffset builtinInstanceMethodCall(const SymbolicAddressSignature& builtin,
                                        const ABIArg& instanceArg,
                                        const FunctionCall& call);
-  [[nodiscard]] bool pushCallResults(const FunctionCall& call, ResultType type,
-                                     const StackResultsLoc& loc);
 
   // Helpers to pick up the returned value from the return register.
   inline RegI32 captureReturnedI32();
@@ -1221,10 +1269,8 @@ struct BaseCompiler final {
                    RegI32 temp);
   void load(MemoryAccessDesc* access, AccessCheck* check, RegPtr instance,
             RegPtr memoryBase, RegI32 ptr, AnyReg dest, RegI32 temp);
-#ifdef ENABLE_WASM_MEMORY64
   void load(MemoryAccessDesc* access, AccessCheck* check, RegPtr instance,
             RegPtr memoryBase, RegI64 ptr, AnyReg dest, RegI64 temp);
-#endif
 
   template <typename RegType>
   void doLoadCommon(MemoryAccessDesc* access, AccessCheck check, ValType type);
@@ -1238,10 +1284,8 @@ struct BaseCompiler final {
                     RegI32 temp);
   void store(MemoryAccessDesc* access, AccessCheck* check, RegPtr instance,
              RegPtr memoryBase, RegI32 ptr, AnyReg src, RegI32 temp);
-#ifdef ENABLE_WASM_MEMORY64
   void store(MemoryAccessDesc* access, AccessCheck* check, RegPtr instance,
              RegPtr memoryBase, RegI64 ptr, AnyReg src, RegI64 temp);
-#endif
 
   template <typename RegType>
   void doStoreCommon(MemoryAccessDesc* access, AccessCheck check,
@@ -1468,26 +1512,6 @@ struct BaseCompiler final {
   [[nodiscard]] bool emitBrTable();
   [[nodiscard]] bool emitDrop();
   [[nodiscard]] bool emitReturn();
-
-  // A flag passed to emitCallArgs, describing how the value stack is laid out.
-  enum class CalleeOnStack {
-    // After the arguments to the call, there is a callee pushed onto value
-    // stack.  This is only the case for callIndirect.  To get the arguments to
-    // the call, emitCallArgs has to reach one element deeper into the value
-    // stack, to skip the callee.
-    True,
-
-    // No callee on the stack.
-    False
-  };
-
-  // The typename T for emitCallArgs can be one of the following:
-  // NormalCallResults, TailCallResults, or NoCallResults.
-  template <typename T>
-  [[nodiscard]] bool emitCallArgs(const ValTypeVector& argTypes, T results,
-                                  FunctionCall* baselineCall,
-                                  CalleeOnStack calleeOnStack);
-
   [[nodiscard]] bool emitCall();
   [[nodiscard]] bool emitReturnCall();
   [[nodiscard]] bool emitCallIndirect();
@@ -1520,12 +1544,6 @@ struct BaseCompiler final {
   [[nodiscard]] bool endTryTable(ResultType type);
 
   void doReturn(ContinuationKind kind);
-  void pushReturnValueOfCall(const FunctionCall& call, MIRType type);
-
-  [[nodiscard]] bool pushStackResultsForCall(const ResultType& type,
-                                             RegPtr temp, StackResultsLoc* loc);
-  void popStackResultsAfterCall(const StackResultsLoc& results,
-                                uint32_t stackArgBytes);
 
   void emitCompareI32(Assembler::Condition compareOp, ValType compareType);
   void emitCompareI64(Assembler::Condition compareOp, ValType compareType);

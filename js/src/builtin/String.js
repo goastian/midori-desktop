@@ -553,6 +553,11 @@ function String_split(separator, limit) {
 
 // ES2020 draft rev dc1e21c454bd316810be1c0e7af0131a2d7f38e9
 // 21.1.3.22 String.prototype.substring ( start, end )
+//
+// NOTE: When changing this method, make sure that GVN can still optimize common
+// substring patterns. See MSubstr::foldsTo and MMinMax::foldsTo.
+//
+// See also: bug 1782771, bug 1782959, bug 1861983, bug 1873042, bug 1969270.
 function String_substring(start, end) {
   // Step 1.
   if (IsNullOrUndefined(this)) {
@@ -593,6 +598,11 @@ SetIsInlinableLargeFunction(String_substring);
 
 // ES2020 draft rev dc1e21c454bd316810be1c0e7af0131a2d7f38e9
 // B.2.3.1 String.prototype.substr ( start, length )
+//
+// NOTE: When changing this method, make sure that GVN can still optimize common
+// substring patterns. See MSubstr::foldsTo and MMinMax::foldsTo.
+//
+// See also: bug 1782771, bug 1782959, bug 1861983, bug 1873042, bug 1969270.
 function String_substr(start, length) {
   // Steps 1.
   if (IsNullOrUndefined(this)) {
@@ -677,6 +687,11 @@ function String_concat(arg1) {
 
 // ES2020 draft rev dc1e21c454bd316810be1c0e7af0131a2d7f38e9
 // 21.1.3.19 String.prototype.slice ( start, end )
+//
+// NOTE: When changing this method, make sure that GVN can still optimize common
+// substring patterns. See MSubstr::foldsTo and MMinMax::foldsTo.
+//
+// See also: bug 1782771, bug 1782959, bug 1861983, bug 1873042, bug 1969270.
 function String_slice(start, end) {
   // Step 1.
   if (IsNullOrUndefined(this)) {
@@ -827,46 +842,6 @@ function StringIteratorNext() {
 SetIsInlinableLargeFunction(StringIteratorNext);
 
 #if JS_HAS_INTL_API
-var collatorCache = new_Record();
-
-/**
- * Compare this String against that String, using the locale and collation
- * options provided.
- *
- * Spec: ECMAScript Internationalization API Specification, 13.1.1.
- */
-function String_localeCompare(that) {
-  // Step 1.
-  if (IsNullOrUndefined(this)) {
-    ThrowIncompatibleMethod("localeCompare", this);
-  }
-
-  // Steps 2-3.
-  var S = ToString(this);
-  var That = ToString(that);
-
-  // Steps 4-5.
-  var locales = ArgumentsLength() > 1 ? GetArgument(1) : undefined;
-  var options = ArgumentsLength() > 2 ? GetArgument(2) : undefined;
-
-  // Step 6.
-  var collator;
-  if (locales === undefined && options === undefined) {
-    // This cache only optimizes for the old ES5 localeCompare without
-    // locales and options.
-    if (!intl_IsRuntimeDefaultLocale(collatorCache.runtimeDefaultLocale)) {
-      collatorCache.collator = intl_Collator(locales, options);
-      collatorCache.runtimeDefaultLocale = intl_RuntimeDefaultLocale();
-    }
-    collator = collatorCache.collator;
-  } else {
-    collator = intl_Collator(locales, options);
-  }
-
-  // Step 7.
-  return intl_CompareStrings(collator, S, That);
-}
-
 /**
  * 13.1.2 String.prototype.toLocaleLowerCase ( [ locales ] )
  *

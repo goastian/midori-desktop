@@ -652,13 +652,7 @@ void Navigator::GetBuildID(nsAString& aBuildID, CallerType aCallerType,
 }
 
 void Navigator::GetDoNotTrack(nsAString& aResult) {
-  bool doNotTrack = StaticPrefs::privacy_donottrackheader_enabled();
-  if (!doNotTrack) {
-    nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(mWindow);
-    doNotTrack = loadContext && loadContext->UseTrackingProtection();
-  }
-
-  if (doNotTrack) {
+  if (StaticPrefs::privacy_donottrackheader_enabled()) {
     aResult.AssignLiteral("1");
   } else {
     aResult.AssignLiteral("unspecified");
@@ -2275,7 +2269,7 @@ dom::LockManager* Navigator::Locks() {
 
 NavigatorLogin* Navigator::Login() {
   if (!mLogin) {
-    mLogin = new NavigatorLogin(GetWindow()->AsGlobal());
+    mLogin = new NavigatorLogin(GetWindow());
   }
   return mLogin;
 }

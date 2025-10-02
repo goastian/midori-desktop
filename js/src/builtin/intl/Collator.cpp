@@ -104,8 +104,9 @@ const ClassSpec CollatorObject::classSpec_ = {
  *
  * ES2017 Intl draft rev 94045d234762ad107a3d09bb6f7381a65f1a2f9b
  */
-static bool Collator(JSContext* cx, const CallArgs& args) {
+static bool Collator(JSContext* cx, unsigned argc, Value* vp) {
   AutoJSConstructorProfilerEntry pseudoFrame(cx, "Intl.Collator");
+  CallArgs args = CallArgsFromVp(argc, vp);
 
   // Step 1 (Handled by OrdinaryCreateFromConstructor fallback code).
 
@@ -134,17 +135,40 @@ static bool Collator(JSContext* cx, const CallArgs& args) {
   return true;
 }
 
-static bool Collator(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-  return Collator(cx, args);
+CollatorObject* js::intl::CreateCollator(JSContext* cx, Handle<Value> locales,
+                                         Handle<Value> options) {
+  Rooted<CollatorObject*> collator(cx,
+                                   NewBuiltinClassInstance<CollatorObject>(cx));
+  if (!collator) {
+    return nullptr;
+  }
+
+  if (!InitializeObject(cx, collator, cx->names().InitializeCollator, locales,
+                        options)) {
+    return nullptr;
+  }
+
+  return collator;
 }
 
-bool js::intl_Collator(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-  MOZ_ASSERT(args.length() == 2);
-  MOZ_ASSERT(!args.isConstructing());
+CollatorObject* js::intl::GetOrCreateCollator(JSContext* cx,
+                                              Handle<Value> locales,
+                                              Handle<Value> options) {
+  // Try to use a cached instance when |locales| is either undefined or a
+  // string, and |options| is undefined.
+  if ((locales.isUndefined() || locales.isString()) && options.isUndefined()) {
+    Rooted<JSLinearString*> locale(cx);
+    if (locales.isString()) {
+      locale = locales.toString()->ensureLinear(cx);
+      if (!locale) {
+        return nullptr;
+      }
+    }
+    return cx->global()->globalIntlData().getOrCreateCollator(cx, locale);
+  }
 
-  return Collator(cx, args);
+  // Create a new Intl.Collator instance.
+  return CreateCollator(cx, locales, options);
 }
 
 void js::CollatorObject::finalize(JS::GCContext* gcx, JSObject* obj) {
@@ -413,7 +437,7 @@ static mozilla::intl::Collator* GetOrCreateCollator(
 }
 
 static bool intl_CompareStrings(JSContext* cx, mozilla::intl::Collator* coll,
-                                HandleString str1, HandleString str2,
+                                JSString* str1, JSString* str2,
                                 MutableHandleValue result) {
   MOZ_ASSERT(str1);
   MOZ_ASSERT(str2);
@@ -456,9 +480,19 @@ bool js::intl_CompareStrings(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   // Use the UCollator to actually compare the strings.
-  RootedString str1(cx, args[1].toString());
-  RootedString str2(cx, args[2].toString());
+  JSString* str1 = args[1].toString();
+  JSString* str2 = args[2].toString();
   return intl_CompareStrings(cx, coll, str1, str2, args.rval());
+}
+
+bool js::intl::CompareStrings(JSContext* cx, Handle<CollatorObject*> collator,
+                              Handle<JSString*> str1, Handle<JSString*> str2,
+                              MutableHandle<Value> result) {
+  mozilla::intl::Collator* coll = GetOrCreateCollator(cx, collator);
+  if (!coll) {
+    return false;
+  }
+  return intl_CompareStrings(cx, coll, str1, str2, result);
 }
 
 bool js::intl_isUpperCaseFirst(JSContext* cx, unsigned argc, Value* vp) {

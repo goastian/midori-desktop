@@ -210,6 +210,9 @@ const GOOGLE_TLDS = [
 
 var InterventionHelpers = {
   skip_if_functions: {
+    getWeekInfo_defined: () => {
+      return !!Intl?.Locale?.prototype?.getWeekInfo;
+    },
     InstallTrigger_defined: () => {
       return "InstallTrigger" in window;
     },
@@ -337,15 +340,25 @@ var InterventionHelpers = {
     return false;
   },
 
+  async getOS() {
+    const os =
+      (await browser.aboutConfigPrefs.getPref("platform_override")) ??
+      (await browser.runtime.getPlatformInfo()).os;
+    if (os === "win") {
+      return "windows";
+    }
+    return os;
+  },
+
   async getPlatformMatches() {
     if (!InterventionHelpers._platformMatches) {
-      const platformInfo = await browser.runtime.getPlatformInfo();
+      const os = await this.getOS();
       InterventionHelpers._platformMatches = [
         "all",
-        platformInfo.os,
-        platformInfo.os == "android" ? "android" : "desktop",
+        os,
+        os == "android" ? "android" : "desktop",
       ];
-      if (platformInfo.os == "android") {
+      if (os == "android") {
         const packageName = await browser.appConstants.getAndroidPackageName();
         if (packageName.includes("fenix") || packageName.includes("firefox")) {
           InterventionHelpers._platformMatches.push("fenix");

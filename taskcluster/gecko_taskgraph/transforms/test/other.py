@@ -4,11 +4,11 @@
 
 import copy
 import hashlib
-import json
 import re
 
 from mozbuild.schedules import INCLUSIVE_COMPONENTS
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util import json
 from taskgraph.util.attributes import keymatch
 from taskgraph.util.keyed_by import evaluate_keyed_by
 from taskgraph.util.readonlydict import ReadOnlyDict
@@ -409,14 +409,14 @@ def setup_browsertime(config, tasks):
 
         fs = {
             "by-test-platform": {
-                "android.*": ["linux64-ffmpeg-4.4.1"],
-                "linux.*": ["linux64-ffmpeg-4.4.1"],
-                "macosx1470.*": ["mac64-ffmpeg-4.4.1"],
-                "macosx1400.*": ["mac64-ffmpeg-4.4.1"],
-                "macosx1500.*": ["mac64-ffmpeg-4.4.1"],
-                "windows.*aarch64.*": ["win64-ffmpeg-4.4.1"],
-                "windows.*-32.*": ["win64-ffmpeg-4.4.1"],
-                "windows.*-64.*": ["win64-ffmpeg-4.4.1"],
+                "android.*": ["linux64-ffmpeg-7.1"],
+                "linux.*": ["linux64-ffmpeg-7.1"],
+                "macosx1470.*": ["mac64-ffmpeg-7.1"],
+                "macosx1400.*": ["mac64-ffmpeg-7.1"],
+                "macosx1500.*": ["mac64-ffmpeg-7.1"],
+                "windows.*aarch64.*": ["win64-ffmpeg-7.1"],
+                "windows.*-32.*": ["win64-ffmpeg-7.1"],
+                "windows.*-64.*": ["win64-ffmpeg-7.1"],
             },
         }
 
@@ -424,26 +424,32 @@ def setup_browsertime(config, tasks):
             "android.*": [
                 "linux64-cft-cd-backup",
                 "linux64-cft-cd-stable",
+                "linux64-cft-cd-beta",
             ],
             "linux.*": [
                 "linux64-cft-cd-backup",
                 "linux64-cft-cd-stable",
+                "linux64-cft-cd-beta",
             ],
             "macosx1470.*": [
                 "mac-cft-cd-backup",
                 "mac-cft-cd-stable",
+                "mac-cft-cd-beta",
             ],
             "macosx1400.*": [
                 "mac-cft-cd-arm-backup",
                 "mac-cft-cd-arm-stable",
+                "mac-cft-cd-arm-beta",
             ],
             "macosx1500.*": [
                 "mac-cft-cd-arm-backup",
                 "mac-cft-cd-arm-stable",
+                "mac-cft-cd-arm-beta",
             ],
             "windows.*-64.*": [
                 "win64-cft-cd-backup",
                 "win64-cft-cd-stable",
+                "win64-cft-cd-beta",
             ],
         }
 
@@ -504,7 +510,7 @@ def setup_browsertime(config, tasks):
                     "--browsertime-chromedriver",
                     "$MOZ_FETCHES_DIR/" + cd_extracted_name["windows"],
                     "--browsertime-ffmpeg",
-                    "$MOZ_FETCHES_DIR/ffmpeg-4.4.1-full_build/bin/ffmpeg.exe",
+                    "$MOZ_FETCHES_DIR/ffmpeg-n7.1-latest-win64-gpl-shared-7.1/bin/ffmpeg.exe",
                 ],
                 "macosx.*": [
                     "--browsertime-node",
@@ -514,7 +520,7 @@ def setup_browsertime(config, tasks):
                     "--browsertime-chromedriver",
                     "$MOZ_FETCHES_DIR/" + cd_extracted_name["mac"],
                     "--browsertime-ffmpeg",
-                    "$MOZ_FETCHES_DIR/ffmpeg-macos/ffmpeg",
+                    "$MOZ_FETCHES_DIR/ffmpeg-7.1/bin/ffmpeg",
                 ],
                 "default": [
                     "--browsertime-node",
@@ -524,7 +530,7 @@ def setup_browsertime(config, tasks):
                     "--browsertime-chromedriver",
                     "$MOZ_FETCHES_DIR/" + cd_extracted_name["default"],
                     "--browsertime-ffmpeg",
-                    "$MOZ_FETCHES_DIR/ffmpeg-4.4.1-i686-static/ffmpeg",
+                    "$MOZ_FETCHES_DIR/ffmpeg-n7.1-linux64-gpl-7.1/bin/ffmpeg",
                 ],
             }
         }
@@ -722,6 +728,12 @@ def handle_tier(config, tasks):
                 "linux2204-64-wayland/debug",
                 "linux2204-64-wayland/opt",
                 "linux2204-64-wayland-shippable/opt",
+                "linux2404-64/opt",
+                "linux2404-64/debug",
+                "linux2404-64-shippable/opt",
+                "linux2404-64-devedition/opt",
+                "linux2404-64-asan/opt",
+                "linux2404-64-tsan/opt",
                 "windows10-64/debug",
                 "windows10-64/opt",
                 "windows10-64-shippable/opt",
@@ -1118,8 +1130,6 @@ def set_profile(config, tasks):
 def set_tag(config, tasks):
     """Set test for a specific tag."""
     tag = None
-    if config.params["try_mode"] == "try_option_syntax":
-        tag = config.params["try_options"]["tag"]
     for task in tasks:
         if tag:
             task["mozharness"]["extra-options"].extend(["--tag", tag])

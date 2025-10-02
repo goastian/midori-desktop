@@ -3,9 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #placesToolbar {
+  --toolbar-item-height: 26px;
+  --toolbar-item-margin: 0px 4px;
+
   position: relative;
   -moz-window-dragging: drag;
-  padding: env(-moz-mac-titlebar-height) 4px 3px;
+  padding: calc(env(-moz-mac-titlebar-height) + 4px) 4px 3px;
   border-bottom: 1px solid ThreeDShadow;
 
   &::after {
@@ -18,9 +21,8 @@
   }
 
   > toolbarbutton {
-    margin: 4px 4px 5px;
-    padding: 0;
-    height: 22px;
+    min-height: var(--toolbar-item-height);
+    margin: var(--toolbar-item-margin);
     appearance: auto;
     -moz-default-appearance: toolbarbutton;
 
@@ -41,22 +43,29 @@
       margin-inline-end: 2px;
     }
 
-    &[disabled] > .toolbarbutton-icon,
-    &:not(:hover):-moz-window-inactive > .toolbarbutton-icon,
-    &[type="menu"][disabled] > .toolbarbutton-menu-dropmarker,
-    &:not(:hover):-moz-window-inactive[type="menu"] > .toolbarbutton-menu-dropmarker {
-      opacity: .5;
+    &[disabled],
+    &:not(:hover):-moz-window-inactive {
+      opacity: 0.5;
     }
 
-    &:-moz-window-inactive[disabled] > .toolbarbutton-icon,
-    &:-moz-window-inactive[type="menu"][disabled] > .toolbarbutton-menu-dropmarker {
-      opacity: .25;
+    &[disabled]:-moz-window-inactive {
+      opacity: 0.25;
     }
 
     > menupopup {
       margin-top: 1px;
     }
   }
+}
+
+#searchFilter {
+  margin: var(--toolbar-item-margin);
+  --input-text-min-height: var(--toolbar-item-height);
+  @media (-moz-mac-big-sur-theme) {
+    --input-text-background-color: transparent;
+    --input-text-color: currentColor;
+  }
+  --input-text-border-color: ButtonBorder;
 }
 
 /* Places Organizer Sidebars */
@@ -104,37 +113,6 @@
 #forward-button,
 #back-button:-moz-locale-dir(rtl) {
   list-style-image: url("chrome://global/skin/icons/arrow-right.svg");
-}
-
-#back-button {
-  margin-inline-end: 0 !important; /* override margin from #placesToolbar > toolbarbutton */
-
-  > .toolbarbutton-icon {
-    margin-inline: 3px 2px !important;
-  }
-}
-
-#forward-button {
-  margin-inline-start: 0 !important; /* override margin from #placesToolbar > toolbarbutton */
-
-  > .toolbarbutton-icon {
-    margin-inline: 2px 3px !important;
-  }
-}
-
-/* organize button */
-#organizeButton {
-  list-style-image: url("chrome://global/skin/icons/settings.svg");
-}
-
-/* view button */
-#viewMenu {
-  list-style-image: url("chrome://browser/skin/sort.svg");
-}
-
-/* maintenance button */
-#maintenanceButton {
-  list-style-image: url("chrome://global/skin/icons/arrows-updown.svg");
 }
 
 /* Root View */

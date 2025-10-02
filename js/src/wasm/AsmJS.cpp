@@ -2185,9 +2185,7 @@ class MOZ_STACK_CLASS ModuleValidator : public ModuleValidatorShared {
       codeSectionSize += func.bytes().length();
     }
 
-    codeMeta_->codeSectionRange.emplace();
-    codeMeta_->codeSectionRange->start = 0;
-    codeMeta_->codeSectionRange->size = codeSectionSize;
+    codeMeta_->codeSectionRange = Some(BytecodeRange(0, codeSectionSize));
 
     // asm.js does not have any wasm bytecode to save; view-source is
     // provided through the ScriptSource.
@@ -6872,6 +6870,11 @@ static bool CheckBuffer(JSContext* cx, const CodeMetadata& codeMeta,
   if (buffer->isResizable()) {
     return LinkFail(cx,
                     "Unable to prepare resizable ArrayBuffer for asm.js use");
+  }
+
+  if (buffer->isImmutable()) {
+    return LinkFail(cx,
+                    "Unable to prepare immutable ArrayBuffer for asm.js use");
   }
 
   if (!buffer->prepareForAsmJS()) {

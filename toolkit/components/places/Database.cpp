@@ -1342,6 +1342,18 @@ nsresult Database::InitSchema(bool* aDatabaseMigrated) {
 
       // Firefox 140 uses schema version 80
 
+      if (currentSchemaVersion < 81) {
+        rv = MigrateV81Up();
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+
+      if (currentSchemaVersion < 82) {
+        rv = MigrateV82Up();
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+
+      // Firefox 141 uses schema version 82
+
       // Schema Upgrades must add migration code here.
       // >>> IMPORTANT! <<<
       // NEVER MIX UP SYNC AND ASYNC EXECUTION IN MIGRATORS, YOU MAY LOCK THE
@@ -1465,6 +1477,16 @@ nsresult Database::InitSchema(bool* aDatabaseMigrated) {
     NS_ENSURE_SUCCESS(rv, rv);
     rv =
         mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_IMPRESSION_TIMESTAMP);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    // moz_newtab_shortcuts_interaction
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_MOZ_NEWTAB_SHORTCUTS_INTERACTION);
+    NS_ENSURE_SUCCESS(rv, rv);
+    // Add moz_newtab_shortcuts_interaction timestamp index.
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_SHORTCUTS_TIMESTAMP);
+    NS_ENSURE_SUCCESS(rv, rv);
+    // Add moz_newtab_shortcuts_interaction place_id index
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_SHORTCUTS_PLACEID);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // The bookmarks roots get initialized in CheckRoots().
@@ -2198,16 +2220,44 @@ nsresult Database::MigrateV79Up() {
 
 nsresult Database::MigrateV80Up() {
   // v79 indices had a typo so we're recreating them here.
-  nsresult rv = mMainConn->ExecuteSimpleSQL(
-      "DROP INDEX IF EXISTS idx_newtab_impression_timestamp"_ns);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = mMainConn->ExecuteSimpleSQL(
-      "DROP INDEX IF EXISTS idx_newtab_click_timestamp"_ns);
-  NS_ENSURE_SUCCESS(rv, rv);
-  rv = mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_STORY_CLICK_TIMESTAMP);
+  nsresult rv =
+      mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_STORY_CLICK_TIMESTAMP);
   NS_ENSURE_SUCCESS(rv, rv);
   rv = mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_IMPRESSION_TIMESTAMP);
   NS_ENSURE_SUCCESS(rv, rv);
+  return NS_OK;
+}
+
+nsresult Database::MigrateV81Up() {
+  // v79 indices had a typo, v80 tried to remove them but it got the names
+  // wrong, so we're effectively removing them here.
+  nsresult rv = mMainConn->ExecuteSimpleSQL(
+      "DROP INDEX IF EXISTS moz_newtab_story_click_idx_newtab_click_timestamp"_ns);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = mMainConn->ExecuteSimpleSQL(
+      "DROP INDEX IF EXISTS moz_newtab_story_click_idx_newtab_impression_timestamp"_ns);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return NS_OK;
+}
+
+nsresult Database::MigrateV82Up() {
+  // Create moz_newtab_shortcuts_interaction table and associated indexes.
+  nsCOMPtr<mozIStorageStatement> stmt;
+  nsresult rv = mMainConn->CreateStatement(
+      "SELECT id FROM moz_newtab_shortcuts_interaction"_ns,
+      getter_AddRefs(stmt));
+  if (NS_FAILED(rv)) {
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_MOZ_NEWTAB_SHORTCUTS_INTERACTION);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    // Add moz_newtab_shortcuts_interaction timestamp index
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_SHORTCUTS_TIMESTAMP);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    // Add moz_newtab_shortcuts_interaction place_id index
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_SHORTCUTS_PLACEID);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
   return NS_OK;
 }
 

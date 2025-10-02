@@ -1,7 +1,7 @@
 [versions]
 # AGP
-android-gradle-plugin = "8.10.0" # Keep lint version in sync
-lint = "31.10.0"
+android-gradle-plugin = "8.10.1" # Keep lint version in sync
+lint = "31.10.1"
 
 python-envs-plugin = "0.0.31"
 maven-ant-tasks = "2.1.3"
@@ -13,9 +13,9 @@ leakcanary = "2.14"
 # AndroidX versions
 activity = "1.10.1"
 annotation = "1.9.1"
-appcompat = "1.7.0"
+appcompat = "1.7.1"
 arch = "2.2.0"
-autofill = "1.1.0"
+autofill = "1.3.0"
 benchmark = "1.3.4"
 biometric = "1.1.0"
 browser = "1.8.0"
@@ -30,8 +30,8 @@ core = "1.16.0"
 core-splashscreen = "1.0.1"
 datastore = "1.1.7"
 drawerlayout = "1.2.0"
-fragment = "1.8.7"
-lifecycle = "2.9.0"
+fragment = "1.8.8"
+lifecycle = "2.9.1"
 localbroadcastmanager = "1.0.0"
 media = "1.7.0"
 navigation = "2.9.0"
@@ -40,12 +40,12 @@ palette = "1.0.0"
 preferences = "1.2.1"
 profileinstaller = "1.4.0"
 recyclerview = "1.4.0"
-room = "2.7.1"
+room = "2.7.2"
 savedstate = "1.3.0"
 swiperefreshlayout = "1.1.0"
 transition = "1.6.0"
 viewpager2 = "1.1.0"
-work = "2.10.1"
+work = "2.10.2"
 
 # Google versions
 accompanist = "0.37.3"
@@ -58,7 +58,7 @@ play-review = "2.0.2"
 play-services-ads-id = "18.2.0"
 play-services-base = "18.7.0"
 play-services-fido = "21.2.0"
-protobuf = "4.30.2" # Keep Protobuf in sync with the version used by AppServices.
+protobuf = "4.31.1" # Keep Protobuf in sync with the version used by AppServices.
 
 # JNA
 jna = "5.14.0" # Don't update until Android 5/6 support is dropped
@@ -73,7 +73,7 @@ semanticdb-kotlinc = "0.5.0"
 # Kotlin versions
 coroutines = "1.10.2"
 kotlin = "2.1.21" # remember to change ksp-plugin
-ksp-plugin = "2.1.21-2.0.1"
+ksp-plugin = "2.1.21-2.0.2"
 serialization = "1.8.1"
 
 # Linter versions
@@ -83,7 +83,7 @@ spotless = "7.0.2"
 
 # Mozilla versions
 apilint = "0.5.4"
-mozilla-glean = "64.3.1"
+mozilla-glean = "64.4.0"
 
 # Testing versions
 androidx-test = "1.6.1"
@@ -93,16 +93,17 @@ androidx-test-monitor = "1.7.2"
 androidx-test-orchestrator = "1.5.1"
 androidx-test-runner = "1.6.1"
 androidx-test-uiautomator = "2.3.0"
-junit = "5.11.4"
-mockito = "5.17.0"
+junit4 = "4.13.2"
+junit5 = "5.13.1"
+mockito = "5.18.0"
 mockk = "1.14.2"
 robolectric = "4.14.1"
 
 # Third party library versions
 adjust = "5.4.0"
 okhttp = "4.12.0"
-okio = "3.11.0"
-sentry = "8.9.0"
+okio = "3.13.0"
+sentry = "8.14.0"
 
 commons-exec = "1.3"
 tomlj = "1.1.0"
@@ -110,13 +111,15 @@ tomlj = "1.1.0"
 [libraries]
 
 kotlin-coroutines = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlin-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version.ref = "kotlin" }
 kotlin-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 
-junit-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junit" }
-junit-engine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junit" }
-junit-params = { group = "org.junit.jupiter", name = "junit-jupiter-params", version.ref = "junit" }
-junit-vintage = { group = "org.junit.vintage", name = "junit-vintage-engine", version.ref = "junit" }
+junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
+junit-bom = { group = "org.junit", name = "junit-bom", version.ref = "junit5" }
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher" }
+junit-vintage = { group = "org.junit.vintage", name = "junit-vintage-engine" }
 
 testing-robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 testing-mockito = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
@@ -146,6 +149,12 @@ androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", versi
 androidx-compose-animation = { group = "androidx.compose.animation", name = "animation" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
 androidx-compose-material = { group = "androidx.compose.material", name = "material" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-compose-material3-adaptive = { group = "androidx.compose.material3.adaptive", name = "adaptive" }
+androidx-compose-material3-adaptivelayout = { group = "androidx.compose.material3.adaptive", name = "adaptive-layout" }
+androidx-compose-material3-adaptivenavigation = { group = "androidx.compose.material3.adaptive", name = "adaptive-navigation" }
+androidx-compose-material3-adaptivenavigationsuite = { group = "androidx.compose.material3", name = "material3-adaptive-navigation-suite" }
+androidx-compose-material3-windowsizeclass = { group = "androidx.compose.material3", name = "material3-window-size-class" }
 androidx-compose-material-icons = { group = "androidx.compose.material", name = "material-icons-core" }
 androidx-compose-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata" }
 androidx-compose-runtime-saveable = { group = "androidx.compose.runtime", name = "runtime-saveable" }
@@ -166,6 +175,7 @@ androidx-datastore = { group = "androidx.datastore", name = "datastore", version
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 androidx-drawerlayout = { group = "androidx.drawerlayout", name = "drawerlayout", version.ref = "drawerlayout" }
 androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
+androidx-fragment-compose = { group = "androidx.fragment", name = "fragment-compose", version.ref = "fragment" }
 androidx-lifecycle-common = { group = "androidx.lifecycle", name = "lifecycle-common", version.ref = "lifecycle" }
 androidx-lifecycle-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-lifecycle-livedata = { group = "androidx.lifecycle", name = "lifecycle-livedata-ktx", version.ref = "lifecycle" }

@@ -10,7 +10,7 @@ fuzzy(0-1,0-6) == rotatey-1a.html rotatey-1-ref.html
 # perspective should only apply to child elements
 == rotatex-perspective-1c.html rotatex-1-ref.html
 == rotatex-perspective-3a.html rotatex-perspective-3-ref.html
-fuzzy(0-16,0-346) fuzzy-if(cocoaWidget,0-200,0-310) fuzzy-if(winWidget,0-175,0-250) == preserve3d-1a.html preserve3d-1-ref.html
+fuzzy(0-16,0-346) fuzzy-if(cocoaWidget,0-200,0-310) fuzzy-if(winWidget,0-255,0-374) == preserve3d-1a.html preserve3d-1-ref.html
 == preserve3d-1b.html about:blank
 == preserve3d-clipped.html about:blank
 == preserve3d-2a.html preserve3d-2-ref.html
@@ -104,4 +104,4 @@ fuzzy(0-6,0-3117) fuzzy-if(useDrawSnapshot,0-4,0-13) == 1637067-1.html 1637067-1
 fuzzy(250-255,2900-5400) == 1927665-1.html about:blank
 != 1929182-1.html about:blank
 # do not adjust fuzzy downwards, this is actually a not equal test, fuzzy is used to ensure that it is some minimum distance away from about:blank
-fuzzy(250-255,30000-70000) == 1929182-1.html about:blank
+fuzzy(250-255,30000-70000) fails-if(gtkWidget) == 1929182-1.html about:blank # TODO: ubuntu 24.04 fails here

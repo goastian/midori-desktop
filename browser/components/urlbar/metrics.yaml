@@ -106,6 +106,9 @@ urlbar:
           `clipboard`,
           `fxsuggest_data_sharing_opt_in`,
           `history`,
+          `history_semantic`,
+          `history_semantic_serp`,
+          `history_serp`,
           `intervention_clear`,
           `intervention_refresh`,
           `intervention_unknown`,
@@ -137,6 +140,9 @@ urlbar:
           `search_suggest`,
           `search_suggest_rich`,
           `tab`,
+          `tab_semantic`,
+          `tab_semantic_serp`,
+          `tab_serp`,
           `tab_to_search`,
           `tip_dismissal_acknowledgment`,
           `tip_onboard`,
@@ -157,6 +163,13 @@ urlbar:
           `refresh`, `restart`, `savepdf`, `screenshot`, `settings`, `tabswitch`,
           `themes`, `update`, `viewsource`.
           If there is no action shown in a position that is denoted with `none`.
+        type: string
+      available_semantic_sources:
+        description: >
+          Comma separated list of semantic sources that were available to search.
+          This indicates general availability of the source, not whether it was
+          queried.
+          The possible values are: `history`, `none`.
         type: string
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1800414
@@ -343,6 +356,9 @@ urlbar:
           `experimental_addon`,
           `fxsuggest_data_sharing_opt_in`,
           `history`,
+          `history_semantic`,
+          `history_semantic_serp`,
+          `history_serp`,
           `input_field`,
           `intervention_clear`,
           `intervention_refresh`,
@@ -377,6 +393,9 @@ urlbar:
           `search_suggest_rich`,
           `site_specific_contextual_search`,
           `tab`,
+          `tab_semantic`,
+          `tab_semantic_serp`,
+          `tab_serp`,
           `tab_to_search`,
           `tip_dismissal_acknowledgment`,
           `tip_onboard`,
@@ -464,6 +483,9 @@ urlbar:
           `clipboard`,
           `fxsuggest_data_sharing_opt_in`,
           `history`,
+          `history_semantic`,
+          `history_semantic_serp`,
+          `history_serp`,
           `intervention_clear`,
           `intervention_refresh`,
           `intervention_unknown`,
@@ -495,6 +517,9 @@ urlbar:
           `search_suggest`,
           `search_suggest_rich`,
           `tab`,
+          `tab_semantic`,
+          `tab_semantic_serp`,
+          `tab_serp`,
           `tab_to_search`,
           `tip_dismissal_acknowledgment`,
           `tip_onboard`,
@@ -515,6 +540,13 @@ urlbar:
           `refresh`, `restart`, `savepdf`, `screenshot`, `settings`, `tabswitch`,
           `themes`, `update`, `viewsource`.
           If there is no action shown in a position that is denoted with `none`.
+        type: string
+      available_semantic_sources:
+        description: >
+          Comma separated list of semantic sources that were available to search.
+          This indicates general availability of the source, not whether it was
+          queried.
+          The possible values are: `history`, `none`.
         type: string
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1797265

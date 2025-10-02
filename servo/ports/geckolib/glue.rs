@@ -16,6 +16,7 @@ use selectors::matching::{ElementSelectorFlags, MatchingForInvalidation, Selecto
 use selectors::{Element, OpaqueElement};
 use servo_arc::{Arc, ArcBorrow};
 use smallvec::SmallVec;
+use style::values::generics::Optional;
 use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::iter;
@@ -66,6 +67,7 @@ use style::gecko_bindings::structs::nsCSSPropertyID;
 use style::gecko_bindings::structs::nsChangeHint;
 use style::gecko_bindings::structs::nsCompatibility;
 use style::gecko_bindings::structs::nsresult;
+use style::gecko_bindings::structs::AnchorPosOffsetResolutionParams;
 use style::gecko_bindings::structs::CallerType;
 use style::gecko_bindings::structs::CompositeOperation;
 use style::gecko_bindings::structs::DeclarationBlockMutationClosure;
@@ -151,7 +153,6 @@ use style::values::computed::font::{
     FamilyName, FontFamily, FontFamilyList, FontStretch, FontStyle, FontWeight, GenericFontFamily,
 };
 use style::values::computed::length::AnchorSizeFunction;
-use style::values::computed::length_percentage::CalcAnchorFunctionResolutionInfo;
 use style::values::computed::position::AnchorFunction;
 use style::values::computed::{self, ContentVisibility, Context, PositionProperty, ToComputedValue};
 use style::values::distance::ComputeSquaredDistance;
@@ -4448,11 +4449,29 @@ pub extern "C" fn Servo_ComputedValues_SpecifiesAnimationsOrTransitions(
     ui.specifies_animations() || ui.specifies_transitions()
 }
 
+#[repr(u8)]
+pub enum MatchingDeclarationBlockOrigin {
+    UserAgent,
+    User,
+    Author,
+    PresHints,
+    Animations,
+    Transitions,
+    SMIL,
+}
+
+#[repr(C)]
+pub struct MatchingDeclarationBlock {
+    block: *const LockedDeclarationBlock,
+    origin: MatchingDeclarationBlockOrigin,
+}
+
 #[no_mangle]
 pub extern "C" fn Servo_ComputedValues_GetMatchingDeclarations(
     values: &ComputedValues,
-    rules: &mut nsTArray<*const LockedDeclarationBlock>,
+    rules: &mut nsTArray<MatchingDeclarationBlock>,
 ) {
+    use style::rule_tree::CascadeLevel;
     let rule_node = match values.rules {
         Some(ref r) => r,
         None => return,
@@ -4469,7 +4488,20 @@ pub extern "C" fn Servo_ComputedValues_GetMatchingDeclarations(
 
         let Some(source) = node.style_source() else { continue };
 
-        rules.push(&**source.get());
+        let origin = match node.cascade_level() {
+            CascadeLevel::UANormal | CascadeLevel::UAImportant => MatchingDeclarationBlockOrigin::UserAgent,
+            CascadeLevel::UserNormal | CascadeLevel::UserImportant => MatchingDeclarationBlockOrigin::User,
+            CascadeLevel::AuthorNormal { .. } | CascadeLevel::AuthorImportant { .. }=> MatchingDeclarationBlockOrigin::Author,
+            CascadeLevel::PresHints => MatchingDeclarationBlockOrigin::PresHints,
+            CascadeLevel::Animations => MatchingDeclarationBlockOrigin::Animations,
+            CascadeLevel::Transitions => MatchingDeclarationBlockOrigin::Transitions,
+            CascadeLevel::SMILOverride => MatchingDeclarationBlockOrigin::SMIL,
+        };
+
+        rules.push(MatchingDeclarationBlock {
+            block: &**source.get(),
+            origin,
+        });
     }
 }
 
@@ -4793,6 +4825,35 @@ pub unsafe extern "C" fn Servo_ParseStyleAttribute(
         rule_type,
     )))
     .into()
+}
+
+#[no_mangle]
+pub extern "C" fn Servo_ParsePseudoElement(
+    data: &nsAString,
+    request: &mut structs::PseudoStyleRequest, /* output */
+) -> bool {
+    let string = data.to_string();
+    let mut input = ParserInput::new(&string);
+    let mut parser = Parser::new(&mut input);
+    // This is unspecced, but we'd like to match other browsers' behavior, so we reject the
+    // preceding whitespaces and trailing whitespaces.
+    // FIXME: Bug 1845712. Figure out if it is necessary to reject preceding and trailing
+    // whitespaces.
+    if parser.try_parse(|i| i.expect_whitespace()).is_ok() {
+        return false;
+    }
+    let Ok(pseudo) = PseudoElement::parse_ignore_enabled_state(&mut parser) else { return false };
+    // The trailing tokens are not allowed, including whitespaces.
+    if parser.next_including_whitespace().is_ok() {
+        return false;
+    }
+
+    let (pseudo_type, name) = pseudo.pseudo_type_and_argument();
+    let name_ptr = name.map_or(std::ptr::null_mut(), |name| name.as_ptr());
+    request.mType = pseudo_type;
+    request.mIdentifier = unsafe { RefPtr::new(name_ptr).forget() };
+
+    true
 }
 
 #[no_mangle]
@@ -6243,7 +6304,7 @@ pub extern "C" fn Servo_ResolveStyleLazily(
     );
 
     let matching_fn = |pseudo_selector: &PseudoElement| match pseudo_element {
-        Some(ref p) => p.matches(pseudo_selector),
+        Some(ref p) => p.matches(pseudo_selector, &element),
         _ => false,
     };
 
@@ -8462,14 +8523,11 @@ pub enum CalcAnchorPositioningFunctionResolution {
 #[no_mangle]
 pub extern "C" fn Servo_ResolveAnchorFunctionsInCalcPercentage(
     calc: &computed::length_percentage::CalcLengthPercentage,
-    side: Option<&PhysicalSide>,
-    position_property: PositionProperty,
+    prop_side: Option<&PhysicalSide>,
+    params: &AnchorPosOffsetResolutionParams,
     out: &mut CalcAnchorPositioningFunctionResolution,
 ) {
-    let resolved = calc.resolve_anchor(CalcAnchorFunctionResolutionInfo {
-        side: side.copied(),
-        position_property,
-    });
+    let resolved = calc.resolve_anchor(prop_side.copied(), params);
 
     match resolved {
         Err(()) => *out = CalcAnchorPositioningFunctionResolution::Invalid,
@@ -9880,14 +9938,35 @@ impl AnchorPositioningFunctionResolution {
     }
 }
 
+fn resolve_anchor_fallback(
+    fallback: &Optional<computed::LengthPercentage>
+) -> AnchorPositioningFunctionResolution {
+    fallback.as_ref().map_or(AnchorPositioningFunctionResolution::Invalid,
+        |fb| AnchorPositioningFunctionResolution::ResolvedReference(fb as *const _),
+    )
+}
+
 #[no_mangle]
 pub extern "C" fn Servo_ResolveAnchorFunction(
     func: &AnchorFunction,
-    side: PhysicalSide,
-    prop: PositionProperty,
+    params: &AnchorPosOffsetResolutionParams,
+    prop_side: PhysicalSide,
     out: &mut AnchorPositioningFunctionResolution,
 ) {
-    *out = AnchorPositioningFunctionResolution::new(func.resolve(side, prop));
+    if !func.valid_for(prop_side, params.mBaseParams.mPosition) {
+        *out = resolve_anchor_fallback(&func.fallback);
+        return;
+    }
+    let result = AnchorFunction::resolve(
+        &func.target_element,
+        &func.side,
+        prop_side,
+        params
+    );
+    *out = match result {
+        Ok(l) => AnchorPositioningFunctionResolution::Resolved(computed::LengthPercentage::new_length(l)),
+        Err(()) => resolve_anchor_fallback(&func.fallback),
+    };
 }
 
 #[no_mangle]

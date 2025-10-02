@@ -478,17 +478,13 @@ static MOZ_ALWAYS_INLINE double CanonicalizeNaN(double d) {
  *   through a particular value. For example, if cx->exception has a magic
  *   value, the reason must be JS_GENERATOR_CLOSING.
  *
- * - The JS::Value operations are preferred.  The JSVAL_* operations remain for
- *   compatibility; they may be removed at some point.  These operations mostly
- *   provide similar functionality.  But there are a few key differences.  One
- *   is that JS::Value gives null a separate type.
- *   Also, to help prevent mistakenly boxing a nullable JSObject* as an object,
+ * - To help prevent mistakenly boxing a nullable JSObject* as an object,
  *   Value::setObject takes a JSObject&. (Conversely, Value::toObject returns a
  *   JSObject&.)  A convenience member Value::setObjectOrNull is provided.
  *
- * - Note that JS::Value is 8 bytes on 32 and 64-bit architectures. Thus, on
- *   32-bit user code should avoid copying jsval/JS::Value as much as possible,
- *   preferring to pass by const Value&.
+ * - Note that JS::Value is 8 bytes on 32 and 64-bit architectures. Because most
+ *   of our users are now on 64-bit platforms, code should prefer passing
+ *   JS::Value by value instead of |const Value&|.
  *
  * Spectre mitigations
  * ===================
@@ -504,7 +500,7 @@ static MOZ_ALWAYS_INLINE double CanonicalizeNaN(double d) {
  *   conditional move (not speculated) to zero the payload register if the type
  *   doesn't match.
  */
-class alignas(8) Value {
+class Value {
  private:
   uint64_t asBits_;
 
@@ -1061,7 +1057,7 @@ class alignas(8) Value {
   void dumpFields(js::JSONPrinter& json) const;
   void dumpStringContent(js::GenericPrinter& out) const;
 #endif
-} JS_HAZ_GC_POINTER MOZ_NON_PARAM;
+} JS_HAZ_GC_POINTER;
 
 static_assert(sizeof(Value) == 8,
               "Value size must leave three tag bits, be a binary power, and "

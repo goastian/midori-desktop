@@ -14,10 +14,14 @@ packages = [
     "core-graphics",
     # requires a new version of font-loader, see https://github.com/matprec/rust-font-loader/pull/36
     "core-text",
+    # derive_more 0.99 is required by glsl-lang
+    "derive_more",
     # requires updating winit to v0.28 and glutin to v0.30 (to get rid of cocoa v0.24)
     # AND also requires bumping the core-graphics dependency of winit (not present in v0.28)
     "foreign-types",
     "foreign-types-shared",
+    # Several crates depend on 0.2.6, and jobserver depends on 0.3.3.
+    "getrandom",
     # Internal dependencies of glsl-lang (only used in wrench) require different versions.
     "hashbrown",
     # glsl requires 5.1, and xcursor (required by winit) requires 7.1.

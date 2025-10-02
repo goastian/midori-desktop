@@ -15,46 +15,29 @@
     align-items: center;
     justify-content: center;
     position: absolute;
-    inset-inline-start: var(--space-xlarge);
-    inset-block-start: var(--space-xlarge);
+    inset-inline-start: auto;
+    inset-block-start: var(--space-xxlarge);
+    // On smallest break point visible, make additional room for weather widget
+    inset-inline-end: var(--space-medium);
     margin-block-start: 0;
     margin-inline-start: 0;
     z-index: 1;
   }
 
-
-  // Variant B uses 40px spacing
-  .layout-variant-b & {
-    @media (min-width: $break-point-medium) {
-      inset-block-start: 40px;
-      inset-inline-start: auto;
-      // On smallest break point visible, make additional room for weather widget
-      inset-inline-end: var(--space-medium);
-    }
-
-    @media (min-width: $break-point-layout-variant) {
-      // Reset horizontal spacing back to 40px
-      inset-inline-end: 40px;
-    }
+  @media (min-width: $break-point-layout-variant) {
+    // Reset horizontal spacing back to 32px
+    inset-inline-end: var(--space-xxlarge);
   }
 
-  // Variant B / No search bar: delay showing the mobile icon until the next breakpoint
-  .layout-variant-b.no-search & {
+  // No search bar: delay showing the mobile icon until the next breakpoint
+  .no-search & {
     display: none;
 
     @media (min-width: $break-point-large) {
       display: flex;
-      inset-block-start: 40px;
+      inset-block-start: var(--space-xxlarge);
       inset-inline-start: auto;
-      inset-inline-end: 40px;
-    }
-  }
-
-  // Variant A uses 24px spacing
-  .layout-variant-a & {
-    @media (min-width: $break-point-medium) {
-      inset-inline-start: 24px;
-      inset-block-start: 24px;
+      inset-inline-end: var(--space-xxlarge);
     }
   }
 }

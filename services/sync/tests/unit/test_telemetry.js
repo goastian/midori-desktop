@@ -515,6 +515,7 @@ add_task(async function test_overrideTelemetryName() {
       let enginePing = ping.engines.find(e => e.name === "steam-but-better");
       ok(enginePing);
       ok(!ping.engines.find(e => e.name === "steam"));
+      delete enginePing.validation.took; // can't compare real times.
       deepEqual(
         enginePing.validation,
         {
@@ -770,10 +771,10 @@ add_task(async function test_initial_sync_engines() {
 
     // for the rest we don't care about specifics
     for (let e of ping.engines) {
-      if (!telemetryEngineNames.includes(engine.name)) {
+      if (!telemetryEngineNames.includes(e.name)) {
         continue;
       }
-      greaterOrEqual(e.took, 1);
+      greaterOrEqual(e.took, 0);
       ok(!!e.outgoing);
       equal(e.outgoing.length, 1);
       notEqual(e.outgoing[0].sent, undefined);

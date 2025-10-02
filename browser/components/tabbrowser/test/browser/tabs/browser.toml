@@ -37,7 +37,10 @@ https_first_disabled = true
 
 ["browser_bfcache_exemption_about_pages.js"]
 run-if = ["fission"]
-skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug"] # Bug 1934436
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # Bug 1934436
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug", # Bug 1934436
+]
 
 ["browser_blank_tab_label.js"]
 tags = "vertical-tabs"
@@ -111,6 +114,9 @@ tags = "vertical-tabs"
 
 ["browser_lastSeenActive.js"]
 tags = "vertical-tabs"
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt", # Bug 1889774
+]
 
 ["browser_lazy_tab_browser_events.js"]
 tags = "vertical-tabs"
@@ -205,6 +211,10 @@ tags = "vertical-tabs"
 
 ["browser_multiselect_tabs_close_using_shortcuts.js"]
 tags = "vertical-tabs"
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt && swgl", # Bug 1970731
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt && socketprocess_networking", # Bug 1970731
+]
 
 ["browser_multiselect_tabs_copy_through_drag_and_drop.js"]
 tags = "vertical-tabs"
@@ -255,6 +265,7 @@ tags = "vertical-tabs"
 ["browser_multiselect_tabs_unload_telemetry.js"]
 skip-if = [
   "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt", # Bug 1929417
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 1935293
 ]
 tags = "vertical-tabs"
 
@@ -326,6 +337,7 @@ support-files = ["file_new_tab_page.html"]
 tags = "vertical-tabs"
 skip-if = [
   "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # Bug 1648512
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && socketprocess_networking", # Bug 1648512
 ]
 
 ["browser_openURI_background.js"]
@@ -495,17 +507,11 @@ skip-if = ["win11_2009 && bits == 32 && !debug"] # high frequency win7 intermitt
 support-files = ["browser_tab_dragdrop2_frame1.xhtml"]
 tags = "vertical-tabs"
 
+["browser_tab_group_menu.js"]
+tags = "vertical-tabs"
+
 ["browser_tab_groups.js"]
 support-files = ["file_new_tab_page.html"]
-skip-if = [
-  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug 1920294
-  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt", # Bug 1929417 (secondary)
-  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && vertical_tab", # Bug 1928146
-  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && vertical_tab", # Bug 1928146
-  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && vertical_tab", # Bug 1928146
-  "win11_2009 && debug", # Bug 1928146 - frequent leaked window
-  "os == 'win' && os_version == '11.26100' && debug", # Bug 1928146
-]
 tags = "vertical-tabs"
 
 ["browser_tab_groups_a11y.js"]
@@ -514,9 +520,27 @@ tags = "vertical-tabs"
 ["browser_tab_groups_keyboard_focus.js"]
 tags = "vertical-tabs"
 
+["browser_tab_groups_tabContextMenu.js"]
+tags = "vertical-tabs"
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt", # Bug 1947600
+]
+
 ["browser_tab_groups_tab_interactions_telemetry.js"]
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt && swgl", # Bug 1968371
+]
 
 ["browser_tab_groups_telemetry.js"]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # Bug 1961033
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt", # Bug 1961033
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan && swgl", # Bug 1961033
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt", # Bug 1961033
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && opt", # Bug 1961033
+  "os == 'mac' && os_version == '15.00' && processor == 'aarch64'", # Bug 1961033
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && opt", # Bug 1961033
+]
 
 ["browser_tab_label_during_reload.js"]
 tags = "vertical-tabs"
@@ -563,6 +587,7 @@ skip-if = [
 ["browser_tab_tooltips.js"]
 tags = "vertical-tabs"
 skip-if = [
+  "os == 'linux'&& os_version == '24.04' && processor == 'x86_64' && display == 'x11' && tsan", # Bug 1775653
   "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && vertical_tab", # Bug 1928146
   "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && vertical_tab", # Bug 1928146
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && vertical_tab", # Bug 1928146
@@ -587,6 +612,9 @@ tags = "vertical-tabs"
 
 ["browser_tabswitch_contextmenu.js"]
 tags = "vertical-tabs"
+skip-if = [
+  "os == 'linux'&& os_version == '24.04' && processor == 'x86_64' && display == 'x11' && vertical_tab", # Bug 1971008
+]
 
 ["browser_tabswitch_select.js"]
 support-files = ["open_window_in_new_tab.html"]

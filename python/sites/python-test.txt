@@ -1,4 +1,4 @@
-requires-python:>=3.8
+requires-python:>=3.9
 pypi:Flask==2.1.3
 # We need sphinx to avoid some rstcheck errors and warnings
 pypi:Sphinx==7.1.2
@@ -9,8 +9,8 @@ pypi:dataclasses==0.6
 pypi:docutils==0.18.1
 pypi:fluent.pygments==1.0
 pypi:imagesize==1.4.1
-pypi:pytest==7.0.1
 pypi:pytest-mock==3.12.0
+pypi:pytest==7.0.1
 pypi:pytz==2022.7.1
 pypi:rstcheck==6.2.4
 pypi:ruff==0.9.0
@@ -18,7 +18,6 @@ pypi:snowballstemmer==2.2.0
 pypi:sphinxcontrib-applehelp==1.0.4
 pypi:sphinxcontrib-htmlhelp==2.0.1
 pypi:sphinxcontrib-mermaid==1.0.0
-pypi:typed-ast==1.4.2; python_version < '3.8'
 pypi:werkzeug==2.1.2
 pypi:zstandard==0.23.0
 vendored:testing/web-platform/tests/tools/third_party/h2/src
@@ -29,7 +28,6 @@ vendored:testing/web-platform/tests/tools/third_party/pywebsocket3
 vendored:testing/web-platform/tests/tools/third_party/webencodings
 vendored:testing/web-platform/tests/tools/wptrunner
 vendored:testing/web-platform/tests/tools/wptserve
-vendored:third_party/python/PyYAML/lib/
 vendored:third_party/python/aiohappyeyeballs
 vendored:third_party/python/aiohttp
 vendored:third_party/python/aiosignal
@@ -52,6 +50,7 @@ vendored:third_party/python/markdown_it_py
 vendored:third_party/python/mdurl
 vendored:third_party/python/mohawk
 vendored:third_party/python/mozilla_repo_urls
+vendored:third_party/python/mozilla_taskgraph
 vendored:third_party/python/multidict
 vendored:third_party/python/pathspec
 vendored:third_party/python/ply
@@ -62,6 +61,7 @@ vendored:third_party/python/pygments
 vendored:third_party/python/pylru
 vendored:third_party/python/python_dateutil
 vendored:third_party/python/python_slugify
+vendored:third_party/python/pyyaml/lib/
 vendored:third_party/python/redo
 vendored:third_party/python/requests_unixsocket
 vendored:third_party/python/responses

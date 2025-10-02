@@ -2986,6 +2986,9 @@ void gfxPlatform::InitWebRenderConfig() {
   gfxVars::SetUseWebRenderScissoredCacheClears(gfx::gfxConfig::IsEnabled(
       gfx::Feature::WEBRENDER_SCISSORED_CACHE_CLEARS));
 
+  gfxVars::SetAllowGLNorm16Textures(
+      gfx::gfxConfig::IsEnabled(gfx::Feature::GL_NORM16_TEXTURES));
+
   // The RemoveShaderCacheFromDiskIfNecessary() needs to be called after
   // WebRenderConfig initialization.
   gfxUtils::RemoveShaderCacheFromDiskIfNecessary();
@@ -3006,52 +3009,55 @@ void gfxPlatform::InitHardwareVideoConfig() {
   nsCString message;
   nsCString failureId;
 
-  FeatureState& featureVP8 = gfxConfig::GetFeature(Feature::VP8_HW_DECODE);
-  featureVP8.EnableByDefault();
+#define CODEC_HW_FEATURE_SETUP(name)                                         \
+  FeatureState& featureDec##name =                                           \
+      gfxConfig::GetFeature(Feature::name##_HW_DECODE);                      \
+  featureDec##name.EnableByDefault();                                        \
+  if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_##name##_HW_DECODE, &message, \
+                           failureId)) {                                     \
+    featureDec##name.Disable(FeatureStatus::Blocklisted, message.get(),      \
+                             failureId);                                     \
+  }                                                                          \
+  gfxVars::SetUse##name##HwDecode(featureDec##name.IsEnabled());             \
+  FeatureState& featureEnc##name =                                           \
+      gfxConfig::GetFeature(Feature::name##_HW_ENCODE);                      \
+  featureEnc##name.EnableByDefault();                                        \
+  if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_##name##_HW_ENCODE, &message, \
+                           failureId)) {                                     \
+    featureEnc##name.Disable(FeatureStatus::Blocklisted, message.get(),      \
+                             failureId);                                     \
+  }                                                                          \
+  gfxVars::SetUse##name##HwEncode(featureEnc##name.IsEnabled());
 
-  if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_VP8_HW_DECODE, &message,
-                           failureId)) {
-    featureVP8.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
-  }
-  gfxVars::SetUseVP8HwDecode(featureVP8.IsEnabled());
+  CODEC_HW_FEATURE_SETUP(VP8)
+  CODEC_HW_FEATURE_SETUP(VP9)
 
-  FeatureState& featureVP9 = gfxConfig::GetFeature(Feature::VP9_HW_DECODE);
-  featureVP9.EnableByDefault();
-
-  if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_VP9_HW_DECODE, &message,
-                           failureId)) {
-    featureVP9.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
-  }
-  gfxVars::SetUseVP9HwDecode(featureVP9.IsEnabled());
-
-  // H264/AV1/HEVC_HW_DECODE are used on Linux only right now.
+  // H264/AV1/HEVC_HW_DECODE/ENCODE are used on Linux only right now.
 #ifdef MOZ_WIDGET_GTK
-  FeatureState& featureH264 = gfxConfig::GetFeature(Feature::H264_HW_DECODE);
-  featureH264.EnableByDefault();
+  CODEC_HW_FEATURE_SETUP(H264)
+  CODEC_HW_FEATURE_SETUP(HEVC)
+  CODEC_HW_FEATURE_SETUP(AV1)
+#endif
 
-  if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_H264_HW_DECODE, &message,
-                           failureId)) {
-    featureH264.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
+#undef CODEC_HW_FEATURE_SETUP
+
+#ifdef MOZ_WMF_CDM
+  FeatureState& featureHWDRM = gfxConfig::GetFeature(Feature::WMF_HW_DRM);
+  featureHWDRM.EnableByDefault();
+  if (StaticPrefs::media_wmf_media_engine_enabled() != 1 &&
+      StaticPrefs::media_wmf_media_engine_enabled() != 2) {
+    featureHWDRM.UserDisable(
+        "Force disabled by 'media.wmf.media-engine.enabled'",
+        "FEATURE_FAILURE_USER_FORCE_DISABLED"_ns);
+  } else if (StaticPrefs::media_wmf_media_engine_bypass_gfx_blocklist()) {
+    featureHWDRM.UserForceEnable(
+        "Force enabled by "
+        "'media.wmf.media-engine.bypass-gfx-blocklist'");
+  } else if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_WMF_HW_DRM, &message,
+                                  failureId)) {
+    featureHWDRM.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
   }
-  gfxVars::SetUseH264HwDecode(featureH264.IsEnabled());
-
-  FeatureState& featureAV1 = gfxConfig::GetFeature(Feature::AV1_HW_DECODE);
-  featureAV1.EnableByDefault();
-
-  if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_AV1_HW_DECODE, &message,
-                           failureId)) {
-    featureAV1.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
-  }
-  gfxVars::SetUseAV1HwDecode(featureAV1.IsEnabled());
-
-  FeatureState& featureHEVC = gfxConfig::GetFeature(Feature::HEVC_HW_DECODE);
-  featureHEVC.EnableByDefault();
-
-  if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_HEVC_HW_DECODE, &message,
-                           failureId)) {
-    featureHEVC.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
-  }
-  gfxVars::SetUseHEVCHwDecode(featureHEVC.IsEnabled());
+  gfxVars::SetUseWMFHWDWM(featureHWDRM.IsEnabled());
 #endif
 }
 
@@ -3207,12 +3213,11 @@ void gfxPlatform::InitWebGPUConfig() {
 
   // When this condition changes, be sure to update the `run-if`
   // conditions in `dom/webgpu/tests/mochitest/*.toml` accordingly.
-#if !(defined(NIGHTLY_BUILD) || \
-      (defined(XP_WIN) && defined(EARLY_BETA_OR_EARLIER)))
+#if !(defined(NIGHTLY_BUILD) || defined(XP_WIN))
   feature.ForceDisable(
       FeatureStatus::Blocked,
-      "WebGPU cannot be enabled unless in Nightly, or Early Beta on Windows.",
-      "WEBGPU_DISABLE_RELEASE_OR_NON_WINDOWS_EARLY_BETA"_ns);
+      "WebGPU cannot be enabled unless in Nightly or on Windows.",
+      "WEBGPU_DISABLE_RELEASE_OR_NON_WINDOWS"_ns);
 #endif
 
   gfxVars::SetAllowWebGPU(feature.IsEnabled());

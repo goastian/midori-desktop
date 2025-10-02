@@ -79,6 +79,20 @@ prefFlips:
     uri: resource://nimbus/schemas/PrefFlipsFeature.schema.json
     path: toolkit/components/nimbus/schemas/PrefFlipsFeature.schema.json
 
+# TODO(bug 1972426): Remove this feature.
+nimbusStore:
+  description: Configuration for the Nimbus ExperimentStore.
+  owner: beth@mozilla.com
+  hasExposure: false
+  variables:
+    dbEnabled:
+      type: boolean
+      description: >
+        If enabled, the NimbusEnrollments database table will be used as the
+        primary enrollment store.
+      setPref:
+        branch: user
+        pref: nimbus.profilesdatastoreservice.read.enabled
 
 search:
   description: Search service related features.
@@ -205,6 +219,12 @@ urlbar:
         will be able to click the "Show less frequently" command for addon
         suggestions. If undefined or zero, the user will be able to click the
         command without any limit.
+    ampFeatureGate:
+      type: boolean
+      fallbackPref: browser.urlbar.amp.featureGate
+      description: >-
+        Feature gate that controls whether all aspects of the AMP suggestions
+        feature are exposed to the user.
     ampMatchingStrategy:
       type: int
       fallbackPref: browser.urlbar.quicksuggest.ampMatchingStrategy
@@ -407,6 +427,12 @@ urlbar:
       type: boolean
       fallbackPref: browser.urlbar.quicksuggest.impressionCaps.nonSponsoredEnabled
       description: Whether non-sponsored suggestions are subject to impression frequency caps. If false, non-sponsored suggestions can be shown an unlimited number of times over any given period. If true, non-sponsored suggestion impressions will be subject to the caps in the remote settings configuration.
+    quickSuggestMlInitDelaySeconds:
+      type: int
+      fallbackPref: browser.urlbar.quicksuggest.mlInitDelaySeconds
+      description: >-
+        How long to wait in seconds after startup before initializing the
+        Suggest ML backend.
     quickSuggestMlEnabled:
       type: boolean
       fallbackPref: browser.urlbar.quicksuggest.mlEnabled
@@ -510,7 +536,7 @@ urlbar:
         pref: places.semanticHistory.distanceThreshold
       description: >-
         semantic similarity distance threshold (0.0 - 1.0)
-        defaulted at 0.75.
+        defaulted at 0.6.
     suggestSemanticHistoryMinLength:
       type: int
       setPref:
@@ -527,6 +553,14 @@ urlbar:
       description: >-
         Whether or not to show calculator results when a user types a valid
         calculation string into the urlbar.
+    unitConversionEnabled:
+      type: boolean
+      setPref:
+        branch: user
+        pref: browser.urlbar.unitConversion.enabled
+      description: >-
+        Whether or not to show unit conversion results when a user types a
+        valid unit conversion string into the urlbar.
     weatherFeatureGate:
       type: boolean
       fallbackPref: browser.urlbar.weather.featureGate
@@ -557,6 +591,12 @@ urlbar:
         0: (default) Simplest UI with current temperature and location
         1: Simpler UI, adds current conditions, high/low, and URL
         2: Full UI, adds forecast
+    wikipediaFeatureGate:
+      type: boolean
+      fallbackPref: browser.urlbar.wikipedia.featureGate
+      description: >-
+        Feature gate that controls whether all aspects of the Wikipedia
+        suggestions feature (part of Firefox Suggest) are exposed to the user.
     yelpMinKeywordLength:
       type: int
       description: >-
@@ -1023,27 +1063,6 @@ newtabInlineTopicSelection:
       description: >-
         Enables inline topic selection
 
-newtabLayoutExperiment:
-  description: >-
-    Change the default layout of new tab by adjusting sizes and spacing of elements.
-  owner: achurchwell@mozilla.com, sdowne@mozilla.com
-  hasExposure: false
-  variables:
-    variantA:
-      type: boolean
-      setPref:
-        branch: user
-        pref: browser.newtabpage.activity-stream.newtabLayouts.variant-a
-      description: >-
-        Variant A in layouts experiment.
-    variantB:
-      type: boolean
-      setPref:
-        branch: user
-        pref: browser.newtabpage.activity-stream.newtabLayouts.variant-b
-      description: >-
-        Variant B in layouts experiment.
-
 newtabCustomWallpaper:
   description: >-
     Modify the wallpaper selection feature to support user-uploaded custom wallpaper images
@@ -1250,6 +1269,32 @@ newtabAdsReporting:
       description: >-
         Enable reporting for ads
 
+newtabSmartShortcuts:
+  description: about:newtab personalized shortcuts
+  owner: rhamoui@mozilla.com, sdowne@mozilla.com
+  hasExposure: false
+  variables:
+    enabled:
+      type: boolean
+      description: >-
+        Enable personalized shortcuts
+    over_sample_multiplier:
+      type: int
+      description: >-
+        Controls how many multiples of the frecent we sample before reranking
+    positive_prior:
+      type: int
+      description: >-
+        Alpha in shortcut thompson sampling, exploit faster
+    negative_prior:
+      type: int
+      description: >-
+        Beta in shortcut thompson sampling, explore longer
+    thom_weight:
+      type: int
+      description: >-
+        Percentage weight of thompson sampling relative to frecency
+
 newTabSectionsExperiment:
   description: about:newtab section UI update
   owner: nbarrett@mozilla.com, mcrawford@mozilla.com
@@ -1383,7 +1428,7 @@ newtabPrivatePing:
       type: boolean
       setPref:
         branch: user
-        pref: browser.newtabpage.activity-stream.telemetry.privatePing.inferred.enabled
+        pref: browser.newtabpage.activity-stream.telemetry.privatePing.inferredInterests.enabled
       description: >-
         Includes a differentially private intrest vector of general topical interests based on New Tab clicks. Only sent when user has enabled personalization.
     maxSubmissionDelayMs:
@@ -1416,7 +1461,7 @@ newtabMerinoOhttp:
       type: boolean
       setPref:
         branch: user
-        pref: browser.newtabpage.activity-stream.discoverystrean.merino-provider.ohttp.enabled
+        pref: browser.newtabpage.activity-stream.discoverystream.merino-provider.ohttp.enabled
       description: >-
         Enables using OHTTP for merino content requests
 
@@ -1445,6 +1490,36 @@ newtabRefinedCardsLayout:
         pref: browser.newtabpage.activity-stream.discoverystream.refinedCardsLayout.enabled
       description: Enables the refined cards layout for newtab
 
+newtabTrendingSearchWidget:
+  description: >-
+      Adds trending search results widget to new tab
+  owner: nbarrett@mozilla.com
+  hasExposure: false
+  variables:
+    enabled:
+      type: boolean
+      setPref:
+        branch: user
+        pref: browser.newtabpage.activity-stream.system.trendingSearch.enabled
+      description: Enables the refined cards layout for newtab
+    variant:
+      type: string
+      setPref:
+        branch: user
+        pref: browser.newtabpage.activity-stream.trendingSearch.variant
+      description: Determines the layout variant for the trending search widget
+
+newtabPublisherFavicons:
+  description: Enabled publihser favicons on cards in newtab
+  owner: nbarrett@mozilla.com
+  hasExposure: false
+  variables:
+    enabled:
+      type: boolean
+      setPref:
+        branch: user
+        pref: browser.newtabpage.activity-stream.discoverystream.publisherFavicon.enabled
+      description: Enables publisher favicons on cards in newtab
 
 pocketNewtab:
   description: The Pocket section in newtab
@@ -1599,12 +1674,6 @@ pocketNewtab:
         browser.newtabpage.activity-stream.discoverystream.newSponsoredLabel.enabled
       description: >-
         Updates the sponsored label position to below the image for Pocket cards on newtab.
-    sendToPocket:
-      type: boolean
-      fallbackPref: >-
-        browser.newtabpage.activity-stream.discoverystream.sendToPocket.enabled
-      description: >-
-        Decides what to do when a logged out user click "Save to Pocket" from a Pocket card.
     wallpapers:
       type: boolean
       setPref:
@@ -2214,7 +2283,7 @@ fxms-message-11:
   variables: {}
 
 fxms-message-12:
-  description: "Firefox Messaging System message 12"
+  description: "Firefox Messaging System message 12 - ONLY for Fx140+ targeting"
   owner: omc@mozilla.com
   hasExposure: true
   exposureDescription: >-
@@ -2225,7 +2294,7 @@ fxms-message-12:
   variables: {}
 
 fxms-message-13:
-  description: "Firefox Messaging System message 13"
+  description: "Firefox Messaging System message 13 - ONLY for Fx140+ targeting"
   owner: omc@mozilla.com
   hasExposure: true
   exposureDescription: >-
@@ -2236,7 +2305,7 @@ fxms-message-13:
   variables: {}
 
 fxms-message-14:
-  description: "Firefox Messaging System message 14"
+  description: "Firefox Messaging System message 14 - ONLY for Fx140+ targeting"
   owner: omc@mozilla.com
   hasExposure: true
   exposureDescription: >-
@@ -2247,7 +2316,7 @@ fxms-message-14:
   variables: {}
 
 fxms-message-15:
-  description: "Firefox Messaging System message 15"
+  description: "Firefox Messaging System message 15 - ONLY for Fx140+ targeting"
   owner: omc@mozilla.com
   hasExposure: true
   exposureDescription: >-
@@ -2702,6 +2771,18 @@ networkingBannedPorts:
       setPref:
         branch: default
         pref: "network.security.ports.banned"
+
+localNetworkAccess:
+  description: "Networking (Necko) Local Network Access prefs"
+  owner: vgosu@mozilla.com
+  hasExposure: false
+  variables:
+    blockTrackers:
+      description: Whether network requests triggered by third party scripts classified as trackers should be blocked when making a localhost request.
+      type: boolean
+      setPref:
+        branch: default
+        pref: "network.lna.block_trackers"
 
 essentialFallbackDomains:
   description: "Whether to retry failing system requests with a backup domain"
@@ -3354,30 +3435,6 @@ queryStripping:
         List of query params to be stripped from URIs. This list will be merged
         with records coming from RemoteSettings.
 
-fontvisibility:
-  description: Control Font Visibility in PBM
-  owner: tom@mozilla.com
-  hasExposure: false
-  variables:
-    enabledETP:
-      type: int
-      setPref:
-        branch: default
-        pref: layout.css.font-visibility.trackingprotection
-      description: Set the Font Visibility level when Enhanced Tracking Protection is enabled
-    enabledStandard:
-      type: int
-      setPref:
-        branch: default
-        pref: layout.css.font-visibility.standard
-      description: Set the Font Visibility level for normal browsing
-    enabledPBM:
-      type: int
-      setPref:
-        branch: default
-        pref: layout.css.font-visibility.private
-      description: Set the Font Visibility level for private browsing (will override ETP)
-
 fingerprintingProtection:
   description: Control Fingerprinting Protection
   owner: tihuang@mozilla.com
@@ -3431,6 +3488,19 @@ fingerprintingProtection:
       description: >-
         The protection overrides to add or remove fingerprinting protection
         targets. Please check RFPTargets.inc for all supported targets.
+
+portlessPartitioning:
+  description: When enabled, Site partition keys include non-standard ports
+  owner: bvandersloot@mozilla.com
+  hasExposure: false
+  variables:
+    no_port:
+      type: boolean
+      setPref:
+        branch: default
+        pref: privacy.dynamic_firstparty.use_site.include_port
+      description: >-
+        Controls the port's use in generation of Site partition keys
 
 userCharacteristics:
   description: Control user characteristic data collection
@@ -4464,6 +4534,9 @@ chatbot:
   owner: elee@mozilla.com
   hasExposure: false
   variables:
+    badgeSidebar:
+      type: boolean
+      description: Show badge on chatbot sidebar tool on enrollment
     minVersion:
       type: string
       description: Minimum Firefox version to apply prefs
@@ -4861,3 +4934,41 @@ contextID:
       description: >-
         Enables the Rust component backend for ContextId.sys.mjs, which is
         a prerequisite for doing rotations.
+
+deletePrivate:
+  description: Enable or disable the option for users to delete files at the end of a private browsing session
+  owner: rking@mozilla.com
+  hasExposure: false
+  variables:
+    enabled:
+      type: boolean
+      setPref:
+        branch: default
+        pref: browser.download.enableDeletePrivate
+      description: Whether the setting for deleting files downloaded in private browsing is available to the user
+
+ipProtection:
+  description: Prefs to control IP Protection feature
+  owner: fchasen@mozilla.com
+  hasExposure: false
+  variables:
+    enabled:
+      type: boolean
+      setPref:
+        branch: default
+        pref: browser.ipProtection.enabled
+      description: >-
+        Enables the IP Protection feature.
+
+webApps:
+  description: Enables or disables web apps.
+  owner: nrishel@mozilla.com
+  hasExposure: false
+  variables:
+    enabled:
+      type: boolean
+      setPref:
+        branch: user
+        pref: browser.taskbarTabs.enabled
+      description: >-
+        Controls whether web apps can be installed and accessed.

@@ -3,49 +3,48 @@
   padding: 0;
   // z-index note: menu should cover fixed search bar and asrouter dev tools toggle button
   z-index: 5;
-
-  @media (height < 700px) {
-    position: absolute;
-    inset-block-start: var(--space-xlarge);
-    inset-inline-end: var(--space-xlarge);
-  }
-
-  @media (height >= 700px) {
-    position: fixed;
-    inset-block-start: var(--space-xlarge);
-    inset-inline-end: var(--space-xlarge);
-  }
-}
-
-.layout-variant-b {
-  .personalizeButtonWrapper {
-    position: fixed;
-    inset-block-start: auto;
-    inset-block-end: var(--space-xlarge);
-  }
-}
-
-.layout-variant-b + .discoverystream-admin-toggle {
-  inset-block-start: auto;
-  inset-block-end: 50px;
+  position: fixed;
+  inset-block-end: var(--space-xlarge);
+  inset-inline-end: var(--space-xlarge);
 }
 
 .personalize-button {
+  // Throw these values for the button animation into variables
+  // so they're not recalculated all the time
+  --button-collapsed-width: calc(var(--size-item-small) + var(--size-item-medium));
+  --button-full-width: calc(2 * var(--button-collapsed-width));
+  --label-shift-by-value: calc(-1 * var(--space-small));
+
   border: 0;
   border-radius: var(--border-radius-small);
-  background-color: transparent;
-  padding: 15px;
+  background-color: var(--button-background-color, rgba(21, 20, 26, 7%));
+  box-shadow: 0 0.8px 1.6px 0 rgba(58, 57, 68, 20%);
+  padding: calc(5 * var(--space-xxsmall));
   position: relative;
-  background-size: var(--icon-size-default);
+  background-size: var(--icon-size-medium);
   background-position: center;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  width: var(--button-collapsed-width);
+  min-width: var(--button-collapsed-width);
+  transition: all 0.5s ease-in-out;
 
-  // Contrast fix for users who have wallpapers set
-  &:not(:hover, :active) {
-    @include wallpaper-contrast-fix;
+  .lightWallpaper &,
+  .darkWallpaper & {
+    background-color: var(--newtab-weather-background-color);
+
+    @media (prefers-contrast) {
+      background-color: var(--background-color-box);
+    }
   }
 
   &:hover {
     background-color: var(--newtab-element-hover-color);
+  }
+
+  &:focus {
+    background-color: var(--newtab-element-active-color);
   }
 
   &:active {
@@ -58,6 +57,52 @@
 
   &.personalize-animate-exit-done {
     visibility: hidden;
+  }
+
+  > div {
+    width: var(--icon-size-medium);
+    height: var(--icon-size-medium);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    > img {
+      -moz-context-properties: fill;
+      display: inline-block;
+      color: var(--icon-color);
+      fill: currentColor;
+      height: 100%;
+      object-fit: contain;
+      vertical-align: middle;
+      width: 100%;
+    }
+  }
+
+  > label {
+    margin-inline-start: 0;
+    opacity: 0;
+    transform: translateX(var(--label-shift-by-value));
+    white-space: nowrap;
+    transition:
+      opacity 0.5s ease-in-out,
+      margin 0.5s ease-in-out,
+      transform 0.5s ease-in-out;
+  }
+}
+
+.personalize-button:hover,
+.personalize-button:focus {
+  width: fit-content;
+  // Animate the appearance of the button label on the min-width,
+  // as we need to cater for localised strings
+  min-width: var(--button-full-width);
+
+  > label {
+    opacity: 1;
+    transform: translateX(0);
+    margin-inline-start: var(--space-small);
+    transition-duration: 0.2s;
   }
 }
 
@@ -111,7 +156,7 @@
 
   .close-button-wrapper {
     position: sticky;
-    top: 0;
+    inset-block-start: 0;
     padding-block-start: var(--space-large);
     background-color: var(--newtab-background-color-secondary);
     z-index: 1;
@@ -123,7 +168,7 @@
     white-space: nowrap;
     display: block;
     background-color: var(--newtab-element-secondary-color);
-    padding: 8px 10px;
+    padding: var(--space-small) var(--space-medium);
     border: $customize-menu-border-tint;
     border-radius: var(--border-radius-small);
     color: var(--newtab-text-primary-color);
@@ -148,7 +193,7 @@
   display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: repeat(4, auto);
-  grid-row-gap: 32px;
+  grid-row-gap: var(--space-xxlarge);
   padding: var(--space-large);
 
   .wallpapers-section h2 {
@@ -168,7 +213,7 @@
   .section {
     .customize-menu-checkbox-label {
       font-size: inherit;
-      margin-inline-start: 5px;
+      margin-inline-start: var(--space-xsmall);
     }
 
     .check-wrapper {
@@ -177,7 +222,7 @@
     }
 
     .customize-menu-checkbox {
-      margin-inline-start: 2px;
+      margin-inline-start: var(--space-xxsmall);
       width: 16px;
       height: 16px;
       vertical-align: middle;
@@ -223,10 +268,10 @@
       border: 1px solid var(--newtab-border-color);
       border-radius: var(--border-radius-small);
       appearance: none;
-      padding-block: 7px;
-      padding-inline: 10px 13px;
-      margin-inline-start: 2px;
-      margin-bottom: 2px;
+      padding-block: var(--space-small);
+      padding-inline: var(--space-small) var(--space-medium);
+      margin-inline-start: var(--space-xxsmall);
+      margin-block-end: var(--space-xxsmall);
       -moz-context-properties: fill;
       fill: var(--newtab-text-primary-color);
       background: url('chrome://global/skin/icons/arrow-down-12.svg') right no-repeat;
@@ -245,12 +290,12 @@
 
     .more-info-top-wrapper,
     .more-info-pocket-wrapper {
-      margin-inline-start: -2px;
+      margin-inline-start: calc(var(--space-xxsmall) * -1);
       overflow: hidden;
 
       .more-information {
         position: relative;
-        transition: margin-top 250ms $customize-menu-expand-bezier;
+        transition: margin-block-start 250ms $customize-menu-expand-bezier;
       }
     }
 
@@ -294,7 +339,7 @@
 
   .divider {
     border-top: 1px var(--newtab-border-color) solid;
-    margin: 0 -16px;
+    margin: 0 calc(var(--space-large) * -1);
   }
 
   .external-link {
@@ -307,8 +352,8 @@
     cursor: pointer;
     fill: var(--newtab-text-primary-color);
     font-size: var(--font-size-small);
-    margin-bottom: 20px;
-    padding-inline-start: 21px;
+    margin-block-end: var(--space-large);
+    padding-inline-start: var(--space-xlarge);
     text-decoration: underline;
 
     &:hover {
@@ -321,8 +366,8 @@
     }
 
     @media (forced-colors: active) {
-      padding: 8px 10px;
-      padding-inline-start: 21px;
+      padding: var(--space-small) var(--space-medium);
+      padding-inline-start: var(--space-xlarge);
     }
 
     &:dir(rtl) {
@@ -382,7 +427,7 @@
   // Width of panel minus the margins
   inset-inline-start: var(--space-xlarge);
   position: absolute;
-  top: 0;
+  inset-block-start: 0;
   width: 380px;
   z-index: 2;
   transform: translateX(100%);

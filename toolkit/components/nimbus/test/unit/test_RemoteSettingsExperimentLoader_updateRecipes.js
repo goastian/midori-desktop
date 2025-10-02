@@ -12,6 +12,9 @@ const { PanelTestProvider } = ChromeUtils.importESModule(
 const { TelemetryEnvironment } = ChromeUtils.importESModule(
   "resource://gre/modules/TelemetryEnvironment.sys.mjs"
 );
+const { TestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/TestUtils.sys.mjs"
+);
 const { UnenrollmentCause } = ChromeUtils.importESModule(
   "resource://nimbus/lib/ExperimentManager.sys.mjs"
 );
@@ -437,7 +440,7 @@ add_task(async function test_updateRecipes_simpleFeatureInvalidAfterUpdate() {
   await cleanup();
 });
 
-add_task(async function test_updateRecipes_invalidFeatureAfterUpdate() {
+async function test_updateRecipes_invalidFeatureAfterUpdate() {
   const featureConfig = { featureId: "bogus", value: {} };
 
   let storePath;
@@ -445,11 +448,12 @@ add_task(async function test_updateRecipes_invalidFeatureAfterUpdate() {
     const store = NimbusTestUtils.stubs.store();
     await store.init();
 
-    store.addEnrollment(
-      NimbusTestUtils.factories.experiment.withFeatureConfig(
+    await NimbusTestUtils.addEnrollmentForRecipe(
+      NimbusTestUtils.factories.recipe.withFeatureConfig(
         "recipe",
         featureConfig
-      )
+      ),
+      { store }
     );
 
     storePath = await NimbusTestUtils.saveStore(store);
@@ -463,6 +467,7 @@ add_task(async function test_updateRecipes_invalidFeatureAfterUpdate() {
         featureConfig
       ),
     ],
+    migrationState: NimbusTestUtils.migrationState.IMPORTED_ENROLLMENTS_TO_SQL,
   });
 
   const enrollment = manager.store.get("recipe");
@@ -495,6 +500,15 @@ add_task(async function test_updateRecipes_invalidFeatureAfterUpdate() {
   );
 
   await cleanup();
+}
+
+add_task(test_updateRecipes_invalidFeatureAfterUpdate);
+add_task(async function test_updateRecipes_invalidFeatureAfterUpdate_db() {
+  const resetNimbusEnrollmentPrefs = NimbusTestUtils.enableNimbusEnrollments({
+    read: true,
+  });
+  await test_updateRecipes_invalidFeatureAfterUpdate();
+  resetNimbusEnrollmentPrefs();
 });
 
 add_task(async function test_updateRecipes_validationTelemetry() {
@@ -959,7 +973,7 @@ add_task(async function test_updateRecipes_rollout_bucketing() {
     }
   );
 
-  await manager.unenroll(experiment.slug);
+  manager.unenroll(experiment.slug);
 
   await cleanup();
 });
@@ -1010,7 +1024,7 @@ add_task(async function test_reenroll_rollout_resized() {
     "New enrollment should not have unenroll reason"
   );
 
-  await manager.unenroll(rollout.slug);
+  manager.unenroll(rollout.slug);
 
   await cleanup();
 });
@@ -1027,7 +1041,7 @@ add_task(async function test_experiment_reenroll() {
     "Should enroll in experiment"
   );
 
-  await manager.unenroll(experiment.slug);
+  manager.unenroll(experiment.slug);
   Assert.ok(
     !manager.store.getExperimentForFeature("testFeature"),
     "Should unenroll from experiment"
@@ -1164,8 +1178,8 @@ add_task(async function test_active_and_past_experiment_targeting() {
     ["experiment-a", "experiment-b", "rollout-a", "rollout-b"]
   );
 
-  await manager.unenroll("experiment-c");
-  await manager.unenroll("rollout-c");
+  manager.unenroll("experiment-c");
+  manager.unenroll("rollout-c");
 
   cleanupFeatures();
   await cleanup();
@@ -1425,7 +1439,7 @@ add_task(
     const isReadyEvents = Glean.nimbusEvents.isReady.testGetValue("events");
 
     Assert.equal(isReadyEvents.length, 3);
-    await manager.unenroll(recipe.slug);
+    manager.unenroll(recipe.slug);
 
     await cleanup();
   }
@@ -1594,7 +1608,7 @@ add_task(async function test_updateRecipes_optInsStayEnrolled() {
   await loader.updateRecipes();
   Assert.ok(manager.store.get("opt-in")?.active, "Opt-in stayed enrolled");
 
-  await manager.unenroll("opt-in");
+  manager.unenroll("opt-in");
 
   await cleanup();
 });
@@ -1713,6 +1727,14 @@ add_task(async function test_updateRecipes_reEnrollRolloutOptin() {
 });
 
 add_task(async function test_updateRecipes_enrollmentStatus_telemetry() {
+  Services.fog.applyServerKnobsConfig(
+    JSON.stringify({
+      metrics_enabled: {
+        "nimbus_events.enrollment_status": true,
+      },
+    })
+  );
+
   // Create a feature for each experiment so that they aren't competing.
   const features = [
     new ExperimentFeature("test-feature-0", { variables: {} }),
@@ -1914,14 +1936,22 @@ add_task(async function test_updateRecipes_enrollmentStatus_telemetry() {
     },
   ]);
 
-  await manager.unenroll("stays-enrolled");
-  await manager.unenroll("enrolls");
+  manager.unenroll("stays-enrolled");
+  manager.unenroll("enrolls");
 
   cleanupFeatures();
   await cleanup();
 });
 
 add_task(async function test_updateRecipes_enrollmentStatus_notEnrolled() {
+  Services.fog.applyServerKnobsConfig(
+    JSON.stringify({
+      metrics_enabled: {
+        "nimbus_events.enrollment_status": true,
+      },
+    })
+  );
+
   const features = [
     new ExperimentFeature("test-feature-0", { variables: {} }),
     new ExperimentFeature("test-feature-1", { variables: {} }),
@@ -2027,8 +2057,8 @@ add_task(async function test_updateRecipes_enrollmentStatus_notEnrolled() {
     ]
   );
 
-  await manager.unenroll("enrolled-experiment");
-  await manager.unenroll("enrolled-rollout");
+  manager.unenroll("enrolled-experiment");
+  manager.unenroll("enrolled-rollout");
 
   cleanupFeatures();
   await cleanup();
@@ -2218,8 +2248,67 @@ add_task(async function testUnenrollsFirst() {
   await loader.updateRecipes();
   assertEnrollments(manager.store, ["e3", "r3"], ["e1", "e2", "r1", "r2"]);
 
-  await manager.unenroll("e3");
-  await manager.unenroll("r3");
+  manager.unenroll("e3");
+  manager.unenroll("r3");
 
   await cleanup();
+});
+
+async function testRsClientGetThrows(collectionName) {
+  info(`Testing with collectionName = ${collectionName}\n`);
+
+  const { sandbox, loader, manager, cleanup } = await setupTest();
+
+  sandbox.spy(loader, "getRecipesFromAllCollections");
+  sandbox.spy(manager, "updateEnrollment");
+  sandbox.spy(manager, "_unenroll");
+
+  loader.remoteSettingsClients[collectionName].get.throws();
+
+  // This topic is only notified if we reach the end of updateRecipes().
+  const updatePromise = TestUtils.topicObserved("nimbus:enrollments-updated");
+
+  await manager.enroll(
+    NimbusTestUtils.factories.recipe.withFeatureConfig("recipe", {
+      featureId: "no-feature-firefox-desktop",
+    }),
+    "rs-loader"
+  );
+
+  await loader.updateRecipes();
+  await updatePromise;
+
+  Assert.ok(
+    loader.getRecipesFromAllCollections.calledOnce,
+    "getRecipesFromAllCollections called once"
+  );
+
+  Assert.deepEqual(
+    // We can't use .returned() because it is an async function and therefore
+    // returns a promise. Instead, we just call the function again.
+    await loader.getRecipesFromAllCollections(),
+    {
+      loadingError: true,
+      recipes: [],
+    }
+  );
+
+  Assert.ok(
+    manager.updateEnrollment.notCalled,
+    "updateEnrollment never called"
+  );
+  Assert.ok(manager._unenroll.notCalled, "unenroll not called");
+
+  Assert.ok(manager.store.get("recipe").active, "experiment is still active");
+
+  manager.unenroll("recipe");
+  await cleanup();
+}
+
+add_task(async function testExperimentsRsClientGetThrows() {
+  await testRsClientGetThrows("experiments");
+});
+
+add_task(async function testSecureExperimentsRsClientGetThrows() {
+  await testRsClientGetThrows("secureExperiments");
 });

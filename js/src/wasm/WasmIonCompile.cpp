@@ -215,7 +215,13 @@ using PendingInlineReturnVector =
 // CallCompileState describes a call that is being compiled.
 struct CallCompileState {
   // A generator object that is passed each argument as it is compiled.
-  WasmABIArgGenerator abi;
+  ABIArgGenerator abi;
+
+  // Whether we pass FP values through GPRs or FPRs.
+  bool hardFP = true;
+
+  // The ABI we are using for this call.
+  ABIKind abiKind;
 
   // Accumulates the register arguments while compiling arguments.
   MWasmCallBase::Args regArgs;
@@ -242,6 +248,20 @@ struct CallCompileState {
 
   // The block to take for exceptional execution for a catchable call.
   MBasicBlock* prePadBlock = nullptr;
+
+  explicit CallCompileState(ABIKind abiKind) : abi(abiKind), abiKind(abiKind) {
+    if (abiKind == ABIKind::System) {
+      // The system ABI follows the hardFP setting on ARM32.
+#if defined(JS_CODEGEN_ARM)
+      hardFP = ARMFlags::UseHardFpABI();
+      abi.setUseHardFp(hardFP);
+#endif
+    } else {
+#if defined(JS_CODEGEN_ARM)
+      MOZ_ASSERT(hardFP, "The WASM ABI passes FP arguments in registers");
+#endif
+    }
+  }
 
   bool isCatchable() const { return tryLandingPadPatches != nullptr; }
 };
@@ -566,7 +586,7 @@ class FunctionCompiler {
       return false;
     }
 
-    for (WasmABIArgIter i(args); !i.done(); i++) {
+    for (ABIArgIter i(args, ABIKind::Wasm); !i.done(); i++) {
       MaybeRefType argRefType;
       if (!args.isSyntheticStackResultPointerArg(i.index())) {
         ValType argType = ft.arg(i.index());
@@ -2298,6 +2318,19 @@ class FunctionCompiler {
                          CallCompileState* callState) {
     MOZ_ASSERT(argDef->type() == type);
 
+    // Calling a softFP function requires moving our floats into GPRs.
+    if (!callState->hardFP &&
+        (type == MIRType::Double || type == MIRType::Float32)) {
+      MIRType softType =
+          (type == MIRType::Double) ? MIRType::Int64 : MIRType::Int32;
+      auto* softDef = MReinterpretCast::New(alloc(), argDef, softType);
+      if (!softDef) {
+        return false;
+      }
+      curBlock_->add(softDef);
+      argDef = softDef;
+    }
+
     ABIArg arg = callState->abi.next(type);
     switch (arg.kind()) {
 #ifdef JS_CODEGEN_REGISTER_PAIR
@@ -2380,6 +2413,10 @@ class FunctionCompiler {
       return true;
     }
 
+    // The builtin ABI only supports a single result value, so it doesn't
+    // use stack results.
+    MOZ_ASSERT(callState->abiKind == ABIKind::Wasm);
+
     auto* stackResultArea = MWasmStackResultArea::New(alloc());
     if (!stackResultArea) {
       return false;
@@ -2440,7 +2477,12 @@ class FunctionCompiler {
   }
 
   [[nodiscard]]
-  bool collectUnaryCallResult(MIRType type, MDefinition** result) {
+  bool collectBuiltinCallResult(MIRType type, MDefinition** result,
+                                CallCompileState* callState) {
+    // This function is for collecting results of builtin calls. Use
+    // collectWasmCallResults for wasm calls.
+    MOZ_ASSERT(callState->abiKind == ABIKind::System);
+
     MInstruction* def;
     switch (type) {
       case MIRType::Int32:
@@ -2450,15 +2492,16 @@ class FunctionCompiler {
         def = MWasmRegister64Result::New(alloc(), ReturnReg64);
         break;
       case MIRType::Float32:
-        def = MWasmFloatRegisterResult::New(alloc(), type, ReturnFloat32Reg);
+        def = MWasmBuiltinFloatRegisterResult::New(
+            alloc(), type, ReturnFloat32Reg, callState->hardFP);
         break;
       case MIRType::Double:
-        def = MWasmFloatRegisterResult::New(alloc(), type, ReturnDoubleReg);
+        def = MWasmBuiltinFloatRegisterResult::New(
+            alloc(), type, ReturnDoubleReg, callState->hardFP);
         break;
 #ifdef ENABLE_WASM_SIMD
       case MIRType::Simd128:
-        def = MWasmFloatRegisterResult::New(alloc(), type, ReturnSimd128Reg);
-        break;
+        MOZ_CRASH("SIMD128 not supported in builtin ABI");
 #endif
       case MIRType::WasmAnyRef:
         def = MWasmRegisterResult::New(alloc(), MIRType::WasmAnyRef, ReturnReg);
@@ -2481,9 +2524,13 @@ class FunctionCompiler {
   }
 
   [[nodiscard]]
-  bool collectCallResults(const ResultType& type,
-                          MWasmStackResultArea* stackResultArea,
-                          DefVector* results) {
+  bool collectWasmCallResults(const ResultType& type,
+                              CallCompileState* callState, DefVector* results) {
+    // This function uses wasm::ABIResultIter which does not handle the builtin
+    // ABI. Use collectBuiltinCallResult instead for builtin calls.
+    MOZ_ASSERT(callState->abiKind == ABIKind::Wasm);
+    MOZ_ASSERT(callState->hardFP);
+
     if (!results->reserve(type.length())) {
       return false;
     }
@@ -2536,10 +2583,10 @@ class FunctionCompiler {
 #endif
         }
       } else {
-        MOZ_ASSERT(stackResultArea);
+        MOZ_ASSERT(callState->stackResultArea);
         MOZ_ASSERT(stackResultCount);
         uint32_t idx = --stackResultCount;
-        def = MWasmStackResult::New(alloc(), stackResultArea, idx);
+        def = MWasmStackResult::New(alloc(), callState->stackResultArea, idx);
       }
 
       if (!def) {
@@ -2566,12 +2613,14 @@ class FunctionCompiler {
     if (callState->isCatchable()) {
       ins = MWasmCallCatchable::New(
           alloc(), desc, callee, callState->regArgs,
-          StackArgAreaSizeUnaligned(argTypes), callState->tryNoteIndex,
-          callState->fallthroughBlock, callState->prePadBlock, addressOrRef);
+          StackArgAreaSizeUnaligned(argTypes, callState->abiKind),
+          callState->tryNoteIndex, callState->fallthroughBlock,
+          callState->prePadBlock, addressOrRef);
     } else {
-      ins = MWasmCallUncatchable::New(alloc(), desc, callee, callState->regArgs,
-                                      StackArgAreaSizeUnaligned(argTypes),
-                                      addressOrRef);
+      ins = MWasmCallUncatchable::New(
+          alloc(), desc, callee, callState->regArgs,
+          StackArgAreaSizeUnaligned(argTypes, callState->abiKind),
+          addressOrRef);
     }
     if (!ins) {
       return false;
@@ -2643,7 +2692,7 @@ class FunctionCompiler {
 
       // Ask the heuristics system if we're allowed to inline a function of
       // this size and kind at the current inlining depth.
-      uint32_t inlineeBodySize = codeTailMeta()->funcDefRange(funcIndex).size;
+      uint32_t inlineeBodySize = codeTailMeta()->funcDefRange(funcIndex).size();
       uint32_t rootFunctionBodySize = rootCompiler_.func().bytecodeSize();
       bool largeFunctionBackoff;
       bool smallEnough = InliningHeuristics::isSmallEnoughToInline(
@@ -2779,7 +2828,7 @@ class FunctionCompiler {
                   DefVector* results) {
     MOZ_ASSERT(!inDeadCode());
 
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::Wasm);
     CallSiteDesc desc(lineOrBytecode, rootCompiler_.inlinedCallerOffsetsIndex(),
                       CallSiteKind::Func);
     ResultType resultType = ResultType::Vector(funcType.results());
@@ -2788,7 +2837,7 @@ class FunctionCompiler {
 
     return emitCallArgs(funcType, args, &callState) &&
            call(&callState, desc, callee, argTypes) &&
-           collectCallResults(resultType, callState.stackResultArea, results);
+           collectWasmCallResults(resultType, &callState, results);
   }
 
   [[nodiscard]]
@@ -2800,7 +2849,7 @@ class FunctionCompiler {
     // We do not support tail calls in inlined functions.
     MOZ_RELEASE_ASSERT(!isInlined());
 
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::Wasm);
     callState.returnCall = true;
     CallSiteDesc desc(lineOrBytecode, CallSiteKind::ReturnFunc);
     auto callee = CalleeDesc::function(funcIndex);
@@ -2810,9 +2859,9 @@ class FunctionCompiler {
       return false;
     }
 
-    auto ins =
-        MWasmReturnCall::New(alloc(), desc, callee, callState.regArgs,
-                             StackArgAreaSizeUnaligned(argTypes), nullptr);
+    auto ins = MWasmReturnCall::New(
+        alloc(), desc, callee, callState.regArgs,
+        StackArgAreaSizeUnaligned(argTypes, callState.abiKind), nullptr);
     if (!ins) {
       return false;
     }
@@ -2830,7 +2879,7 @@ class FunctionCompiler {
     // We do not support tail calls in inlined functions.
     MOZ_RELEASE_ASSERT(!isInlined());
 
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::Wasm);
     callState.returnCall = true;
     CallSiteDesc desc(lineOrBytecode, CallSiteKind::Import);
     auto callee = CalleeDesc::import(globalDataOffset);
@@ -2840,9 +2889,9 @@ class FunctionCompiler {
       return false;
     }
 
-    auto* ins =
-        MWasmReturnCall::New(alloc(), desc, callee, callState.regArgs,
-                             StackArgAreaSizeUnaligned(argTypes), nullptr);
+    auto* ins = MWasmReturnCall::New(
+        alloc(), desc, callee, callState.regArgs,
+        StackArgAreaSizeUnaligned(argTypes, callState.abiKind), nullptr);
     if (!ins) {
       return false;
     }
@@ -2864,7 +2913,7 @@ class FunctionCompiler {
     CallIndirectId callIndirectId =
         CallIndirectId::forFuncType(codeMeta(), funcTypeIndex);
 
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::Wasm);
     callState.returnCall = true;
     CalleeDesc callee;
     MOZ_ASSERT(callIndirectId.kind() != CallIndirectIdKind::AsmJS);
@@ -2884,9 +2933,9 @@ class FunctionCompiler {
       return false;
     }
 
-    auto* ins =
-        MWasmReturnCall::New(alloc(), desc, callee, callState.regArgs,
-                             StackArgAreaSizeUnaligned(argTypes), address32);
+    auto* ins = MWasmReturnCall::New(
+        alloc(), desc, callee, callState.regArgs,
+        StackArgAreaSizeUnaligned(argTypes, callState.abiKind), address32);
     if (!ins) {
       return false;
     }
@@ -2901,7 +2950,7 @@ class FunctionCompiler {
                     const DefVector& args, DefVector* results) {
     MOZ_ASSERT(!inDeadCode());
 
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::Wasm);
     const FuncType& funcType = (*codeMeta().types)[funcTypeIndex].funcType();
     CallIndirectId callIndirectId =
         CallIndirectId::forFuncType(codeMeta(), funcTypeIndex);
@@ -2941,7 +2990,7 @@ class FunctionCompiler {
 
     return emitCallArgs(funcType, args, &callState) &&
            call(&callState, desc, callee, argTypes, address) &&
-           collectCallResults(resultType, callState.stackResultArea, results);
+           collectWasmCallResults(resultType, &callState, results);
   }
 
   [[nodiscard]]
@@ -2950,7 +2999,7 @@ class FunctionCompiler {
                   DefVector* results) {
     MOZ_ASSERT(!inDeadCode());
 
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::Wasm);
     CallSiteDesc desc(lineOrBytecode, rootCompiler_.inlinedCallerOffsetsIndex(),
                       CallSiteKind::Import);
     auto callee = CalleeDesc::import(instanceDataOffset);
@@ -2959,7 +3008,7 @@ class FunctionCompiler {
 
     return emitCallArgs(funcType, args, &callState) &&
            call(&callState, desc, callee, argTypes) &&
-           collectCallResults(resultType, callState.stackResultArea, results);
+           collectWasmCallResults(resultType, &callState, results);
   }
 
   [[nodiscard]]
@@ -2977,22 +3026,22 @@ class FunctionCompiler {
                       CallSiteKind::Symbolic);
     auto callee = CalleeDesc::builtin(builtin.identity);
 
-    auto* ins =
-        MWasmCallUncatchable::New(alloc(), desc, callee, callState->regArgs,
-                                  StackArgAreaSizeUnaligned(builtin));
+    auto* ins = MWasmCallUncatchable::New(
+        alloc(), desc, callee, callState->regArgs,
+        StackArgAreaSizeUnaligned(builtin, callState->abiKind));
     if (!ins) {
       return false;
     }
     curBlock_->add(ins);
 
-    return collectUnaryCallResult(builtin.retType, result);
+    return collectBuiltinCallResult(builtin.retType, result, callState);
   }
 
   [[nodiscard]]
   bool builtinCall1(const SymbolicAddressSignature& builtin,
                     uint32_t lineOrBytecode, MDefinition* arg,
                     MDefinition** result) {
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::System);
     return passCallArg(arg, builtin.argTypes[0], &callState) &&
            finishCallArgs(&callState) &&
            builtinCall(&callState, builtin, lineOrBytecode, result);
@@ -3002,7 +3051,7 @@ class FunctionCompiler {
   bool builtinCall2(const SymbolicAddressSignature& builtin,
                     uint32_t lineOrBytecode, MDefinition* arg1,
                     MDefinition* arg2, MDefinition** result) {
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::System);
     return passCallArg(arg1, builtin.argTypes[0], &callState) &&
            passCallArg(arg2, builtin.argTypes[1], &callState) &&
            finishCallArgs(&callState) &&
@@ -3014,7 +3063,7 @@ class FunctionCompiler {
                     uint32_t lineOrBytecode, MDefinition* arg1,
                     MDefinition* arg2, MDefinition* arg3, MDefinition* arg4,
                     MDefinition* arg5, MDefinition** result) {
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::System);
     return passCallArg(arg1, builtin.argTypes[0], &callState) &&
            passCallArg(arg2, builtin.argTypes[1], &callState) &&
            passCallArg(arg3, builtin.argTypes[2], &callState) &&
@@ -3030,7 +3079,7 @@ class FunctionCompiler {
                     MDefinition* arg2, MDefinition* arg3, MDefinition* arg4,
                     MDefinition* arg5, MDefinition* arg6,
                     MDefinition** result) {
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::System);
     return passCallArg(arg1, builtin.argTypes[0], &callState) &&
            passCallArg(arg2, builtin.argTypes[1], &callState) &&
            passCallArg(arg3, builtin.argTypes[2], &callState) &&
@@ -3064,14 +3113,15 @@ class FunctionCompiler {
     if (callState->isCatchable()) {
       ins = MWasmCallCatchable::NewBuiltinInstanceMethodCall(
           alloc(), desc, builtin.identity, builtin.failureMode,
-          callState->instanceArg, callState->regArgs,
-          StackArgAreaSizeUnaligned(builtin), callState->tryNoteIndex,
-          callState->fallthroughBlock, callState->prePadBlock);
+          builtin.failureTrap, callState->instanceArg, callState->regArgs,
+          StackArgAreaSizeUnaligned(builtin, callState->abiKind),
+          callState->tryNoteIndex, callState->fallthroughBlock,
+          callState->prePadBlock);
     } else {
       ins = MWasmCallUncatchable::NewBuiltinInstanceMethodCall(
           alloc(), desc, builtin.identity, builtin.failureMode,
-          callState->instanceArg, callState->regArgs,
-          StackArgAreaSizeUnaligned(builtin));
+          builtin.failureTrap, callState->instanceArg, callState->regArgs,
+          StackArgAreaSizeUnaligned(builtin, callState->abiKind));
     }
     if (!ins) {
       return false;
@@ -3085,7 +3135,7 @@ class FunctionCompiler {
     if (!result) {
       return true;
     }
-    return collectUnaryCallResult(builtin.retType, result);
+    return collectBuiltinCallResult(builtin.retType, result, callState);
   }
 
   /*********************************************** Instance call helpers ***/
@@ -3136,7 +3186,7 @@ class FunctionCompiler {
     }
 
     // Finally, construct the call.
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::System);
     if (!passInstanceCallArg(callee.argTypes[0], &callState)) {
       return false;
     }
@@ -3242,7 +3292,7 @@ class FunctionCompiler {
                DefVector* results) {
     MOZ_ASSERT(!inDeadCode());
 
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::Wasm);
     CalleeDesc callee = CalleeDesc::wasmFuncRef();
     CallSiteDesc desc(lineOrBytecode, rootCompiler_.inlinedCallerOffsetsIndex(),
                       CallSiteKind::FuncRef);
@@ -3251,7 +3301,7 @@ class FunctionCompiler {
 
     return emitCallArgs(funcType, args, &callState) &&
            call(&callState, desc, callee, argTypes, ref) &&
-           collectCallResults(resultType, callState.stackResultArea, results);
+           collectWasmCallResults(resultType, &callState, results);
   }
 
   [[nodiscard]]
@@ -3261,7 +3311,7 @@ class FunctionCompiler {
     MOZ_ASSERT(!inDeadCode());
     MOZ_ASSERT(!isInlined());
 
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::Wasm);
     callState.returnCall = true;
     CalleeDesc callee = CalleeDesc::wasmFuncRef();
     CallSiteDesc desc(lineOrBytecode, CallSiteKind::FuncRef);
@@ -3271,8 +3321,9 @@ class FunctionCompiler {
       return false;
     }
 
-    auto* ins = MWasmReturnCall::New(alloc(), desc, callee, callState.regArgs,
-                                     StackArgAreaSizeUnaligned(argTypes), ref);
+    auto* ins = MWasmReturnCall::New(
+        alloc(), desc, callee, callState.regArgs,
+        StackArgAreaSizeUnaligned(argTypes, callState.abiKind), ref);
     if (!ins) {
       return false;
     }
@@ -3369,7 +3420,7 @@ class FunctionCompiler {
     // `memoryBase`, and make the call.
     const SymbolicAddressSignature& callee = *builtinModuleFunc.sig();
 
-    CallCompileState callState;
+    CallCompileState callState(ABIKind::System);
     if (!passInstanceCallArg(callee.argTypes[0], &callState) ||
         !passCallArgs(params, builtinModuleFunc.funcType()->args(),
                       &callState)) {
@@ -3439,17 +3490,9 @@ class FunctionCompiler {
         const ABIResult& result = iter.cur();
         if (result.onStack()) {
           MOZ_ASSERT(iter.remaining() > 1);
-          if (result.type().isRefRepr()) {
-            auto* store = MWasmStoreRef::New(
-                alloc(), instancePointer_, stackResultPointer_,
-                result.stackOffset(), values[i], AliasSet::WasmStackResult,
-                WasmPreBarrierKind::None);
-            curBlock_->add(store);
-          } else {
-            auto* store = MWasmStoreStackResult::New(
-                alloc(), stackResultPointer_, result.stackOffset(), values[i]);
-            curBlock_->add(store);
-          }
+          auto* store = MWasmStoreStackResult::New(
+              alloc(), stackResultPointer_, result.stackOffset(), values[i]);
+          curBlock_->add(store);
         } else {
           MOZ_ASSERT(iter.remaining() == 1);
           MOZ_ASSERT(i + 1 == values.length());
@@ -6474,7 +6517,7 @@ bool FunctionCompiler::emitInlineCall(const FuncType& funcType,
 
   CompileInfo* compileInfo = rootCompiler().startInlineCall(
       this->funcIndex(), bytecodeOffset(), funcIndex, locals.length(),
-      funcRange.size, callKind);
+      funcRange.size(), callKind);
   if (!compileInfo) {
     return false;
   }
@@ -9367,14 +9410,8 @@ bool FunctionCompiler::emitBodyExprs() {
       case uint16_t(Op::Rethrow):
         CHECK(emitRethrow());
       case uint16_t(Op::ThrowRef):
-        if (!codeMeta().exnrefEnabled()) {
-          return iter().unrecognizedOpcode(&op);
-        }
         CHECK(emitThrowRef());
       case uint16_t(Op::TryTable):
-        if (!codeMeta().exnrefEnabled()) {
-          return iter().unrecognizedOpcode(&op);
-        }
         CHECK(emitTryTable());
       case uint16_t(Op::Br):
         CHECK(emitBr());

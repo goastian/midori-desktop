@@ -2,15 +2,28 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this,
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import json
+import re
 import string
 import subprocess
+import sys
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import mozpack.path as mozpath
+from mozfile import which
 from mozpack.files import FileListFinder
+from packaging.version import Version
+
+MINIMUM_SUPPORTED_JJ_VERSION = Version("0.28")
+USING_JJ_DETECTED = 'Using JujutsuRepository because a ".jj/" directory was detected!'
+USING_JJ_WARNING = """\
+
+Warning: jj support is currently experimental, and may be disabled by setting the
+environment variable MOZ_AVOID_JJ_VCS=1. (This warning may be suppressed by
+setting MOZ_AVOID_JJ_VCS=0.)"""
 
 from mozversioncontrol.errors import (
     CannotDeleteFromRootOfRepositoryException,
@@ -19,6 +32,12 @@ from mozversioncontrol.errors import (
 )
 from mozversioncontrol.repo.base import Repository
 from mozversioncontrol.repo.git import GitRepository
+
+
+class JjVersionError(Exception):
+    """Raised when the installed jj version is too old."""
+
+    pass
 
 
 class JujutsuRepository(Repository):
@@ -254,7 +273,7 @@ class JujutsuRepository(Repository):
     def push_to_try(
         self,
         message: str,
-        changed_files: Dict[str, str] = {},
+        changed_files: dict[str, str] = {},
         allow_log_capture: bool = False,
     ):
         if not self.has_git_cinnabar:
@@ -303,8 +322,8 @@ class JujutsuRepository(Repository):
         self,
         head: Optional[str] = "@",
         limit: Optional[int] = None,
-        follow: Optional[List[str]] = None,
-    ) -> List[str]:
+        follow: Optional[list[str]] = None,
+    ) -> list[str]:
         """Return a list of commit SHAs for nodes on the current branch, in order that they should be applied."""
         # Note: lando gets grumpy if you try to push empty commits.
         cmd = [
@@ -328,7 +347,7 @@ class JujutsuRepository(Repository):
     def _looks_like_commit_id(self, id):
         return len(id) > 0 and all(letter in string.hexdigits for letter in id)
 
-    def get_commit_patches(self, nodes: List[str]) -> List[bytes]:
+    def get_commit_patches(self, nodes: list[str]) -> list[bytes]:
         """Return the contents of the patch `node` in the git standard format."""
         # Warning: tests, at least, may call this with change ids rather than
         # commit ids.
@@ -345,7 +364,7 @@ class JujutsuRepository(Repository):
 
     @contextmanager
     def try_commit(
-        self, commit_message: str, changed_files: Optional[Dict[str, str]] = None
+        self, commit_message: str, changed_files: Optional[dict[str, str]] = None
     ):
         """Create a temporary try commit as a context manager.
 
@@ -355,7 +374,12 @@ class JujutsuRepository(Repository):
         `changed_files` may contain a dict of file paths and their contents,
         see `stage_changes`.
         """
-        opid = self._run_read_only(
+        # Redundant with the snapshot from the next command, but the semantics
+        # of this operation depend on a snapshot happening (and it will eat
+        # working-copy changes if not!), so be extra explicit here in case it
+        # becomes possible to default snapshotting off.
+        self._run("debug", "snapshot")  # Force a snapshot.
+        opid = self._run(
             "operation", "log", "-n1", "--no-graph", "-T", "id.short(16)"
         ).rstrip()
         try:
@@ -381,3 +405,119 @@ class JujutsuRepository(Repository):
             '"%s"' % str(path).replace("\\", "\\\\"),
         ).rstrip()
         return datetime.strptime(date, "%Y-%m-%d %H:%M:%S.%f %z")
+
+    def config_key_list_value_missing(self, key: str):
+        output = self._run_read_only("config", "list", key, stderr=subprocess.STDOUT)
+        warning_prefix = "Warning: No matching config key"
+        if output.startswith(warning_prefix):
+            return True
+
+        if output.startswith(key):
+            return False
+
+        raise ValueError(f"Unexpected output: {output}")
+
+    def set_config_key_value(self, key: str, value: Any):
+        value_str = json.dumps(value)
+        print(f'Set jj config: "{key} = {value_str}"')
+        self._run("config", "set", "--repo", key, value_str)
+
+    def _set_default_if_missing(self, config_key: str, default_value):
+        """
+        If `config_key` is missing in jj, set it to `default_value`.
+        """
+        if self.config_key_list_value_missing(config_key):
+            self.set_config_key_value(config_key, default_value)
+        else:
+            print(f'jj config: "{config_key}" already set; skipping')
+
+    def _copy_from_git_if_missing(self, config_key: str) -> bool:
+        """
+        If `config_key` exists in Git and is missing in jj, copy it into jj
+        Returns True if a value was copied (i.e. jj was updated).
+        """
+        git_value = self._git.get_config_key_value(config_key)
+        if git_value and self.config_key_list_value_missing(config_key):
+            self.set_config_key_value(config_key, git_value)
+            return True
+        return False
+
+    def configure(self, state_dir: Path, update_only: bool = False):
+        """Run the Jujutsu configuration steps."""
+        print(USING_JJ_WARNING, file=sys.stderr)
+        print(
+            "\nOur jj support currently relies on Git; checks will run for both jj and Git.\n"
+        )
+
+        self._git.configure(state_dir, update_only)
+
+        topsrcdir = Path(self.path)
+        if not update_only:
+            print("\nConfiguring jj...")
+
+            version_str = self._run_read_only("--version")
+            if match := re.search(r"(\d+\.\d+\.\d+)", version_str):
+                jj_version = Version(match.group(1))
+            else:
+                raise Exception("Could not find jj version")
+
+            if jj_version < MINIMUM_SUPPORTED_JJ_VERSION:
+                raise JjVersionError(
+                    f"Your version of jj ({jj_version}) is too old. "
+                    f"Please upgrade to at least version '{MINIMUM_SUPPORTED_JJ_VERSION}' to ensure "
+                    "full compatibility and performance."
+                )
+
+            print(f"Detected jj version `{jj_version}`, which is sufficiently modern.")
+
+            # Only set these values if they haven't been set yet so that we
+            # don't overwrite existing user preferences.
+
+            updated_author = False
+
+            # Copy over the user.name and user.email if they've been set there by not for jj
+            for key in ("user.name", "user.email"):
+                if self._copy_from_git_if_missing(key):
+                    updated_author = True
+
+            if updated_author:
+                self._run("describe", "--reset-author", "--no-edit")
+
+            self._set_default_if_missing(
+                'revset-aliases."immutable_heads()"',
+                "builtin_immutable_heads() | remote_bookmarks(glob:'*', 'origin')",
+            )
+
+            # This enables `jj fix` which does `./mach lint --fix` on every commit in parallel
+            fix_cmd = [f"{topsrcdir.as_posix()}/tools/lint/pipelint", "$path"]
+            if sys.platform.startswith("win"):
+                fix_cmd.insert(0, "python3")
+            self._set_default_if_missing("fix.tools.mozlint.command", fix_cmd)
+            self._set_default_if_missing("fix.tools.mozlint.patterns", ["glob:**/*"])
+
+            # This enables watchman if it's installed.
+            if which("watchman"):
+                self._set_default_if_missing("core.fsmonitor", "watchman")
+                self._set_default_if_missing(
+                    "core.watchman.register-snapshot-trigger", False
+                )
+
+                print("Checking if watchman is enabled...")
+                output = self._run_read_only("debug", "watchman", "status")
+
+                pattern = re.compile(
+                    r"^Background snapshotting is (disabled|currently inactive)"
+                )
+
+                for line in output.splitlines():
+                    # Filter out any 'Background snapshotting is' disabled/inactive messages.
+                    # Snapshotting is disabled on purpose, and these lines could mislead users
+                    # into thinking watchman isn't functioning. We only need to verify watchman status
+                    # without potentially misleading users into enabling snapshotting and causing issues.
+                    if not pattern.match(line):
+                        print(line)
+            else:
+                print(
+                    "Watchman could not be found on the PATH. It is recommended to "
+                    "install watchman to improve performance for jj operations"
+                )

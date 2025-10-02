@@ -87,6 +87,7 @@
 
 typedef mozilla::layers::Image Image;
 typedef mozilla::layers::PlanarYCbCrImage PlanarYCbCrImage;
+typedef mozilla::layers::BufferRecycleBin BufferRecycleBin;
 
 namespace mozilla {
 
@@ -404,6 +405,15 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::InitV4L2Decoder() {
   if (mCodecID == AV_CODEC_ID_H264) {
     codec = mLib->avcodec_find_decoder_by_name("h264_v4l2m2m");
   }
+  if (mCodecID == AV_CODEC_ID_VP8) {
+    codec = mLib->avcodec_find_decoder_by_name("vp8_v4l2m2m");
+  }
+  if (mCodecID == AV_CODEC_ID_VP9) {
+    codec = mLib->avcodec_find_decoder_by_name("vp9_v4l2m2m");
+  }
+  if (mCodecID == AV_CODEC_ID_HEVC) {
+    codec = mLib->avcodec_find_decoder_by_name("hevc_v4l2m2m");
+  }
   if (!codec) {
     FFMPEG_LOG("No appropriate v4l2 codec found");
     return NS_ERROR_DOM_MEDIA_FATAL_ERR;
@@ -556,7 +566,7 @@ bool FFmpegVideoDecoder<LIBAV_VER>::UploadSWDecodeToDMABuf() const {
 FFmpegVideoDecoder<LIBAV_VER>::FFmpegVideoDecoder(
     FFmpegLibWrapper* aLib, const VideoInfo& aConfig,
     KnowsCompositor* aAllocator, ImageContainer* aImageContainer,
-    bool aLowLatency, bool aDisableHardwareDecoding,
+    bool aLowLatency, bool aDisableHardwareDecoding, bool a8BitOutput,
     Maybe<TrackingId> aTrackingId)
     : FFmpegDataDecoder(aLib, GetCodecId(aConfig.mMimeType)),
       mImageAllocator(aAllocator),
@@ -571,7 +581,9 @@ FFmpegVideoDecoder<LIBAV_VER>::FFmpegVideoDecoder(
       mImageContainer(aImageContainer),
       mInfo(aConfig),
       mLowLatency(aLowLatency),
-      mTrackingId(std::move(aTrackingId)) {
+      mTrackingId(std::move(aTrackingId)),
+      // Value may be changed later when codec is known after initialization.
+      m8BitOutput(a8BitOutput) {
   FFMPEG_LOG("FFmpegVideoDecoder::FFmpegVideoDecoder MIME %s Codec ID %d",
              aConfig.mMimeType.get(), mCodecID);
   // Use a new MediaByteBuffer as the object will be modified during
@@ -628,9 +640,17 @@ RefPtr<MediaDataDecoder::InitPromise> FFmpegVideoDecoder<LIBAV_VER>::Init() {
     return InitPromise::CreateAndResolve(TrackInfo::kVideoTrack, __func__);
   }
   MediaResult rv = InitSWDecoder(nullptr);
-  return NS_SUCCEEDED(rv)
-             ? InitPromise::CreateAndResolve(TrackInfo::kVideoTrack, __func__)
-             : InitPromise::CreateAndReject(rv, __func__);
+  if (NS_FAILED(rv)) {
+    return InitPromise::CreateAndReject(rv, __func__);
+  }
+  // Enable 8-bit conversion only for dav1d.
+  m8BitOutput =
+      m8BitOutput && 0 == strncmp(mCodecContext->codec->name, "libdav1d", 8);
+  if (m8BitOutput) {
+    FFMPEG_LOG("Enable 8-bit output for dav1d");
+    m8BitRecycleBin = MakeRefPtr<BufferRecycleBin>();
+  }
+  return InitPromise::CreateAndResolve(TrackInfo::kVideoTrack, __func__);
 }
 
 static gfx::ColorRange GetColorRange(enum AVColorRange& aColorRange) {
@@ -713,7 +733,8 @@ bool FFmpegVideoDecoder<LIBAV_VER>::IsLinuxHDR() const {
     return false;
   }
   return mInfo.mColorPrimaries.value() == gfx::ColorSpace2::BT2020 &&
-         mInfo.mTransferFunction.value() == gfx::TransferFunction::PQ;
+         (mInfo.mTransferFunction.value() == gfx::TransferFunction::PQ ||
+          mInfo.mTransferFunction.value() == gfx::TransferFunction::HLG);
 }
 #  endif
 
@@ -1489,7 +1510,7 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::CreateImage(
              " duration=%" PRId64,
              aPts, mFrame->pkt_dts, aDuration);
 
-  VideoData::YCbCrBuffer b;
+  VideoData::QuantizableBuffer b;
   b.mPlanes[0].mData = mFrame->data[0];
   b.mPlanes[1].mData = mFrame->data[1];
   b.mPlanes[2].mData = mFrame->data[2];
@@ -1612,6 +1633,13 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::CreateImage(
   }
 #endif
   if (!v) {
+    if (m8BitOutput && b.mColorDepth != gfx::ColorDepth::COLOR_8) {
+      MediaResult ret = b.To8BitPerChannel(m8BitRecycleBin);
+      if (NS_FAILED(ret.Code())) {
+        FFMPEG_LOG("%s: %s", __func__, ret.Message().get());
+        return ret;
+      }
+    }
     Result<already_AddRefed<VideoData>, MediaResult> r =
         VideoData::CreateAndCopyData(
             mInfo, mImageContainer, aOffset, TimeUnit::FromMicroseconds(aPts),

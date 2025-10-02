@@ -1,31 +1,52 @@
-from __future__ import absolute_import
-
-from sentry_sdk.hub import Hub
-from sentry_sdk.integrations import Integration, DidNotEnable
+import sentry_sdk
+from sentry_sdk.integrations import _check_minimum_version, Integration, DidNotEnable
 from sentry_sdk.integrations._wsgi_common import RequestExtractor
 from sentry_sdk.integrations.wsgi import SentryWsgiMiddleware
 from sentry_sdk.tracing import SOURCE_FOR_STYLE
 from sentry_sdk.utils import (
     capture_internal_exceptions,
+    ensure_integration_enabled,
     event_from_exception,
+    parse_version,
 )
 
-from sentry_sdk._types import MYPY
+from typing import TYPE_CHECKING
 
-if MYPY:
+if TYPE_CHECKING:
     from typing import Any
     from typing import Dict
     from typing import Optional
 
-    from sentry_sdk._types import EventProcessor
+    from sentry_sdk._types import Event, EventProcessor
+
+# In Falcon 3.0 `falcon.api_helpers` is renamed to `falcon.app_helpers`
+# and `falcon.API` to `falcon.App`
 
 try:
     import falcon  # type: ignore
-    import falcon.api_helpers  # type: ignore
 
     from falcon import __version__ as FALCON_VERSION
 except ImportError:
     raise DidNotEnable("Falcon not installed")
+
+try:
+    import falcon.app_helpers  # type: ignore
+
+    falcon_helpers = falcon.app_helpers
+    falcon_app_class = falcon.App
+    FALCON3 = True
+except ImportError:
+    import falcon.api_helpers  # type: ignore
+
+    falcon_helpers = falcon.api_helpers
+    falcon_app_class = falcon.API
+    FALCON3 = False
+
+
+_FALCON_UNSET = None  # type: Optional[object]
+if FALCON3:  # falcon.request._UNSET is only available in Falcon 3.0+
+    with capture_internal_exceptions():
+        from falcon.request import _UNSET as _FALCON_UNSET  # type: ignore[import-not-found, no-redef]
 
 
 class FalconRequestExtractor(RequestExtractor):
@@ -60,29 +81,35 @@ class FalconRequestExtractor(RequestExtractor):
 
     def json(self):
         # type: () -> Optional[Dict[str, Any]]
-        try:
-            return self.request.media
-        except falcon.errors.HTTPBadRequest:
-            # NOTE(jmagnusson): We return `falcon.Request._media` here because
-            # falcon 1.4 doesn't do proper type checking in
-            # `falcon.Request.media`. This has been fixed in 2.0.
-            # Relevant code: https://github.com/falconry/falcon/blob/1.4.1/falcon/request.py#L953
-            return self.request._media
+        # fallback to cached_media = None if self.request._media is not available
+        cached_media = None
+        with capture_internal_exceptions():
+            # self.request._media is the cached self.request.media
+            # value. It is only available if self.request.media
+            # has already been accessed. Therefore, reading
+            # self.request._media will not exhaust the raw request
+            # stream (self.request.bounded_stream) because it has
+            # already been read if self.request._media is set.
+            cached_media = self.request._media
+
+        if cached_media is not _FALCON_UNSET:
+            return cached_media
+
+        return None
 
 
-class SentryFalconMiddleware(object):
+class SentryFalconMiddleware:
     """Captures exceptions in Falcon requests and send to Sentry"""
 
     def process_request(self, req, resp, *args, **kwargs):
         # type: (Any, Any, *Any, **Any) -> None
-        hub = Hub.current
-        integration = hub.get_integration(FalconIntegration)
+        integration = sentry_sdk.get_client().get_integration(FalconIntegration)
         if integration is None:
             return
 
-        with hub.configure_scope() as scope:
-            scope._name = "falcon"
-            scope.add_event_processor(_make_request_event_processor(req, integration))
+        scope = sentry_sdk.get_isolation_scope()
+        scope._name = "falcon"
+        scope.add_event_processor(_make_request_event_processor(req, integration))
 
 
 TRANSACTION_STYLE_VALUES = ("uri_template", "path")
@@ -90,6 +117,7 @@ TRANSACTION_STYLE_VALUES = ("uri_template", "path")
 
 class FalconIntegration(Integration):
     identifier = "falcon"
+    origin = f"auto.http.{identifier}"
 
     transaction_style = ""
 
@@ -105,13 +133,9 @@ class FalconIntegration(Integration):
     @staticmethod
     def setup_once():
         # type: () -> None
-        try:
-            version = tuple(map(int, FALCON_VERSION.split(".")))
-        except (ValueError, TypeError):
-            raise DidNotEnable("Unparsable Falcon version: {}".format(FALCON_VERSION))
 
-        if version < (1, 4):
-            raise DidNotEnable("Falcon 1.4 or newer required.")
+        version = parse_version(FALCON_VERSION)
+        _check_minimum_version(FalconIntegration, version)
 
         _patch_wsgi_app()
         _patch_handle_exception()
@@ -120,89 +144,111 @@ class FalconIntegration(Integration):
 
 def _patch_wsgi_app():
     # type: () -> None
-    original_wsgi_app = falcon.API.__call__
+    original_wsgi_app = falcon_app_class.__call__
 
     def sentry_patched_wsgi_app(self, env, start_response):
         # type: (falcon.API, Any, Any) -> Any
-        hub = Hub.current
-        integration = hub.get_integration(FalconIntegration)
+        integration = sentry_sdk.get_client().get_integration(FalconIntegration)
         if integration is None:
             return original_wsgi_app(self, env, start_response)
 
         sentry_wrapped = SentryWsgiMiddleware(
-            lambda envi, start_resp: original_wsgi_app(self, envi, start_resp)
+            lambda envi, start_resp: original_wsgi_app(self, envi, start_resp),
+            span_origin=FalconIntegration.origin,
         )
 
         return sentry_wrapped(env, start_response)
 
-    falcon.API.__call__ = sentry_patched_wsgi_app
+    falcon_app_class.__call__ = sentry_patched_wsgi_app
 
 
 def _patch_handle_exception():
     # type: () -> None
-    original_handle_exception = falcon.API._handle_exception
+    original_handle_exception = falcon_app_class._handle_exception
 
+    @ensure_integration_enabled(FalconIntegration, original_handle_exception)
     def sentry_patched_handle_exception(self, *args):
         # type: (falcon.API, *Any) -> Any
         # NOTE(jmagnusson): falcon 2.0 changed falcon.API._handle_exception
         # method signature from `(ex, req, resp, params)` to
         # `(req, resp, ex, params)`
-        if isinstance(args[0], Exception):
-            ex = args[0]
-        else:
-            ex = args[2]
+        ex = response = None
+        with capture_internal_exceptions():
+            ex = next(argument for argument in args if isinstance(argument, Exception))
+            response = next(
+                argument for argument in args if isinstance(argument, falcon.Response)
+            )
 
         was_handled = original_handle_exception(self, *args)
 
-        hub = Hub.current
-        integration = hub.get_integration(FalconIntegration)
+        if ex is None or response is None:
+            # Both ex and response should have a non-None value at this point; otherwise,
+            # there is an error with the SDK that will have been captured in the
+            # capture_internal_exceptions block above.
+            return was_handled
 
-        if integration is not None and _exception_leads_to_http_5xx(ex):
-            # If an integration is there, a client has to be there.
-            client = hub.client  # type: Any
-
+        if _exception_leads_to_http_5xx(ex, response):
             event, hint = event_from_exception(
                 ex,
-                client_options=client.options,
+                client_options=sentry_sdk.get_client().options,
                 mechanism={"type": "falcon", "handled": False},
             )
-            hub.capture_event(event, hint=hint)
+            sentry_sdk.capture_event(event, hint=hint)
 
         return was_handled
 
-    falcon.API._handle_exception = sentry_patched_handle_exception
+    falcon_app_class._handle_exception = sentry_patched_handle_exception
 
 
 def _patch_prepare_middleware():
     # type: () -> None
-    original_prepare_middleware = falcon.api_helpers.prepare_middleware
+    original_prepare_middleware = falcon_helpers.prepare_middleware
 
     def sentry_patched_prepare_middleware(
-        middleware=None, independent_middleware=False
+        middleware=None, independent_middleware=False, asgi=False
     ):
-        # type: (Any, Any) -> Any
-        hub = Hub.current
-        integration = hub.get_integration(FalconIntegration)
+        # type: (Any, Any, bool) -> Any
+        if asgi:
+            # We don't support ASGI Falcon apps, so we don't patch anything here
+            return original_prepare_middleware(middleware, independent_middleware, asgi)
+
+        integration = sentry_sdk.get_client().get_integration(FalconIntegration)
         if integration is not None:
             middleware = [SentryFalconMiddleware()] + (middleware or [])
+
+        # We intentionally omit the asgi argument here, since the default is False anyways,
+        # and this way, we remain backwards-compatible with pre-3.0.0 Falcon versions.
         return original_prepare_middleware(middleware, independent_middleware)
 
-    falcon.api_helpers.prepare_middleware = sentry_patched_prepare_middleware
+    falcon_helpers.prepare_middleware = sentry_patched_prepare_middleware
 
 
-def _exception_leads_to_http_5xx(ex):
-    # type: (Exception) -> bool
+def _exception_leads_to_http_5xx(ex, response):
+    # type: (Exception, falcon.Response) -> bool
     is_server_error = isinstance(ex, falcon.HTTPError) and (ex.status or "").startswith(
         "5"
     )
     is_unhandled_error = not isinstance(
         ex, (falcon.HTTPError, falcon.http_status.HTTPStatus)
     )
-    return is_server_error or is_unhandled_error
+
+    # We only check the HTTP status on Falcon 3 because in Falcon 2, the status on the response
+    # at the stage where we capture it is listed as 200, even though we would expect to see a 500
+    # status. Since at the time of this change, Falcon 2 is ca. 4 years old, we have decided to
+    # only perform this check on Falcon 3+, despite the risk that some handled errors might be
+    # reported to Sentry as unhandled on Falcon 2.
+    return (is_server_error or is_unhandled_error) and (
+        not FALCON3 or _has_http_5xx_status(response)
+    )
+
+
+def _has_http_5xx_status(response):
+    # type: (falcon.Response) -> bool
+    return response.status.startswith("5")
 
 
 def _set_transaction_name_and_source(event, transaction_style, request):
-    # type: (Dict[str, Any], str, falcon.Request) -> None
+    # type: (Event, str, falcon.Request) -> None
     name_for_style = {
         "uri_template": request.uri_template,
         "path": request.path,
@@ -215,7 +261,7 @@ def _make_request_event_processor(req, integration):
     # type: (falcon.Request, FalconIntegration) -> EventProcessor
 
     def event_processor(event, hint):
-        # type: (Dict[str, Any], Dict[str, Any]) -> Dict[str, Any]
+        # type: (Event, dict[str, Any]) -> Event
         _set_transaction_name_and_source(event, integration.transaction_style, req)
 
         with capture_internal_exceptions():

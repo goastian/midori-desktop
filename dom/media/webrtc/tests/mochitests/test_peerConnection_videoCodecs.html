@@ -20,26 +20,34 @@
     let payloadType;
     test.chain.insertBefore("PC_LOCAL_SET_LOCAL_DESCRIPTION", [
       function PC_LOCAL_FILTER_OUT_CODECS() {
-        const otherCodec = codecs.find(c => c != codec);
-        const otherId = sdputils.findCodecId(test.originalOffer.sdp, otherCodec.name, otherCodec.offset);
-        const otherRtpmapMatcher = new RegExp(`a=rtpmap:${otherId}.*\\r\\n`, "gi");
-
         const id = sdputils.findCodecId(test.originalOffer.sdp, codec.name, codec.offset);
         payloadType = Number(id);
-        if (codec.offset) {
-          isnot(id, sdputils.findCodecId(test.originalOffer.sdp, codec.name, 0),
-            "Different offsets should return different payload types");
+        const otherIds = [];
+        for (const otherCodec of codecs) {
+          const otherId = sdputils.findCodecId(test.originalOffer.sdp, otherCodec.name, otherCodec.offset);
+          const otherRtpmapMatcher = new RegExp(`a=rtpmap:${otherId}.*\\r\\n`, "gi");
+
+          if (codec.offset) {
+            isnot(id, sdputils.findCodecId(test.originalOffer.sdp, codec.name, 0),
+              "Different offsets should return different payload types");
+          }
+          if (Number(otherId) != id) {
+            otherIds.push(otherId);
+          }
         }
+
         test.originalOffer.sdp =
           sdputils.removeAllButPayloadType(test.originalOffer.sdp, id);
 
-        // Bug 1901160 test receiving signaling with no H264 fmtp.
+        // Bug 1901160 test receiving signaling with no H264 profile-level-id fmtp.
         if (codec.hasOwnProperty("fmtpOverride")) {
-          test.originalOffer.sdp = test.originalOffer.sdp.replace(new RegExp("a=fmtp:" + id + ".*\\r\\n", "gi"), codec.fmtpOverride);
+          test.originalOffer.sdp = test.originalOffer.sdp.replace(new RegExp(`(a=fmtp:${id}).*(\\r\\n)`, "gi"), `$1 ${codec.fmtpOverride}$2`);
         }
 
-        ok(!test.originalOffer.sdp.match(new RegExp(`m=.*UDP/TLS/RTP/SAVPF.* ${otherId}[^0-9]`, "gi")),
-          `Other codec ${otherId} should be removed after filtering`);
+        for (const otherId of otherIds) {
+          ok(!test.originalOffer.sdp.match(new RegExp(`m=.*UDP/TLS/RTP/SAVPF.* ${otherId}[^0-9]`, "gi")),
+            `Other codec ${otherId} should be removed after filtering`);
+        }
         ok(test.originalOffer.sdp.match(new RegExp(`m=.*UDP/TLS/RTP/SAVPF.* ${id}[^0-9]`, "gi")),
           `Tested codec ${id} should remain after filtering`);
 
@@ -82,18 +90,24 @@
           }
         });
       },
-      async function CHECK_VIDEO_FLOW() {
-        try {
-          const h = new VideoStreamHelper();
-          await h.checkVideoPlaying(
-              test.pcRemote.remoteMediaElements[0],
-              10, 10, 128);
-          ok(true, `Got video flow for codec ${codec.name}, offset ${codec.offset}`);
-        } catch(e) {
-          ok(false, `No video flow for codec ${codec.name}, offset ${codec.offset}: ${e}`);
-        }
-      },
     ]);
+
+    if (!navigator.userAgent.includes("Android")) {
+      // TODO: enable on Android when bug 1526207 is fixed.
+      test.chain.append([
+        async function CHECK_VIDEO_FLOW() {
+          try {
+            const h = new VideoStreamHelper();
+            await h.checkVideoPlaying(
+                test.pcRemote.remoteMediaElements[0],
+                10, 10, 128);
+            ok(true, `Got video flow for codec ${codec.name}, offset ${codec.offset}`);
+          } catch(e) {
+            ok(false, `No video flow for codec ${codec.name}, offset ${codec.offset}: ${e}`);
+          }
+        },
+      ]);
+    }
 
     await test.run();
   }
@@ -105,52 +119,54 @@
     { name: "VP8" },
     { name: "VP9" },
     { name: "H264" },
-    { name: "H264", offset: 1 },
-    { name: "H264", offset: 2 },
-    { name: "H264", offset: 2, fmtpOverride: "a=fmtp:packetization-mode=1" },
-    { name: "H264", offset: 3 },
-    { name: "H264", offset: 3, fmtpOverride: "a=fmtp:packetization-mode=0" },
-    { name: "H264", offset: 3, fmtpOverride: "" },
     { name: "AV1" },
   ];
 
   runNetworkTest(async (options) => {
+    const h264Support = checkPlatformH264CodecPrefs();
+
     // This test expects the video being captured will change color. Use fake
     // video device as loopback does not currently change.
     await pushPrefs(
       ['media.video_loopback_dev', ''],
       ['media.navigator.streams.fake', true],
-      ["media.navigator.video.disable_h264_baseline", false]);
-    for (let codec of codecs) {
+      ["media.navigator.video.disable_h264_baseline", false],
+    );
+
+    if (h264Support.webrtc) {
+      codecs.push(
+        { name: "H264", offset: 1 },
+        { name: "H264", offset: 2 },
+        { name: "H264", offset: 2, fmtpOverride: "packetization-mode=1" },
+        { name: "H264", offset: 3 },
+        { name: "H264", offset: 3, fmtpOverride: "packetization-mode=0" },
+        { name: "H264", offset: 3, fmtpOverride: "" }
+      );
+    } else {
+      // With only platform encoders we don't signal packetization-mode=0 as
+      // not all platforms support slice size control.
+      codecs.push(
+        { name: "H264", offset: 1 },
+        { name: "H264", offset: 1, fmtpOverride: "packetization-mode=1" },
+      );
+    }
+
+    for (const codec of codecs) {
+      let libWebrtcCodec = true;
+      if (codec.name == "H264") {
+        libWebrtcCodec = h264Support.webrtc;
+      }
+      // Use builtin webrtc encoders where possible.
+      await pushPrefs(
+        ['media.webrtc.encoder_creation_strategy', !libWebrtcCodec],
+        // Don't use MediaDataDecoder with fakeopenh264. Remove this when we
+        // return a valid bitstream from fakeopenh264(bug 1509012).
+        ['media.navigator.mediadatadecoder_h264_enabled', !libWebrtcCodec],
+      );
+
       info(`Testing video for codec ${codec.name} offset ${codec.offset}`);
       try {
-        let enc = SpecialPowers.getIntPref('media.webrtc.encoder_creation_strategy');
-        let dec = SpecialPowers.getBoolPref('media.navigator.mediadatadecoder_h264_enabled');
-        if (codec.name == "H264") {
-          await matchPlatformH264CodecPrefs();
-          if (codec.offset == 1 || codec.offset == 3) {
-            // Force fake GMP codec for H.264 mode 0 because not all platforms
-            // support slice size control. Re-enable it after
-            // a. SW encoder fallback support (bug 1726617), and
-            // b. returning valid bitstream from fake GMP encoder (bug 1509012).
-            await pushPrefs(
-              ['media.webrtc.encoder_creation_strategy', 0 /* builtin libwertc encoders */],
-              ['media.navigator.mediadatadecoder_h264_enabled', false],
-            );
-          }
-        }
-        if (codec.name == "AV1" ) {
-          const hasAv1 = await matchPlatformAV1CodecPrefs();
-          if (!hasAv1.software && !hasAv1.hardware) {
-            info("Skipping AV1 test as no AV1 codec is available");
-            continue;
-          }
-        }
-        await testVideoCodec(options, codec);
-        await pushPrefs(
-          ['media.webrtc.encoder_creation_strategy', enc],
-          ['media.navigator.mediadatadecoder_h264_enabled', dec],
-        );
+        await timerGuard(testVideoCodec(options, codec), 20000, `codec=${JSON.stringify(codec)}`);
       } catch(e) {
         ok(false, `Error in test for codec ${codec.name}: ${e}\n${e.stack}`);
       }

@@ -2335,9 +2335,9 @@ void ScrollContainerFrame::ScrollToInternal(
       ScrollOperationParams{aMode, aOrigin, aSnapFlags, aTriggeredByScript});
 }
 
-void ScrollContainerFrame::ScrollToCSSPixels(const CSSIntPoint& aScrollPosition,
+void ScrollContainerFrame::ScrollToCSSPixels(const CSSPoint& aScrollPosition,
                                              ScrollMode aMode) {
-  CSSIntPoint currentCSSPixels = GetRoundedScrollPositionCSSPixels();
+  CSSPoint currentCSSPixels = GetScrollPositionCSSPixels();
   // Transmogrify this scroll to a relative one if there's any on-going
   // animation in APZ triggered by __user__.
   // Bug 1740164: We will apply it for cases there's no animation in APZ.
@@ -2350,7 +2350,7 @@ void ScrollContainerFrame::ScrollToCSSPixels(const CSSIntPoint& aScrollPosition,
   if (mCurrentAPZScrollAnimationType ==
           APZScrollAnimationType::TriggeredByUserInput &&
       !isScrollAnimating) {
-    CSSIntPoint delta = aScrollPosition - currentCSSPixels;
+    CSSPoint delta = aScrollPosition - currentCSSPixels;
     // This transmogrification need to be an intended end position scroll
     // operation.
     ScrollByCSSPixelsInternal(delta, aMode,
@@ -2785,7 +2785,7 @@ static nscoord ClampAndAlignWithPixels(nscoord aDesired, nscoord aBoundLower,
   nscoord destUpper = std::clamp(aDestUpper, aBoundLower, aBoundUpper);
 
   nscoord desired = std::clamp(aDesired, destLower, destUpper);
-  if (StaticPrefs::layout_scroll_disable_pixel_alignment()) {
+  if (StaticPrefs::layout_disable_pixel_alignment()) {
     return desired;
   }
 
@@ -3683,8 +3683,7 @@ void ScrollContainerFrame::MaybeCreateTopLayerAndWrapRootItems(
       rootStyleFrame->HasAnyStateBits(NS_FRAME_CAPTURED_IN_VIEW_TRANSITION)) {
     SerializeList();
     rootResultList.AppendNewToTop<nsDisplayViewTransitionCapture>(
-        aBuilder, this, &rootResultList, aBuilder->CurrentActiveScrolledRoot(),
-        /* aIsRoot = */ true);
+        aBuilder, this, &rootResultList, nullptr, /* aIsRoot = */ true);
   }
 
   // Create any required items for the 'top layer' and check if they'll be
@@ -4056,23 +4055,26 @@ void ScrollContainerFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     nsDisplayListBuilder::AutoCurrentActiveScrolledRootSetter asrSetter(
         aBuilder);
 
-    if (mWillBuildScrollableLayer && aBuilder->IsPaintingToWindow()) {
-      // If this scroll frame has a first scrollable frame sequence number,
-      // ensure that it matches the current paint sequence number. If it does
-      // not, reset it so that we can expire the displayport. The stored
-      // sequence number will not match that of the current paint if the dom
-      // was mutated in some way that alters the order of scroll frames.
-      if (IsFirstScrollableFrameSequenceNumber().isSome() &&
-          *IsFirstScrollableFrameSequenceNumber() !=
-              nsDisplayListBuilder::GetPaintSequenceNumber()) {
-        SetIsFirstScrollableFrameSequenceNumber(Nothing());
+    if (aBuilder->IsInViewTransitionCapture() || capturedByViewTransition) {
+      asrSetter.SetCurrentActiveScrolledRoot(nullptr);
+    } else {
+      if (mWillBuildScrollableLayer && aBuilder->IsPaintingToWindow()) {
+        // If this scroll frame has a first scrollable frame sequence number,
+        // ensure that it matches the current paint sequence number. If it does
+        // not, reset it so that we can expire the displayport. The stored
+        // sequence number will not match that of the current paint if the dom
+        // was mutated in some way that alters the order of scroll frames.
+        if (IsFirstScrollableFrameSequenceNumber().isSome() &&
+            *IsFirstScrollableFrameSequenceNumber() !=
+                nsDisplayListBuilder::GetPaintSequenceNumber()) {
+          SetIsFirstScrollableFrameSequenceNumber(Nothing());
+        }
+        asrSetter.EnterScrollFrame(this);
       }
-      asrSetter.EnterScrollFrame(this);
-    }
-
-    if (couldBuildLayer && mScrolledFrame->GetContent()) {
-      asrSetter.SetCurrentScrollParentId(
-          nsLayoutUtils::FindOrCreateIDFor(mScrolledFrame->GetContent()));
+      if (couldBuildLayer && mScrolledFrame->GetContent()) {
+        asrSetter.SetCurrentScrollParentId(
+            nsLayoutUtils::FindOrCreateIDFor(mScrolledFrame->GetContent()));
+      }
     }
 
     if (mWillBuildScrollableLayer && aBuilder->BuildCompositorHitTestInfo()) {
@@ -4151,6 +4153,9 @@ void ScrollContainerFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
           aBuilder, this, visibleRectForChildren, dirtyRectForChildren);
       nsDisplayListBuilder::AutoEnterViewTransitionCapture
           inViewTransitionCaptureSetter(aBuilder, capturedByViewTransition);
+      if (capturedByViewTransition) {
+        scrolledRectClipState.Clear();
+      }
 
       BuildDisplayListForChild(aBuilder, mScrolledFrame, set);
 
@@ -4972,7 +4977,7 @@ void ScrollContainerFrame::ScrollBy(nsIntPoint aDelta, ScrollUnit aUnit,
 }
 
 void ScrollContainerFrame::ScrollByCSSPixelsInternal(
-    const CSSIntPoint& aDelta, ScrollMode aMode, ScrollSnapFlags aSnapFlags) {
+    const CSSPoint& aDelta, ScrollMode aMode, ScrollSnapFlags aSnapFlags) {
   nsPoint current = GetScrollPosition();
   // `current` value above might be a value which was aligned to in
   // layer-pixels, so starting from such points will make the difference between
@@ -4984,7 +4989,7 @@ void ScrollContainerFrame::ScrollByCSSPixelsInternal(
   // the current position in CSS pixels differs from the given position, the
   // cases should be fixed in bug 1556685.
   CSSPoint currentCSSPixels;
-  if (StaticPrefs::layout_scroll_disable_pixel_alignment()) {
+  if (StaticPrefs::layout_disable_pixel_alignment()) {
     currentCSSPixels = GetScrollPositionCSSPixels();
   } else {
     currentCSSPixels = GetRoundedScrollPositionCSSPixels();
@@ -6692,7 +6697,9 @@ static bool ShellIsAlive(nsWeakPtr& aWeakPtr) {
 
 void ScrollContainerFrame::SetScrollbarEnabled(Element* aElement,
                                                nscoord aMaxPos) {
-  DebugOnly<nsWeakPtr> weakShell(do_GetWeakReference(PresShell()));
+#ifdef DEBUG
+  nsWeakPtr weakShell(do_GetWeakReference(PresShell()));
+#endif
   if (aMaxPos) {
     aElement->UnsetAttr(kNameSpaceID_None, nsGkAtoms::disabled, true);
   } else {
@@ -6703,7 +6710,9 @@ void ScrollContainerFrame::SetScrollbarEnabled(Element* aElement,
 
 void ScrollContainerFrame::SetCoordAttribute(Element* aElement, nsAtom* aAtom,
                                              nscoord aSize) {
-  DebugOnly<nsWeakPtr> weakShell(do_GetWeakReference(PresShell()));
+#ifdef DEBUG
+  nsWeakPtr weakShell(do_GetWeakReference(PresShell()));
+#endif
   // convert to pixels
   int32_t pixelSize = nsPresContext::AppUnitsToIntCSSPixels(aSize);
 
@@ -6794,7 +6803,7 @@ bool ScrollContainerFrame::GetBorderRadii(const nsSize& aFrameSize,
 
 static nscoord SnapCoord(nscoord aCoord, double aRes,
                          nscoord aAppUnitsPerPixel) {
-  if (StaticPrefs::layout_scroll_disable_pixel_alignment()) {
+  if (StaticPrefs::layout_disable_pixel_alignment()) {
     return aCoord;
   }
   double snappedToLayerPixels = NS_round((aRes * aCoord) / aAppUnitsPerPixel);

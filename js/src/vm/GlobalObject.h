@@ -21,6 +21,9 @@
 #include "jstypes.h"
 #include "NamespaceImports.h"
 
+#ifdef JS_HAS_INTL_API
+#  include "builtin/intl/GlobalIntlData.h"
+#endif
 #include "gc/AllocKind.h"
 #include "js/CallArgs.h"
 #include "js/Class.h"
@@ -205,6 +208,11 @@ class GlobalObjectData {
   // Global state for regular expressions.
   RegExpRealm regExpRealm;
 
+#ifdef JS_HAS_INTL_API
+  // Cache Intl formatters.
+  intl::GlobalIntlData globalIntlData;
+#endif
+
   GCPtr<ArgumentsObject*> mappedArgumentsTemplate;
   GCPtr<ArgumentsObject*> unmappedArgumentsTemplate;
 
@@ -283,10 +291,11 @@ class GlobalObject : public NativeObject {
 
   void initBuiltinProto(ProtoKind kind, JSObject* proto) {
     MOZ_ASSERT(proto);
-    // Catch double-initialization; however if this is too much of a burden due
-    // to OOM handling it could be removed.
-    MOZ_ASSERT(!hasBuiltinProto(kind));
-    data().builtinProtos[kind].init(proto);
+    // Use set, as it's possible to construct oomTest test
+    // cases where the proto is already initialized.
+    //
+    // See Bugs 1969353 and 1928852.
+    data().builtinProtos[kind].set(proto);
   }
 
   void setBuiltinProto(ProtoKind kind, JSObject* proto) {
@@ -987,6 +996,10 @@ class GlobalObject : public NativeObject {
                                              Handle<GlobalObject*> global);
 
   RegExpRealm& regExpRealm() { return data().regExpRealm; }
+
+#ifdef JS_HAS_INTL_API
+  intl::GlobalIntlData& globalIntlData() { return data().globalIntlData; }
+#endif
 
   // Infallibly test whether the given value is the eval function for this
   // global.

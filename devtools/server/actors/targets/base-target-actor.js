@@ -127,10 +127,6 @@ class BaseTargetActor extends Actor {
       return;
     }
 
-    if (this.devtoolsSpawnedBrowsingContextForWebExtension) {
-      this.overrideResourceBrowsingContextForWebExtension(resources);
-    }
-
     const shouldEmitSynchronously =
       resourceType == NETWORK_EVENT_STACKTRACE ||
       (resourceType == DOCUMENT_EVENT &&
@@ -158,10 +154,8 @@ class BaseTargetActor extends Actor {
     // This will force clearing resources on the client side ASAP.
     // Otherwise we might emit some other RDP event (outside of resources),
     // which will be cleared by the throttled/delayed will-navigate.
-    // * we receive NETWOR_EVENT_STACKTRACE which are meant to be dispatched *before*
-    // the related NETWORK_EVENT fired from the parent process. (we aren't throttling
-    // resources from the parent process, so it is even more likely to be dispatched
-    // in the wrong order)
+    // * we receive NETWORK_EVENT_STACKTRACE which are meant to be dispatched *before*
+    // the related NETWORK_EVENT fired from the parent process which are also throttled.
     if (shouldEmitSynchronously) {
       this.emitResources();
     } else {
@@ -184,23 +178,6 @@ class BaseTargetActor extends Actor {
       this.#throttledResources[updateType] = [];
       this.emit(`resources-${updateType}-array`, resources);
     }
-  }
-
-  /**
-   * For WebExtension, we have to hack all resource's browsingContextID
-   * in order to ensure emitting them with the fixed, original browsingContextID
-   * related to the fallback document created by devtools which always exists.
-   * The target's form will always be relating to that BrowsingContext IDs (browsing context ID and inner window id).
-   * Even if the target switches internally to another document via WindowGlobalTargetActor._setWindow.
-   *
-   * @param {Array<Objects>} List of resources
-   */
-  overrideResourceBrowsingContextForWebExtension(resources) {
-    const browsingContextID =
-      this.devtoolsSpawnedBrowsingContextForWebExtension.id;
-    resources.forEach(
-      resource => (resource.browsingContextID = browsingContextID)
-    );
   }
 
   // List of actor prefixes (string) which have already been instantiated via getTargetScopedActor method.

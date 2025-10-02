@@ -77,13 +77,13 @@
 --wasm-compiler=baseline+optimizing
 --test-wasm-await-tier2
 --wasm-disable-huge-memory
---setpref=wasm_js_string_builtins=true
 
 # CPU instruction set-related
 --no-sse3
 --no-ssse3
 --no-sse41
 --no-sse42
+--no-fjcvtzs
 
 # arm specific, no-ops on other platforms.
 --arm-sim-icache-checks

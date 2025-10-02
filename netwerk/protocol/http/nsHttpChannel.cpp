@@ -1851,12 +1851,35 @@ nsresult nsHttpChannel::InitTransaction() {
     };
   }
   mTransaction->SetIsForWebTransport(!!mWebTransportSessionEventListener);
+
+  struct LNAPerms perms{};
+  // If this is a third party tracker, it shoudn't make ANY LNA requests
+  // So we pretend that the permission for these has already been denied
+  // in order to avoid prompting.
+  uint32_t flags = 0;
+  if (StaticPrefs::network_lna_block_trackers() &&
+      NS_SUCCEEDED(
+          mLoadInfo->GetTriggeringThirdPartyClassificationFlags(&flags)) &&
+      flags != 0) {
+    perms.mLocalHostPermission = LNAPermission::Denied;
+    perms.mLocalNetworkPermission = LNAPermission::Denied;
+
+    if (nsContentUtils::IsExactSitePermAllow(mLoadInfo->GetLoadingPrincipal(),
+                                             "localhost"_ns)) {
+      perms.mLocalHostPermission = LNAPermission::Granted;
+    }
+    if (nsContentUtils::IsExactSitePermAllow(mLoadInfo->GetLoadingPrincipal(),
+                                             "local-network"_ns)) {
+      perms.mLocalNetworkPermission = LNAPermission::Granted;
+    }
+  }
+
   rv = mTransaction->Init(
       mCaps, mConnectionInfo, &mRequestHead, mUploadStream, mReqContentLength,
       LoadUploadStreamHasHeaders(), GetCurrentSerialEventTarget(), callbacks,
       this, mBrowserId, category, mRequestContext, mClassOfService,
       mInitialRwin, LoadResponseTimeoutEnabled(), mChannelId,
-      std::move(observer));
+      std::move(observer), mLoadInfo->GetParentIpAddressSpace(), perms);
   if (NS_FAILED(rv)) {
     mTransaction = nullptr;
     return rv;
@@ -10454,13 +10477,9 @@ void nsHttpChannel::SetOriginHeader() {
 void nsHttpChannel::SetDoNotTrack() {
   /**
    * 'DoNotTrack' header should be added if 'privacy.donottrackheader.enabled'
-   * is true or tracking protection is enabled. See bug 1258033.
+   * is true.
    */
-  nsCOMPtr<nsILoadContext> loadContext;
-  NS_QueryNotificationCallbacks(this, loadContext);
-
-  if ((loadContext && loadContext->UseTrackingProtection()) ||
-      StaticPrefs::privacy_donottrackheader_enabled()) {
+  if (StaticPrefs::privacy_donottrackheader_enabled()) {
     DebugOnly<nsresult> rv =
         mRequestHead.SetHeader(nsHttp::DoNotTrack, "1"_ns, false);
     MOZ_ASSERT(NS_SUCCEEDED(rv));

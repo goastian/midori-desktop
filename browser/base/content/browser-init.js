@@ -109,7 +109,10 @@ var gBrowserInit = {
         extraOptions instanceof Ci.nsIWritablePropertyBag2 &&
         extraOptions.hasKey("taskbartab")
       ) {
-        window.document.documentElement.setAttribute("taskbartab", "");
+        window.document.documentElement.setAttribute(
+          "taskbartab",
+          extraOptions.getPropertyAsAString("taskbartab")
+        );
       }
     }
 
@@ -245,7 +248,7 @@ var gBrowserInit = {
     Win10TabletModeUpdater.init();
     CombinedStopReload.ensureInitialized();
     gPrivateBrowsingUI.init();
-    TaskbarTabUI.init(window);
+    TaskbarTabsChrome.init(window);
     BrowserPageActions.init();
     if (gToolbarKeyNavEnabled) {
       ToolbarKeyboardNavigator.init();
@@ -271,8 +274,15 @@ var gBrowserInit = {
 
       let swapBrowsers = () => {
         if (gBrowser.isTabGroupLabel(tabToAdopt)) {
+          // TODO bug 1967937: Merge this case with the tab group case below.
           gBrowser.adoptTabGroup(tabToAdopt.group, { elementIndex: 0 });
           gBrowser.removeTab(gBrowser.selectedTab);
+        } else if (gBrowser.isTabGroup(tabToAdopt)) {
+          // Via gBrowser.replaceGroupWithWindow
+          let tempBlankTab = gBrowser.selectedTab;
+          gBrowser.adoptTabGroup(tabToAdopt, { tabIndex: 0, selectTab: true });
+          gBrowser.removeTab(tempBlankTab);
+          Glean.tabgroup.groupInteractions.move_window.add(1);
         } else {
           if (tabToAdopt.group) {
             Glean.tabgroup.tabInteractions.remove_new_window.add();
@@ -500,7 +510,7 @@ var gBrowserInit = {
       }
 
       // Enable the Restore Last Session command if needed
-      RestoreLastSessionObserver.init();
+      gRestoreLastSessionObserver.init();
 
       SidebarController.startDelayedLoad();
 

@@ -19,6 +19,7 @@ class nsIPrincipal;
 
 #include "Database.h"
 #include "mozilla/storage.h"
+#include "mozilla/ipc/IPCCore.h"
 
 #define ICON_STATUS_UNKNOWN 0
 #define ICON_STATUS_CHANGED 1 << 0
@@ -119,15 +120,10 @@ class AsyncAssociateIconToPage final : public Runnable {
    *        Icon to be associated.
    * @param aPage
    *        Page to which associate the icon.
-   * @param aCallback
-   *        Function to be called when the associate process finishes.
    */
-  AsyncAssociateIconToPage(
-      const IconData& aIcon, const PageData& aPage,
-      const nsMainThreadPtrHandle<nsIFaviconDataCallback>& aCallback);
+  AsyncAssociateIconToPage(const IconData& aIcon, const PageData& aPage);
 
  private:
-  nsMainThreadPtrHandle<nsIFaviconDataCallback> mCallback;
   IconData mIcon;
   PageData mPage;
 };
@@ -161,6 +157,7 @@ class AsyncSetIconForPage final : public Runnable {
 
 using FaviconPromise =
     mozilla::MozPromise<nsCOMPtr<nsIFavicon>, nsresult, true>;
+using BoolPromise = mozilla::MozPromise<bool, nsresult, true>;
 
 /**
  * Asynchronously tries to get the URL and data of a page's favicon, then
@@ -181,9 +178,9 @@ class AsyncGetFaviconForPageRunnable final : public Runnable {
    * @param aPromise
    *        Promise that returns the result.
    */
-  AsyncGetFaviconForPageRunnable(const nsCOMPtr<nsIURI>& aPageURI,
-                                 uint16_t aPreferredWidth,
-                                 FaviconPromise::Private* aPromise);
+  AsyncGetFaviconForPageRunnable(
+      const nsCOMPtr<nsIURI>& aPageURI, uint16_t aPreferredWidth,
+      const RefPtr<FaviconPromise::Private>& aPromise);
 
  private:
   nsCOMPtr<nsIURI> mPageURI;
@@ -199,51 +196,49 @@ class NotifyIconObservers final : public Runnable {
   NS_DECL_NSIRUNNABLE
 
   /**
-   * Constructor for nsIFaviconDataCallback.
+   * Constructor.
    *
    * @param aIcon
    *        Icon information. Can be empty if no icon is associated to the page.
    * @param aPage
    *        Page to which the icon information applies.
-   * @param aCallback
-   *        Function to be notified in all cases.
    */
-  NotifyIconObservers(
-      const IconData& aIcon, const PageData& aPage,
-      const nsMainThreadPtrHandle<nsIFaviconDataCallback>& aCallback);
+  NotifyIconObservers(const IconData& aIcon, const PageData& aPage);
 
  private:
-  nsMainThreadPtrHandle<nsIFaviconDataCallback> mCallback;
   IconData mIcon;
   PageData mPage;
 };
 
 /**
- * Copies Favicons from one page to another one.
+ * Asynchronously tries to copy the favicons asociated to the URL.
  */
-class AsyncCopyFavicons final : public Runnable {
+class AsyncTryCopyFaviconsRunnable final : public Runnable {
  public:
   NS_DECL_NSIRUNNABLE
 
   /**
    * Constructor.
    *
-   * @param aFromPage
-   *        The originating page.
-   * @param aToPage
-   *        The destination page.
-   * @param aFaviconLoadPrivate
-   *        Whether this favicon load is in private browsing.
-   * @param aCallback
-   *        An optional callback to invoke when done.
+   * @param aFromPageURI
+   *        The originating URI.
+   * @param aToPageURI
+   *        The destination URI.
+   * @param aCanAddToHistoryForToPage
+   *        Whether or not can add history to aToPageURI.
+   * @param aPromise
+   *        Promise that returns the result.
    */
-  AsyncCopyFavicons(PageData& aFromPage, PageData& aToPage,
-                    nsIFaviconDataCallback* aCallback);
+  AsyncTryCopyFaviconsRunnable(const nsCOMPtr<nsIURI>& aFromPageURI,
+                               const nsCOMPtr<nsIURI>& aToPageURI,
+                               const bool aCanAddToHistoryForToPage,
+                               const RefPtr<BoolPromise::Private>& aPromise);
 
  private:
-  PageData mFromPage;
-  PageData mToPage;
-  nsMainThreadPtrHandle<nsIFaviconDataCallback> mCallback;
+  nsCOMPtr<nsIURI> mFromPageURI;
+  nsCOMPtr<nsIURI> mToPageURI;
+  bool mCanAddToHistoryForToPage;
+  nsMainThreadPtrHandle<BoolPromise::Private> mPromise;
 };
 
 }  // namespace places

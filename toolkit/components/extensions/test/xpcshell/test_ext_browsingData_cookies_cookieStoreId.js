@@ -41,7 +41,7 @@ function cookieExists(cookie) {
 function addCookie(cookie) {
   const THE_FUTURE = Date.now() + 5 * 60;
 
-  Services.cookies.add(
+  const cv = Services.cookies.add(
     cookie.host,
     cookie.path,
     cookie.name,
@@ -51,10 +51,11 @@ function addCookie(cookie) {
     false,
     THE_FUTURE,
     cookie.originAttributes,
-    Ci.nsICookie.SAMESITE_NONE,
+    Ci.nsICookie.SAMESITE_UNSET,
     Ci.nsICookie.SCHEME_HTTPS
   );
 
+  Assert.strictEqual(cv.result, Ci.nsICookieValidation.eOK, "Valid cookie");
   ok(cookieExists(cookie), `Cookie ${cookie.name} was created.`);
 }
 

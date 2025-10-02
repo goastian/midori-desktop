@@ -96,7 +96,7 @@ export class UrlbarView {
     this.panel.setAttribute("noresults", "true");
 
     this.controller.setView(this);
-    this.controller.addQueryListener(this);
+    this.controller.addListener(this);
     // This is used by autoOpen to avoid flickering results when reopening
     // previously abandoned searches.
     this.queryContextCache = new QueryContextCache(5);
@@ -1852,6 +1852,10 @@ export class UrlbarView {
       return;
     } else if (result.providerName == "TabToSearch") {
       item.setAttribute("type", "tabtosearch");
+    } else if (result.providerName == "SemanticHistorySearch") {
+      item.setAttribute("type", "semantic-history");
+    } else if (result.providerName == "InputHistory") {
+      item.setAttribute("type", "adaptive-history");
     } else {
       item.setAttribute(
         "type",
@@ -1902,7 +1906,7 @@ export class UrlbarView {
     let isRowSelectable = true;
     switch (result.type) {
       case lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH:
-        // Hide chichlet when showing secondaryActions.
+        // Hide chiclet when showing secondaryActions.
         if (!lazy.UrlbarPrefs.get("secondaryActions.switchToTab")) {
           actionSetter = () => {
             this.#setSwitchTabActionChiclet(result, action);
@@ -2221,9 +2225,6 @@ export class UrlbarView {
       this.#l10nCache.setElementL10n(bottom, result.payload.bottomTextL10n);
     } else {
       this.#l10nCache.removeElementL10n(bottom);
-      if (result.payload.bottomText) {
-        bottom.textContent = result.payload.bottomText;
-      }
     }
   }
 
@@ -2362,7 +2363,10 @@ export class UrlbarView {
    *   returns an l10n object for the label's l10n string: `{ id, args }`
    */
   #rowLabel(row, currentLabel) {
-    if (!lazy.UrlbarPrefs.get("groupLabels.enabled")) {
+    if (
+      !lazy.UrlbarPrefs.get("groupLabels.enabled") ||
+      row.result.hideRowLabel
+    ) {
       return null;
     }
 
@@ -2764,13 +2768,6 @@ export class UrlbarView {
       return;
     }
 
-    // Firefox 140 temporary fix for localized weather suggestions
-    if (result.payload.titleHtml) {
-      // eslint-disable-next-line no-unsanitized/property
-      titleNode.innerHTML = result.payload.titleHtml;
-      return;
-    }
-
     // TODO: `text` is intended only for WebExtensions. We should remove it and
     // the WebExtensions urlbar API since we're no longer using it.
     if (result.payload.text) {
@@ -2847,11 +2844,20 @@ export class UrlbarView {
    * Sets the content of the 'Switch To Tab' chiclet.
    *
    * @param {UrlbarResult} result
-   *   The result for which the userContext is being set.
+   *   The result for which the content is being set.
    * @param {Element} actionNode
    *   The DOM node for the result's action.
    */
   #setSwitchTabActionChiclet(result, actionNode) {
+    this.#l10nCache.setElementL10n(actionNode, {
+      id: "urlbar-result-action-switch-tab",
+    });
+    actionNode.classList.add("urlbarView-switchToTab");
+
+    let contextualIdentityAction = actionNode.parentNode.querySelector(
+      ".action-contextualidentity"
+    );
+
     if (
       lazy.UrlbarPrefs.get("switchTabs.searchAllContainers") &&
       result.type == lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH &&
@@ -2859,73 +2865,133 @@ export class UrlbarView {
         result.payload.userContextId
       )
     ) {
-      let label = lazy.ContextualIdentityService.getUserContextLabel(
-        result.payload.userContextId
-      ).toLowerCase();
-      // To avoid flicker don't update the label unless necessary.
-      if (
-        actionNode.classList.contains("urlbarView-userContext") &&
-        label &&
-        actionNode.querySelector("span")?.innerText == label
-      ) {
-        return;
+      if (!contextualIdentityAction) {
+        contextualIdentityAction = actionNode.cloneNode(true);
+        contextualIdentityAction.classList.add("action-contextualidentity");
+        actionNode.parentNode.insertBefore(
+          contextualIdentityAction,
+          actionNode
+        );
       }
-      actionNode.innerHTML = "";
-      let identity = lazy.ContextualIdentityService.getPublicIdentityFromId(
-        result.payload.userContextId
+
+      this.#addContextualIdentityToSwitchTabChiclet(
+        result,
+        contextualIdentityAction
       );
-      if (identity) {
-        actionNode.classList.add("urlbarView-userContext");
-        if (identity.color) {
-          actionNode.className = actionNode.className.replace(
-            /identity-color-\w*/g,
-            ""
-          );
-          actionNode.classList.add("identity-color-" + identity.color);
-        }
-
-        let textModeLabel = this.#createElement("div");
-        textModeLabel.classList.add("urlbarView-userContext-textMode");
-
-        if (label) {
-          this.#l10nCache.setElementL10n(textModeLabel, {
-            id: "urlbar-result-action-switch-tab-with-container",
-            args: {
-              container: label.toLowerCase(),
-            },
-          });
-          actionNode.appendChild(textModeLabel);
-
-          let iconModeLabel = this.#createElement("div");
-          iconModeLabel.classList.add("urlbarView-userContext-iconMode");
-          actionNode.appendChild(iconModeLabel);
-          if (identity.icon) {
-            let userContextIcon = this.#createElement("img");
-            userContextIcon.classList.add("urlbarView-userContext-icon");
-            userContextIcon.setAttribute("alt", label);
-            userContextIcon.src =
-              "resource://usercontext-content/" + identity.icon + ".svg";
-            this.#l10nCache.setElementL10n(iconModeLabel, {
-              id: "urlbar-result-action-switch-tab",
-            });
-            iconModeLabel.appendChild(userContextIcon);
-          }
-          actionNode.setAttribute("tooltiptext", label);
-        }
-      }
     } else {
-      actionNode.classList.remove("urlbarView-userContext");
-      // identity needs to be removed as well..
-      actionNode
-        .querySelectorAll(
-          ".urlbarView-userContext-textMode, .urlbarView-userContext-iconMode"
-        )
-        .forEach(node => node.remove());
+      contextualIdentityAction?.remove();
+    }
 
-      this.#l10nCache.setElementL10n(actionNode, {
-        id: "urlbar-result-action-switch-tab",
+    let tabGroupAction = actionNode.parentNode.querySelector(
+      ".urlbarView-tabGroup"
+    );
+
+    if (
+      result.type == lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH &&
+      result.payload.tabGroup
+    ) {
+      if (!tabGroupAction) {
+        tabGroupAction = actionNode.cloneNode(true);
+        actionNode.parentNode.insertBefore(tabGroupAction, actionNode);
+      }
+
+      this.#addGroupToSwitchTabChiclet(result, tabGroupAction);
+    } else {
+      tabGroupAction?.remove();
+    }
+  }
+
+  #addContextualIdentityToSwitchTabChiclet(result, actionNode) {
+    let label = lazy.ContextualIdentityService.getUserContextLabel(
+      result.payload.userContextId
+    );
+    // To avoid flicker don't update the label unless necessary.
+    if (
+      actionNode.classList.contains("urlbarView-userContext") &&
+      label &&
+      actionNode == label
+    ) {
+      return;
+    }
+    actionNode.innerHTML = "";
+    let identity = lazy.ContextualIdentityService.getPublicIdentityFromId(
+      result.payload.userContextId
+    );
+    if (identity) {
+      actionNode.classList.add("urlbarView-userContext");
+      actionNode.classList.remove("urlbarView-switchToTab");
+      if (identity.color) {
+        actionNode.className = actionNode.className.replace(
+          /identity-color-\w*/g,
+          ""
+        );
+        actionNode.classList.add("identity-color-" + identity.color);
+      }
+
+      let textModeLabel = this.#createElement("div");
+      textModeLabel.classList.add("urlbarView-userContext-textMode");
+
+      if (label) {
+        textModeLabel.innerText = label;
+        actionNode.appendChild(textModeLabel);
+
+        let iconModeLabel = this.#createElement("div");
+        iconModeLabel.classList.add("urlbarView-userContext-iconMode");
+        actionNode.appendChild(iconModeLabel);
+        if (identity.icon) {
+          let userContextIcon = this.#createElement("img");
+          userContextIcon.classList.add("urlbarView-userContext-icon");
+          userContextIcon.setAttribute("alt", label);
+          userContextIcon.src =
+            "resource://usercontext-content/" + identity.icon + ".svg";
+          iconModeLabel.appendChild(userContextIcon);
+        }
+        actionNode.setAttribute("tooltiptext", label);
+      }
+    }
+  }
+
+  #addGroupToSwitchTabChiclet(result, actionNode) {
+    const group = this.window.gBrowser.getTabGroupById(result.payload.tabGroup);
+    if (!group) {
+      actionNode.remove();
+      return;
+    }
+
+    actionNode.classList.add("urlbarView-tabGroup");
+    actionNode.classList.remove("urlbarView-switchToTab");
+
+    actionNode.innerHTML = "";
+    let fullWidthModeLabel = this.#createElement("div");
+    fullWidthModeLabel.classList.add("urlbarView-tabGroup-fullWidthMode");
+
+    let narrowWidthModeLabel = this.#createElement("div");
+    narrowWidthModeLabel.classList.add("urlbarView-tabGroup-narrowWidthMode");
+
+    if (group.label) {
+      fullWidthModeLabel.textContent = group.label;
+      narrowWidthModeLabel.textContent = group.label[0];
+    } else {
+      this.#l10nCache.setElementL10n(fullWidthModeLabel, {
+        id: `urlbar-result-action-tab-group-unnamed`,
       });
     }
+
+    actionNode.appendChild(fullWidthModeLabel);
+    actionNode.appendChild(narrowWidthModeLabel);
+
+    actionNode.style.setProperty(
+      "--tab-group-color",
+      group.style.getPropertyValue("--tab-group-color")
+    );
+    actionNode.style.setProperty(
+      "--tab-group-color-invert",
+      group.style.getPropertyValue("--tab-group-color-invert")
+    );
+    actionNode.style.setProperty(
+      "--tab-group-color-pale",
+      group.style.getPropertyValue("--tab-group-color-pale")
+    );
   }
 
   /**

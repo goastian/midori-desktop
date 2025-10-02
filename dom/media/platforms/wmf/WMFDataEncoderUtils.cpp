@@ -11,6 +11,9 @@
 #include "MediaData.h"
 #include "mozilla/Logging.h"
 
+using mozilla::media::EncodeSupport;
+using mozilla::media::EncodeSupportSet;
+
 namespace mozilla {
 
 #define WMF_ENC_LOG(arg, ...)                         \
@@ -30,22 +33,24 @@ GUID CodecToSubtype(CodecType aCodec) {
   }
 }
 
-bool CanCreateWMFEncoder(CodecType aCodec) {
-  bool canCreate = false;
+EncodeSupportSet CanCreateWMFEncoder(CodecType aCodec) {
+  EncodeSupportSet supports;
   mscom::EnsureMTA([&]() {
     if (!wmf::MediaFoundationInitializer::HasInitialized()) {
       return;
     }
-    // Try HW encoder first.
-    auto enc = MakeRefPtr<MFTEncoder>(false /* HW not allowed */);
-    canCreate = SUCCEEDED(enc->Create(CodecToSubtype(aCodec)));
-    if (!canCreate) {
-      // Try SW encoder.
-      enc = MakeRefPtr<MFTEncoder>(true /* HW not allowed */);
-      canCreate = SUCCEEDED(enc->Create(CodecToSubtype(aCodec)));
+    // Try HW encoder.
+    auto hwEnc = MakeRefPtr<MFTEncoder>(false /* HW not allowed */);
+    if (SUCCEEDED(hwEnc->Create(CodecToSubtype(aCodec)))) {
+      supports += EncodeSupport::HardwareEncode;
+    }
+    // Try SW encoder.
+    auto swEnc = MakeRefPtr<MFTEncoder>(true /* HW not allowed */);
+    if (SUCCEEDED(swEnc->Create(CodecToSubtype(aCodec)))) {
+      supports += EncodeSupport::SoftwareEncode;
     }
   });
-  return canCreate;
+  return supports;
 }
 
 static already_AddRefed<MediaByteBuffer> ParseH264Parameters(
@@ -188,16 +193,14 @@ already_AddRefed<IMFMediaType> CreateOutputType(EncoderConfig& aConfig) {
     return nullptr;
   }
 
-  if (aConfig.mCodecSpecific) {
-    if (aConfig.mCodecSpecific->is<H264Specific>()) {
-      MOZ_ASSERT(aConfig.mCodec == CodecType::H264);
-      hr = FAILED(type->SetUINT32(
-          MF_MT_MPEG2_PROFILE,
-          GetProfile(aConfig.mCodecSpecific->as<H264Specific>().mProfile)));
-      if (hr) {
-        WMF_ENC_LOG("Create output type set profile error: %lx", hr);
-        return nullptr;
-      }
+  if (aConfig.mCodecSpecific.is<H264Specific>()) {
+    MOZ_ASSERT(aConfig.mCodec == CodecType::H264);
+    hr = FAILED(type->SetUINT32(
+        MF_MT_MPEG2_PROFILE,
+        GetProfile(aConfig.mCodecSpecific.as<H264Specific>().mProfile)));
+    if (hr) {
+      WMF_ENC_LOG("Create output type set profile error: %lx", hr);
+      return nullptr;
     }
   }
 

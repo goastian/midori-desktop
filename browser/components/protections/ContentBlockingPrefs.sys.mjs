@@ -374,7 +374,12 @@ export let ContentBlockingPrefs = {
     // they still have access to other content blocking prefs, and to keep our default definitions
     // from changing.
     let policy = Services.policies.getActivePolicies();
-    if (policy && (policy.EnableTrackingProtection || policy.Cookies)) {
+    if (
+      policy &&
+      ((policy.EnableTrackingProtection &&
+        !policy.EnableTrackingProtection.Category) ||
+        policy.Cookies)
+    ) {
       Services.prefs.setStringPref(this.PREF_CB_CATEGORY, "custom");
     }
   },

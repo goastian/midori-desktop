@@ -174,9 +174,25 @@ bool js::wasm::GetImports(JSContext* cx, const Module& module,
       } else {
         MutableHandle<JSObject*> builtinInstance =
             builtinInstances[*builtinModule];
-        if (!builtinInstance && !wasm::InstantiateBuiltinModule(
-                                    cx, *builtinModule, builtinInstance)) {
-          return false;
+
+        // If this module has not been instantiated yet, do so now.
+        if (!builtinInstance) {
+          // Use the first imported memory, if it exists, when compiling the
+          // builtin module.
+          const Import* firstMemoryImport =
+              (codeMeta.memories.empty() ||
+               codeMeta.memories[0].importIndex.isNothing())
+                  ? nullptr
+                  : &moduleMeta.imports[*codeMeta.memories[0].importIndex];
+
+          // Compile and instantiate the builtin module. This uses our module's
+          // importObj so that it can read the memory import that we provided
+          // above.
+          if (!wasm::InstantiateBuiltinModule(cx, *builtinModule,
+                                              firstMemoryImport, importObj,
+                                              builtinInstance)) {
+            return false;
+          }
         }
         isImportedStringModule = false;
         importModuleObject = builtinInstance;
@@ -396,7 +412,8 @@ static bool DescribeScriptedCaller(JSContext* cx, ScriptedCaller* caller,
   return true;
 }
 
-static SharedCompileArgs InitCompileArgs(JSContext* cx, FeatureOptions options,
+static SharedCompileArgs InitCompileArgs(JSContext* cx,
+                                         const FeatureOptions& options,
                                          const char* introducer) {
   ScriptedCaller scriptedCaller;
   if (!DescribeScriptedCaller(cx, &scriptedCaller, introducer)) {
@@ -675,7 +692,6 @@ static bool GetLimits(JSContext* cx, HandleObject obj, LimitsKind kind,
 
   // Limits may specify an alternate address type, and we need this to check the
   // ranges for initial and maximum, so look for the address type first.
-#ifdef ENABLE_WASM_MEMORY64
   // Get the address type field
   JSAtom* addressTypeAtom = Atomize(cx, "address", strlen("address"));
   if (!addressTypeAtom) {
@@ -692,14 +708,7 @@ static bool GetLimits(JSContext* cx, HandleObject obj, LimitsKind kind,
     if (!ToAddressType(cx, addressTypeVal, &limits->addressType)) {
       return false;
     }
-
-    if (limits->addressType == AddressType::I64 && !Memory64Available(cx)) {
-      JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                                JSMSG_WASM_NO_MEM64_LINK);
-      return false;
-    }
   }
-#endif
 
   const char* noun = ToString(kind);
   uint64_t limit = 0;
@@ -888,11 +897,9 @@ static JSString* TypeToString(JSContext* cx, T type) {
       cx, JS::ConstUTF8CharsZ(chars.get(), strlen(chars.get())));
 }
 
-#  ifdef ENABLE_WASM_MEMORY64
 static JSString* AddressTypeToString(JSContext* cx, AddressType type) {
   return JS_NewStringCopyZ(cx, ToString(type));
 }
-#  endif
 
 [[nodiscard]] static JSObject* ValTypesToArray(JSContext* cx,
                                                const ValTypeVector& valTypes) {
@@ -969,7 +976,6 @@ static JSObject* TableTypeToObject(JSContext* cx, AddressType addressType,
     return nullptr;
   }
 
-#  ifdef ENABLE_WASM_MEMORY64
   RootedString at(cx, AddressTypeToString(cx, addressType));
   if (!at) {
     return nullptr;
@@ -979,7 +985,6 @@ static JSObject* TableTypeToObject(JSContext* cx, AddressType addressType,
     ReportOutOfMemory(cx);
     return nullptr;
   }
-#  endif
 
   return NewPlainObjectWithUniqueNames(cx, props);
 }
@@ -1014,7 +1019,6 @@ static JSObject* MemoryTypeToObject(JSContext* cx, bool shared,
     return nullptr;
   }
 
-#  ifdef ENABLE_WASM_MEMORY64
   RootedString at(cx, AddressTypeToString(cx, addressType));
   if (!at) {
     return nullptr;
@@ -1024,7 +1028,6 @@ static JSObject* MemoryTypeToObject(JSContext* cx, bool shared,
     ReportOutOfMemory(cx);
     return nullptr;
   }
-#  endif
 
   if (!props.append(
           IdValuePair(NameToId(cx->names().shared), BooleanValue(shared)))) {
@@ -1249,11 +1252,7 @@ bool WasmModuleObject::imports(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-#if defined(ENABLE_WASM_JS_STRING_BUILTINS) || \
-    defined(ENABLE_WASM_TYPE_REFLECTIONS)
   const CodeMetadata& codeMeta = module->codeMeta();
-#endif
-
 #if defined(ENABLE_WASM_TYPE_REFLECTIONS)
   size_t numFuncImport = 0;
   size_t numMemoryImport = 0;
@@ -1263,13 +1262,11 @@ bool WasmModuleObject::imports(JSContext* cx, unsigned argc, Value* vp) {
 #endif  // ENABLE_WASM_TYPE_REFLECTIONS
 
   for (const Import& import : moduleMeta.imports) {
-#ifdef ENABLE_WASM_JS_STRING_BUILTINS
     Maybe<BuiltinModuleId> builtinModule = ImportMatchesBuiltinModule(
         import.module.utf8Bytes(), codeMeta.features().builtinModules);
     if (builtinModule) {
       continue;
     }
-#endif
 
     Rooted<IdValueVector> props(cx, IdValueVector(cx));
     if (!props.reserve(3)) {
@@ -1409,8 +1406,7 @@ bool WasmModuleObject::exports(JSContext* cx, unsigned argc, Value* vp) {
     RootedObject typeObj(cx);
     switch (exp.kind()) {
       case DefinitionKind::Function: {
-        const FuncType& funcType =
-            module->codeMeta().getFuncType(exp.funcIndex());
+        const FuncType& funcType = codeMeta.getFuncType(exp.funcIndex());
         typeObj = FuncTypeToObject(cx, funcType);
         break;
       }
@@ -2203,10 +2199,10 @@ ArrayBufferObjectMaybeShared* WasmMemoryObject::refreshBuffer(
       Rooted<SharedArrayBufferObject*> newBuffer(
           cx, SharedArrayBufferObject::New(
                   cx, memoryObj->sharedArrayRawBuffer(), memoryLength));
-      MOZ_ASSERT(newBuffer->is<FixedLengthSharedArrayBufferObject>());
       if (!newBuffer) {
         return nullptr;
       }
+      MOZ_ASSERT(newBuffer->is<FixedLengthSharedArrayBufferObject>());
       // OK to addReference after we try to allocate because the memoryObj
       // keeps the rawBuffer alive.
       if (!memoryObj->sharedArrayRawBuffer()->addReference()) {
@@ -2346,6 +2342,9 @@ bool WasmMemoryObject::toFixedLengthBufferImpl(JSContext* cx,
   if (!buffer->isResizable()) {
     ArrayBufferObjectMaybeShared* refreshedBuffer =
         refreshBuffer(cx, memory, buffer);
+    if (!refreshedBuffer) {
+      return false;
+    }
     args.rval().set(ObjectValue(*refreshedBuffer));
     return true;
   }
@@ -4857,11 +4856,11 @@ class CompileStreamTask : public PromiseHelperTask, public JS::StreamConsumer {
           envBytes_->shrinkTo(codeSection_.start);
         }
 
-        if (codeSection_.size > MaxCodeSectionBytes) {
+        if (codeSection_.size() > MaxCodeSectionBytes) {
           return rejectAndDestroyBeforeHelperThreadStarted(StreamOOMCode);
         }
 
-        if (!codeBytes_->vector.resize(codeSection_.size)) {
+        if (!codeBytes_->vector.resize(codeSection_.size())) {
           return rejectAndDestroyBeforeHelperThreadStarted(StreamOOMCode);
         }
 
@@ -5428,7 +5427,7 @@ static bool WebAssembly_mozIntGemm(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
   Rooted<WasmModuleObject*> module(cx);
-  if (!wasm::CompileBuiltinModule(cx, wasm::BuiltinModuleId::IntGemm,
+  if (!wasm::CompileBuiltinModule(cx, wasm::BuiltinModuleId::IntGemm, nullptr,
                                   &module)) {
     ReportOutOfMemory(cx);
     return false;
@@ -5545,13 +5544,11 @@ static bool WebAssemblyClassFinish(JSContext* cx, HandleObject object,
 
   wasm->setWrappedJSValueTag(wrappedJSValueTagObject);
 
-  if (ExnRefAvailable(cx)) {
-    RootedId jsTagName(cx, NameToId(cx->names().jsTag));
-    RootedValue jsTagValue(cx, ObjectValue(*wrappedJSValueTagObject));
-    if (!DefineDataProperty(cx, wasm, jsTagName, jsTagValue,
-                            JSPROP_READONLY | JSPROP_ENUMERATE)) {
-      return false;
-    }
+  RootedId jsTagName(cx, NameToId(cx->names().jsTag));
+  RootedValue jsTagValue(cx, ObjectValue(*wrappedJSValueTagObject));
+  if (!DefineDataProperty(cx, wasm, jsTagName, jsTagValue,
+                          JSPROP_READONLY | JSPROP_ENUMERATE)) {
+    return false;
   }
 
 #ifdef ENABLE_WASM_JSPI

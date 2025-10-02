@@ -168,9 +168,9 @@ class CanonicalBrowsingContext final : public BrowsingContext {
       TopDescendantKind aKind);
 
   void SessionHistoryCommit(uint64_t aLoadId, const nsID& aChangeID,
-                            uint32_t aLoadType, bool aPersist,
-                            bool aCloneEntryChildren, bool aChannelExpired,
-                            uint32_t aCacheKey);
+                            uint32_t aLoadType, bool aCloneEntryChildren,
+                            bool aChannelExpired, uint32_t aCacheKey,
+                            nsIPrincipal* aPartitionedPrincipal);
 
   // Calls the session history listeners' OnHistoryReload, storing the result in
   // aCanReload. If aCanReload is set to true and we have an active or a loading
@@ -301,8 +301,6 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   // mixed content/https-only state for our current window is changed.
   void UpdateSecurityState();
 
-  void MaybeAddAsProgressListener(nsIWebProgress* aWebProgress);
-
   // Called when a navigation forces us to recreate our browsing
   // context (for example, when switching in or out of the parent
   // process).
@@ -366,6 +364,16 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   void ClearUnloadingHost(uint64_t aChildID);
 
   bool AllowedInBFCache(const Maybe<uint64_t>& aChannelId, nsIURI* aNewURI);
+
+ private:
+  static nsresult ContainsSameOriginBfcacheEntry(
+      nsISHEntry* aEntry, mozilla::dom::BrowsingContext* aBC,
+      int32_t aChildIndex, void* aData);
+
+ public:
+  // Removes all bfcache entries that match the origin + originAttributes of the
+  // principal. Must be passed partitionedPrincipal
+  static nsresult ClearBfcacheByPrincipal(nsIPrincipal* aPrincipal);
 
   // Methods for getting and setting the active state for top level
   // browsing contexts, for the process priority manager.

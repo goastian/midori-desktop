@@ -13,6 +13,7 @@ import { FluentOrText } from "../../FluentOrText/FluentOrText.jsx";
 import { actionCreators as ac, actionTypes as at } from "common/Actions.mjs";
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { connect, useSelector } from "react-redux";
+import { TrendingSearches } from "../TrendingSearches/TrendingSearches.jsx";
 const PREF_ONBOARDING_EXPERIENCE_DISMISSED =
   "discoverystream.onboardingExperience.dismissed";
 const PREF_SECTIONS_CARDS_ENABLED = "discoverystream.sections.cards.enabled";
@@ -31,6 +32,10 @@ const PREF_BILLBOARD_ENABLED = "newtabAdSize.billboard";
 const PREF_LEADERBOARD_ENABLED = "newtabAdSize.leaderboard";
 const PREF_LEADERBOARD_POSITION = "newtabAdSize.leaderboard.position";
 const PREF_BILLBOARD_POSITION = "newtabAdSize.billboard.position";
+const PREF_TRENDING_SEARCH = "trendingSearch.enabled";
+const PREF_TRENDING_SEARCH_SYSTEM = "system.trendingSearch.enabled";
+const PREF_SEARCH_ENGINE = "trendingSearch.defaultSearchEngine";
+const PREF_TRENDING_SEARCH_VARIANT = "trendingSearch.variant";
 const INTERSECTION_RATIO = 0.5;
 const VISIBLE = "visible";
 const VISIBILITY_CHANGE_EVENT = "visibilitychange";
@@ -361,6 +366,11 @@ export class _CardGrid extends React.PureComponent {
     const listFeedSelectedFeed = prefs[PREF_LIST_FEED_SELECTED_FEED];
     const billboardEnabled = prefs[PREF_BILLBOARD_ENABLED];
     const leaderboardEnabled = prefs[PREF_LEADERBOARD_ENABLED];
+    const trendingEnabled =
+      prefs[PREF_TRENDING_SEARCH] &&
+      prefs[PREF_TRENDING_SEARCH_SYSTEM] &&
+      prefs[PREF_SEARCH_ENGINE]?.toLowerCase() === "google";
+    const trendingVariant = prefs[PREF_TRENDING_SEARCH_VARIANT];
 
     // filter out recs that should be in ListFeed
     const recs = this.props.data.recommendations
@@ -379,7 +389,7 @@ export class _CardGrid extends React.PureComponent {
           rec.placeholder ||
           (rec.flight_id &&
             !spocsStartupCacheEnabled &&
-            this.props.App.isForStartupCache.App) ? (
+            this.props.App.isForStartupCache.DiscoveryStream) ? (
           <PlaceholderDSCard key={`dscard-${index}`} />
         ) : (
           <DSCard
@@ -481,6 +491,14 @@ export class _CardGrid extends React.PureComponent {
           )
         );
       }
+    }
+    if (trendingEnabled && trendingVariant === "b") {
+      const firstSpocPosition = this.props.spocPositions[0]?.index;
+      // double check that a spoc/mrec is actually in the index it should be in
+      const format = cards[firstSpocPosition]?.props?.format;
+      const isSpoc = format === "spoc" || format === "rectangle";
+      // if the spoc is not in its position, place TrendingSearches in the 3rd position
+      cards.splice(isSpoc ? firstSpocPosition + 1 : 2, 1, <TrendingSearches />);
     }
 
     // if a banner ad is enabled and we have any available, place them in the grid

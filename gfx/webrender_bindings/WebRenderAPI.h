@@ -208,6 +208,8 @@ class TransactionBuilder final {
 
   void UpdateQualitySettings(bool aForceSubpixelAAWherePossible);
 
+  void RenderOffscreen(wr::WrPipelineId aPipelineId);
+
   void Notify(wr::Checkpoint aWhen, UniquePtr<NotificationHandler> aHandler);
 
   void Clear();
@@ -305,6 +307,7 @@ class WebRenderAPI final {
   uint32_t GetMaxTextureSize() const { return mMaxTextureSize; }
   bool GetUseANGLE() const { return mUseANGLE; }
   bool GetUseDComp() const { return mUseDComp; }
+  bool GetUseLayerCompositor() const { return mUseLayerCompositor; }
   bool GetUseTripleBuffering() const { return mUseTripleBuffering; }
   bool SupportsExternalBufferTextures() const {
     return mSupportsExternalBufferTextures;
@@ -338,7 +341,8 @@ class WebRenderAPI final {
                layers::WebRenderBackend aBackend,
                layers::WebRenderCompositor aCompositor,
                uint32_t aMaxTextureSize, bool aUseANGLE, bool aUseDComp,
-               bool aUseTripleBuffering, bool aSupportsExternalBufferTextures,
+               bool aUseLayerCompositor, bool aUseTripleBuffering,
+               bool aSupportsExternalBufferTextures,
                layers::SyncHandle aSyncHandle,
                wr::WebRenderAPI* aRootApi = nullptr,
                wr::WebRenderAPI* aRootDocumentApi = nullptr);
@@ -480,6 +484,7 @@ class WebRenderAPI final {
   int32_t mMaxTextureSize;
   bool mUseANGLE;
   bool mUseDComp;
+  bool mUseLayerCompositor;
   bool mUseTripleBuffering;
   bool mSupportsExternalBufferTextures;
   bool mCaptureSequence;

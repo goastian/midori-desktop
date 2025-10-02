@@ -265,7 +265,7 @@ macosx-arm64-custom-car:
         symbol: TM(custom-car-arm)
         tier: 2
     worker:
-        max-run-time: 40000
+        max-run-time: 50000
     use-python: "3.11"
     run-on-projects: []
     run:
@@ -588,6 +588,26 @@ linux64-makecab:
     fetches:
         fetch:
             - makecab
+        toolchain:
+            - linux64-clang-toolchain
+            - linux64-rust-toolchain
+            - sysroot-x86_64-linux-gnu
+
+linux64-samply:
+    description: "samply toolchain build"
+    treeherder:
+        symbol: TL(samply)
+    worker:
+        env:
+            FETCH: samply/samply
+    run:
+        script: build-rust-based-toolchain.sh
+        arguments: ['x86_64-unknown-linux-gnu']
+        toolchain-artifact: public/build/samply.tar.zst
+    run-on-projects: []
+    fetches:
+        fetch:
+            - samply
         toolchain:
             - linux64-clang-toolchain
             - linux64-rust-toolchain

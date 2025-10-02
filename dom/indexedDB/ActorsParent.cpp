@@ -127,6 +127,7 @@
 #include "mozilla/dom/quota/ConditionalCompilation.h"
 #include "mozilla/dom/quota/DirectoryLock.h"
 #include "mozilla/dom/quota/DirectoryLockInlines.h"
+#include "mozilla/dom/quota/DirectoryMetadata.h"
 #include "mozilla/dom/quota/DecryptingInputStream_impl.h"
 #include "mozilla/dom/quota/EncryptingOutputStream_impl.h"
 #include "mozilla/dom/quota/ErrorHandling.h"
@@ -1466,7 +1467,33 @@ class ConnectionPool final {
                  bool aIsWriteTransaction,
                  TransactionDatabaseOperationBase* aTransactionOp);
 
-  void Dispatch(uint64_t aTransactionId, nsIRunnable* aRunnable);
+  /**
+   * Starts a new operation associated with the given transaction.
+   *
+   * This method initiates an operation by:
+   * 1. Dispatching the provided runnable to the task queue created on top of
+   *    the I/O thread pool if the transaction is currently running.
+   * 2. Queuing the runnable for later execution if the transaction is not yet
+   *    running.
+   *
+   * It is mandatory for all operations to call StartOp to ensure proper
+   * handling and sequencing within the transaction context.
+   *
+   * Note:
+   * - For more complex operations that involve work on other threads or require
+   *   communication with content processes, StartOp should not be called again
+   *   to dispatch to the task queue, as this could disrupt proper queuing and
+   *   execution.
+   */
+  void StartOp(uint64_t aTransactionId, nsCOMPtr<nsIRunnable> aRunnable);
+
+  /**
+   * Marks the completion of an operation associated with the given transaction.
+   *
+   * This method signals that the current operation has finished, allowing the
+   * next queued operation (if any) for the transaction to start.
+   */
+  void FinishOp(uint64_t aTransactionId);
 
   void Finish(uint64_t aTransactionId, FinishCallback* aCallback);
 
@@ -1680,9 +1707,10 @@ class ConnectionPool::TransactionInfo final {
   const int64_t mLoggingSerialNumber;
   const nsTArray<nsString> mObjectStoreNames;
   nsTHashSet<TransactionInfo*> mBlockedOn;
-  nsTArray<nsCOMPtr<nsIRunnable>> mQueuedRunnables;
+  mozilla::Queue<nsCOMPtr<nsIRunnable>, 16> mQueuedOps;
   const bool mIsWriteTransaction;
   bool mRunning;
+  bool mRunningOp;
 
 #ifdef DEBUG
   FlippedOnce<false> mFinished;
@@ -1699,6 +1727,12 @@ class ConnectionPool::TransactionInfo final {
   void AddBlockingTransaction(TransactionInfo& aTransactionInfo);
 
   void RemoveBlockingTransactions();
+
+  void SetRunning();
+
+  void StartOp(nsCOMPtr<nsIRunnable> aRunnable);
+
+  void FinishOp();
 
  private:
   ~TransactionInfo();
@@ -7947,29 +7981,27 @@ uint64_t ConnectionPool::Start(
   return transactionId;
 }
 
-void ConnectionPool::Dispatch(uint64_t aTransactionId, nsIRunnable* aRunnable) {
+void ConnectionPool::StartOp(uint64_t aTransactionId,
+                             nsCOMPtr<nsIRunnable> aRunnable) {
   AssertIsOnOwningThread();
-  MOZ_ASSERT(aRunnable);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::Dispatch", DOM);
+  AUTO_PROFILER_LABEL("ConnectionPool::StartOp", DOM);
 
   auto* const transactionInfo = mTransactions.Get(aTransactionId);
   MOZ_ASSERT(transactionInfo);
-  MOZ_ASSERT(!transactionInfo->mFinished);
 
-  if (transactionInfo->mRunning) {
-    DatabaseInfo& dbInfo = transactionInfo->mDatabaseInfo;
-    MOZ_ASSERT(dbInfo.mEventTarget);
-    MOZ_ASSERT(!dbInfo.mClosing);
-    MOZ_ASSERT_IF(
-        transactionInfo->mIsWriteTransaction,
-        dbInfo.mRunningWriteTransaction &&
-            dbInfo.mRunningWriteTransaction.refEquals(*transactionInfo));
+  transactionInfo->StartOp(std::move(aRunnable));
+}
 
-    MOZ_ALWAYS_SUCCEEDS(dbInfo.Dispatch(do_AddRef(aRunnable)));
-  } else {
-    transactionInfo->mQueuedRunnables.AppendElement(aRunnable);
-  }
+void ConnectionPool::FinishOp(uint64_t aTransactionId) {
+  AssertIsOnOwningThread();
+
+  AUTO_PROFILER_LABEL("ConnectionPool::FinishOp", DOM);
+
+  auto* const transactionInfo = mTransactions.Get(aTransactionId);
+  MOZ_ASSERT(transactionInfo);
+
+  transactionInfo->FinishOp();
 }
 
 void ConnectionPool::Finish(uint64_t aTransactionId,
@@ -7984,10 +8016,10 @@ void ConnectionPool::Finish(uint64_t aTransactionId,
 
   AUTO_PROFILER_LABEL("ConnectionPool::Finish", DOM);
 
-  RefPtr<FinishCallbackWrapper> wrapper =
+  nsCOMPtr<nsIRunnable> wrapper =
       new FinishCallbackWrapper(this, aTransactionId, aCallback);
 
-  Dispatch(aTransactionId, wrapper);
+  StartOp(aTransactionId, std::move(wrapper));
 
 #ifdef DEBUG
   transactionInfo->mFinished.Flip();
@@ -8221,19 +8253,7 @@ bool ConnectionPool::ScheduleTransaction(TransactionInfo& aTransactionInfo,
     dbInfo.mNeedsCheckpoint = true;
   }
 
-  MOZ_ASSERT(!aTransactionInfo.mRunning);
-  aTransactionInfo.mRunning = true;
-
-  nsTArray<nsCOMPtr<nsIRunnable>>& queuedRunnables =
-      aTransactionInfo.mQueuedRunnables;
-
-  if (!queuedRunnables.IsEmpty()) {
-    for (auto& queuedRunnable : queuedRunnables) {
-      MOZ_ALWAYS_SUCCEEDS(dbInfo.Dispatch(queuedRunnable.forget()));
-    }
-
-    queuedRunnables.Clear();
-  }
+  aTransactionInfo.SetRunning();
 
   return true;
 }
@@ -8684,6 +8704,9 @@ nsresult ConnectionPool::FinishCallbackWrapper::Run() {
   MOZ_ASSERT(mHasRunOnce);
 
   RefPtr<ConnectionPool> connectionPool = std::move(mConnectionPool);
+
+  connectionPool->FinishOp(mTransactionId);
+
   RefPtr<FinishCallback> callback = std::move(mCallback);
 
   callback->TransactionFinishedBeforeUnblock();
@@ -8783,22 +8806,24 @@ ConnectionPool::TransactionInfo::TransactionInfo(
       mLoggingSerialNumber(aLoggingSerialNumber),
       mObjectStoreNames(aObjectStoreNames.Clone()),
       mIsWriteTransaction(aIsWriteTransaction),
-      mRunning(false) {
+      mRunning(false),
+      mRunningOp(false) {
   AssertIsOnBackgroundThread();
   aDatabaseInfo.mConnectionPool->AssertIsOnOwningThread();
 
   MOZ_COUNT_CTOR(ConnectionPool::TransactionInfo);
 
   if (aTransactionOp) {
-    mQueuedRunnables.AppendElement(aTransactionOp);
+    mQueuedOps.Push(aTransactionOp);
   }
 }
 
 ConnectionPool::TransactionInfo::~TransactionInfo() {
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(!mBlockedOn.Count());
-  MOZ_ASSERT(mQueuedRunnables.IsEmpty());
+  MOZ_ASSERT(mQueuedOps.IsEmpty());
   MOZ_ASSERT(!mRunning);
+  MOZ_ASSERT(!mRunningOp);
   MOZ_ASSERT(mFinished);
 
   MOZ_COUNT_DTOR(ConnectionPool::TransactionInfo);
@@ -8828,6 +8853,59 @@ void ConnectionPool::TransactionInfo::RemoveBlockingTransactions() {
 
   mBlocking.Clear();
   mBlockingOrdered.Clear();
+}
+
+void ConnectionPool::TransactionInfo::SetRunning() {
+  AssertIsOnBackgroundThread();
+  MOZ_ASSERT(!mRunning);
+
+  AUTO_PROFILER_LABEL("ConnectionPool::FinishOp", DOM);
+
+  mRunning = true;
+
+  if (!mQueuedOps.IsEmpty()) {
+    mRunningOp = true;
+
+    nsCOMPtr<nsIRunnable> runnable = mQueuedOps.Pop();
+
+    MOZ_ALWAYS_SUCCEEDS(mDatabaseInfo.Dispatch(runnable.forget()));
+  }
+}
+
+void ConnectionPool::TransactionInfo::StartOp(nsCOMPtr<nsIRunnable> aRunnable) {
+  AssertIsOnBackgroundThread();
+
+  if (mRunning) {
+    MOZ_ASSERT(mDatabaseInfo.mEventTarget);
+    MOZ_ASSERT(!mDatabaseInfo.mClosing);
+    MOZ_ASSERT_IF(mIsWriteTransaction,
+                  mDatabaseInfo.mRunningWriteTransaction &&
+                      mDatabaseInfo.mRunningWriteTransaction.refEquals(*this));
+
+    if (!mRunningOp) {
+      mRunningOp = true;
+
+      MOZ_ALWAYS_SUCCEEDS(mDatabaseInfo.Dispatch(aRunnable.forget()));
+    } else {
+      mQueuedOps.Push(std::move(aRunnable));
+    }
+  } else {
+    mQueuedOps.Push(std::move(aRunnable));
+  }
+}
+
+void ConnectionPool::TransactionInfo::FinishOp() {
+  AssertIsOnBackgroundThread();
+  MOZ_ASSERT(mRunning);
+  MOZ_ASSERT(mRunningOp);
+
+  if (mQueuedOps.IsEmpty()) {
+    mRunningOp = false;
+  } else {
+    nsCOMPtr<nsIRunnable> runnable = mQueuedOps.Pop();
+
+    MOZ_ALWAYS_SUCCEEDS(mDatabaseInfo.Dispatch(runnable.forget()));
+  }
 }
 
 void ConnectionPool::TransactionInfo::MaybeUnblock(
@@ -13312,7 +13390,7 @@ nsresult Maintenance::DirectoryWork() {
     // Loop over "<origin>/idb" directories.
     QM_TRY(CollectEachFile(
         *persistenceDir,
-        [this, &quotaManager, persistenceType, &idbDirName](
+        [this, &quotaManager, persistenceType, persistent, &idbDirName](
             const nsCOMPtr<nsIFile>& originDir) -> Result<Ok, nsresult> {
           if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
               IsAborted()) {
@@ -13329,10 +13407,31 @@ nsresult Maintenance::DirectoryWork() {
               // Get the necessary information about the origin
               // (GetOriginMetadata also checks if it's a valid origin).
 
-              QM_TRY_INSPECT(const auto& metadata,
-                             quotaManager->GetOriginMetadata(originDir),
-                             // Not much we can do here...
-                             Ok{});
+              QM_TRY_UNWRAP(auto metadata,
+                            quotaManager->GetOriginMetadata(originDir),
+                            // Not much we can do here...
+                            Ok{});
+
+              if (!persistent &&
+                  !quotaManager->IsTemporaryOriginInitializedInternal(
+                      metadata)) {
+                // XXX GetOriginMetadata, which skips loading the metadata file
+                // and instead relies on parsing the origin directory name and
+                // reconstructing the principal, may produce a different origin
+                // string than the one originally used to create the origin
+                // directory.
+                //
+                // For now, if this mismatch occurs, we fall back to the slower
+                // LoadFullOriginMetadataWithRestore.
+                //
+                // In the future, it would be useful to report anonymized
+                // origin strings via telemetry to help investigate and
+                // eventually fix this mismatch.
+                QM_TRY_UNWRAP(
+                    metadata,
+                    quotaManager->LoadFullOriginMetadataWithRestore(originDir),
+                    Ok{});
+              }
 
               // We now use a dedicated repository for private browsing
               // databases, but there could be some forgotten private browsing
@@ -13403,6 +13502,20 @@ nsresult Maintenance::DirectoryWork() {
                   }));
 
               if (!databasePaths.IsEmpty()) {
+                if (!persistent) {
+                  auto maybeOriginStateMetadata =
+                      quotaManager->GetOriginStateMetadata(metadata);
+
+                  auto originStateMetadata = maybeOriginStateMetadata.extract();
+
+                  originStateMetadata.mAccessed = true;
+
+                  QM_TRY(MOZ_TO_RESULT(SaveDirectoryMetadataHeader(
+                      *originDir, originStateMetadata)));
+
+                  quotaManager->UpdateOriginAccessed(metadata);
+                }
+
                 mDirectoryInfos.EmplaceBack(persistenceType, metadata,
                                             std::move(databasePaths));
               }
@@ -17185,7 +17298,7 @@ void TransactionDatabaseOperationBase::SendToConnectionPool() {
   // connection thread.
   mInternalState = InternalState::DatabaseWork;
 
-  gConnectionPool->Dispatch((*mTransaction)->TransactionId(), this);
+  gConnectionPool->StartOp((*mTransaction)->TransactionId(), this);
 
   (*mTransaction)->NoteActiveRequest();
 }
@@ -17265,6 +17378,8 @@ void TransactionDatabaseOperationBase::SendPreprocessInfoOrResults(
     if (mLoggingSerialNumber) {
       (*mTransaction)->NoteFinishedRequest(mRequestId, ResultCode());
     }
+
+    gConnectionPool->FinishOp((*mTransaction)->TransactionId());
 
     Cleanup();
 

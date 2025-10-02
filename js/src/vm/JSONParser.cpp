@@ -1109,12 +1109,12 @@ template class js::JSONParser<char16_t>;
 template <typename CharT>
 inline bool JSONReviveHandler<CharT>::objectOpen(Vector<StackEntry, 10>& stack,
                                                  PropertyVector** properties) {
-  ParseRecordObject::EntryMap* newParseEntry =
-      NewPlainObjectWithProto(context(), nullptr);
-  if (!newParseEntry) {
+  ParseRecordObject* newParseRecord =
+      ParseRecordObject::create(context(), JS::Value());
+  if (!newParseRecord) {
     return false;
   }
-  if (!parseRecordStack.append(newParseEntry)) {
+  if (!parseRecordStack.append(newParseRecord)) {
     return false;
   }
 
@@ -1128,11 +1128,15 @@ inline bool JSONReviveHandler<CharT>::finishObjectMember(
   if (!Base::finishObjectMember(stack, value, properties)) {
     return false;
   }
-  parseRecord->setValue(value);
+
+  Rooted<ParseRecordObject*> memberRecord(context(),
+                                          parseRecordStack.popCopy());
+  // Removes the member's key from the stack
+  parseRecordStack.popBack();
+
   Rooted<JS::PropertyKey> key(context(), (*properties)->back().id);
-  Rooted<ParseRecordObject::EntryMap*> parseRecordBack(context(),
-                                                       parseRecordStack.back());
-  return finishMemberParseRecord(key, parseRecordBack);
+
+  return parseRecordStack.back()->addEntries(context(), key, memberRecord);
 }
 
 template <typename CharT>
@@ -1142,25 +1146,19 @@ inline bool JSONReviveHandler<CharT>::finishObject(
   if (!Base::finishObject(stack, vp, properties)) {
     return false;
   }
-  Rooted<ParseRecordObject::EntryMap*> parseRecordBack(context(),
-                                                       parseRecordStack.back());
-  if (!finishCompoundParseRecord(vp, parseRecordBack)) {
-    return false;
-  }
-  parseRecordStack.popBack();
-
+  parseRecordStack.back()->setValue(vp);
   return true;
 }
 
 template <typename CharT>
 inline bool JSONReviveHandler<CharT>::arrayOpen(Vector<StackEntry, 10>& stack,
                                                 ElementVector** elements) {
-  ParseRecordObject::EntryMap* newParseEntry =
-      NewPlainObjectWithProto(context(), nullptr);
-  if (!newParseEntry) {
+  ParseRecordObject* newParseRecord =
+      ParseRecordObject::create(context(), JS::Value());
+  if (!newParseRecord) {
     return false;
   }
-  if (!parseRecordStack.append(newParseEntry)) {
+  if (!parseRecordStack.append(newParseRecord)) {
     return false;
   }
 
@@ -1179,9 +1177,9 @@ inline bool JSONReviveHandler<CharT>::arrayElement(
   // way to get more than IntMax elements
   MOZ_ASSERT(index <= js::PropertyKey::IntMax);
   Rooted<JS::PropertyKey> key(context(), js::PropertyKey::Int(int32_t(index)));
-  Rooted<ParseRecordObject::EntryMap*> parseRecordBack(context(),
-                                                       parseRecordStack.back());
-  return finishMemberParseRecord(key, parseRecordBack);
+
+  Rooted<ParseRecordObject*> parseRecord(context(), parseRecordStack.popCopy());
+  return parseRecordStack.back()->addEntries(context(), key, parseRecord);
 }
 
 template <typename CharT>
@@ -1191,34 +1189,7 @@ inline bool JSONReviveHandler<CharT>::finishArray(
   if (!Base::finishArray(stack, vp, elements)) {
     return false;
   }
-  Rooted<ParseRecordObject::EntryMap*> parseRecordBack(context(),
-                                                       parseRecordStack.back());
-  if (!finishCompoundParseRecord(vp, parseRecordBack)) {
-    return false;
-  }
-  parseRecordStack.popBack();
-
-  return true;
-}
-
-template <typename CharT>
-inline bool JSONReviveHandler<CharT>::finishMemberParseRecord(
-    Handle<JS::PropertyKey> key,
-    Handle<ParseRecordObject::EntryMap*> parseEntry) {
-  parseRecord->setKey(context(), key.get());
-  Rooted<Value> pro(context(), ObjectValue(*parseRecord));
-  parseRecord = nullptr;
-  return JS_SetPropertyById(context(), parseEntry, key, pro);
-}
-
-template <typename CharT>
-inline bool JSONReviveHandler<CharT>::finishCompoundParseRecord(
-    const Value& value, Handle<ParseRecordObject::EntryMap*> parseEntry) {
-  parseRecord = ParseRecordObject::create(context(), value);
-  if (!parseRecord) {
-    return false;
-  }
-  parseRecord->setEntries(context(), parseEntry);
+  parseRecordStack.back()->setValue(vp);
   return true;
 }
 
@@ -1231,16 +1202,19 @@ inline bool JSONReviveHandler<CharT>::finishPrimitiveParseRecord(
   if (!parseNode) {
     return false;
   }
-  parseRecord = ParseRecordObject::create(context(), parseNode, value);
-  return !!parseRecord;
+
+  ParseRecordObject* parseRecord =
+      ParseRecordObject::create(context(), parseNode, value);
+  if (!parseRecord) {
+    return false;
+  }
+
+  return !!parseRecordStack.append(parseRecord);
 }
 
 template <typename CharT>
 void JSONReviveHandler<CharT>::trace(JSTracer* trc) {
   Base::trace(trc);
-  if (parseRecord) {
-    TraceRoot(trc, &parseRecord, "parse record");
-  }
   this->parseRecordStack.trace(trc);
 }
 
@@ -1255,8 +1229,8 @@ bool JSONReviveParser<CharT>::parse(JS::MutableHandle<JS::Value> vp,
                        [&](JS::Handle<JS::Value> value) { vp.set(value); })) {
     return false;
   }
-  MOZ_ASSERT(this->handler.parseRecord);
-  pro.set(this->handler.parseRecord);
+  MOZ_ASSERT(this->handler.getParseRecordObject());
+  pro.set(this->handler.getParseRecordObject());
   return true;
 }
 

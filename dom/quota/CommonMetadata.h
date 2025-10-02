@@ -62,19 +62,42 @@ struct OriginMetadata : public PrincipalMetadata {
                  PersistenceType aPersistenceType)
       : PrincipalMetadata(std::move(aPrincipalMetadata)),
         mPersistenceType(aPersistenceType) {}
+
+  // Returns a composite string key in the form "<persistence>*<origin>".
+  // Useful for flat hash maps keyed by both persistence type and origin,
+  // as an alternative to using structured keys or nested maps.
+  // Suitable when tree-based representation is unnecessary.
+  nsCString GetCompositeKey() const {
+    nsCString result;
+
+    result.AppendInt(mPersistenceType);
+    result.Append("*");
+    result.Append(mOrigin);
+
+    return result;
+  }
 };
 
-struct FullOriginMetadata : OriginMetadata {
-  bool mPersisted;
+struct OriginStateMetadata {
   int64_t mLastAccessTime;
+  bool mAccessed;
+  bool mPersisted;
 
+  OriginStateMetadata() = default;
+
+  OriginStateMetadata(int64_t aLastAccessTime, bool aAccessed, bool aPersisted)
+      : mLastAccessTime(aLastAccessTime),
+        mAccessed(aAccessed),
+        mPersisted(aPersisted) {}
+};
+
+struct FullOriginMetadata : OriginMetadata, OriginStateMetadata {
   FullOriginMetadata() = default;
 
-  FullOriginMetadata(OriginMetadata aOriginMetadata, bool aPersisted,
-                     int64_t aLastAccessTime)
+  FullOriginMetadata(OriginMetadata aOriginMetadata,
+                     OriginStateMetadata aOriginStateMetadata)
       : OriginMetadata(std::move(aOriginMetadata)),
-        mPersisted(aPersisted),
-        mLastAccessTime(aLastAccessTime) {}
+        OriginStateMetadata(aOriginStateMetadata) {}
 };
 
 struct OriginUsageMetadata : FullOriginMetadata {

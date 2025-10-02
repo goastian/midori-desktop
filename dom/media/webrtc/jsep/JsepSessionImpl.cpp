@@ -920,10 +920,14 @@ nsresult JsepSessionImpl::SetLocalDescriptionOffer(UniquePtr<Sdp> offer) {
   std::vector<JsepTrack*> recvTracks;
   recvTracks.reserve(mTransceivers.size());
   for (auto& transceiver : mTransceivers) {
-    recvTracks.push_back(&transceiver.mRecvTrack);
+    if (transceiver.mJsDirection & sdp::kRecv) {
+      recvTracks.push_back(&transceiver.mRecvTrack);
+    } else {
+      transceiver.mRecvTrack.ResetReceivePayloadTypes();
+    }
   }
 
-  JsepTrack::SetUniqueReceivePayloadTypes(recvTracks, true);
+  JsepTrack::SetReceivePayloadTypes(recvTracks, true);
 
   return NS_OK;
 }
@@ -1156,9 +1160,19 @@ nsresult JsepSessionImpl::HandleNegotiatedSession(
   std::vector<JsepTrack*> receiveTracks;
   receiveTracks.reserve(mTransceivers.size());
   for (auto& transceiver : mTransceivers) {
-    receiveTracks.push_back(&transceiver.mRecvTrack);
+    // Do not count payload types for non-active recv tracks as duplicates. If
+    // we receive an RTP packet with a payload type that is used by both a
+    // sendrecv and a sendonly m-section, there is no ambiguity; it is for the
+    // sendrecv m-section. MediaPipelineFilter and conduits are informed of
+    // their active status, so they know whether they can process packets and
+    // learn new SSRCs.
+    if (transceiver.mRecvTrack.GetActive()) {
+      receiveTracks.push_back(&transceiver.mRecvTrack);
+    } else {
+      transceiver.mRecvTrack.ResetReceivePayloadTypes();
+    }
   }
-  JsepTrack::SetUniqueReceivePayloadTypes(receiveTracks);
+  JsepTrack::SetReceivePayloadTypes(receiveTracks);
 
   mNegotiations++;
 

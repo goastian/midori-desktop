@@ -51,6 +51,12 @@ static bool ReportDetachedArrayBuffer(JSContext* cx) {
   return false;
 }
 
+static bool ReportImmutableBuffer(JSContext* cx) {
+  JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                            JSMSG_ARRAYBUFFER_IMMUTABLE);
+  return false;
+}
+
 static bool ReportResizedArrayBuffer(JSContext* cx) {
   JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                             JSMSG_TYPED_ARRAY_RESIZED_BOUNDS);
@@ -64,15 +70,15 @@ static bool ReportOutOfRange(JSContext* cx) {
   return false;
 }
 
-// ES2021 draft rev bd868f20b8c574ad6689fba014b62a1dba819e56
-// Plus: https://github.com/tc39/ecma262/pull/1908
-// 24.4.1.1 ValidateIntegerTypedArray ( typedArray [ , waitable ] )
-static bool ValidateIntegerTypedArray(
-    JSContext* cx, HandleValue typedArray, bool waitable,
-    MutableHandle<TypedArrayObject*> unwrappedTypedArray) {
-  // Step 1 (implicit).
+enum class AccessMode { Read, Write };
 
-  // Step 2.
+// ES2026 draft rev affcec07523a45d40fb668689c07657412e772ac
+// Plus: https://tc39.es/proposal-immutable-arraybuffer/
+// 25.4.3.1 ValidateIntegerTypedArray ( typedArray, waitable )
+static bool ValidateIntegerTypedArray(
+    JSContext* cx, HandleValue typedArray, bool waitable, AccessMode accessMode,
+    MutableHandle<TypedArrayObject*> unwrappedTypedArray) {
+  // Steps 1-2.
   auto* unwrapped = UnwrapAndTypeCheckValue<TypedArrayObject>(
       cx, typedArray, [cx]() { ReportBadArrayType(cx); });
   if (!unwrapped) {
@@ -83,7 +89,12 @@ static bool ValidateIntegerTypedArray(
     return ReportDetachedArrayBuffer(cx);
   }
 
-  // Steps 3-6.
+  if (accessMode == AccessMode::Write &&
+      unwrapped->is<ImmutableTypedArrayObject>()) {
+    return ReportImmutableBuffer(cx);
+  }
+
+  // Steps 3-4.
   if (waitable) {
     switch (unwrapped->type()) {
       case Scalar::Int32:
@@ -108,7 +119,7 @@ static bool ValidateIntegerTypedArray(
     }
   }
 
-  // Steps 7-9 (modified to return the TypedArray).
+  // Step 5 (modified to return the TypedArray).
   unwrappedTypedArray.set(unwrapped);
   return true;
 }
@@ -253,10 +264,12 @@ struct ArrayOps<uint64_t> {
 // 24.4.4 Atomics.compareExchange ( typedArray, index, ... ), steps 1-2.
 // 24.4.9 Atomics.store ( typedArray, index, value ), steps 1-2.
 template <typename Op>
-bool AtomicAccess(JSContext* cx, HandleValue obj, HandleValue index, Op op) {
+static bool AtomicAccess(JSContext* cx, HandleValue obj, HandleValue index,
+                         AccessMode accessMode, Op op) {
   // Step 1.
   Rooted<TypedArrayObject*> unwrappedTypedArray(cx);
-  if (!ValidateIntegerTypedArray(cx, obj, false, &unwrappedTypedArray)) {
+  if (!ValidateIntegerTypedArray(cx, obj, false, accessMode,
+                                 &unwrappedTypedArray)) {
     return false;
   }
 
@@ -326,7 +339,7 @@ static bool atomics_compareExchange(JSContext* cx, unsigned argc, Value* vp) {
   HandleValue index = args.get(1);
 
   return AtomicAccess(
-      cx, typedArray, index,
+      cx, typedArray, index, AccessMode::Write,
       [cx, &args](auto ops, Handle<TypedArrayObject*> unwrappedTypedArray,
                   size_t index) {
         using T = typename decltype(ops)::Type;
@@ -363,7 +376,7 @@ static bool atomics_load(JSContext* cx, unsigned argc, Value* vp) {
   HandleValue index = args.get(1);
 
   return AtomicAccess(
-      cx, typedArray, index,
+      cx, typedArray, index, AccessMode::Read,
       [cx, &args](auto ops, Handle<TypedArrayObject*> unwrappedTypedArray,
                   size_t index) {
         using T = typename decltype(ops)::Type;
@@ -388,7 +401,7 @@ static bool atomics_store(JSContext* cx, unsigned argc, Value* vp) {
   HandleValue index = args.get(1);
 
   return AtomicAccess(
-      cx, typedArray, index,
+      cx, typedArray, index, AccessMode::Write,
       [cx, &args](auto ops, Handle<TypedArrayObject*> unwrappedTypedArray,
                   size_t index) {
         using T = typename decltype(ops)::Type;
@@ -418,7 +431,7 @@ static bool AtomicReadModifyWrite(JSContext* cx, const CallArgs& args,
   HandleValue index = args.get(1);
 
   return AtomicAccess(
-      cx, typedArray, index,
+      cx, typedArray, index, AccessMode::Write,
       [cx, &args, op](auto ops, Handle<TypedArrayObject*> unwrappedTypedArray,
                       size_t index) {
         using T = typename decltype(ops)::Type;
@@ -628,11 +641,11 @@ namespace js {
  *      │WaitAsyncTimeoutTask│       │WaitAsyncNotifyTask│ ◄─────┐
  *      └────────────────────┘       └───┬───────────────┘       │
  *              ▲                        │             ▲         │
- *              │                        │             │         │ (transfered)
+ *              │                        │             │         │ (transferred)
  *              │ own                    ▼             │         │ own
- *      ┌───────────────────────────┐ ┌─────────────┐  │ ┌─────────────────────┐
- *      │DelayedJSDispatchaleHandler│ │PromiseObject│  │ │JSDispatchableHandler│
- *      └───────────────────────────┘ └─────────────┘  │ └─────────────────────┘
+ *     ┌────────────────────────────┐ ┌─────────────┐  │ ┌─────────────────────┐
+ *     │DelayedJSDispatchableHandler│ │PromiseObject│  │ │JSDispatchableHandler│
+ *     └────────────────────────────┘ └─────────────┘  │ └─────────────────────┘
  *              ▲                        ▲             │
  *     ┌────────┼────────────────────────┼──────┐      │
  *     │ ┌──────┴───────┐           ┌────┴────┐ │      │ own (initialized)
@@ -667,7 +680,7 @@ namespace js {
  *       cancelable list and is dispatched to resolve the promise with "ok".
  *       The task then destroys itself.
  *    C) The WaitAsyncTimeoutTask is disabled. It will fire and do nothing.
- *       See AsyncFutexWaiter::maybeCancelTimeout in atomics_notify_impl.
+ *       See AsyncFutexWaiter::maybeClearTimeout in atomics_notify_impl.
  *    D) The async waiter is destroyed.
  *
  * 2. A call to `Atomics.notify` notifies the waiter (atomics_notify_impl)
@@ -676,7 +689,7 @@ namespace js {
  *    B) The notify task is cancelled. The promise is extracted and resolved
  *        directly.
  *    C) The WaitAsyncTimeoutTask is disabled. It will fire and do nothing.
- *       See AsyncFutexWaiter::maybeCancelTimeout in atomics_notify_impl.
+ *       See AsyncFutexWaiter::maybeClearTimeout in atomics_notify_impl.
  *    D) The async waiter is destroyed.
  *
  * 3. The timeout expires without notification (WaitAsyncTimeoutTask::run)
@@ -692,7 +705,7 @@ namespace js {
  *    B) The notify task is cancelled and destroyed by
  *       OffThreadPromiseRuntimeState::shutdown.
  *    C) The WaitAsyncTimeoutTask is disabled.
- *       See AsyncFutexWaiter::maybeCancelTimeout in prepareForCancel.
+ *       See AsyncFutexWaiter::maybeClearTimeout in prepareForCancel.
  *
  * 5. The SharedArrayBuffer is collected by the GC (~FutexWaiterListHead)
  *    A) Async waiters without timeouts can no longer resolve. They are removed.
@@ -930,7 +943,7 @@ FutexWaiterListHead::~FutexWaiterListHead() {
   AutoLockFutexAPI lock;
 
   FutexWaiterListNode* iter = next();
-  while (iter != this) {
+  while (iter && iter != this) {
     // All remaining FutexWaiters must be async. A sync waiter can only exist if
     // a thread is waiting, and that thread must have a reference to the shared
     // array buffer it's waiting on, so that buffer can't be freed.
@@ -939,11 +952,11 @@ FutexWaiterListHead::~FutexWaiterListHead() {
         RemoveAsyncWaiter(iter->toWaiter()->asAsync(), lock);
     iter = iter->next();
 
-    if (removedWaiter->hasTimeout()) {
-      // If a timeout task exists, assert that the timeout task can still access
-      // it. This will allow it to clean it up when it runs.  See the comment in
-      // WaitAsyncTimeoutTask::run() or the the SMDOC in this file.
-      MOZ_ASSERT(removedWaiter->timeoutTask()->cleared(lock));
+    if (removedWaiter->hasTimeout() &&
+        !removedWaiter->timeoutTask()->cleared(lock)) {
+      // If a timeout task exists,  allow it to clean up the notify task when it
+      // runs. See the comment in WaitAsyncTimeoutTask::run() or the the SMDOC
+      // in this file.
       continue;
     }
     // In the case that a timeout task does not exist, the two live raw
@@ -1032,6 +1045,7 @@ void WaitAsyncTimeoutTask::transferToRuntime() {
 void AsyncFutexWaiter::maybeClearTimeout(AutoLockFutexAPI& lock) {
   if (timeoutTask_) {
     timeoutTask_->clear(lock);
+    timeoutTask_ = nullptr;
   }
 }
 
@@ -1303,7 +1317,8 @@ static bool DoWait(JSContext* cx, bool isAsync, HandleValue objv,
                    MutableHandleValue r) {
   // Steps 1-2.
   Rooted<TypedArrayObject*> unwrappedTypedArray(cx);
-  if (!ValidateIntegerTypedArray(cx, objv, true, &unwrappedTypedArray)) {
+  if (!ValidateIntegerTypedArray(cx, objv, true, AccessMode::Read,
+                                 &unwrappedTypedArray)) {
     return false;
   }
   MOZ_ASSERT(unwrappedTypedArray->type() == Scalar::Int32 ||
@@ -1472,7 +1487,8 @@ static bool atomics_notify(JSContext* cx, unsigned argc, Value* vp) {
 
   // Step 1.
   Rooted<TypedArrayObject*> unwrappedTypedArray(cx);
-  if (!ValidateIntegerTypedArray(cx, objv, true, &unwrappedTypedArray)) {
+  if (!ValidateIntegerTypedArray(cx, objv, true, AccessMode::Read,
+                                 &unwrappedTypedArray)) {
     return false;
   }
   MOZ_ASSERT(unwrappedTypedArray->type() == Scalar::Int32 ||

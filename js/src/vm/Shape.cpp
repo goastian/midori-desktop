@@ -553,7 +553,7 @@ bool NativeObject::changeProperty(JSContext* cx, Handle<NativeObject*> obj,
   }
 
   // If the property flags are not changing, the only thing we have to do is
-  // update the object flags. This prevents a dictionary mode conversion below.
+  // update the object flags.
   if (oldProp.flags() == flags) {
     *slotOut = oldProp.slot();
     if (objectFlags == obj->shape()->objectFlags()) {
@@ -565,46 +565,93 @@ bool NativeObject::changeProperty(JSContext* cx, Handle<NativeObject*> obj,
 
   const JSClass* clasp = obj->shape()->getObjectClass();
 
-  if (map->isShared()) {
-    // Fast path for changing the last property in a SharedPropMap. Call
-    // getPrevious to "remove" the last property and then call addProperty
-    // to re-add the last property with the new flags.
-    if (propMap == map && propIndex == mapLength - 1) {
-      MOZ_ASSERT(obj->getLastProperty().key() == id);
+  // Rebuilding the new SharedPropMap is linear in the number of properties.
+  // To avoid going quadratic when changing every property in a large object,
+  // we cap the number of properties we will re-add. As a fallback, we can
+  // transition to dictionary mode, which lets us change properties in constant
+  // time.
+  const uint32_t MaxCopiedMaps = 4;
+  bool hasReasonableGap =
+      map->isShared() && map->asShared()->numPreviousMaps() -
+                                 propMap->asShared()->numPreviousMaps() <=
+                             MaxCopiedMaps;
 
-      Rooted<SharedPropMap*> sharedMap(cx, map->asShared());
-      SharedPropMap::getPrevious(&sharedMap, &mapLength);
+  bool isLast = propMap == map && propIndex == mapLength - 1;
+  bool nonLastCustomProperty = oldProp.isCustomDataProperty() && !isLast;
+  if (map->isShared() && !nonLastCustomProperty && hasReasonableGap) {
+    // To change a property, we get the previous propmap and then call
+    // addProperty to re-add the changed property with the new flags. If it
+    // is not the last property, we have to re-add all the following
+    // properties.
+    MOZ_ASSERT_IF(isLast, obj->getLastProperty().key() == id);
 
-      if (MOZ_LIKELY(oldProp.hasSlot())) {
-        *slotOut = oldProp.slot();
-        if (!SharedPropMap::addPropertyWithKnownSlot(cx, clasp, &sharedMap,
-                                                     &mapLength, id, flags,
-                                                     *slotOut, &objectFlags)) {
-          return false;
-        }
-      } else {
-        if (!SharedPropMap::addProperty(cx, clasp, &sharedMap, &mapLength, id,
-                                        flags, &objectFlags, slotOut)) {
-          return false;
-        }
-      }
+    // "Remove" the changed property.
+    Rooted<SharedPropMap*> resultMap(cx, propMap->asShared());
+    uint32_t resultMapLength = propIndex + 1;
+    SharedPropMap::getPrevious(&resultMap, &resultMapLength);
 
-      SharedShape* newShape = SharedShape::getPropMapShape(
-          cx, obj->shape()->base(), obj->shape()->numFixedSlots(), sharedMap,
-          mapLength, objectFlags);
-      if (!newShape) {
+    // Re-add the property with the new flags.
+    if (MOZ_LIKELY(oldProp.hasSlot())) {
+      *slotOut = oldProp.slot();
+      if (!SharedPropMap::addPropertyWithKnownSlot(cx, clasp, &resultMap,
+                                                   &resultMapLength, id, flags,
+                                                   *slotOut, &objectFlags)) {
         return false;
       }
-
-      if (MOZ_LIKELY(oldProp.hasSlot())) {
-        MOZ_ASSERT(obj->sharedShape()->slotSpan() == newShape->slotSpan());
-        obj->setShape(newShape);
-        return true;
+    } else {
+      if (!SharedPropMap::addProperty(cx, clasp, &resultMap, &resultMapLength,
+                                      id, flags, &objectFlags, slotOut)) {
+        return false;
       }
-      return obj->setShapeAndAddNewSlot(cx, newShape, *slotOut);
     }
 
-    // Changing a non-last property. Switch to dictionary mode and relookup
+    // Build a new SharedPropMap by re-adding each unchanged property.
+    if (!isLast) {
+      Rooted<PropertyKey> key(cx);
+
+      SharedPropMapAndIndex startAfter(propMap->asShared(), propIndex);
+      SharedPropMapAndIndex end(map->asShared(), mapLength - 1);
+      for (SharedPropMapIter iter(cx, startAfter, end); !iter.done();
+           iter.next()) {
+        key = iter.key();
+        PropertyInfo prop = iter.prop();
+        PropertyFlags flags = prop.flags();
+        if (prop.isCustomDataProperty()) {
+          if (!SharedPropMap::addCustomDataProperty(cx, clasp, &resultMap,
+                                                    &resultMapLength, key,
+                                                    flags, &objectFlags)) {
+            return false;
+          }
+        } else {
+          if (!SharedPropMap::addPropertyWithKnownSlot(
+                  cx, clasp, &resultMap, &resultMapLength, key, flags,
+                  prop.slot(), &objectFlags)) {
+            return false;
+          }
+        }
+      }
+    }
+    MOZ_ASSERT(resultMapLength == mapLength);
+
+    SharedShape* newShape = SharedShape::getPropMapShape(
+        cx, obj->shape()->base(), obj->shape()->numFixedSlots(), resultMap,
+        resultMapLength, objectFlags);
+    if (!newShape) {
+      return false;
+    }
+
+    if (MOZ_LIKELY(oldProp.hasSlot())) {
+      MOZ_ASSERT(obj->sharedShape()->slotSpan() == newShape->slotSpan());
+      obj->setShape(newShape);
+      return true;
+    }
+    return obj->setShapeAndAddNewSlot(cx, newShape, *slotOut);
+  }
+
+  if (map->isShared()) {
+    // We gave up on trying to keep a shared map, either because of
+    // custom data properties or because we would have to copy too
+    // many properties. Switch to dictionary mode and relookup
     // pointers for the new dictionary map.
     if (!NativeObject::toDictionaryMode(cx, obj)) {
       return false;
@@ -1285,6 +1332,12 @@ void ForEachObjectFlag(ObjectFlags flags, KnownF known, UnknownF unknown) {
       case ObjectFlag::HasFuseProperty:
         known("HasFuseProperty");
         break;
+      case ObjectFlag::HasPreservedWrapper:
+        known("HasPreservedWrapper");
+        break;
+      case ObjectFlag::HasNonFunctionAccessor:
+        known("HasNonFunctionAccessor");
+        break;
       default:
         unknown(i);
         break;
@@ -1442,8 +1495,8 @@ SharedShape* SharedShape::getInitialShape(JSContext* cx, const JSClass* clasp,
     return nullptr;
   }
 
-  Rooted<SharedShape*> shape(
-      cx, SharedShape::new_(cx, nbase, objectFlags, nfixed, nullptr, 0));
+  SharedShape* shape =
+      SharedShape::new_(cx, nbase, objectFlags, nfixed, nullptr, 0);
   if (!shape) {
     return nullptr;
   }
@@ -1490,8 +1543,8 @@ SharedShape* SharedShape::getPropMapShape(
   }
 
   Rooted<BaseShape*> baseRoot(cx, base);
-  Rooted<SharedShape*> shape(
-      cx, SharedShape::new_(cx, baseRoot, objectFlags, nfixed, map, mapLength));
+  SharedShape* shape =
+      SharedShape::new_(cx, baseRoot, objectFlags, nfixed, map, mapLength);
   if (!shape) {
     return nullptr;
   }

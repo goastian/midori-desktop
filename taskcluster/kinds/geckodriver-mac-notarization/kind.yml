@@ -26,8 +26,7 @@ tasks:
         treeherder:
             symbol: TM(gd-n)
         worker:
-            implementation: scriptworker-signing
-            max-run-time: 3600
+            implementation: iscript
             upstream-artifacts:
                 - taskType: signing
                   paths:

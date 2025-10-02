@@ -18,7 +18,11 @@
 namespace js {
 namespace jit {
 
-class SimpleAllocator : protected RegisterAllocator {
+class MOZ_STACK_CLASS SimpleAllocator : protected RegisterAllocator {
+ public:
+  using IsStackAllocated = std::true_type;
+
+ private:
   // Information about a virtual register.
   class VirtualRegister {
     // The definition and the id of the LIR instruction that contains it.
@@ -235,8 +239,11 @@ class SimpleAllocator : protected RegisterAllocator {
   AllocatableRegisterSet fixedTempRegs_;
   AllocatableRegisterSet fixedOutputAndTempRegs_;
 
-  // The set of live GC things at the start of each basic block.
-  using VirtualRegBitSet = SparseBitSet<BackgroundSystemAllocPolicy>;
+  // The set of live GC things at the start of each basic block. Although the
+  // VirtualRegBitSet may contain malloced memory, all are owned by the
+  // SimpleAllocator whose destructor will destroy them.
+  using VirtualRegBitSet =
+      SparseBitSet<BackgroundSystemAllocPolicy, SimpleAllocator>;
   Vector<VirtualRegBitSet, 0, JitAllocPolicy> liveGCIn_;
 
   // Vector sorted by instructionId in descending order. This is used by

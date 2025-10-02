@@ -864,11 +864,15 @@ void RenderCompositorANGLE::Bind(wr::NativeTileId aId,
 
 void RenderCompositorANGLE::Unbind() { mDCLayerTree->Unbind(); }
 
-void RenderCompositorANGLE::BindSwapChain(wr::NativeSurfaceId aId) {
-  mDCLayerTree->BindSwapChain(aId);
+void RenderCompositorANGLE::BindSwapChain(wr::NativeSurfaceId aId,
+                                          const wr::DeviceIntRect* aDirtyRects,
+                                          size_t aNumDirtyRects) {
+  mDCLayerTree->BindSwapChain(aId, aDirtyRects, aNumDirtyRects);
 }
-void RenderCompositorANGLE::PresentSwapChain(wr::NativeSurfaceId aId) {
-  mDCLayerTree->PresentSwapChain(aId);
+void RenderCompositorANGLE::PresentSwapChain(
+    wr::NativeSurfaceId aId, const wr::DeviceIntRect* aDirtyRects,
+    size_t aNumDirtyRects) {
+  mDCLayerTree->PresentSwapChain(aId, aDirtyRects, aNumDirtyRects);
 }
 
 void RenderCompositorANGLE::CreateSurface(wr::NativeSurfaceId aId,

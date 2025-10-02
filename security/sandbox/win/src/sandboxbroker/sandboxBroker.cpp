@@ -13,8 +13,10 @@
 #include <string>
 
 #include "base/win/windows_version.h"
+#include "GfxDriverInfo.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/Components.h"
 #include "mozilla/ImportDir.h"
 #include "mozilla/Logging.h"
 #include "mozilla/NSPRLogModulesParser.h"
@@ -35,6 +37,7 @@
 #include "nsCOMPtr.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsIFile.h"
+#include "nsIGfxInfo.h"
 #include "nsIProperties.h"
 #include "nsIXULRuntime.h"
 #include "nsServiceManagerUtils.h"
@@ -68,6 +71,10 @@ bool SandboxBroker::sRunningFromNetworkDrive = false;
 static StaticAutoPtr<nsString> sBinDir;
 static StaticAutoPtr<nsString> sProfileDir;
 static StaticAutoPtr<nsString> sLocalAppDataDir;
+static StaticAutoPtr<nsString> sSystemFontsDir;
+static StaticAutoPtr<nsString> sWindowsSystemDir;
+static StaticAutoPtr<nsString> sLocalAppDataLowDir;
+static StaticAutoPtr<nsString> sLocalAppDataLowParentDir;
 #ifdef ENABLE_SYSTEM_EXTENSION_DIRS
 static StaticAutoPtr<nsString> sUserExtensionsDir;
 #endif
@@ -115,14 +122,14 @@ static sandbox::ResultCode AddWin32kLockdownPolicy(
   return result;
 }
 
-static void CacheDirAndAutoClear(const nsAString& aDir,
-                                 StaticAutoPtr<nsString>* cacheVar) {
-  *cacheVar = new nsString(aDir);
-  ClearOnShutdown(cacheVar);
+static void CacheAndStandardizeDir(const nsAString& aDir,
+                                   StaticAutoPtr<nsString>& aCacheVar) {
+  MOZ_ASSERT(!aCacheVar);
+  aCacheVar = new nsString(aDir);
 
   // Convert network share path to format for sandbox policy.
-  if (Substring(**cacheVar, 0, 2).Equals(u"\\\\"_ns)) {
-    (*cacheVar)->InsertLiteral(u"??\\UNC", 1);
+  if (Substring(*aCacheVar, 0, 2).Equals(u"\\\\"_ns)) {
+    aCacheVar->InsertLiteral(u"??\\UNC", 1);
   }
 }
 
@@ -134,12 +141,28 @@ void SandboxBroker::Initialize(sandbox::BrokerServices* aBrokerServices,
   sRunningFromNetworkDrive = widget::WinUtils::RunningFromANetworkDrive();
 
   if (!aBinDir.IsEmpty()) {
-    CacheDirAndAutoClear(aBinDir, &sBinDir);
+    CacheAndStandardizeDir(aBinDir, sBinDir);
   }
+
+  // Clear statics on shutdown.
+  RunOnShutdown([] {
+    sLaunchErrors = nullptr;
+    sBinDir = nullptr;
+    sProfileDir = nullptr;
+    sLocalAppDataDir = nullptr;
+    sSystemFontsDir = nullptr;
+    sWindowsSystemDir = nullptr;
+    sLocalAppDataLowDir = nullptr;
+    sLocalAppDataLowParentDir = nullptr;
+#ifdef ENABLE_SYSTEM_EXTENSION_DIRS
+    sUserExtensionsDir = nullptr;
+#endif
+  });
 }
 
-static void CacheDirAndAutoClear(nsIProperties* aDirSvc, const char* aDirKey,
-                                 StaticAutoPtr<nsString>* cacheVar) {
+static void CacheDirectoryServiceDir(nsIProperties* aDirSvc,
+                                     const char* aDirKey,
+                                     StaticAutoPtr<nsString>& aCacheVar) {
   nsCOMPtr<nsIFile> dirToCache;
   nsresult rv =
       aDirSvc->Get(aDirKey, NS_GET_IID(nsIFile), getter_AddRefs(dirToCache));
@@ -152,7 +175,91 @@ static void CacheDirAndAutoClear(nsIProperties* aDirSvc, const char* aDirKey,
 
   nsAutoString dirPath;
   MOZ_ALWAYS_SUCCEEDS(dirToCache->GetPath(dirPath));
-  CacheDirAndAutoClear(dirPath, cacheVar);
+  CacheAndStandardizeDir(dirPath, aCacheVar);
+}
+
+static void AddCachedDirRule(sandbox::TargetPolicy* aPolicy,
+                             sandbox::TargetPolicy::Semantics aAccess,
+                             const StaticAutoPtr<nsString>& aBaseDir,
+                             const nsLiteralString& aRelativePath = u""_ns) {
+  if (!aBaseDir) {
+    // This can only be an NS_WARNING, because it can null for xpcshell tests.
+    NS_WARNING("Tried to add rule with null base dir.");
+    LOG_E("Tried to add rule with null base dir. Relative path: %S, Access: %d",
+          static_cast<const wchar_t*>(aRelativePath.get()), aAccess);
+    return;
+  }
+
+  nsAutoString rulePath(*aBaseDir);
+  rulePath.Append(aRelativePath);
+
+  sandbox::ResultCode result = aPolicy->AddRule(
+      sandbox::TargetPolicy::SUBSYS_FILES, aAccess, rulePath.get());
+  if (sandbox::SBOX_ALL_OK != result) {
+    NS_ERROR("Failed to add file policy rule.");
+    LOG_E("Failed (ResultCode %d) to add %d access to: %S", result, aAccess,
+          rulePath.getW());
+  }
+}
+
+static void EnsureWindowsDirCached(
+    GUID aFolderID, StaticAutoPtr<nsString>& aCacheVar, const char* aErrMsg,
+    StaticAutoPtr<nsString>* aParentCacheVar = nullptr) {
+  if (aCacheVar) {
+    return;
+  }
+
+  UniquePtr<wchar_t, mozilla::CoTaskMemFreeDeleter> dirPath;
+  if (FAILED(::SHGetKnownFolderPath(aFolderID, 0, nullptr,
+                                    getter_Transfers(dirPath)))) {
+    NS_ERROR(aErrMsg);
+    LOG_E("%s", aErrMsg);
+    return;
+  }
+
+  nsDependentString dirString(dirPath.get());
+  CacheAndStandardizeDir(dirString, aCacheVar);
+  if (aParentCacheVar) {
+    nsCOMPtr<nsIFile> dirFile;
+    nsCOMPtr<nsIFile> parentDir;
+    if (NS_FAILED(NS_NewLocalFile(dirString, getter_AddRefs(dirFile))) ||
+        NS_FAILED(dirFile->GetParent(getter_AddRefs(parentDir)))) {
+      NS_WARNING("Failed to get parent directory to cache.");
+      LOG_E("%s parent", aErrMsg);
+      return;
+    }
+
+    nsString parentPath;
+    MOZ_ALWAYS_SUCCEEDS(parentDir->GetPath(parentPath));
+    CacheAndStandardizeDir(parentPath, *aParentCacheVar);
+  }
+}
+
+static void AddCachedWindowsDirRule(
+    sandbox::TargetPolicy* aPolicy, sandbox::TargetPolicy::Semantics aAccess,
+    GUID aFolderID, const nsLiteralString& aRelativePath = u""_ns) {
+  if (aFolderID == FOLDERID_Fonts) {
+    EnsureWindowsDirCached(FOLDERID_Fonts, sSystemFontsDir,
+                           "Failed to get Windows Fonts folder");
+    AddCachedDirRule(aPolicy, aAccess, sSystemFontsDir, aRelativePath);
+    return;
+  }
+  if (aFolderID == FOLDERID_System) {
+    EnsureWindowsDirCached(FOLDERID_System, sWindowsSystemDir,
+                           "Failed to get Windows System folder");
+    AddCachedDirRule(aPolicy, aAccess, sWindowsSystemDir, aRelativePath);
+    return;
+  }
+  if (aFolderID == FOLDERID_LocalAppDataLow) {
+    // For LocalAppDataLow we also require the parent dir.
+    EnsureWindowsDirCached(FOLDERID_LocalAppDataLow, sLocalAppDataLowDir,
+                           "Failed to get Windows LocalAppDataLow folder",
+                           &sLocalAppDataLowParentDir);
+    AddCachedDirRule(aPolicy, aAccess, sLocalAppDataLowDir, aRelativePath);
+    return;
+  }
+
+  MOZ_CRASH("Unhandled FOLDERID guid.");
 }
 
 /* static */
@@ -174,16 +281,12 @@ void SandboxBroker::GeckoDependentInitialize() {
     return;
   }
 
-  CacheDirAndAutoClear(dirSvc, NS_APP_USER_PROFILE_50_DIR, &sProfileDir);
-  CacheDirAndAutoClear(dirSvc, NS_WIN_LOCAL_APPDATA_DIR, &sLocalAppDataDir);
+  CacheDirectoryServiceDir(dirSvc, NS_APP_USER_PROFILE_50_DIR, sProfileDir);
+  CacheDirectoryServiceDir(dirSvc, NS_WIN_LOCAL_APPDATA_DIR, sLocalAppDataDir);
 #ifdef ENABLE_SYSTEM_EXTENSION_DIRS
-  CacheDirAndAutoClear(dirSvc, XRE_USER_SYS_EXTENSION_DIR, &sUserExtensionsDir);
+  CacheDirectoryServiceDir(dirSvc, XRE_USER_SYS_EXTENSION_DIR,
+                           sUserExtensionsDir);
 #endif
-
-  // Create sLaunchErrors up front because ClearOnShutdown must be called on the
-  // main thread.
-  sLaunchErrors = new nsTHashtable<nsCStringHashKey>();
-  ClearOnShutdown(&sLaunchErrors);
 }
 
 SandboxBroker::SandboxBroker() {
@@ -417,16 +520,13 @@ Result<Ok, mozilla::ipc::LaunchError> SandboxBroker::LaunchApp(
     key.AppendInt(static_cast<uint32_t>(last_error), 16);
 
     // Only accumulate for each combination once per session.
-    if (sLaunchErrors) {
-      if (!sLaunchErrors->Contains(key)) {
-        glean::sandbox::failed_launch_keyed.Get(key).AccumulateSingleSample(
-            result);
-        sLaunchErrors->PutEntry(key);
-      }
-    } else {
-      // If sLaunchErrors not created yet then always accumulate.
+    if (!sLaunchErrors) {
+      sLaunchErrors = new nsTHashtable<nsCStringHashKey>();
+    }
+    if (!sLaunchErrors->Contains(key)) {
       glean::sandbox::failed_launch_keyed.Get(key).AccumulateSingleSample(
           result);
+      sLaunchErrors->PutEntry(key);
     }
 
     LOG_E(
@@ -508,30 +608,6 @@ Result<Ok, mozilla::ipc::LaunchError> SandboxBroker::LaunchApp(
   *aProcessHandle = targetInfo.hProcess;
 
   return Ok();
-}
-
-static void AddCachedDirRule(sandbox::TargetPolicy* aPolicy,
-                             sandbox::TargetPolicy::Semantics aAccess,
-                             const StaticAutoPtr<nsString>& aBaseDir,
-                             const nsLiteralString& aRelativePath) {
-  if (!aBaseDir) {
-    // This can only be an NS_WARNING, because it can null for xpcshell tests.
-    NS_WARNING("Tried to add rule with null base dir.");
-    LOG_E("Tried to add rule with null base dir. Relative path: %S, Access: %d",
-          static_cast<const wchar_t*>(aRelativePath.get()), aAccess);
-    return;
-  }
-
-  nsAutoString rulePath(*aBaseDir);
-  rulePath.Append(aRelativePath);
-
-  sandbox::ResultCode result = aPolicy->AddRule(
-      sandbox::TargetPolicy::SUBSYS_FILES, aAccess, rulePath.get());
-  if (sandbox::SBOX_ALL_OK != result) {
-    NS_ERROR("Failed to add file policy rule.");
-    LOG_E("Failed (ResultCode %d) to add %d access to: %S", result, aAccess,
-          rulePath.getW());
-  }
 }
 
 // This function caches and returns an array of NT paths of the executable's
@@ -843,6 +919,55 @@ static sandbox::ResultCode AddAndConfigureAppContainerProfile(
 }
 #endif
 
+void AddShaderCachesToPolicy(sandbox::TargetPolicy* aPolicy,
+                             int32_t aSandboxLevel) {
+  // The GPU process needs to write to a shader cache for performance reasons
+  if (sProfileDir) {
+    // Currently the GPU process creates the shader-cache directory if it
+    // doesn't exist, so we have to give FILES_ALLOW_ANY access.
+    // FILES_ALLOW_DIR_ANY has been seen to fail on an existing profile although
+    // the root cause hasn't been found. FILES_ALLOW_DIR_ANY has also been
+    // removed from the sandbox code upstream.
+    // It is possible that we might be able to use FILES_ALLOW_READONLY for the
+    // dir if it is already created, bug 1966157 has been filed to track.
+    AddCachedDirRule(aPolicy, sandbox::TargetPolicy::FILES_ALLOW_ANY,
+                     sProfileDir, u"\\shader-cache"_ns);
+
+    AddCachedDirRule(aPolicy, sandbox::TargetPolicy::FILES_ALLOW_ANY,
+                     sProfileDir, u"\\shader-cache\\*"_ns);
+  }
+
+  // Add GPU specific shader cache rules.
+  const nsCOMPtr<nsIGfxInfo> gfxInfo = components::GfxInfo::Service();
+  MOZ_ASSERT(gfxInfo);
+  nsAutoString vendorID;
+  if (NS_FAILED(gfxInfo->GetAdapterVendorID(vendorID))) {
+    NS_WARNING("Failed to get GPU Vendor ID.");
+    return;
+  }
+
+  if (aSandboxLevel >= 2 && vendorID == widget::GfxDriverInfo::GetDeviceVendor(
+                                            widget::DeviceVendor::Intel)) {
+    // Add rules to allow Intel's shader cache.
+    AddCachedWindowsDirRule(aPolicy, sandbox::TargetPolicy::FILES_ALLOW_ANY,
+                            FOLDERID_LocalAppDataLow,
+                            u"\\Intel\\ShaderCache\\*"_ns);
+    AddCachedWindowsDirRule(aPolicy, sandbox::TargetPolicy::FILES_ALLOW_QUERY,
+                            FOLDERID_LocalAppDataLow,
+                            u"\\Intel\\ShaderCache"_ns);
+    AddCachedWindowsDirRule(aPolicy, sandbox::TargetPolicy::FILES_ALLOW_QUERY,
+                            FOLDERID_LocalAppDataLow, u"\\Intel"_ns);
+    AddCachedWindowsDirRule(aPolicy, sandbox::TargetPolicy::FILES_ALLOW_QUERY,
+                            FOLDERID_LocalAppDataLow);
+
+    // The parent of LocalAppDataLow is cached by AddCachedWindowsDirRule.
+    if (sLocalAppDataLowParentDir) {
+      AddCachedDirRule(aPolicy, sandbox::TargetPolicy::FILES_ALLOW_QUERY,
+                       sLocalAppDataLowParentDir);
+    }
+  }
+}
+
 void SandboxBroker::SetSecurityLevelForContentProcess(int32_t aSandboxLevel,
                                                       bool aIsFileProcess) {
   MOZ_RELEASE_ASSERT(mPolicy, "mPolicy must be set before this call.");
@@ -1064,48 +1189,17 @@ void SandboxBroker::SetSecurityLevelForContentProcess(int32_t aSandboxLevel,
 
   if (aSandboxLevel >= 8) {
     // Content process still needs to be able to read fonts.
-    wchar_t* fontsPath;
-    if (SUCCEEDED(
-            ::SHGetKnownFolderPath(FOLDERID_Fonts, 0, nullptr, &fontsPath))) {
-      std::wstring fontsStr = fontsPath;
-      ::CoTaskMemFree(fontsPath);
-      result = mPolicy->AddRule(sandbox::TargetPolicy::SUBSYS_FILES,
-                                sandbox::TargetPolicy::FILES_ALLOW_READONLY,
-                                fontsStr.c_str());
-      if (sandbox::SBOX_ALL_OK != result) {
-        NS_ERROR("Failed to add fonts dir read access policy rule.");
-        LOG_E("Failed (ResultCode %d) to add read access to: %S", result,
-              fontsStr.c_str());
-      }
-
-      fontsStr += L"\\*";
-      result = mPolicy->AddRule(sandbox::TargetPolicy::SUBSYS_FILES,
-                                sandbox::TargetPolicy::FILES_ALLOW_READONLY,
-                                fontsStr.c_str());
-      if (sandbox::SBOX_ALL_OK != result) {
-        NS_ERROR("Failed to add fonts read access policy rule.");
-        LOG_E("Failed (ResultCode %d) to add read access to: %S", result,
-              fontsStr.c_str());
-      }
-    }
+    AddCachedWindowsDirRule(
+        mPolicy, sandbox::TargetPolicy::FILES_ALLOW_READONLY, FOLDERID_Fonts);
+    AddCachedWindowsDirRule(mPolicy,
+                            sandbox::TargetPolicy::FILES_ALLOW_READONLY,
+                            FOLDERID_Fonts, u"\\*"_ns);
 
     // Add access to Windows system binary dir to allow DLLs that are not
     // required in all content processes to load later.
-    wchar_t* systemBinPath;
-    if (SUCCEEDED(::SHGetKnownFolderPath(FOLDERID_System, 0, nullptr,
-                                         &systemBinPath))) {
-      std::wstring systemBinPathStr = systemBinPath;
-      ::CoTaskMemFree(systemBinPath);
-      systemBinPathStr += L"\\*";
-      result = mPolicy->AddRule(sandbox::TargetPolicy::SUBSYS_FILES,
-                                sandbox::TargetPolicy::FILES_ALLOW_READONLY,
-                                systemBinPathStr.c_str());
-      if (sandbox::SBOX_ALL_OK != result) {
-        NS_ERROR("Failed to add rule for system bin dir.");
-        LOG_E("Failed (ResultCode %d) to add read access to: %S", result,
-              systemBinPathStr.c_str());
-      }
-    }
+    AddCachedWindowsDirRule(mPolicy,
+                            sandbox::TargetPolicy::FILES_ALLOW_READONLY,
+                            FOLDERID_System, u"\\*"_ns);
 
     // Read access for MF Media Source Activate and subkeys/values.
     result = mPolicy->AddRule(sandbox::TargetPolicy::SUBSYS_REGISTRY,
@@ -1241,26 +1335,12 @@ void SandboxBroker::SetSecurityLevelForGPUProcess(int32_t aSandboxLevel) {
                    sBinDir, u"\\*"_ns);
 
   if (aSandboxLevel >= 2) {
-    //add rule to allow access to user specific fonts.
+    // Add rule to allow access to user specific fonts.
     AddCachedDirRule(mPolicy, sandbox::TargetPolicy::FILES_ALLOW_READONLY,
                      sLocalAppDataDir, u"\\Microsoft\\Windows\\Fonts\\*"_ns);
-    }
-
-  // The GPU process needs to write to a shader cache for performance reasons
-  if (sProfileDir) {
-    // Currently the GPU process creates the shader-cache directory if it
-    // doesn't exist, so we have to give FILES_ALLOW_ANY access.
-    // FILES_ALLOW_DIR_ANY has been seen to fail on an existing profile although
-    // the root cause hasn't been found. FILES_ALLOW_DIR_ANY has also been
-    // removed from the sandbox code upstream.
-    // It is possible that we might be able to use FILES_ALLOW_READONLY for the
-    // dir if it is already created, bug 1966157 has been filed to track.
-    AddCachedDirRule(mPolicy, sandbox::TargetPolicy::FILES_ALLOW_ANY,
-                     sProfileDir, u"\\shader-cache"_ns);
-
-    AddCachedDirRule(mPolicy, sandbox::TargetPolicy::FILES_ALLOW_ANY,
-                     sProfileDir, u"\\shader-cache\\*"_ns);
   }
+
+  AddShaderCachesToPolicy(mPolicy, aSandboxLevel);
 }
 
 #define SANDBOX_ENSURE_SUCCESS(result, message)          \

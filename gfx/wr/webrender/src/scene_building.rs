@@ -559,6 +559,7 @@ pub struct SceneBuilder<'a> {
 impl<'a> SceneBuilder<'a> {
     pub fn build(
         scene: &Scene,
+        root_pipeline: Option<PipelineId>,
         fonts: SharedFontResources,
         view: &SceneView,
         frame_builder_config: &FrameBuilderConfig,
@@ -571,7 +572,7 @@ impl<'a> SceneBuilder<'a> {
         profile_scope!("build_scene");
 
         // We checked that the root pipeline is available on the render backend.
-        let root_pipeline_id = scene.root_pipeline_id.unwrap();
+        let root_pipeline_id = root_pipeline.or(scene.root_pipeline_id).unwrap();
         let root_pipeline = scene.pipelines.get(&root_pipeline_id).unwrap();
         let root_reference_frame_index = spatial_tree.root_reference_frame_index();
 
@@ -1277,7 +1278,7 @@ impl<'a> SceneBuilder<'a> {
             },
         };
 
-        self.clip_tree_builder.push_clip_chain(Some(info.space_and_clip.clip_chain_id), false);
+        self.clip_tree_builder.push_clip_chain(Some(info.space_and_clip.clip_chain_id), false, false);
 
         // TODO(gw): This is the only remaining call site that relies on ClipId parenting, remove me!
         self.add_rect_clip_node(
@@ -2260,6 +2261,7 @@ impl<'a> SceneBuilder<'a> {
         self.clip_tree_builder.push_clip_chain(
             clip_chain_id,
             !composite_ops.is_empty(),
+            composite_ops.snapshot.is_some(),
         );
 
         let new_space = match (self.raster_space_stack.last(), requested_raster_space) {
@@ -3017,7 +3019,7 @@ impl<'a> SceneBuilder<'a> {
         clip_chain_id: api::ClipChainId,
         should_inflate: bool,
     ) {
-        self.clip_tree_builder.push_clip_chain(Some(clip_chain_id), false);
+        self.clip_tree_builder.push_clip_chain(Some(clip_chain_id), false, false);
 
         // Store this shadow in the pending list, for processing
         // during pop_all_shadows.

@@ -75,6 +75,13 @@ ChromeUtils.defineLazyGetter(lazy, "stringBundle", () =>
   )
 );
 
+XPCOMUtils.defineLazyServiceGetter(
+  lazy,
+  "gExternalAppLauncher",
+  "@mozilla.org/uriloader/external-helper-app-service;1",
+  Ci.nsPIExternalAppLauncher
+);
+
 const Timer = Components.Constructor(
   "@mozilla.org/timer;1",
   "nsITimer",
@@ -96,6 +103,7 @@ const kSaveDelayMs = 1500;
  */
 const kObserverTopics = [
   "quit-application-requested",
+  "quit-application-granted",
   "offline-requested",
   "last-pb-context-exiting",
   "last-pb-context-exited",
@@ -108,20 +116,6 @@ const kObserverTopics = [
   "xpcom-will-shutdown",
   "blocked-automatic-download",
 ];
-
-/**
- * Maps nsIApplicationReputationService verdicts with the DownloadError ones.
- */
-const kVerdictMap = {
-  [Ci.nsIApplicationReputationService.VERDICT_DANGEROUS]:
-    Downloads.Error.BLOCK_VERDICT_MALWARE,
-  [Ci.nsIApplicationReputationService.VERDICT_UNCOMMON]:
-    Downloads.Error.BLOCK_VERDICT_UNCOMMON,
-  [Ci.nsIApplicationReputationService.VERDICT_POTENTIALLY_UNWANTED]:
-    Downloads.Error.BLOCK_VERDICT_POTENTIALLY_UNWANTED,
-  [Ci.nsIApplicationReputationService.VERDICT_DANGEROUS_HOST]:
-    Downloads.Error.BLOCK_VERDICT_MALWARE,
-};
 
 /**
  * Provides functions to integrate with the host application, handling for
@@ -288,6 +282,33 @@ export var DownloadIntegration = {
   _downloadsDirectory: null,
 
   /**
+   * Get the path of the directory from the provided preference.
+   * If the preference is not set or the directory does not exist,
+   * return the path of the downloads directory.
+   *
+   * @param {string} pref
+   *        The preference which contains the directory
+   *
+   * @return {Promise}
+   * @resolves The directory string path.
+   */
+  async _getCustomDirectoryOrDownloads(pref) {
+    let directoryPath = null;
+    try {
+      let directory = Services.prefs.getComplexValue(pref, Ci.nsIFile);
+      directoryPath = directory.path;
+      await IOUtils.makeDirectory(directoryPath, {
+        createAncestors: false,
+      });
+    } catch (ex) {
+      console.error(ex);
+      // Either the preference isn't set or the directory cannot be created.
+      directoryPath = await this.getSystemDownloadsDirectory();
+    }
+    return directoryPath;
+  },
+
+  /**
    * Returns the user downloads directory asynchronously.
    *
    * On platforms where external helper apps use the downloads directory, the
@@ -309,18 +330,45 @@ export var DownloadIntegration = {
         directoryPath = await this.getSystemDownloadsDirectory();
         break;
       case 2: // Custom
+        directoryPath = await this._getCustomDirectoryOrDownloads(
+          "browser.download.dir"
+        );
+        break;
+      default:
+        directoryPath = await this.getSystemDownloadsDirectory();
+    }
+    return directoryPath;
+  },
+
+  /**
+   * Returns the user screenshots directory asynchronously.
+   *
+   * @return {Promise}
+   * @resolves The screenshots directory string path.
+   */
+  async getPreferredScreenshotsDirectory() {
+    let directoryPath = null;
+    let prefValue = Services.prefs.getIntPref(
+      "browser.screenshots.folderList",
+      1
+    );
+
+    switch (prefValue) {
+      case 0: // Desktop
+        directoryPath = this._getDirectory("Desk");
+        break;
+      case 1: // Downloads
+        directoryPath = await this.getSystemDownloadsDirectory();
+        break;
+      case 2: // Custom
+        directoryPath = await this._getCustomDirectoryOrDownloads(
+          "browser.screenshots.dir"
+        );
+        break;
+      case 3: // Default OS screenshots directory
         try {
-          let directory = Services.prefs.getComplexValue(
-            "browser.download.dir",
-            Ci.nsIFile
-          );
-          directoryPath = directory.path;
-          await IOUtils.makeDirectory(directoryPath, {
-            createAncestors: false,
-          });
-        } catch (ex) {
-          console.error(ex);
-          // Either the preference isn't set or the directory cannot be created.
+          directoryPath = this._getDirectory("Scrnshts");
+        } catch {
           directoryPath = await this.getSystemDownloadsDirectory();
         }
         break;
@@ -405,13 +453,13 @@ export var DownloadIntegration = {
       // Bail if DownloadSaver doesn't have a hash or signature info.
       return Promise.resolve({
         shouldBlock: false,
-        verdict: "",
+        verdict: Ci.nsIApplicationReputationService.VERDICT_SAFE,
       });
     }
     if (!hash || !sigInfo) {
       return Promise.resolve({
         shouldBlock: false,
-        verdict: "",
+        verdict: Ci.nsIApplicationReputationService.VERDICT_SAFE,
       });
     }
     return new Promise(resolve => {
@@ -428,11 +476,158 @@ export var DownloadIntegration = {
         function onComplete(aShouldBlock, aRv, aVerdict) {
           resolve({
             shouldBlock: aShouldBlock,
-            verdict: (aShouldBlock && kVerdictMap[aVerdict]) || "",
+            verdict: aShouldBlock
+              ? aVerdict
+              : Ci.nsIApplicationReputationService.VERDICT_SAFE,
           });
         }
       );
     });
+  },
+
+  getContentAnalysisService() {
+    // Do not use a lazy service getter for this, because tests set up different mocks,
+    // so if multiple tests run that call into this we can end up calling into an old mock.
+    return Cc["@mozilla.org/contentanalysis;1"].getService(
+      Ci.nsIContentAnalysis
+    );
+  },
+
+  async shouldBlockForContentAnalysis(download) {
+    const contentAnalysis = this.getContentAnalysisService();
+
+    if (!contentAnalysis.isActive) {
+      return {
+        verdict: Ci.nsIApplicationReputationService.VERDICT_SAFE,
+        shouldBlock: false,
+      };
+    }
+
+    // For PDF files loaded in pdf.js the originalUrl is the original URL
+    // where the PDF was loaded from, and the url is the URL of the pdf.js
+    // resource.
+    let downloadUrl = download.source.originalUrl ?? download.source.url;
+    let resources = [
+      {
+        url: downloadUrl,
+        type: Ci.nsIClientDownloadResource.DOWNLOAD_URL,
+      },
+    ];
+
+    let redirects = download.saver.getRedirects();
+    if (redirects) {
+      for (let redirect of redirects.enumerate()) {
+        resources.push({
+          url: redirect.referrerURI,
+          type: Ci.nsIClientDownloadResource.DOWNLOAD_REDIRECT,
+        });
+      }
+    }
+
+    // source.referrerInfo is a string or nsIReferrerInfo that
+    // represents the download referrer.  May be null.
+    if (download.source.referrerInfo) {
+      const url =
+        download.source.referrerInfo instanceof Ci.nsIReferrerInfo
+          ? download.source.referrerInfo.originalReferrer?.spec
+          : download.source.referrerInfo;
+      if (url) {
+        resources.push({
+          url,
+          type: Ci.nsIClientDownloadResource.TAB_URL,
+        });
+      }
+    }
+
+    let url = lazy.NetUtil.newURI(downloadUrl);
+    let fileNameForDisplay = download.target.path;
+    try {
+      // Try to get a prettier name
+      let file = new lazy.FileUtils.File(download.target.path);
+      fileNameForDisplay = file.displayName;
+    } catch (ex) {
+      // oh well
+    }
+    const requestToken = Services.uuid.generateUUID().toString();
+    let warnResponseObserver = undefined;
+    // Set up a separate promise to wait specifically for a WARN
+    // response (if it comes) while we also wait for a final response.
+    // This is necessary because if the agent sends a WARN response,
+    // it doesn't count as a real response, and the Content Analysis code
+    // won't respond to the callback until respondToWarnDialog() is called.
+    const warnResultPromise = new Promise(resolve => {
+      warnResponseObserver = function (subject, topic, _data) {
+        if (topic == "dlp-response") {
+          /** @type nsIContentAnalysisResponse */
+          let response = subject;
+          if (
+            response.requestToken === requestToken &&
+            response.action === Ci.nsIContentAnalysisResponse.eWarn
+          ) {
+            resolve({
+              isContentAnalysisWarn: true,
+              verdict:
+                Ci.nsIApplicationReputationService.VERDICT_POTENTIALLY_UNWANTED,
+              contentAnalysisWarnRequestToken: requestToken,
+              shouldBlock: true,
+            });
+          }
+        }
+      };
+      Services.obs.addObserver(warnResponseObserver, "dlp-response");
+    });
+    let finalResultPromise = contentAnalysis
+      .analyzeContentRequests(
+        [
+          {
+            analysisType: Ci.nsIContentAnalysisRequest.eFileDownloaded,
+            operationTypeForDisplay: Ci.nsIContentAnalysisRequest.eDownload,
+            fileNameForDisplay,
+            // "Save As" downloads do not have a browsing context
+            reason:
+              download.source.browsingContextId === 0
+                ? Ci.nsIContentAnalysisRequest.eSaveAsDownload
+                : Ci.nsIContentAnalysisRequest.eNormalDownload,
+            resources,
+            requestToken,
+            url,
+            filePath: download.target.path,
+            // When doing a download analysis, the Content Analysis code won't
+            // display dialogs in the window, but the code still wants a
+            // content window and will get the topChromeWindow to show
+            // a notification.
+            windowGlobalParent: BrowsingContext.get(
+              download.source.browsingContextId
+            )?.topWindowContext,
+            sha256Digest: download.saver.getSha256Hash(),
+          },
+        ],
+        /* autoAcknowledge*/ true
+      )
+      .then(response => {
+        return {
+          verdict: response.shouldAllowContent
+            ? Ci.nsIApplicationReputationService.VERDICT_SAFE
+            : Ci.nsIApplicationReputationService.VERDICT_DANGEROUS,
+          shouldBlock: !response.shouldAllowContent,
+          contentAnalysisWarnRequestToken: undefined,
+        };
+      });
+    try {
+      let finalOrWarnResult = await Promise.race([
+        finalResultPromise,
+        warnResultPromise,
+      ]);
+      return finalOrWarnResult;
+    } catch (e) {
+      console.error(e);
+      return {
+        verdict: Ci.nsIApplicationReputationService.VERDICT_DANGEROUS,
+        shouldBlock: true,
+      };
+    } finally {
+      Services.obs.removeObserver(warnResponseObserver, "dlp-response");
+    }
   },
 
   /**
@@ -929,6 +1124,19 @@ export var DownloadIntegration = {
         Services.obs.addObserver(DownloadObserver, topic);
       }
     }
+
+    Services.prefs.addObserver(
+      "browser.download.deletePrivate",
+      async function () {
+        let privateDownloadsList = await Downloads.getList(Downloads.PRIVATE);
+        let privateDownloads = await privateDownloadsList.getAll();
+        for (let download of privateDownloads) {
+          lazy.gExternalAppLauncher.deletePrivateFileWhenPossible(
+            new lazy.FileUtils.File(download.target.path)
+          );
+        }
+      }
+    );
     return Promise.resolve();
   },
 
@@ -974,6 +1182,15 @@ var DownloadObserver = {
   _privateInProgressDownloads: new Set(),
 
   /**
+   * Set of downloads that have finished but have gotten a content analysis
+   * WARN response. These downloads need to be canceled when quitting, because
+   * the next time we start Firefox the content analysis agent may not have
+   * the same context as the one that was running when it analyzed the
+   * download.
+   */
+  _contentAnalysisWarnInProgressDownloads: new Set(),
+
+  /**
    * Set that contains the downloads that have been canceled when going offline
    * or to sleep. These are started again when returning online or waking. This
    * list is not persisted so when exiting and restarting, the downloads will not
@@ -1003,6 +1220,11 @@ var DownloadObserver = {
       },
       onDownloadChanged: aDownload => {
         if (aDownload.stopped) {
+          if (aDownload.error?.contentAnalysisWarnRequestToken) {
+            this._contentAnalysisWarnInProgressDownloads.add(aDownload);
+          } else {
+            this._contentAnalysisWarnInProgressDownloads.delete(aDownload);
+          }
           downloadsSet.delete(aDownload);
         } else {
           downloadsSet.add(aDownload);
@@ -1010,6 +1232,7 @@ var DownloadObserver = {
       },
       onDownloadRemoved: aDownload => {
         downloadsSet.delete(aDownload);
+        this._contentAnalysisWarnInProgressDownloads.delete(aDownload);
         // The download must also be removed from the canceled when offline set.
         this._canceledOfflineDownloads.delete(aDownload);
       },
@@ -1077,12 +1300,41 @@ var DownloadObserver = {
   observe: function DO_observe(aSubject, aTopic, aData) {
     let downloadsCount;
     switch (aTopic) {
-      case "quit-application-requested":
+      case "quit-application-requested": {
         downloadsCount =
           this._publicInProgressDownloads.size +
-          this._privateInProgressDownloads.size;
+          this._privateInProgressDownloads.size +
+          this._contentAnalysisWarnInProgressDownloads.size;
         this._confirmCancelDownloads(aSubject, downloadsCount, "ON_QUIT");
         break;
+      }
+      case "quit-application-granted": {
+        let blockPromises = [];
+        for (let download of this._contentAnalysisWarnInProgressDownloads) {
+          blockPromises.push(
+            (async () => {
+              await download.respondToContentAnalysisWarnWithBlock();
+              await download.finalize(true);
+            })()
+          );
+        }
+        if (blockPromises.length) {
+          // Wait for all the downloads to be blocked (and the files deleted)
+          // before proceeding with the quit.
+          let promiseDone = false;
+          Promise.all(blockPromises).finally(() => {
+            promiseDone = true;
+          });
+          Services.tm.spinEventLoopUntil(
+            "DownloadIntegration.sys.mjs:DI_observe_quit-application-granted",
+            () => {
+              return promiseDone;
+            }
+          );
+        }
+        this._contentAnalysisWarnInProgressDownloads.clear();
+        break;
+      }
       case "offline-requested":
         downloadsCount =
           this._publicInProgressDownloads.size +

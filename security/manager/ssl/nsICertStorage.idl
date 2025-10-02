@@ -195,6 +195,13 @@ interface nsICertStorage : nsISupports {
   void addCerts(in Array<nsICertInfo> certs, in nsICertStorageCallback callback);
 
   /**
+   * Synchronously add a certificate to the backing storage.
+   * See the documentation for nsICertInfo.
+   * This is a helper which should only be called from tests.
+   */
+  void TestHelperAddCert(in ACString cert, in ACString subject, in short trust);
+
+  /**
    * Asynchronously remove the certificates with the given sha-256 hashes from
    * the backing storage.
    * hashes is an array of base64-encoded bytes of the sha-256 hashes of each
@@ -219,6 +226,23 @@ interface nsICertStorage : nsISupports {
    */
   [must_use]
   Array<Array<octet> > findCertsBySubject(in Array<octet> subject);
+
+  /**
+   * Check for presence of all certificates in backing storage identified
+   * by the list of hashes. Returns true or false accordingly.
+   * Must not be called from the main thread. See bug 1541212.
+   */
+  [must_use]
+  boolean hasAllCertsByHash(in Array<Array<octet> > hashes);
+
+  /**
+   * Finds a certificate in backing storage, identified by SHA256 of the
+   * DER-encoded bytes of the certificate. Returns an array of bytes
+   * representing the DER-encoded bytes of the certificate.
+   * Must not be called from the main thread. See bug 1541212.
+   */
+  [must_use]
+  Array<octet> findCertByHash(in Array<octet> cert_hash);
 
   /**
    * Get the count of remaining async operations. Called to ensure we don't skip

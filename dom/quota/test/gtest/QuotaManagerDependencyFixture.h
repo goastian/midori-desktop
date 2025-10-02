@@ -57,8 +57,7 @@ class QuotaManagerDependencyFixture : public testing::Test {
       const OriginMetadata& aOriginMetadata);
 
   // For more complex testing, use of this helper is optional.
-  static void SaveOriginAccessTime(const OriginMetadata& aOriginMetadata,
-                                   int64_t aTimestamp);
+  static void SaveOriginAccessTime(const OriginMetadata& aOriginMetadata);
 
   static void GetOriginUsage(const OriginMetadata& aOriginMetadata,
                              UsageInfo* aResult);
@@ -66,6 +65,7 @@ class QuotaManagerDependencyFixture : public testing::Test {
                                    UsageInfo* aResult);
   static void ClearStoragesForOrigin(const OriginMetadata& aOriginMetadata);
 
+  static void InitializePersistentClient(const ClientMetadata& aClientMetadata);
   static void InitializeTemporaryClient(const ClientMetadata& aClientMetadata,
                                         bool aCreateIfNonExistent = true);
 
@@ -76,6 +76,12 @@ class QuotaManagerDependencyFixture : public testing::Test {
       const nsAString& aPattern);
 
   static void ProcessPendingNormalOriginOperations();
+
+  static Maybe<OriginStateMetadata> GetOriginStateMetadata(
+      const OriginMetadata& aOriginMetadata);
+
+  static Maybe<OriginStateMetadata> LoadDirectoryMetadataHeader(
+      const OriginMetadata& aOriginMetadata);
 
   static uint64_t TotalDirectoryIterations();
 
@@ -245,8 +251,11 @@ class QuotaManagerDependencyFixture : public testing::Test {
 
   static PrincipalMetadata GetTestPrincipalMetadata();
   static OriginMetadata GetTestPersistentOriginMetadata();
+  static ClientMetadata GetTestPersistentClientMetadata();
   static OriginMetadata GetTestOriginMetadata();
   static ClientMetadata GetTestClientMetadata();
+  static OriginMetadata GetTestPrivateOriginMetadata();
+  static ClientMetadata GetTestPrivateClientMetadata();
 
   static PrincipalMetadata GetOtherTestPrincipalMetadata();
   static OriginMetadata GetOtherTestOriginMetadata();

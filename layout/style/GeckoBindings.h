@@ -143,6 +143,9 @@ bool Gecko_IsRootElement(const mozilla::dom::Element*);
 bool Gecko_MatchLang(const mozilla::dom::Element*, nsAtom* override_lang,
                      bool has_override_lang, const char16_t* value);
 
+bool Gecko_MatchViewTransitionClass(const mozilla::dom::Element*,
+                                    const nsTArray<mozilla::StyleAtom>*);
+
 nsAtom* Gecko_GetXMLLangValue(const mozilla::dom::Element*);
 
 const mozilla::PreferenceSheet::Prefs* Gecko_GetPrefSheetPrefs(
@@ -624,6 +627,12 @@ void Gecko_GetSafeAreaInsets(const nsPresContext*, float*, float*, float*,
                              float*);
 
 void Gecko_PrintfStderr(const nsCString*);
+
+bool Gecko_GetAnchorPosOffset(
+    const AnchorPosOffsetResolutionParams* aParams, const nsAtom* aAnchorName,
+    mozilla::StylePhysicalSide aPropSide,
+    mozilla::StyleAnchorSideKeyword aAnchorSideKeyword, float aPercentage,
+    mozilla::Length* aOut);
 
 }  // extern "C"
 

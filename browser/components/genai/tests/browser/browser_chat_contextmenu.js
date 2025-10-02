@@ -22,6 +22,12 @@ async function hideContextMenu() {
   await promise;
 }
 
+add_setup(async function () {
+  await SpecialPowers.pushPrefEnv({
+    set: [["test.wait300msAfterTabSwitch", true]],
+  });
+});
+
 /**
  * Check that the chat context menu is hidden by default
  */
@@ -127,11 +133,19 @@ add_task(async function test_open_sidebar() {
     SidebarController.hide();
   });
 
-  const events = Glean.genaiChatbot.contextmenuPromptClick.testGetValue();
+  let events = Glean.genaiChatbot.contextmenuPromptClick.testGetValue();
   Assert.equal(events.length, 1, "One context menu click");
   Assert.equal(events[0].extra.prompt, "summarize", "Picked summarize");
   Assert.equal(events[0].extra.provider, "localhost", "With localhost");
   Assert.equal(events[0].extra.selection, "0", "No selection");
+
+  events = Glean.genaiChatbot.promptClick.testGetValue();
+  Assert.equal(events.length, 1, "One context menu click");
+  Assert.equal(events[0].extra.content_type, "selection", "Using selection");
+  Assert.equal(events[0].extra.prompt, "summarize", "Picked summarize");
+  Assert.equal(events[0].extra.provider, "localhost", "With localhost");
+  Assert.equal(events[0].extra.selection, "0", "No selection");
+  Assert.equal(events[0].extra.source, "page", "From page menu");
 });
 
 /**

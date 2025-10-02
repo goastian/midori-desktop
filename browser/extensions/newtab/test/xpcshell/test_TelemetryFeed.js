@@ -9,6 +9,7 @@ const { updateAppInfo } = ChromeUtils.importESModule(
 
 ChromeUtils.defineESModuleGetters(this, {
   AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
+  ContextId: "moz-src:///browser/modules/ContextId.sys.mjs",
   actionCreators: "resource://newtab/common/Actions.mjs",
   actionTypes: "resource://newtab/common/Actions.mjs",
   ExtensionSettingsStore:
@@ -96,10 +97,12 @@ add_setup(async function setup() {
     platformVersion: "122",
   });
 
-  Services.prefs.setCharPref(
-    "browser.contextual-services.contextId",
-    FAKE_UUID
-  );
+  let sandbox = sinon.createSandbox();
+  sandbox.stub(ContextId, "requestSynchronously").returns(FAKE_UUID);
+
+  registerCleanupFunction(() => {
+    sandbox.restore();
+  });
 });
 
 add_task(async function test_construction() {
@@ -199,11 +202,17 @@ add_task(async function test_deletionRequest_scalars() {
     "deletion.request.impression_id",
     instance._impressionId
   );
-  TelemetryTestUtils.assertScalar(
-    snapshot,
-    "deletion.request.context_id",
-    FAKE_UUID
-  );
+
+  // We'll only set the context_id in the deletion request if rotation is
+  // disabled.
+  if (!ContextId.rotationEnabled) {
+    TelemetryTestUtils.assertScalar(
+      snapshot,
+      "deletion.request.context_id",
+      FAKE_UUID
+    );
+  }
+
   instance.uninit();
 });
 
@@ -2400,154 +2409,6 @@ add_task(
     });
 
     await pingSubmitted;
-
-    sandbox.restore();
-  }
-);
-
-add_task(
-  async function test_handleDiscoveryStreamUserEvent_organic_top_stories_save() {
-    info(
-      "TelemetryFeed.handleDiscoveryStreamUserEvent instruments a save of an " +
-        "organic top story"
-    );
-
-    let sandbox = sinon.createSandbox();
-    let instance = new TelemetryFeed();
-    Services.fog.testResetFOG();
-    const ACTION_POSITION = 42;
-    let action = actionCreators.DiscoveryStreamUserEvent({
-      event: "SAVE_TO_POCKET",
-      action_position: ACTION_POSITION,
-      value: {
-        card_type: "organic",
-        recommendation_id: "decaf-c0ff33",
-        tile_id: 314623757745896,
-      },
-    });
-
-    const SESSION_ID = "decafc0ffee";
-    sandbox.stub(instance.sessions, "get").returns({ session_id: SESSION_ID });
-
-    instance.handleDiscoveryStreamUserEvent(action);
-
-    let saves = Glean.pocket.save.testGetValue();
-    Assert.equal(saves.length, 1, "Recorded 1 save");
-    Assert.deepEqual(saves[0].extra, {
-      newtab_visit_id: SESSION_ID,
-      is_sponsored: String(false),
-      position: ACTION_POSITION,
-      recommendation_id: "decaf-c0ff33",
-      tile_id: String(314623757745896),
-    });
-    Assert.ok(
-      !Glean.pocket.shim.testGetValue(),
-      "Pocket shim was not recorded"
-    );
-
-    sandbox.restore();
-  }
-);
-
-add_task(
-  async function test_handleDiscoveryStreamUserEvent_sponsored_top_stories_save() {
-    info(
-      "TelemetryFeed.handleDiscoveryStreamUserEvent instruments a save of a " +
-        "sponsored top story"
-    );
-
-    let sandbox = sinon.createSandbox();
-    let instance = new TelemetryFeed();
-    Services.fog.testResetFOG();
-    const ACTION_POSITION = 42;
-    const SHIM = "Y29uc2lkZXIgeW91ciBjdXJpb3NpdHkgcmV3YXJkZWQ=";
-    const FETCH_TIMESTAMP = new Date("March 22, 2024 10:15:20");
-    const NEWTAB_CREATION_TIMESTAMP = new Date("March 23, 2024 11:10:30");
-    let action = actionCreators.DiscoveryStreamUserEvent({
-      event: "SAVE_TO_POCKET",
-      action_position: ACTION_POSITION,
-      value: {
-        card_type: "spoc",
-        recommendation_id: undefined,
-        tile_id: 448685088,
-        shim: SHIM,
-        fetchTimestamp: FETCH_TIMESTAMP.valueOf(),
-        newtabCreationTimestamp: NEWTAB_CREATION_TIMESTAMP.valueOf(),
-      },
-    });
-
-    const SESSION_ID = "decafc0ffee";
-    sandbox.stub(instance.sessions, "get").returns({ session_id: SESSION_ID });
-    let pingSubmitted = new Promise(resolve => {
-      GleanPings.spoc.testBeforeNextSubmit(reason => {
-        Assert.equal(reason, "save");
-        Assert.equal(
-          Glean.pocket.shim.testGetValue(),
-          SHIM,
-          "Pocket shim was recorded"
-        );
-        Assert.deepEqual(
-          Glean.pocket.fetchTimestamp.testGetValue(),
-          FETCH_TIMESTAMP
-        );
-        Assert.deepEqual(
-          Glean.pocket.newtabCreationTimestamp.testGetValue(),
-          NEWTAB_CREATION_TIMESTAMP
-        );
-
-        resolve();
-      });
-    });
-
-    instance.handleDiscoveryStreamUserEvent(action);
-
-    let saves = Glean.pocket.save.testGetValue();
-    Assert.equal(saves.length, 1, "Recorded 1 save");
-    Assert.deepEqual(saves[0].extra, {
-      newtab_visit_id: SESSION_ID,
-      is_sponsored: String(true),
-      position: ACTION_POSITION,
-      tile_id: String(448685088),
-    });
-
-    await pingSubmitted;
-
-    sandbox.restore();
-  }
-);
-
-add_task(
-  async function test_handleDiscoveryStreamUserEvent_sponsored_top_stories_save_no_value() {
-    info(
-      "TelemetryFeed.handleDiscoveryStreamUserEvent instruments a save of a " +
-        "sponsored top story, without `value`"
-    );
-
-    let sandbox = sinon.createSandbox();
-    let instance = new TelemetryFeed();
-    Services.fog.testResetFOG();
-    const ACTION_POSITION = 42;
-    let action = actionCreators.DiscoveryStreamUserEvent({
-      event: "SAVE_TO_POCKET",
-      action_position: ACTION_POSITION,
-    });
-
-    const SESSION_ID = "decafc0ffee";
-    sandbox.stub(instance.sessions, "get").returns({ session_id: SESSION_ID });
-
-    instance.handleDiscoveryStreamUserEvent(action);
-
-    let saves = Glean.pocket.save.testGetValue();
-    Assert.equal(saves.length, 1, "Recorded 1 save");
-    Assert.deepEqual(saves[0].extra, {
-      newtab_visit_id: SESSION_ID,
-      is_sponsored: String(false),
-      position: ACTION_POSITION,
-    });
-    Assert.ok(
-      !Glean.pocket.shim.testGetValue(),
-      "Pocket shim was not recorded"
-    );
 
     sandbox.restore();
   }

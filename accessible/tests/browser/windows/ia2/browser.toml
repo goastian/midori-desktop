@@ -11,6 +11,8 @@ prefs = [
   # the clipboard activates Windows accessibility suppression by default.
   # Disable this so that accessibility isn't suppressed for our tests.
   "accessibility.windows.suppress-after-clipboard-copy=0",
+  # Required for the eval in invokeContentTask in shared-head.js
+  "security.allow_eval_with_system_principal=true",
 ]
 
 ["browser_groupPosition.js"]
@@ -26,4 +28,13 @@ prefs = [
 ["browser_text.js"]
 
 ["browser_textSelectionContainer.js"]
-skip-if = ["true"] # Bug 1857116
+skip-if = [
+  # For 32 bit Firefox, we can only build a 32 bit IA2 proxy dll, but the Python
+  # runner is always 64 bit and thus needs a 64 bit dll. There isn't a feasible
+  # solution here; our build system can't build for two architectures at once.
+  "bits == 32",
+  # The IA2 proxy dll fails when built with ASan.
+  "asan",
+  "ccov", # Bug 1968932
+]
+tags = "os_integration"

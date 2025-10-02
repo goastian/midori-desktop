@@ -8,7 +8,7 @@
 # documentation and how to modify this file.
 repo: mozilla-central
 created_at: '2021-10-14T12:50:40.073465'
-updated_at: '2025-05-21T09:20:14.661913+00:00'
+updated_at: '2025-06-05T11:07:53.355698+00:00'
 export:
   path: ./docs/mots/index.rst
   format: rst
@@ -1448,7 +1448,6 @@ modules:
     meta:
       owners_emeritus:
         - Monica Chew
-        - Andrea Marchesini
       peers_emeritus:
         - Josh Matthews
         - Mike Connor
@@ -1457,6 +1456,8 @@ modules:
         - Shawn Wilsher
         - Ehsan Akhgari
         - Honza Bambas
+        - Emma Zühlcke
+        - Tom Schuster
       group: dev-platform
       components:
         - 'Core::Networking: Cookies'
@@ -1465,10 +1466,10 @@ modules:
       - *dveditz
       - *timhuang
       - *valentin
+      - *baku
     peers:
       - *edgul
-      - *emz
-      - *tschuster
+      - *bvandersloot
     machine_name: core_cookies
 
   - name: 'Core: Crash reporting'
@@ -3856,13 +3857,13 @@ modules:
         meta:
           owners_emeritus:
             - Jared Wein
+            - *mossop
           peers_emeritus:
             - Tim Nguyen
           review_group: preferences-reviewers
         owners:
-          - *mossop
-        peers:
           - *mstriemer
+        peers:
           - *Gijs
           - *mconley
         machine_name: settings_ui
@@ -3980,6 +3981,33 @@ modules:
       - *royang
       - *rsainani
     meta:
+    submodules:
+
+      - machine_name: fenix_addons
+        name: Fenix - Add-ons
+        description: Submodule for the add-ons code in Firefox for Android.
+        includes:
+          - mobile/android/android-components/components/browser/engine-gecko/src/*/java/mozilla/components/browser/engine/gecko/webextension/*
+          - mobile/android/android-components/components/browser/state/src/*/java/mozilla/components/browser/state/state/extension/*
+          - mobile/android/android-components/components/concept/engine/src/*/java/mozilla/components/concept/engine/webextension/*
+          - mobile/android/android-components/components/feature/addons/**/*
+          - mobile/android/android-components/components/support/webextensions/**/*
+          - mobile/android/android-components/samples/browser/src/*/java/org/mozilla/samples/browser/addons/*
+          - mobile/android/fenix/app/src/*/java/org/mozilla/fenix/addons/*
+          - mobile/android/fenix/app/src/*/java/org/mozilla/fenix/extension/*
+        meta:
+          components:
+            - 'Firefox for Android :: WebExtensions'
+            - 'WebExtensions :: Android'
+        owners:
+          - *willdurand
+        peers:
+          - *rpl
+          - *robwu
+          - *zombie
+          - *tcampbell
+          - *jonalmeida
+
   - machine_name: focus_android
     name: Focus for Android
     description: Android Project to build Focus for Android
@@ -4567,5 +4595,5 @@ modules:
         - Ryan Tilder
       group: dev-platform
 hashes:
-  config: 417f5aa3364f94e036f02a3612a733ab3cc9884a
-  export: f91f79309801aa730bc99a9a1f2bc64db1e64718
+  config: 5238770d67e1dbb0f77c69094919d3875ca79bcb
+  export: 4a1cfbaad83e2605a8530f8da80c72c0abf58479

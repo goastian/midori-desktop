@@ -20,7 +20,11 @@ body {
 
 /* The comment at the top of aboutMemory.xhtml explains this font choice. */
 pre {
-  font-family: DejaVu Sans Mono, Liberation Mono, Fira Mono, monospace;
+  font-family:
+    DejaVu Sans Mono,
+    Liberation Mono,
+    Fira Mono,
+    monospace;
 }
 
 div.ancillary {
@@ -61,7 +65,7 @@ div.sidebarItem {
   border: 1px solid var(--in-content-border-color);
   border-radius: var(--border-radius-small);
   background: var(--background-color-box);
-  user-select: none;  /* no need to include this when cutting+pasting */
+  user-select: none; /* no need to include this when cutting+pasting */
 }
 
 input.filterInput {
@@ -88,7 +92,8 @@ div.opsRow {
   display: inline-block;
 }
 
-div.opsRowLabel, div.sidebarLabel {
+div.opsRowLabel,
+div.sidebarLabel {
   display: block;
   margin-bottom: 0.2em;
   font-weight: bold;
@@ -108,24 +113,81 @@ h1 {
   padding: 0;
   margin: 0;
   background: inherit; /* When sticky give it the solid background of the parent */
-  display: inline;  /* allow subsequent text to the right of the heading */
+  display: inline; /* allow subsequent text to the right of the heading */
   position: sticky; /* Stay at the top of the page when scrolling */
   top: 0;
   z-index: 1; /* When sticky it should appear above the tree lines */
 }
 
 h2 {
-  padding-left: .1em;
+  padding-left: 0.1em;
 }
 
 h3 {
-  display: inline;  /* allow subsequent text to the right of the heading */
+  display: inline; /* allow subsequent text to the right of the heading */
 }
 
 a.upDownArrow {
   font-size: 130%;
   text-decoration: none;
-  user-select: none;  /* no need to include this when cutting+pasting */
+  user-select: none; /* no need to include this when cutting+pasting */
+}
+
+div.treemap {
+  user-select: none;
+  position: relative;
+  margin-top: 1em;
+}
+
+a.treemapEntry {
+  display: block;
+  position: absolute;
+  color: FieldText;
+  text-decoration: none;
+  border: 1px solid var(--in-content-border-color);
+  border-radius: var(--border-radius-small);
+  background: var(--in-content-page-background);
+  z-index: 0;
+
+  > .treemapEntryContent {
+    padding: 1em;
+    padding-bottom: 0;
+    opacity: 0.7;
+    overflow: hidden;
+    text-wrap: nowrap;
+
+    /*
+     * Limit our height to our container size minus padding, to ensure we clip
+     * overflow
+     */
+    max-height: calc(100% - 2em);
+
+    > .treemapEntryText {
+      overflow: hidden;
+    }
+
+    > .treemapEntryProcessName {
+      font-weight: bold;
+    }
+
+    > .treemapEntryPid {
+      opacity: 0.5;
+    }
+  }
+
+  &:hover {
+    background: var(--background-color-box);
+    z-index: 1;
+
+    > .treemapEntryContent {
+      opacity: 1;
+      overflow: visible;
+
+      > .treemapEntryText {
+        overflow: visible;
+      }
+    }
+  }
 }
 
 .accuracyWarning,
@@ -152,17 +214,17 @@ a.upDownArrow {
 }
 
 .noselect {
-  user-select: none;  /* no need to include this when cutting+pasting */
+  user-select: none; /* no need to include this when cutting+pasting */
 }
 
 .option {
   font-size: 80%;
-  user-select: none;  /* no need to include this when cutting+pasting */
+  user-select: none; /* no need to include this when cutting+pasting */
 }
 
 .legend {
   font-size: 80%;
-  user-select: none;  /* no need to include this when cutting+pasting */
+  user-select: none; /* no need to include this when cutting+pasting */
 }
 
 .debug {

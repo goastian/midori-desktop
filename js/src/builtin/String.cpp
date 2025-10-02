@@ -30,8 +30,10 @@
 
 #include "builtin/Array.h"
 #if JS_HAS_INTL_API
+#  include "builtin/intl/Collator.h"
 #  include "builtin/intl/CommonFunctions.h"
 #  include "builtin/intl/FormatBuffer.h"
+#  include "builtin/intl/GlobalIntlData.h"
 #endif
 #include "builtin/RegExp.h"
 #include "gc/GC.h"
@@ -1462,32 +1464,48 @@ static bool str_toLocaleUpperCase(JSContext* cx, unsigned argc, Value* vp) {
 
 #endif  // JS_HAS_INTL_API
 
-#if JS_HAS_INTL_API
-
-// String.prototype.localeCompare is self-hosted when Intl functionality is
-// exposed, and the only intrinsics it requires are provided in the
-// implementation of Intl.Collator.
-
-#else
-
-// String.prototype.localeCompare is implemented in C++ (delegating to
-// JSLocaleCallbacks) when Intl functionality is not exposed.
+/**
+ * String.prototype.localeCompare ( that [ , reserved1 [ , reserved2 ] ] )
+ *
+ * ES2025 draft rev 76814cbd5d7842c2a99d28e6e8c7833f1de5bee0
+ *
+ * String.prototype.localeCompare ( that [ , locales [ , options ] ] )
+ *
+ * ES2025 Intl draft rev 6827e6e40b45fb313472595be31352451a2d85fa
+ */
 static bool str_localeCompare(JSContext* cx, unsigned argc, Value* vp) {
   AutoJSMethodProfilerEntry pseudoFrame(cx, "String.prototype",
                                         "localeCompare");
   CallArgs args = CallArgsFromVp(argc, vp);
 
+  // Steps 1-2.
   RootedString str(
       cx, ToStringForStringFunction(cx, "localeCompare", args.thisv()));
   if (!str) {
     return false;
   }
 
+  // Step 3.
   RootedString thatStr(cx, ToString<CanGC>(cx, args.get(0)));
   if (!thatStr) {
     return false;
   }
 
+#if JS_HAS_INTL_API
+  HandleValue locales = args.get(1);
+  HandleValue options = args.get(2);
+
+  // Step 4.
+  Rooted<CollatorObject*> collator(
+      cx, intl::GetOrCreateCollator(cx, locales, options));
+  if (!collator) {
+    return false;
+  }
+
+  // Step 5.
+  return intl::CompareStrings(cx, collator, str, thatStr, args.rval());
+#else
+  // Delegate to JSLocaleCallbacks when Intl functionality is not exposed.
   if (cx->runtime()->localeCallbacks &&
       cx->runtime()->localeCallbacks->localeCompare) {
     RootedValue result(cx);
@@ -1507,9 +1525,8 @@ static bool str_localeCompare(JSContext* cx, unsigned argc, Value* vp) {
 
   args.rval().setInt32(result);
   return true;
-}
-
 #endif  // JS_HAS_INTL_API
+}
 
 #if JS_HAS_INTL_API
 
@@ -1609,10 +1626,12 @@ static bool str_normalize(JSContext* cx, unsigned argc, Value* vp) {
  * IsStringWellFormedUnicode ( string )
  * https://tc39.es/ecma262/#sec-isstringwellformedunicode
  */
-static bool IsStringWellFormedUnicode(JSContext* cx, HandleString str,
+static bool IsStringWellFormedUnicode(JSContext* cx, JSString* str,
                                       size_t* isWellFormedUpTo) {
   MOZ_ASSERT(isWellFormedUpTo);
   *isWellFormedUpTo = 0;
+
+  AutoCheckCannotGC nogc;
 
   size_t len = str->length();
 
@@ -1627,10 +1646,7 @@ static bool IsStringWellFormedUnicode(JSContext* cx, HandleString str,
     return false;
   }
 
-  {
-    AutoCheckCannotGC nogc;
-    *isWellFormedUpTo = Utf16ValidUpTo(Span{linear->twoByteChars(nogc), len});
-  }
+  *isWellFormedUpTo = Utf16ValidUpTo(Span{linear->twoByteChars(nogc), len});
   return true;
 }
 
@@ -1646,8 +1662,7 @@ static bool str_isWellFormed(JSContext* cx, unsigned argc, Value* vp) {
 
   // Step 1. Let O be ? RequireObjectCoercible(this value).
   // Step 2. Let S be ? ToString(O).
-  RootedString str(cx,
-                   ToStringForStringFunction(cx, "isWellFormed", args.thisv()));
+  JSString* str = ToStringForStringFunction(cx, "isWellFormed", args.thisv());
   if (!str) {
     return false;
   }
@@ -3881,12 +3896,11 @@ static const JSFunctionSpec string_methods[] = {
 #if JS_HAS_INTL_API
     JS_SELF_HOSTED_FN("toLocaleLowerCase", "String_toLocaleLowerCase", 0, 0),
     JS_SELF_HOSTED_FN("toLocaleUpperCase", "String_toLocaleUpperCase", 0, 0),
-    JS_SELF_HOSTED_FN("localeCompare", "String_localeCompare", 1, 0),
 #else
     JS_FN("toLocaleLowerCase", str_toLocaleLowerCase, 0, 0),
     JS_FN("toLocaleUpperCase", str_toLocaleUpperCase, 0, 0),
-    JS_FN("localeCompare", str_localeCompare, 1, 0),
 #endif
+    JS_FN("localeCompare", str_localeCompare, 1, 0),
     JS_SELF_HOSTED_FN("repeat", "String_repeat", 1, 0),
 #if JS_HAS_INTL_API
     JS_FN("normalize", str_normalize, 0, 0),
@@ -4771,10 +4785,10 @@ JSString* js::EncodeURI(JSContext* cx, const char* chars, size_t length) {
   return sb.finishString();
 }
 
-static bool FlatStringMatchHelper(JSContext* cx, HandleString str,
-                                  HandleString pattern, bool* isFlat,
+static bool FlatStringMatchHelper(JSContext* cx, JSString* str,
+                                  JSString* pattern, bool* isFlat,
                                   int32_t* match) {
-  Rooted<JSLinearString*> linearPattern(cx, pattern->ensureLinear(cx));
+  JSLinearString* linearPattern = pattern->ensureLinear(cx);
   if (!linearPattern) {
     return false;
   }
@@ -4878,8 +4892,8 @@ bool js::FlatStringSearch(JSContext* cx, unsigned argc, Value* vp) {
   MOZ_ASSERT(args[1].isString());
   MOZ_ASSERT(cx->realm()->realmFuses.optimizeRegExpPrototypeFuse.intact());
 
-  RootedString str(cx, args[0].toString());
-  RootedString pattern(cx, args[1].toString());
+  JSString* str = args[0].toString();
+  JSString* pattern = args[1].toString();
 
   bool isFlat = false;
   int32_t match = 0;

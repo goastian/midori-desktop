@@ -5,12 +5,19 @@ support-files = [
   "!/accessible/tests/browser/shared-head.js",
   "!/accessible/tests/mochitest/*.js",
 ]
+prefs = [
+  # Required for the eval in invokeContentTask in shared-head.js
+  "security.allow_eval_with_system_principal=true"
+]
 
 ["browser_scrollToPoint.js"]
 
 ["browser_test_scrollTo.js"]
 
 ["browser_test_scroll_bounds.js"]
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 1968558
+]
 
 ["browser_test_scroll_substring.js"]
 

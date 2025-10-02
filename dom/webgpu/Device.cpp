@@ -100,17 +100,6 @@ bool Device::IsLost() const {
 
 bool Device::IsBridgeAlive() const { return mBridge && mBridge->CanSend(); }
 
-// Generate an error on the Device timeline for this device.
-//
-// aMessage is interpreted as UTF-8.
-void Device::GenerateValidationError(const nsCString& aMessage) {
-  if (!IsBridgeAlive()) {
-    return;  // Just drop it?
-  }
-  mBridge->SendGenerateError(Some(mId), dom::GPUErrorFilter::Validation,
-                             aMessage);
-}
-
 void Device::TrackBuffer(Buffer* aBuffer) { mTrackedBuffers.Insert(aBuffer); }
 
 void Device::UntrackBuffer(Buffer* aBuffer) { mTrackedBuffers.Remove(aBuffer); }
@@ -488,6 +477,7 @@ already_AddRefed<PipelineLayout> Device::CreatePipelineLayout(
 already_AddRefed<BindGroup> Device::CreateBindGroup(
     const dom::GPUBindGroupDescriptor& aDesc) {
   nsTArray<ffi::WGPUBindGroupEntry> entries(aDesc.mEntries.Length());
+  CanvasContextArray canvasContexts;
   for (const auto& entry : aDesc.mEntries) {
     ffi::WGPUBindGroupEntry e = {};
     e.binding = entry.mBinding;
@@ -501,7 +491,12 @@ already_AddRefed<BindGroup> Device::CreateBindGroup(
       e.offset = bufBinding.mOffset;
       e.size = bufBinding.mSize.WasPassed() ? bufBinding.mSize.Value() : 0;
     } else if (entry.mResource.IsGPUTextureView()) {
-      e.texture_view = entry.mResource.GetAsGPUTextureView()->mId;
+      auto texture_view = entry.mResource.GetAsGPUTextureView();
+      e.texture_view = texture_view->mId;
+      auto context = texture_view->GetTargetContext();
+      if (context) {
+        canvasContexts.AppendElement(context);
+      }
     } else if (entry.mResource.IsGPUSampler()) {
       e.sampler = entry.mResource.GetAsGPUSampler()->mId;
     } else {
@@ -529,7 +524,7 @@ already_AddRefed<BindGroup> Device::CreateBindGroup(
     mBridge->SendDeviceAction(mId, std::move(bb));
   }
 
-  RefPtr<BindGroup> object = new BindGroup(this, id);
+  RefPtr<BindGroup> object = new BindGroup(this, id, std::move(canvasContexts));
   object->SetLabel(aDesc.mLabel);
 
   return object.forget();
@@ -1041,8 +1036,8 @@ already_AddRefed<dom::Promise> Device::CreateRenderPipelineAsync(
 already_AddRefed<Texture> Device::InitSwapChain(
     const dom::GPUCanvasConfiguration* const aConfig,
     const layers::RemoteTextureOwnerId aOwnerId,
-    bool aUseExternalTextureInSwapChain, gfx::SurfaceFormat aFormat,
-    gfx::IntSize aCanvasSize) {
+    mozilla::Span<RawId const> aBufferIds, bool aUseExternalTextureInSwapChain,
+    gfx::SurfaceFormat aFormat, gfx::IntSize aCanvasSize) {
   MOZ_ASSERT(aConfig);
 
   if (!mBridge->CanSend()) {
@@ -1057,10 +1052,9 @@ already_AddRefed<Texture> Device::InitSwapChain(
   }
 
   const layers::RGBDescriptor rgbDesc(aCanvasSize, aFormat);
-  // buffer count doesn't matter much, will be created on demand
-  const size_t maxBufferCount = 10;
-  mBridge->DeviceCreateSwapChain(mId, rgbDesc, maxBufferCount, aOwnerId,
-                                 aUseExternalTextureInSwapChain);
+
+  mBridge->SendDeviceCreateSwapChain(mId, mQueue->mId, rgbDesc, aBufferIds,
+                                     aOwnerId, aUseExternalTextureInSwapChain);
 
   // TODO: `mColorSpace`: <https://bugzilla.mozilla.org/show_bug.cgi?id=1846608>
   // TODO: `mAlphaMode`: <https://bugzilla.mozilla.org/show_bug.cgi?id=1846605>

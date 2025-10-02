@@ -74,13 +74,42 @@ export class WebProgressListenerChild extends JSWindowActorChild {
   }
 
   #onLocationChange = (progress, request, location, stateFlags) => {
-    if (stateFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) {
-      const context = progress.browsingContext;
+    const context = progress.browsingContext;
 
+    if (context !== this.manager.browsingContext) {
+      // Skip notifications which don't relate to this browsing context
+      // (eg frames).
+      return;
+    }
+
+    if (stateFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) {
       const payload = {
         contextDetails: lazy.getBrowsingContextDetails(context),
         url: location.spec,
       };
+
+      if (
+        // history.pushState / replaceState
+        progress.loadType & Ci.nsIDocShell.LOAD_CMD_PUSHSTATE ||
+        // moving to a history entry created by pushState / replaceState
+        (progress.loadType & Ci.nsIDocShell.LOAD_CMD_HISTORY &&
+          // TODO: We need to only select history traversals which are not
+          // fragment navigations. However we don't have a flag dedicated to
+          // such traversals, they are identical to same document + same hash
+          // navigations.
+          stateFlags ===
+            Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)
+      ) {
+        this.#trace(
+          lazy.truncate`Location=historyUpdated: ${location.spec}`,
+          context.id
+        );
+        this.sendAsyncMessage(
+          "WebProgressListenerChild:historyUpdated",
+          payload
+        );
+        return;
+      }
 
       if (location.hasRef) {
         // If the target URL contains a hash, handle the navigation as a

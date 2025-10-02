@@ -111,6 +111,9 @@
 #include "jit/JitcodeMap.h"
 #include "jit/JitZone.h"
 #include "jit/shared/CodeGenerator-shared.h"
+#ifdef JS_CODEGEN_ARM64
+#  include "jit/arm64/vixl/Cpu-Features-vixl.h"
+#endif
 #include "js/Array.h"        // JS::NewArrayObject
 #include "js/ArrayBuffer.h"  // JS::{CreateMappedArrayBufferContents,NewMappedArrayBufferWithContents,IsArrayBufferObject,GetArrayBufferLengthAndData}
 #include "js/BuildId.h"      // JS::BuildIdCharVector, JS::SetProcessBuildIdOp
@@ -11314,11 +11317,11 @@ static const JSClassOps FakeDOMObjectClassOps = {
     nullptr,
 };
 
-static const JSClass dom_class = {"FakeDOMObject",
-                                  JSCLASS_IS_DOMJSCLASS |
-                                      JSCLASS_HAS_RESERVED_SLOTS(2) |
-                                      JSCLASS_BACKGROUND_FINALIZE,
-                                  &FakeDOMObjectClassOps};
+static const JSClass dom_class = {
+    "FakeDOMObject",
+    JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(2) |
+        JSCLASS_BACKGROUND_FINALIZE | JSCLASS_PRESERVES_WRAPPER,
+    &FakeDOMObjectClassOps};
 
 static const JSClass* GetDomClass() { return &dom_class; }
 
@@ -12799,6 +12802,8 @@ bool InitOptionParser(OptionParser& op) {
       !op.addBoolOption('\0', "no-avx",
                         "No-op. AVX is currently disabled by default.") ||
 #endif
+      !op.addBoolOption('\0', "no-fjcvtzs",
+                        "Pretend CPU does not support FJCVTZS instruction.") ||
       !op.addBoolOption('\0', "more-compartments",
                         "Make newGlobal default to creating a new "
                         "compartment.") ||
@@ -12958,7 +12963,9 @@ bool InitOptionParser(OptionParser& op) {
       !op.addBoolOption('\0', "disable-explicit-resource-management",
                         "Disable Explicit Resource Management") ||
       !op.addBoolOption('\0', "enable-temporal", "Enable Temporal") ||
-      !op.addBoolOption('\0', "enable-upsert", "Enable Upsert proposal")) {
+      !op.addBoolOption('\0', "enable-upsert", "Enable Upsert proposal") ||
+      !op.addBoolOption('\0', "enable-arraybuffer-immutable",
+                        "Enable immutable ArrayBuffers")) {
     return false;
   }
 
@@ -13031,6 +13038,9 @@ bool SetGlobalOptionsPreJSInit(const OptionParser& op) {
   }
   if (op.getBoolOption("enable-upsert")) {
     JS::Prefs::setAtStartup_experimental_upsert(true);
+  }
+  if (op.getBoolOption("enable-arraybuffer-immutable")) {
+    JS::Prefs::setAtStartup_experimental_arraybuffer_immutable(true);
   }
 #endif
 #ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
@@ -13164,6 +13174,12 @@ bool SetGlobalOptionsPreJSInit(const OptionParser& op) {
     if (!sCompilerProcessFlags.append("--no-sse42")) {
       return false;
     }
+  }
+#endif
+#if defined(JS_CODEGEN_ARM64)
+  if (op.getBoolOption("no-fjcvtzs")) {
+    vixl::CPUFeatures fjcvtzs(vixl::CPUFeatures::kJSCVT);
+    fjcvtzs.DisableGlobally();
   }
 #endif
 #ifndef __wasi__

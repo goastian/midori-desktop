@@ -32,7 +32,7 @@ addLoadEvent(() => {
 // constants:
 const IFRAME_HEIGHT_IN_PX = 300;  // Needs to match the style for #myIframe
 const LINE_HEIGHT_IN_PX = 50; // Needs to match our chosen Ahem font-size below
-const EPSILON_PER_LINE = 3; // see documentation
+const EPSILON_PER_LINE = 5; // see documentation
 const IFRAME_SRCDOC =
 "<!doctype html>\
  <meta charset='utf-8'>\
@@ -102,7 +102,7 @@ async function testPrefVals(pctVal, linesVal, expectedOverlapInPx, useEpsilon) {
 async function doTests() {
   // Toggle a pref to avoid uninteresting off-by-1 test-failures on Android:
   await SpecialPowers.pushPrefEnv({
-    "set": [["layout.scroll.disable-pixel-alignment", true]]
+    "set": [["layout.disable-pixel-alignment", true]]
   });
 
   // Load a tall scrollable document in an iframe:

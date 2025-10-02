@@ -1969,6 +1969,8 @@ export class PictureInPictureChild extends JSWindowActorChild {
         this.closePictureInPicture({ reason: "Fullscreen" });
         break;
       }
+      case "playing":
+      // Intentional fall-through
       case "play": {
         this.sendAsyncMessage("PictureInPicture:Playing");
         break;
@@ -2300,6 +2302,7 @@ export class PictureInPictureChild extends JSWindowActorChild {
     if (originatingWindow) {
       originatingWindow.addEventListener("pagehide", this);
       originatingVideo.addEventListener("play", this);
+      originatingVideo.addEventListener("playing", this);
       originatingVideo.addEventListener("pause", this);
       originatingVideo.addEventListener("volumechange", this);
       originatingVideo.addEventListener("resize", this);
@@ -2352,6 +2355,7 @@ export class PictureInPictureChild extends JSWindowActorChild {
     if (originatingWindow) {
       originatingWindow.removeEventListener("pagehide", this);
       originatingVideo.removeEventListener("play", this);
+      originatingVideo.removeEventListener("playing", this);
       originatingVideo.removeEventListener("pause", this);
       originatingVideo.removeEventListener("volumechange", this);
       originatingVideo.removeEventListener("resize", this);
@@ -2910,9 +2914,12 @@ class PictureInPictureChildVideoWrapper {
 
   /**
    * Function to display the captions on the PiP window
-   * @param text The captions to be shown on the PiP window
+   * @param {String} text - Raw text to be displayed
+   * @param {String} type - Optional type of text track. If "vtt" or "html", the text
+   * will be parsed and displayed as a WebVTT cue. If not provided, the text will
+   * be displayed as plain text.
    */
-  updatePiPTextTracks(text) {
+  updatePiPTextTracks(text, type) {
     if (!this.#PictureInPictureChild.isSubtitlesEnabled && text) {
       this.#PictureInPictureChild.isSubtitlesEnabled = true;
       this.#PictureInPictureChild.sendAsyncMessage(
@@ -2921,7 +2928,24 @@ class PictureInPictureChildVideoWrapper {
     }
     let pipWindowTracksContainer =
       this.#PictureInPictureChild.document.getElementById("texttracks");
-    pipWindowTracksContainer.textContent = text;
+
+    /* Clear any existing children */
+    pipWindowTracksContainer.innerHTML = "";
+
+    switch (type) {
+      case "vtt":
+      case "html": {
+        const node = WebVTT.convertCueToDOMTree(
+          this.#PictureInPictureChild,
+          text
+        );
+        pipWindowTracksContainer.appendChild(node);
+        break;
+      }
+      default:
+        pipWindowTracksContainer.textContent = text;
+        break;
+    }
   }
 
   /* Video methods to be used for video controls from the PiP window. */
@@ -3176,8 +3200,8 @@ class PictureInPictureChildVideoWrapper {
       name: "setCaptionContainerObserver",
       args: [
         video,
-        text => {
-          this.updatePiPTextTracks(text);
+        (text, type) => {
+          this.updatePiPTextTracks(text, type);
         },
       ],
       fallback: () => {},

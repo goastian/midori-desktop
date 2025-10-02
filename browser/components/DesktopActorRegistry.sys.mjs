@@ -129,27 +129,6 @@ let JSWINDOWACTORS = {
     matches: ["about:messagepreview", "about:messagepreview?*"],
   },
 
-  AboutPocket: {
-    parent: {
-      esModuleURI: "resource:///actors/AboutPocketParent.sys.mjs",
-    },
-    child: {
-      esModuleURI: "resource:///actors/AboutPocketChild.sys.mjs",
-
-      events: {
-        DOMDocElementInserted: { capture: true },
-      },
-    },
-
-    remoteTypes: ["privilegedabout"],
-    matches: [
-      "about:pocket-saved*",
-      "about:pocket-signup*",
-      "about:pocket-home*",
-      "about:pocket-style-guide*",
-    ],
-  },
-
   AboutPrivateBrowsing: {
     parent: {
       esModuleURI: "resource:///actors/AboutPrivateBrowsingParent.sys.mjs",
@@ -430,9 +409,12 @@ let JSWINDOWACTORS = {
     onAddActor(register, unregister) {
       let isRegistered = false;
 
-      // Register the actor if we have a provider set and not yet registered
+      // Register the actor if we have a provider or support provider-less
       const maybeRegister = () => {
-        if (Services.prefs.getCharPref("browser.ml.chat.provider", "")) {
+        if (
+          Services.prefs.getCharPref("browser.ml.chat.provider", "") ||
+          Services.prefs.getBoolPref("browser.ml.chat.page")
+        ) {
           if (!isRegistered) {
             register();
             isRegistered = true;
@@ -443,6 +425,7 @@ let JSWINDOWACTORS = {
         }
       };
 
+      Services.prefs.addObserver("browser.ml.chat.page", maybeRegister);
       Services.prefs.addObserver("browser.ml.chat.provider", maybeRegister);
       maybeRegister();
     },
@@ -466,6 +449,10 @@ let JSWINDOWACTORS = {
       "chrome://browser/content/syncedtabs/sidebar.xhtml",
       "chrome://browser/content/places/historySidebar.xhtml",
       "chrome://browser/content/places/bookmarksSidebar.xhtml",
+      "chrome://browser/content/sidebar/sidebar-history.html",
+      "chrome://browser/content/sidebar/sidebar-customize.html",
+      "chrome://browser/content/sidebar/sidebar-syncedtabs.html",
+      "chrome://browser/content/genai/chat.html",
       "about:firefoxview",
       "about:editprofile",
       "about:deleteprofile",

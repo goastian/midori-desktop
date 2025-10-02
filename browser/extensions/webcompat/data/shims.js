@@ -105,6 +105,7 @@ const AVAILABLE_SHIMS = [
     ],
   },
   {
+    hiddenInAboutCompat: true,
     id: "EmbedTestShim",
     platform: "desktop",
     name: "Test shim for smartblock embed unblocking",
@@ -766,6 +767,20 @@ const AVAILABLE_SHIMS = [
     onlyIfDFPIActive: true,
   },
   {
+    id: "MicrosoftOfficeAuth",
+    platform: "desktop",
+    name: "Microsoft Office Auth",
+    bug: "1747889",
+    contentScripts: [
+      {
+        js: "microsoftOfficeAuth.js",
+        matches: ["*://usc-excel.officeapps.live.com/*"],
+        runAt: "document_start",
+        allFrames: true,
+      },
+    ],
+  },
+  {
     id: "MicrosoftVirtualAssistant",
     platform: "all",
     name: "Microsoft Virtual Assistant",
@@ -842,26 +857,6 @@ const AVAILABLE_SHIMS = [
       "*://s.webtrends.com/js/webtrends.min.js",
     ],
     onlyIfBlockedByETP: true,
-  },
-  {
-    id: "Blogger",
-    platform: "all",
-    name: "Blogger",
-    bug: "1776869",
-    contentScripts: [
-      {
-        js: "blogger.js",
-        matches: ["*://www.blogger.com/comment/frame/*"],
-        runAt: "document_start",
-        allFrames: true,
-      },
-      {
-        js: "bloggerAccount.js",
-        matches: ["*://www.blogger.com/blog/*"],
-        runAt: "document_end",
-      },
-    ],
-    onlyIfDFPIActive: true,
   },
   {
     // keep this below any other shims checking adsafeprotected URLs
@@ -1051,6 +1046,27 @@ const AVAILABLE_SHIMS = [
     isSmartblockEmbedShim: true,
     onlyIfBlockedByETP: true,
     unblocksOnOptIn: ["*://www.tiktok.com/*"],
+  },
+  {
+    id: "DisqusEmbed",
+    platform: "desktop",
+    name: "Disqus embed placeholder",
+    bug: "1965307",
+    runFirst: "disqus-embed.js",
+    // Blank stub file just so we run the script above when the matched script
+    // files get blocked.
+    file: "empty-script.js",
+    matches: ["*://*.disqus.com/embed.js"],
+    logos: ["disqus.svg"],
+    webExposedShimHelpers: [],
+    needsShimHelpers: [
+      "embedClicked",
+      "smartblockEmbedReplaced",
+      "smartblockGetFluentString",
+    ],
+    isSmartblockEmbedShim: true,
+    onlyIfBlockedByETP: true,
+    unblocksOnOptIn: ["*://*.disqus.com/*", "*://c.disquscdn.com/*"],
   },
   {
     id: "FingerpringJSBotd",

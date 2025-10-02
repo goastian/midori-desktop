@@ -86,6 +86,14 @@ add_task(async function test_all() {
 });
 
 add_task(async function test_enroll() {
+  Services.fog.applyServerKnobsConfig(
+    JSON.stringify({
+      metrics_enabled: {
+        "nimbus_events.enrollment_status": true,
+      },
+    })
+  );
+
   const recipe = NimbusTestUtils.factories.recipe.withFeatureConfig(
     "opt-in",
     { featureId: "nimbus-qa-1" },
@@ -157,7 +165,7 @@ add_task(async function test_enroll() {
 
   Assert.ok(manager.store.get(recipe.slug)?.active, "Active enrollment exists");
 
-  await labs.unenroll(recipe.slug);
+  labs.unenroll(recipe.slug);
 
   await cleanup();
 });
@@ -188,7 +196,7 @@ add_task(async function test_reenroll() {
     `Active enrollment for ${recipe.slug}`
   );
 
-  await labs.unenroll(recipe.slug);
+  labs.unenroll(recipe.slug);
   Assert.ok(
     manager.store.get(recipe.slug)?.active === false,
     `Inactive enrollment for ${recipe.slug}`
@@ -206,12 +214,20 @@ add_task(async function test_reenroll() {
     `Active enrollment for ${recipe.slug}`
   );
 
-  await labs.unenroll(recipe.slug);
+  labs.unenroll(recipe.slug);
 
   await cleanup();
 });
 
 add_task(async function test_unenroll() {
+  Services.fog.applyServerKnobsConfig(
+    JSON.stringify({
+      metrics_enabled: {
+        "nimbus_events.enrollment_status": true,
+      },
+    })
+  );
+
   const { manager, cleanup } = await setupTest({
     experiments: [
       NimbusTestUtils.factories.recipe.withFeatureConfig(
@@ -247,20 +263,20 @@ add_task(async function test_unenroll() {
   Assert.ok(manager.store.get("opt-in")?.active, "Enrolled in opt-in");
 
   // Should not throw.
-  await labs.unenroll("bogus");
+  labs.unenroll("bogus");
 
   // Should not throw.
-  await labs.unenroll("rollout");
+  labs.unenroll("rollout");
   Assert.ok(
     manager.store.get("rollout").active,
     "Enrolled in rollout after attempting to unenroll with incorrect API"
   );
 
-  await labs.unenroll("opt-in");
+  labs.unenroll("opt-in");
   Assert.ok(!manager.store.get("opt-in").active, "Unenrolled from opt-in");
 
   // Should not throw.
-  await labs.unenroll("opt-in");
+  labs.unenroll("opt-in");
 
   Assert.deepEqual(
     Glean.nimbusEvents.enrollmentStatus
@@ -288,6 +304,59 @@ add_task(async function test_unenroll() {
     ]
   );
 
-  await manager.unenroll("rollout");
+  manager.unenroll("rollout");
+  await cleanup();
+});
+
+add_task(async function test_reenroll_quickly() {
+  const { cleanup } = await setupTest({
+    experiments: [
+      NimbusTestUtils.factories.recipe.withFeatureConfig(
+        "optin",
+        { featureId: "nimbus-qa-2" },
+        {
+          isRollout: true,
+          isFirefoxLabsOptIn: true,
+          firefoxLabsTitle: "title",
+          firefoxLabsDescription: "description",
+          firefoxLabsDescriptionLinks: null,
+          firefoxLabsGroup: "group",
+          requiresRestart: false,
+        }
+      ),
+    ],
+  });
+
+  const labs = await FirefoxLabs.create();
+
+  Assert.equal(
+    await NimbusTestUtils.queryEnrollment("optin"),
+    null,
+    "Enrollment does not exist"
+  );
+
+  info("Enrolling in optin");
+  await labs.enroll("optin", "control");
+  await NimbusTestUtils.flushStore();
+
+  {
+    const enrollment = await NimbusTestUtils.queryEnrollment("optin");
+    Assert.ok(enrollment, "Enrollment exists in database");
+    Assert.ok(enrollment.active, "Enrollment is active");
+  }
+
+  info("Unenrolling and re-enrolling");
+  labs.unenroll("optin");
+  await labs.enroll("optin", "control");
+  await NimbusTestUtils.flushStore();
+
+  {
+    const enrollment = await NimbusTestUtils.queryEnrollment("optin");
+    Assert.ok(enrollment, "Enrollment exists in database");
+    Assert.ok(enrollment.active, "Enrollment is active");
+  }
+
+  labs.unenroll("optin");
+
   await cleanup();
 });

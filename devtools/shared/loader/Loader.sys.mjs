@@ -25,9 +25,6 @@ var gNextLoaderID = 0;
  *
  * The two following boolean flags are used to control the sandboxes into
  * which the modules are loaded.
- * @param invisibleToDebugger boolean
- *        If true, the modules won't be visible by the Debugger API.
- *        This typically allows to hide server modules from the debugger panel.
  * @param freshCompartment boolean
  *        If true, the modules will be forced to be loaded in a distinct
  *        compartment. It is typically used to load the modules in a distinct
@@ -39,17 +36,15 @@ var gNextLoaderID = 0;
  * @param useDevToolsLoaderGlobal boolean
  *        If true, the loader will reuse the current global to load other
  *        modules instead of creating a sandbox with custom options. Cannot be
- *        used with invisibleToDebugger and/or freshCompartment.
- *        TODO: This should ultimately replace invisibleToDebugger.
+ *        used with freshCompartment.
  */
 export function DevToolsLoader({
-  invisibleToDebugger = false,
   freshCompartment = false,
   useDevToolsLoaderGlobal = false,
 } = {}) {
-  if (useDevToolsLoaderGlobal && (invisibleToDebugger || freshCompartment)) {
+  if (useDevToolsLoaderGlobal && freshCompartment) {
     throw new Error(
-      "Loader cannot use invisibleToDebugger or freshCompartment if useDevToolsLoaderGlobal is true"
+      "Loader cannot use freshCompartment if useDevToolsLoaderGlobal is true"
     );
   }
 
@@ -83,7 +78,6 @@ export function DevToolsLoader({
   this.loader = new Loader({
     paths,
     sharedGlobal,
-    invisibleToDebugger,
     freshCompartment,
     sandboxName: useDevToolsLoaderGlobal
       ? "DevTools (Server Module Loader)"
@@ -172,7 +166,6 @@ export function DevToolsLoader({
   // * access via module's `loader` global
   // loader.id
   globals.loader.id = this.id;
-  globals.loader.invisibleToDebugger = invisibleToDebugger;
 
   // Expose lazy helpers on `loader`
   // ie. when you use it like that from a ESM:
@@ -199,17 +192,6 @@ DevToolsLoader.prototype = {
 };
 
 // Export the standard instance of DevToolsLoader used by the tools.
-export var loader = new DevToolsLoader({
-  /**
-   * Sets whether the compartments loaded by this instance should be invisible
-   * to the debugger.  Invisibility is needed for loaders that support debugging
-   * of chrome code.  This is true of remote target environments, like Fennec or
-   * B2G.  It is not the default case for desktop Firefox because we offer the
-   * Browser Toolbox for chrome debugging there, which uses its own, separate
-   * loader instance.
-   * @see devtools/client/framework/browser-toolbox/Launcher.sys.mjs
-   */
-  invisibleToDebugger: Services.appinfo.name !== "Firefox",
-});
+export var loader = new DevToolsLoader();
 
 export var require = loader.require;

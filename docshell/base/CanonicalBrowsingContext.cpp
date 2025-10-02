@@ -233,64 +233,6 @@ nsISecureBrowserUI* CanonicalBrowsingContext::GetSecureBrowserUI() {
   return mSecureBrowserUI;
 }
 
-namespace {
-// The DocShellProgressBridge is attached to a root content docshell loaded in
-// the parent process. Notifications are paired up with the docshell which they
-// came from, so that they can be fired to the correct
-// BrowsingContextWebProgress and bubble through this tree separately.
-//
-// Notifications are filtered by a nsBrowserStatusFilter before being received
-// by the DocShellProgressBridge.
-class DocShellProgressBridge : public nsIWebProgressListener {
- public:
-  NS_DECL_ISUPPORTS
-  // NOTE: This relies in the expansion of `NS_FORWARD_SAFE` and all listener
-  // methods accepting an `aWebProgress` argument. If this changes in the
-  // future, this may need to be written manually.
-  NS_FORWARD_SAFE_NSIWEBPROGRESSLISTENER(GetTargetContext(aWebProgress))
-
-  explicit DocShellProgressBridge(uint64_t aTopContextId)
-      : mTopContextId(aTopContextId) {}
-
- private:
-  virtual ~DocShellProgressBridge() = default;
-
-  nsIWebProgressListener* GetTargetContext(nsIWebProgress* aWebProgress) {
-    RefPtr<CanonicalBrowsingContext> context;
-    if (nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(aWebProgress)) {
-      context = docShell->GetBrowsingContext()->Canonical();
-    } else {
-      context = CanonicalBrowsingContext::Get(mTopContextId);
-    }
-    return context && !context->IsDiscarded() ? context->GetWebProgress()
-                                              : nullptr;
-  }
-
-  uint64_t mTopContextId = 0;
-};
-
-NS_IMPL_ISUPPORTS(DocShellProgressBridge, nsIWebProgressListener)
-}  // namespace
-
-void CanonicalBrowsingContext::MaybeAddAsProgressListener(
-    nsIWebProgress* aWebProgress) {
-  // Only add as a listener if the created docshell is a toplevel content
-  // docshell. We'll get notifications for all of our subframes through a single
-  // listener.
-  if (!IsTopContent()) {
-    return;
-  }
-
-  if (!mDocShellProgressBridge) {
-    mDocShellProgressBridge = new DocShellProgressBridge(Id());
-    mStatusFilter = new nsBrowserStatusFilter();
-    mStatusFilter->AddProgressListener(mDocShellProgressBridge,
-                                       nsIWebProgress::NOTIFY_ALL);
-  }
-
-  aWebProgress->AddProgressListener(mStatusFilter, nsIWebProgress::NOTIFY_ALL);
-}
-
 void CanonicalBrowsingContext::ReplacedBy(
     CanonicalBrowsingContext* aNewContext,
     const NavigationIsolationOptions& aRemotenessOptions) {
@@ -613,11 +555,11 @@ CanonicalBrowsingContext::CreateLoadingSessionHistoryEntryForLoad(
     entry = mActiveEntry;
   } else {
     entry = new SessionHistoryEntry(aLoadState, aChannel);
-    if (IsTop()) {
-      // Only top level pages care about Get/SetPersist.
-      entry->SetPersist(
-          nsDocShell::ShouldAddToSessionHistory(aLoadState->URI(), aChannel));
-    } else if (mActiveEntry || !mLoadingEntries.IsEmpty()) {
+    if (IsTop() &&
+        !nsDocShell::ShouldAddToSessionHistory(aLoadState->URI(), aChannel)) {
+      entry->SetTransient();
+    }
+    if (!IsTop() && (mActiveEntry || !mLoadingEntries.IsEmpty())) {
       entry->SetIsSubFrame(true);
     }
     entry->SetDocshellID(GetHistoryID());
@@ -660,8 +602,9 @@ CanonicalBrowsingContext::ReplaceLoadingSessionHistoryEntryForLoad(
         // Only top level pages care about Get/SetPersist.
         nsCOMPtr<nsIURI> uri;
         aNewChannel->GetURI(getter_AddRefs(uri));
-        loadingEntry->SetPersist(
-            nsDocShell::ShouldAddToSessionHistory(uri, aNewChannel));
+        if (!nsDocShell::ShouldAddToSessionHistory(uri, aNewChannel)) {
+          loadingEntry->SetTransient();
+        }
       } else {
         loadingEntry->SetIsSubFrame(aInfo->mInfo.IsSubFrame());
       }
@@ -1013,8 +956,9 @@ void CanonicalBrowsingContext::CallOnTopDescendants(
 }
 
 void CanonicalBrowsingContext::SessionHistoryCommit(
-    uint64_t aLoadId, const nsID& aChangeID, uint32_t aLoadType, bool aPersist,
-    bool aCloneEntryChildren, bool aChannelExpired, uint32_t aCacheKey) {
+    uint64_t aLoadId, const nsID& aChangeID, uint32_t aLoadType,
+    bool aCloneEntryChildren, bool aChannelExpired, uint32_t aCacheKey,
+    nsIPrincipal* aPartitionedPrincipal) {
   MOZ_LOG(gSHLog, LogLevel::Verbose,
           ("CanonicalBrowsingContext::SessionHistoryCommit %p %" PRIu64, this,
            aLoadId));
@@ -1038,6 +982,7 @@ void CanonicalBrowsingContext::SessionHistoryCommit(
         newActiveEntry->SharedInfo()->mExpired = true;
       }
 
+      newActiveEntry->SetPartitionedPrincipalToInherit(aPartitionedPrincipal);
       bool loadFromSessionHistory = !newActiveEntry->ForInitialLoad();
       newActiveEntry->SetForInitialLoad(false);
       SessionHistoryEntry::RemoveLoadId(aLoadId);
@@ -1108,7 +1053,7 @@ void CanonicalBrowsingContext::SessionHistoryCommit(
             mActiveEntry->SetWireframe(Nothing());
           }
         } else if (addEntry) {
-          shistory->AddEntry(mActiveEntry, aPersist);
+          shistory->AddEntry(mActiveEntry);
           shistory->InternalSetRequestedIndex(-1);
         }
       } else {
@@ -1140,10 +1085,10 @@ void CanonicalBrowsingContext::SessionHistoryCommit(
               //       make a copy of the shared state.
               mActiveEntry->ReplaceWith(*newActiveEntry);
             } else {
-              // AddChildSHEntryHelper does update the index of the session
+              // AddNestedSHEntry does update the index of the session
               // history!
-              shistory->AddChildSHEntryHelper(mActiveEntry, newActiveEntry,
-                                              Top(), aCloneEntryChildren);
+              shistory->AddNestedSHEntry(mActiveEntry, newActiveEntry, Top(),
+                                         aCloneEntryChildren);
               mActiveEntry = newActiveEntry;
             }
           } else {
@@ -1261,14 +1206,12 @@ void CanonicalBrowsingContext::SetActiveSessionHistoryEntry(
 
   if (IsTop()) {
     Maybe<int32_t> previousEntryIndex, loadedEntryIndex;
-    shistory->AddToRootSessionHistory(
-        true, oldActiveEntry, this, mActiveEntry, aLoadType,
-        nsDocShell::ShouldAddToSessionHistory(aInfo->GetURI(), nullptr),
-        &previousEntryIndex, &loadedEntryIndex);
+    shistory->AddToRootSessionHistory(true, oldActiveEntry, this, mActiveEntry,
+                                      aLoadType, &previousEntryIndex,
+                                      &loadedEntryIndex);
   } else {
     if (oldActiveEntry) {
-      shistory->AddChildSHEntryHelper(oldActiveEntry, mActiveEntry, Top(),
-                                      true);
+      shistory->AddNestedSHEntry(oldActiveEntry, mActiveEntry, Top(), true);
     } else if (GetParent() && GetParent()->mActiveEntry) {
       GetParent()->mActiveEntry->AddChild(
           mActiveEntry, CreatedDynamically() ? -1 : GetParent()->IndexOf(this),
@@ -3085,6 +3028,94 @@ bool CanonicalBrowsingContext::AllowedInBFCache(
   }
 
   return bfcacheCombo == 0;
+}
+
+struct ClearSiteWalkHistoryData {
+  nsIPrincipal* mPrincipal = nullptr;
+  bool mShouldClear = false;
+};
+
+// static
+nsresult CanonicalBrowsingContext::ContainsSameOriginBfcacheEntry(
+    nsISHEntry* aEntry, mozilla::dom::BrowsingContext* aBC, int32_t aChildIndex,
+    void* aData) {
+  if (!aEntry) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIPrincipal> entryPrincipal;
+  nsresult rv =
+      aEntry->GetPartitionedPrincipalToInherit(getter_AddRefs(entryPrincipal));
+
+  if (NS_FAILED(rv) || !entryPrincipal) {
+    return NS_OK;
+  }
+
+  ClearSiteWalkHistoryData* data =
+      static_cast<ClearSiteWalkHistoryData*>(aData);
+  if (data->mPrincipal->OriginAttributesRef() ==
+      entryPrincipal->OriginAttributesRef()) {
+    nsCOMPtr<nsIURI> entryURI = aEntry->GetURI();
+    if (data->mPrincipal->IsSameOrigin(entryURI)) {
+      data->mShouldClear = true;
+    } else {
+      nsSHistory::WalkHistoryEntries(aEntry, aBC,
+                                     ContainsSameOriginBfcacheEntry, aData);
+    }
+  }
+  return NS_OK;
+}
+
+// static
+nsresult CanonicalBrowsingContext::ClearBfcacheByPrincipal(
+    nsIPrincipal* aPrincipal) {
+  NS_ENSURE_ARG_POINTER(aPrincipal);
+  MOZ_DIAGNOSTIC_ASSERT(XRE_IsParentProcess());
+
+  // Allow disabling the feature if unexpected regressions occur
+  if (!StaticPrefs::privacy_clearSiteDataHeader_cache_bfcache_enabled()) {
+    return NS_OK;
+  }
+
+  // Iter through all open tabs by going through all top-level browsing
+  // contexts.
+  AutoTArray<RefPtr<BrowsingContextGroup>, 32> groups;
+  BrowsingContextGroup::GetAllGroups(groups);
+  for (auto& browsingContextGroup : groups) {
+    for (auto& topLevel : browsingContextGroup->Toplevels()) {
+      if (topLevel->IsDiscarded()) {
+        continue;
+      }
+
+      auto* bc = topLevel->Canonical();
+      nsSHistory* sh = static_cast<nsSHistory*>(bc->GetSessionHistory());
+      if (!sh) {
+        continue;
+      }
+
+      AutoTArray<nsCOMPtr<nsISHEntry>, 4> entriesToDelete;
+      // We only need to traverse all top-level history items due to bfcache
+      // only caching top level sites and partitioning origins. If an iframe has
+      // the same origin, we only want to clear it, if the top level has the
+      // same origin.
+      for (nsCOMPtr<nsISHEntry>& entry : sh->Entries()) {
+        // Determine whether this history entry matches the origin, or contains
+        // an iframe with that origin
+        ClearSiteWalkHistoryData data;
+        data.mPrincipal = aPrincipal;
+        CanonicalBrowsingContext::ContainsSameOriginBfcacheEntry(entry, nullptr,
+                                                                 0, &data);
+
+        if (data.mShouldClear) {
+          entriesToDelete.AppendElement(entry);
+        }
+      }
+      for (nsCOMPtr<nsISHEntry>& entry : entriesToDelete) {
+        sh->EvictDocumentViewerForEntry(entry);
+      }
+    }
+  }
+  return NS_OK;
 }
 
 void CanonicalBrowsingContext::SetIsActive(bool aIsActive, ErrorResult& aRv) {

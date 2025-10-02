@@ -20,6 +20,7 @@ task-defaults:
     fetches:
         toolchain:
             - linux64-dump_syms
+            - linux64-7zz
     treeherder:
         platform: symbols/opt
         kind: other
@@ -212,7 +213,7 @@ tasks:
                   type: directory
                   path: /builds/worker/artifacts/
             docker-image: {in-tree: system-symbols-linux-scraper}
-            max-run-time: 21600
+            max-run-time: 14400
         run:
             using: run-task
             command: >-
@@ -296,7 +297,6 @@ tasks:
                 - symbol-scrapers
             toolchain:
                 - linux64-cabextract
-                - linux64-7zz
     alpine:
         description: Extract Alpine Linux system symbols found in crashreports
         attributes:

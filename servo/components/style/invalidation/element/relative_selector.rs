@@ -174,10 +174,10 @@ impl<'a, E: TElement> OptimizationContext<'a, E> {
             // e.g. Given `:has(... .a ~ .b ...)`, we're the mutating element matching `... .a`,
             // if we find a sibling that matches the `... .a`, it can stand in for us.
             debug_assert!(
-                dependency.parent.is_some(),
+                dependency.next.is_some(),
                 "No relative selector outer dependency?"
             );
-            return dependency.parent.as_ref().map_or(false, |par| {
+            return dependency.next.as_ref().map_or(false, |par| {
                 // ... However, if the standin sibling can be the anchor, we can't skip it, since
                 // that sibling should be invlidated to become the anchor.
                 !matches_selector(
@@ -288,23 +288,67 @@ impl<'a, E: TElement + 'a> Default for ToInvalidate<'a, E> {
     }
 }
 
-fn dependency_selectors_match(a: &Dependency, b: &Dependency) -> bool {
+fn invalidation_can_collapse(a: &Dependency, b: &Dependency, invalidations_in_subtree: bool) -> bool {
+    // We want to detect identical dependencies that occur at different
+    // compounds but has the identical compound in the same selector,
+    // e.g. :has(.item .item).
+
+    // If they trigger different invalidations, they shouldn't be collapsed.
     if a.invalidation_kind() != b.invalidation_kind() {
         return false;
     }
+
+    // Not in the same selector, trivially skipped.
     if SelectorKey::new(&a.selector) != SelectorKey::new(&b.selector) {
         return false;
     }
-    let mut a_parent = a.parent.as_ref();
-    let mut b_parent = b.parent.as_ref();
-    while let (Some(a_p), Some(b_p)) = (a_parent, b_parent) {
-        if SelectorKey::new(&a_p.selector) != SelectorKey::new(&b_p.selector) {
+
+    // Check that this is in the same nesting.
+    // TODO(dshin): @scope probably brings more subtleties...
+    let mut a_next = a.next.as_ref();
+    let mut b_next = b.next.as_ref();
+    while let (Some(a_n), Some(b_n)) = (a_next, b_next) {
+        // This is a bit subtle - but we don't need to do the checks we do at higher levels.
+        // Cases like `:is(.item .foo) :is(.item .foo)` where `.item` invalidates would
+        // point to different dependencies, pointing to the same outer selector, but
+        // differing in selector offset.
+        if SelectorKey::new(&a_n.selector) != SelectorKey::new(&b_n.selector) {
             return false;
         }
-        a_parent = a_p.parent.as_ref();
-        b_parent = b_p.parent.as_ref();
+        a_next = a_n.next.as_ref();
+        b_next = b_n.next.as_ref();
     }
-    a_parent.is_none() && b_parent.is_none()
+    if a_next.is_some() || b_next.is_some() {
+        return false;
+    }
+
+    // Ok, now, do the compounds actually match?
+    // This can get expensive quickly, but we're assuming that:
+    //
+    //   * In most cases, authors don't generally duplicate compounds in a selector, so
+    //     this fails quickly
+    //   * In cases where compounds are duplicated, reducing the number of invalidations
+    //     has a payoff that offsets the comparison cost
+    //
+    // Note, `.a.b` != `.b.a` - doesn't affect correctness, though.
+    // TODO(dshin): Caching this may be worth it as well?
+    let mut a_iter = a.selector.iter_from(a.selector_offset);
+    let mut b_iter = b.selector.iter_from(b.selector_offset);
+    loop {
+        let a_component = a_iter.next();
+        let b_component = b_iter.next();
+
+        if a_component != b_component {
+            return false;
+        }
+        let Some(component) = a_component else { return true };
+        // If we're in the subtree of DOM manipulation - worrying the about positioning of this element
+        // is irrelevant, because the DOM structure is either completely new or about to go away.
+        if !invalidations_in_subtree && component.has_indexed_selector_in_subject() {
+            // The element's positioning matters, so can't collapse.
+            return false;
+        }
+    }
 }
 
 impl<'a, E> RelativeSelectorDependencyCollector<'a, E>
@@ -326,13 +370,18 @@ where
         dependency: &'a Dependency,
         host: Option<OpaqueElement>,
     ) {
+        let in_subtree = element != self.top;
         match self
             .invalidations
             .iter_mut()
-            .find(|(_, _, d)| dependency_selectors_match(dependency, d))
+            .find(|(e, _, d)| {
+                let both_in_subtree = in_subtree && *e != self.top;
+                invalidation_can_collapse(dependency, d, both_in_subtree)
+            })
         {
             Some((e, h, d)) => {
-                // Just keep one.
+                // This dependency should invalidate the same way - Collapse the invalidation
+                // to a more general case so we don't do duplicate work.
                 if d.selector_offset > dependency.selector_offset {
                     (*e, *h, *d) = (element, host, dependency);
                 }
@@ -361,7 +410,7 @@ where
             },
             DependencyInvalidationKind::Relative(kind) => {
                 debug_assert!(
-                    dependency.parent.is_some(),
+                    dependency.next.is_some(),
                     "Orphaned inner relative selector?"
                 );
                 if element != self.top &&
@@ -393,7 +442,7 @@ where
                             continue;
                         }
                     }
-                    let dependency = dependency.parent.as_ref().unwrap();
+                    let dependency = dependency.next.as_ref().unwrap();
                     result.invalidations.push(RelativeSelectorInvalidation {
                         kind,
                         host,
@@ -872,8 +921,8 @@ where
             "Outer selector of relative selector is relative?"
         );
 
-        if let Some(p) = outer_dependency.parent.as_ref() {
-            if !Self::is_subject(p.as_ref()) {
+        if let Some(x) = outer_dependency.next.as_ref() {
+            if !Self::is_subject(x.as_ref()) {
                 // Not subject in outer selector.
                 return false;
             }
@@ -964,8 +1013,8 @@ where
                 }
                 let invalidation_kind = d.normal_invalidation_kind();
                 if matches!(invalidation_kind, NormalDependencyInvalidationKind::Element) {
-                    if let Some(ref parent) = d.parent {
-                        d = parent;
+                    if let Some(ref next) = d.next {
+                        d = next;
                         continue;
                     }
                     break true;
@@ -1086,14 +1135,14 @@ where
         ) {
             // Ok, keep heading outwards.
             debug_assert!(
-                dependency.parent.is_some(),
+                dependency.next.is_some(),
                 "Orphaned inner selector dependency?"
             );
-            if let Some(parent) = dependency.parent.as_ref() {
+            if let Some(next) = dependency.next.as_ref() {
                 self.note_dependency(
                     element,
                     scope,
-                    parent,
+                    next,
                     descendant_invalidations,
                     sibling_invalidations,
                 );
@@ -1177,7 +1226,7 @@ where
         kind: RelativeDependencyInvalidationKind,
         dep: &'a Dependency,
     ) {
-        debug_assert!(dep.parent.is_some(), "Orphaned inners selector?");
+        debug_assert!(dep.next.is_some(), "Orphaned inners selector?");
         if element.relative_selector_search_direction().is_empty() {
             return;
         }
@@ -1186,7 +1235,7 @@ where
             RelativeSelectorInvalidation {
                 host: self.matching_context.current_host,
                 kind,
-                dependency: dep.parent.as_ref().unwrap(),
+                dependency: dep.next.as_ref().unwrap(),
             },
         ));
     }

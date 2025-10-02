@@ -7,7 +7,7 @@ const ORIGIN_DOMAIN = "browser_policy_clear_blocked_cookies.org";
 
 add_task(async function setup() {
   const expiry = Date.now() + 24 * 60 * 60;
-  Services.cookies.add(
+  let cv = Services.cookies.add(
     HOSTNAME_DOMAIN,
     "/",
     "secure",
@@ -17,10 +17,12 @@ add_task(async function setup() {
     false,
     expiry,
     {},
-    Ci.nsICookie.SAMESITE_NONE,
+    Ci.nsICookie.SAMESITE_UNSET,
     Ci.nsICookie.SCHEME_HTTPS
   );
-  Services.cookies.add(
+  Assert.equal(cv.result, Ci.nsICookieValidation.eOK);
+
+  cv = Services.cookies.add(
     HOSTNAME_DOMAIN,
     "/",
     "insecure",
@@ -30,10 +32,12 @@ add_task(async function setup() {
     false,
     expiry,
     {},
-    Ci.nsICookie.SAMESITE_NONE,
+    Ci.nsICookie.SAMESITE_UNSET,
     Ci.nsICookie.SCHEME_HTTP
   );
-  Services.cookies.add(
+  Assert.equal(cv.result, Ci.nsICookieValidation.eOK);
+
+  cv = Services.cookies.add(
     ORIGIN_DOMAIN,
     "/",
     "secure",
@@ -43,10 +47,12 @@ add_task(async function setup() {
     false,
     expiry,
     {},
-    Ci.nsICookie.SAMESITE_NONE,
+    Ci.nsICookie.SAMESITE_UNSET,
     Ci.nsICookie.SCHEME_HTTPS
   );
-  Services.cookies.add(
+  Assert.equal(cv.result, Ci.nsICookieValidation.eOK);
+
+  cv = Services.cookies.add(
     ORIGIN_DOMAIN,
     "/",
     "insecure",
@@ -56,10 +62,12 @@ add_task(async function setup() {
     false,
     expiry,
     {},
-    Ci.nsICookie.SAMESITE_NONE,
+    Ci.nsICookie.SAMESITE_UNSET,
     Ci.nsICookie.SCHEME_HTTP
   );
-  Services.cookies.add(
+  Assert.equal(cv.result, Ci.nsICookieValidation.eOK);
+
+  cv = Services.cookies.add(
     "example.net",
     "/",
     "secure",
@@ -69,9 +77,11 @@ add_task(async function setup() {
     false,
     expiry,
     {},
-    Ci.nsICookie.SAMESITE_NONE,
+    Ci.nsICookie.SAMESITE_UNSET,
     Ci.nsICookie.SCHEME_HTTPS
   );
+  Assert.equal(cv.result, Ci.nsICookieValidation.eOK);
+
   await setupPolicyEngineWithJson({
     policies: {
       Cookies: {

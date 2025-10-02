@@ -192,7 +192,9 @@ enum TableAction {
   TABLE_ACTION_DEFAULT,  // Use OTS's default action for that table
   TABLE_ACTION_SANITIZE, // Sanitize the table, potentially dropping it
   TABLE_ACTION_PASSTHRU, // Serialize the table unchanged
-  TABLE_ACTION_DROP      // Drop the table
+  TABLE_ACTION_DROP,     // Drop the table
+  TABLE_ACTION_SANITIZE_SOFT, // Sanitize the table, but without failing overall
+                              // sanitzation even if this table fails/is dropped
 };
 
 class OTS_API OTSContext {

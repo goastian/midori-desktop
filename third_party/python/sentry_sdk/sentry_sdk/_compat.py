@@ -1,63 +1,18 @@
 import sys
 
-from sentry_sdk._types import MYPY
+from typing import TYPE_CHECKING
 
-if MYPY:
-    from typing import Optional
-    from typing import Tuple
+if TYPE_CHECKING:
     from typing import Any
-    from typing import Type
     from typing import TypeVar
 
     T = TypeVar("T")
 
 
-PY2 = sys.version_info[0] == 2
-PY33 = sys.version_info[0] == 3 and sys.version_info[1] >= 3
 PY37 = sys.version_info[0] == 3 and sys.version_info[1] >= 7
+PY38 = sys.version_info[0] == 3 and sys.version_info[1] >= 8
 PY310 = sys.version_info[0] == 3 and sys.version_info[1] >= 10
 PY311 = sys.version_info[0] == 3 and sys.version_info[1] >= 11
-
-if PY2:
-    import urlparse
-
-    text_type = unicode  # noqa
-
-    string_types = (str, text_type)
-    number_types = (int, long, float)  # noqa
-    int_types = (int, long)  # noqa
-    iteritems = lambda x: x.iteritems()  # noqa: B301
-    binary_sequence_types = (bytearray, memoryview)
-
-    def implements_str(cls):
-        # type: (T) -> T
-        cls.__unicode__ = cls.__str__
-        cls.__str__ = lambda x: unicode(x).encode("utf-8")  # noqa
-        return cls
-
-    exec("def reraise(tp, value, tb=None):\n raise tp, value, tb")
-
-
-else:
-    import urllib.parse as urlparse  # noqa
-
-    text_type = str
-    string_types = (text_type,)  # type: Tuple[type]
-    number_types = (int, float)  # type: Tuple[type, type]
-    int_types = (int,)
-    iteritems = lambda x: x.items()
-    binary_sequence_types = (bytes, bytearray, memoryview)
-
-    def implements_str(x):
-        # type: (T) -> T
-        return x
-
-    def reraise(tp, value, tb=None):
-        # type: (Optional[Type[BaseException]], Optional[BaseException], Optional[Any]) -> None
-        assert value is not None
-        if value.__traceback__ is not tb:
-            raise value.with_traceback(tb)
-        raise value
 
 
 def with_metaclass(meta, *bases):
@@ -70,26 +25,74 @@ def with_metaclass(meta, *bases):
     return type.__new__(MetaClass, "temporary_class", (), {})
 
 
-def check_thread_support():
-    # type: () -> None
+def check_uwsgi_thread_support():
+    # type: () -> bool
+    # We check two things here:
+    #
+    # 1. uWSGI doesn't run in threaded mode by default -- issue a warning if
+    #    that's the case.
+    #
+    # 2. Additionally, if uWSGI is running in preforking mode (default), it needs
+    #    the --py-call-uwsgi-fork-hooks option for the SDK to work properly. This
+    #    is because any background threads spawned before the main process is
+    #    forked are NOT CLEANED UP IN THE CHILDREN BY DEFAULT even if
+    #    --enable-threads is on. One has to explicitly provide
+    #    --py-call-uwsgi-fork-hooks to force uWSGI to run regular cpython
+    #    after-fork hooks that take care of cleaning up stale thread data.
     try:
         from uwsgi import opt  # type: ignore
     except ImportError:
-        return
+        return True
+
+    from sentry_sdk.consts import FALSE_VALUES
+
+    def enabled(option):
+        # type: (str) -> bool
+        value = opt.get(option, False)
+        if isinstance(value, bool):
+            return value
+
+        if isinstance(value, bytes):
+            try:
+                value = value.decode()
+            except Exception:
+                pass
+
+        return value and str(value).lower() not in FALSE_VALUES
 
     # When `threads` is passed in as a uwsgi option,
     # `enable-threads` is implied on.
-    if "threads" in opt:
-        return
+    threads_enabled = "threads" in opt or enabled("enable-threads")
+    fork_hooks_on = enabled("py-call-uwsgi-fork-hooks")
+    lazy_mode = enabled("lazy-apps") or enabled("lazy")
 
-    if str(opt.get("enable-threads", "0")).lower() in ("false", "off", "no", "0"):
+    if lazy_mode and not threads_enabled:
         from warnings import warn
 
         warn(
             Warning(
-                "We detected the use of uwsgi with disabled threads.  "
-                "This will cause issues with the transport you are "
-                "trying to use.  Please enable threading for uwsgi.  "
-                '(Add the "enable-threads" flag).'
+                "IMPORTANT: "
+                "We detected the use of uWSGI without thread support. "
+                "This might lead to unexpected issues. "
+                'Please run uWSGI with "--enable-threads" for full support.'
             )
         )
+
+        return False
+
+    elif not lazy_mode and (not threads_enabled or not fork_hooks_on):
+        from warnings import warn
+
+        warn(
+            Warning(
+                "IMPORTANT: "
+                "We detected the use of uWSGI in preforking mode without "
+                "thread support. This might lead to crashing workers. "
+                'Please run uWSGI with both "--enable-threads" and '
+                '"--py-call-uwsgi-fork-hooks" for full support.'
+            )
+        )
+
+        return False
+
+    return True

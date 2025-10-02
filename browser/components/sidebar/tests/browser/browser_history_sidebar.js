@@ -269,11 +269,13 @@ add_task(async function test_history_search() {
   }, "There are no matching search results.");
 
   info("Clear the search query.");
-  EventUtils.synthesizeMouseAtCenter(
-    searchTextbox.clearButton,
-    {},
-    contentWindow
+  let inputChildren = SpecialPowers.InspectorUtils.getChildrenForNode(
+    searchTextbox.inputEl,
+    true,
+    false
   );
+  let clearButton = inputChildren.find(e => e.localName == "button");
+  EventUtils.synthesizeMouseAtCenter(clearButton, {}, contentWindow);
   await TestUtils.waitForCondition(
     () => !component.lists[0].emptyState,
     "The original cards are restored."
@@ -818,6 +820,64 @@ add_task(async function test_history_context_menu() {
   SidebarController.hide();
 });
 
+add_task(async function test_select_and_remove() {
+  const { component, contentWindow } = await showHistorySidebar();
+  await component.updateComplete;
+  await BrowserTestUtils.waitForMutationCondition(
+    component.lists[0].shadowRoot,
+    { subtree: true, childList: true },
+    () => component.lists[0].rowEls.length
+  );
+  const rows = component.lists[0].rowEls;
+  Assert.ok(rows, "History rows are shown.");
+
+  function promiseRowSelected(index) {
+    return BrowserTestUtils.waitForMutationCondition(
+      rows[index],
+      { attributes: true },
+      () => rows[index].hasAttribute("selected")
+    );
+  }
+
+  info("Select the first two pages.");
+  rows[0].focus();
+  EventUtils.synthesizeKey("KEY_ArrowDown", { shiftKey: true }, contentWindow);
+  for (let i = 0; i < 2; i++) {
+    await promiseRowSelected(i);
+  }
+
+  info("Select all pages.");
+  EventUtils.synthesizeKey("A", { accelKey: true }, contentWindow);
+  for (let i = 0; i < rows.length; i++) {
+    await promiseRowSelected(i);
+  }
+
+  info("Press Enter key.");
+  EventUtils.synthesizeKey("KEY_Enter", {}, contentWindow);
+  Assert.equal(
+    gBrowser.tabs.length,
+    1,
+    "Enter key does not open pages during multi-selection."
+  );
+
+  info("Delete from history.");
+  const contextMenu = SidebarController.currentContextMenu;
+  const notification = PlacesTestUtils.waitForNotification("page-removed");
+  await openAndWaitForContextMenu(contextMenu, rows[0].mainEl, () =>
+    contextMenu.activateItem(
+      document.getElementById("sidebar-history-context-delete-pages")
+    )
+  );
+  const pagesRemoved = await notification;
+  Assert.equal(
+    pagesRemoved.length,
+    rows.length,
+    "The selected pages were removed."
+  );
+
+  SidebarController.hide();
+});
+
 add_task(async function test_history_empty_state() {
   const { component } = await showHistorySidebar();
   info("Clear all history.");
@@ -832,5 +892,55 @@ add_task(async function test_history_empty_state() {
     BrowserTestUtils.isVisible(component.emptyState),
     "Empty state is displayed."
   );
+  SidebarController.hide();
+});
+
+add_task(async function test_sort_by_site_headings() {
+  const { component, contentWindow } = await showHistorySidebar();
+  const {
+    _menu: menu,
+    menuButton,
+    _menuSortBySite: sortBySiteButton,
+  } = component;
+
+  await PlacesUtils.history.insertMany([
+    {
+      url: "file:///example.html",
+      title: "Example Local File",
+      visits: [{ date: today }],
+    },
+    {
+      url: "https://www.example.com/",
+      title: "Example Website",
+      visits: [{ date: today }],
+    },
+  ]);
+
+  info("Sort history by site.");
+  let promiseMenuShown = BrowserTestUtils.waitForEvent(menu, "popupshown");
+  EventUtils.synthesizeMouseAtCenter(menuButton, {}, contentWindow);
+  await promiseMenuShown;
+  menu.activateItem(sortBySiteButton);
+  await BrowserTestUtils.waitForMutationCondition(
+    component.shadowRoot,
+    { childList: true, subtree: true },
+    () => component.cards.length === 2
+  );
+
+  const [fileCard, websiteCard] = component.cards;
+  Assert.deepEqual(
+    document.l10n.getAttributes(fileCard),
+    {
+      args: null,
+      id: "sidebar-history-site-localhost",
+    },
+    "Correct heading shown for local files."
+  );
+  Assert.equal(
+    websiteCard.heading,
+    "example.com",
+    "Correct heading shown for websites."
+  );
+
   SidebarController.hide();
 });

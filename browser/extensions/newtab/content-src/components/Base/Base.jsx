@@ -23,23 +23,10 @@ import { MessageWrapper } from "content-src/components/MessageWrapper/MessageWra
 
 const VISIBLE = "visible";
 const VISIBILITY_CHANGE_EVENT = "visibilitychange";
-const PREF_THUMBS_UP_DOWN_ENABLED = "discoverystream.thumbsUpDown.enabled";
-const PREF_THUMBS_UP_DOWN_LAYOUT_ENABLED =
-  "discoverystream.thumbsUpDown.searchTopsitesCompact";
 const PREF_INFERRED_PERSONALIZATION_SYSTEM =
   "discoverystream.sections.personalization.inferred.enabled";
 const PREF_INFERRED_PERSONALIZATION_USER =
   "discoverystream.sections.personalization.inferred.user.enabled";
-
-export const PrefsButton = ({ onClick, icon }) => (
-  <div className="prefs-button">
-    <button
-      className={`icon ${icon || "icon-settings"}`}
-      onClick={onClick}
-      data-l10n-id="newtab-settings-button"
-    />
-  </div>
-);
 
 // Returns a function will not be continuously triggered when called. The
 // function will be triggered if called again after `wait` milliseconds.
@@ -263,68 +250,24 @@ export class BaseContent extends React.PureComponent {
     }
 
     const logoAlwaysVisible = prefs["logowordmark.alwaysVisible"];
-    const layoutsVariantAEnabled = prefs["newtabLayouts.variant-a"];
-    const layoutsVariantBEnabled = prefs["newtabLayouts.variant-b"];
-    const layoutsVariantAorB = layoutsVariantAEnabled || layoutsVariantBEnabled;
-    const thumbsUpDownEnabled = prefs[PREF_THUMBS_UP_DOWN_ENABLED];
-    // For the compact layout to be active,
-    // thumbs also has to be enabled until Bug 1932242 is fixed
-    const thumbsUpDownLayoutEnabled =
-      prefs[PREF_THUMBS_UP_DOWN_LAYOUT_ENABLED] && thumbsUpDownEnabled;
 
     /* Bug 1917937: The logic presented below is fragile but accurate to the pixel. As new tab experiments with layouts, we have a tech debt of competing styles and classes the slightly modify where the search bar sits on the page. The larger solution for this is to replace everything with an intersection observer, but would require a larger refactor of this file. In the interim, we can programmatically calculate when to fire the fixed-scroll event and account for the moved elements so that topsites/etc stays in the same place. The CSS this references has been flagged to reference this logic so (hopefully) keep them in sync. */
 
     let SCROLL_THRESHOLD = 0; // When the fixed-scroll event fires
     let MAIN_OFFSET_PADDING = 0; // The padding to compensate for the moved elements
 
+    const CSS_VAR_SPACE_XXLARGE = 32.04; // Custom Acorn themed variable (8 * 0.267rem);
+
     let layout = {
-      outerWrapperPaddingTop: 30,
-      searchWrapperPaddingTop: 34,
-      searchWrapperPaddingBottom: 38,
+      outerWrapperPaddingTop: 24,
+      searchWrapperPaddingTop: 16,
+      searchWrapperPaddingBottom: CSS_VAR_SPACE_XXLARGE,
       searchWrapperFixedScrollPaddingTop: 27,
       searchWrapperFixedScrollPaddingBottom: 27,
       searchInnerWrapperMinHeight: 52,
-      logoAndWordmarkWrapperHeight: 64,
-      logoAndWordmarkWrapperMarginBottom: 48,
+      logoAndWordmarkWrapperHeight: 0,
+      logoAndWordmarkWrapperMarginBottom: 0,
     };
-
-    const CSS_VAR_SPACE_XXLARGE = 34.2; // Custom Acorn themed variable (8 * 0.267rem);
-
-    // Experimental layouts
-    // (Note these if statements are ordered to match the CSS cascade)
-    if (thumbsUpDownLayoutEnabled || layoutsVariantAorB) {
-      // Thumbs Compact View Layout
-      if (thumbsUpDownLayoutEnabled) {
-        layout.logoAndWordmarkWrapperMarginBottom = CSS_VAR_SPACE_XXLARGE;
-        if (!logoAlwaysVisible) {
-          layout.searchWrapperPaddingTop = CSS_VAR_SPACE_XXLARGE;
-          layout.searchWrapperPaddingBottom = CSS_VAR_SPACE_XXLARGE;
-        }
-      }
-
-      // Variant B Layout
-      if (layoutsVariantAEnabled) {
-        layout.outerWrapperPaddingTop = 24;
-        if (!thumbsUpDownLayoutEnabled) {
-          layout.searchWrapperPaddingTop = 0;
-          layout.searchWrapperPaddingBottom = 32;
-          layout.logoAndWordmarkWrapperMarginBottom = 32;
-        }
-      }
-
-      // Variant B Layout
-      if (layoutsVariantBEnabled) {
-        layout.outerWrapperPaddingTop = 24;
-        // Logo is positioned absolute, so remove it
-        layout.logoAndWordmarkWrapperHeight = 0;
-        layout.logoAndWordmarkWrapperMarginBottom = 0;
-        layout.searchWrapperPaddingTop = 16;
-        layout.searchWrapperPaddingBottom = CSS_VAR_SPACE_XXLARGE;
-        if (!thumbsUpDownLayoutEnabled) {
-          layout.searchWrapperPaddingBottom = 32;
-        }
-      }
-    }
 
     // Logo visibility applies to all layouts
     if (!logoAlwaysVisible) {
@@ -449,6 +392,13 @@ export class BaseContent extends React.PureComponent {
           "--newtab-wallpaper-color",
           "transparent"
         );
+
+        // Based on the current colorMode, add the corresponding dark/light CSS classes
+        if (this.state.colorMode) {
+          this.setState(prevState => ({
+            wallpaperTheme: prevState.colorMode,
+          }));
+        }
       } catch (e) {}
 
       return;
@@ -522,6 +472,17 @@ export class BaseContent extends React.PureComponent {
         prevState.showDownloadHighlightOverride ??
         this.shouldShowOMCHighlight("DownloadMobilePromoHighlight")
       );
+
+      if (override) {
+        // Emit an open event manually since OMC isn't handling it
+        this.props.dispatch(
+          ac.DiscoveryStreamUserEvent({
+            event: "FEATURE_HIGHLIGHT_OPEN",
+            source: "FEATURE_HIGHLIGHT",
+            value: { feature: "FEATURE_DOWNLOAD_MOBILE_PROMO" },
+          })
+        );
+      }
 
       return {
         showDownloadHighlightOverride: override,
@@ -597,10 +558,7 @@ export class BaseContent extends React.PureComponent {
     const { initialized, customizeMenuVisible } = App;
     const prefs = props.Prefs.values;
 
-    const layoutsVariantAEnabled = prefs["newtabLayouts.variant-a"];
-    const layoutsVariantBEnabled = prefs["newtabLayouts.variant-b"];
     const shortcutsRefresh = prefs["newtabShortcuts.refresh"];
-    const layoutsVariantAorB = layoutsVariantAEnabled || layoutsVariantBEnabled;
 
     const activeWallpaper = prefs[`newtabWallpapers.wallpaper`];
     const wallpapersEnabled = prefs["newtabWallpapers.enabled"];
@@ -608,7 +566,6 @@ export class BaseContent extends React.PureComponent {
     const { showTopicSelection } = DiscoveryStream;
     const mayShowTopicSelection =
       showTopicSelection && prefs["discoverystream.topicSelection.enabled"];
-
     const { pocketConfig } = prefs;
 
     const isDiscoveryStream =
@@ -640,6 +597,7 @@ export class BaseContent extends React.PureComponent {
       showRecentSavesEnabled: prefs.showRecentSaves,
       topSitesRowsCount: prefs.topSitesRows,
       weatherEnabled: prefs.showWeather,
+      trendingSearchEnabled: prefs["trendingSearch.enabled"],
     };
 
     const pocketRegion = prefs["feeds.system.topstories"];
@@ -649,6 +607,11 @@ export class BaseContent extends React.PureComponent {
     const mayHaveWeather = prefs["system.showWeather"];
     const { mayHaveSponsoredTopSites } = prefs;
     const supportUrl = prefs["support.url"];
+
+    // Trending Searches experiment pref check
+    const mayHaveTrendingSearch =
+      prefs["system.trendingSearch.enabled"] &&
+      prefs["trendingSearch.defaultSearchEngine"].toLowerCase() === "google";
 
     // Mobile Download Promo Pref Checks
     const mobileDownloadPromoEnabled = prefs["mobileDownloadModal.enabled"];
@@ -693,8 +656,8 @@ export class BaseContent extends React.PureComponent {
         "has-mobile-download-promo", // Mobile download promo modal is enabled/visible
       weatherEnabled && mayHaveWeather && "has-weather", // Weather widget is enabled/visible
       prefs.showSearch ? "has-search" : "no-search",
-      layoutsVariantAEnabled ? "layout-variant-a" : "", // Layout experiment variant A
-      layoutsVariantBEnabled ? "layout-variant-b" : "", // Layout experiment variant B
+      // layoutsVariantAEnabled ? "layout-variant-a" : "", // Layout experiment variant A
+      // layoutsVariantBEnabled ? "layout-variant-b" : "", // Layout experiment variant B
       shortcutsRefresh ? "shortcuts-refresh" : "", // Shortcuts refresh experiment
       pocketEnabled ? "has-recommended-stories" : "no-recommended-stories",
       sectionsEnabled ? "has-sections-grid" : "",
@@ -758,6 +721,7 @@ export class BaseContent extends React.PureComponent {
             mayHaveSponsoredStories={mayHaveSponsoredStories}
             mayHaveInferredPersonalization={mayHaveInferredPersonalization}
             mayHaveWeather={mayHaveWeather}
+            mayHaveTrendingSearch={mayHaveTrendingSearch}
             spocMessageVariant={spocMessageVariant}
             showing={customizeMenuVisible}
           />
@@ -793,8 +757,7 @@ export class BaseContent extends React.PureComponent {
                   dispatch={this.props.dispatch}
                 >
                   <DownloadMobilePromoHighlight
-                    // Var B layout has the weather right-aligned
-                    position={`${layoutsVariantBEnabled ? "inset-inline-start" : "inset-inline-end"} inset-block-end`}
+                    position={`inset-inline-start inset-block-end`}
                     dispatch={this.props.dispatch}
                   />
                 </MessageWrapper>
@@ -820,9 +783,7 @@ export class BaseContent extends React.PureComponent {
               </div>
             )}
             {/* Bug 1914055: Show logo regardless if search is enabled */}
-            {!prefs.showSearch && layoutsVariantAorB && !noSectionsEnabled && (
-              <Logo />
-            )}
+            {!prefs.showSearch && !noSectionsEnabled && <Logo />}
             <div className={`body-wrapper${initialized ? " on" : ""}`}>
               {isDiscoveryStream ? (
                 <ErrorBoundary className="borderless-error">

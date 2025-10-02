@@ -178,9 +178,6 @@ with Files("InputEvent.webidl"):
 with Files("InstallTrigger.webidl"):
     BUG_COMPONENT = ("Toolkit", "Add-ons Manager")
 
-with Files("InvokerElement.webidl"):
-    BUG_COMPONENT = ("Core", "DOM: Core & HTML")
-
 with Files("KeyAlgorithm.webidl"):
     BUG_COMPONENT = ("Core", "DOM: Security")
 
@@ -477,6 +474,7 @@ WEBIDL_FILES = [
     "Clipboard.webidl",
     "ClipboardEvent.webidl",
     "CloseWatcher.webidl",
+    "CommandEvent.webidl",
     "Comment.webidl",
     "CompositionEvent.webidl",
     "CompressionStream.webidl",
@@ -712,8 +710,6 @@ WEBIDL_FILES = [
     "InputEvent.webidl",
     "IntersectionObserver.webidl",
     "IntlUtils.webidl",
-    "InvokeEvent.webidl",
-    "InvokerElement.webidl",
     "IterableIterator.webidl",
     "KeyAlgorithm.webidl",
     "KeyboardEvent.webidl",
@@ -798,6 +794,7 @@ WEBIDL_FILES = [
     "OfflineAudioContext.webidl",
     "OffscreenCanvas.webidl",
     "OffscreenCanvasRenderingContext2D.webidl",
+    "ONNX.webidl",
     "OscillatorNode.webidl",
     "PaintRequest.webidl",
     "PaintRequestList.webidl",

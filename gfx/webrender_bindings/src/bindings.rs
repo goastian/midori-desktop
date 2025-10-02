@@ -1328,8 +1328,18 @@ extern "C" {
     fn wr_compositor_get_capabilities(compositor: *mut c_void, caps: *mut CompositorCapabilities);
     fn wr_compositor_get_window_visibility(compositor: *mut c_void, caps: *mut WindowVisibility);
     fn wr_compositor_get_window_properties(compositor: *mut c_void, props: *mut WindowProperties);
-    fn wr_compositor_bind_swapchain(compositor: *mut c_void, id: NativeSurfaceId);
-    fn wr_compositor_present_swapchain(compositor: *mut c_void, id: NativeSurfaceId);
+    fn wr_compositor_bind_swapchain(
+        compositor: *mut c_void,
+        id: NativeSurfaceId,
+        dirty_rects: *const DeviceIntRect,
+        num_dirty_rects: usize,
+    );
+    fn wr_compositor_present_swapchain(
+        compositor: *mut c_void,
+        id: NativeSurfaceId,
+        dirty_rects: *const DeviceIntRect,
+        num_dirty_rects: usize,
+    );
     fn wr_compositor_map_tile(
         compositor: *mut c_void,
         id: NativeTileId,
@@ -1540,11 +1550,60 @@ impl WrLayerCompositor {
             enable_screenshot: true,
         }
     }
+
+    fn reuse_same_tree(
+        &mut self,
+        input: &CompositorInputConfig,
+        ) -> bool {
+            if input.layers.len() != self.visual_tree.len() {
+                return false;
+        }
+
+        for (request, layer) in input.layers.iter().zip(self.visual_tree.iter()) {
+            if layer.is_opaque != request.is_opaque || !layer.usage.matches(&request.usage) {
+                return false;
+            }
+
+            match layer.usage {
+                CompositorSurfaceUsage::Content => {
+                    if layer.size != request.clip_rect.size() {
+                        return false;
+                    }
+                }
+                CompositorSurfaceUsage::External { .. } => {},
+                CompositorSurfaceUsage::DebugOverlay => {},
+            };
+        }
+
+        for (request, layer) in input.layers.iter().zip(self.visual_tree.iter_mut()) {
+            layer.frames_since_used = 0;
+
+            // Copy across (potentially) updated external image id
+            layer.usage = request.usage;
+            match layer.usage {
+                CompositorSurfaceUsage::Content | CompositorSurfaceUsage::DebugOverlay => {}
+                CompositorSurfaceUsage::External { external_image_id, .. } => {
+                    unsafe {
+                        wr_compositor_attach_external_image(
+                            self.compositor,
+                            layer.id,
+                            external_image_id,
+                        );
+                    }
+                }
+            }
+        }
+
+        true
+    }
 }
 
 impl LayerCompositor for WrLayerCompositor {
     // Begin compositing a frame with the supplied input config
-    fn begin_frame(&mut self, input: &CompositorInputConfig) {
+    fn begin_frame(
+        &mut self,
+        input: &CompositorInputConfig,
+    ) -> bool {
         if self.enable_screenshot != input.enable_screenshot {
             let mut layers_to_destroy = Vec::new();
             mem::swap(&mut self.surface_pool, &mut layers_to_destroy);
@@ -1559,6 +1618,14 @@ impl LayerCompositor for WrLayerCompositor {
         unsafe {
             wr_compositor_begin_frame(self.compositor);
         }
+
+        let reuse = self.reuse_same_tree(input);
+        if reuse {
+            // Do not request full render.
+            return false;
+        }
+
+        self.surface_pool.append(&mut self.visual_tree);
 
         assert!(self.visual_tree.is_empty());
 
@@ -1626,23 +1693,44 @@ impl LayerCompositor for WrLayerCompositor {
         for layer in &mut self.surface_pool {
             layer.frames_since_used += 1;
         }
+
+        // Request full render.
+        true
     }
 
     // Bind a layer by index for compositing into
-    fn bind_layer(&mut self, index: usize) {
+    fn bind_layer(
+        &mut self,
+        index: usize,
+        dirty_rects: &[DeviceIntRect],
+    ) {
         let layer = &self.visual_tree[index];
 
         unsafe {
-            wr_compositor_bind_swapchain(self.compositor, layer.id);
+            wr_compositor_bind_swapchain(
+                self.compositor,
+                layer.id,
+                dirty_rects.as_ptr(),
+                dirty_rects.len(),
+            );
         }
     }
 
     // Finish compositing a layer and present the swapchain
-    fn present_layer(&mut self, index: usize) {
+    fn present_layer(
+        &mut self,
+        index: usize,
+        dirty_rects: &[DeviceIntRect],
+    ) {
         let layer = &self.visual_tree[index];
 
         unsafe {
-            wr_compositor_present_swapchain(self.compositor, layer.id);
+            wr_compositor_present_swapchain(
+                self.compositor,
+                layer.id,
+                dirty_rects.as_ptr(),
+                dirty_rects.len(),
+            );
         }
     }
 
@@ -1692,8 +1780,6 @@ impl LayerCompositor for WrLayerCompositor {
                 wr_compositor_destroy_surface(self.compositor, layer_id);
             }
         }
-
-        self.surface_pool.append(&mut self.visual_tree);
     }
 
     fn get_window_properties(&self) -> WindowProperties {
@@ -2268,6 +2354,11 @@ pub extern "C" fn wr_transaction_generate_frame(txn: &mut Transaction, id: u64, 
 #[no_mangle]
 pub extern "C" fn wr_transaction_invalidate_rendered_frame(txn: &mut Transaction, reasons: RenderReasons) {
     txn.invalidate_rendered_frame(reasons);
+}
+
+#[no_mangle]
+pub extern "C" fn wr_transaction_render_offscreen(txn: &mut Transaction, pipeline_id: WrPipelineId) {
+    txn.render_offscreen(pipeline_id);
 }
 
 fn wr_animation_properties_into_vec<T>(

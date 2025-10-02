@@ -27,16 +27,52 @@ const cleanupInfobars = () => {
   InfoBar._activeInfobar = null;
 };
 
+const makeFakeWin = ({
+  closed = false,
+  toolbarVisible = true,
+  taskbarTab = false,
+  readyState = "complete",
+  selectedBrowser,
+} = {}) => {
+  const win = {
+    closed,
+    toolbar: { visible: toolbarVisible },
+    document: {
+      readyState,
+      documentElement: {
+        hasAttribute: name => (name === "taskbartab" ? taskbarTab : false),
+      },
+    },
+    gBrowser: { selectedBrowser },
+  };
+
+  const browser = { ownerGlobal: win, id: selectedBrowser };
+  win.gBrowser = { selectedBrowser: browser };
+  return win;
+};
+
+add_setup(async function () {
+  const sandbox = sinon.createSandbox();
+  sandbox
+    .stub(PrivateBrowsingUtils, "isWindowPrivate")
+    .callsFake(win => !!win?.isPrivate);
+
+  registerCleanupFunction(() => {
+    sandbox.restore();
+  });
+});
+
 add_task(async function showNotificationAllWindows() {
-  let fakeNotification = { showNotification: sinon.stub().resolves() };
+  const sandbox = sinon.createSandbox();
+  let fakeNotification = { showNotification: sandbox.stub().resolves() };
   let fakeWins = [
-    { gBrowser: { selectedBrowser: "win1" } },
-    { gBrowser: { selectedBrowser: "win2" } },
-    { gBrowser: { selectedBrowser: "win3" } },
+    makeFakeWin({ selectedBrowser: "win1" }),
+    makeFakeWin({ selectedBrowser: "win2" }),
+    makeFakeWin({ selectedBrowser: "win3" }),
   ];
 
-  sinon.stub(InfoBar, "maybeLoadCustomElement");
-  sinon.stub(InfoBar, "maybeInsertFTL");
+  sandbox.stub(InfoBar, "maybeLoadCustomElement");
+  sandbox.stub(InfoBar, "maybeInsertFTL");
 
   let origWinManager = Services.wm;
   // Using sinon.stub won’t work here, because Services.wm is a frozen,
@@ -51,13 +87,13 @@ add_task(async function showNotificationAllWindows() {
   await InfoBar.showNotificationAllWindows(fakeNotification);
 
   Assert.equal(fakeNotification.showNotification.callCount, 3);
-  Assert.ok(fakeNotification.showNotification.calledWith("win1"));
-  Assert.ok(fakeNotification.showNotification.calledWith("win2"));
-  Assert.ok(fakeNotification.showNotification.calledWith("win3"));
+  Assert.equal(fakeNotification.showNotification.getCall(0).args[0].id, "win1");
+  Assert.equal(fakeNotification.showNotification.getCall(1).args[0].id, "win2");
+  Assert.equal(fakeNotification.showNotification.getCall(2).args[0].id, "win3");
 
   // Cleanup
   cleanupInfobars();
-  sinon.restore();
+  sandbox.restore();
   Object.defineProperty(Services, "wm", {
     value: origWinManager,
     configurable: true,
@@ -66,14 +102,15 @@ add_task(async function showNotificationAllWindows() {
 });
 
 add_task(async function removeUniversalInfobars() {
+  const sandbox = sinon.createSandbox();
   let browser = BrowserWindowTracker.getTopWindow().gBrowser.selectedBrowser;
   let origBox = browser.ownerGlobal.gNotificationBox;
   browser.ownerGlobal.gNotificationBox = {
-    appendNotification: sinon.stub().resolves({}),
-    removeNotification: sinon.stub(),
+    appendNotification: sandbox.stub().resolves({}),
+    removeNotification: sandbox.stub(),
   };
 
-  sinon
+  sandbox
     .stub(InfoBar, "showNotificationAllWindows")
     .callsFake(async notification => {
       await notification.showNotification(browser);
@@ -82,7 +119,7 @@ add_task(async function removeUniversalInfobars() {
   let notification = await InfoBar.showInfoBarMessage(
     browser,
     UNIVERSAL_MESSAGE,
-    sinon.stub()
+    sandbox.stub()
   );
 
   Assert.equal(InfoBar._universalInfobars.length, 1);
@@ -99,25 +136,26 @@ add_task(async function removeUniversalInfobars() {
   // Cleanup
   cleanupInfobars();
   browser.ownerGlobal.gNotificationBox = origBox;
-  sinon.restore();
+  sandbox.restore();
 });
 
 add_task(async function initialUniversal_showsAllWindows_andSendsTelemetry() {
+  const sandbox = sinon.createSandbox();
   let browser = BrowserWindowTracker.getTopWindow().gBrowser.selectedBrowser;
   let origBox = browser.ownerGlobal.gNotificationBox;
   browser.ownerGlobal.gNotificationBox = {
-    appendNotification: sinon.stub().resolves({}),
-    removeNotification: sinon.stub(),
+    appendNotification: sandbox.stub().resolves({}),
+    removeNotification: sandbox.stub(),
   };
 
-  let showAll = sinon
+  let showAll = sandbox
     .stub(InfoBar, "showNotificationAllWindows")
     .callsFake(async notification => {
       await notification.showNotification(browser);
     });
 
-  let dispatch1 = sinon.stub();
-  let dispatch2 = sinon.stub();
+  let dispatch1 = sandbox.stub();
+  let dispatch2 = sandbox.stub();
 
   await InfoBar.showInfoBarMessage(browser, UNIVERSAL_MESSAGE, dispatch1);
   await InfoBar.showInfoBarMessage(browser, UNIVERSAL_MESSAGE, dispatch2, true);
@@ -135,25 +173,22 @@ add_task(async function initialUniversal_showsAllWindows_andSendsTelemetry() {
   // Cleanup
   cleanupInfobars();
   browser.ownerGlobal.gNotificationBox = origBox;
-  sinon.restore();
-  Services.obs.removeObserver(InfoBar, "domwindowopened");
+  sandbox.restore();
 });
 
 add_task(async function observe_domwindowopened_withLoadEvent() {
-  let stub = sinon.stub(InfoBar, "showInfoBarMessage").resolves();
+  const sandbox = sinon.createSandbox();
+  let stub = sandbox.stub(InfoBar, "showInfoBarMessage").resolves();
 
   InfoBar._activeInfobar = {
     message: { content: { type: "universal" } },
-    dispatch: sinon.stub(),
+    dispatch: sandbox.stub(),
   };
 
-  let subject = {
-    document: { readyState: "loading" },
-    gBrowser: { selectedBrowser: "b" },
-    addEventListener(event, cb) {
-      subject.document.readyState = "complete";
-      cb();
-    },
+  let subject = makeFakeWin({ readyState: "loading", selectedBrowser: "b" });
+  subject.addEventListener = function (event, cb) {
+    subject.document.readyState = "complete";
+    cb();
   };
 
   InfoBar.observe(subject, "domwindowopened");
@@ -164,15 +199,16 @@ add_task(async function observe_domwindowopened_withLoadEvent() {
 
   // Cleanup
   cleanupInfobars();
-  sinon.restore();
+  sandbox.restore();
 });
 
 add_task(async function observe_domwindowopened() {
-  let stub = sinon.stub(InfoBar, "showInfoBarMessage").resolves();
+  const sandbox = sinon.createSandbox();
+  let stub = sandbox.stub(InfoBar, "showInfoBarMessage").resolves();
 
   InfoBar._activeInfobar = {
     message: { content: { type: "universal" } },
-    dispatch: sinon.stub(),
+    dispatch: sandbox.stub(),
   };
 
   let win = BrowserWindowTracker.getTopWindow();
@@ -183,28 +219,30 @@ add_task(async function observe_domwindowopened() {
 
   // Cleanup
   cleanupInfobars();
-  sinon.restore();
+  sandbox.restore();
 });
 
 add_task(async function observe_skips_nonUniversal() {
-  let stub = sinon.stub(InfoBar, "showInfoBarMessage").resolves();
+  const sandbox = sinon.createSandbox();
+  let stub = sandbox.stub(InfoBar, "showInfoBarMessage").resolves();
   InfoBar._activeInfobar = {
     message: { content: { type: "global" } },
-    dispatch: sinon.stub(),
+    dispatch: sandbox.stub(),
   };
   InfoBar.observe({}, "domwindowopened");
   Assert.ok(stub.notCalled);
 
   // Cleanup
   cleanupInfobars();
-  stub.restore();
+  sandbox.restore();
 });
 
 add_task(async function infobarCallback_dismissed_universal() {
+  const sandbox = sinon.createSandbox();
   const browser = BrowserWindowTracker.getTopWindow().gBrowser.selectedBrowser;
-  const dispatch = sinon.stub();
+  const dispatch = sandbox.stub();
 
-  sinon
+  sandbox
     .stub(InfoBar, "showNotificationAllWindows")
     .callsFake(async notif => await notif.showNotification(browser));
 
@@ -224,7 +262,7 @@ add_task(async function infobarCallback_dismissed_universal() {
 
   // Cleanup
   cleanupInfobars();
-  sinon.restore();
+  sandbox.restore();
 });
 
 add_task(async function removeObserver_on_removeUniversalInfobars() {
@@ -261,6 +299,87 @@ add_task(async function removeObserver_on_removeUniversalInfobars() {
 
   // Cleanup
   Services.obs = origObs;
-  sandbox.restore();
   cleanupInfobars();
+  sandbox.restore();
+});
+
+add_task(async function universalInfobar_persists_original_window_closure() {
+  const sandbox = sinon.createSandbox();
+  // Fake window so we can safely close it
+  let fakeWindow = makeFakeWin({ selectedBrowser: "win1" });
+
+  InfoBar._activeInfobar = {
+    message: UNIVERSAL_MESSAGE,
+    dispatch: sandbox.stub(),
+  };
+  InfoBar._universalInfobars = [
+    { box: { ownerGlobal: fakeWindow }, notification: {} },
+  ];
+
+  Assert.ok(InfoBar._activeInfobar, "Got a universal infobar");
+
+  // Mock closing the original window
+  fakeWindow.closed = true;
+
+  Assert.ok(
+    InfoBar._activeInfobar,
+    "_activeInfobar should persist through window closure"
+  );
+
+  let fakeNewWindow = makeFakeWin({ selectedBrowser: "win2" });
+
+  makeFakeWin({ selectedBrowser: "win2" });
+
+  let showInfobarStub = sandbox.stub(InfoBar, "showInfoBarMessage").resolves();
+  InfoBar.observe(fakeNewWindow, "domwindowopened");
+  Assert.ok(
+    showInfobarStub.calledOnce,
+    "New window should receive the universal infobar"
+  );
+
+  // Cleanup
+  cleanupInfobars();
+  sandbox.restore();
+});
+
+add_task(async function test_universalInfobar_skips_popup_window() {
+  const sandbox = sinon.createSandbox();
+  const popupWin = makeFakeWin({
+    toolbarVisible: false, // Simulate a popup window
+    selectedBrowser: "popup-win",
+  });
+
+  const dispatch = sandbox.stub();
+  const infobar = await InfoBar.showInfoBarMessage(
+    popupWin.gBrowser.selectedBrowser,
+    UNIVERSAL_MESSAGE,
+    dispatch
+  );
+
+  Assert.equal(infobar, null, "Infobar not shown in popup window");
+  Assert.equal(dispatch.callCount, 0, "No impression sent");
+
+  // Cleanup
+  cleanupInfobars();
+  sandbox.restore();
+});
+
+add_task(async function test_universalInfobar_skips_taskbar_window() {
+  const sandbox = sinon.createSandbox();
+  const win = BrowserWindowTracker.getTopWindow();
+  win.document.documentElement.setAttribute("taskbartab", "");
+
+  const dispatch = sandbox.stub();
+  const infobar = await InfoBar.showInfoBarMessage(
+    win.gBrowser.selectedBrowser,
+    UNIVERSAL_MESSAGE,
+    dispatch
+  );
+
+  Assert.equal(infobar, null, "Infobar not visible for taskbar-tab window");
+  Assert.equal(dispatch.callCount, 0, "No impression sent");
+
+  win.document.documentElement.removeAttribute("taskbartab");
+  cleanupInfobars();
+  sandbox.restore();
 });

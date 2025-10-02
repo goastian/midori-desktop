@@ -11,6 +11,7 @@
 #include "RenderPipeline.h"
 #include "Utility.h"
 #include "mozilla/webgpu/ffi/wgpu.h"
+#include "ipc/WebGPUChild.h"
 
 namespace mozilla::webgpu {
 
@@ -162,20 +163,11 @@ ffi::WGPURecordedRenderPass* BeginRenderPass(
     desc.depth_stencil_attachment = &dsDesc;
   }
 
-  if (aDesc.mColorAttachments.Length() > WGPUMAX_COLOR_ATTACHMENTS) {
-    aParent->GetDevice()->GenerateValidationError(nsLiteralCString(
-        "Too many color attachments in GPURenderPassDescriptor"));
-    return nullptr;
-  }
+  AutoTArray<ffi::WGPUFfiRenderPassColorAttachment, WGPUMAX_COLOR_ATTACHMENTS>
+      colorDescs;
 
-  std::array<ffi::WGPUFfiRenderPassColorAttachment, WGPUMAX_COLOR_ATTACHMENTS>
-      colorDescs = {};
-  desc.color_attachments = colorDescs.data();
-  desc.color_attachments_length = aDesc.mColorAttachments.Length();
-
-  for (size_t i = 0; i < aDesc.mColorAttachments.Length(); ++i) {
-    const auto& ca = aDesc.mColorAttachments[i];
-    ffi::WGPUFfiRenderPassColorAttachment& cd = colorDescs[i];
+  for (const auto& ca : aDesc.mColorAttachments) {
+    ffi::WGPUFfiRenderPassColorAttachment cd = {};
     cd.view = ca.mView->mId;
     cd.store_op = ConvertStoreOp(ca.mStoreOp);
 
@@ -202,7 +194,11 @@ ffi::WGPURecordedRenderPass* BeginRenderPass(
         }
         break;
     }
+    colorDescs.AppendElement(cd);
   }
+
+  desc.color_attachments = colorDescs.Elements();
+  desc.color_attachments_length = colorDescs.Length();
 
   if (aDesc.mOcclusionQuerySet.WasPassed()) {
     desc.occlusion_query_set = aDesc.mOcclusionQuerySet.Value().mId;
@@ -254,6 +250,7 @@ void RenderPassEncoder::SetBindGroup(uint32_t aSlot,
   RawId bindGroup = 0;
   if (aBindGroup) {
     mUsedBindGroups.AppendElement(aBindGroup);
+    mUsedCanvasContexts.AppendElements(aBindGroup->GetCanvasContexts());
     bindGroup = aBindGroup->mId;
   }
   ffi::wgpu_recorded_render_pass_set_bind_group(
@@ -352,6 +349,7 @@ void RenderPassEncoder::DrawIndirect(const Buffer& aIndirectBuffer,
   if (!mValid) {
     return;
   }
+  mUsedBuffers.AppendElement(&aIndirectBuffer);
   ffi::wgpu_recorded_render_pass_draw_indirect(mPass.get(), aIndirectBuffer.mId,
                                                aIndirectOffset);
 }
@@ -361,6 +359,7 @@ void RenderPassEncoder::DrawIndexedIndirect(const Buffer& aIndirectBuffer,
   if (!mValid) {
     return;
   }
+  mUsedBuffers.AppendElement(&aIndirectBuffer);
   ffi::wgpu_recorded_render_pass_draw_indexed_indirect(
       mPass.get(), aIndirectBuffer.mId, aIndirectOffset);
 }
@@ -422,6 +421,7 @@ void RenderPassEncoder::ExecuteBundles(
   nsTArray<ffi::WGPURenderBundleId> renderBundles(aBundles.Length());
   for (const auto& bundle : aBundles) {
     mUsedRenderBundles.AppendElement(bundle);
+    mUsedCanvasContexts.AppendElements(bundle->GetCanvasContexts());
     renderBundles.AppendElement(bundle->mId);
   }
   ffi::wgpu_recorded_render_pass_execute_bundles(
@@ -451,11 +451,17 @@ void RenderPassEncoder::InsertDebugMarker(const nsAString& aString) {
 }
 
 void RenderPassEncoder::End() {
+  if (mParent->GetState() != CommandEncoderState::Locked &&
+      mParent->GetBridge()->CanSend()) {
+    mParent->GetBridge()->SendReportError(mParent->GetDevice()->mId,
+                                          dom::GPUErrorFilter::Validation,
+                                          "Encoding must not have ended"_ns);
+  }
   if (!mValid) {
     return;
   }
   MOZ_ASSERT(!!mPass);
-  mParent->EndRenderPass(*mPass);
+  mParent->EndRenderPass(*mPass, mUsedCanvasContexts);
   Cleanup();
 }
 

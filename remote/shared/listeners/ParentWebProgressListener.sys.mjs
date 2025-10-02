@@ -12,6 +12,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Log: "chrome://remote/content/shared/Log.sys.mjs",
   notifyFragmentNavigated:
     "chrome://remote/content/shared/NavigationManager.sys.mjs",
+  notifyHistoryUpdated:
+    "chrome://remote/content/shared/NavigationManager.sys.mjs",
   notifySameDocumentChanged:
     "chrome://remote/content/shared/NavigationManager.sys.mjs",
   notifyNavigationFailed:
@@ -34,8 +36,8 @@ ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
  * navigations for the NavigationManager entirely from the parent process.
  *
  * The NavigationManager will either use the WebProgressListener JSWindow actors
- * or this listener, depending on the value of the hidden preference
- * remote.experimental-parent-navigation.enabled.
+ * or this listener, depending on the value of the preference
+ * remote.parent-navigation.enabled.
  *
  * This listener does not implement the same interface as our other listeners
  * and is designed to be instantiated only once from the NavigationRegistry
@@ -87,6 +89,25 @@ export class ParentWebProgressListener {
         contextDetails: { context },
         url: location.spec,
       };
+
+      if (
+        // history.pushState / replaceState / document.open
+        progress.loadType & Ci.nsIDocShell.LOAD_CMD_PUSHSTATE ||
+        // history.go / back / forward to an entry created by pushState / replaceState
+        (progress.loadType & Ci.nsIDocShell.LOAD_CMD_HISTORY &&
+          // Bug 1969943: We need to only select history traversals which are not
+          // fragment navigations. However we don't have a flag dedicated to
+          // such traversals, they are identical to same document + same hash
+          // navigations.
+          flags === Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)
+      ) {
+        this.#trace(
+          lazy.truncate`Location=historyUpdated: ${location.spec}`,
+          context.id
+        );
+        lazy.notifyHistoryUpdated(payload);
+        return;
+      }
 
       if (location.hasRef) {
         // If the target URL contains a hash, handle the navigation as a
@@ -197,10 +218,7 @@ export class ParentWebProgressListener {
     this.#contextListener.stopListening();
     for (const webProgress of this.#monitoredWebProgress.keys()) {
       try {
-        webProgress.removeProgressListener(
-          this.#listener,
-          Ci.nsIWebProgress.NOTIFY_STATE_ALL
-        );
+        webProgress.removeProgressListener(this.#listener);
       } catch (e) {
         this.#trace(`Failed to remove the progress listener`);
       }
@@ -277,7 +295,8 @@ export class ParentWebProgressListener {
       this.#monitoredWebProgress.set(webProgress, new Set());
       webProgress.addProgressListener(
         this.#listener,
-        Ci.nsIWebProgress.NOTIFY_ALL
+        Ci.nsIWebProgress.NOTIFY_STATE_WINDOW |
+          Ci.nsIWebProgress.NOTIFY_LOCATION
       );
     }
 
@@ -321,10 +340,7 @@ export class ParentWebProgressListener {
         browsingContext.id
       );
       try {
-        webProgress.removeProgressListener(
-          this.#listener,
-          Ci.nsIWebProgress.NOTIFY_STATE_ALL
-        );
+        webProgress.removeProgressListener(this.#listener);
       } catch (e) {
         this.#trace(
           `Failed to remove the progress listener`,

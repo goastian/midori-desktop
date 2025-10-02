@@ -12,7 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FirefoxBridgeExtensionUtils:
     "resource:///modules/FirefoxBridgeExtensionUtils.sys.mjs",
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
-  PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
+  PlacesUIUtils: "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UsageReporting: "resource://gre/modules/UsageReporting.sys.mjs",
 });
@@ -894,6 +894,19 @@ export let ProfileDataUpgrader = {
         "style",
       ]) {
         Services.xulStore.removeValue(BROWSER_DOCURL, "sidebar-box", attr);
+      }
+    }
+
+    if (existingDataVersion < 156) {
+      const customBlockListEnabled = Services.prefs.getBoolPref(
+        "browser.contentblocking.customBlockList.preferences.ui.enabled",
+        false
+      );
+      if (customBlockListEnabled) {
+        Services.prefs.clearUserPref(
+          "browser.contentblocking.customBlockList.preferences.ui.enabled"
+        );
+        Services.prefs.clearUserPref("urlclassifier.trackingTable");
       }
     }
 

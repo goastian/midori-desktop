@@ -23,6 +23,7 @@
 #include "mozilla/dom/NumericInputTypes.h"
 #include "mozilla/dom/WindowContext.h"
 #include "mozilla/dom/InputType.h"
+#include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/UserActivation.h"
 #include "mozilla/dom/MouseEvent.h"
 #include "mozilla/dom/MutationEventBinding.h"
@@ -1934,10 +1935,8 @@ void HTMLInputElement::SetValueAsDate(JSContext* aCx,
 
 void HTMLInputElement::SetValueAsNumber(double aValueAsNumber,
                                         ErrorResult& aRv) {
-  // TODO: return TypeError when HTMLInputElement is converted to WebIDL, see
-  // bug 825197.
   if (std::isinf(aValueAsNumber)) {
-    aRv.Throw(NS_ERROR_INVALID_ARG);
+    aRv.ThrowTypeError("Value being assigned is infinite.");
     return;
   }
 
@@ -3285,6 +3284,11 @@ void HTMLInputElement::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
         StopNumberControlSpinnerSpin();
       }
     }
+
+    if (StaticPrefs::dom_input_number_and_range_modified_by_mousewheel() &&
+        aVisitor.mEvent->mMessage == eWheel) {
+      aVisitor.mMaybeUncancelable = false;
+    }
   }
 
   nsGenericHTMLFormControlElementWithState::GetEventTargetParent(aVisitor);
@@ -3839,6 +3843,18 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
             EventStateManager::SetActiveManager(
                 aVisitor.mPresContext->EventStateManager(), this);
           }
+
+          if (keyEvent->mKeyCode == NS_VK_ESCAPE && keyEvent->IsTrusted() &&
+              !keyEvent->DefaultPrevented() && !keyEvent->mIsComposing &&
+              mType == FormControlType::InputSearch &&
+              StaticPrefs::dom_forms_search_esc() && !IsDisabledOrReadOnly() &&
+              !IsValueEmpty()) {
+            // WebKit and Blink both also do this on keydown, see:
+            //   https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/core/html/forms/search_input_type.cc;l=82;drc=04f1f437aaefbd3bb4e0cdb5911c1ea1e3eb3557;bpv=1;bpt=1
+            //   https://searchfox.org/wubkat/rev/717f9adc97dd16bf639d27addbe0faf420f7dfce/Source/WebCore/html/SearchInputType.cpp#145
+            SetUserInput(EmptyString(), *NodePrincipal());
+            aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
+          }
           break;
         }
 
@@ -4188,11 +4204,7 @@ void HTMLInputElement::ActivationBehavior(EventChainPostVisitor& aVisitor) {
       break;
   }  // switch
   if (IsButtonControl()) {
-    if (!GetInvokeTargetElement()) {
-      HandlePopoverTargetAction();
-    } else {
-      HandleInvokeTargetAction();
-    }
+    HandlePopoverTargetAction();
   }
 
   EndSubmitClick(aVisitor);

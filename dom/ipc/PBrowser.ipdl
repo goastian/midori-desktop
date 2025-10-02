@@ -466,14 +466,14 @@ parent:
                                    uint32_t aModifierFlags,
                                    nsString aCharacters,
                                    nsString aUnmodifiedCharacters,
-                                   uint64_t aObserverId);
+                                   uint64_t? aCallbackId);
     async SynthesizeNativeMouseEvent(LayoutDeviceIntPoint aPoint,
                                      uint32_t aNativeMessage,
                                      int16_t aButton,
                                      uint32_t aModifierFlags,
-                                     uint64_t aObserverId);
+                                     uint64_t? aCallbackId);
     async SynthesizeNativeMouseMove(LayoutDeviceIntPoint aPoint,
-                                    uint64_t aObserverId);
+                                    uint64_t? aCallbackId);
     async SynthesizeNativeMouseScrollEvent(LayoutDeviceIntPoint aPoint,
                                            uint32_t aNativeMessage,
                                            double aDeltaX,
@@ -481,21 +481,20 @@ parent:
                                            double aDeltaZ,
                                            uint32_t aModifierFlags,
                                            uint32_t aAdditionalFlags,
-                                           uint64_t aObserverId);
+                                           uint64_t? aCallbackId);
     async SynthesizeNativeTouchPoint(uint32_t aPointerId,
                                      TouchPointerState aPointerState,
                                      LayoutDeviceIntPoint aPoint,
                                      double aPointerPressure,
                                      uint32_t aPointerOrientation,
-                                     uint64_t aObserverId);
+                                     uint64_t? aCallbackId);
     async SynthesizeNativeTouchPadPinch(TouchpadGesturePhase aEventPhase,
                                         float aScale,
                                         LayoutDeviceIntPoint aPoint,
                                         int32_t aModifierFlags);
     async SynthesizeNativeTouchTap(LayoutDeviceIntPoint aPoint,
                                    bool aLongTap,
-                                   uint64_t aObserverId);
-    async ClearNativeTouchSequence(uint64_t aObserverId);
+                                   uint64_t? aCallbackId);
     async SynthesizeNativePenInput(uint32_t aPointerId,
                                    TouchPointerState aPointerState,
                                    LayoutDeviceIntPoint aPoint,
@@ -504,14 +503,14 @@ parent:
                                    int32_t aTiltX,
                                    int32_t aTiltY,
                                    int32_t aButton,
-                                   uint64_t aObserverId);
+                                   uint64_t? aCallbackId);
     async SynthesizeNativeTouchpadDoubleTap(LayoutDeviceIntPoint aPoint,
                                             uint32_t aModifierFlags);
     async SynthesizeNativeTouchpadPan(TouchpadGesturePhase aEventPhase,
                                       LayoutDeviceIntPoint aPoint,
                                       double aDeltaX, double aDeltaY,
                                       int32_t aModifierFlags,
-                                      uint64_t aObserverId);
+                                      uint64_t? aCallbackId);
 
     async LockNativePointer();
     async UnlockNativePointer();
@@ -533,14 +532,13 @@ parent:
                            bool aCanGoForward,
                            WebProgressLocationChangeData? aLocationChangeData);
 
-    // We only track information about total progress in the parent process.
-    // This value is throttled using nsBrowserStatusFilter, and records the full
-    // total progress for nsDocShells managed by this actor.
+    // NOTE: ProgressChange and StatusChange notifications here are throttled by
+    // nsBrowserStatusFilter, which passes meaningless values for all other
+    // arguments.
+    //
+    // This throttling is required to avoid sending every status and progress
+    // notification, which can lead to performance issues (bug 1970073).
     async OnProgressChange(int32_t aCurTotalProgress, int32_t aMaxTotalProgress);
-
-    // Calls to OnStatusChange are throttled by nsBrowserStatusFilter, meaning
-    // they are only called with a status of `NS_OK`, and with no webProgress or
-    // request.
     async OnStatusChange(nsString aMessage);
 
     async NotifyContentBlockingEvent(uint32_t aEvent, RequestData aRequestData,
@@ -575,7 +573,6 @@ both:
     async ReleasePointerLock();
 
 child:
-    async NativeSynthesisResponse(uint64_t aObserverId, nsCString aResponse);
     async UpdateSHistory();
     async CloneDocumentTreeIntoSelf(MaybeDiscardedBrowsingContext aBc, PrintData aPrintData) returns(bool aSuccess);
     async UpdateRemotePrintSettings(PrintData aPrintData);
@@ -848,6 +845,10 @@ child:
                         uint32_t aDropEffect, nullable nsIPrincipal aPrincipal,
                         nullable nsIContentSecurityPolicy csp);
 
+both:
+    async SynthesizedEventResponse(uint64_t aCallbackId);
+
+child:
     [Priority=input] async CompositionEvent(WidgetCompositionEvent event);
     async NormalPriorityCompositionEvent(WidgetCompositionEvent event);
 

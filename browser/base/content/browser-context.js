@@ -57,9 +57,6 @@ document.addEventListener(
         case "context-savelink":
           gContextMenu.saveLink();
           break;
-        case "context-savelinktopocket":
-          Pocket.savePage(gContextMenu.browser, gContextMenu.linkURL);
-          break;
         case "context-copyemail":
           gContextMenu.copyEmail();
           break;
@@ -166,13 +163,6 @@ document.addEventListener(
         case "context-savepage":
           gContextMenu.savePageAs();
           break;
-        case "context-pocket":
-          Pocket.savePage(
-            gContextMenu.browser,
-            gContextMenu.browser.currentURI.spec,
-            gContextMenu.browser.contentTitle
-          );
-          break;
         case "fill-login-generated-password":
           gContextMenu.useGeneratedPassword();
           break;
@@ -274,9 +264,6 @@ document.addEventListener(
           break;
         case "context-printframe":
           gContextMenu.printFrame();
-          break;
-        case "context-take-frame-screenshot":
-          gContextMenu.takeScreenshot();
           break;
         case "context-viewframesource":
           gContextMenu.viewFrameSource();

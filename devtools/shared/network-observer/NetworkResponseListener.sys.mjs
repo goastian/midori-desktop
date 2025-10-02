@@ -118,6 +118,12 @@ export class NetworkResponseListener {
    */
   #sink = null;
   /**
+   * Used to decode the response body.
+   *
+   * @type {nsIScriptableUnicodeConverter}
+   */
+  #uconv = null;
+  /**
    * Indicates if the response had a size greater than response body limit.
    *
    * @type {boolean}
@@ -204,6 +210,26 @@ export class NetworkResponseListener {
     stream.asyncWait(listener, 0, 0, Services.tm.mainThread);
   }
 
+  #convertToUnicode(text, charset) {
+    // We need to keep using the same converter instance to properly decode
+    // the streamed content.
+    if (!this.#uconv) {
+      this.#uconv = Cc[
+        "@mozilla.org/intl/scriptableunicodeconverter"
+      ].createInstance(Ci.nsIScriptableUnicodeConverter);
+      try {
+        this.#uconv.charset = charset;
+      } catch (ex) {
+        this.#uconv.charset = "UTF-8";
+      }
+    }
+    try {
+      return this.#uconv.ConvertToUnicode(text);
+    } catch (ex) {
+      return text;
+    }
+  }
+
   /**
    * Stores the received data, if request/response body logging is enabled. It
    * also does limit the number of stored bytes, based on the
@@ -228,7 +254,7 @@ export class NetworkResponseListener {
         "devtools.netmonitor.responseBodyLimit"
       );
       if (this.#receivedData.length <= limit || limit == 0) {
-        this.#receivedData += lazy.NetworkHelper.convertToUnicode(
+        this.#receivedData += this.#convertToUnicode(
           data,
           request.contentCharset
         );
@@ -259,6 +285,7 @@ export class NetworkResponseListener {
     // We need to track the offset for the onDataAvailable calls where
     // we pass the data from our pipe to the converter.
     this.#offset = 0;
+    this.#uconv = null;
 
     const channel = this.#request;
 
@@ -451,6 +478,7 @@ export class NetworkResponseListener {
     }
 
     if (!this.#httpActivity.discardResponseBody && this.#receivedData.length) {
+      this.#uconv = null;
       this.#onComplete(this.#receivedData);
     } else if (
       !this.#httpActivity.discardResponseBody &&
@@ -576,6 +604,7 @@ export class NetworkResponseListener {
     this.#inputStream = null;
     this.#converter = null;
     this.#request = null;
+    this.#uconv = null;
   }
 
   /**

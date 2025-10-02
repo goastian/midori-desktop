@@ -147,6 +147,9 @@ support-files = ["early_hint_preload_test_helper.sys.mjs",]
 ["browser_NetUtil.js"]
 
 ["browser_about_cache.js"]
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 1970244
+]
 
 ["browser_backgroundtask_purgeHTTPCache.js"]
 
@@ -225,5 +228,11 @@ support-files = [
 ]
 
 ["browser_test_file_channel_observer.js"]
+
+["browser_test_local_network_trackers.js"]
+support-files = [
+  "page_with_trackers.html",
+  "fetch_from_tracker.sjs",
+]
 
 ["browser_test_offline_tab.js"]

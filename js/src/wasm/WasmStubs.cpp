@@ -338,9 +338,9 @@ static void AssertStackAlignment(MacroAssembler& masm, uint32_t alignment,
   masm.assertStackAlignment(alignment, addBeforeAssert);
 }
 
-template <class VectorT, template <class VecT> class ABIArgIterT>
-static unsigned StackArgBytesHelper(const VectorT& args) {
-  ABIArgIterT<VectorT> iter(args);
+template <class VectorT>
+static unsigned StackArgBytesHelper(const VectorT& args, ABIKind kind) {
+  ABIArgIter<VectorT> iter(args, kind);
   while (!iter.done()) {
     iter++;
   }
@@ -349,12 +349,12 @@ static unsigned StackArgBytesHelper(const VectorT& args) {
 
 template <class VectorT>
 static unsigned StackArgBytesForNativeABI(const VectorT& args) {
-  return StackArgBytesHelper<VectorT, ABIArgIter>(args);
+  return StackArgBytesHelper<VectorT>(args, ABIKind::System);
 }
 
 template <class VectorT>
 static unsigned StackArgBytesForWasmABI(const VectorT& args) {
-  return StackArgBytesHelper<VectorT, WasmABIArgIter>(args);
+  return StackArgBytesHelper<VectorT>(args, ABIKind::Wasm);
 }
 
 static unsigned StackArgBytesForWasmABI(const FuncType& funcType) {
@@ -371,7 +371,7 @@ static void SetupABIArguments(MacroAssembler& masm, const FuncExport& fe,
   // SetupABIArguments are only used for C++ -> wasm calls through callExport(),
   // and V128 and Ref types (other than externref) are not currently allowed.
   ArgTypeVector args(funcType);
-  for (WasmABIArgIter iter(args); !iter.done(); iter++) {
+  for (ABIArgIter iter(args, ABIKind::Wasm); !iter.done(); iter++) {
     unsigned argOffset = iter.index() * sizeof(ExportArg);
     Address src(argv, argOffset);
     MIRType type = iter.mirType();
@@ -720,7 +720,7 @@ static bool GenerateInterpEntry(MacroAssembler& masm, const FuncExport& fe,
   // Read the arguments of wasm::ExportFuncPtr according to the native ABI.
   // The entry stub's frame is 1 word.
   const unsigned argBase = sizeof(void*) + nonVolatileRegsPushSize;
-  ABIArgGenerator abi;
+  ABIArgGenerator abi(ABIKind::System);
   ABIArg arg;
 
   // arg 1: ExportArg*
@@ -1134,7 +1134,7 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
 
   // Convert all the expected values to unboxed values on the stack.
   ArgTypeVector args(funcType);
-  for (WasmABIArgIter iter(args); !iter.done(); iter++) {
+  for (ABIArgIter iter(args, ABIKind::Wasm); !iter.done(); iter++) {
     Address argv(FramePointer, JitFrameLayout::offsetOfActualArg(iter.index()));
     bool isStackArg = iter->kind() == ABIArg::Stack;
     switch (iter.mirType()) {
@@ -1231,7 +1231,9 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
   GenPrintf(DebugChannel::Function, masm, "wasm-function[%d]; returns ",
             fe.funcIndex());
 
-  // Pop frame.
+  // Pop frame. We set the stack pointer immediately after calling Wasm code
+  // because the current stack pointer might not match the one before the call
+  // if the callee performed a tail call.
   masm.moveToStackPtr(FramePointer);
   masm.setFramePushed(0);
 
@@ -1301,7 +1303,7 @@ static bool GenerateJitEntry(MacroAssembler& masm, size_t funcExportIndex,
 
     // Baseline and Ion call C++ runtime via BuiltinThunk with wasm abi, so to
     // unify the BuiltinThunk's interface we call it here with wasm abi.
-    jit::WasmABIArgIter<MIRTypeVector> argsIter(coerceArgTypes);
+    jit::ABIArgIter<MIRTypeVector> argsIter(coerceArgTypes, ABIKind::System);
 
     // argument 0: function index.
     if (argsIter->kind() == ABIArg::GPR) {
@@ -1401,7 +1403,7 @@ void wasm::GenerateDirectCallFromJit(MacroAssembler& masm, const FuncExport& fe,
             fe.funcIndex());
 
   ArgTypeVector args(funcType);
-  for (WasmABIArgIter iter(args); !iter.done(); iter++) {
+  for (ABIArgIter iter(args, ABIKind::Wasm); !iter.done(); iter++) {
     MOZ_ASSERT_IF(iter->kind() == ABIArg::GPR, iter->gpr() != scratch);
     MOZ_ASSERT_IF(iter->kind() == ABIArg::GPR, iter->gpr() != FramePointer);
     if (iter->kind() != ABIArg::Stack) {
@@ -1641,16 +1643,15 @@ static void FillArgumentArrayForInterpExit(MacroAssembler& masm,
                                            const FuncType& funcType,
                                            unsigned argOffset,
                                            Register scratch) {
-  // This is `sizeof(FrameWithInstances) - ShadowStackSpace` because the latter
-  // is accounted for by the ABIArgIter.
-  const unsigned offsetFromFPToCallerStackArgs =
-      sizeof(FrameWithInstances) - jit::ShadowStackSpace;
+  // This is `sizeof(Frame)` because the wasm ABIArgIter handles adding the
+  // offsets of the shadow stack area and the instance slots.
+  const unsigned offsetFromFPToCallerStackArgs = sizeof(Frame);
 
   GenPrintf(DebugChannel::Import, masm, "wasm-import[%u]; arguments ",
             funcImportIndex);
 
   ArgTypeVector args(funcType);
-  for (ABIArgIter i(args); !i.done(); i++) {
+  for (ABIArgIter i(args, ABIKind::Wasm); !i.done(); i++) {
     Address dst(masm.getStackPointer(), argOffset + i.index() * sizeof(Value));
 
     MIRType type = i.mirType();
@@ -1738,10 +1739,9 @@ static void FillArgumentArrayForJitExit(MacroAssembler& masm, Register instance,
                                         Register scratch2, Label* throwLabel) {
   MOZ_ASSERT(scratch != scratch2);
 
-  // This is `sizeof(FrameWithInstances) - ShadowStackSpace` because the latter
-  // is accounted for by the ABIArgIter.
-  const unsigned offsetFromFPToCallerStackArgs =
-      sizeof(FrameWithInstances) - jit::ShadowStackSpace;
+  // This is `sizeof(Frame)` because the wasm ABIArgIter handles adding the
+  // offsets of the shadow stack area and the instance slots.
+  const unsigned offsetFromFPToCallerStackArgs = sizeof(Frame);
 
   // This loop does not root the values that are being constructed in
   // for the arguments. Allocations that are generated by code either
@@ -1750,7 +1750,7 @@ static void FillArgumentArrayForJitExit(MacroAssembler& masm, Register instance,
             funcImportIndex);
 
   ArgTypeVector args(funcType);
-  for (ABIArgIter i(args); !i.done(); i++) {
+  for (ABIArgIter i(args, ABIKind::Wasm); !i.done(); i++) {
     Address dst(masm.getStackPointer(), argOffset + i.index() * sizeof(Value));
 
     MIRType type = i.mirType();
@@ -1884,7 +1884,8 @@ static bool AddStackCheckForImportFunctionEntry(jit::MacroAssembler& masm,
   GenerateTrapExitRegisterOffsets(&trapExitLayout, &trapExitLayoutNumWords);
   CodeOffset trapInsnOffset = pair.first;
   size_t nBytesReservedBeforeTrap = pair.second;
-  size_t nInboundStackArgBytes = StackArgAreaSizeUnaligned(argTypes);
+  size_t nInboundStackArgBytes =
+      StackArgAreaSizeUnaligned(argTypes, ABIKind::Wasm);
   wasm::StackMap* stackMap = nullptr;
   if (!CreateStackMapForFunctionEntryTrap(
           argTypes, trapExitLayout, trapExitLayoutNumWords,
@@ -1948,7 +1949,7 @@ static bool GenerateImportFunction(jit::MacroAssembler& masm,
   // fields of FrameWithInstances.
   unsigned offsetFromFPToCallerStackArgs = sizeof(Frame);
   ArgTypeVector args(funcType);
-  for (WasmABIArgIter i(args); !i.done(); i++) {
+  for (ABIArgIter i(args, ABIKind::Wasm); !i.done(); i++) {
     if (i->kind() != ABIArg::Stack) {
       continue;
     }
@@ -2034,7 +2035,7 @@ static bool GenerateImportInterpExit(MacroAssembler& masm, const FuncImport& fi,
                                  scratch);
 
   // Prepare the arguments for the call to Instance::callImport_*.
-  ABIArgMIRTypeIter i(invokeArgTypes);
+  ABIArgMIRTypeIter i(invokeArgTypes, ABIKind::System);
 
   // argument 0: Instance*
   if (i->kind() == ABIArg::GPR) {
@@ -2376,7 +2377,7 @@ static bool GenerateImportJitExit(MacroAssembler& masm,
     SetExitFP(masm, ExitReason::Fixed::ImportJit, scratch);
 
     // argument 0: argv
-    ABIArgMIRTypeIter i(coerceArgTypes);
+    ABIArgMIRTypeIter i(coerceArgTypes, ABIKind::System);
     Address argv(masm.getStackPointer(), offsetToCoerceArgv);
     if (i->kind() == ABIArg::GPR) {
       masm.computeEffectiveAddress(argv, i->gpr());
@@ -2476,9 +2477,16 @@ struct ABIFunctionArgs {
   }
 };
 
-bool wasm::GenerateBuiltinThunk(MacroAssembler& masm, ABIFunctionType abiType,
-                                ExitReason exitReason, void* funcPtr,
-                                CallableOffsets* offsets) {
+bool wasm::GenerateBuiltinThunk(MacroAssembler& masm, ABIKind abiKind,
+                                ABIFunctionType abiType, ExitReason exitReason,
+                                void* funcPtr, CallableOffsets* offsets) {
+  // This is used to generate 'typed natives' (see "JS Fast Wasm Imports") in
+  // WasmBuiltins.cpp, and 'builtin thunks' (see "Process-wide builtin thunk
+  // set") in WasmBuiltins.cpp. Typed natives use the wasm ABI, as they are
+  // directly imported into wasm and act as normal functions. Builtin thunks use
+  // the system ABI and are called from JIT code.
+  MOZ_ASSERT(abiKind == ABIKind::System || abiKind == ABIKind::Wasm);
+
   AssertExpectedSP(masm);
   masm.setFramePushed(0);
 
@@ -2490,22 +2498,37 @@ bool wasm::GenerateBuiltinThunk(MacroAssembler& masm, ABIFunctionType abiType,
 
   GenerateExitPrologue(masm, framePushed, exitReason, offsets);
 
-  // Copy out and convert caller arguments, if needed.
-
-  // This is `sizeof(FrameWithInstances) - ShadowStackSpace` because the latter
-  // is accounted for by the ABIArgIter.
-  unsigned offsetFromFPToCallerStackArgs =
-      sizeof(FrameWithInstances) - jit::ShadowStackSpace;
+  // Copy out and convert caller arguments, if needed. We are translating from
+  // our 'self' ABI which is either 'wasm' or 'system' to a system ABI builtin.
   Register scratch = ABINonArgReturnReg0;
-  for (ABIArgIter i(args); !i.done(); i++) {
-    if (i->argInRegister()) {
+
+  // Use two arg iterators to track the different offsets that arguments must
+  // go.
+  ABIArgIter selfArgs(args, abiKind);
+  ABIArgIter callArgs(args, ABIKind::System);
+
+  // `selfArgs` gives us offsets from 'arg base' which is the SP immediately
+  // before our frame is added. We must add `sizeof(Frame)` now that the
+  // prologue has executed to access our stack args.
+  unsigned offsetFromFPToCallerStackArgs = sizeof(wasm::Frame);
+
+  for (; !selfArgs.done(); selfArgs++, callArgs++) {
+    // This loop doesn't handle all the possible cases of differing ABI's and
+    // relies on the wasm argument ABI being very close to the system ABI.
+    MOZ_ASSERT(!callArgs.done());
+    MOZ_ASSERT(selfArgs->argInRegister() == callArgs->argInRegister());
+    MOZ_ASSERT(selfArgs.mirType() == callArgs.mirType());
+
+    if (selfArgs->argInRegister()) {
 #ifdef JS_CODEGEN_ARM
-      // Non hard-fp passes the args values in GPRs.
-      if (!ARMFlags::UseHardFpABI() && IsFloatingPointType(i.mirType())) {
-        FloatRegister input = i->fpu();
-        if (i.mirType() == MIRType::Float32) {
+      // If our ABI is wasm, we must adapt FP args when using the soft-float
+      // ABI to go into GPRs.
+      if (abiKind == ABIKind::Wasm && !ARMFlags::UseHardFpABI() &&
+          IsFloatingPointType(selfArgs.mirType())) {
+        FloatRegister input = selfArgs->fpu();
+        if (selfArgs.mirType() == MIRType::Float32) {
           masm.ma_vxfer(input, Register::FromCode(input.id()));
-        } else if (i.mirType() == MIRType::Double) {
+        } else if (selfArgs.mirType() == MIRType::Double) {
           uint32_t regId = input.singleOverlay().id();
           masm.ma_vxfer(input, Register::FromCode(regId),
                         Register::FromCode(regId + 1));
@@ -2516,11 +2539,14 @@ bool wasm::GenerateBuiltinThunk(MacroAssembler& masm, ABIFunctionType abiType,
     }
 
     Address src(FramePointer,
-                offsetFromFPToCallerStackArgs + i->offsetFromArgBase());
-    Address dst(masm.getStackPointer(), i->offsetFromArgBase());
-    StackCopy(masm, i.mirType(), scratch, src, dst);
+                offsetFromFPToCallerStackArgs + selfArgs->offsetFromArgBase());
+    Address dst(masm.getStackPointer(), callArgs->offsetFromArgBase());
+    StackCopy(masm, selfArgs.mirType(), scratch, src, dst);
   }
+  // If selfArgs is done, callArgs must be done.
+  MOZ_ASSERT(callArgs.done());
 
+  // Call into the native builtin function
   AssertStackAlignment(masm, ABIStackAlignment);
   MoveSPForJitABI(masm);
   masm.call(ImmPtr(funcPtr, ImmPtr::NoCheckToken()));
@@ -2528,22 +2554,28 @@ bool wasm::GenerateBuiltinThunk(MacroAssembler& masm, ABIFunctionType abiType,
 #if defined(JS_CODEGEN_X64)
   // No widening is required, as the caller will widen.
 #elif defined(JS_CODEGEN_X86)
-  // x86 passes the return value on the x87 FP stack.
-  Operand op(esp, 0);
-  MIRType retType = ToMIRType(ABIType(
-      std::underlying_type_t<ABIFunctionType>(abiType) & ABITypeArgMask));
-  if (retType == MIRType::Float32) {
-    masm.fstp32(op);
-    masm.loadFloat32(op, ReturnFloat32Reg);
-  } else if (retType == MIRType::Double) {
-    masm.fstp(op);
-    masm.loadDouble(op, ReturnDoubleReg);
+  // If our ABI is wasm, we must adapt the system x86 return value from a
+  // to x87 FP stack to a FPR that wasm expects.
+  if (abiKind == ABIKind::Wasm) {
+    // x86 passes the return value on the x87 FP stack.
+    Operand op(esp, 0);
+    MIRType retType = ToMIRType(ABIType(
+        std::underlying_type_t<ABIFunctionType>(abiType) & ABITypeArgMask));
+    if (retType == MIRType::Float32) {
+      masm.fstp32(op);
+      masm.loadFloat32(op, ReturnFloat32Reg);
+    } else if (retType == MIRType::Double) {
+      masm.fstp(op);
+      masm.loadDouble(op, ReturnDoubleReg);
+    }
   }
 #elif defined(JS_CODEGEN_ARM)
-  // Non hard-fp passes the return values in GPRs.
+  // If our ABI is wasm, we must adapt the system soft-fp return value from a
+  // GPR to a FPR.
   MIRType retType = ToMIRType(ABIType(
       std::underlying_type_t<ABIFunctionType>(abiType) & ABITypeArgMask));
-  if (!ARMFlags::UseHardFpABI() && IsFloatingPointType(retType)) {
+  if (abiKind == ABIKind::Wasm && !ARMFlags::UseHardFpABI() &&
+      IsFloatingPointType(retType)) {
     masm.ma_vxfer(r0, r1, d0);
   }
 #endif
@@ -2783,7 +2815,7 @@ static bool GenerateThrowStub(MacroAssembler& masm, Label* throwLabel,
   masm.reserveStack(frameSize);
   masm.assertStackAlignment(ABIStackAlignment);
 
-  ABIArgMIRTypeIter i(handleThrowTypes);
+  ABIArgMIRTypeIter i(handleThrowTypes, ABIKind::System);
   if (i->kind() == ABIArg::GPR) {
     masm.movePtr(scratch1, i->gpr());
   } else {
@@ -2914,7 +2946,7 @@ static bool GenerateRequestTierUpStub(MacroAssembler& masm,
   // Pass InstanceReg as the first (and only) arg to the C++ routine.  We
   // expect that the only target to pass the first integer arg in memory is
   // x86_32, and handle that specially.
-  ABIArgGenerator abi;
+  ABIArgGenerator abi(ABIKind::System);
   ABIArg arg = abi.next(MIRType::Pointer);
 #ifndef JS_CODEGEN_X86
   // The arg rides in a reg.

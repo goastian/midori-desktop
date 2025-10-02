@@ -54,11 +54,13 @@ add_task(async function search_open_tabs() {
     );
 
     info("Clear the search query.");
-    EventUtils.synthesizeMouseAtCenter(
-      openTabs.searchTextbox.clearButton,
-      {},
-      content
+    let inputChildren = SpecialPowers.InspectorUtils.getChildrenForNode(
+      openTabs.searchTextbox.inputEl,
+      true,
+      false
     );
+    let clearButton = inputChildren.find(e => e.localName == "button");
+    EventUtils.synthesizeMouseAtCenter(clearButton, {}, content);
     await TestUtils.waitForCondition(
       () => openTabs.viewCards[0].tabList.rowEls.length === winTabs.length,
       "The original window's list is restored."
@@ -79,27 +81,6 @@ add_task(async function search_open_tabs() {
     await TestUtils.waitForCondition(
       () => openTabs.viewCards[1].tabList.rowEls.length === 1,
       "There is one matching search result in the new window."
-    );
-
-    info("Clear the search query with keyboard.");
-    is(
-      openTabs.shadowRoot.activeElement,
-      openTabs.searchTextbox,
-      "Search input is focused"
-    );
-    EventUtils.synthesizeKey("KEY_Tab", {}, content);
-    ok(
-      openTabs.searchTextbox.clearButton.matches(":focus-visible"),
-      "Clear Search button is focused"
-    );
-    EventUtils.synthesizeKey("KEY_Enter", {}, content);
-    await TestUtils.waitForCondition(
-      () => openTabs.viewCards[0].tabList.rowEls.length === winTabs.length,
-      "The original window's list is restored."
-    );
-    await TestUtils.waitForCondition(
-      () => openTabs.viewCards[1].tabList.rowEls.length === newWinTabs.length,
-      "The new window's list is restored."
     );
   });
 

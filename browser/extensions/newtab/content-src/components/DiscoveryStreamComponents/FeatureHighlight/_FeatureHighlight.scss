@@ -51,20 +51,20 @@
 
     &.inset-block-start {
       inset-block-end: 100%;
-      margin-bottom: var(--space-xlarge);
+      margin-block-end: var(--space-xlarge);
 
       &::after {
-        inset-block-end: -12px;
+        inset-block-end: calc(var(--space-medium) * -1);
         transform: rotate(45deg);
       }
     }
 
     &.inset-block-end {
       inset-block-start: 100%;
-      margin-top: var(--space-xlarge);
+      margin-block-start: var(--space-xlarge);
 
       &::after {
-        inset-block-start: -12px;
+        inset-block-start: calc(var(--space-medium) * -1);
         transform: rotate(225deg);
       }
     }
@@ -73,7 +73,7 @@
       inset-inline-end: calc(var(--space-xxlarge) * -1);
 
       &::after {
-        inset-inline-end: calc(var(--space-xxlarge) - 12px);
+        inset-inline-end: calc(var(--space-xxlarge) - var(--space-medium));
       }
     }
 
@@ -81,13 +81,43 @@
       inset-inline-start: calc(var(--space-xxlarge) * -1);
 
       &::after {
-        inset-inline-start: calc(var(--space-xxlarge) - 12px);
+        inset-inline-start: calc(var(--space-xxlarge) - var(--space-medium));
+      }
+    }
+
+    // Arrow is pointed on left side of box
+    &.arrow-inline-start {
+      &::after {
+        content: '';
+        position: absolute;
+        inset-block-start: 50%;
+        inset-inline-end: calc(var(--space-small) * -1);
+        transform: translateY(-50%) rotate(225deg);
+        height: 16px;
+        width: 16px;
+        background: var(--newtab-background-color-secondary);
+        box-shadow: -4px 4px 6px -2px rgba(0, 0, 0, 15%);
+      }
+    }
+
+    // Arrow is pointed on left side of box
+    &.arrow-inline-end {
+      &::after {
+        content: '';
+        position: absolute;
+        inset-block-start: 50%;
+        inset-inline-start: calc(var(--space-small) * -1);
+        transform: translateY(-50%) rotate(135deg);
+        height: 16px;
+        width: 16px;
+        background: var(--newtab-background-color-secondary);
+        box-shadow: 4px 4px 6px -2px rgba(0, 0, 0, 15%);
       }
     }
 
     p {
       font-size: var(--font-size-small);
-      font-weight: normal;
+      font-weight: var(--font-weight);
       margin: var(--space-large) 0;
       flex-grow: 1;
     }

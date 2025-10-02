@@ -73,34 +73,26 @@ class NativeLayerRootWayland final : public NativeLayerRoot {
   void Shutdown();
 
   void UpdateLayersOnMainThread();
-  void RequestUpdateOnMainThreadLocked(const MutexAutoLock& aProofOfLock);
+  void RequestUpdateOnMainThreadLocked(
+      const widget::WaylandSurfaceLock& aProofOfLock);
 
   explicit NativeLayerRootWayland(
       RefPtr<widget::WaylandSurface> aWaylandSurface);
 
-
-  void NotifyFullscreenChanged(bool aIsFullscreen) {
-    mIsFullscreen = aIsFullscreen;
-  }
-
  private:
   ~NativeLayerRootWayland();
 
-  bool CommitToScreenLocked(const MutexAutoLock& aProofOfLock);
-
   // Map NativeLayerRootWayland and all child surfaces.
   // Returns true if we're set.
-  bool MapLocked(const MutexAutoLock& aProofOfLock);
+  bool MapLocked(const widget::WaylandSurfaceLock& aProofOfLock);
 
-  bool UpdateLayersLocked(const MutexAutoLock& aProofOfLock);
+  bool UpdateLayersLocked(const widget::WaylandSurfaceLock& aProofOfLock);
 
-  bool IsEmptyLocked(const MutexAutoLock& aProofOfLock);
+  bool IsEmptyLocked(const widget::WaylandSurfaceLock& aProofOfLock);
 
 #ifdef MOZ_LOGGING
-  void LogStatsLocked(const MutexAutoLock& aProofOfLock);
+  void LogStatsLocked(const widget::WaylandSurfaceLock& aProofOfLock);
 #endif
-
-  Mutex mMutex MOZ_UNANNOTATED;
 
 #ifdef MOZ_LOGGING
   void* mLoggingWidget = nullptr;
@@ -109,6 +101,8 @@ class NativeLayerRootWayland final : public NativeLayerRoot {
   // WaylandSurface of nsWindow (our root window).
   // This WaylandSurface is owned by nsWindow so we don't map/unmap it
   // or handle any callbacks.
+  // We also use widget::WaylandSurfaceLock for locking whole layer for
+  // read/write.
   RefPtr<widget::WaylandSurface> mSurface;
 
   // Copy of DRM format we use to create DMABuf surfaces
@@ -140,7 +134,6 @@ class NativeLayerRootWayland final : public NativeLayerRoot {
   // Layers have been added/removed
   bool mNeedsLayerUpdate = false;
   bool mMainThreadUpdateQueued = false;
-  bool mIsFullscreen = false;
 };
 
 class NativeLayerWayland : public NativeLayer {
@@ -165,6 +158,8 @@ class NativeLayerWayland : public NativeLayer {
   bool IsOpaque() override;
   void SetClipRect(const Maybe<gfx::IntRect>& aClipRect) override;
   Maybe<gfx::IntRect> ClipRect() override;
+  void SetRoundedClipRect(const Maybe<gfx::RoundedRect>& aClip) override;
+  Maybe<gfx::RoundedRect> RoundedClipRect() override;
   gfx::IntRect CurrentSurfaceDisplayRect() override;
   void SetSurfaceIsFlipped(bool aIsFlipped) override;
   bool SurfaceIsFlipped() override;
@@ -176,10 +171,9 @@ class NativeLayerWayland : public NativeLayer {
   RefPtr<widget::WaylandSurface> GetWaylandSurface() { return mSurface; }
 
   virtual void CommitSurfaceToScreenLocked(
-      const MutexAutoLock& aProofOfLock,
-      widget::WaylandSurfaceLock& aSurfaceLock) = 0;
-  void RemoveAttachedBufferLocked(const MutexAutoLock& aProofOfLock,
-                                  widget::WaylandSurfaceLock& aSurfaceLock);
+      const widget::WaylandSurfaceLock& aProofOfLock) = 0;
+  void RemoveAttachedBufferLocked(
+      const widget::WaylandSurfaceLock& aProofOfLock);
 
   // Surface Map/Unamp happens on rendering thread.
   //
@@ -203,8 +197,10 @@ class NativeLayerWayland : public NativeLayer {
   nsAutoCString GetDebugTag() const;
 #endif
 
-  virtual void DiscardBackbuffersLocked(const MutexAutoLock& aProofOfLock,
-                                        bool aForce = false) = 0;
+  void SetFrameCallbackState(bool aState);
+
+  virtual void DiscardBackbuffersLocked(
+      const widget::WaylandSurfaceLock& aProofOfLock, bool aForce = false) = 0;
   void DiscardBackbuffers() override;
 
   NativeLayerWayland(NativeLayerRootWayland* aRootLayer,
@@ -226,8 +222,6 @@ class NativeLayerWayland : public NativeLayer {
 
  protected:
   ~NativeLayerWayland();
-
-  Mutex mMutex MOZ_UNANNOTATED;
 
   // There's a cycle dependency here as NativeLayerRootWayland holds strong
   // reference to NativeLayerWayland and vice versa.
@@ -260,6 +254,7 @@ class NativeLayerWayland : public NativeLayer {
   gfx::Matrix4x4 mTransform;
   gfx::IntRect mDisplayRect;
   Maybe<gfx::IntRect> mClipRect;
+  Maybe<gfx::RoundedRect> mRoundedClipRect;
   gfx::SamplingFilter mSamplingFilter = gfx::SamplingFilter::POINT;
   LayerState mState{};
   bool mSurfaceIsFlipped = false;
@@ -295,8 +290,7 @@ class NativeLayerWaylandRender final : public NativeLayerWayland {
   void NotifySurfaceReady() override;
   void AttachExternalImage(wr::RenderTextureHost* aExternalImage) override;
   void CommitSurfaceToScreenLocked(
-      const MutexAutoLock& aProofOfLock,
-      widget::WaylandSurfaceLock& aSurfaceLock) override;
+      const widget::WaylandSurfaceLock& aProofOfLock) override;
 
   NativeLayerWaylandRender(NativeLayerRootWayland* aRootLayer,
                            const gfx::IntSize& aSize, bool aIsOpaque,
@@ -305,9 +299,10 @@ class NativeLayerWaylandRender final : public NativeLayerWayland {
  private:
   ~NativeLayerWaylandRender() override;
 
-  void DiscardBackbuffersLocked(const MutexAutoLock& aProofOfLock,
+  void DiscardBackbuffersLocked(const widget::WaylandSurfaceLock& aProofOfLock,
                                 bool aForce) override;
-  void HandlePartialUpdateLocked(const MutexAutoLock& aProofOfLock);
+  void HandlePartialUpdateLocked(
+      const widget::WaylandSurfaceLock& aProofOfLock);
 
   const RefPtr<SurfacePoolHandleWayland> mSurfacePoolHandle;
   RefPtr<widget::WaylandBuffer> mInProgressBuffer;
@@ -330,8 +325,7 @@ class NativeLayerWaylandExternal final : public NativeLayerWayland {
   void NotifySurfaceReady() override {};
   void AttachExternalImage(wr::RenderTextureHost* aExternalImage) override;
   void CommitSurfaceToScreenLocked(
-      const MutexAutoLock& aProofOfLock,
-      widget::WaylandSurfaceLock& aSurfaceLock) override;
+      const widget::WaylandSurfaceLock& aProofOfLock) override;
 
   NativeLayerWaylandExternal(NativeLayerRootWayland* aRootLayer,
                              bool aIsOpaque);
@@ -339,7 +333,7 @@ class NativeLayerWaylandExternal final : public NativeLayerWayland {
  private:
   ~NativeLayerWaylandExternal() override;
 
-  void DiscardBackbuffersLocked(const MutexAutoLock& aProofOfLock,
+  void DiscardBackbuffersLocked(const widget::WaylandSurfaceLock& aProofOfLock,
                                 bool aForce) override;
   void FreeUnusedBackBuffers();
 

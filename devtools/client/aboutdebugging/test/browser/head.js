@@ -3,9 +3,6 @@
 
 "use strict";
 
-/* eslint-env browser */
-/* eslint no-unused-vars: [2, {"vars": "local"}] */
-
 // Load the shared-head file first.
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
@@ -367,6 +364,13 @@ async function connectToRuntime(deviceName, document) {
   await waitUntil(() => !sidebarItem.querySelector(".qa-connect-button"));
 }
 
+async function waitForRuntimePage(name, document) {
+  await waitUntil(() => {
+    const runtimeInfo = document.querySelector(".qa-runtime-name");
+    return runtimeInfo && runtimeInfo.textContent.includes(name);
+  });
+}
+
 async function selectRuntime(deviceName, name, document) {
   const sidebarItem = findSidebarItemByText(deviceName, document);
   const store = document.defaultView.AboutDebugging.store;
@@ -374,10 +378,7 @@ async function selectRuntime(deviceName, name, document) {
 
   sidebarItem.querySelector(".qa-sidebar-link").click();
 
-  await waitUntil(() => {
-    const runtimeInfo = document.querySelector(".qa-runtime-name");
-    return runtimeInfo && runtimeInfo.textContent.includes(name);
-  });
+  await waitForRuntimePage(name, document);
 
   info("Wait for SELECT_PAGE_SUCCESS to be dispatched");
   await onSelectPageSuccess;

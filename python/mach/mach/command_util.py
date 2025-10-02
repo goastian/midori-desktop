@@ -13,7 +13,7 @@ import types
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 from mozfile import load_source
 
@@ -149,6 +149,7 @@ MACH_COMMANDS = {
     ),
     "macos-sign": MachCommandReference("tools/signing/macos/mach_commands.py"),
     "manifest": MachCommandReference("testing/mach_commands.py"),
+    "platform-diff": MachCommandReference("testing/mach_commands.py"),
     "marionette-test": MachCommandReference("testing/marionette/mach_commands.py"),
     "mochitest": MachCommandReference("testing/mochitest/mach_commands.py", ["test"]),
     "mots": MachCommandReference("tools/mach_commands.py"),
@@ -187,6 +188,9 @@ MACH_COMMANDS = {
     "release-history": MachCommandReference("taskcluster/mach_commands.py"),
     "remote": MachCommandReference("remote/mach_commands.py"),
     "repackage": MachCommandReference("python/mozbuild/mozbuild/mach_commands.py"),
+    "repackage-single-locales": MachCommandReference(
+        "python/mozbuild/mozbuild/mach_commands.py"
+    ),
     "resource-usage": MachCommandReference(
         "python/mozbuild/mozbuild/build_commands.py",
     ),
@@ -202,9 +206,6 @@ MACH_COMMANDS = {
         "browser/components/storybook/mach_commands.py", ["run"]
     ),
     "talos-test": MachCommandReference("testing/talos/mach_commands.py"),
-    "taskcluster-build-image": MachCommandReference("taskcluster/mach_commands.py"),
-    "taskcluster-image-digest": MachCommandReference("taskcluster/mach_commands.py"),
-    "taskcluster-load-image": MachCommandReference("taskcluster/mach_commands.py"),
     "taskgraph": MachCommandReference("taskcluster/mach_commands.py"),
     "telemetry-tests-client": MachCommandReference(
         "toolkit/components/telemetry/tests/marionette/mach_commands.py"
@@ -325,7 +326,7 @@ class DecoratorVisitor(ast.NodeVisitor):
 
 
 def command_virtualenv_info_for_module(module_path):
-    with module_path.open("r") as file:
+    with module_path.open("r", encoding="utf-8") as file:
         content = file.read()
 
     tree = ast.parse(content)
@@ -475,7 +476,7 @@ def load_commands_from_file(path: Union[str, Path], module_name=None):
 
 
 def load_commands_from_spec(
-    spec: Dict[str, MachCommandReference], topsrcdir: str, missing_ok=False
+    spec: dict[str, MachCommandReference], topsrcdir: str, missing_ok=False
 ):
     """Load mach commands based on the given spec.
 

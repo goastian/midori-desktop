@@ -30,10 +30,23 @@ def is_release_promotion_available(parameters):
                 "description": "Override other options and do not push changes",
                 "default": True,
             },
+            "push": {
+                "type": "boolean",
+                "description": "Push changes using to_repo and to_branch (mercurial only)",
+                "default": False,
+            },
             "behavior": {
                 "type": "string",
                 "description": "The type of release promotion to perform.",
-                "enum": sorted(graph_config["merge-automation"]["behaviors"].keys()),
+                # this enum should be kept in sync with the merge-automation kind
+                "enum": [
+                    "bump-main",
+                    "bump-esr140",
+                    "early-to-late-beta",
+                    "main-to-beta",
+                    "beta-to-release",
+                    "release-to-esr",
+                ],
                 "default": "REPLACE ME",
             },
             "from-repo": {
@@ -75,6 +88,7 @@ def merge_automation_action(parameters, graph_config, input, task_group_id, task
         "from-branch",
         "to-repo",
         "to-branch",
+        "push",
         "fetch-version-from",
     ]:
         if input.get(field):

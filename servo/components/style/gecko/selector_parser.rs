@@ -20,7 +20,7 @@ use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss as ToCss_};
 use thin_vec::ThinVec;
 
 pub use crate::gecko::pseudo_element::{
-    PseudoElement, EAGER_PSEUDOS, EAGER_PSEUDO_COUNT, PSEUDO_COUNT,
+    PseudoElement, Target, EAGER_PSEUDOS, EAGER_PSEUDO_COUNT, PSEUDO_COUNT,
 };
 pub use crate::gecko::snapshot::SnapshotMap;
 
@@ -156,6 +156,9 @@ impl NonTSPseudoClass {
     fn is_enabled_in_content(&self) -> bool {
         if matches!(*self, Self::HasSlotted) {
             return static_prefs::pref!("layout.css.has-slotted-selector.enabled");
+        }
+        if matches!(*self, Self::ActiveViewTransition) {
+            return static_prefs::pref!("dom.viewTransitions.enabled");
         }
         !self.has_any_flag(NonTSPseudoClassFlag::PSEUDO_CLASS_ENABLED_IN_UA_SHEETS_AND_CHROME)
     }
@@ -318,6 +321,58 @@ impl<'a> SelectorParser<'a> {
     }
 }
 
+/// Parse the functional pseudo-element with the function name.
+pub fn parse_functional_pseudo_element_with_name<'i, 't>(
+    name: CowRcStr<'i>,
+    parser: &mut Parser<'i, 't>,
+    target: Target,
+) -> Result<PseudoElement, ParseError<'i>> {
+    use crate::gecko::pseudo_element::PtNameAndClassSelector;
+
+    if matches!(target, Target::Selector) && starts_with_ignore_ascii_case(&name, "-moz-tree-") {
+        // Tree pseudo-elements can have zero or more arguments, separated
+        // by either comma or space.
+        let mut args = ThinVec::new();
+        loop {
+            let location = parser.current_source_location();
+            match parser.next() {
+                Ok(&Token::Ident(ref ident)) => args.push(Atom::from(ident.as_ref())),
+                Ok(&Token::Comma) => {},
+                Ok(t) => return Err(location.new_unexpected_token_error(t.clone())),
+                Err(BasicParseError {
+                    kind: BasicParseErrorKind::EndOfInput,
+                    ..
+                }) => break,
+                _ => unreachable!("Parser::next() shouldn't return any other error"),
+            }
+        }
+        return PseudoElement::tree_pseudo_element(&name, args).ok_or(parser.new_custom_error(
+            SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
+        ));
+    }
+
+    Ok(match_ignore_ascii_case! { &name,
+        "highlight" => {
+            PseudoElement::Highlight(AtomIdent::from(parser.expect_ident()?.as_ref()))
+        },
+        "view-transition-group" => {
+            PseudoElement::ViewTransitionGroup(PtNameAndClassSelector::parse(parser, target)?)
+        },
+        "view-transition-image-pair" => {
+            PseudoElement::ViewTransitionImagePair(PtNameAndClassSelector::parse(parser, target)?)
+        },
+        "view-transition-old" => {
+            PseudoElement::ViewTransitionOld(PtNameAndClassSelector::parse(parser, target)?)
+        },
+        "view-transition-new" => {
+            PseudoElement::ViewTransitionNew(PtNameAndClassSelector::parse(parser, target)?)
+        },
+        _ => return Err(parser.new_custom_error(
+            SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name)
+        ))
+    })
+}
+
 impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
     type Impl = SelectorImpl;
     type Error = StyleParseErrorKind<'i>;
@@ -449,63 +504,10 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
         name: CowRcStr<'i>,
         parser: &mut Parser<'i, 't>,
     ) -> Result<PseudoElement, ParseError<'i>> {
-        if starts_with_ignore_ascii_case(&name, "-moz-tree-") {
-            // Tree pseudo-elements can have zero or more arguments, separated
-            // by either comma or space.
-            let mut args = ThinVec::new();
-            loop {
-                let location = parser.current_source_location();
-                match parser.next() {
-                    Ok(&Token::Ident(ref ident)) => args.push(Atom::from(ident.as_ref())),
-                    Ok(&Token::Comma) => {},
-                    Ok(t) => return Err(location.new_unexpected_token_error(t.clone())),
-                    Err(BasicParseError {
-                        kind: BasicParseErrorKind::EndOfInput,
-                        ..
-                    }) => break,
-                    _ => unreachable!("Parser::next() shouldn't return any other error"),
-                }
-            }
-            if let Some(pseudo) = PseudoElement::tree_pseudo_element(&name, args) {
-                if self.is_pseudo_element_enabled(&pseudo) {
-                    return Ok(pseudo);
-                }
-            }
-        } else {
-            // <pt-name-selector> = '*' | <custom-ident>
-            // https://drafts.csswg.org/css-view-transitions-1/#named-view-transition-pseudo
-            let parse_pt_name = |input: &mut Parser<'i, '_>| {
-                use crate::values::CustomIdent;
-                if input.try_parse(|i| i.expect_delim('*')).is_ok() {
-                    Ok(AtomIdent::new(atom!("*")))
-                } else {
-                    CustomIdent::parse(input, &[]).map(|c| AtomIdent::new(c.0))
-                }
-            };
-
-            let pseudo = match_ignore_ascii_case! { &name,
-                "highlight" => {
-                    PseudoElement::Highlight(AtomIdent::from(parser.expect_ident()?.as_ref()))
-                },
-                "view-transition-group" => {
-                    PseudoElement::ViewTransitionGroup(parse_pt_name(parser)?)
-                },
-                "view-transition-image-pair" => {
-                    PseudoElement::ViewTransitionImagePair(parse_pt_name(parser)?)
-                },
-                "view-transition-old" => {
-                    PseudoElement::ViewTransitionOld(parse_pt_name(parser)?)
-                },
-                "view-transition-new" => {
-                    PseudoElement::ViewTransitionNew(parse_pt_name(parser)?)
-                },
-                _ => return Err(parser.new_custom_error(
-                    SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name)
-                ))
-            };
-            if self.is_pseudo_element_enabled(&pseudo) {
-                return Ok(pseudo);
-            }
+        let pseudo =
+            parse_functional_pseudo_element_with_name(name.clone(), parser, Target::Selector)?;
+        if self.is_pseudo_element_enabled(&pseudo) {
+            return Ok(pseudo);
         }
 
         Err(

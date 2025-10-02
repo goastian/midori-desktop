@@ -101,6 +101,28 @@
             "required": ["label", "action"],
             "additionalProperties": true
           }
+        },
+        "linkUrls": {
+          "description": "Map of Fluent data-l10n-name keys to real URLs",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/linkUrl"
+          }
+        },
+        "style": {
+          "description": "Optional CSS overrides for this infobar. Currently, only `background-color` and `font-size` may be set. `background-color` will only apply when the user does not prefer high-contrast.",
+          "type": "object",
+          "properties": {
+            "background-color": {
+              "type": "string",
+              "description": "Any valid CSS color or light-dark() expression."
+            },
+            "font-size": {
+              "type": "string",
+              "description": "Any valid CSS font-size value - rem units recommended to ensure size is relative to the system font size."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": true,

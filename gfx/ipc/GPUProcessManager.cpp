@@ -18,8 +18,8 @@
 #include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/StaticPrefs_layers.h"
 #include "mozilla/StaticPrefs_media.h"
-#include "mozilla/RemoteDecoderManagerChild.h"
-#include "mozilla/RemoteDecoderManagerParent.h"
+#include "mozilla/RemoteMediaManagerChild.h"
+#include "mozilla/RemoteMediaManagerParent.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/GPUChild.h"
@@ -1299,7 +1299,7 @@ bool GPUProcessManager::CreateContentBridges(
     ipc::Endpoint<PCompositorManagerChild>* aOutCompositor,
     ipc::Endpoint<PImageBridgeChild>* aOutImageBridge,
     ipc::Endpoint<PVRManagerChild>* aOutVRBridge,
-    ipc::Endpoint<PRemoteDecoderManagerChild>* aOutVideoManager,
+    ipc::Endpoint<PRemoteMediaManagerChild>* aOutVideoManager,
     dom::ContentParentId aChildId, nsTArray<uint32_t>* aNamespaces) {
   const uint32_t cmNamespace = AllocateNamespace();
   if (!CreateContentCompositorManager(aOtherProcess, aChildId, cmNamespace,
@@ -1310,7 +1310,7 @@ bool GPUProcessManager::CreateContentBridges(
   }
   // VideoDeocderManager is only supported in the GPU process, so we allow this
   // to be fallible.
-  CreateContentRemoteDecoderManager(aOtherProcess, aChildId, aOutVideoManager);
+  CreateContentRemoteMediaManager(aOtherProcess, aChildId, aOutVideoManager);
   // Allocates 3 namespaces(for CompositorManagerChild, CompositorBridgeChild
   // and ImageBridgeChild)
   aNamespaces->AppendElement(cmNamespace);
@@ -1442,9 +1442,9 @@ bool GPUProcessManager::CreateContentVRManager(
   return true;
 }
 
-void GPUProcessManager::CreateContentRemoteDecoderManager(
+void GPUProcessManager::CreateContentRemoteMediaManager(
     ipc::EndpointProcInfo aOtherProcess, dom::ContentParentId aChildId,
-    ipc::Endpoint<PRemoteDecoderManagerChild>* aOutEndpoint) {
+    ipc::Endpoint<PRemoteMediaManagerChild>* aOutEndpoint) {
   nsresult rv = EnsureGPUReady();
   if (NS_WARN_IF(rv == NS_ERROR_ILLEGAL_DURING_SHUTDOWN)) {
     return;
@@ -1455,20 +1455,19 @@ void GPUProcessManager::CreateContentRemoteDecoderManager(
     return;
   }
 
-  ipc::Endpoint<PRemoteDecoderManagerParent> parentPipe;
-  ipc::Endpoint<PRemoteDecoderManagerChild> childPipe;
+  ipc::Endpoint<PRemoteMediaManagerParent> parentPipe;
+  ipc::Endpoint<PRemoteMediaManagerChild> childPipe;
 
-  rv = PRemoteDecoderManager::CreateEndpoints(
-      mGPUChild->OtherEndpointProcInfo(), aOtherProcess, &parentPipe,
-      &childPipe);
+  rv = PRemoteMediaManager::CreateEndpoints(mGPUChild->OtherEndpointProcInfo(),
+                                            aOtherProcess, &parentPipe,
+                                            &childPipe);
   if (NS_FAILED(rv)) {
     gfxCriticalNote << "Could not create content video decoder: "
                     << hexa(int(rv));
     return;
   }
 
-  mGPUChild->SendNewContentRemoteDecoderManager(std::move(parentPipe),
-                                                aChildId);
+  mGPUChild->SendNewContentRemoteMediaManager(std::move(parentPipe), aChildId);
 
   *aOutEndpoint = std::move(childPipe);
 }
@@ -1536,16 +1535,36 @@ LayersId GPUProcessManager::AllocateLayerTreeId() {
   // By it, tree id does not conflict with external image id and
   // async image pipeline id.
   MOZ_ASSERT(NS_IsMainThread());
-  ++mResourceId;
-  if (mResourceId == UINT32_MAX) {
+  // Increment the resource id by two instead of one so that each
+  // WebRenderLayerManager and WebRenderBridgeParent gets two distinct
+  // pipeline IDs they can use.
+  // This is gross but the steps to create a temporary pipeline
+  // ID from the content process or the compositor thread are too
+  // complex and expensive.
+  // TODO: Ideally, we'd allocate only the namespace here and let the
+  // WR layer manager produce any number of pipeline IDs.
+  mResourceId += 2;
+  if (mResourceId >= UINT32_MAX - 1) {
     // Move to next id namespace.
     mIdNamespace = AllocateNamespace();
-    mResourceId = 1;
+    mResourceId = 2;
   }
 
   uint64_t layerTreeId = mIdNamespace;
   layerTreeId = (layerTreeId << 32) | mResourceId;
   return LayersId{layerTreeId};
+}
+
+// See the comment in AllocateLayerTreeId above.
+// For now this is only used for view-transition snapshots of the old state,
+// it's probably best to avoid using this for anything else.
+wr::PipelineId GetTemporaryWebRenderPipelineId(wr::PipelineId aMainPipeline) {
+  // Sanity check that we are have the expected even number for
+  // the main pipeline handle.
+  MOZ_ASSERT(aMainPipeline.mHandle % 2 == 0);
+  auto id = aMainPipeline;
+  id.mHandle += 1;
+  return id;
 }
 
 uint32_t GPUProcessManager::AllocateNamespace() {

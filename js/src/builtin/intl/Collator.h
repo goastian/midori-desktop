@@ -57,14 +57,6 @@ class CollatorObject : public NativeObject {
 };
 
 /**
- * Returns a new instance of the standard built-in Collator constructor.
- *
- * Usage: collator = intl_Collator(locales, options)
- */
-[[nodiscard]] extern bool intl_Collator(JSContext* cx, unsigned argc,
-                                        JS::Value* vp);
-
-/**
  * Returns an array with the collation type identifiers per Unicode
  * Technical Standard 35, Unicode Locale Data Markup Language, for the
  * collations supported for the given locale. "standard" and "search" are
@@ -104,6 +96,31 @@ class CollatorObject : public NativeObject {
  */
 [[nodiscard]] extern bool intl_isIgnorePunctuation(JSContext* cx, unsigned argc,
                                                    JS::Value* vp);
+
+namespace intl {
+
+/**
+ * Returns a new instance of the standard built-in Collator constructor.
+ */
+[[nodiscard]] extern CollatorObject* CreateCollator(
+    JSContext* cx, JS::Handle<JS::Value> locales,
+    JS::Handle<JS::Value> options);
+
+/**
+ * Returns a possibly cached instance of the standard built-in Collator
+ * constructor.
+ */
+[[nodiscard]] extern CollatorObject* GetOrCreateCollator(
+    JSContext* cx, JS::Handle<JS::Value> locales,
+    JS::Handle<JS::Value> options);
+
+[[nodiscard]] extern bool CompareStrings(JSContext* cx,
+                                         JS::Handle<CollatorObject*> collator,
+                                         JS::Handle<JSString*> str1,
+                                         JS::Handle<JSString*> str2,
+                                         JS::MutableHandle<JS::Value> result);
+
+}  // namespace intl
 
 }  // namespace js
 

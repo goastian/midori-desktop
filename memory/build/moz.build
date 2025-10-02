@@ -6,15 +6,17 @@
 
 EXPORTS += [
     "malloc_decls.h",
+    "mozjemalloc_profiling.h",
     "mozjemalloc_types.h",
     "mozmemory.h",
-    "mozmemory_utils.h",
+    "mozmemory_stall.h",
     "mozmemory_wrap.h",
     "PHC.h",
 ]
 
 LIBRARY_DEFINES["MOZ_HAS_MOZGLUE"] = True
 DEFINES["MOZ_MEMORY_IMPL"] = True
+DEFINES["MOZ_SUPPORT_LEAKCHECKING"] = True
 
 if CONFIG["MOZ_BUILD_APP"] == "memory":
     DEFINES["IMPL_MFBT"] = True
@@ -34,20 +36,24 @@ if CONFIG["MOZ_PHC"]:
 
 if CONFIG["MOZ_MEMORY"]:
     UNIFIED_SOURCES += [
+        "BaseAlloc.cpp",
+        "Chunk.cpp",
+        "Globals.cpp",
         "mozjemalloc.cpp",
         "mozmemory_wrap.cpp",
         "Mutex.cpp",
+        "Utils.cpp",
     ]
 else:
     UNIFIED_SOURCES += [
-        "fallback.cpp",
+        "Fallback.cpp",
     ]
 
 if CONFIG["OS_TARGET"] == "Darwin" and (
     CONFIG["MOZ_REPLACE_MALLOC"] or CONFIG["MOZ_MEMORY"]
 ):
     SOURCES += [
-        "zone.c",
+        "Zone.c",
     ]
 
 Library("memory")
@@ -72,3 +78,4 @@ TEST_DIRS += ["test"]
 
 if CONFIG["NIGHTLY_BUILD"]:
     DEFINES["NON_RANDOM_ARENA_IDS"] = True
+    DEFINES["MOZJEMALLOC_PROFILING_CALLBACKS"] = True

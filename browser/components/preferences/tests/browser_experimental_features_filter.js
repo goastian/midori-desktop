@@ -3,6 +3,12 @@
 
 "use strict";
 
+add_setup(async function () {
+  await SpecialPowers.pushPrefEnv({
+    set: [["test.wait300msAfterTabSwitch", true]],
+  });
+});
+
 // This test verifies that searching filters the features to just that subset that
 // contains the search terms.
 add_task(async function testFilterFeatures() {
@@ -111,9 +117,19 @@ add_task(async function testFilterFeatures() {
   }
 
   // Reset the search entirely.
-  const searchInput = doc.getElementById("searchInput");
-  searchInput.value = "";
-  searchInput.doCommand();
+  {
+    const searchInput = doc.getElementById("searchInput");
+    let searchCompletedPromise = BrowserTestUtils.waitForEvent(
+      gBrowser.contentWindow,
+      "PreferencesSearchCompleted",
+      evt => evt.detail == ""
+    );
+    searchInput.select();
+    EventUtils.synthesizeKey("VK_BACK_SPACE");
+    await searchCompletedPromise;
+  }
+
+  info(`Resetted the search`);
 
   // Clearing the search will go to the general pane so switch back to the experimental pane.
   EventUtils.synthesizeMouseAtCenter(
@@ -183,7 +199,7 @@ function checkVisibility(element, expected, desc) {
 
 function enterSearch(doc, query) {
   let searchInput = doc.getElementById("searchInput");
-  searchInput.focus();
+  searchInput.select();
 
   let searchCompletedPromise = BrowserTestUtils.waitForEvent(
     gBrowser.contentWindow,

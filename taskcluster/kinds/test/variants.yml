@@ -139,7 +139,7 @@ no-fission:
                 - "--disable-fission"
 
 geckoview-no-fission-no-ship:
-    description: "{description} with fission disabled and ship enabled"
+    description: "{description} with fission disabled and ship disabled"
     component: "GeckoView::General"
     expiration: "2025-09-01"
     suffix: "nofis-noship"
@@ -344,7 +344,7 @@ wmf-media-engine:
 eme-wmf:
     description: "{description} with Windows Media Foundation based CDM enabled for EME wpt"
     component: "Core::Audio/Video: Playback"
-    expiration: "2025-06-30"
+    expiration: "never"
     when:
         $eval: '"windows1" in task["test-platform"]'
     suffix: "emewmf"
@@ -527,7 +527,7 @@ vertical-tabs:
 inc-origin-init:
     description: "{description} limited to tests identified as being applicable to also run with incremental origin initialization enabled"
     component: "Core::Storage: Quota Manager"
-    expiration: "2025-07-01"
+    expiration: "2025-12-01"
     suffix: "ioi"
     mozinfo: "inc_origin_init"
     replace:
@@ -557,7 +557,7 @@ privatebrowsing:
 privatebrowsing-inc-origin-init:
     description: "{description} limited to tests identified as being applicable to also run in private browsing mode and with incremental origin initialization enabled"
     component: "Core::Storage: Quota Manager"
-    expiration: "2025-07-01"
+    expiration: "2025-12-01"
     suffix: "pb-ioi"
     replace:
         tier: 3
@@ -570,3 +570,14 @@ privatebrowsing-inc-origin-init:
         mozharness:
             extra-options:
                 - "--setpref=browser.privatebrowsing.autostart=true"
+
+content-navigation-manager:
+    description: "{description} with content process navigation manager"
+    component: "Remote Protocol::Agent"
+    expiration: "2025-12-01"
+    suffix: "cnm"
+    mozinfo: "remote_cnm"
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=remote.parent-navigation.enabled=false"

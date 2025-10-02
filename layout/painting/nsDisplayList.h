@@ -1243,8 +1243,11 @@ class nsDisplayListBuilder {
     }
 
     ~AutoContainerASRTracker() {
-      mBuilder->mCurrentContainerASR = ActiveScrolledRoot::PickAncestor(
-          mBuilder->mCurrentContainerASR, mSavedContainerASR);
+      mBuilder->mCurrentContainerASR =
+          mBuilder->IsInViewTransitionCapture()
+              ? mSavedContainerASR
+              : ActiveScrolledRoot::PickAncestor(mBuilder->mCurrentContainerASR,
+                                                 mSavedContainerASR);
     }
 
    private:
@@ -1389,14 +1392,16 @@ class nsDisplayListBuilder {
         const DisplayItemClipChain* aCombinedClipChain,
         const ActiveScrolledRoot* aContainingBlockActiveScrolledRoot,
         const ViewID& aScrollParentId, const nsRect& aVisibleRect,
-        const nsRect& aDirtyRect)
+        const nsRect& aDirtyRect, bool aContainingBlockInViewTransitionCapture)
         : mContainingBlockClipChain(aContainingBlockClipChain),
           mCombinedClipChain(aCombinedClipChain),
           mContainingBlockActiveScrolledRoot(
               aContainingBlockActiveScrolledRoot),
           mVisibleRect(aVisibleRect),
           mDirtyRect(aDirtyRect),
-          mScrollParentId(aScrollParentId) {}
+          mScrollParentId(aScrollParentId),
+          mContainingBlockInViewTransitionCapture(
+              aContainingBlockInViewTransitionCapture) {}
     const DisplayItemClipChain* mContainingBlockClipChain;
     const DisplayItemClipChain*
         mCombinedClipChain;  // only necessary for the special case of top layer
@@ -1410,6 +1415,29 @@ class nsDisplayListBuilder {
     nsRect mVisibleRect;
     nsRect mDirtyRect;
     ViewID mScrollParentId;
+
+    // mContainingBlockInViewTransitionCapture is needed to handle absolutely
+    // positioned elements that escape the view transition boundary
+    // (containing-block-wise). These should still not be clipped.
+    // Consider:
+    //
+    //   <div style="position: relative; width: 10px; height: 10px; overflow:
+    //   clip">
+    //     <div id=captured>
+    //       <div style="position: absolute; width: 20px; height: 20px">
+    //
+    // The abspos is not supposed to be affected by the relpos clipping and ASR.
+    // While if it was inverted, it would need to be clipped:
+    //
+    //   <div id=captured>
+    //     <div style="position: relative; width: 10px; height: 10px; overflow:
+    //     clip">
+    //       <div style="position: absolute; width: 20px; height: 20px">
+    //
+    // In order to  do this, we track whether the containing block was inside
+    // the capture.
+    // TODO(emilio, bug 1968754): Deal with nested captures properly.
+    bool mContainingBlockInViewTransitionCapture;
 
     static nsRect ComputeVisibleRectForFrame(nsDisplayListBuilder* aBuilder,
                                              nsIFrame* aFrame,
@@ -2350,8 +2378,14 @@ class nsDisplayItem {
                    "mItemBuffer should have been cleared");
     }
 
-    // Handling transform items for preserve 3D frames.
-    bool mInPreserves3D = false;
+    // Gathering all leaf items of a preserve3d context.
+    bool mGatheringPreserves3DLeaves = false;
+
+    // True if we are handling items inside a preserve 3d context and the
+    // current transform has the backface visible. This is used if the current
+    // item has backface-visibility: hidden.
+    bool mTransformHasBackfaceVisible = false;
+
     // When hit-testing for visibility, we may hit an fully opaque item in a
     // nested display list. We want to stop at that point, without looking
     // further on other items.
@@ -2382,6 +2416,16 @@ class nsDisplayItem {
   virtual void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
                        HitTestState* aState, nsTArray<nsIFrame*>* aOutFrames) {}
 
+  /**
+   * Returns true if this item should not be hit because the HitTestState state
+   * indicates the current transform is showing the backface and this item has
+   * backface-visibility: hidden.
+   */
+  bool ShouldIgnoreForBackfaceHidden(HitTestState* aState) {
+    return aState->mTransformHasBackfaceVisible &&
+           In3DContextAndBackfaceIsHidden();
+  }
+
   virtual nsIFrame* StyleFrame() const { return mFrame; }
 
   /**
@@ -2409,9 +2453,9 @@ class nsDisplayItem {
   /**
    * Returns the untransformed bounds of this display item.
    */
-  virtual nsRect GetUntransformedBounds(nsDisplayListBuilder* aBuilder,
-                                        bool* aSnap) const {
-    return GetBounds(aBuilder, aSnap);
+  virtual nsRect GetUntransformedBounds(nsDisplayListBuilder* aBuilder) const {
+    bool unused;
+    return GetBounds(aBuilder, &unused);
   }
 
   virtual nsRegion GetTightBounds(nsDisplayListBuilder* aBuilder,
@@ -6181,9 +6225,7 @@ class nsDisplayTransform final : public nsPaintedDisplayItem {
 
   RetainedDisplayList* GetChildren() const override { return &mChildren; }
 
-  nsRect GetUntransformedBounds(nsDisplayListBuilder* aBuilder,
-                                bool* aSnap) const override {
-    *aSnap = false;
+  nsRect GetUntransformedBounds(nsDisplayListBuilder* aBuilder) const override {
     return mChildBounds;
   }
 
@@ -6610,6 +6652,10 @@ class nsDisplayText final : public nsPaintedDisplayItem {
 
   void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
                HitTestState* aState, nsTArray<nsIFrame*>* aOutFrames) final {
+    if (ShouldIgnoreForBackfaceHidden(aState)) {
+      return;
+    }
+
     if (nsRect(ToReferenceFrame(), mFrame->GetSize()).Intersects(aRect)) {
       aOutFrames->AppendElement(mFrame);
     }

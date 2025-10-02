@@ -62,10 +62,6 @@ export default [
   // for documentation purposes (policies.json) but to be accessed by the
   // code as a .sys.mjs (schema.sys.mjs)
   "browser/components/enterprisepolicies/schemas/schema.sys.mjs",
-  // generated or library files in pocket
-  "browser/components/pocket/content/panels/js/tmpl.js",
-  "browser/components/pocket/content/panels/js/vendor.bundle.js",
-  "browser/components/pocket/content/panels/js/main.bundle.js",
   // Include the Storybook config files.
   "!browser/components/storybook/.storybook/",
   "!browser/components/storybook/.storybook/*.js",
@@ -124,7 +120,7 @@ export default [
   "devtools/server/tests/xpcshell/sourcemapped.js",
 
   // Ignore generated code from wasm-bindgen
-  "devtools/client/performance-new/shared/profiler_get_symbols.js",
+  "devtools/shared/performance-new/profiler_get_symbols.js",
 
   // Testing syntax error
   "devtools/client/aboutdebugging/test/browser/resources/bad-extensions/invalid-json/manifest.json",
@@ -310,5 +306,4 @@ export default [
   // Support for Import attributes is only available in ESLint v9.19
   // https://bugzilla.mozilla.org/show_bug.cgi?id=1944290
   "netwerk/test/mochitests/test_import_json_module.mjs",
-  "dom/tests/browser/page_bytecode_cache_json_module.html",
 ];

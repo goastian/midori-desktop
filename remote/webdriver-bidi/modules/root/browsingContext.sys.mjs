@@ -198,6 +198,7 @@ class BrowsingContextModule extends RootBiDiModule {
       "fragment-navigated",
       this.#onFragmentNavigated
     );
+    this.#navigationListener.on("history-updated", this.#onHistoryUpdated);
     this.#navigationListener.on(
       "navigation-committed",
       this.#onNavigationCommitted
@@ -229,6 +230,7 @@ class BrowsingContextModule extends RootBiDiModule {
       "fragment-navigated",
       this.#onFragmentNavigated
     );
+    this.#navigationListener.off("history-updated", this.#onHistoryUpdated);
     this.#navigationListener.off(
       "navigation-committed",
       this.#onNavigationCommitted
@@ -641,9 +643,24 @@ class BrowsingContextModule extends RootBiDiModule {
     const previousTab =
       lazy.TabManager.getTabBrowser(previousWindow).selectedTab;
 
-    // On Android there is only a single window allowed. As such fallback to
-    // open a new tab instead.
-    const type = lazy.AppInfo.isAndroid ? "tab" : typeHint;
+    // The type supported varies by platform, as Android can only support one window.
+    // As such, type compatibility will need to be checked and will fallback if necessary.
+    let type;
+    if (
+      (typeHint == "tab" && lazy.TabManager.supportsTabs()) ||
+      (typeHint == "window" && lazy.windowManager.supportsWindows())
+    ) {
+      type = typeHint;
+    } else if (lazy.TabManager.supportsTabs()) {
+      type = "tab";
+    } else if (lazy.windowManager.supportsWindows()) {
+      type = "window";
+    } else {
+      throw new lazy.error.UnsupportedOperationError(
+        `Not supported in ${lazy.AppInfo.name}`
+      );
+    }
+
     let waitForVisibilityChangePromise;
     switch (type) {
       case "window": {
@@ -655,12 +672,6 @@ class BrowsingContextModule extends RootBiDiModule {
         break;
       }
       case "tab": {
-        if (!lazy.TabManager.supportsTabs()) {
-          throw new lazy.error.UnsupportedOperationError(
-            `browsingContext.create with type "tab" not supported in ${lazy.AppInfo.name}`
-          );
-        }
-
         // The window to open the new tab in.
         let window = Services.wm.getMostRecentWindow(null);
 
@@ -1685,11 +1696,11 @@ class BrowsingContextModule extends RootBiDiModule {
     const context = webProgress.browsingContext;
     const browserId = context.browserId;
 
-    const resolveWhenStarted = wait === WaitCondition.None;
+    const resolveWhenCommitted = wait === WaitCondition.None;
     const listener = new lazy.ProgressListener(webProgress, {
       expectNavigation: true,
       navigationManager: this.messageHandler.navigationManager,
-      resolveWhenStarted,
+      resolveWhenCommitted,
       targetURI,
       // In case the webprogress is already navigating, always wait for an
       // explicit start flag.
@@ -1987,6 +1998,24 @@ class BrowsingContextModule extends RootBiDiModule {
     }
   };
 
+  #onHistoryUpdated = async (eventName, data) => {
+    const { navigableId, url } = data;
+    const context = this.#getBrowsingContext(navigableId);
+
+    if (this.#subscribedEvents.has("browsingContext.historyUpdated")) {
+      const browsingContextInfo = {
+        context: navigableId,
+        timestamp: Date.now(),
+        url,
+      };
+      this.#emitContextEventForBrowsingContext(
+        context.id,
+        "browsingContext.historyUpdated",
+        browsingContextInfo
+      );
+    }
+  };
+
   #onPromptClosed = async (eventName, data) => {
     if (this.#subscribedEvents.has("browsingContext.userPromptClosed")) {
       const { contentBrowser, detail } = data;
@@ -2128,6 +2157,7 @@ class BrowsingContextModule extends RootBiDiModule {
 
     const hasNavigationEvent =
       this.#subscribedEvents.has("browsingContext.fragmentNavigated") ||
+      this.#subscribedEvents.has("browsingContext.historyUpdated") ||
       this.#subscribedEvents.has("browsingContext.navigationFailed") ||
       this.#subscribedEvents.has("browsingContext.navigationStarted");
 
@@ -2157,6 +2187,7 @@ class BrowsingContextModule extends RootBiDiModule {
         break;
       }
       case "browsingContext.fragmentNavigated":
+      case "browsingContext.historyUpdated":
       case "browsingContext.navigationCommitted":
       case "browsingContext.navigationFailed":
       case "browsingContext.navigationStarted": {
@@ -2181,6 +2212,7 @@ class BrowsingContextModule extends RootBiDiModule {
         break;
       }
       case "browsingContext.fragmentNavigated":
+      case "browsingContext.historyUpdated":
       case "browsingContext.navigationCommitted":
       case "browsingContext.navigationFailed":
       case "browsingContext.navigationStarted": {
@@ -2309,6 +2341,7 @@ class BrowsingContextModule extends RootBiDiModule {
       "browsingContext.contextDestroyed",
       "browsingContext.domContentLoaded",
       "browsingContext.fragmentNavigated",
+      "browsingContext.historyUpdated",
       "browsingContext.load",
       "browsingContext.navigationCommitted",
       "browsingContext.navigationFailed",

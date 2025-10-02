@@ -4,6 +4,25 @@
 
 "use strict";
 
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gCookiesRejectWhenInvalid",
+  "extensions.cookie.rejectWhenInvalid",
+  false
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gCookiesMaxageCap",
+  "network.cookie.maxageCap",
+  0
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gCanUsePortInPartitionKey",
+  "privacy.dynamic_firstparty.use_site.include_port",
+  false
+);
+
 var { ExtensionError } = ExtensionUtils;
 
 const SAME_SITE_STATUSES = new Map([
@@ -61,7 +80,7 @@ function fromExtPartitionKey(extPartitionKey, cookieUrl) {
       if (cookieUrl == null) {
         let topLevelSiteURI = Services.io.newURI(topLevelSite);
         let topLevelSiteFilter = Services.eTLD.getSite(topLevelSiteURI);
-        if (topLevelSiteURI.port != -1) {
+        if (gCanUsePortInPartitionKey && topLevelSiteURI.port != -1) {
           topLevelSiteFilter += `:${topLevelSiteURI.port}`;
         }
         return topLevelSiteFilter;
@@ -680,6 +699,14 @@ this.cookies = class extends ExtensionAPIPersistent {
             ? Number.MAX_SAFE_INTEGER
             : details.expirationDate;
 
+          // maxage cap for expiry
+          if (gCookiesMaxageCap > 0) {
+            expiry = Math.min(
+              expiry,
+              Math.round(Date.now() / 1000) + gCookiesMaxageCap
+            );
+          }
+
           let { originAttributes } = oaFromDetails(details, context);
 
           let cookieAttrs = {
@@ -718,7 +745,10 @@ this.cookies = class extends ExtensionAPIPersistent {
 
           // The permission check may have modified the domain, so use
           // the new value instead.
-          Services.cookies.add(
+          let fn = gCookiesRejectWhenInvalid
+            ? Services.cookies.add
+            : Services.cookies.addForAddOn;
+          const cv = fn(
             cookieAttrs.host,
             path,
             name,
@@ -732,6 +762,16 @@ this.cookies = class extends ExtensionAPIPersistent {
             schemeType,
             isPartitioned
           );
+
+          if (cv.result !== Ci.nsICookieValidation.eOK) {
+            if (gCookiesRejectWhenInvalid) {
+              return Promise.reject({ message: cv.errorString });
+            }
+
+            Services.console.logStringMessage(
+              `Extension ${extension.id} tried to create an invalid cookie: ${cv.errorString}`
+            );
+          }
 
           return self.cookies.get(details);
         },

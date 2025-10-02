@@ -18,6 +18,10 @@ const STUDIES_OPT_OUT_PREF = "app.shield.optoutstudies.enabled";
 const UPLOAD_PREF = "datareporting.healthreport.uploadEnabled";
 const DEBUG_PREF = "nimbus.debug";
 
+add_setup(async function setup() {
+  Services.fog.initializeFOG();
+});
+
 add_task(async function test_lazy_pref_getters() {
   const { sandbox, loader, cleanup } = await NimbusTestUtils.setupTest();
 
@@ -115,6 +119,93 @@ add_task(async function test_updateRecipes() {
       status: MatchStatus.NO_MATCH,
     }),
     "should call .onRecipe for fail recipe with NO_MATCH"
+  );
+
+  await cleanup();
+});
+
+add_task(async function test_loadingErrorOnEmptyRecipesWithNullLastModified() {
+  Services.fog.testResetFOG();
+  const { sandbox, loader, cleanup } = await NimbusTestUtils.setupTest({
+    clearTelemetry: true,
+  });
+
+  Assert.deepEqual(
+    Glean.nimbusEvents.remoteSettingsSync
+      .testGetValue("events")
+      ?.map(ev => ev.extra) ?? [],
+    [
+      {
+        force_sync: "false",
+        experiments_success: "true",
+        secure_experiments_success: "true",
+        experiments_empty: "true",
+        secure_experiments_empty: "true",
+        trigger: "migration",
+      },
+      {
+        force_sync: "false",
+        experiments_success: "true",
+        secure_experiments_success: "true",
+        experiments_empty: "true",
+        secure_experiments_empty: "true",
+        trigger: "enabled",
+      },
+    ],
+    "Submitted initial remoteSettingsSync telemetry"
+  );
+  Services.fog.testResetFOG();
+
+  sandbox
+    .stub(loader.remoteSettingsClients.experiments.db, "getLastModified")
+    .resolves(null);
+
+  let { loadingError } = await loader.getRecipesFromAllCollections({
+    trigger: "test",
+  });
+
+  Assert.ok(
+    loadingError,
+    "should error when loading empty recipes collection with null last modified"
+  );
+
+  Assert.deepEqual(
+    Glean.nimbusEvents.remoteSettingsSync
+      .testGetValue("events")
+      ?.map(ev => ev.extra) ?? [],
+    [
+      {
+        force_sync: "false",
+        experiments_success: "false",
+        secure_experiments_success: "true",
+        secure_experiments_empty: "true",
+        trigger: "test",
+      },
+    ],
+    "Submitted failure telemetry"
+  );
+
+  Services.fog.testResetFOG();
+
+  loader.remoteSettingsClients.experiments.get.resolves([
+    NimbusTestUtils.factories.recipe("test"),
+  ]);
+
+  ({ loadingError } = await loader.getRecipesFromAllCollections({
+    trigger: "test",
+  }));
+
+  Assert.ok(
+    loadingError === false,
+    "should not error when loading nonempty recipes collection"
+  );
+
+  Assert.deepEqual(
+    Glean.nimbusEvents.remoteSettingsSync
+      .testGetValue("events")
+      ?.map(ev => ev.extra) ?? [],
+    [],
+    "Didn't submit success telemetry"
   );
 
   await cleanup();
@@ -331,7 +422,7 @@ add_task(async function test_experiment_optin_targeting() {
     "Should enroll in experiment"
   );
 
-  await manager.unenroll(`optin-${recipe.slug}`);
+  manager.unenroll(`optin-${recipe.slug}`);
 
   Services.prefs.clearUserPref(DEBUG_PREF);
 

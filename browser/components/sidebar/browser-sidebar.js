@@ -24,8 +24,8 @@ const EXPAND_ON_HOVER_DEBOUNCE_TIMEOUT_MS = 1000;
 const LAUNCHER_SPLITTER_WIDTH = 4;
 
 var SidebarController = {
-  makeSidebar({ elementId, ...rest }) {
-    return {
+  makeSidebar({ elementId, ...rest }, commandID) {
+    const sidebar = {
       get sourceL10nEl() {
         return document.getElementById(elementId);
       },
@@ -35,10 +35,24 @@ var SidebarController = {
       },
       ...rest,
     };
+
+    const toolID = toolsNameMap[commandID];
+    if (toolID) {
+      XPCOMUtils.defineLazyPreferenceGetter(
+        sidebar,
+        "attention",
+        `sidebar.notification.badge.${toolID}`,
+        false,
+        (_pref, _prev) => this.handleToolBadges(toolID)
+      );
+      sidebar.attention;
+    }
+
+    return sidebar;
   },
 
   registerPrefSidebar(pref, commandID, config) {
-    const sidebar = this.makeSidebar(config);
+    const sidebar = this.makeSidebar(config, commandID);
     this._sidebars.set(commandID, sidebar);
 
     let switcherMenuitem;
@@ -328,7 +342,7 @@ var SidebarController = {
     }
 
     this._pinnedTabsContainer = document.getElementById(
-      "vertical-pinned-tabs-container"
+      "pinned-tabs-container"
     );
     this._pinnedTabsItemsWrapper =
       this._pinnedTabsContainer.shadowRoot.querySelector(
@@ -348,6 +362,7 @@ var SidebarController = {
     this._switcherPanel = document.getElementById("sidebarMenu-popup");
     this._switcherTarget = document.getElementById("sidebar-switcher-target");
     this._switcherArrow = document.getElementById("sidebar-switcher-arrow");
+    this._openPopupsCount = 0;
     if (
       Services.prefs.getBoolPref(
         "browser.tabs.allow_transparent_browser",
@@ -380,7 +395,7 @@ var SidebarController = {
       this._handleLauncherResize(entry)
     );
 
-    if (this.sidebarRevampEnabled) {
+    if (this.sidebarRevampEnabled && !BrowserHandler.kiosk) {
       if (!customElements.get("sidebar-main")) {
         ChromeUtils.importESModule(
           "chrome://browser/content/sidebar/sidebar-main.mjs",
@@ -1184,6 +1199,7 @@ var SidebarController = {
     }
     this._ongoingAnimations = animations;
     this.sidebarContainer.toggleAttribute("sidebar-ongoing-animations", true);
+    this.sidebarMain.toggleAttribute("sidebar-ongoing-animations", true);
     this._box.toggleAttribute("sidebar-ongoing-animations", true);
     tabbox.toggleAttribute("sidebar-ongoing-animations", true);
     await Promise.allSettled(animations.map(a => a.finished));
@@ -1231,13 +1247,10 @@ var SidebarController = {
     if (shouldShowLauncher && this._state.command) {
       await this.show(this._state.command);
     } else if (!shouldShowLauncher) {
-      // hide will only update the toolbar button state if the panel was open
-      if (!this.isOpen) {
-        this.updateToolbarButton();
-      }
       // hide the open panel. It will re-open next time as we don't change the command value
       this.hide({ dismissPanel: false });
     }
+    this.updateToolbarButton();
   },
 
   /**
@@ -1262,6 +1275,7 @@ var SidebarController = {
       } else {
         toolbarButton.toggleAttribute("expanded", false);
       }
+      this.handleToolBadges();
       switch (this.sidebarRevampVisibility) {
         case "always-show":
         case "expand-on-hover":
@@ -1279,6 +1293,73 @@ var SidebarController = {
             : "sidebar-widget-show-sidebar2";
           break;
       }
+    }
+  },
+
+  /**
+   * Handles badges display for the toolbar and sidebar.
+   * Check if a tool(toolID) has requested a badge from pref (i.e) sidebar.notification.badge.{toolID})
+   * Ensure that badges are shown or cleared based on the sidebar visibility and user interaction.
+   *
+   * @param {string|null} toolID
+   */
+  handleToolBadges(toolID = null) {
+    const toolPrefList = this.SidebarManager.getBadgeTools();
+
+    for (const pref of toolPrefList) {
+      if (toolID && toolID !== pref) {
+        continue;
+      }
+
+      const badgePref = Services.prefs.getBoolPref(
+        `sidebar.notification.badge.${pref}`,
+        false
+      );
+      const commandID = [...this.toolsAndExtensions.keys()].find(
+        id => toolsNameMap[id] === pref
+      );
+
+      if (!commandID) {
+        continue;
+      }
+
+      const isSidebarClosed = !this._state?.launcherVisible;
+      const isCurrentView = this._state?.command === commandID;
+
+      // Don't show sidebar badge if sidebar is open and user is already viewing the tool panel
+      if (badgePref && isCurrentView && this.isOpen) {
+        this.dismissSidebarBadge(commandID);
+      }
+
+      if (this.sidebarRevampEnabled && badgePref && isSidebarClosed) {
+        this._showToolbarButtonBadge();
+      } else {
+        this._clearToolbarButtonBadge();
+      }
+
+      window.dispatchEvent(new CustomEvent("SidebarItemChanged"));
+    }
+  },
+
+  _showToolbarButtonBadge() {
+    const badgeEl = this.toolbarButton?.querySelector(".toolbarbutton-badge");
+    return badgeEl?.classList.add("feature-callout");
+  },
+
+  _clearToolbarButtonBadge() {
+    const badgeEl = this.toolbarButton?.querySelector(".toolbarbutton-badge");
+    return badgeEl?.classList.remove("feature-callout");
+  },
+
+  /**
+   * Set badge toolID pref false on clicking the tool icon
+   *
+   * @param {string} view
+   */
+  dismissSidebarBadge(view) {
+    const prefName = `sidebar.notification.badge.${toolsNameMap[view]}`;
+    if (Services.prefs.getBoolPref(prefName, false)) {
+      Services.prefs.setBoolPref(prefName, false);
     }
   },
 
@@ -1314,22 +1395,10 @@ var SidebarController = {
       // Nothing to do.
       return;
     }
-    this._pinnedTabsResizeObserver = new ResizeObserver(([entry]) => {
+    this._pinnedTabsResizeObserver = new ResizeObserver(() => {
       if (this.isPinnedTabsDragging) {
         this._state.pinnedTabsDragActive = true;
       }
-      if (
-        (entry.contentBoxSize[0].blockSize ===
-          this._state.expandedPinnedTabsHeight &&
-          this._state.launcherExpanded) ||
-        (entry.contentBoxSize[0].blockSize ===
-          this._state.collapsedPinnedTabsHeight &&
-          !this._state.launcherExpanded)
-      ) {
-        // condition already met, no need to re-update
-        return;
-      }
-      this._state.pinnedTabsHeight = entry.contentBoxSize[0].blockSize;
     });
 
     this._itemsWrapperResizeObserver = new ResizeObserver(async () => {
@@ -1448,6 +1517,7 @@ var SidebarController = {
           ];
       Services.prefs.setStringPref(this.TOOLS_PREF, updatedTools.join());
     }
+    this.dismissSidebarBadge(commandID);
     window.dispatchEvent(new CustomEvent("SidebarItemChanged"));
   },
 
@@ -1641,6 +1711,9 @@ var SidebarController = {
           get hidden() {
             return !(sidebar.visible ?? true);
           },
+          get attention() {
+            return sidebar.attention ?? false;
+          },
         };
       });
   },
@@ -1703,6 +1776,7 @@ var SidebarController = {
         updateToggleControlLabel(triggerNode);
       }
       this.updateToolbarButton();
+      this.dismissSidebarBadge(commandID);
 
       this._fireFocusedEvent();
       return true;
@@ -1975,6 +2049,7 @@ var SidebarController = {
     if (toVerticalTabs) {
       arrowScrollbox.setAttribute("orient", "vertical");
       tabStrip.setAttribute("orient", "vertical");
+      this._clearToolbarButtonBadge();
     } else {
       arrowScrollbox.setAttribute("orient", "horizontal");
       tabStrip.removeAttribute("expanded");
@@ -1992,9 +2067,9 @@ var SidebarController = {
       !this.verticalTabsEnabled &&
       this.sidebarRevampVisibility == "hide-sidebar"
     ) {
-      // the sidebar.visibility pref didn't change so updateVisbility hasn't
-      // been called; we need to call it here to un-expand the launcher
-      this._state.updateVisibility(undefined, false);
+      // the sidebar.visibility pref didn't change so launcherExpanded hasn't
+      // been updated; we need to set it here to un-expand the launcher
+      this._state.launcherExpanded = false;
     }
   },
 
@@ -2071,19 +2146,30 @@ var SidebarController = {
       case "popupshown":
         /* Temporarily remove MousePosTracker listener when a context menu is open */
         if (e.composedTarget.id !== "tab-preview-panel") {
+          this._openPopupsCount++;
           MousePosTracker.removeListener(this);
         }
         break;
       case "popuphidden":
         if (e.composedTarget.id !== "tab-preview-panel") {
-          if (this._state.launcherExpanded) {
-            if (this._animationEnabled && !window.gReduceMotion) {
-              this._animateSidebarMain();
+          if (this._openPopupsCount < 2) {
+            let isHovered;
+            MousePosTracker._callListener({
+              onMouseEnter: () => (isHovered = true),
+              onMouseLeave: () => (isHovered = false),
+              getMouseTargetRect: () => this.getMouseTargetRect(),
+            });
+            // Collapse sidebar after context menu is closed if needed
+            if (this._state.launcherExpanded && !isHovered) {
+              if (this._animationEnabled && !window.gReduceMotion) {
+                this._animateSidebarMain();
+              }
+              this._state.launcherExpanded = false;
+              await this.waitUntilStable();
             }
-            this._state.launcherExpanded = false;
+            MousePosTracker.addListener(this);
           }
-          await this.waitUntilStable();
-          MousePosTracker.addListener(this);
+          this._openPopupsCount--;
         }
         break;
       default:
@@ -2107,6 +2193,10 @@ var SidebarController = {
       }
       document.addEventListener("popupshown", this);
       document.addEventListener("popuphidden", this);
+      // Reset user-preferred height
+      this.sidebarMain.buttonGroup.style.height = this._state.launcherExpanded
+        ? ""
+        : "0";
     } else {
       MousePosTracker.removeListener(this);
       if (!this.mouseOverTask?.isFinalized) {
@@ -2114,6 +2204,22 @@ var SidebarController = {
       }
       document.removeEventListener("popupshown", this);
       document.removeEventListener("popuphidden", this);
+      // Add back user-preferred height if defined
+      if (
+        this._state.launcherExpanded &&
+        this._state.expandedToolsHeight !== undefined &&
+        this.sidebarMain.buttonGroup
+      ) {
+        this.sidebarMain.buttonGroup.style.height =
+          this._state.expandedToolsHeight;
+      } else if (
+        !this._state.launcherExpanded &&
+        this._state.collapsedToolsHeight !== undefined &&
+        this.sidebarMain.buttonGroup
+      ) {
+        this.sidebarMain.buttonGroup.style.height =
+          this._state.collapsedToolsHeight;
+      }
     }
 
     document.documentElement.toggleAttribute(
@@ -2289,6 +2395,8 @@ XPCOMUtils.defineLazyPreferenceGetter(
       } else {
         SidebarController._disablePinnedTabsDragging();
       }
+      SidebarController._state.updatePinnedTabsHeight();
+      SidebarController._state.updateToolsHeight();
     }
   }
 );

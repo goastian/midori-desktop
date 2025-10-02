@@ -308,7 +308,10 @@ AnchorResolvedMargin AnchorResolvedMarginHelper::ResolveAnchor(
   const auto& lp = aValue.AsAnchorContainingCalcFunction();
   const auto& c = lp.AsCalc();
   auto result = StyleCalcAnchorPositioningFunctionResolution::Invalid();
-  Servo_ResolveAnchorFunctionsInCalcPercentage(&c, nullptr, aPosition, &result);
+  // TODO(dshin, bug 1969305)
+  AnchorPosOffsetResolutionParams params =
+      AnchorPosOffsetResolutionParams::UseCBFrameSize({nullptr, aPosition});
+  Servo_ResolveAnchorFunctionsInCalcPercentage(&c, nullptr, &params, &result);
   if (result.IsInvalid()) {
     return Zero();
   }
@@ -1365,8 +1368,8 @@ StyleJustifySelf nsStylePosition::UsedJustifySelf(
 }
 
 AnchorResolvedInset AnchorResolvedInsetHelper::ResolveAnchor(
-    const StyleInset& aValue, StylePhysicalSide aSide,
-    StylePositionProperty aPosition) {
+    const mozilla::StyleInset& aValue, mozilla::StylePhysicalSide aSide,
+    const AnchorPosOffsetResolutionParams& aParams) {
   MOZ_ASSERT(aValue.HasAnchorPositioningFunction(),
              "Calling anchor resolution without using it?");
   switch (aValue.tag) {
@@ -1374,7 +1377,7 @@ AnchorResolvedInset AnchorResolvedInsetHelper::ResolveAnchor(
       const auto& lp = aValue.AsAnchorContainingCalcFunction();
       const auto& c = lp.AsCalc();
       auto result = StyleCalcAnchorPositioningFunctionResolution::Invalid();
-      Servo_ResolveAnchorFunctionsInCalcPercentage(&c, &aSide, aPosition,
+      Servo_ResolveAnchorFunctionsInCalcPercentage(&c, &aSide, &aParams,
                                                    &result);
       if (result.IsInvalid()) {
         return Auto();
@@ -1383,7 +1386,7 @@ AnchorResolvedInset AnchorResolvedInsetHelper::ResolveAnchor(
     }
     case StyleInset::Tag::AnchorFunction: {
       auto resolved = StyleAnchorPositioningFunctionResolution::Invalid();
-      Servo_ResolveAnchorFunction(&*aValue.AsAnchorFunction(), aSide, aPosition,
+      Servo_ResolveAnchorFunction(&*aValue.AsAnchorFunction(), &aParams, aSide,
                                   &resolved);
       if (resolved.IsInvalid()) {
         return Auto();
@@ -1399,7 +1402,7 @@ AnchorResolvedInset AnchorResolvedInsetHelper::ResolveAnchor(
     case StyleInset::Tag::AnchorSizeFunction: {
       auto resolved = StyleAnchorPositioningFunctionResolution::Invalid();
       Servo_ResolveAnchorSizeFunction(&*aValue.AsAnchorSizeFunction(),
-                                      aPosition, &resolved);
+                                      aParams.mBaseParams.mPosition, &resolved);
       if (resolved.IsInvalid()) {
         return Auto();
       }
@@ -1440,7 +1443,10 @@ AnchorResolvedSize AnchorResolvedSizeHelper::ResolveAnchor(
   // Follows the same reasoning as anchor resolved insets.
   const auto& c = lp.AsCalc();
   auto result = StyleCalcAnchorPositioningFunctionResolution::Invalid();
-  Servo_ResolveAnchorFunctionsInCalcPercentage(&c, nullptr, aPosition, &result);
+  // TODO(dshin, bug 1969305)
+  AnchorPosOffsetResolutionParams params =
+      AnchorPosOffsetResolutionParams::UseCBFrameSize({nullptr, aPosition});
+  Servo_ResolveAnchorFunctionsInCalcPercentage(&c, nullptr, &params, &result);
   if (result.IsInvalid()) {
     return Auto();
   }
@@ -1471,7 +1477,10 @@ AnchorResolvedMaxSize AnchorResolvedMaxSizeHelper::ResolveAnchor(
   // Follows the same reasoning as anchor resolved insets.
   const auto& c = lp.AsCalc();
   auto result = StyleCalcAnchorPositioningFunctionResolution::Invalid();
-  Servo_ResolveAnchorFunctionsInCalcPercentage(&c, nullptr, aPosition, &result);
+  // TODO(dshin, bug 1969305)
+  AnchorPosOffsetResolutionParams params =
+      AnchorPosOffsetResolutionParams::UseCBFrameSize({nullptr, aPosition});
+  Servo_ResolveAnchorFunctionsInCalcPercentage(&c, nullptr, &params, &result);
   if (result.IsInvalid()) {
     return None();
   }
@@ -2387,10 +2396,9 @@ static bool AppearanceValueAffectsFrames(StyleAppearance aAppearance,
       // This is for <input type=number/search> where we allow authors to
       // specify a |-moz-appearance:textfield| to get a control without buttons.
       // We need to reframe since this affects the spinbox creation in
-      // nsNumber/SearchControlFrame::CreateAnonymousContent.
+      // nsNumberControlFrame::CreateAnonymousContent.
       return aDefaultAppearance == StyleAppearance::NumberInput ||
-             aDefaultAppearance == StyleAppearance::PasswordInput ||
-             aDefaultAppearance == StyleAppearance::Searchfield;
+             aDefaultAppearance == StyleAppearance::PasswordInput;
     case StyleAppearance::Menulist:
       // This affects the menulist button creation.
       return aDefaultAppearance == StyleAppearance::Menulist;

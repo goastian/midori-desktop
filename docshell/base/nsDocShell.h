@@ -74,6 +74,7 @@ class nsIWebBrowserFind;
 class nsIWidget;
 class nsIReferrerInfo;
 
+class nsBrowserStatusFilter;
 class nsCommandManager;
 class nsDocShellEditorData;
 class nsDOMNavigationTiming;
@@ -625,7 +626,8 @@ class nsDocShell final : public nsDocLoader,
       nsIURI* aURI, nsIURI* aOriginalURI, nsIReferrerInfo* aReferrerInfo,
       nsIPrincipal* aTriggeringPrincipal, nsIContentSecurityPolicy* aCsp,
       const nsAString& aTitle, bool aScrollRestorationIsManual,
-      nsIStructuredCloneContainer* aData, bool aURIWasModified);
+      nsIStructuredCloneContainer* aData, bool aURIWasModified,
+      nsIPrincipal* aPartitionedPrincipal);
 
   nsresult AddChildSHEntry(nsISHEntry* aCloneRef, nsISHEntry* aNewEntry,
                            int32_t aChildOffset, uint32_t aLoadType,
@@ -990,8 +992,8 @@ class nsDocShell final : public nsDocLoader,
   void RefreshURIToQueue();
   nsresult Embed(nsIDocumentViewer* aDocumentViewer,
                  mozilla::dom::WindowGlobalChild* aWindowActor,
-                 bool aIsTransientAboutBlank, bool aPersist,
-                 nsIRequest* aRequest, nsIURI* aPreviousURI);
+                 bool aIsTransientAboutBlank, nsIRequest* aRequest,
+                 nsIURI* aPreviousURI);
   nsPresContext* GetEldestPresContext();
   nsresult CheckLoadingPermissions();
   nsresult LoadHistoryEntry(nsISHEntry* aEntry, uint32_t aLoadType,
@@ -1086,8 +1088,10 @@ class nsDocShell final : public nsDocLoader,
   // aCacheKey is the channel's cache key.
   // aPreviousURI should be the URI that was previously loaded into the
   // nsDocshell
-  void MoveLoadingToActiveEntry(bool aPersist, bool aExpired,
-                                uint32_t aCacheKey, nsIURI* aPreviousURI);
+  // aPartitionedPrincipal is the partitioned principal of the current document.
+  void MoveLoadingToActiveEntry(bool aExpired, uint32_t aCacheKey,
+                                nsIURI* aPreviousURI,
+                                nsIPrincipal* aPartitionedPrincipal);
 
   void ActivenessMaybeChanged();
 
@@ -1136,17 +1140,41 @@ class nsDocShell final : public nsDocLoader,
   bool IsSameDocumentAsActiveEntry(
       const mozilla::dom::SessionHistoryInfo& aSHInfo);
 
-  MOZ_CAN_RUN_SCRIPT nsresult
-  ReloadNavigable(JSContext* aCx, uint32_t aReloadFlags,
-                  nsIStructuredCloneContainer* aNavigationAPIState = nullptr,
-                  mozilla::dom::UserNavigationInvolvement aUserInvolvement =
-                      mozilla::dom::UserNavigationInvolvement::None);
+  using nsIWebNavigation::Reload;
+
+  /**
+   * Implementation of the spec algorithm #reload.
+   *
+   * Arguments the spec defines:
+   *
+   * @param aNavigationAPIState state for Navigation API.
+   * @param aUserInvolvement if the user is involved in the reload.
+   *
+   * Arguments we need internally:
+   *
+   * @param aReloadFlags see nsIWebNavigation.reload.
+   * @param aCx if the NavigateEvent is expected to fire aCx cannot be Nothing.
+   */
+  MOZ_CAN_RUN_SCRIPT
+  nsresult ReloadNavigable(
+      mozilla::Maybe<mozilla::NotNull<JSContext*>> aCx, uint32_t aReloadFlags,
+      nsIStructuredCloneContainer* aNavigationAPIState = nullptr,
+      mozilla::dom::UserNavigationInvolvement aUserInvolvement =
+          mozilla::dom::UserNavigationInvolvement::None);
 
  private:
   MOZ_CAN_RUN_SCRIPT
-  void InformNavigationAPIAboutAbortingNavigation(JSContext* aCx);
+  void InformNavigationAPIAboutAbortingNavigation();
+
+  enum class OngoingNavigation : uint8_t { NavigationID, Traversal };
+
+  MOZ_CAN_RUN_SCRIPT
+  void SetOngoingNavigation(
+      const mozilla::Maybe<OngoingNavigation>& aOngoingNavigation);
 
   void SetCurrentURIInternal(nsIURI* aURI);
+
+  already_AddRefed<nsIWebProgressListener> BCWebProgressListener();
 
   // data members
   nsString mTitle;
@@ -1176,6 +1204,7 @@ class nsDocShell final : public nsDocLoader,
   nsCOMPtr<nsIWebBrowserFind> mFind;
   RefPtr<nsCommandManager> mCommandManager;
   RefPtr<mozilla::dom::BrowsingContext> mBrowsingContext;
+  RefPtr<nsBrowserStatusFilter> mBCWebProgressStatusFilter;
 
   // Weak reference to our BrowserChild actor.
   nsWeakPtr mBrowserChild;
@@ -1214,6 +1243,12 @@ class nsDocShell final : public nsDocLoader,
   // parent has loaded does. (This isn't the only purpose of mLSHE.)
   // Only used when SHIP is disabled.
   nsCOMPtr<nsISHEntry> mLSHE;
+
+  // The ongoing navigation should really be a UUID, "traverse" or null, but
+  // until we actually start using the UUID we'll only store an enum value.
+  // Nothing here is interpreted as null.
+  // https://html.spec.whatwg.org/#ongoing-navigation
+  mozilla::Maybe<OngoingNavigation> mOngoingNavigation;
 
   // These are only set when fission.sessionHistoryInParent is set.
   mozilla::UniquePtr<mozilla::dom::SessionHistoryInfo> mActiveEntry;

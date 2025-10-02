@@ -429,9 +429,6 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
 
   static bool DeviceSensorsEnabled(JSContext*, JSObject*);
 
-  // WebIDL permission Func for whether Glean APIs are permitted.
-  static bool IsGleanNeeded(JSContext*, JSObject*);
-
   bool DoResolve(
       JSContext* aCx, JS::Handle<JSObject*> aObj, JS::Handle<jsid> aId,
       JS::MutableHandle<mozilla::Maybe<JS::PropertyDescriptor>> aDesc);
@@ -1101,7 +1098,7 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
 
   void FlushPendingNotifications(mozilla::FlushType aType);
 
-  void ScrollTo(const mozilla::CSSIntPoint& aScroll,
+  void ScrollTo(const mozilla::CSSPoint& aScroll,
                 const mozilla::dom::ScrollOptions& aOptions);
 
   already_AddRefed<nsIWidget> GetMainWidget();

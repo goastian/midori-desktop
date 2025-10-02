@@ -916,6 +916,23 @@ END_TEST(testResultPackedVariant)
 
 #endif  // HAVE_64BIT_BUILD
 
+BEGIN_TEST(testIndexOf) {
+  // Test template metaprogramming for finding the index of a type in a
+  // parameter pack. This is used by RootedField.
+  //
+  // Missing types fail to compile.
+
+  CHECK((JS::detail::IndexOfTypeV<int, int> == 0));
+  CHECK((JS::detail::IndexOfTypeV<int, float, int, float> == 1));
+  CHECK((JS::detail::IndexOfTypeV<int, float, double, int> == 2));
+
+  // IndexOfType doesn't check for duplicates.
+  CHECK((JS::detail::IndexOfTypeV<float, float, int, float> == 0));
+
+  return true;
+}
+END_TEST(testIndexOf)
+
 BEGIN_TEST(testRootedTuple) {
   // Tuple with a single GC thing field.
   {
@@ -1032,3 +1049,32 @@ BEGIN_TEST(testRootedTuple) {
   return true;
 }
 END_TEST(testRootedTuple)
+
+BEGIN_TEST(testRootedCopying) {
+  // Make sure that when you write JS::Rooted<T> obj(cx, some_argument)
+  // some_argument is not copied.
+
+  struct NoCopy {
+    NoCopy() = default;
+    NoCopy(NoCopy&) = delete;
+    NoCopy(const NoCopy&) = delete;
+    NoCopy& operator=(const NoCopy&) = delete;
+  };
+
+  struct StructWithNoCopyArg {
+    StructWithNoCopyArg(void* a, NoCopy& nc) {}
+    void trace(JSTracer* trace) {}
+  };
+
+  // Two arguments to choose
+  //   Rooted(const RootingContext& cx, CtorArgs... args)
+  // over
+  //   Rooted(const RootingContext& cx, S&& initial)
+  void* a = nullptr;
+  NoCopy nc;
+
+  // This compiling is a test pass.
+  JS::Rooted<StructWithNoCopyArg> rooted(cx, a, nc);
+  return true;
+}
+END_TEST(testRootedCopying)

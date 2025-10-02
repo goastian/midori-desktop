@@ -8,6 +8,7 @@
 #  define PlatformEncoderModule_h_
 
 #  include "MP4Decoder.h"
+#  include "MediaCodecsSupport.h"
 #  include "MediaResult.h"
 #  include "VPXDecoder.h"
 #  include "mozilla/Maybe.h"
@@ -23,7 +24,7 @@ namespace mozilla {
 
 class MediaDataEncoder;
 class MediaData;
-struct EncoderConfigurationChangeList;
+class EncoderConfigurationChangeList;
 
 class PlatformEncoderModule {
  public:
@@ -43,15 +44,17 @@ class PlatformEncoderModule {
                                           /* IsExclusive = */ true>;
 
   // Indicates if the PlatformDecoderModule supports encoding of a codec.
-  virtual bool Supports(const EncoderConfig& aConfig) const = 0;
-  virtual bool SupportsCodec(CodecType aCodecType) const = 0;
+  virtual media::EncodeSupportSet Supports(
+      const EncoderConfig& aConfig) const = 0;
+  virtual media::EncodeSupportSet SupportsCodec(CodecType aCodecType) const = 0;
 
   // Returns a readable name for this Platform Encoder Module
   virtual const char* GetName() const = 0;
 
   // Asychronously create an encoder
-  RefPtr<PlatformEncoderModule::CreateEncoderPromise> AsyncCreateEncoder(
-      const EncoderConfig& aEncoderConfig, const RefPtr<TaskQueue>& aTaskQueue);
+  virtual RefPtr<PlatformEncoderModule::CreateEncoderPromise>
+  AsyncCreateEncoder(const EncoderConfig& aEncoderConfig,
+                     const RefPtr<TaskQueue>& aTaskQueue);
 
  protected:
   PlatformEncoderModule() = default;
@@ -143,13 +146,16 @@ class MediaDataEncoder {
 template <typename T, typename Phantom>
 class StrongTypedef {
  public:
+  StrongTypedef() = default;
   explicit StrongTypedef(T const& value) : mValue(value) {}
   explicit StrongTypedef(T&& value) : mValue(std::move(value)) {}
   T& get() { return mValue; }
   T const& get() const { return mValue; }
 
  private:
-  T mValue;
+  T mValue{};
+
+  friend struct IPC::ParamTraits<StrongTypedef<T, Phantom>>;
 };
 
 // Dimensions of the video frames
@@ -190,7 +196,8 @@ using EncoderConfigurationItem =
 // A list of changes to an encoder configuration, that _might_ be able to change
 // on the fly. Not all encoder modules can adjust their configuration on the
 // fly.
-struct EncoderConfigurationChangeList {
+class EncoderConfigurationChangeList {
+ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EncoderConfigurationChangeList)
   bool Empty() const { return mChanges.IsEmpty(); }
   template <typename T>

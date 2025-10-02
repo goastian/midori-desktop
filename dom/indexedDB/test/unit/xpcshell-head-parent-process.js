@@ -461,7 +461,6 @@ function verifyBlob(blob1, blob2) {
 function verifyView(view1, view2) {
   is(view1.byteLength, view2.byteLength, "Correct byteLength");
   verifyBuffers(view1, view2);
-  continueToNextStep();
 }
 
 function grabFileUsageAndContinueHandler(request) {
@@ -582,13 +581,16 @@ function expectingUpgrade(request) {
   });
 }
 
-function requestSucceeded(request) {
+function requestSucceeded(request, optionalSyncSuccessCallback) {
   return new Promise(function (resolve, reject) {
     request.onerror = function (event) {
       ok(false, "indexedDB error, '" + event.target.error.name + "'");
       reject(event);
     };
     request.onsuccess = function (event) {
+      if (optionalSyncSuccessCallback) {
+        optionalSyncSuccessCallback();
+      }
       resolve(event);
     };
   });

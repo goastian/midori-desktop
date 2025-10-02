@@ -117,9 +117,7 @@ bool HashableValue::equals(const HashableValue& other) const {
 #ifdef DEBUG
   bool same;
   JSContext* cx = TlsContext.get();
-  RootedValue valueRoot(cx, value);
-  RootedValue otherRoot(cx, other.value);
-  MOZ_ASSERT(SameValueZero(cx, valueRoot, otherRoot, &same));
+  MOZ_ASSERT(SameValueZero(cx, value, other.value, &same));
   MOZ_ASSERT(same == b);
 #endif
   return b;
@@ -297,8 +295,8 @@ bool MapIteratorObject::next(MapIteratorObject* mapIterator,
 
 /* static */
 JSObject* MapIteratorObject::createResultPair(JSContext* cx) {
-  Rooted<ArrayObject*> resultPairObj(
-      cx, NewDenseFullyAllocatedArray(cx, 2, TenuredObject));
+  ArrayObject* resultPairObj =
+      NewDenseFullyAllocatedArray(cx, 2, TenuredObject);
   if (!resultPairObj) {
     return nullptr;
   }
@@ -1218,8 +1216,7 @@ bool SetIteratorObject::next(SetIteratorObject* setIterator,
 
 /* static */
 JSObject* SetIteratorObject::createResult(JSContext* cx) {
-  Rooted<ArrayObject*> resultObj(
-      cx, NewDenseFullyAllocatedArray(cx, 1, TenuredObject));
+  ArrayObject* resultObj = NewDenseFullyAllocatedArray(cx, 1, TenuredObject);
   if (!resultObj) {
     return nullptr;
   }

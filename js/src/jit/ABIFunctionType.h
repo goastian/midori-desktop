@@ -15,6 +15,14 @@
 namespace js {
 namespace jit {
 
+enum class ABIKind {
+  // The system ABI for calling native functions.
+  System,
+  // The wasm ABI for calling wasm functions. See "The WASM ABIs" in WasmFrame.h
+  // for more information.
+  Wasm,
+};
+
 enum class ABIType {
   // A pointer sized integer
   General = 0x1,

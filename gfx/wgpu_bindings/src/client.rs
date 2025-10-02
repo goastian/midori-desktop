@@ -4,7 +4,7 @@
 
 use crate::{
     cow_label, error::HasErrorBufferType, wgpu_string, AdapterInformation, ByteBuf,
-    CommandEncoderAction, DeviceAction, DropAction, ImplicitLayout, QueueWriteAction, RawString,
+    CommandEncoderAction, DeviceAction, ImplicitLayout, QueueWriteAction, RawString,
     TexelCopyBufferLayout, TextureAction,
 };
 
@@ -353,30 +353,6 @@ pub struct Client {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wgpu_client_drop_action(client: &mut Client, byte_buf: &ByteBuf) {
-    let mut cursor = std::io::Cursor::new(byte_buf.as_slice());
-    let identities = client.identities.lock();
-    while let Ok(action) = bincode::deserialize_from(&mut cursor) {
-        match action {
-            DropAction::Adapter(id) => identities.adapters.free(id),
-            DropAction::Device(id) => identities.devices.free(id),
-            DropAction::ShaderModule(id) => identities.shader_modules.free(id),
-            DropAction::PipelineLayout(id) => identities.pipeline_layouts.free(id),
-            DropAction::BindGroupLayout(id) => identities.bind_group_layouts.free(id),
-            DropAction::BindGroup(id) => identities.bind_groups.free(id),
-            DropAction::CommandBuffer(id) => identities.command_buffers.free(id),
-            DropAction::RenderBundle(id) => identities.render_bundles.free(id),
-            DropAction::RenderPipeline(id) => identities.render_pipelines.free(id),
-            DropAction::ComputePipeline(id) => identities.compute_pipelines.free(id),
-            DropAction::Buffer(id) => identities.buffers.free(id),
-            DropAction::Texture(id) => identities.textures.free(id),
-            DropAction::TextureView(id) => identities.texture_views.free(id),
-            DropAction::Sampler(id) => identities.samplers.free(id),
-        }
-    }
-}
-
-#[no_mangle]
 pub extern "C" fn wgpu_client_kill_device_id(client: &Client, id: id::DeviceId) {
     client.identities.lock().devices.free(id)
 }
@@ -414,6 +390,11 @@ pub unsafe extern "C" fn wgpu_client_delete(client: *mut Client) {
 #[no_mangle]
 pub unsafe extern "C" fn wgpu_client_make_adapter_id(client: &Client) -> id::AdapterId {
     client.identities.lock().adapters.process()
+}
+
+#[no_mangle]
+pub extern "C" fn wgpu_client_free_adapter_id(client: &Client, id: id::AdapterId) {
+    client.identities.lock().adapters.free(id)
 }
 
 #[no_mangle]
@@ -502,16 +483,16 @@ pub extern "C" fn wgpu_client_serialize_device_descriptor(
     let label = wgpu_string(desc.label);
     let required_features =
         wgt::Features::from_internal_flags(wgt::FeaturesWGPU::empty(), desc.required_features);
-    let trace = std::env::var("WGPU_TRACE")
-        .ok()
-        .map(|p| wgt::Trace::Directory(p.into()))
-        .unwrap_or(wgt::Trace::Off);
     let desc = wgt::DeviceDescriptor {
         label,
         required_features,
         required_limits: desc.required_limits.clone(),
         memory_hints: wgt::MemoryHints::MemoryUsage,
-        trace,
+        // The content process is untrusted, so this value is ignored
+        // by the GPU process. The GPU process overwrites this with
+        // the result of consulting the `WGPU_TRACE` environment
+        // variable itself in `wgpu_server_adapter_request_device`.
+        trace: wgt::Trace::Off,
     };
     *bb = make_byte_buf(&desc);
 }
@@ -884,7 +865,7 @@ pub unsafe extern "C" fn wgpu_command_encoder_begin_render_pass(
         occlusion_query_set,
     } = desc;
 
-    let label = wgpu_string(label);
+    let label = wgpu_string(label).map(|l| l.to_string());
 
     let timestamp_writes = timestamp_writes.map(|tsw| {
         let &PassTimestampWrites {
@@ -901,20 +882,18 @@ pub unsafe extern "C" fn wgpu_command_encoder_begin_render_pass(
         }
     });
 
-    let timestamp_writes = timestamp_writes.as_ref();
-
     let color_attachments: Vec<_> = make_slice(color_attachments, color_attachments_length)
         .iter()
         .map(|format| Some(format.clone().to_wgpu()))
         .collect();
     let depth_stencil_attachment = depth_stencil_attachment.cloned().map(|dsa| dsa.to_wgpu());
-    let pass = crate::command::RecordedRenderPass::new(&wgc::command::RenderPassDescriptor {
+    let pass = crate::command::RecordedRenderPass::new(
         label,
-        color_attachments: Cow::Owned(color_attachments),
-        depth_stencil_attachment: depth_stencil_attachment.as_ref(),
+        color_attachments,
+        depth_stencil_attachment,
         timestamp_writes,
         occlusion_query_set,
-    });
+    );
     Box::into_raw(Box::new(pass))
 }
 
@@ -1237,6 +1216,14 @@ pub unsafe extern "C" fn wgpu_command_encoder_copy_buffer_to_buffer(
     size: wgt::BufferAddress,
     bb: &mut ByteBuf,
 ) {
+    // In Javascript, `size === undefined` means "copy from src_offset to end of
+    // buffer". The `size` argument to this function uses a value of
+    // `wgt::BufferAddress::MAX` to encode that case. (Valid copy
+    // sizes must be multiples of four, so in the case that the application
+    // really asked to copy BufferAddress::MAX bytes,
+    // CommandEncoder::CopyBufferToBuffer decrements it by four, which
+    // will still fail for mis-alignment.)
+    let size = (size != wgt::BufferAddress::MAX).then_some(size);
     let action = CommandEncoderAction::CopyBufferToBuffer {
         src,
         src_offset,
