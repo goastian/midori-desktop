@@ -7,7 +7,7 @@
  */
 
 const nsIWindowsRegKey = Ci.nsIWindowsRegKey;
-const BASE_PATH = "SOFTWARE\\Astian\\Midori";
+const BASE_PATH = "SOFTWARE\\Mozilla\\Firefox";
 
 function idump(indent, str) {
   for (var j = 0; j < indent; ++j) {

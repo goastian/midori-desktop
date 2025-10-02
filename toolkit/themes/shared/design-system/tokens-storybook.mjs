@@ -214,7 +214,7 @@ export const storybookTables = {
   "border-color": [
     {
       value: {
-        comment: "TODO Bug 1946826 - Border colors need to be consolidated",
+        comment: "TODO Bug 1821203 - Gray tones need to be consolidated",
         light: "#CFCFD8",
         dark: "#3A3944",
         prefersContrast: "CanvasText",
@@ -385,6 +385,7 @@ export const storybookTables = {
     { value: "9999px", name: "--border-radius-circle" },
     { value: "4px", name: "--border-radius-small" },
     { value: "8px", name: "--border-radius-medium" },
+    { value: "12px", name: "--border-radius-large" },
     { value: "var(--border-radius-small)", name: "--button-border-radius" },
   ],
   "border-width": [{ value: "1px", name: "--border-width" }],
@@ -402,19 +403,42 @@ export const storybookTables = {
       name: "--font-size-root",
     },
     {
-      value: { brand: { default: "0.867rem" }, platform: { default: "unset" } },
+      value: {
+        brand: {
+          default: "0.733rem",
+          comment:
+            "11px / Note this token is to be used in rare cases because its hard to read. Please consult with the Design Systems and A11y teams for case-by-case feedback.",
+        },
+        platform: { default: "unset" },
+      },
+      name: "--font-size-xsmall",
+    },
+    {
+      value: {
+        brand: { default: "0.867rem", comment: "13px" },
+        platform: { default: "unset" },
+      },
       name: "--font-size-small",
     },
     {
-      value: { brand: { default: "1.133rem" }, platform: { default: "unset" } },
+      value: {
+        brand: { default: "1.133rem", comment: "17px" },
+        platform: { default: "unset" },
+      },
       name: "--font-size-large",
     },
     {
-      value: { brand: { default: "1.467rem" }, platform: { default: "unset" } },
+      value: {
+        brand: { default: "1.467rem", comment: "22px" },
+        platform: { default: "unset" },
+      },
       name: "--font-size-xlarge",
     },
     {
-      value: { brand: { default: "1.6rem" }, platform: { default: "unset" } },
+      value: {
+        brand: { default: "1.6rem", comment: "24px" },
+        platform: { default: "unset" },
+      },
       name: "--font-size-xxlarge",
     },
   ],
@@ -1025,7 +1049,7 @@ export const variableLookupTable = {
     default: "light-dark(var(--color-yellow-0), var(--color-yellow-90))",
   },
   "border-color": {
-    comment: "TODO Bug 1946826 - Border colors need to be consolidated",
+    comment: "TODO Bug 1821203 - Gray tones need to be consolidated",
     light: "#CFCFD8",
     dark: "#3A3944",
     prefersContrast: "CanvasText",
@@ -1077,6 +1101,7 @@ export const variableLookupTable = {
   "border-radius-circle": "9999px",
   "border-radius-small": "4px",
   "border-radius-medium": "8px",
+  "border-radius-large": "12px",
   "border-width": "1px",
   "button-background-color": {
     forcedColors: "ButtonFace",
@@ -1449,20 +1474,28 @@ export const variableLookupTable = {
     brand: { default: "15px" },
     platform: { default: "unset" },
   },
+  "font-size-xsmall": {
+    brand: {
+      default: "0.733rem",
+      comment:
+        "11px / Note this token is to be used in rare cases because its hard to read. Please consult with the Design Systems and A11y teams for case-by-case feedback.",
+    },
+    platform: { default: "unset" },
+  },
   "font-size-small": {
-    brand: { default: "0.867rem" },
+    brand: { default: "0.867rem", comment: "13px" },
     platform: { default: "unset" },
   },
   "font-size-large": {
-    brand: { default: "1.133rem" },
+    brand: { default: "1.133rem", comment: "17px" },
     platform: { default: "unset" },
   },
   "font-size-xlarge": {
-    brand: { default: "1.467rem" },
+    brand: { default: "1.467rem", comment: "22px" },
     platform: { default: "unset" },
   },
   "font-size-xxlarge": {
-    brand: { default: "1.6rem" },
+    brand: { default: "1.6rem", comment: "24px" },
     platform: { default: "unset" },
   },
   "font-weight": "normal",

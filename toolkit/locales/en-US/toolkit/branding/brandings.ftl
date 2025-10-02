@@ -21,7 +21,7 @@
 -pocket-brand-name = Pocket
 -send-brand-name = Firefox Send
 -screenshots-brand-name = Firefox Screenshots
--mozilla-vpn-brand-name = Midori VPN
+-mozilla-vpn-brand-name = Astian VPN
 -profiler-brand-name = Firefox Profiler
 -translations-brand-name = Firefox Translations
 -focus-brand-name = Firefox Focus

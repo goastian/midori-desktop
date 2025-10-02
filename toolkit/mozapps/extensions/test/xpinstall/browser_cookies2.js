@@ -10,7 +10,7 @@ function test() {
   Harness.installsCompletedCallback = finish_test;
   Harness.setup();
 
-  Services.cookies.add(
+  const cv = Services.cookies.add(
     "example.com",
     "/browser/" + RELATIVE_DIR,
     "xpinstall",
@@ -20,9 +20,10 @@ function test() {
     true,
     Date.now() / 1000 + 60,
     {},
-    Ci.nsICookie.SAMESITE_NONE,
+    Ci.nsICookie.SAMESITE_UNSET,
     Ci.nsICookie.SCHEME_HTTP
   );
+  Assert.equal(cv.result, Ci.nsICookieValidation.eOK, "Valid cookie");
 
   PermissionTestUtils.add(
     "http://example.com/",

@@ -54,11 +54,17 @@ class GfxInfo : public GfxInfoBase {
   NS_IMETHOD GetDrmRenderDevice(nsACString& aDrmRenderDevice) override;
 
   uint32_t OperatingSystemVersion() override { return mWindowsVersion; }
-  uint32_t OperatingSystemBuild() override { return mWindowsBuildNumber; }
+  GfxVersionEx OperatingSystemVersionEx() override { return mWindowsVersionEx; }
 
 #ifdef DEBUG
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_NSIGFXINFODEBUG
+
+  NS_IMETHOD SpoofVendorID(const nsAString& aVendorID) override;
+  NS_IMETHOD SpoofDeviceID(const nsAString& aDeviceID) override;
+  NS_IMETHOD SpoofDriverVersion(const nsAString& aDriverVersion) override;
+  NS_IMETHOD SpoofOSVersion(uint32_t aVersion) override;
+  NS_IMETHOD SpoofOSVersionEx(uint32_t aMajor, uint32_t aMinor, uint32_t aBuild,
+                              uint32_t aRevision) override;
 #endif
 
  private:
@@ -72,12 +78,11 @@ class GfxInfo : public GfxInfoBase {
 
   OperatingSystem GetOperatingSystem() override;
 
-  nsresult GetFeatureStatusImpl(int32_t aFeature, int32_t* aStatus,
-                                nsAString& aSuggestedDriverVersion,
-                                const nsTArray<GfxDriverInfo>& aDriverInfo,
-                                nsACString& aFailureId,
-                                OperatingSystem* aOS = nullptr) override;
-  const nsTArray<GfxDriverInfo>& GetGfxDriverInfo() override;
+  nsresult GetFeatureStatusImpl(
+      int32_t aFeature, int32_t* aStatus, nsAString& aSuggestedDriverVersion,
+      const nsTArray<RefPtr<GfxDriverInfo>>& aDriverInfo,
+      nsACString& aFailureId, OperatingSystem* aOS = nullptr) override;
+  const nsTArray<RefPtr<GfxDriverInfo>>& GetGfxDriverInfo() override;
 
   void DescribeFeatures(JSContext* cx, JS::Handle<JSObject*> aOut) override;
 
@@ -92,6 +97,7 @@ class GfxInfo : public GfxInfoBase {
   nsString mAdapterVendorID[2];
   nsString mAdapterDeviceID[2];
   nsString mAdapterSubsysID[2];
+  GfxVersionEx mWindowsVersionEx;
   uint32_t mWindowsVersion = 0;
   uint32_t mWindowsBuildNumber = 0;
   uint32_t mActiveGPUIndex = 0;  // This must be 0 or 1

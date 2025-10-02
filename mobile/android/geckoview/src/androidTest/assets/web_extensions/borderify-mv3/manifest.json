@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Borderify",
+  "version": "1.0",
+  "description": "Adds a red border to all webpages matching example.com.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "borderify@tests.mozilla.org"
+    }
+  },
+  "icons": {
+    "48": "icons/border-48.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.example.com/*"],
+      "js": ["borderify.js"]
+    }
+  ],
+  "options_ui": {
+    "page": "dummy.html"
+  },
+  "granted_host_permissions": true,
+  "optional_permissions": ["clipboardRead", "*://opt-host-perm.example.com/*"],
+  "host_permissions": ["*://host-perm.example.com/*"]
+}

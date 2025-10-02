@@ -16,7 +16,6 @@
 #include "nsStyleConsts.h"
 #include "nsPIDOMWindow.h"
 #include "nsProgressFrame.h"
-#include "nsMeterFrame.h"
 #include "nsRangeFrame.h"
 #include "nsCSSRendering.h"
 #include "ImageContainer.h"
@@ -109,7 +108,6 @@ NS_IMPL_ISUPPORTS(nsNativeTheme, nsITimerCallback, nsINamed)
     case StyleAppearance::NumberInput:
     case StyleAppearance::Textfield:
     case StyleAppearance::PasswordInput:
-    case StyleAppearance::Searchfield:
     case StyleAppearance::Textarea: {
       if (CheckBooleanAttr(aFrame, nsGkAtoms::focused)) {
         flags |= ElementState::FOCUS | ElementState::FOCUSRING;
@@ -203,29 +201,12 @@ bool nsNativeTheme::IsWidgetStyled(nsPresContext* aPresContext,
 
   /**
    * Progress bar appearance should be the same for the bar and the container
-   * frame. nsProgressFrame owns the logic and will tell us what we should do.
+   * frame.
    */
-  if (aAppearance == StyleAppearance::Progresschunk ||
-      aAppearance == StyleAppearance::ProgressBar) {
-    nsProgressFrame* progressFrame = do_QueryFrame(
-        aAppearance == StyleAppearance::Progresschunk ? aFrame->GetParent()
-                                                      : aFrame);
-    if (progressFrame) {
-      return !progressFrame->ShouldUseNativeStyle();
-    }
-  }
-
-  /**
-   * Meter bar appearance should be the same for the bar and the container
-   * frame. nsMeterFrame owns the logic and will tell us what we should do.
-   */
-  if (aAppearance == StyleAppearance::Meterchunk ||
+  if (aAppearance == StyleAppearance::ProgressBar ||
       aAppearance == StyleAppearance::Meter) {
-    nsMeterFrame* meterFrame = do_QueryFrame(
-        aAppearance == StyleAppearance::Meterchunk ? aFrame->GetParent()
-                                                   : aFrame);
-    if (meterFrame) {
-      return !meterFrame->ShouldUseNativeStyle();
+    if (nsProgressFrame* progressFrame = do_QueryFrame(aFrame)) {
+      return !progressFrame->ShouldUseNativeStyle();
     }
   }
 
@@ -234,12 +215,8 @@ bool nsNativeTheme::IsWidgetStyled(nsPresContext* aPresContext,
    * comes to native theming (either all parts, or no parts, are themed).
    * nsRangeFrame owns the logic and will tell us what we should do.
    */
-  if (aAppearance == StyleAppearance::Range ||
-      aAppearance == StyleAppearance::RangeThumb) {
-    nsRangeFrame* rangeFrame = do_QueryFrame(
-        aAppearance == StyleAppearance::RangeThumb ? aFrame->GetParent()
-                                                   : aFrame);
-    if (rangeFrame) {
+  if (aAppearance == StyleAppearance::Range) {
+    if (nsRangeFrame* rangeFrame = do_QueryFrame(aFrame)) {
       return !rangeFrame->ShouldUseNativeStyle();
     }
   }
@@ -571,5 +548,10 @@ bool nsNativeTheme::IsWidgetAlwaysNonNative(nsIFrame* aFrame,
          aAppearance == StyleAppearance::FocusOutline ||
          aAppearance == StyleAppearance::SpinnerUpbutton ||
          aAppearance == StyleAppearance::SpinnerDownbutton ||
+         aAppearance == StyleAppearance::Toolbarbutton ||
+         aAppearance == StyleAppearance::ProgressBar ||
+         aAppearance == StyleAppearance::Meter ||
+         aAppearance == StyleAppearance::Range ||
+         aAppearance == StyleAppearance::Listbox ||
          (aFrame && aFrame->StyleUI()->mMozTheme == StyleMozTheme::NonNative);
 }

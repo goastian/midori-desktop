@@ -5,29 +5,18 @@
 toolbarbutton {
   appearance: auto;
   -moz-default-appearance: toolbarbutton;
-  background-color: transparent;
   margin: 0;
   padding: 3px;
 
-  @media (-moz-platform: macos) {
-    appearance: none;
-    margin-inline: 2px;
-    padding-inline: 2px;
-  }
-
-  @media (-moz-platform: windows) {
-    &:focus-visible {
-      outline: var(--default-focusring);
-      outline-offset: calc(-1 * var(--default-focusring-width) - 1px);
-    }
-  }
-
-  @media (-moz-platform: linux) {
+  @media not (-moz-platform: macos) {
     &:where(:hover) {
       color: -moz-buttonhovertext;
     }
-    &:where([checked="true"], :hover:active, [open="true"]) {
-      color: ButtonText;
+    &:where(:hover:active, [checked="true"], [open="true"]) {
+      color: -moz-buttonactivetext;
+    }
+    &:where(:focus-visible) {
+      outline: auto;
     }
   }
 
@@ -72,9 +61,10 @@ toolbarbutton {
   color: #fff;
   text-shadow: none;
   border-radius: 2px;
-  box-shadow: 0 1px 0 hsla(0, 100%, 100%, .2) inset,
-              0 -1px 0 hsla(0, 0%, 0%, .1) inset,
-              0 1px 0 hsla(206, 50%, 10%, .2);
+  box-shadow:
+    0 1px 0 hsla(0, 100%, 100%, 0.2) inset,
+    0 -1px 0 hsla(0, 0%, 0%, 0.1) inset,
+    0 1px 0 hsla(206, 50%, 10%, 0.2);
   margin: -5px 0 0 !important;
   margin-inline-end: -4px !important;
   min-width: 14px;

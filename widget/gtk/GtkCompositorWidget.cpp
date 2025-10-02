@@ -56,9 +56,9 @@ GtkCompositorWidget::~GtkCompositorWidget() {
   LOG("GtkCompositorWidget::~GtkCompositorWidget [%p]\n", (void*)mWidget.get());
   CleanupResources();
 #ifdef MOZ_WAYLAND
-  if (mNativeLayerRoot) {
-    mNativeLayerRoot->Shutdown();
-  }
+  RefPtr<layers::NativeLayerRootWayland> root = mNativeLayerRoot.forget();
+  NS_ReleaseOnMainThread("GtkCompositorWidget::mNativeLayerRoot",
+                         root.forget());
 #endif
   RefPtr<nsIWidget> widget = mWidget.forget();
   NS_ReleaseOnMainThread("GtkCompositorWidget::mWidget", widget.forget());
@@ -89,17 +89,6 @@ void GtkCompositorWidget::NotifyClientSizeChanged(
 
   auto size = mClientSize.Lock();
   *size = aClientSize;
-}
-
-void GtkCompositorWidget::NotifyFullscreenChanged(bool aIsFullscreen) {
-
-
-#ifdef MOZ_WAYLAND
-  if (mNativeLayerRoot) {
-    LOG("GtkCompositorWidget::NotifyFullscreenChanged() [%d]", aIsFullscreen);
-    mNativeLayerRoot->NotifyFullscreenChanged(aIsFullscreen);
-  }
-#endif
 }
 
 LayoutDeviceIntSize GtkCompositorWidget::GetClientSize() {

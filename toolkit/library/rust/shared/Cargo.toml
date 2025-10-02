@@ -12,8 +12,7 @@ moz_asserts = "0.1"
 mozglue-static = { path = "../../../../mozglue/static/rust" }
 geckoservo = { path = "../../../../servo/ports/geckolib" }
 kvstore = { path = "../../../components/kvstore" }
-lmdb-rkv-sys = { version = "0.11", features = ["mdb_idl_logn_9"] }
-mp4parse_capi = { git = "https://github.com/mozilla/mp4parse-rust", rev = "e64650a686e5c5732395cd059e17cfd3b1e5b63b", features = ["missing-pixi-permitted"] }
+mp4parse_capi = { git = "https://github.com/mozilla/mp4parse-rust", rev = "d3e4d255bd149d341c7e90f5e9fc84e743a8e179", features = ["missing-pixi-permitted"] }
 nserror = { path = "../../../../xpcom/rust/nserror" }
 nsstring = { path = "../../../../xpcom/rust/nsstring" }
 netwerk_helper = { path = "../../../../netwerk/base/rust-helper" }
@@ -38,12 +37,6 @@ log = {version = "0.4", features = ["release_max_level_info"]}
 cose-c = { version = "0.1.5" }
 jsrust_shared = { path = "../../../../js/src/rust/shared" }
 cascade_bloom_filter = { path = "../../../components/cascade_bloom_filter" }
-signature_cache = { path = "../../../../security/certverifier/signature_cache" }
-cert_storage = { path = "../../../../security/manager/ssl/cert_storage" }
-crypto_hash = { path = "../../../../security/manager/ssl/crypto_hash" }
-data_storage = { path = "../../../../security/manager/ssl/data_storage" }
-ipcclientcerts = { path = "../../../../security/manager/ssl/ipcclientcerts" }
-trust-anchors = { path = "../../../../security/manager/ssl/trust_anchors" }
 bitsdownload = { path = "../../../components/bitsdownload", optional = true }
 storage = { path = "../../../../storage/rust" }
 bookmark_sync = { path = "../../../components/places/bookmark_sync", optional = true }
@@ -82,7 +75,16 @@ dap_ffi = { path = "../../../components/telemetry/dap/ffi" }
 data-encoding-ffi = { path = "../../../../dom/fs/parent/rust/data-encoding-ffi" }
 binary_http = { path = "../../../../netwerk/protocol/http/binary_http" }
 oblivious_http = { path = "../../../../netwerk/protocol/http/oblivious_http" }
+
+abridged_certs = { path = "../../../../security/manager/ssl/abridged_certs" }
+cert_storage = { path = "../../../../security/manager/ssl/cert_storage" }
+crypto_hash = { path = "../../../../security/manager/ssl/crypto_hash" }
+data_storage = { path = "../../../../security/manager/ssl/data_storage" }
+ipcclientcerts = { path = "../../../../security/manager/ssl/ipcclientcerts" }
 mls_gk = { path = "../../../../security/mls/mls_gk" }
+trust-anchors = { path = "../../../../security/manager/ssl/trust_anchors" }
+signature_cache = { path = "../../../../security/certverifier/signature_cache" }
+
 mime-guess-ffi = { path = "../../../../dom/fs/parent/rust/mime-guess-ffi" }
 
 # Note: `modern_sqlite` means rusqlite's bindings file be for a sqlite with
@@ -107,9 +109,6 @@ etagere = { version = "0.2.13", features = ["ffi"] }
 
 url = "2.5.0"
 
-# Since we're building with at least rustc 1.63, enable rust 1.57 features (use of try_reserve methods).
-fallible_collections = { version = "0.4", features = ["rust_1_57"] }
-
 libz-rs-sys = { version = "0.4.1", features = ["custom-prefix"], optional = true }
 
 [target.'cfg(any(target_os = "android", target_os = "macos", target_os = "ios", all(target_os = "windows", not(target_arch = "aarch64"))))'.dependencies]
@@ -117,12 +116,13 @@ osclientcerts = { path = "../../../../security/manager/ssl/osclientcerts" }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 gkrust-uniffi-components = { path = "../../../components/uniffi-bindgen-gecko-js/components/", features = ["xpcom"] }
-gkrust-uniffi-fixtures = { path = "../../../components/uniffi-bindgen-gecko-js/fixtures/", features = ["xpcom"], optional = true }
+uniffi-bindgen-gecko-js-test-fixtures = { path = "../../../components/uniffi-bindgen-gecko-js/test-fixtures/", optional = true }
 viaduct = "0.1"
 webext-storage = "0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 detect_win32k_conflicts = { path = "../../../xre/detect_win32k_conflicts" }
+widget_windows = { path = "../../../../widget/windows/rust" }
 
 [features]
 default = []
@@ -145,7 +145,7 @@ oxidized_breakpad = ["rust_minidump_writer_linux"]
 crashreporter = ["crash_helper_client", "mozannotation_client"]
 with_dbus = ["audio_thread_priority/with_dbus"]
 thread_sanitizer = ["xpcom/thread_sanitizer"]
-uniffi_fixtures = ["gkrust-uniffi-fixtures"]
+uniffi_fixtures = ["uniffi-bindgen-gecko-js-test-fixtures"]
 webmidi_midir_impl = ["midir_impl"]
 icu4x = ["jsrust_shared/icu4x"]
 

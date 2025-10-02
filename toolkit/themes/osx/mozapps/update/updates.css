@@ -5,7 +5,8 @@
 /* Elevation Dialog */
 /* Specify the size for the UI so it has a fixed size. 3rd
    party themes should typically specify the same values. */
-#elevationBox, .update-content {
+#elevationBox,
+.update-content {
   height: 360px;
   width: 700px;
 }
@@ -42,13 +43,15 @@
 
 #update-button-box {
   padding: 10px 12px 12px 12px;
-  appearance: auto;
-  -moz-default-appearance: statusbar;
   -moz-window-dragging: drag;
-}
+  /* Not quite a sidebar, but in a sense an auxiliary toolbar */
+  border-top: 1px solid -moz-sidebarborder;
+  background-color: -moz-sidebar;
+  color: -moz-sidebartext;
 
-#update-button-box button {
-  min-height: 22px;
+  button {
+    min-height: 22px;
+  }
 }
 
 #updateFinishedName {
@@ -58,7 +61,7 @@
 
 /* Update History Window */
 update {
-  border-bottom: 1px dotted #C0C0C0;
+  border-bottom: 1px dotted #c0c0c0;
 }
 
 .update-name {

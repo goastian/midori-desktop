@@ -22,8 +22,12 @@
 #include "mozilla/widget/xdg-activation-v1-client-protocol.h"
 #include "mozilla/widget/xdg-output-unstable-v1-client-protocol.h"
 #include "mozilla/widget/color-management-v1-client-protocol.h"
+#include "mozilla/widget/xdg-shell-client-protocol.h"
+#include "mozilla/widget/xx-pip-v1-client-protocol.h"
 
 #include <gbm.h>
+
+using GdkMonitor = struct _GdkMonitor;
 
 namespace mozilla::widget {
 
@@ -34,8 +38,6 @@ constexpr const int sColorPrimariesNum =
 
 class DMABufFormats;
 
-using GdkMonitor = struct _GdkMonitor;
-
 // Our general connection to Wayland display server,
 // holds our display connection and runs event loop.
 // We have a global nsWaylandDisplay object for each thread.
@@ -45,6 +47,7 @@ class nsWaylandDisplay {
   // connection.
   explicit nsWaylandDisplay(wl_display* aDisplay);
 
+  static uint32_t GetLastEventSerial();
   wl_display* GetDisplay() { return mDisplay; };
   wl_compositor* GetCompositor() { return mCompositor; };
   wl_subcompositor* GetSubcompositor() { return mSubcompositor; };
@@ -100,6 +103,10 @@ class nsWaylandDisplay {
 
   void SetColorManager(wp_color_manager_v1* aColorManager);
   wp_color_manager_v1* GetColorManager() const { return mColorManager; }
+  void SetPipShell(xx_pip_shell_v1* aShell) { mPipShell = aShell; }
+  xx_pip_shell_v1* GetPipShell() const { return mPipShell; }
+  void SetXdgWm(xdg_wm_base* aWmBase) { mWmBase = aWmBase; }
+  xdg_wm_base* GetXdgWm() const { return mWmBase; }
   void SetCMSupportedFeature(uint32_t aFeature);
   void SetCMSupportedTFNamed(uint32_t aTF);
   void SetCMSupportedPrimariesNamed(uint32_t aPrimaries);
@@ -109,6 +116,11 @@ class nsWaylandDisplay {
   RefPtr<DMABufFormats> GetDMABufFormats() const { return mFormats; }
   bool HasDMABufFeedback() const { return mDmabufIsFeedback; }
   void EnsureDMABufFormats();
+
+  static void AsyncRoundtripCallback(void* aData, wl_callback* aCallback,
+                                     uint32_t aTime);
+  void RequestAsyncRoundtrip();
+  void WaitForAsyncRoundtrips();
 
   ~nsWaylandDisplay();
 
@@ -135,7 +147,10 @@ class nsWaylandDisplay {
   org_kde_kwin_appmenu_manager* mAppMenuManager = nullptr;
   wp_fractional_scale_manager_v1* mFractionalScaleManager = nullptr;
   wp_color_manager_v1* mColorManager = nullptr;
+  xx_pip_shell_v1* mPipShell = nullptr;
+  xdg_wm_base* mWmBase = nullptr;
   RefPtr<DMABufFormats> mFormats;
+  GList* mAsyncRoundtrips = nullptr;
 
   struct ColorManagerSupportedFeature {
     bool mICC = false;

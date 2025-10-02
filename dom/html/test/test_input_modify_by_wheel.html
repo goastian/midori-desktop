@@ -1,0 +1,121 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=1261673
+https://bugzilla.mozilla.org/show_bug.cgi?id=1970030
+-->
+<head>
+  <meta charset="utf-8">
+  <title>Test change number and range input value through wheel event</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/paint_listener.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+</head>
+<body>
+<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1261673">Mozilla Bug 1261673</a>
+<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1970030">Mozilla Bug 1970030</a>
+<p id="display"></p>
+<div id="content" style="display: none">
+</div>
+<input id="test_number" type="number" value=5>
+<script type="text/javascript">
+
+SimpleTest.waitForExplicitFinish();
+SimpleTest.waitForFocus(runTests);
+
+function runTests() {
+  let input = window.document.getElementById("test_number");
+
+  // focus: whether the target input element is focused
+  // deltaY: deltaY of WheelEvent
+  // deltaMode: deltaMode of WheelEvent
+  // valueChanged: expected value changes after input element handled the wheel event
+  let params = [
+    {focus: true, deltaY: 1.0, deltaMode: WheelEvent.DOM_DELTA_LINE, valueChanged: -1},
+    {focus: true, deltaY: -1.0, deltaMode: WheelEvent.DOM_DELTA_LINE, valueChanged: 1},
+    {focus: true, deltaY: 1.0, deltaMode: WheelEvent.DOM_DELTA_PAGE, valueChanged: -1},
+    {focus: true, deltaY: -1.0, deltaMode: WheelEvent.DOM_DELTA_PAGE, valueChanged: 1},
+    {focus: true, deltaY: 1.0, deltaMode: WheelEvent.DOM_DELTA_PIXEL, valueChanged: 0},
+    {focus: true, deltaY: -1.0, deltaMode: WheelEvent.DOM_DELTA_PIXEL, valueChanged: 0},
+    {focus: false, deltaY: 1.0, deltaMode: WheelEvent.DOM_DELTA_LINE, valueChanged: 0},
+    {focus: false, deltaY: -1.0, deltaMode: WheelEvent.DOM_DELTA_LINE, valueChanged: 0}
+  ];
+
+  let testIdx = 0;
+
+  // The expected value of the number field; used in is() check below.
+  // Initialized to the value that the field starts out with; subtests will
+  // modify this if they expect to modify the value.
+  let expectedValue = parseInt(input.value);
+
+  // Actual/expected number of mutations to the number field's value:
+  let actualChangeCount = 0;
+  let expectedChangeCount = 0;
+
+  const prefName = "dom.input.number_and_range_modified_by_mousewheel";
+  let didFlipPref = false;
+  let isPrefEnabled = SpecialPowers.getBoolPref(prefName);
+  is(isPrefEnabled, false,  "Expecting pref to be disabled by default");
+  input.addEventListener("change", () => {
+    ++actualChangeCount;
+  });
+
+  function runNext() {
+    let p = params[testIdx];
+    (p.focus) ? input.focus() : input.blur();
+    if (isPrefEnabled && p.valueChanged != 0) {
+      expectedChangeCount++;
+      expectedValue += p.valueChanged;
+    }
+
+    const wheelEventPromise = new Promise(res => {
+      input.addEventListener("wheel", e => res(e), { passive: true, once: true });
+    })
+
+    sendWheelAndPaint(input, 1, 1, { deltaY: p.deltaY, deltaMode: p.deltaMode },
+                      async () => {
+      is(parseInt(input.value), expectedValue,
+         "Handle wheel in number input test-" + testIdx +
+         " with pref " + (isPrefEnabled ? "en" : "dis") + "abled");
+
+      info(`actualChangeCount ${actualChangeCount}, expectedChangeCount ${expectedChangeCount}`);
+      is(actualChangeCount, expectedChangeCount,
+         "UA should fire change event when input's value changed");
+
+      // Need to wrap event to see if it was default prevented by system
+      const wheelEvent = SpecialPowers.wrap(await wheelEventPromise);
+
+      const shouldScroll = !(isPrefEnabled && p.valueChanged);
+      if (shouldScroll) {
+        ok(!wheelEvent.defaultPrevented, "Wheel event should not be default prevented");
+      } else {
+        ok(wheelEvent.defaultPrevented, "Wheel event should be default prevented");
+      }
+
+      if (++testIdx < params.length) {
+        // More subtests remain; kick off the next one.
+        runNext();
+      } else if (!didFlipPref) {
+        // Reached the end of the subtest list.  Flip the pref
+        // and restart our iteration over the subtests.
+        await SpecialPowers.pushPrefEnv({
+          set: [[prefName, !isPrefEnabled]],
+        });
+        isPrefEnabled = !isPrefEnabled;
+        didFlipPref = true;
+        testIdx = actualChangeCount = expectedChangeCount = 0;
+        runNext();
+      } else {
+        // Reached the end of the subtest list, for both pref settings.
+        // We're done!
+        SimpleTest.finish();
+      }
+    });
+  }
+  runNext();
+}
+
+</script>
+</body>
+</html>

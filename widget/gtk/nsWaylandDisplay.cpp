@@ -18,6 +18,7 @@
 #include "mozilla/StaticPrefs_general.h"
 #include "mozilla/Sprintf.h"
 #include "WidgetUtilsGtk.h"
+#include "mozilla/widget/xx-pip-v1-client-protocol.h"
 #include "nsGtkKeyUtils.h"
 #include "nsWindow.h"
 #include "wayland-proxy.h"
@@ -66,6 +67,8 @@ void nsWaylandDisplay::SetShm(wl_shm* aShm) { mShm = aShm; }
 
 class WaylandPointerEvent {
  public:
+  constexpr WaylandPointerEvent() = default;
+
   RefPtr<nsWindow> TakeWindow(wl_surface* aSurface) {
     if (!aSurface) {
       mWindow = nullptr;
@@ -125,8 +128,6 @@ class WaylandPointerEvent {
 
   void Clear() { mWindow = nullptr; }
 
-  WaylandPointerEvent() { Clear(); }
-
  private:
   StaticRefPtr<nsWindow> mWindow;
   uint32_t mTime = 0;
@@ -135,7 +136,7 @@ class WaylandPointerEvent {
   float mDeltaY = 0;
 };
 
-MOZ_RUNINIT static WaylandPointerEvent sHoldGesture;
+static WaylandPointerEvent sHoldGesture;
 
 static void gesture_hold_begin(void* data,
                                struct zwp_pointer_gesture_hold_v1* hold,
@@ -164,7 +165,10 @@ static void gesture_hold_end(void* data,
 static const struct zwp_pointer_gesture_hold_v1_listener gesture_hold_listener =
     {gesture_hold_begin, gesture_hold_end};
 
-MOZ_RUNINIT static WaylandPointerEvent sScrollEvent;
+static WaylandPointerEvent sScrollEvent;
+
+uint32_t gLastSerial = 0;
+uint32_t nsWaylandDisplay::GetLastEventSerial() { return gLastSerial; }
 
 static void pointer_handle_enter(void* data, struct wl_pointer* pointer,
                                  uint32_t serial, struct wl_surface* surface,
@@ -183,7 +187,9 @@ static void pointer_handle_motion(void* data, struct wl_pointer* pointer,
 
 static void pointer_handle_button(void* data, struct wl_pointer* pointer,
                                   uint32_t serial, uint32_t time,
-                                  uint32_t button, uint32_t state) {}
+                                  uint32_t button, uint32_t state) {
+  gLastSerial = serial;
+}
 
 static void pointer_handle_axis(void* data, struct wl_pointer* pointer,
                                 uint32_t time, uint32_t axis,
@@ -343,6 +349,7 @@ static void keyboard_handle_leave(void* data, struct wl_keyboard* keyboard,
 static void keyboard_handle_key(void* data, struct wl_keyboard* keyboard,
                                 uint32_t serial, uint32_t time, uint32_t key,
                                 uint32_t state) {
+  gLastSerial = serial;
   // hardware key code is +8.
   // https://gitlab.gnome.org/GNOME/gtk/-/blob/3.24.41/gdk/wayland/gdkdevice-wayland.c#L2341
   KeymapWrapper::KeyboardHandlerForWayland(serial, key + 8, state);
@@ -599,6 +606,14 @@ static void global_registry_handler(void* data, wl_registry* registry,
     auto* colorManager = WaylandRegistryBind<wp_color_manager_v1>(
         registry, id, &wp_color_manager_v1_interface, version);
     display->SetColorManager(colorManager);
+  } else if (iface.EqualsLiteral("xx_pip_shell_v1")) {
+    auto* pipShell = WaylandRegistryBind<xx_pip_shell_v1>(
+        registry, id, &xx_pip_shell_v1_interface, version);
+    display->SetPipShell(pipShell);
+  } else if (iface.EqualsLiteral("xdg_wm_base")) {
+    auto* xdgWm = WaylandRegistryBind<xdg_wm_base>(
+        registry, id, &xdg_wm_base_interface, version);
+    display->SetXdgWm(xdgWm);
   }
 }
 
@@ -614,7 +629,36 @@ static void global_registry_remover(void* data, wl_registry* registry,
 static const struct wl_registry_listener registry_listener = {
     global_registry_handler, global_registry_remover};
 
-nsWaylandDisplay::~nsWaylandDisplay() = default;
+nsWaylandDisplay::~nsWaylandDisplay() {
+  g_list_free_full(mAsyncRoundtrips, (GDestroyNotify)wl_callback_destroy);
+}
+
+void nsWaylandDisplay::AsyncRoundtripCallback(void* aData,
+                                              wl_callback* aCallback,
+                                              uint32_t aTime) {
+  auto* display = static_cast<nsWaylandDisplay*>(aData);
+  display->mAsyncRoundtrips =
+      g_list_remove(display->mAsyncRoundtrips, aCallback);
+  wl_callback_destroy(aCallback);
+}
+
+static const struct wl_callback_listener async_roundtrip_listener = {
+    nsWaylandDisplay::AsyncRoundtripCallback};
+
+void nsWaylandDisplay::RequestAsyncRoundtrip() {
+  wl_callback* callback = wl_display_sync(mDisplay);
+  wl_callback_add_listener(callback, &async_roundtrip_listener, this);
+  mAsyncRoundtrips = g_list_append(mAsyncRoundtrips, callback);
+}
+
+void nsWaylandDisplay::WaitForAsyncRoundtrips() {
+  while (g_list_length(mAsyncRoundtrips) > 0) {
+    if (wl_display_dispatch(mDisplay) < 0) {
+      NS_WARNING("Failed to get events from Wayland display!");
+      return;
+    }
+  }
+}
 
 static void WlLogHandler(const char* format, va_list args) {
   char error[1000];
@@ -657,7 +701,8 @@ nsWaylandDisplay::nsWaylandDisplay(wl_display* aDisplay)
   mRegistry = wl_display_get_registry(mDisplay);
   wl_registry_add_listener(mRegistry, &registry_listener, this);
   wl_display_roundtrip(mDisplay);
-  wl_display_roundtrip(mDisplay);
+  RequestAsyncRoundtrip();
+  WaitForAsyncRoundtrips();
   EnsureDMABufFormats();
 
   for (auto& e : mSupportedTransfer) {

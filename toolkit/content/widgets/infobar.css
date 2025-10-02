@@ -49,7 +49,8 @@
 @media not (prefers-contrast) {
   :host(.infobar) {
     box-shadow: 0 1px 2px rgba(58, 57, 68, 0.1);
-    background-color: var(--info-bar-background-color);
+    /* if a custom background color is set, use that, otherwise fall back */
+    background-color: var(--info-bar-background-color-configurable, var(--info-bar-background-color));
     color: var(--info-bar-text-color);
 
     &::before {
@@ -58,11 +59,11 @@
   }
 }
 
-:host([message-bar-type=infobar]:first-of-type) {
+:host([message-bar-type="infobar"]:first-of-type) {
   margin-top: 4px;
 }
 
-:host([message-bar-type=infobar]) {
+:host([message-bar-type="infobar"]) {
   margin: 0 4px 4px;
 }
 
@@ -89,10 +90,10 @@ strong {
 
 /* type="system" infobar styles */
 
-:host([type=system]) .icon {
+:host([type="system"]) .icon {
   display: none;
 }
 
-:host([type=system]) .content {
+:host([type="system"]) .content {
   margin-inline-start: 0;
 }

@@ -10,7 +10,7 @@ avoid-blacklist-and-whitelist:
     extensions:
         - js
         - mjs
-        - jxs
+        - jsx
         - idl
         - webidl
         - xml
@@ -28,6 +28,7 @@ avoid-blacklist-and-whitelist:
         - yml
         - java
         - kt
+        - rs
     exclude:
         - eslint-rollouts.config.mjs
         - eslint-file-globals.config.mjs
@@ -196,7 +197,6 @@ avoid-blacklist-and-whitelist:
         - python/mozbuild/mozbuild/backend/recursivemake.py
         - python/mozbuild/mozbuild/configure/options.py
         - python/mozbuild/mozbuild/vendor/vendor_rust.py
-        - remote/cdp/Protocol.sys.mjs
         - security/manager/ssl/tests/unit/test_intermediate_preloads.js
         - security/sandbox/linux/broker/SandboxBroker.cpp
         - security/sandbox/linux/broker/SandboxBroker.h
@@ -210,7 +210,6 @@ avoid-blacklist-and-whitelist:
         - taskcluster/kinds/docker-image/kind.yml
         - taskcluster/gecko_taskgraph/actions/create_interactive.py
         - taskcluster/gecko_taskgraph/transforms/test/other.py
-        - taskcluster/gecko_taskgraph/try_option_syntax.py
         - testing/condprofile/condprof/client.py
         - testing/condprofile/condprof/tests/profile/prefs.js
         - testing/condprofile/condprof/tests/test_client.py
@@ -279,7 +278,6 @@ avoid-blacklist-and-whitelist:
         - toolkit/mozapps/extensions/test/xpinstall/head.js
         - tools/fuzzing/messagemanager/MessageManagerFuzzer.cpp
         - tools/fuzzing/messagemanager/MessageManagerFuzzer.h
-        - tools/lint/eslint/eslint-plugin-mozilla/lib/rules/no-define-cc-etc.js
         - tools/lint/rejected-words.yml
         - widget/android/GfxInfo.cpp
         - widget/GfxInfoBase.cpp
@@ -290,6 +288,9 @@ avoid-blacklist-and-whitelist:
         - widget/windows/WinUtils.h
         - xpcom/io/FilePreferences.cpp
         - xpcom/tests/gtest/TestFilePreferencesUnix.cpp
+        - gfx/webrender_bindings/src/moz2d_renderer.rs
+        - gfx/webrender_bindings/src/program_cache.rs
+        - servo/components/style/values/computed/font.rs
 
 # ---
 # Disable for now. Needs some dev to handle this

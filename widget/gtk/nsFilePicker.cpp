@@ -712,7 +712,6 @@ void* nsFilePicker::GtkFileChooserNew(const gchar* title, GtkWindow* parent,
     accept_label = g_dgettext(
         "gtk30", action == GTK_FILE_CHOOSER_ACTION_SAVE ? "_Save" : "_Open");
   }
-
   return gtk_file_chooser_dialog_new(
       title, parent, action, g_dgettext("gtk30", "_Cancel"),
       GTK_RESPONSE_CANCEL, accept_label, GTK_RESPONSE_ACCEPT, nullptr);

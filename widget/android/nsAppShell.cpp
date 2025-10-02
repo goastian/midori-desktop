@@ -76,7 +76,6 @@
 #include "ImageDecoderSupport.h"
 #include "JavaBuiltins.h"
 #include "ScreenHelperAndroid.h"
-#include "Telemetry.h"
 #include "WebExecutorSupport.h"
 #include "Base64UtilsSupport.h"
 
@@ -323,14 +322,14 @@ class GeckoAppShellSupport final
 
   static void NotifyAlertListener(jni::String::Param aName,
                                   jni::String::Param aTopic,
-                                  jni::String::Param aCookie) {
-    if (!aName || !aTopic || !aCookie) {
+                                  jni::String::Param aAction) {
+    if (!aName || !aTopic) {
       return;
     }
 
-    widget::AndroidAlerts::NotifyListener(aName->ToString(),
-                                          aTopic->ToCString().get(),
-                                          aCookie->ToString().get());
+    widget::AndroidAlerts::NotifyListener(
+        aName->ToString(), aTopic->ToCString().get(),
+        aAction ? Some(aAction->ToString()) : Nothing());
   }
 
   static bool IsParentProcess() { return XRE_IsParentProcess(); }
@@ -428,7 +427,6 @@ nsAppShell::nsAppShell()
       GeckoThreadSupport::Init();
       GeckoAppShellSupport::Init();
       XPCOMEventTargetWrapper::Init();
-      mozilla::widget::Telemetry::Init();
 
       if (XRE_IsGPUProcess()) {
         mozilla::gl::AndroidSurfaceTexture::Init();
@@ -453,7 +451,6 @@ nsAppShell::nsAppShell()
     mozilla::GeckoNetworkManager::Init();
     mozilla::GeckoProcessManager::Init();
     mozilla::GeckoSystemStateListener::Init();
-    mozilla::widget::Telemetry::Init();
     mozilla::widget::ImageDecoderSupport::Init();
     mozilla::widget::WebExecutorSupport::Init();
     mozilla::widget::Base64UtilsSupport::Init();
@@ -579,6 +576,7 @@ nsAppShell::Observe(nsISupports* aSubject, const char* aTopic,
     nsCOMPtr<dom::Document> doc = do_QueryInterface(aSubject);
     MOZ_ASSERT(doc);
     if (const RefPtr<nsWindow> window = nsWindow::From(doc->GetWindow())) {
+      PROFILER_MARKER_TEXT("Applink Startup", OTHER, {}, "GeckoViewReady"_ns);
       window->OnGeckoViewReady();
     }
   } else if (!strcmp(aTopic, "quit-application")) {

@@ -19,6 +19,7 @@ const NS_ERROR_START_PROFILE_MANAGER = 0x805800c9;
 const UPDATE_CHANNEL = AppConstants.MOZ_UPDATE_CHANNEL;
 
 let gProfD = do_get_profile();
+Services.fog.initializeFOG();
 let gDataHome = gProfD.clone();
 gDataHome.append("data");
 gDataHome.createUnique(Ci.nsIFile.DIRECTORY_TYPE, 0o755);
@@ -170,8 +171,6 @@ function selectStartupProfile(args = [], isResetting = false, legacyHash = "") {
       service.currentProfile === profile.value,
       "Should have marked the profile as the current profile."
     );
-  } else {
-    Assert.ok(!service.currentProfile, "Should be no current profile.");
   }
 
   return {
@@ -648,5 +647,14 @@ function checkStartupReason(expected = undefined) {
     selectionReason,
     expected,
     "Should have seen the right startup reason."
+  );
+
+  Assert.equal(
+    Glean.startup.profileSelectionReason.testGetValue("metrics"),
+    expected
+  );
+  Assert.equal(
+    Glean.startup.profileSelectionReason.testGetValue("baseline"),
+    expected
   );
 }

@@ -17,23 +17,67 @@ import MozInputText from "chrome://global/content/elements/moz-input-text.mjs";
  * @property {string} description - The text for the description element that helps describe the input control
  * @property {string} supportPage - Name of the SUMO support page to link to.
  * @property {string} placeholder - Text to display when the input has no value.
- * @property {string} ariaLabel
- *  The aria-label text for cases where there is no visible label.
+ * @property {string} ariaLabel - The aria-label text for cases where there is no visible label.
  */
 export default class MozInputSearch extends MozInputText {
-  static properties = {
-    ariaLabel: { type: String, mapped: true },
-  };
+  // The amount of milliseconds that we wait before firing the "search" event.
+  static #searchDebounceDelayMs = 500;
+
+  #searchTimer = null;
+
+  #clearSearchTimer() {
+    if (this.#searchTimer) {
+      clearTimeout(this.#searchTimer);
+    }
+    this.#searchTimer = null;
+  }
+
+  #dispatchSearch() {
+    this.dispatchEvent(
+      new CustomEvent("MozInputSearch:search", {
+        bubbles: true,
+        composed: true,
+        detail: { query: this.value },
+      })
+    );
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.#clearSearchTimer();
+  }
 
   inputStylesTemplate() {
     return html`${super.inputStylesTemplate()}`;
+  }
+
+  handleInput(e) {
+    super.handleInput(e);
+    this.#clearSearchTimer();
+    this.#searchTimer = setTimeout(() => {
+      this.#dispatchSearch();
+    }, MozInputSearch.#searchDebounceDelayMs);
+  }
+
+  // Clears the value and synchronously dispatches a search event if needed.
+  clear() {
+    this.#clearSearchTimer();
+    if (this.value) {
+      this.value = "";
+      this.#dispatchSearch();
+    }
+  }
+
+  #hasIcon() {
+    // If unspecified, search inputs still have a default search icon.
+    return this.iconSrc === undefined || !!this.iconSrc;
   }
 
   inputTemplate() {
     return html`
       <input
         id="input"
-        class="with-icon"
+        class=${this.#hasIcon() ? "with-icon" : ""}
         type="search"
         name=${this.name}
         value=${this.value}

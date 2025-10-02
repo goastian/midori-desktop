@@ -1807,6 +1807,9 @@ void GeckoViewSupport::Open(
     jni::String::Param aChromeURI, bool aPrivateMode) {
   MOZ_ASSERT(NS_IsMainThread());
 
+  PROFILER_MARKER_TEXT("Applink Startup", OTHER, {},
+                       "GeckoViewSupport::Open"_ns);
+
   AUTO_PROFILER_LABEL("mozilla::widget::GeckoViewSupport::Open", OTHER);
 
   // We'll need gfxPlatform to be initialized to create a compositor later.
@@ -3073,13 +3076,11 @@ InputContext nsWindow::GetInputContext() {
   return acc->GetInputContext();
 }
 
-nsresult nsWindow::SynthesizeNativeTouchPoint(uint32_t aPointerId,
-                                              TouchPointerState aPointerState,
-                                              LayoutDeviceIntPoint aPoint,
-                                              double aPointerPressure,
-                                              uint32_t aPointerOrientation,
-                                              nsIObserver* aObserver) {
-  mozilla::widget::AutoObserverNotifier notifier(aObserver, "touchpoint");
+nsresult nsWindow::SynthesizeNativeTouchPoint(
+    uint32_t aPointerId, TouchPointerState aPointerState,
+    LayoutDeviceIntPoint aPoint, double aPointerPressure,
+    uint32_t aPointerOrientation, nsISynthesizedEventCallback* aCallback) {
+  mozilla::widget::AutoSynthesizedEventCallbackNotifier notifier(aCallback);
 
   int eventType;
   switch (aPointerState) {
@@ -3122,8 +3123,8 @@ nsresult nsWindow::SynthesizeNativeTouchPoint(uint32_t aPointerId,
 nsresult nsWindow::SynthesizeNativeMouseEvent(
     LayoutDeviceIntPoint aPoint, NativeMouseMessage aNativeMessage,
     MouseButton aButton, nsIWidget::Modifiers aModifierFlags,
-    nsIObserver* aObserver) {
-  mozilla::widget::AutoObserverNotifier notifier(aObserver, "mouseevent");
+    nsISynthesizedEventCallback* aCallback) {
+  mozilla::widget::AutoSynthesizedEventCallbackNotifier notifier(aCallback);
 
   MOZ_ASSERT(mNPZCSupport.IsAttached());
   auto npzcSup(mNPZCSupport.Access());
@@ -3186,11 +3187,11 @@ nsresult nsWindow::SynthesizeNativeMouseEvent(
   return NS_OK;
 }
 
-nsresult nsWindow::SynthesizeNativeMouseMove(LayoutDeviceIntPoint aPoint,
-                                             nsIObserver* aObserver) {
+nsresult nsWindow::SynthesizeNativeMouseMove(
+    LayoutDeviceIntPoint aPoint, nsISynthesizedEventCallback* aCallback) {
   return SynthesizeNativeMouseEvent(
       aPoint, NativeMouseMessage::Move, MouseButton::eNotPressed,
-      nsIWidget::Modifiers::NO_MODIFIERS, aObserver);
+      nsIWidget::Modifiers::NO_MODIFIERS, aCallback);
 }
 
 void nsWindow::SetCompositorWidgetDelegate(CompositorWidgetDelegate* delegate) {

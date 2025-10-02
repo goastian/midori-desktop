@@ -19,7 +19,7 @@
   --default-focusring-width: 2px;
   --default-focusring: var(--default-focusring-width) dotted;
 
-  --animation-easing-function: cubic-bezier(.07, .95, 0, 1);
+  --animation-easing-function: cubic-bezier(0.07, 0.95, 0, 1);
 
   --arrowpanel-background: Field;
   --arrowpanel-color: FieldText;
@@ -35,6 +35,8 @@
   --arrowpanel-menuitem-padding-block: 8px;
   --arrowpanel-menuitem-padding-inline: 8px;
   --arrowpanel-menuitem-padding: var(--arrowpanel-menuitem-padding-block) var(--arrowpanel-menuitem-padding-inline);
+
+  --search-engine-name-max-width: 25em;
 
   @media (-moz-platform: macos) {
     /* On macOS we use native shadows via -moz-window-shadow */
@@ -75,7 +77,7 @@
    */
   @media not (prefers-contrast) {
     --toolbar-field-border-color: transparent;
-    --toolbar-field-background-color: light-dark(rgba(0, 0, 0, .05), rgba(0, 0, 0, .3));
+    --toolbar-field-background-color: light-dark(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.3));
     --toolbar-field-color: inherit;
 
     @media (prefers-color-scheme: light) {
@@ -84,7 +86,7 @@
   }
 
   &[lwtheme] {
-    --toolbar-bgcolor: rgba(255,255,255,.4);
+    --toolbar-bgcolor: rgba(255, 255, 255, 0.4);
     --toolbar-color: var(--lwt-text-color, inherit);
 
     --toolbarbutton-icon-fill-attention: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
@@ -138,7 +140,7 @@
   }
 }
 
-:is(menupopup, panel):where([type=arrow]) {
+:is(menupopup, panel):where([type="arrow"]) {
   --panel-background: var(--arrowpanel-background);
   --panel-color: var(--arrowpanel-color);
   --panel-border-color: var(--arrowpanel-border-color);
@@ -153,10 +155,12 @@
 /* Lightweight theme roots */
 
 :root[lwtheme] {
+  .browser-toolbox-background,
   toolbar,
   &[lwt-popup="light"] panel {
     color-scheme: light;
   }
+  &[lwtheme-brighttext] .browser-toolbox-background,
   toolbar[brighttext],
   &[lwt-popup="dark"] panel {
     color-scheme: dark;
@@ -201,7 +205,7 @@ html|textarea {
   font: inherit;
 }
 
-html|input:where(:not([type=radio i], [type=checkbox i], [type=range i])),
+html|input:where(:not([type="radio" i], [type="checkbox" i], [type="range" i])),
 html|textarea {
   appearance: none;
   padding: var(--space-small);
@@ -328,7 +332,6 @@ a,
   }
 }
 
-
 /* Override properties set on buttons, to display the links without unwanted styling */
 button.text-link {
   appearance: none;
@@ -341,7 +344,7 @@ button.text-link {
 }
 
 button.text-link .button-text {
- /* Cancel out the default internal margin */
+  /* Cancel out the default internal margin */
   margin: 0;
 }
 
@@ -363,7 +366,7 @@ button.text-link .button-text {
   border-radius: var(--border-radius-small);
   color: var(--button-text-color);
   background-color: var(--button-background-color);
-  padding: .45em 1em;
+  padding: 0.45em 1em;
   min-height: var(--size-item-large);
   font-weight: 600;
   min-width: 0;
@@ -412,7 +415,7 @@ button.text-link .button-text {
     }
   }
 
-  &[type=menu] > .button-box > .button-menu-dropmarker {
+  &[type="menu"] > .button-box > .button-menu-dropmarker {
     appearance: none;
     display: flex;
     content: url("chrome://global/skin/icons/arrow-down-12.svg");
@@ -432,10 +435,10 @@ button.text-link .button-text {
   -moz-window-shadow: none;
 
   --autoscroll-background-image: url("chrome://global/skin/icons/autoscroll.svg");
-  --panel-border-color: rgba(0,0,0,.4);
+  --panel-border-color: rgba(0, 0, 0, 0.4);
   --panel-padding: 0;
-  --panel-background: rgba(249,249,250,.8) no-repeat center var(--autoscroll-background-image);
-  --panel-shadow: 0 0 var(--panel-shadow-margin) rgba(0,0,0,.2);
+  --panel-background: rgba(249, 249, 250, 0.8) no-repeat center var(--autoscroll-background-image);
+  --panel-shadow: 0 0 var(--panel-shadow-margin) rgba(0, 0, 0, 0.2);
   --panel-shadow-margin: 4px;
   --panel-border-radius: 100%;
 
@@ -456,7 +459,6 @@ button.text-link .button-text {
     --autoscroll-background-image: url("chrome://global/skin/icons/autoscroll-horizontal.svg");
   }
 }
-
 
 /* Combobox dropdown renderer */
 #ContentSelectDropdown > menupopup {

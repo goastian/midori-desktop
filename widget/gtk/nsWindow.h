@@ -367,41 +367,40 @@ class nsWindow final : public nsBaseWidget {
   TransparencyMode GetTransparencyMode() override;
   void SetInputRegion(const InputRegion&) override;
 
-  nsresult SynthesizeNativeMouseEvent(LayoutDeviceIntPoint aPoint,
-                                      NativeMouseMessage aNativeMessage,
-                                      mozilla::MouseButton aButton,
-                                      nsIWidget::Modifiers aModifierFlags,
-                                      nsIObserver* aObserver) override;
+  nsresult SynthesizeNativeMouseEvent(
+      LayoutDeviceIntPoint aPoint, NativeMouseMessage aNativeMessage,
+      mozilla::MouseButton aButton, nsIWidget::Modifiers aModifierFlags,
+      nsISynthesizedEventCallback* aCallback) override;
 
-  nsresult SynthesizeNativeMouseMove(LayoutDeviceIntPoint aPoint,
-                                     nsIObserver* aObserver) override {
+  nsresult SynthesizeNativeMouseMove(
+      LayoutDeviceIntPoint aPoint,
+      nsISynthesizedEventCallback* aCallback) override {
     return SynthesizeNativeMouseEvent(
         aPoint, NativeMouseMessage::Move, mozilla::MouseButton::eNotPressed,
-        nsIWidget::Modifiers::NO_MODIFIERS, aObserver);
+        nsIWidget::Modifiers::NO_MODIFIERS, aCallback);
   }
 
   nsresult SynthesizeNativeMouseScrollEvent(
       LayoutDeviceIntPoint aPoint, uint32_t aNativeMessage, double aDeltaX,
       double aDeltaY, double aDeltaZ, uint32_t aModifierFlags,
-      uint32_t aAdditionalFlags, nsIObserver* aObserver) override;
+      uint32_t aAdditionalFlags,
+      nsISynthesizedEventCallback* aCallback) override;
 
-  nsresult SynthesizeNativeTouchPoint(uint32_t aPointerId,
-                                      TouchPointerState aPointerState,
-                                      LayoutDeviceIntPoint aPoint,
-                                      double aPointerPressure,
-                                      uint32_t aPointerOrientation,
-                                      nsIObserver* aObserver) override;
+  nsresult SynthesizeNativeTouchPoint(
+      uint32_t aPointerId, TouchPointerState aPointerState,
+      LayoutDeviceIntPoint aPoint, double aPointerPressure,
+      uint32_t aPointerOrientation,
+      nsISynthesizedEventCallback* aCallback) override;
 
   nsresult SynthesizeNativeTouchPadPinch(TouchpadGesturePhase aEventPhase,
                                          float aScale,
                                          LayoutDeviceIntPoint aPoint,
                                          int32_t aModifierFlags) override;
 
-  nsresult SynthesizeNativeTouchpadPan(TouchpadGesturePhase aEventPhase,
-                                       LayoutDeviceIntPoint aPoint,
-                                       double aDeltaX, double aDeltaY,
-                                       int32_t aModifierFlags,
-                                       nsIObserver* aObserver) override;
+  nsresult SynthesizeNativeTouchpadPan(
+      TouchpadGesturePhase aEventPhase, LayoutDeviceIntPoint aPoint,
+      double aDeltaX, double aDeltaY, int32_t aModifierFlags,
+      nsISynthesizedEventCallback* aCallback) override;
 
   void GetCompositorWidgetInitData(
       mozilla::widget::CompositorWidgetInitData* aInitData) override;
@@ -439,6 +438,9 @@ class nsWindow final : public nsBaseWidget {
   nsresult SetSystemFont(const nsCString& aFontName) override;
   nsresult GetSystemFont(nsCString& aFontName) override;
 
+  void MaybeCreatePipResources();
+  void ClearPipResources();
+
   typedef enum {
     GTK_DECORATION_SYSTEM,  // CSD including shadows
     GTK_DECORATION_CLIENT,  // CSD without shadows
@@ -458,6 +460,8 @@ class nsWindow final : public nsBaseWidget {
   static nsWindow* GetFocusedWindow();
 
   mozilla::UniquePtr<mozilla::widget::WaylandSurfaceLock> LockSurface();
+
+  bool WaylandPipEnabled() const;
 
 #ifdef MOZ_WAYLAND
   // Use xdg-activation protocol to transfer focus from gFocusWindow to aWindow.
@@ -597,7 +601,7 @@ class nsWindow final : public nsBaseWidget {
   float mAspectRatio = 0.0f;
   float mAspectRatioSaved = 0.0f;
   mozilla::Maybe<GtkOrientation> mAspectResizer;
-  LayoutDeviceIntPoint mLastResizePoint;
+  GdkPoint mLastResizePoint{0, 0};
 
   // Keep in sync with WaylandSurface::sNoScale
   constexpr static const int sNoScale = -1;
@@ -637,7 +641,7 @@ class nsWindow final : public nsBaseWidget {
   // Used for synthesizing touchpad pan gestures
   struct TouchpadPanGestureState {
     mozilla::Maybe<TouchpadGesturePhase> mTouchpadGesturePhase;
-    uint64_t mSavedObserver = 0;
+    mozilla::Maybe<uint64_t> mSavedCallbackId;
   };
 
   // Used for synthesizing touchpad pan gestures
@@ -850,7 +854,6 @@ class nsWindow final : public nsBaseWidget {
   GdkPoint WaylandGetParentPosition();
   bool WaylandPopupConfigure();
   bool WaylandPopupIsAnchored();
-  bool WaylandPopupIsMenu();
   bool WaylandPopupIsContextMenu();
   bool WaylandPopupIsPermanent();
   // First popup means it's attached directly to toplevel window
@@ -1047,6 +1050,13 @@ class nsWindow final : public nsBaseWidget {
   mozilla::Maybe<int> mKioskMonitor;
   LayoutDeviceIntRegion mOpaqueRegion MOZ_GUARDED_BY(mOpaqueRegionLock);
   mutable mozilla::RWLock mOpaqueRegionLock{"nsWindow::mOpaqueRegion"};
+#ifdef MOZ_WAYLAND
+  struct {
+    struct xdg_surface* mXdgSurface = nullptr;
+    struct xx_pip_v1* mPipSurface = nullptr;
+    LayoutDeviceIntSize mConfigureSize;
+  } mPipResources;
+#endif
 };
 
 #endif /* __nsWindow_h__ */

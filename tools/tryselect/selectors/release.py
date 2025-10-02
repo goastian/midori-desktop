@@ -87,7 +87,6 @@ def run(
     dry_run=False,
     message="{msg}",
     closed_tree=False,
-    push_to_lando=False,
     push_to_vcs=False,
 ):
     app_version = attr.evolve(version, beta_number=None, is_esr=False)
@@ -126,10 +125,16 @@ def run(
         }
     )
 
-    with open(os.path.join(vcs.path, "taskcluster/config.yml")) as f:
+    with open(
+        os.path.join(vcs.path, "taskcluster/kinds/merge-automation/kind.yml")
+    ) as f:
         migration_configs = yaml.safe_load(f)
     for migration in migrations:
-        migration_config = migration_configs["merge-automation"]["behaviors"][migration]
+        # pull out the behaviour-specific configuration
+        actions = migration_configs["tasks"]["merge-automation"]["worker"]["actions"]
+        behaviour_config = actions["by-behavior"][migration][0]
+        # there is always one action in the behaviour config
+        migration_config = list(behaviour_config.values())[0]
         for path, from_, to in migration_config["replacements"]:
             if path in files_to_change:
                 contents = files_to_change[path]
@@ -165,6 +170,5 @@ def run(
         closed_tree=closed_tree,
         try_task_config=task_config,
         files_to_change=files_to_change,
-        push_to_lando=push_to_lando,
         push_to_vcs=push_to_vcs,
     )

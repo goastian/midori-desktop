@@ -605,7 +605,7 @@ static const nsExtraMimeTypeEntry extraMimeEntries[] = {
     {"application/epub+zip", "epub", "Electronic publication (EPUB)"}};
 
 static const nsDefaultMimeTypeEntry sForbiddenPrimaryExtensions[] = {
-    {IMAGE_JPEG, "jfif"}};
+    {IMAGE_JPEG, "jfif"}, {AUDIO_MP3, "mpga"}};
 
 /**
  * File extensions for which decoding should be disabled.
@@ -1184,6 +1184,12 @@ nsExternalHelperAppService::DeleteTemporaryFileOnExit(nsIFile* aTemporaryFile) {
 }
 
 NS_IMETHODIMP
+nsExternalHelperAppService::DeletePrivateFileWhenPossible(
+    nsIFile* aPrivateFile) {
+  return DeleteTemporaryFileHelper(aPrivateFile, mPrivateFilesList);
+}
+
+NS_IMETHODIMP
 nsExternalHelperAppService::DeleteTemporaryPrivateFileWhenPossible(
     nsIFile* aTemporaryFile) {
   return DeleteTemporaryFileHelper(aTemporaryFile, mTemporaryPrivateFilesList);
@@ -1207,6 +1213,10 @@ void nsExternalHelperAppService::ExpungeTemporaryFilesHelper(
 
 void nsExternalHelperAppService::ExpungeTemporaryFiles() {
   ExpungeTemporaryFilesHelper(mTemporaryFilesList);
+}
+
+void nsExternalHelperAppService::ExpungePrivateFiles() {
+  ExpungeTemporaryFilesHelper(mPrivateFilesList);
 }
 
 void nsExternalHelperAppService::ExpungeTemporaryPrivateFiles() {
@@ -1284,6 +1294,10 @@ nsExternalHelperAppService::Observe(nsISupports* aSubject, const char* aTopic,
   if (!strcmp(aTopic, "profile-before-change")) {
     ExpungeTemporaryFiles();
   } else if (!strcmp(aTopic, "last-pb-context-exited")) {
+    if (Preferences::GetBool("browser.download.enableDeletePrivate", true) &&
+        Preferences::GetBool("browser.download.deletePrivate", true)) {
+      ExpungePrivateFiles();
+    }
     ExpungeTemporaryPrivateFiles();
   }
   return NS_OK;
@@ -1607,8 +1621,7 @@ NS_IMETHODIMP nsExternalAppHandler::OnStartRequest(nsIRequest* request) {
     return NS_OK;
   }
 
-  mDownloadClassification =
-      nsContentSecurityUtils::ClassifyDownload(aChannel, MIMEType);
+  mDownloadClassification = nsContentSecurityUtils::ClassifyDownload(aChannel);
 
   if (mDownloadClassification == nsITransfer::DOWNLOAD_FORBIDDEN) {
     // If the download is rated as forbidden,
@@ -3774,6 +3787,8 @@ nsExternalHelperAppService::ShouldModifyExtension(nsIMIMEInfo* aMimeInfo,
       ignoreMimeExtPairs[] = {
           {"video/3gpp"_ns, "mp4"_ns},   // bug 1749294
           {"audio/x-wav"_ns, "mp2"_ns},  // bug 1805365
+          {"audio/mp4"_ns, "mp4"_ns},    // bug 1789321
+          {"video/mp4"_ns, "m4a"_ns},    // "   "
       };
 
   nsAutoCString fileExtLowerCase(aFileExt);

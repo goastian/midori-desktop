@@ -115,3 +115,19 @@ GFXINFO_FEATURE(OVERLAY_VP_AUTO_HDR, "FEATURE_OVERLAY_VP_AUTO_HDR", "overlay-vp-
 GFXINFO_FEATURE(OVERLAY_VP_SUPER_RESOLUTION, "FEATURE_OVERLAY_VP_SUPER_RESOLUTION", "overlay-vp-super-resolution")
 /* Whether DMABUF is supported when using WebGL, starting in 88. */
 GFXINFO_FEATURE(DMABUF_WEBGL, "DMABUF_WEBGL", "dmabuf-webgl")
+/* Whether DirectComposition is supported for compositing, starting in 141. */
+GFXINFO_FEATURE(WEBRENDER_DCOMP, "WEBRENDER_DCOMP", "webrender.dcomp")
+/* Whether hardware VP8 encoding is supported, starting in 140. */
+GFXINFO_FEATURE(VP8_HW_ENCODE, "VP8_HW_ENCODE", "vp8.hw-encode")
+/* Whether hardware VP9 encoding is supported, starting in 140. */
+GFXINFO_FEATURE(VP9_HW_ENCODE, "VP9_HW_ENCODE", "vp9.hw-encode")
+/* Whether hardware H264 encoding is supported, starting in 140. */
+GFXINFO_FEATURE(H264_HW_ENCODE, "H264_HW_ENCODE", "h264.hw-encode")
+/* Whether hardware AV1 encoding is supported, starting in 140. */
+GFXINFO_FEATURE(AV1_HW_ENCODE, "AV1_HW_ENCODE", "av1.hw-encode")
+/* Whether hardware HEVC encoding is supported, starting in 140. */
+GFXINFO_FEATURE(HEVC_HW_ENCODE, "HEVC_HW_ENCODE", "hevc.hw-encode")
+/* Whether Windows Media Fundation hardware DRM is supported, starting in 141. */
+GFXINFO_FEATURE(WMF_HW_DRM, "WMF_HW_DRM", "wmf.hw-drm")
+/* Whether OpenGL is allowed to use normalized 16-bit texture formats, starting in 141. */
+GFXINFO_FEATURE(GL_NORM16_TEXTURES, "GL_NORM16", "gl.norm16-textures")

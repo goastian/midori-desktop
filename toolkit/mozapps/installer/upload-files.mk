@@ -123,79 +123,6 @@ ifeq ($(MOZ_PKG_FORMAT),ZIP)
   INNER_MAKE_PACKAGE = $(call py_action,zip,'$(PACKAGE)' '$(MOZ_PKG_DIR)' -x '**/.mkdir.done',$(1))
 endif
 
-#Create an RPM file
-ifeq ($(MOZ_PKG_FORMAT),RPM)
-  PKG_SUFFIX  = .rpm
-  MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[^0-9.].*//' )
-  MOZ_RPM_RELEASE = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[0-9.]*//' )
-
-  RPMBUILD_TOPDIR=$(ABS_DIST)/rpmbuild
-  RPMBUILD_RPMDIR=$(ABS_DIST)
-  RPMBUILD_SRPMDIR=$(ABS_DIST)
-  RPMBUILD_SOURCEDIR=$(RPMBUILD_TOPDIR)/SOURCES
-  RPMBUILD_SPECDIR=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
-  RPMBUILD_BUILDDIR=$(ABS_DIST)/..
-
-  SPEC_FILE = $(RPMBUILD_SPECDIR)/mozilla.spec
-  RPM_INCIDENTALS=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
-
-  RPM_CMD = \
-    echo Creating RPM && \
-    $(PYTHON3) -m mozbuild.action.preprocessor \
-      -DMOZ_APP_NAME=$(MOZ_APP_NAME) \
-      -DMOZ_APP_DISPLAYNAME='$(MOZ_APP_DISPLAYNAME)' \
-      -DMOZ_APP_REMOTINGNAME='$(MOZ_APP_REMOTINGNAME)' \
-      $(RPM_INCIDENTALS)/mozilla.desktop \
-      -o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
-    rm -rf $(ABS_DIST)/$(TARGET_RAW_CPU) && \
-    $(RPMBUILD) -bb \
-    $(SPEC_FILE) \
-    --target $(TARGET_RAW_CPU) \
-    --buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
-    --define 'moz_app_name $(MOZ_APP_NAME)' \
-    --define 'moz_app_displayname $(MOZ_APP_DISPLAYNAME)' \
-    --define 'moz_app_version $(MOZ_APP_VERSION)' \
-    --define 'moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)' \
-    --define 'moz_rpm_release $(MOZ_RPM_RELEASE)' \
-    --define 'buildid $(BUILDID)' \
-    --define 'moz_source_repo $(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)' \
-    --define 'moz_source_stamp $(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h)' \
-    --define 'moz_branding_directory $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)' \
-    --define '_topdir $(RPMBUILD_TOPDIR)' \
-    --define '_rpmdir $(RPMBUILD_RPMDIR)' \
-    --define '_sourcedir $(RPMBUILD_SOURCEDIR)' \
-    --define '_specdir $(RPMBUILD_SPECDIR)' \
-    --define '_srcrpmdir $(RPMBUILD_SRPMDIR)' \
-    --define '_builddir $(RPMBUILD_BUILDDIR)' \
-    --define '_prefix $(prefix)' \
-    --define '_libdir $(libdir)' \
-    --define '_bindir $(bindir)' \
-    --define '_datadir $(datadir)' \
-    --define '_installdir $(installdir)'
-
-  ifdef ENABLE_TESTS
-    RPM_CMD += \
-      --define 'createtests yes' \
-      --define '_testsinstalldir $(shell basename $(installdir))'
-  endif
-
-  #For each of the main/tests rpms we want to make sure that
-  #if they exist that they are in objdir/dist/ and that they get
-  #uploaded and that they are beside the other build artifacts
-  MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_RAW_CPU)$(PKG_SUFFIX)
-  UPLOAD_EXTRA_FILES += $(MAIN_RPM)
-  RPM_CMD += && mv $(TARGET_RAW_CPU)/$(MAIN_RPM) $(ABS_DIST)/
-
-  ifdef ENABLE_TESTS
-    TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_RAW_CPU)$(PKG_SUFFIX)
-    UPLOAD_EXTRA_FILES += $(TESTS_RPM)
-    RPM_CMD += && mv $(TARGET_RAW_CPU)/$(TESTS_RPM) $(ABS_DIST)/
-  endif
-
-  INNER_MAKE_PACKAGE = cd $(1) && $(RPM_CMD)
-endif #Create an RPM file
-
-
 ifeq ($(MOZ_PKG_FORMAT),APK)
 INNER_MAKE_PACKAGE = true
 endif
@@ -296,7 +223,7 @@ ifneq (android,$(MOZ_WIDGET_TOOLKIT))
 endif
 
 ifeq ($(OS_TARGET), WINNT)
-  INSTALLER_PACKAGE = $(DIST)/$(PKG_INST_PATH)$(PKG_INST_BASENAME).exe
+  INSTALLER_PACKAGE = $(DIST)/$(PKG_PATH)$(PKG_INST_BASENAME).exe
 endif
 
 # These are necessary because some of our packages/installers contain spaces
@@ -313,8 +240,7 @@ ESCAPE_WILDCARD = $(subst $(space),?,$(1))
 CHECKSUM_ALGORITHM_PARAM = -d sha512 -d md5 -d sha1
 
 # This variable defines where the checksum file will be located
-CHECKSUM_FILE = '$(DIST)/$(PKG_PATH)/$(CHECKSUMS_FILE_BASENAME).checksums'
-CHECKSUM_FILES = $(CHECKSUM_FILE)
+CHECKSUM_FILE = '$(ABS_DIST)/$(PKG_PATH)/$(CHECKSUMS_FILE_BASENAME).checksums'
 
 # Upload MAR tools only if AB_CD is unset or en_US
 ifeq (,$(AB_CD:en-US=))
@@ -373,7 +299,7 @@ endif
 endif
 
 ifdef MOZ_STUB_INSTALLER
-  UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_INST_PATH)$(PKG_STUB_BASENAME).exe)
+  UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(PKG_STUB_BASENAME).exe)
 endif
 
 # Upload `.xpt` artifacts for use in artifact builds.

@@ -28,7 +28,6 @@ class PlatformCompositorWidgetDelegate : public CompositorWidgetDelegate {
  public:
   virtual void NotifyClientSizeChanged(
       const LayoutDeviceIntSize& aClientSize) = 0;
-  virtual void NotifyFullscreenChanged(bool aIsFullscreen) = 0;
   virtual GtkCompositorWidget* AsGtkCompositorWidget() { return nullptr; };
 
   virtual void CleanupResources() = 0;
@@ -93,8 +92,6 @@ class GtkCompositorWidget : public CompositorWidget,
   // PlatformCompositorWidgetDelegate Overrides
 
   void NotifyClientSizeChanged(const LayoutDeviceIntSize& aClientSize) override;
-  void NotifyFullscreenChanged(bool aIsFullscreen) override;
-
   GtkCompositorWidget* AsGtkCompositorWidget() override { return this; }
 
   UniquePtr<WaylandSurfaceLock> LockSurface();

@@ -115,29 +115,6 @@ export let RemotePageAccessManager = {
       RPMSendAsyncMessage: ["ActivityStream:ContentToMain"],
       RPMAddMessageListener: ["ActivityStream:MainToContent"],
     },
-    "about:pocket-saved": {
-      RPMSendAsyncMessage: ["*"],
-      RPMAddMessageListener: ["*"],
-      RPMRemoveMessageListener: ["*"],
-      RPMGetStringPref: ["extensions.pocket.site"],
-    },
-    "about:pocket-signup": {
-      RPMSendAsyncMessage: ["*"],
-      RPMAddMessageListener: ["*"],
-      RPMRemoveMessageListener: ["*"],
-      RPMGetStringPref: ["extensions.pocket.site"],
-    },
-    "about:pocket-home": {
-      RPMSendAsyncMessage: ["*"],
-      RPMAddMessageListener: ["*"],
-      RPMRemoveMessageListener: ["*"],
-      RPMGetStringPref: ["extensions.pocket.site"],
-    },
-    "about:pocket-style-guide": {
-      RPMSendAsyncMessage: ["*"],
-      RPMAddMessageListener: ["*"],
-      RPMRemoveMessageListener: ["*"],
-    },
     "about:privatebrowsing": {
       RPMSendAsyncMessage: [
         "OpenPrivateWindow",
@@ -168,30 +145,34 @@ export let RemotePageAccessManager = {
       RPMSendQuery: [
         "Profiles:GetEditProfileContent",
         "Profiles:UpdateProfileTheme",
+        "Profiles:UpdateProfileAvatar",
       ],
       RPMSendAsyncMessage: [
         "Profiles:UpdateProfileName",
-        "Profiles:UpdateProfileAvatar",
         "Profiles:OpenDeletePage",
         "Profiles:CloseProfileTab",
         "Profiles:MoreThemes",
         "Profiles:PageHide",
       ],
+      RPMGetBoolPref: ["browser.profiles.updated-avatar-selector"],
     },
     "about:newprofile": {
       RPMSendQuery: [
         "Profiles:GetNewProfileContent",
         "Profiles:UpdateProfileTheme",
+        "Profiles:UpdateProfileAvatar",
       ],
       RPMSendAsyncMessage: [
         "Profiles:UpdateProfileName",
-        "Profiles:UpdateProfileAvatar",
         "Profiles:DeleteProfile",
         "Profiles:CloseProfileTab",
         "Profiles:MoreThemes",
         "Profiles:PageHide",
       ],
-      RPMGetBoolPref: ["browser.profiles.profile-name.updated"],
+      RPMGetBoolPref: [
+        "browser.profiles.profile-name.updated",
+        "browser.profiles.updated-avatar-selector",
+      ],
       RPMGetFormatURLPref: ["app.support.baseURL"],
     },
     "about:protections": {

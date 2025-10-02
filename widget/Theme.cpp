@@ -52,8 +52,6 @@ static constexpr gfx::sRGBColor sColorGrey10Alpha50(
     gfx::sRGBColor::UnusualFromARGB(0x7fe9e9ed));
 static constexpr gfx::sRGBColor sColorGrey20(
     gfx::sRGBColor::UnusualFromARGB(0xffd0d0d7));
-static constexpr gfx::sRGBColor sColorGrey30(
-    gfx::sRGBColor::UnusualFromARGB(0xffb1b1b9));
 static constexpr gfx::sRGBColor sColorGrey40(
     gfx::sRGBColor::UnusualFromARGB(0xff8f8f9d));
 static constexpr gfx::sRGBColor sColorGrey40Alpha50(
@@ -76,7 +74,6 @@ static constexpr gfx::sRGBColor sColorMeterRed10(
 static constexpr gfx::sRGBColor sColorMeterRed20(
     gfx::sRGBColor::UnusualFromARGB(0xff810220));
 
-static const CSSCoord kMinimumRangeThumbSize = 20.0f;
 static const CSSCoord kMinimumDropdownArrowButtonWidth = 18.0f;
 static const CSSCoord kMinimumSpinnerButtonWidth = 18.0f;
 static const CSSCoord kMinimumSpinnerButtonHeight = 9.0f;
@@ -265,16 +262,10 @@ sRGBColor Theme::ComputeBorderColor(const ElementState& aState,
   bool isActive =
       aState.HasAllStates(ElementState::HOVER | ElementState::ACTIVE);
   bool isHovered = aState.HasState(ElementState::HOVER);
-  if (aColors.HighContrast()) {
-    return aColors.System(isDisabled ? StyleSystemColor::Graytext
-                          : (isHovered && !isActive)
-                              ? StyleSystemColor::Selecteditem
-                              : StyleSystemColor::Buttontext);
+  if (isDisabled) {
+    return aColors.System(StyleSystemColor::MozButtondisabledborder);
   }
   bool isFocused = aState.HasState(ElementState::FOCUSRING);
-  if (isDisabled) {
-    return sColorGrey40Alpha50;
-  }
   if (isFocused && aOutlineCoversBorder == OutlineCoversBorder::Yes) {
     // If we draw the outline over the border, prevent issues where the border
     // shows underneath if it snaps in the wrong direction by using a
@@ -284,14 +275,13 @@ sRGBColor Theme::ComputeBorderColor(const ElementState& aState,
     // But this looks harder to mess up.
     return sTransparent;
   }
-  bool dark = aColors.IsDark();
   if (isActive) {
-    return dark ? sColorGrey20 : sColorGrey60;
+    return aColors.System(StyleSystemColor::MozButtonactiveborder);
   }
   if (isHovered) {
-    return dark ? sColorGrey30 : sColorGrey50;
+    return aColors.System(StyleSystemColor::MozButtonhoverborder);
   }
-  return sColorGrey40;
+  return aColors.System(StyleSystemColor::Buttonborder);
 }
 
 std::pair<sRGBColor, sRGBColor> Theme::ComputeButtonColors(
@@ -316,8 +306,6 @@ std::pair<sRGBColor, sRGBColor> Theme::ComputeButtonColors(
     }
     return aColors.SystemNs(StyleSystemColor::Buttonface);
   }();
-
-  // TODO(emilio): This should probably use Buttonborder or something?
   const sRGBColor borderColor =
       ComputeBorderColor(aState, aColors, OutlineCoversBorder::Yes);
   return std::make_pair(sRGBColor::FromABGR(backgroundColor), borderColor);
@@ -810,8 +798,9 @@ void Theme::PaintRange(nsIFrame* aFrame, PaintBackendData& aPaintData,
   auto tickMarks = rangeFrame->TickMarks();
   double progress = rangeFrame->GetValueAsFractionOfRange();
   auto rect = aRect;
-  LayoutDeviceRect thumbRect(0, 0, kMinimumRangeThumbSize * aDpiRatio,
-                             kMinimumRangeThumbSize * aDpiRatio);
+  const CSSCoord minThumbSize = GetMinimumRangeThumbSize();
+  LayoutDeviceRect thumbRect(0, 0, minThumbSize * aDpiRatio,
+                             minThumbSize * aDpiRatio);
   LayoutDeviceRect progressClipRect(aRect);
   LayoutDeviceRect trackClipRect(aRect);
   const LayoutDeviceCoord verticalSize = kRangeHeight * aDpiRatio;
@@ -1030,7 +1019,7 @@ void Theme::PaintButton(PaintBackendData& aPaintData,
   if (aAppearance == StyleAppearance::Toolbarbutton &&
       (!aState.HasState(ElementState::HOVER) ||
        aState.HasState(ElementState::DISABLED))) {
-    borderColor = sTransparent;
+    backgroundColor = borderColor = sTransparent;
   }
 
   ThemeDrawing::PaintRoundedRectWithRadius(aPaintData, aRect, backgroundColor,
@@ -1204,24 +1193,15 @@ bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
       PaintRange(aFrame, aPaintData, devPxRect, elementState, colors, dpiRatio,
                  IsRangeHorizontal(aFrame));
       break;
-    case StyleAppearance::RangeThumb:
-      // Painted as part of StyleAppearance::Range.
-      break;
     case StyleAppearance::ProgressBar:
       PaintProgress(aFrame, aPaintData, devPxRect, elementState, colors,
                     dpiRatio,
                     /* aIsMeter = */ false);
       break;
-    case StyleAppearance::Progresschunk:
-      /* Painted as part of the progress bar */
-      break;
     case StyleAppearance::Meter:
       PaintProgress(aFrame, aPaintData, devPxRect, elementState, colors,
                     dpiRatio,
                     /* aIsMeter = */ true);
-      break;
-    case StyleAppearance::Meterchunk:
-      /* Painted as part of the meter bar */
       break;
     case StyleAppearance::ScrollbarthumbHorizontal:
     case StyleAppearance::ScrollbarthumbVertical: {
@@ -1538,10 +1518,6 @@ LayoutDeviceIntSize Theme::GetMinimumWidgetSize(nsPresContext* aPresContext,
 
   LayoutDeviceIntSize result;
   switch (aAppearance) {
-    case StyleAppearance::RangeThumb:
-      result.SizeTo((kMinimumRangeThumbSize * dpiRatio).Rounded(),
-                    (kMinimumRangeThumbSize * dpiRatio).Rounded());
-      break;
     case StyleAppearance::MozMenulistArrowButton:
       result.width = (kMinimumDropdownArrowButtonWidth * dpiRatio).Rounded();
       break;
@@ -1603,11 +1579,8 @@ bool Theme::ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* aFrame,
     case StyleAppearance::Textarea:
     case StyleAppearance::Textfield:
     case StyleAppearance::Range:
-    case StyleAppearance::RangeThumb:
     case StyleAppearance::ProgressBar:
-    case StyleAppearance::Progresschunk:
     case StyleAppearance::Meter:
-    case StyleAppearance::Meterchunk:
     case StyleAppearance::ScrollbarbuttonUp:
     case StyleAppearance::ScrollbarbuttonDown:
     case StyleAppearance::ScrollbarbuttonLeft:

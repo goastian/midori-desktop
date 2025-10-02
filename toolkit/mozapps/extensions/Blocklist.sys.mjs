@@ -4,8 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint "valid-jsdoc": [2, {requireReturn: false}] */
-
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const lazy = {};
@@ -512,14 +510,29 @@ const GfxBlocklistRS = {
     entries = entries.map(entry => {
       let props = [
         "blockID",
+        "devices",
+        "driverVendor",
         "driverVersion",
         "driverVersionMax",
         "driverVersionComparator",
         "feature",
         "featureStatus",
+        "hardware",
+        "manufacturer",
+        "model",
         "os",
+        "osVersionEx",
+        "osVersionExComparator",
+        "osVersionExMax",
+        "refreshRateStatus",
+        "maxRefreshRate",
+        "maxRefreshRateComparator",
+        "maxRefreshRateMax",
+        "minRefreshRate",
+        "minRefreshRateComparator",
+        "minRefreshRateMax",
         "vendor",
-        "devices",
+        "windowProtocol",
       ];
       let rv = {};
       for (let p of props) {
@@ -564,6 +577,7 @@ const GfxBlocklistRS = {
       let sortedProps = [
         "blockID",
         "devices",
+        "driverVendor",
         "driverVersion",
         "driverVersionComparator",
         "driverVersionMax",
@@ -574,9 +588,20 @@ const GfxBlocklistRS = {
         "model",
         "os",
         "osversion",
+        "osVersionEx",
+        "osVersionExComparator",
+        "osVersionExMax",
         "product",
+        "refreshRateStatus",
+        "maxRefreshRate",
+        "maxRefreshRateComparator",
+        "maxRefreshRateMax",
+        "minRefreshRate",
+        "minRefreshRateComparator",
+        "minRefreshRateMax",
         "vendor",
         "versionRange",
+        "windowProtocol",
       ];
       // Notify `GfxInfoBase`, by passing a string serialization.
       let payload = [];

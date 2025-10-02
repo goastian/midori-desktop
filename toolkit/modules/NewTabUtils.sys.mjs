@@ -14,7 +14,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   BinarySearch: "resource://gre/modules/BinarySearch.sys.mjs",
   PageThumbs: "resource://gre/modules/PageThumbs.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  Pocket: "chrome://pocket/content/Pocket.sys.mjs",
   pktApi: "chrome://pocket/content/pktApi.sys.mjs",
 });
 
@@ -1479,71 +1478,6 @@ var ActivityStreamLinks = {
     const url = aUrl;
     PinnedLinks.unpin({ url });
     return lazy.PlacesUtils.history.remove(url);
-  },
-
-  /**
-   * Helper function which makes the call to the Pocket API to delete an item from
-   * a user's saved to Pocket feed. Also, invalidate the Pocket stories cache
-   *
-   * @param {Integer} aItemID
-   *           The unique pocket ID used to find the item to be deleted
-   *
-   *@returns {Promise} Returns a promise at completion
-   */
-  deletePocketEntry(aItemID) {
-    this._savedPocketStories = null;
-    return new Promise((success, error) =>
-      lazy.pktApi.deleteItem(aItemID, { success, error })
-    );
-  },
-
-  /**
-   * Helper function which makes the call to the Pocket API to archive an item from
-   * a user's saved to Pocket feed. Also, invalidate the Pocket stories cache
-   *
-   * @param {Integer} aItemID
-   *           The unique pocket ID used to find the item to be archived
-   *
-   *@returns {Promise} Returns a promise at completion
-   */
-  archivePocketEntry(aItemID) {
-    this._savedPocketStories = null;
-    return new Promise((success, error) =>
-      lazy.pktApi.archiveItem(aItemID, { success, error })
-    );
-  },
-
-  /**
-   * Helper function which makes the call to the Pocket API to save an item to
-   * a user's saved to Pocket feed if they are logged in. Also, invalidate the
-   * Pocket stories cache
-   *
-   * @param {String} aUrl
-   *           The URL belonging to the story being saved
-   * @param {String} aTitle
-   *           The title belonging to the story being saved
-   * @param {Browser} aBrowser
-   *           The target browser to show the doorhanger in
-   *
-   *@returns {Promise} Returns a promise at completion
-   */
-  addPocketEntry(aUrl, aTitle, aBrowser) {
-    // If the user is not logged in, show the panel to prompt them to log in
-    if (!lazy.pktApi.isUserLoggedIn()) {
-      lazy.Pocket.savePage(aBrowser, aUrl, aTitle);
-      return Promise.resolve(null);
-    }
-
-    // If the user is logged in, just save the link to Pocket and Activity Stream
-    // will update the page
-    this._savedPocketStories = null;
-    return new Promise((success, error) => {
-      lazy.pktApi.addLink(aUrl, {
-        title: aTitle,
-        success,
-        error,
-      });
-    });
   },
 
   /**

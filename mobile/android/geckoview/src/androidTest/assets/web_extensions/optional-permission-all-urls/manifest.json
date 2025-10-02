@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "optional-permission-all-urls",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "optional-permission-all-urls@example.com"
+    }
+  },
+  "version": "1.0",
+  "description": "Request optional extension origins for all urls.",
+  "optional_permissions": ["geolocation", "activeTab"],
+  "host_permissions": ["http://*/", "https://*/", "file://*/*"]
+}

@@ -214,6 +214,8 @@ void GfxInfo::EnsureInitialized() {
   mOSVersionInteger = (uint32_t(na) << 24) | (uint32_t(nb) << 16) |
                       (uint32_t(nc) << 8) | uint32_t(nd);
 
+  mOSVersionEx.Parse(mOSVersion);
+
   mAdapterDescription.AppendPrintf(
       ", OpenGL: %s -- %s -- %s", mGLStrings->Vendor().get(),
       mGLStrings->Renderer().get(), mGLStrings->Version().get());
@@ -358,7 +360,7 @@ void GfxInfo::AddCrashReportAnnotations() {
       CrashReporter::Annotation::AdapterDriverVersion, mGLStrings->Version());
 }
 
-const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
+const nsTArray<RefPtr<GfxDriverInfo>>& GfxInfo::GetGfxDriverInfo() {
   if (sDriverInfo->IsEmpty()) {
     APPEND_TO_DRIVER_BLOCKLIST2(
         OperatingSystem::Android, DeviceFamily::All,
@@ -372,7 +374,7 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
 
 nsresult GfxInfo::GetFeatureStatusImpl(
     int32_t aFeature, int32_t* aStatus, nsAString& aSuggestedDriverVersion,
-    const nsTArray<GfxDriverInfo>& aDriverInfo, nsACString& aFailureId,
+    const nsTArray<RefPtr<GfxDriverInfo>>& aDriverInfo, nsACString& aFailureId,
     OperatingSystem* aOS /* = nullptr */) {
   NS_ENSURE_ARG_POINTER(aStatus);
   aSuggestedDriverVersion.SetIsVoid(true);
@@ -675,6 +677,18 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     return NS_OK;
   }
 
+  if (aFeature == FEATURE_GL_NORM16_TEXTURES) {
+    const auto& extensions = mGLStrings->Extensions();
+    // GL_EXT_texture_norm16 is required for GL_R16, GL_RG16, etc texture
+    // formats on OpenGL ES.
+    if (!extensions.Contains("GL_EXT_texture_norm16")) {
+      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+      aFailureId = "FEATURE_FAILURE_MISSING_EXTENSION";
+    } else {
+      *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
+    }
+  }
+
   return GfxInfoBase::GetFeatureStatusImpl(
       aFeature, aStatus, aSuggestedDriverVersion, aDriverInfo, aFailureId, &os);
 }
@@ -833,6 +847,13 @@ NS_IMETHODIMP GfxInfo::SpoofOSVersion(uint32_t aVersion) {
   return NS_OK;
 }
 
+NS_IMETHODIMP GfxInfo::SpoofOSVersionEx(uint32_t aMajor, uint32_t aMinor,
+                                        uint32_t aBuild, uint32_t aRevision) {
+  EnsureInitialized();
+  mOSVersionEx = GfxVersionEx(aMajor, aMinor, aBuild, aRevision);
+  return NS_OK;
+}
+
 #endif
 
 nsString GfxInfo::Model() {
@@ -858,6 +879,11 @@ nsString GfxInfo::Manufacturer() {
 uint32_t GfxInfo::OperatingSystemVersion() {
   EnsureInitialized();
   return mOSVersionInteger;
+}
+
+GfxVersionEx GfxInfo::OperatingSystemVersionEx() {
+  EnsureInitialized();
+  return mOSVersionEx;
 }
 
 }  // namespace widget

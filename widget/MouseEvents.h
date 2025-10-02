@@ -259,10 +259,14 @@ class WidgetMouseEventBase : public WidgetInputEvent {
     return mMessage == ePointerMove && buttonsLoseTheButton;
   }
 
+  [[nodiscard]] static bool InputSourceSupportsHover(uint16_t aInputSource);
+
   /**
    * Returns true if the input source supports hover state like a mouse.
    */
-  [[nodiscard]] bool InputSourceSupportsHover() const;
+  [[nodiscard]] bool InputSourceSupportsHover() const {
+    return InputSourceSupportsHover(mInputSource);
+  }
 
   /**
    * Returns true if corresponding DOM event should use fractional coordinates.
@@ -762,6 +766,13 @@ class WidgetWheelEvent : public WidgetMouseEventBase {
   // true.
   bool mDeltaValuesHorizontalizedForDefaultHandler;
 
+  /**
+   * An optional identifier for the callback associated with this wheel event.
+   * This ID is used to reference a specific callback for a synthesized event,
+   * if one is present. If no callback is associated, this value will be empty.
+   */
+  Maybe<uint64_t> mCallbackId;
+
   void AssignWheelEventData(const WidgetWheelEvent& aEvent, bool aCopyTargets) {
     AssignMouseEventBaseData(aEvent, aCopyTargets);
 
@@ -785,6 +796,8 @@ class WidgetWheelEvent : public WidgetMouseEventBase {
         aEvent.mAllowToOverrideSystemScrollSpeed;
     mDeltaValuesHorizontalizedForDefaultHandler =
         aEvent.mDeltaValuesHorizontalizedForDefaultHandler;
+    // NOTE: Intentionally not copying mCallbackId, it should only be tracked by
+    //       the original event or propagated to the cross-process event.
   }
 
   // System scroll speed settings may be too slow at using Gecko.  In such

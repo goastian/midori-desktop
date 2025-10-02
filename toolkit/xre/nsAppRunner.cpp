@@ -392,6 +392,7 @@ using mozilla::dom::quota::QuotaManager;
 using mozilla::intl::LocaleService;
 using mozilla::scache::StartupCache;
 
+#ifndef XP_WIN
 // Save the given word to the specified environment variable.
 static void MOZ_NEVER_INLINE SaveWordToEnv(const char* name,
                                            const nsACString& word) {
@@ -400,6 +401,7 @@ static void MOZ_NEVER_INLINE SaveWordToEnv(const char* name,
   if (expr) PR_SetEnv(expr);
   // We intentionally leak |expr| here since it is required by PR_SetEnv.
 }
+#endif
 
 // Save the path of the given file to the specified environment variable.
 static void SaveFileToEnv(const char* name, nsIFile* file) {
@@ -4317,25 +4319,6 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
             getter_AddRefs(userAppDataDir)))) {
       CrashReporter::SetupExtraData(userAppDataDir,
                                     nsDependentCString(mAppData->buildID));
-
-      // see if we have a crashreporter-override.ini in the application
-      // directory
-      nsCOMPtr<nsIFile> overrideini;
-      if (NS_SUCCEEDED(
-              mDirProvider.GetAppDir()->Clone(getter_AddRefs(overrideini))) &&
-          NS_SUCCEEDED(
-              overrideini->AppendNative("crashreporter-override.ini"_ns))) {
-#ifdef XP_WIN
-        nsAutoString overridePathW;
-        overrideini->GetPath(overridePathW);
-        NS_ConvertUTF16toUTF8 overridePath(overridePathW);
-#else
-        nsAutoCString overridePath;
-        overrideini->GetNativePath(overridePath);
-#endif
-
-        SaveWordToEnv("MOZ_CRASHREPORTER_STRINGS_OVERRIDE", overridePath);
-      }
     }
   } else {
     // We might have registered a runtime exception module very early in process
@@ -4784,14 +4767,29 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
 
   // Initialize GTK here for splash.
 
-#  if defined(MOZ_WIDGET_GTK) && defined(MOZ_X11)
+#  if defined(MOZ_X11)
   // Disable XInput2 multidevice support due to focus bugginess.
   // See bugs 1182700, 1170342.
   // gdk_disable_multidevice() affects Gdk X11 backend only,
   // the multidevice support is always enabled on Wayland backend.
-  const char* useXI2 = PR_GetEnv("MOZ_USE_XINPUT2");
-  if (!useXI2 || (*useXI2 == '0')) gdk_disable_multidevice();
-#  endif
+  int32_t useXI2 = 0;
+  if (const char* useXI2Env = PR_GetEnv("MOZ_USE_XINPUT2")) {
+    useXI2 = (*useXI2Env != '0');
+  } else {
+    // Steam Deck needs multidevice support for touchscreen
+    if (const char* currentDesktop = PR_GetEnv("XDG_CURRENT_DESKTOP")) {
+      useXI2 |= (nsDependentCString(currentDesktop) == "gamescope"_ns);
+    }
+#    ifdef NIGHTLY_BUILD
+    // We tried 3.24.0+ but had problems, let's retry with newer versions. See
+    // bug 1660212.
+    useXI2 |= !gtk_check_version(3, 24, 49);
+#    endif
+  }
+  if (!useXI2) {
+    gdk_disable_multidevice();
+  }
+#  endif /* MOZ_X11 */
 
   // Open the display ourselves instead of using gtk_init, so that we can
   // close it without fear that one day gtk might clean up the display it
@@ -5608,6 +5606,10 @@ nsresult XREMain::XRE_mainRun() {
     // ready in time for early consumers, such as the component loader.
     mDirProvider.InitializeUserPrefs();
 
+    // Now that preferences are loaded the profile service may be able to
+    // determine the correct startup profile.
+    mProfileSvc->UpdateCurrentProfile();
+
     // Now that all (user) prefs have been loaded we can initialize the main
     // thread's JSContext.
     if (!initializedJSContext) {
@@ -5619,6 +5621,18 @@ nsresult XREMain::XRE_mainRun() {
     // AutoConfig files require JS execution. Note that this means AutoConfig
     // files can't override JS engine start-up prefs.
     mDirProvider.FinishInitializingUserPrefs();
+
+    // Now that the profiler, directory services, and prefs have been
+    // initialized we can find the download directory, where the profiler can
+    // write profiles when user stops the profiler using POSIX signal handling.
+    //
+    // It's possible to start and stop the profiler by sending POSIX signals to
+    // the profiler binary when Firefox is frozen. At the time when stop signal
+    // is handled, Firefox stops the profiler and dumps the profile to disk. But
+    // getting the download directory is not really possible at that time
+    // because main thread will be unresponsive. That's why we are getting this
+    // information right now.
+    profiler_lookup_async_signal_dump_directory();
 
     // Do a canary load of a JS based module here. This will help us detect
     // missing resources during startup and make us react appropriate, that

@@ -86,11 +86,6 @@ class LogModule {
   static void SetCaptureStacks(bool aCaptureStacks);
 
   /**
-   * Disable all log modules.
-   */
-  static void DisableModules();
-
-  /**
    * Indicates whether or not the given log level is enabled.
    */
   bool ShouldLog(LogLevel aLevel) const { return mLevel >= aLevel; }
@@ -312,5 +307,8 @@ void log_print(const LogModule* aModule, LogLevel aLevel, TimeStamp* aStart,
 // This #define is a Logging.h-only knob!  Don't encourage people to get fancy
 // with their log definitions by exporting it outside of Logging.h.
 #undef MOZ_LOGGING_ENABLED
+
+// Utility for pretty-printing booleans.
+inline const char* GetBoolName(bool aBool) { return aBool ? "true" : "false"; }
 
 #endif  // mozilla_logging_h

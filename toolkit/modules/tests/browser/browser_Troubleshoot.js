@@ -478,35 +478,7 @@ const SNAPSHOT_SCHEMA = {
           type: "boolean",
         },
         "media.utility-process.enabled": {
-          required: false,
-          type: "boolean",
-        },
-        "media.utility-ffmpeg.enabled": {
-          required: false,
-          type: "boolean",
-        },
-        "media.utility-ffvpx.enabled": {
-          required: false,
-          type: "boolean",
-        },
-        "media.utility-wmf.enabled": {
-          required: false,
-          type: "boolean",
-        },
-        "media.utility-applemedia.enabled": {
-          required: false,
-          type: "boolean",
-        },
-        "media.utility-vorbis.enabled": {
-          required: false,
-          type: "boolean",
-        },
-        "media.utility-wav.enabled": {
-          required: false,
-          type: "boolean",
-        },
-        "media.utility-opus.enabled": {
-          required: false,
+          required: true,
           type: "boolean",
         },
       },
@@ -690,16 +662,9 @@ const SNAPSHOT_SCHEMA = {
           type: "object",
         },
         failures: {
-          type: "object",
-          properties: {
-            key: {
-              required: true,
-              type: "string",
-            },
-            args: {
-              required: false,
-              type: "object",
-            },
+          type: "array",
+          items: {
+            type: "string",
           },
         },
         indices: {

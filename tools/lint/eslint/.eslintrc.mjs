@@ -13,7 +13,7 @@ export default [
       parserOptions: {
         // This should match with the minimum node version that the ESLint CI
         // process uses (check the linux64-node toolchain).
-        ecmaVersion: 12,
+        ecmaVersion: 16,
       },
     },
 
@@ -26,14 +26,10 @@ export default [
     },
   },
   {
-    files: ["eslint-plugin-mozilla/scripts/createExports.js"],
-    languageOptions: {
-      sourceType: "script",
-      parserOptions: {
-        ecmaFeatures: {
-          globalReturn: true,
-        },
-      },
+    files: "eslint-plugin-mozilla/lib/configs/",
+    rules: {
+      // Require object keys to be sorted.
+      "sort-keys": "error",
     },
   },
 ];

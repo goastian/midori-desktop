@@ -49,6 +49,7 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/Perfetto.h"
+#include "nsCExternalHandlerService.h"
 #include "nsCOMPtr.h"
 #include "nsDebug.h"
 #include "nsISupports.h"
@@ -60,7 +61,8 @@
 #include "js/ProfilingFrameIterator.h"
 #include "memory_counter.h"
 #include "memory_hooks.h"
-#include "mozilla/ArrayUtils.h"
+#include "memory_markers.h"
+#include "mozilla/ArrayAlgorithm.h"
 #include "mozilla/AutoProfilerLabel.h"
 #include "mozilla/BaseAndGeckoProfilerDetail.h"
 #include "mozilla/CycleCollectedJSContext.h"
@@ -311,36 +313,48 @@ class GeckoJavaSampler
     return profiler_time();
   };
 
-  static void JavaStringArrayToCharArray(jni::ObjectArray::Param& aJavaArray,
-                                         Vector<const char*>& aCharArray,
-                                         JNIEnv* aJni) {
+  static void JavaStringArrayToCharArray(
+      jni::ObjectArray::Param& aJavaArray,
+      Vector<UniqueFreePtr<char>>& aCharArray, JNIEnv* aJni) {
     int arraySize = aJavaArray->Length();
     for (int i = 0; i < arraySize; i++) {
       jstring javaString =
           (jstring)(aJni->GetObjectArrayElement(aJavaArray.Get(), i));
       const char* filterString = aJni->GetStringUTFChars(javaString, 0);
-      // FIXME. These strings are leaked.
-      MOZ_RELEASE_ASSERT(aCharArray.append(filterString));
+      if (filterString != nullptr) {
+        int filterStringLen = aJni->GetStringUTFLength(javaString);
+        MOZ_RELEASE_ASSERT(
+            aCharArray.append(strndup(filterString, filterStringLen)));
+        aJni->ReleaseStringUTFChars(javaString, filterString);
+      }
     }
   }
 
   static void StartProfiler(jni::ObjectArray::Param aFiltersArray,
                             jni::ObjectArray::Param aFeaturesArray) {
     JNIEnv* jni = jni::GetEnvForThread();
-    Vector<const char*> filtersTemp;
-    Vector<const char*> featureStringArray;
+    Vector<UniqueFreePtr<char>> filtersTemp;
+    Vector<UniqueFreePtr<char>> featureStringArray;
 
     JavaStringArrayToCharArray(aFiltersArray, filtersTemp, jni);
     JavaStringArrayToCharArray(aFeaturesArray, featureStringArray, jni);
 
     uint32_t features = 0;
-    features = ParseFeaturesFromStringArray(featureStringArray.begin(),
-                                            featureStringArray.length());
+    auto convertToPtr = [](const UniqueFreePtr<char>& ptr) -> const char* {
+      return ptr.get();
+    };
+    auto featureStringArrayPtr =
+        mozilla::TransformIntoNewArray(featureStringArray, convertToPtr);
+    features = ParseFeaturesFromStringArray(featureStringArrayPtr.Elements(),
+                                            featureStringArrayPtr.Length());
 
     // 128 * 1024 * 1024 is the entries preset that is given in
     // devtools/client/performance-new/shared/background.sys.mjs
+    auto filtersTempPtr =
+        mozilla::TransformIntoNewArray(filtersTemp, convertToPtr);
     profiler_start(PowerOfTwo32(128 * 1024 * 1024), 5.0, features,
-                   filtersTemp.begin(), filtersTemp.length(), 0, Nothing());
+                   filtersTempPtr.Elements(), filtersTempPtr.Length(), 0,
+                   Nothing());
   }
 
   static void StopProfiler(jni::Object::Param aGeckoResult) {
@@ -1224,6 +1238,11 @@ class ActivePS {
       }
     }
 #endif
+
+#if defined(MOZ_PROFILER_MEMORY) && defined(MOZJEMALLOC_PROFILING_CALLBACKS)
+    unregister_profiler_memory_callbacks();
+#endif
+
     if (mProfileBufferChunkManager) {
       // We still control the chunk manager, remove it from the core buffer.
       profiler_get_core_buffer().ResetChunkManager();
@@ -6710,6 +6729,9 @@ static void locked_profiler_start(PSLockRef aLock, PowerOfTwo32 aCapacity,
     auto counter = mozilla::profiler::create_memory_counter();
     locked_profiler_add_sampled_counter(aLock, counter.get());
     ActivePS::SetMemoryCounter(std::move(counter), aLock);
+#  ifdef MOZJEMALLOC_PROFILING_CALLBACKS
+    register_profiler_memory_callbacks();
+#  endif
   }
 #endif
 
@@ -7006,9 +7028,9 @@ void profiler_lookup_async_signal_dump_directory() {
 #if !defined(XP_WIN)
   LOG("profiler_lookup_async_signal_dump_directory");
 
-  MOZ_ASSERT(
-      NS_IsMainThread(),
-      "We can only get access to the directory service from the main thread");
+  MOZ_ASSERT(XRE_IsParentProcess() && NS_IsMainThread(),
+             "We can only get access to the directory service from the parent "
+             "process main thread");
 
   // Make sure the profiler is actually running~
   MOZ_RELEASE_ASSERT(CorePS::Exists());
@@ -7037,17 +7059,34 @@ void profiler_lookup_async_signal_dump_directory() {
 
     CorePS::SetAsyncSignalDumpDirectory(lock, Some(mozUploadDirFile));
   } else {
+#  if defined(GP_OS_android)
+    // Bug 1904639: GetPreferredDownloadsDirectory is not implemented for
+    // Android.
+    return;
+#  endif
+
     LOG("Defaulting to the user's Download directory for profile dumps");
     nsCOMPtr<nsIFile> tDownloadDir;
-    rv = NS_GetSpecialDirectory(NS_OS_DEFAULT_DOWNLOAD_DIR,
-                                getter_AddRefs(tDownloadDir));
+    nsresult rv;
+    nsCOMPtr<nsIExternalHelperAppService> svc =
+        do_GetService(NS_EXTERNALHELPERAPPSERVICE_CONTRACTID, &rv);
+
+    if (NS_FAILED(rv)) {
+      LOG("Failed to get nsIExternalHelperAppService for the download "
+          "directory. Profiler signal handling will not be able to save to "
+          "disk. Error: %s",
+          GetStaticErrorName(rv));
+      return;
+    }
+
+    rv = svc->GetPreferredDownloadsDirectory(getter_AddRefs(tDownloadDir));
     if (NS_FAILED(rv)) {
       LOG("Failed to find download directory. Profiler signal handling will "
           "not be able to save to disk. Error: %s",
           GetStaticErrorName(rv));
-    } else {
-      CorePS::SetAsyncSignalDumpDirectory(lock, Some(tDownloadDir));
+      return;
     }
+    CorePS::SetAsyncSignalDumpDirectory(lock, Some(tDownloadDir));
   }
 #endif
 }

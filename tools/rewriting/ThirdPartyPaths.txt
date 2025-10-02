@@ -1,5 +1,3 @@
-browser/components/pocket/content/panels/css/normalize.scss
-browser/components/pocket/content/panels/js/vendor/
 browser/components/storybook/node_modules/
 browser/components/topsites/content/tippytop/favicons/
 browser/components/topsites/content/tippytop/images/
@@ -28,6 +26,7 @@ devtools/shared/sprintfjs/
 devtools/shared/storage/vendor/
 dom/canvas/test/webgl-conf/checkout/
 dom/imptests/
+dom/onnx/onnxruntime_c_api.h
 dom/media/gmp/rlz/
 dom/media/gmp/widevine-adapter/content_decryption_module_export.h
 dom/media/gmp/widevine-adapter/content_decryption_module_ext.h

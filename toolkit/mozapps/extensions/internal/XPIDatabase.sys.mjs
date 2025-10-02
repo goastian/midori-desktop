@@ -10,8 +10,6 @@
  * add code here or elsewhere.
  */
 
-/* eslint "valid-jsdoc": [2, {requireReturn: false, requireReturnDescription: false, prefer: {return: "returns"}}] */
-
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { XPIExports } from "resource://gre/modules/addons/XPIExports.sys.mjs";
@@ -1377,8 +1375,12 @@ export class AddonWrapper {
    */
   get isInstalledByEnterprisePolicy() {
     const policySettings = Services.policies?.getExtensionSettings(this.id);
-    return ["force_installed", "normal_installed"].includes(
-      policySettings?.installation_mode
+    const legacyLockedSettings =
+      Services.policies?.getActivePolicies()?.Extensions?.Locked ?? [];
+    return (
+      ["force_installed", "normal_installed"].includes(
+        policySettings?.installation_mode
+      ) || legacyLockedSettings.includes(this.id)
     );
   }
 

@@ -69,13 +69,14 @@ memory_phc:
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1829127
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1892149
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969177
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1829127
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1892149
     notification_emails:
       - memshrink-telemetry-alerts@mozilla.com
       - pbone@mozilla.com
-    expires: 142
+    expires: 152
     telemetry_mirror: MEMORY_PHC_SLOP
 
   slots_allocated:
@@ -93,13 +94,14 @@ memory_phc:
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1829127
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1892149
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969177
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1829127
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1892149
     notification_emails:
       - memshrink-telemetry-alerts@mozilla.com
       - pbone@mozilla.com
-    expires: 142
+    expires: 152
     telemetry_mirror: MEMORY_PHC_SLOTS_ALLOCATED
 
   slots_freed:
@@ -117,13 +119,14 @@ memory_phc:
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1829127
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1892149
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969177
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1829127
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1892149
     notification_emails:
       - memshrink-telemetry-alerts@mozilla.com
       - pbone@mozilla.com
-    expires: 142
+    expires: 152
     telemetry_mirror: MEMORY_PHC_SLOTS_FREED
 
 cycle_collector:
@@ -964,6 +967,9 @@ xpcom:
     data_sensitivity:
       - technical
     expires: never
+    send_in_pings:
+      - metrics
+      - update
 
 system.cpu:
   name:
@@ -981,6 +987,9 @@ system.cpu:
     notification_emails:
       - florian@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
 
   vendor:
     type: string
@@ -996,6 +1005,9 @@ system.cpu:
     notification_emails:
       - florian@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
 
   logical_cores:
     type: quantity
@@ -1012,6 +1024,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: core
+    send_in_pings:
+      - metrics
+      - update
 
   physical_cores:
     type: quantity
@@ -1028,6 +1043,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: core
+    send_in_pings:
+      - metrics
+      - update
 
   big_cores:
     type: quantity
@@ -1044,6 +1062,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: core
+    send_in_pings:
+      - metrics
+      - update
 
   medium_cores:
     type: quantity
@@ -1060,6 +1081,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: core
+    send_in_pings:
+      - metrics
+      - update
 
   little_cores:
     type: quantity
@@ -1076,6 +1100,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: core
+    send_in_pings:
+      - metrics
+      - update
 
   family:
     type: quantity
@@ -1092,6 +1119,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: cpu family number
+    send_in_pings:
+      - metrics
+      - update
 
   model:
     type: quantity
@@ -1108,6 +1138,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: cpu model number
+    send_in_pings:
+      - metrics
+      - update
 
   stepping:
     type: quantity
@@ -1124,6 +1157,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: cpu stepping number
+    send_in_pings:
+      - metrics
+      - update
 
   l2_cache:
     type: quantity
@@ -1140,6 +1176,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: kilobyte
+    send_in_pings:
+      - metrics
+      - update
 
   l3_cache:
     type: quantity
@@ -1156,6 +1195,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: kilobyte
+    send_in_pings:
+      - metrics
+      - update
 
   speed:
     type: quantity
@@ -1172,6 +1214,9 @@ system.cpu:
       - florian@mozilla.com
     expires: never
     unit: megahertz
+    send_in_pings:
+      - metrics
+      - update
 
   extensions:
     type: string_list
@@ -1187,6 +1232,9 @@ system.cpu:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
 
 hdd:
   profile: &hdd_object
@@ -1216,6 +1264,9 @@ hdd:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
 
   binary:
     <<: *hdd_object
@@ -1252,6 +1303,11 @@ system.os:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - sync
+      - update
+      - third-party-modules
 
   version:
     type: string
@@ -1269,6 +1325,11 @@ system.os:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - sync
+      - update
+      - third-party-modules
 
   locale:
     type: string
@@ -1285,6 +1346,11 @@ system.os:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - sync
+      - update
+      - third-party-modules
 
   distro:
     type: string
@@ -1302,6 +1368,11 @@ system.os:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - sync
+      - update
+      - third-party-modules
 
   distro_version:
     type: string
@@ -1319,6 +1390,11 @@ system.os:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - sync
+      - update
+      - third-party-modules
 
   service_pack_major:
     type: quantity
@@ -1337,6 +1413,11 @@ system.os:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - sync
+      - update
+      - third-party-modules
 
   service_pack_minor:
     type: quantity
@@ -1355,6 +1436,11 @@ system.os:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - sync
+      - update
+      - third-party-modules
 
   windows_build_number:
     type: quantity
@@ -1374,6 +1460,11 @@ system.os:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - sync
+      - update
+      - third-party-modules
 
   windows_ubr:
     type: quantity
@@ -1393,6 +1484,11 @@ system.os:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - sync
+      - update
+      - third-party-modules
 
 system:
   memory:
@@ -1411,6 +1507,9 @@ system:
     notification_emails:
       - memshrink-telemetry-alerts@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
 
   virtual_memory:
     type: quantity
@@ -1429,6 +1528,9 @@ system:
     notification_emails:
       - memshrink-telemetry-alerts@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
 
   is_wow_64:
     type: boolean
@@ -1445,6 +1547,10 @@ system:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
+      - third-party-modules
 
   is_wow_arm_64:
     type: boolean
@@ -1461,6 +1567,10 @@ system:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
+      - third-party-modules
 
   has_win_package_id:
     type: boolean
@@ -1477,6 +1587,9 @@ system:
     notification_emails:
       - gijs@ozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
 
   win_package_family_name:
     type: string
@@ -1497,6 +1610,9 @@ system:
     notification_emails:
       - gijs@mozilla.com
     expires: never
+    send_in_pings:
+      - metrics
+      - update
 
   apple_model_id:
     type: string

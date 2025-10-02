@@ -4,6 +4,7 @@
 
 extern crate geckoservo;
 
+extern crate abridged_certs;
 extern crate app_services_logger;
 #[cfg(feature = "cubeb-remoting")]
 extern crate audioipc2_client;
@@ -100,7 +101,7 @@ extern crate osclientcerts;
 extern crate gkrust_uniffi_components;
 
 #[cfg(feature = "uniffi_fixtures")]
-extern crate gkrust_uniffi_fixtures;
+extern crate uniffi_bindgen_gecko_js_test_fixtures;
 
 #[cfg(not(target_os = "android"))]
 extern crate viaduct;
@@ -121,6 +122,8 @@ extern crate midir_impl;
 
 #[cfg(target_os = "windows")]
 extern crate detect_win32k_conflicts;
+#[cfg(target_os = "windows")]
+extern crate widget_windows;
 
 extern crate origin_trials_ffi;
 

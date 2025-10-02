@@ -15,12 +15,7 @@ tree {
   margin: 0 4px;
   background-color: Field;
   color: FieldText;
-  appearance: auto;
-  -moz-default-appearance: listbox;
-  @media (-moz-platform: linux) {
-    appearance: none;
-    border: 1px solid ThreeDShadow;
-  }
+  border: 1px solid ThreeDShadow;
 }
 
 /********** splitter **********/
@@ -36,7 +31,6 @@ tree {
   order: 2147483646;
   z-index: 2147483646;
 }
-
 
 /* ::::: tree rows ::::: */
 
@@ -56,7 +50,7 @@ treechildren::-moz-tree-row(multicol, odd) {
 
 @media not (prefers-contrast) {
   treechildren::-moz-tree-row(hover) {
-    background-color: hsla(0,0%,50%,.15);
+    background-color: hsla(0, 0%, 50%, 0.15);
   }
 }
 
@@ -75,7 +69,7 @@ treechildren::-moz-tree-row(current, focus) {
 }
 
 treechildren::-moz-tree-row(selected, current, focus) {
-  outline-color: #F3D982;
+  outline-color: #f3d982;
 }
 
 /* ::::: tree cells ::::: */
@@ -100,7 +94,6 @@ treechildren::-moz-tree-cell-text(selected, focus) {
   color: SelectedItemText;
 }
 
-
 /* ::::: lines connecting cells ::::: */
 
 treechildren::-moz-tree-line {
@@ -111,14 +104,12 @@ treechildren::-moz-tree-line(selected, focus) {
   border: 1px dotted SelectedItemText;
 }
 
-
 /* ::::: tree separator ::::: */
 
 treechildren::-moz-tree-separator {
   border-top: 1px solid ThreeDShadow;
   border-bottom: 1px solid ThreeDHighlight;
 }
-
 
 /* ::::: drop feedback ::::: */
 
@@ -192,6 +183,7 @@ treechildren::-moz-tree-column(insertafter) {
   fill: currentColor;
   min-width: 0;
   padding: 1px 0;
+  border-block: 0;
   appearance: none;
 }
 
@@ -279,11 +271,11 @@ html|input.tree-input {
 }
 
 @media (-moz-platform: macos) and (not (prefers-contrast)) {
-    /* We show a `SelectedItem` background on selected rows, so we do not need the
-       dotted outline in that case. For users who have Full Keyboard Access
-       enabled, macOS draws a blue highlight above the row highlight, so keyboard-
-       only users can still discern the currently-selected row when multiple rows
-       are selected. */
+  /* We show a `SelectedItem` background on selected rows, so we do not need the
+     dotted outline in that case. For users who have Full Keyboard Access
+     enabled, macOS draws a blue highlight above the row highlight, so keyboard-
+     only users can still discern the currently-selected row when multiple rows
+     are selected. */
   treechildren::-moz-tree-row(selected, current, focus) {
     outline: none;
   }

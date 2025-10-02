@@ -42,29 +42,29 @@ class WaylandSurface final {
   void SetLoggingWidget(void* aWidget) { mLoggingWidget = aWidget; }
 #endif
 
-  void InitialFrameCallbackHandler(struct wl_callback* aCallback);
+  void ReadyToDrawFrameCallbackHandler(struct wl_callback* aCallback);
   void AddOrFireReadyToDrawCallback(const std::function<void(void)>& aDrawCB);
   void ClearReadyToDrawCallbacks();
 
   void FrameCallbackHandler(struct wl_callback* aCallback, uint32_t aTime,
                             bool aRoutedFromChildSurface);
-  // Run only once at most.
-  void AddOneTimeFrameCallbackLocked(
-      const WaylandSurfaceLock& aProofOfLock,
-      const std::function<void(wl_callback*, uint32_t)>& aFrameCallbackHandler);
 
   // Run frame callback repeatedly. Callback is removed on Unmap.
   // If aEmulateFrameCallback is set to true and WaylandSurface is mapped and
   // ready to draw and we don't have buffer attached yet,
   // fire aFrameCallbackHandler without frame callback from
   // compositor in sFrameCheckTimeoutMs.
-  void AddPersistentFrameCallbackLocked(
+  void SetFrameCallbackLocked(
       const WaylandSurfaceLock& aProofOfLock,
       const std::function<void(wl_callback*, uint32_t)>& aFrameCallbackHandler,
       bool aEmulateFrameCallback = false);
 
   // Enable/Disable any frame callback emission (includes emulated ones).
-  void SetFrameCallbackState(bool aEnabled);
+  void SetFrameCallbackStateLocked(const WaylandSurfaceLock& aProofOfLock,
+                                   bool aEnabled);
+  void SetFrameCallbackStateHandlerLocked(
+      const WaylandSurfaceLock& aProofOfLock,
+      const std::function<void(bool)>& aFrameCallbackStateHandler);
 
   // Create and resize EGL window.
   // GetEGLWindow() takes unscaled window size as we derive size from GdkWindow.
@@ -125,13 +125,13 @@ class WaylandSurface final {
 
   // Attach WaylandBuffer which shows WaylandBuffer content
   // on screen.
-  bool AttachLocked(WaylandSurfaceLock& aSurfaceLock,
+  bool AttachLocked(const WaylandSurfaceLock& aSurfaceLock,
                     RefPtr<WaylandBuffer> aWaylandBuffer);
 
   // If there's any WaylandBuffer recently attached, detach it.
   // It makes the WaylandSurface invisible and it doesn't have any
   // content.
-  void RemoveAttachedBufferLocked(WaylandSurfaceLock& aProofOfLock);
+  void RemoveAttachedBufferLocked(const WaylandSurfaceLock& aProofOfLock);
 
   // Called from Wayland compostor async handler when wl_buffer is
   // detached or deleted.
@@ -262,6 +262,8 @@ class WaylandSurface final {
       void* aData, struct wp_image_description_v1* aImageDescription,
       uint32_t aIdentity);
 
+  void AssertCurrentThreadOwnsMutex();
+
  private:
   ~WaylandSurface();
 
@@ -366,21 +368,22 @@ class WaylandSurface final {
   // Frame callback registered to parent surface. When we get it we know
   // parent surface is ready and we can paint.
   wl_callback* mReadyToDrawFrameCallback = nullptr;
-  std::vector<std::function<void(void)>> mReadToDrawCallbacks;
+  std::vector<std::function<void(void)>> mReadyToDrawCallbacks;
 
   // Frame callbacks of this surface
   wl_callback* mFrameCallback = nullptr;
 
   struct FrameCallback {
-    std::function<void(wl_callback*, uint32_t)> mCb;
+    std::function<void(wl_callback*, uint32_t)> mCb = nullptr;
     bool mEmulated = false;
+    bool IsSet() const { return !!mCb; }
   };
 
   bool mFrameCallbackEnabled = true;
-  // Frame callback handlers called every frame
-  std::vector<FrameCallback> mPersistentFrameCallbackHandlers;
-  // Frame callback handlers called only once
-  std::vector<FrameCallback> mOneTimeFrameCallbackHandlers;
+  std::function<void(bool)> mFrameCallbackStateHandler = nullptr;
+
+  // Frame callback handler called every frame
+  FrameCallback mFrameCallbackHandler;
 
   // WaylandSurface is used from Compositor/Rendering/Main threads.
   mozilla::Mutex mMutex{"WaylandSurface"};

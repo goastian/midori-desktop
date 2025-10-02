@@ -6,6 +6,7 @@ support-files = [
   "image.png",
   "image-zh.png",
   "seek_with_sound.webm",
+  "seek_with_sound.webm^headers^",
   "video.webm",
   "head.js",
   "tree_shared.js",
@@ -99,6 +100,7 @@ skip-if = ["os == 'android'"] # bug 1272646
 ["test_videocontrols_keyhandler.html"]
 skip-if = [
   "os == 'android'", #Bug 1366957
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug", # Bug 1948193
 ]
 
 ["test_videocontrols_scrubber_position.html"]
@@ -112,6 +114,7 @@ skip-if = [
 ["test_videocontrols_standalone.html"]
 skip-if = [
   "os == 'android'", # bug 1075573
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 1804621
 ]
 
 ["test_videocontrols_video_direction.html"]
