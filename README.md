@@ -21,7 +21,7 @@
     <br />
     <a href="https://astian.org/midori-browser">Official Site</a>
     ・
-    <a href="#📥-download--📦-install">Download</a>
+    <a href="https://astian.org/midori-browser/download">Download</a>
     ・
     <a href="https://astian.org/midori-en">Blog & Release Notes</a>
     ・
