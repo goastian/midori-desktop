@@ -1,6 +1,118 @@
 {
   "data": [
     {
+      "id": "96ad4fd9-4bbb-454d-bbe5-24225a2cbe04",
+      "last_modified": 1745933974542,
+      "locales": [
+        "af",
+        "an",
+        "ar",
+        "ast",
+        "az",
+        "be",
+        "bg",
+        "bn",
+        "bn-BD",
+        "bn-IN",
+        "br",
+        "bs",
+        "ca",
+        "ca-valencia",
+        "cak",
+        "cs",
+        "cy",
+        "da",
+        "de",
+        "dsb",
+        "el",
+        "en-CA",
+        "en-GB",
+        "en-US",
+        "eo",
+        "es-AR",
+        "es-CL",
+        "es-ES",
+        "es-MX",
+        "et",
+        "eu",
+        "fa",
+        "ff",
+        "fi",
+        "fr",
+        "fur",
+        "fy-NL",
+        "ga-IE",
+        "gd",
+        "gl",
+        "gn",
+        "gu-IN",
+        "he",
+        "hi-IN",
+        "hr",
+        "hsb",
+        "hu",
+        "hy-AM",
+        "ia",
+        "id",
+        "is",
+        "it",
+        "ja",
+        "ja-JP-macos",
+        "ka",
+        "kab",
+        "kk",
+        "km",
+        "kn",
+        "ko",
+        "lij",
+        "lo",
+        "lt",
+        "ltg",
+        "lv",
+        "mk",
+        "mr",
+        "ms",
+        "my",
+        "nb-NO",
+        "ne-NP",
+        "nl",
+        "nn-NO",
+        "oc",
+        "pa-IN",
+        "pl",
+        "pt-BR",
+        "pt-PT",
+        "rm",
+        "ro",
+        "ru",
+        "sc",
+        "sco",
+        "si",
+        "sk",
+        "sl",
+        "son",
+        "sq",
+        "sr",
+        "sv-SE",
+        "szl",
+        "ta",
+        "te",
+        "th",
+        "tl",
+        "tr",
+        "trs",
+        "uk",
+        "ur",
+        "uz",
+        "vi",
+        "wo",
+        "zh-CN",
+        "zh-TW"
+      ],
+      "recordType": "availableLocales",
+      "schema": 1745887776020
+    },
+    {
       "globalDefault": "google",
       "id": "f3891684-2348-4e7a-9765-0c5d2d0ab1b9",
       "last_modified": 1702906502241,
@@ -340,9 +452,9 @@
       },
       "id": "05645095-d26e-4f20-9137-f24a14a23f28",
       "identifier": "bing",
-      "last_modified": 1742996759040,
+      "last_modified": 1753192235011,
       "recordType": "engine",
-      "schema": 1742810344329,
+      "schema": 1753150537498,
       "variants": [
         {
           "environment": {
@@ -412,8 +524,7 @@
             {
               "environment": {
                 "applications": [
-                  "firefox-android",
-                  "focus-android"
+                  "firefox-android"
                 ],
                 "distributions": [
                   "dt-001"
@@ -440,8 +551,7 @@
             {
               "environment": {
                 "applications": [
-                  "firefox-android",
-                  "focus-android"
+                  "firefox-android"
                 ],
                 "distributions": [
                   "vivo-001"
@@ -459,6 +569,27 @@
                     {
                       "name": "form",
                       "value": "MZVIVO"
+                    }
+                  ],
+                  "searchTermParamName": "q"
+                }
+              }
+            },
+            {
+              "environment": {
+                "experiment": "adblockers"
+              },
+              "partnerCode": "MZABT",
+              "urls": {
+                "search": {
+                  "params": [
+                    {
+                      "name": "pc",
+                      "value": "{partnerCode}"
+                    },
+                    {
+                      "name": "form",
+                      "value": "ABT"
                     }
                   ],
                   "searchTermParamName": "q"
@@ -2424,24 +2555,9 @@
         ],
         "classification": "general",
         "name": "Google",
-        "partnerCode": "firefox-b-d",
         "urls": {
           "search": {
             "base": "https://www.google.com/search",
-            "params": [
-              {
-                "name": "client",
-                "value": "{partnerCode}"
-              },
-              {
-                "experimentConfig": "google_channel_row",
-                "name": "channel"
-              },
-              {
-                "enterpriseValue": "entpr",
-                "name": "channel"
-              }
-            ],
             "searchTermParamName": "q"
           },
           "suggestions": {
@@ -2477,14 +2593,15 @@
       },
       "id": "7ace4aa1-e762-4f4b-87b9-b23b3c3a930b",
       "identifier": "google",
-      "last_modified": 1742996759044,
+      "last_modified": 1753192235006,
       "recordType": "engine",
-      "schema": 1742915469472,
+      "schema": 1753191541223,
       "variants": [
         {
           "environment": {
             "allRegionsAndLocales": true
           },
+          "partnerCode": "firefox-b-d",
           "subVariants": [
             {
               "environment": {
@@ -2508,7 +2625,25 @@
               "telemetrySuffix": "b-m"
             }
           ],
-          "telemetrySuffix": "b-d"
+          "telemetrySuffix": "b-d",
+          "urls": {
+            "search": {
+              "params": [
+                {
+                  "name": "client",
+                  "value": "{partnerCode}"
+                },
+                {
+                  "experimentConfig": "google_channel_row",
+                  "name": "channel"
+                },
+                {
+                  "enterpriseValue": "entpr",
+                  "name": "channel"
+                }
+              ]
+            }
+          }
         },
         {
           "environment": {
@@ -2519,12 +2654,7 @@
               "kz"
             ]
           },
-          "telemetrySuffix": "com-nocodes",
-          "urls": {
-            "search": {
-              "params": []
-            }
-          }
+          "telemetrySuffix": "com-nocodes"
         },
         {
           "environment": {
@@ -2557,6 +2687,31 @@
               },
               "partnerCode": "firefox-b-1-m",
               "telemetrySuffix": "b-1-m"
+            },
+            {
+              "environment": {
+                "applications": [
+                  "firefox-android"
+                ],
+                "distributions": [
+                  "aura-001"
+                ]
+              },
+              "partnerCode": "firefox-b-1-ar",
+              "telemetrySuffix": "b-1-ar"
+            },
+            {
+              "environment": {
+                "applications": [
+                  "firefox-android"
+                ],
+                "distributions": [
+                  "dt-002",
+                  "dt-003"
+                ]
+              },
+              "partnerCode": "firefox-b-1-dt",
+              "telemetrySuffix": "b-1-dt"
             }
           ],
           "telemetrySuffix": "b-1-d",
@@ -2630,10 +2785,34 @@
           "environment": {
             "distributions": [
               "mint-001"
+            ],
+            "excludedRegions": [
+              "ru",
+              "tr",
+              "by",
+              "kz"
             ]
           },
           "partnerCode": "firefox-b-lm",
-          "telemetrySuffix": "b-lm"
+          "telemetrySuffix": "b-lm",
+          "urls": {
+            "search": {
+              "params": [
+                {
+                  "name": "client",
+                  "value": "{partnerCode}"
+                },
+                {
+                  "experimentConfig": "google_channel_row",
+                  "name": "channel"
+                },
+                {
+                  "enterpriseValue": "entpr",
+                  "name": "channel"
+                }
+              ]
+            }
+          }
         },
         {
           "environment": {
@@ -2645,33 +2824,156 @@
             ]
           },
           "partnerCode": "firefox-b-1-lm",
-          "telemetrySuffix": "b-1-lm"
+          "telemetrySuffix": "b-1-lm",
+          "urls": {
+            "search": {
+              "params": [
+                {
+                  "name": "client",
+                  "value": "{partnerCode}"
+                },
+                {
+                  "experimentConfig": "google_channel_row",
+                  "name": "channel"
+                },
+                {
+                  "enterpriseValue": "entpr",
+                  "name": "channel"
+                }
+              ]
+            }
+          }
         },
         {
           "environment": {
             "applications": [
-              "firefox-android",
-              "focus-android"
+              "firefox-android"
             ],
             "distributions": [
               "vivo-001"
+            ],
+            "excludedRegions": [
+              "ru",
+              "tr",
+              "by",
+              "kz"
             ]
           },
           "partnerCode": "firefox-b-vv",
-          "telemetrySuffix": "b-vv"
+          "telemetrySuffix": "b-vv",
+          "urls": {
+            "search": {
+              "params": [
+                {
+                  "name": "client",
+                  "value": "{partnerCode}"
+                },
+                {
+                  "experimentConfig": "google_channel_row",
+                  "name": "channel"
+                }
+              ]
+            }
+          }
         },
         {
           "environment": {
             "applications": [
-              "firefox-android",
-              "focus-android"
+              "firefox-android"
             ],
             "distributions": [
               "dt-001"
+            ],
+            "excludedRegions": [
+              "ru",
+              "tr",
+              "by",
+              "kz"
             ]
           },
           "partnerCode": "firefox-b-tf",
-          "telemetrySuffix": "b-tf"
+          "telemetrySuffix": "b-tf",
+          "urls": {
+            "search": {
+              "params": [
+                {
+                  "name": "client",
+                  "value": "{partnerCode}"
+                },
+                {
+                  "experimentConfig": "google_channel_row",
+                  "name": "channel"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "environment": {
+            "applications": [
+              "firefox-android"
+            ],
+            "distributions": [
+              "aura-001"
+            ],
+            "excludedRegions": [
+              "us",
+              "ru",
+              "tr",
+              "by",
+              "kz"
+            ]
+          },
+          "partnerCode": "firefox-b-ar",
+          "telemetrySuffix": "b-ar",
+          "urls": {
+            "search": {
+              "params": [
+                {
+                  "name": "client",
+                  "value": "{partnerCode}"
+                },
+                {
+                  "experimentConfig": "google_channel_row",
+                  "name": "channel"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "environment": {
+            "applications": [
+              "firefox-android"
+            ],
+            "distributions": [
+              "dt-002",
+              "dt-003"
+            ],
+            "excludedRegions": [
+              "us",
+              "ru",
+              "tr",
+              "by",
+              "kz"
+            ]
+          },
+          "partnerCode": "firefox-b-dt",
+          "telemetrySuffix": "b-dt",
+          "urls": {
+            "search": {
+              "params": [
+                {
+                  "name": "client",
+                  "value": "{partnerCode}"
+                },
+                {
+                  "experimentConfig": "google_channel_row",
+                  "name": "channel"
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -3108,6 +3410,66 @@
     },
     {
       "base": {
+        "aliases": [
+          "perplexity"
+        ],
+        "classification": "general",
+        "name": "Perplexity",
+        "partnerCode": "firefox",
+        "urls": {
+          "search": {
+            "base": "https://www.perplexity.ai/search",
+            "params": [
+              {
+                "name": "pc",
+                "value": "{partnerCode}"
+              }
+            ],
+            "searchTermParamName": "q"
+          },
+          "suggestions": {
+            "base": "https://suggest.perplexity.ai/suggest",
+            "searchTermParamName": "q"
+          },
+          "trending": {
+            "base": "https://www.perplexity.ai/rest/autosuggest/list-trending-suggest"
+          }
+        }
+      },
+      "id": "bb836721-7be9-4de6-ac18-520189a69076",
+      "identifier": "perplexity",
+      "last_modified": 1749848937099,
+      "recordType": "engine",
+      "schema": 1749743664865,
+      "variants": [
+        {
+          "environment": {
+            "experiment": "perplexity"
+          },
+          "subVariants": [
+            {
+              "environment": {
+                "locales": [
+                  "de"
+                ],
+                "regions": [
+                  "de",
+                  "us",
+                  "gb"
+                ]
+              },
+              "urls": {
+                "trending": {
+                  "base": "https://www.perplexity.ai/rest/autosuggest/list-trending-suggest?lang=de-DE"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "base": {
         "charset": "ISO-8859-15",
         "classification": "unknown",
         "name": "Priberam",
@@ -3320,31 +3682,20 @@
     },
     {
       "base": {
-        "charset": "EUC-JP",
         "classification": "unknown",
         "name": "楽天市場",
         "urls": {
           "search": {
-            "base": "https://pt.afl.rakuten.co.jp/c/013ca98b.cd7c5f0c/",
-            "params": [
-              {
-                "name": "sv",
-                "value": "2"
-              },
-              {
-                "name": "p",
-                "value": "0"
-              }
-            ],
+            "base": "https://search.rakuten.co.jp/search/mall",
             "searchTermParamName": "sitem"
           }
         }
       },
       "id": "ab6f7178-b0be-452a-82f2-f5df8df2d836",
       "identifier": "rakuten",
-      "last_modified": 1702906502326,
+      "last_modified": 1753710379308,
       "recordType": "engine",
-      "schema": 1702901819182,
+      "schema": 1753668939392,
       "variants": [
         {
           "environment": {
@@ -8049,5 +8400,5 @@
       "schema": 1707824831520
     }
   ],
-  "timestamp": 1744212474334
+  "timestamp": 1753710379308
 }
