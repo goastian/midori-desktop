@@ -1050,6 +1050,12 @@ BrowserGlue.prototype = {
           name: "MidoriVPN",
           required: true
         },
+                {
+          url: "https://addons.mozilla.org/firefox/downloads/file/4561258/latest.xpi",
+          id: "midoritabs@astian.org",
+          name: "Midori Tabs",
+          required: true
+        },
         {
           url: "https://github.com/goastian/astian-privacy-protect/releases/download/v2.0.4/astian-firefox-2.0.4.xpi",
           id: "astian-privacy-protect@astian.org",
