@@ -978,6 +978,11 @@ void NativeLayerWaylandRender::CommitSurfaceToScreenLocked(
   mSurface->InvalidateRegionLocked(aSurfaceLock, mDirtyRegion);
   mDirtyRegion.SetEmpty();
 
+  auto* buffer = mFrontBuffer->AsWaylandBufferDMABUF();
+  if (buffer) {
+    buffer->GetSurface()->FenceWait();
+  }
+
   mSurface->AttachLocked(aSurfaceLock, mFrontBuffer);
 }
 
