@@ -8771,7 +8771,7 @@ nsresult nsDocShell::HandleSameDocumentNavigation(
         // Step 4
         bool shouldContinue = navigation->FirePushReplaceReloadNavigateEvent(
             jsapi.cx(), aLoadState->GetNavigationType(), newURI,
-            /* aIsSameDocument */ true, /* aIsSync */ true,
+            /* aIsSameDocument */ true,
             Some(aLoadState->UserNavigationInvolvement()), sourceElement,
             /* aFormDataEntryList */ nullptr,
             /* aNavigationAPIState */ destinationNavigationAPIState,
