@@ -31,9 +31,9 @@ class DtlsTransportFactory {
   virtual ~DtlsTransportFactory() = default;
 
   virtual std::unique_ptr<DtlsTransportInternal> CreateDtlsTransport(
-      webrtc::IceTransportInternal* ice,
+      IceTransportInternal* ice,
       const webrtc::CryptoOptions& crypto_options,
-      webrtc::SSLProtocolVersion max_version) = 0;
+      rtc::SSLProtocolVersion max_version) = 0;
 };
 
 }  // namespace cricket

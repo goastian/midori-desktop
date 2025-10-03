@@ -3073,14 +3073,13 @@ TEST_P(DcSctpSocketParametrizedTest, AllPacketsAfterConnectHaveZeroChecksum) {
   z->socket.Send(DcSctpMessage(StreamID(1), PPID(53), payload), kSendOptions);
 
   for (;;) {
-    std::vector<uint8_t> data;
-    if (data = a.cb.ConsumeSentPacket(); !data.empty()) {
+    if (auto data = a.cb.ConsumeSentPacket(); !data.empty()) {
       ASSERT_HAS_VALUE_AND_ASSIGN(SctpPacket packet,
                                   SctpPacket::Parse(data, options));
       EXPECT_THAT(packet.common_header().checksum, 0u);
       z->socket.ReceivePacket(std::move(data));
 
-    } else if (data = z->cb.ConsumeSentPacket(); !data.empty()) {
+    } else if (auto data = z->cb.ConsumeSentPacket(); !data.empty()) {
       ASSERT_HAS_VALUE_AND_ASSIGN(SctpPacket packet,
                                   SctpPacket::Parse(data, options));
       EXPECT_THAT(packet.common_header().checksum, 0u);

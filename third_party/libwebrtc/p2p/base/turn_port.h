@@ -13,7 +13,6 @@
 
 #include <stdio.h>
 
-#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -23,25 +22,13 @@
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "api/async_dns_resolver.h"
-#include "api/candidate.h"
-#include "api/packet_socket_factory.h"
 #include "api/task_queue/pending_task_safety_flag.h"
 #include "api/task_queue/task_queue_base.h"
-#include "api/transport/stun.h"
-#include "p2p/base/connection.h"
 #include "p2p/base/port.h"
 #include "p2p/base/port_allocator.h"
-#include "p2p/base/port_interface.h"
-#include "p2p/base/stun_request.h"
 #include "p2p/client/relay_port_factory_interface.h"
 #include "rtc_base/async_packet_socket.h"
-#include "rtc_base/dscp.h"
-#include "rtc_base/ip_address.h"
-#include "rtc_base/logging.h"
 #include "rtc_base/network/received_packet.h"
-#include "rtc_base/network/sent_packet.h"
-#include "rtc_base/socket.h"
-#include "rtc_base/socket_address.h"
 #include "rtc_base/ssl_certificate.h"
 
 namespace webrtc {
@@ -88,7 +75,7 @@ class TurnPort : public Port {
 
   // Create a TURN port using the shared UDP socket, `socket`.
   static std::unique_ptr<TurnPort> Create(const CreateRelayPortArgs& args,
-                                          webrtc::AsyncPacketSocket* socket) {
+                                          rtc::AsyncPacketSocket* socket) {
     if (!Validate(args)) {
       return nullptr;
     }
@@ -132,18 +119,18 @@ class TurnPort : public Port {
 
   const ProtocolAddress& server_address() const { return server_address_; }
   // Returns an empty address if the local address has not been assigned.
-  webrtc::SocketAddress GetLocalAddress() const;
+  rtc::SocketAddress GetLocalAddress() const;
 
   bool ready() const { return state_ == STATE_READY; }
   bool connected() const {
     return state_ == STATE_READY || state_ == STATE_CONNECTED;
   }
-  const webrtc::RelayCredentials& credentials() const { return credentials_; }
+  const RelayCredentials& credentials() const { return credentials_; }
 
-  webrtc::ProtocolType GetProtocol() const override;
+  ProtocolType GetProtocol() const override;
 
-  virtual webrtc::TlsCertPolicy GetTlsCertPolicy() const;
-  virtual void SetTlsCertPolicy(webrtc::TlsCertPolicy tls_cert_policy);
+  virtual TlsCertPolicy GetTlsCertPolicy() const;
+  virtual void SetTlsCertPolicy(TlsCertPolicy tls_cert_policy);
 
   void SetTurnLoggingId(absl::string_view turn_logging_id);
 
@@ -155,40 +142,39 @@ class TurnPort : public Port {
   void Release();
 
   void PrepareAddress() override;
-  Connection* CreateConnection(
-      const webrtc::Candidate& c,
-      webrtc::PortInterface::CandidateOrigin origin) override;
+  Connection* CreateConnection(const Candidate& c,
+                               PortInterface::CandidateOrigin origin) override;
   int SendTo(const void* data,
              size_t size,
-             const webrtc::SocketAddress& addr,
+             const rtc::SocketAddress& addr,
              const rtc::PacketOptions& options,
              bool payload) override;
-  int SetOption(webrtc::Socket::Option opt, int value) override;
-  int GetOption(webrtc::Socket::Option opt, int* value) override;
+  int SetOption(rtc::Socket::Option opt, int value) override;
+  int GetOption(rtc::Socket::Option opt, int* value) override;
   int GetError() override;
 
-  bool HandleIncomingPacket(webrtc::AsyncPacketSocket* socket,
+  bool HandleIncomingPacket(rtc::AsyncPacketSocket* socket,
                             const rtc::ReceivedPacket& packet) override;
   bool CanHandleIncomingPacketsFrom(
-      const webrtc::SocketAddress& addr) const override;
+      const rtc::SocketAddress& addr) const override;
 
   // Checks if a connection exists for `addr` before forwarding the call to
   // the base class.
   void SendBindingErrorResponse(StunMessage* message,
-                                const webrtc::SocketAddress& addr,
+                                const rtc::SocketAddress& addr,
                                 int error_code,
                                 absl::string_view reason) override;
 
-  virtual void OnReadPacket(webrtc::AsyncPacketSocket* socket,
+  virtual void OnReadPacket(rtc::AsyncPacketSocket* socket,
                             const rtc::ReceivedPacket& packet);
 
-  void OnSentPacket(webrtc::AsyncPacketSocket* socket,
+  void OnSentPacket(rtc::AsyncPacketSocket* socket,
                     const rtc::SentPacket& sent_packet) override;
-  virtual void OnReadyToSend(webrtc::AsyncPacketSocket* socket);
+  virtual void OnReadyToSend(rtc::AsyncPacketSocket* socket);
   bool SupportsProtocol(absl::string_view protocol) const override;
 
-  void OnSocketConnect(webrtc::AsyncPacketSocket* socket);
-  void OnSocketClose(webrtc::AsyncPacketSocket* socket, int error);
+  void OnSocketConnect(rtc::AsyncPacketSocket* socket);
+  void OnSocketClose(rtc::AsyncPacketSocket* socket, int error);
 
   const std::string& hash() const { return hash_; }
   const std::string& nonce() const { return nonce_; }
@@ -197,11 +183,11 @@ class TurnPort : public Port {
 
   void OnAllocateMismatch();
 
-  webrtc::AsyncPacketSocket* socket() const { return socket_; }
+  rtc::AsyncPacketSocket* socket() const { return socket_; }
   StunRequestManager& request_manager() { return request_manager_; }
 
   bool HasRequests() { return !request_manager_.empty(); }
-  void set_credentials(const webrtc::RelayCredentials& credentials) {
+  void set_credentials(const RelayCredentials& credentials) {
     credentials_ = credentials;
   }
 
@@ -221,9 +207,9 @@ class TurnPort : public Port {
 
  protected:
   TurnPort(const PortParametersRef& args,
-           webrtc::AsyncPacketSocket* socket,
+           rtc::AsyncPacketSocket* socket,
            const ProtocolAddress& server_address,
-           const webrtc::RelayCredentials& credentials,
+           const RelayCredentials& credentials,
            int server_priority,
            const std::vector<std::string>& tls_alpn_protocols,
            const std::vector<std::string>& tls_elliptic_curves,
@@ -234,7 +220,7 @@ class TurnPort : public Port {
            uint16_t min_port,
            uint16_t max_port,
            const ProtocolAddress& server_address,
-           const webrtc::RelayCredentials& credentials,
+           const RelayCredentials& credentials,
            int server_priority,
            const std::vector<std::string>& tls_alpn_protocols,
            const std::vector<std::string>& tls_elliptic_curves,
@@ -243,13 +229,13 @@ class TurnPort : public Port {
 
   [[deprecated("Pass arguments using PortParametersRef")]] TurnPort(
       webrtc::TaskQueueBase* thread,
-      webrtc::PacketSocketFactory* factory,
+      rtc::PacketSocketFactory* factory,
       const rtc::Network* network,
-      webrtc::AsyncPacketSocket* socket,
+      rtc::AsyncPacketSocket* socket,
       absl::string_view username,
       absl::string_view password,
       const ProtocolAddress& server_address,
-      const webrtc::RelayCredentials& credentials,
+      const RelayCredentials& credentials,
       int server_priority,
       const std::vector<std::string>& tls_alpn_protocols,
       const std::vector<std::string>& tls_elliptic_curves,
@@ -259,14 +245,14 @@ class TurnPort : public Port {
 
   [[deprecated("Pass arguments using PortParametersRef")]] TurnPort(
       webrtc::TaskQueueBase* thread,
-      webrtc::PacketSocketFactory* factory,
+      rtc::PacketSocketFactory* factory,
       const rtc::Network* network,
       uint16_t min_port,
       uint16_t max_port,
       absl::string_view username,
       absl::string_view password,
       const ProtocolAddress& server_address,
-      const webrtc::RelayCredentials& credentials,
+      const RelayCredentials& credentials,
       int server_priority,
       const std::vector<std::string>& tls_alpn_protocols,
       const std::vector<std::string>& tls_elliptic_curves,
@@ -284,8 +270,8 @@ class TurnPort : public Port {
   void Close();
 
  private:
-  typedef std::map<webrtc::Socket::Option, int> SocketOptionsMap;
-  typedef std::set<webrtc::SocketAddress> AttemptedServerSet;
+  typedef std::map<rtc::Socket::Option, int> SocketOptionsMap;
+  typedef std::set<rtc::SocketAddress> AttemptedServerSet;
 
   static bool AllowedTurnPort(int port,
                               const webrtc::FieldTrialsView* field_trials);
@@ -298,17 +284,17 @@ class TurnPort : public Port {
 
   void OnRefreshError();
   void HandleRefreshError();
-  bool SetAlternateServer(const webrtc::SocketAddress& address);
-  void ResolveTurnAddress(const webrtc::SocketAddress& address);
+  bool SetAlternateServer(const rtc::SocketAddress& address);
+  void ResolveTurnAddress(const rtc::SocketAddress& address);
   void OnResolveResult(const webrtc::AsyncDnsResolverResult& result);
 
   void AddRequestAuthInfo(StunMessage* msg);
   void OnSendStunPacket(const void* data, size_t size, StunRequest* request);
   // Stun address from allocate success response.
   // Currently used only for testing.
-  void OnStunAddress(const webrtc::SocketAddress& address);
-  void OnAllocateSuccess(const webrtc::SocketAddress& address,
-                         const webrtc::SocketAddress& stun_address);
+  void OnStunAddress(const rtc::SocketAddress& address);
+  void OnAllocateSuccess(const rtc::SocketAddress& address,
+                         const rtc::SocketAddress& stun_address);
   void OnAllocateError(int error_code, absl::string_view reason);
   void OnAllocateRequestTimeout();
 
@@ -321,8 +307,8 @@ class TurnPort : public Port {
                          int64_t packet_time_us);
   void DispatchPacket(const char* data,
                       size_t size,
-                      const webrtc::SocketAddress& remote_addr,
-                      webrtc::ProtocolType proto,
+                      const rtc::SocketAddress& remote_addr,
+                      ProtocolType proto,
                       int64_t packet_time_us);
 
   bool ScheduleRefresh(uint32_t lifetime);
@@ -332,13 +318,13 @@ class TurnPort : public Port {
   bool UpdateNonce(StunMessage* response);
   void ResetNonce();
 
-  bool HasPermission(const webrtc::IPAddress& ipaddr) const;
-  TurnEntry* FindEntry(const webrtc::SocketAddress& address) const;
+  bool HasPermission(const rtc::IPAddress& ipaddr) const;
+  TurnEntry* FindEntry(const rtc::SocketAddress& address) const;
   TurnEntry* FindEntry(uint16_t channel_id) const;
 
   // Marks the connection with remote address `address` failed and
   // pruned (a.k.a. write-timed-out). Returns true if a connection is found.
-  bool FailAndPruneConnection(const webrtc::SocketAddress& address);
+  bool FailAndPruneConnection(const rtc::SocketAddress& address);
 
   void MaybeAddTurnLoggingId(StunMessage* message);
 
@@ -354,15 +340,14 @@ class TurnPort : public Port {
   std::string ReconstructServerUrl();
   std::string server_url_;
 
-  webrtc::TlsCertPolicy tls_cert_policy_ =
-      webrtc::TlsCertPolicy::TLS_CERT_POLICY_SECURE;
+  TlsCertPolicy tls_cert_policy_ = TlsCertPolicy::TLS_CERT_POLICY_SECURE;
   std::vector<std::string> tls_alpn_protocols_;
   std::vector<std::string> tls_elliptic_curves_;
   rtc::SSLCertificateVerifier* tls_cert_verifier_;
-  webrtc::RelayCredentials credentials_;
+  RelayCredentials credentials_;
   AttemptedServerSet attempted_server_addresses_;
 
-  webrtc::AsyncPacketSocket* socket_;
+  rtc::AsyncPacketSocket* socket_;
   SocketOptionsMap socket_options_;
   std::unique_ptr<webrtc::AsyncDnsResolverInterface> resolver_;
   int error_;

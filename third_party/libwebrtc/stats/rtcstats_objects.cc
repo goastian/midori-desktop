@@ -296,7 +296,6 @@ WEBRTC_RTCSTATS_IMPL(
     AttributeInit("remoteId", &remote_id),
     AttributeInit("mid", &mid),
     AttributeInit("rid", &rid),
-    AttributeInit("encodingIndex", &encoding_index),
     AttributeInit("retransmittedPacketsSent", &retransmitted_packets_sent),
     AttributeInit("headerBytesSent", &header_bytes_sent),
     AttributeInit("retransmittedBytesSent", &retransmitted_bytes_sent),

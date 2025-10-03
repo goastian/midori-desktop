@@ -1,12 +1,12 @@
-import assert from 'node:assert';
+import * as assert from 'node:assert';
 import { describe, test } from 'node:test';
-import fs from 'fs';
+import * as fs from 'fs';
 import { LLParse } from 'llparse';
 import { Group, MDGator, Metadata, Test } from 'mdgator';
-import path from 'path';
-import vm from 'vm';
+import * as path from 'path';
+import * as vm from 'vm';
 
-import llhttp from '../src/llhttp';
+import * as llhttp from '../src/llhttp';
 import { allowedTypes, build, FixtureResult, Node, TestType } from './fixtures';
 
 //
@@ -90,11 +90,10 @@ function run(name: string): void {
   const raw = fs.readFileSync(path.join(__dirname, name + '.md')).toString();
   const groups = md.parse(raw);
 
-  function runSingleTest(
-    location: string, ty: TestType, meta: Metadata, 
-    input: string, expected: readonly (string | RegExp)[]
-  ): void {
-    test(`should pass for type="${ty}" (location=${location})`, { timeout: 60000 }, async () => {
+  function runSingleTest(ty: TestType, meta: Metadata,
+                         input: string,
+                         expected: ReadonlyArray<string | RegExp>): void {
+    test(`should pass for type="${ty}"`, { timeout: 60000 }, async () => {
       const binary = await buildMode(ty, meta);
       await binary.check(input, expected, {
         noScan: meta.noScan === true,
@@ -104,8 +103,6 @@ function run(name: string): void {
 
   function runTest(test: Test) {
     describe(test.name + ` at ${name}.md:${test.line + 1}`, () => {
-      const location = `${name}.md:${test.line + 1}`
-
       let types: TestType[] = [];
 
       const isURL = test.values.has('url');
@@ -205,7 +202,7 @@ function run(name: string): void {
           continue;
         }
 
-        runSingleTest(location, ty, meta, input, fullExpected);
+        runSingleTest(ty, meta, input, fullExpected);
       }
     });
   }

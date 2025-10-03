@@ -53,10 +53,8 @@
 #include "api/test/rtc_error_matchers.h"
 #include "api/transport/rtp/rtp_source.h"
 #include "api/uma_metrics.h"
-#include "api/units/data_rate.h"
 #include "api/units/time_delta.h"
 #include "api/video/video_rotation.h"
-#include "api/video_codecs/sdp_video_format.h"
 #include "logging/rtc_event_log/fake_rtc_event_log.h"
 #include "logging/rtc_event_log/fake_rtc_event_log_factory.h"
 #include "media/base/codec.h"
@@ -125,7 +123,7 @@ class PeerConnectionIntegrationTest
 // where order of construction is finely controlled.
 // This also ensures peerconnection is closed before switching back to non-fake
 // clock, avoiding other races and DCHECK failures such as in rtp_sender.cc.
-class FakeClockForTest : public ScopedFakeClock {
+class FakeClockForTest : public rtc::ScopedFakeClock {
  protected:
   FakeClockForTest() {
     // Some things use a time of "0" as a special value, so we need to start out
@@ -385,7 +383,7 @@ TEST_P(PeerConnectionIntegrationTest,
   FakePeriodicVideoSource::Config config;
   config.width = 1280;
   config.height = 720;
-  config.timestamp_offset_ms = TimeMillis();
+  config.timestamp_offset_ms = rtc::TimeMillis();
   caller()->AddTrack(caller()->CreateLocalVideoTrackWithConfig(config));
   callee()->AddTrack(callee()->CreateLocalVideoTrackWithConfig(config));
 
@@ -621,7 +619,7 @@ TEST_P(PeerConnectionIntegrationTest, AudioToVideoUpgrade) {
   } else {
     callee()->SetRemoteOfferHandler([this] {
       callee()
-          ->GetFirstTransceiverOfType(webrtc::MediaType::VIDEO)
+          ->GetFirstTransceiverOfType(cricket::MEDIA_TYPE_VIDEO)
           ->StopInternal();
     });
   }
@@ -657,7 +655,7 @@ TEST_P(PeerConnectionIntegrationTest, AudioToVideoUpgrade) {
       // the offer, but by default it is send only.
       auto transceivers = caller()->pc()->GetTransceivers();
       ASSERT_EQ(2U, transceivers.size());
-      ASSERT_EQ(webrtc::MediaType::VIDEO,
+      ASSERT_EQ(cricket::MEDIA_TYPE_VIDEO,
                 transceivers[1]->receiver()->media_type());
       transceivers[1]->sender()->SetTrack(
           caller()->CreateLocalVideoTrack().get());
@@ -794,7 +792,7 @@ TEST_P(PeerConnectionIntegrationTest, RotatedVideoWithoutCVOExtension) {
   // Remove the CVO extension from the offered SDP.
   callee()->SetReceivedSdpMunger(
       [](std::unique_ptr<SessionDescriptionInterface>& sdp) {
-        VideoContentDescription* video =
+        cricket::VideoContentDescription* video =
             GetFirstVideoContentDescription(sdp->description());
         video->ClearRtpHeaderExtensions();
       });
@@ -842,7 +840,7 @@ TEST_P(PeerConnectionIntegrationTest, AnswererRejectsAudioSection) {
     // rejected in the answer.
     callee()->SetRemoteOfferHandler([this] {
       callee()
-          ->GetFirstTransceiverOfType(webrtc::MediaType::AUDIO)
+          ->GetFirstTransceiverOfType(cricket::MEDIA_TYPE_AUDIO)
           ->StopInternal();
     });
   }
@@ -867,7 +865,7 @@ TEST_P(PeerConnectionIntegrationTest, AnswererRejectsAudioSection) {
     // The caller's transceiver should have stopped after receiving the answer,
     // and thus no longer listed in transceivers.
     EXPECT_EQ(nullptr,
-              caller()->GetFirstTransceiverOfType(webrtc::MediaType::AUDIO));
+              caller()->GetFirstTransceiverOfType(cricket::MEDIA_TYPE_AUDIO));
   }
 }
 
@@ -888,7 +886,7 @@ TEST_P(PeerConnectionIntegrationTest, AnswererRejectsVideoSection) {
     // rejected in the answer.
     callee()->SetRemoteOfferHandler([this] {
       callee()
-          ->GetFirstTransceiverOfType(webrtc::MediaType::VIDEO)
+          ->GetFirstTransceiverOfType(cricket::MEDIA_TYPE_VIDEO)
           ->StopInternal();
     });
   }
@@ -913,7 +911,7 @@ TEST_P(PeerConnectionIntegrationTest, AnswererRejectsVideoSection) {
     // The caller's transceiver should have stopped after receiving the answer,
     // and thus is no longer present.
     EXPECT_EQ(nullptr,
-              caller()->GetFirstTransceiverOfType(webrtc::MediaType::VIDEO));
+              caller()->GetFirstTransceiverOfType(cricket::MEDIA_TYPE_VIDEO));
   }
 }
 
@@ -982,14 +980,14 @@ TEST_P(PeerConnectionIntegrationTest, VideoRejectedInSubsequentOffer) {
     caller()->SetGeneratedSdpMunger(
         [](std::unique_ptr<SessionDescriptionInterface>& sdp) {
           for (cricket::ContentInfo& content : sdp->description()->contents()) {
-            if (IsVideoContent(&content)) {
+            if (cricket::IsVideoContent(&content)) {
               content.rejected = true;
             }
           }
         });
   } else {
     caller()
-        ->GetFirstTransceiverOfType(webrtc::MediaType::VIDEO)
+        ->GetFirstTransceiverOfType(cricket::MEDIA_TYPE_VIDEO)
         ->StopInternal();
   }
   caller()->CreateAndSetAndSignalOffer();
@@ -1169,7 +1167,7 @@ void RemoveBundleGroupSsrcsAndMidExtension(
   RemoveSsrcsAndKeepMsids(sdp);
   sdp->description()->RemoveGroupByName("BUNDLE");
   for (ContentInfo& content : sdp->description()->contents()) {
-    MediaContentDescription* media = content.media_description();
+    cricket::MediaContentDescription* media = content.media_description();
     cricket::RtpHeaderExtensions extensions = media->rtp_header_extensions();
     extensions.erase(std::remove_if(extensions.begin(), extensions.end(),
                                     [](const RtpExtension& extension) {
@@ -1218,7 +1216,7 @@ void ModifyPayloadTypesAndRemoveMidExtension(
     std::unique_ptr<SessionDescriptionInterface>& sdp) {
   int pt = 96;
   for (ContentInfo& content : sdp->description()->contents()) {
-    MediaContentDescription* media = content.media_description();
+    cricket::MediaContentDescription* media = content.media_description();
     cricket::RtpHeaderExtensions extensions = media->rtp_header_extensions();
     extensions.erase(std::remove_if(extensions.begin(), extensions.end(),
                                     [](const RtpExtension& extension) {
@@ -1647,7 +1645,7 @@ TEST_P(PeerConnectionIntegrationTest,
 // Test that DTLS 1.0 is used if both sides only support DTLS 1.0.
 TEST_P(PeerConnectionIntegrationTest, EndToEndCallWithDtls10) {
   PeerConnectionFactory::Options dtls_10_options;
-  dtls_10_options.ssl_max_version = SSL_PROTOCOL_DTLS_10;
+  dtls_10_options.ssl_max_version = rtc::SSL_PROTOCOL_DTLS_10;
   ASSERT_TRUE(CreatePeerConnectionWrappersWithOptions(dtls_10_options,
                                                       dtls_10_options));
   ConnectFakeSignaling();
@@ -1667,7 +1665,7 @@ TEST_P(PeerConnectionIntegrationTest, EndToEndCallWithDtls10) {
 // Test getting cipher stats and UMA metrics when DTLS 1.0 is negotiated.
 TEST_P(PeerConnectionIntegrationTest, Dtls10CipherStatsAndUmaMetrics) {
   PeerConnectionFactory::Options dtls_10_options;
-  dtls_10_options.ssl_max_version = SSL_PROTOCOL_DTLS_10;
+  dtls_10_options.ssl_max_version = rtc::SSL_PROTOCOL_DTLS_10;
   ASSERT_TRUE(CreatePeerConnectionWrappersWithOptions(dtls_10_options,
                                                       dtls_10_options));
   ConnectFakeSignaling();
@@ -1678,21 +1676,22 @@ TEST_P(PeerConnectionIntegrationTest, Dtls10CipherStatsAndUmaMetrics) {
               IsRtcOk());
   EXPECT_THAT(WaitUntil(
                   [&] {
-                    return SSLStreamAdapter::IsAcceptableCipher(
+                    return rtc::SSLStreamAdapter::IsAcceptableCipher(
                         caller()->OldGetStats()->DtlsCipher(), rtc::KT_DEFAULT);
                   },
                   ::testing::IsTrue()),
               IsRtcOk());
   EXPECT_THAT(
-      WaitUntil([&] { return caller()->OldGetStats()->SrtpCipher(); },
-                ::testing::Eq(SrtpCryptoSuiteToName(kDefaultSrtpCryptoSuite))),
+      WaitUntil(
+          [&] { return caller()->OldGetStats()->SrtpCipher(); },
+          ::testing::Eq(rtc::SrtpCryptoSuiteToName(kDefaultSrtpCryptoSuite))),
       IsRtcOk());
 }
 
 // Test getting cipher stats and UMA metrics when DTLS 1.2 is negotiated.
 TEST_P(PeerConnectionIntegrationTest, Dtls12CipherStatsAndUmaMetrics) {
   PeerConnectionFactory::Options dtls_12_options;
-  dtls_12_options.ssl_max_version = SSL_PROTOCOL_DTLS_12;
+  dtls_12_options.ssl_max_version = rtc::SSL_PROTOCOL_DTLS_12;
   ASSERT_TRUE(CreatePeerConnectionWrappersWithOptions(dtls_12_options,
                                                       dtls_12_options));
   ConnectFakeSignaling();
@@ -1703,14 +1702,15 @@ TEST_P(PeerConnectionIntegrationTest, Dtls12CipherStatsAndUmaMetrics) {
               IsRtcOk());
   EXPECT_THAT(WaitUntil(
                   [&] {
-                    return SSLStreamAdapter::IsAcceptableCipher(
+                    return rtc::SSLStreamAdapter::IsAcceptableCipher(
                         caller()->OldGetStats()->DtlsCipher(), rtc::KT_DEFAULT);
                   },
                   ::testing::IsTrue()),
               IsRtcOk());
   EXPECT_THAT(
-      WaitUntil([&] { return caller()->OldGetStats()->SrtpCipher(); },
-                ::testing::Eq(SrtpCryptoSuiteToName(kDefaultSrtpCryptoSuite))),
+      WaitUntil(
+          [&] { return caller()->OldGetStats()->SrtpCipher(); },
+          ::testing::Eq(rtc::SrtpCryptoSuiteToName(kDefaultSrtpCryptoSuite))),
       IsRtcOk());
 }
 
@@ -1718,9 +1718,9 @@ TEST_P(PeerConnectionIntegrationTest, Dtls12CipherStatsAndUmaMetrics) {
 // callee only supports 1.0.
 TEST_P(PeerConnectionIntegrationTest, CallerDtls12ToCalleeDtls10) {
   PeerConnectionFactory::Options caller_options;
-  caller_options.ssl_max_version = SSL_PROTOCOL_DTLS_12;
+  caller_options.ssl_max_version = rtc::SSL_PROTOCOL_DTLS_12;
   PeerConnectionFactory::Options callee_options;
-  callee_options.ssl_max_version = SSL_PROTOCOL_DTLS_10;
+  callee_options.ssl_max_version = rtc::SSL_PROTOCOL_DTLS_10;
   ASSERT_TRUE(
       CreatePeerConnectionWrappersWithOptions(caller_options, callee_options));
   ConnectFakeSignaling();
@@ -1741,9 +1741,9 @@ TEST_P(PeerConnectionIntegrationTest, CallerDtls12ToCalleeDtls10) {
 // callee supports 1.2.
 TEST_P(PeerConnectionIntegrationTest, CallerDtls10ToCalleeDtls12) {
   PeerConnectionFactory::Options caller_options;
-  caller_options.ssl_max_version = SSL_PROTOCOL_DTLS_10;
+  caller_options.ssl_max_version = rtc::SSL_PROTOCOL_DTLS_10;
   PeerConnectionFactory::Options callee_options;
-  callee_options.ssl_max_version = SSL_PROTOCOL_DTLS_12;
+  callee_options.ssl_max_version = rtc::SSL_PROTOCOL_DTLS_12;
   ASSERT_TRUE(
       CreatePeerConnectionWrappersWithOptions(caller_options, callee_options));
   ConnectFakeSignaling();
@@ -1769,7 +1769,7 @@ TEST_P(PeerConnectionIntegrationTest,
   PeerConnectionFactory::Options callee_options;
   callee_options.crypto_options.srtp.enable_aes128_sha1_32_crypto_cipher =
       false;
-  int expected_cipher_suite = kSrtpAes128CmSha1_80;
+  int expected_cipher_suite = rtc::kSrtpAes128CmSha1_80;
   TestNegotiatedCipherSuite(caller_options, callee_options,
                             expected_cipher_suite);
 }
@@ -1781,7 +1781,7 @@ TEST_P(PeerConnectionIntegrationTest,
       false;
   PeerConnectionFactory::Options callee_options;
   callee_options.crypto_options.srtp.enable_aes128_sha1_32_crypto_cipher = true;
-  int expected_cipher_suite = kSrtpAes128CmSha1_80;
+  int expected_cipher_suite = rtc::kSrtpAes128CmSha1_80;
   TestNegotiatedCipherSuite(caller_options, callee_options,
                             expected_cipher_suite);
 }
@@ -1791,7 +1791,7 @@ TEST_P(PeerConnectionIntegrationTest, Aes128Sha1_32_CipherUsedWhenSupported) {
   caller_options.crypto_options.srtp.enable_aes128_sha1_32_crypto_cipher = true;
   PeerConnectionFactory::Options callee_options;
   callee_options.crypto_options.srtp.enable_aes128_sha1_32_crypto_cipher = true;
-  int expected_cipher_suite = kSrtpAes128CmSha1_32;
+  int expected_cipher_suite = rtc::kSrtpAes128CmSha1_32;
   TestNegotiatedCipherSuite(caller_options, callee_options,
                             expected_cipher_suite);
 }
@@ -1971,8 +1971,8 @@ class PeerConnectionIntegrationIceStatesTest
   }
 
   void StartStunServer(const SocketAddress& server_address) {
-    stun_server_ =
-        TestStunServer::Create(firewall(), server_address, *network_thread());
+    stun_server_ = cricket::TestStunServer::Create(firewall(), server_address,
+                                                   *network_thread());
   }
 
   bool TestIPv6() {
@@ -2015,7 +2015,7 @@ class PeerConnectionIntegrationIceStatesTest
 
  private:
   uint32_t port_allocator_flags_;
-  TestStunServer::StunServerPtr stun_server_;
+  cricket::TestStunServer::StunServerPtr stun_server_;
 };
 
 // Ensure FakeClockForTest is constructed first (see class for rationale).
@@ -2180,7 +2180,7 @@ TEST_P(PeerConnectionIntegrationTest, MediaContinuesFlowingAfterIceRestart) {
   std::string callee_candidate_pre_restart;
   ASSERT_TRUE(
       audio_candidates_callee->at(0)->ToString(&callee_candidate_pre_restart));
-  const SessionDescription* desc =
+  const cricket::SessionDescription* desc =
       caller()->pc()->local_description()->description();
   std::string caller_ufrag_pre_restart =
       desc->transport_infos()[0].description.ice_ufrag;
@@ -2252,7 +2252,7 @@ TEST_P(PeerConnectionIntegrationTest, EndToEndCallWithIceRenomination) {
       WaitUntil([&] { return SignalingStateStable(); }, ::testing::IsTrue()),
       IsRtcOk());
   // Sanity check that ICE renomination was actually negotiated.
-  const SessionDescription* desc =
+  const cricket::SessionDescription* desc =
       caller()->pc()->local_description()->description();
   for (const cricket::TransportInfo& info : desc->transport_infos()) {
     ASSERT_THAT(info.description.transport_options, Contains("renomination"));
@@ -2332,7 +2332,7 @@ TEST_P(PeerConnectionIntegrationTest,
   } else {
     callee()->SetRemoteOfferHandler([this] {
       callee()
-          ->GetFirstTransceiverOfType(webrtc::MediaType::VIDEO)
+          ->GetFirstTransceiverOfType(cricket::MEDIA_TYPE_VIDEO)
           ->StopInternal();
     });
   }
@@ -2341,8 +2341,8 @@ TEST_P(PeerConnectionIntegrationTest,
       WaitUntil([&] { return SignalingStateStable(); }, ::testing::IsTrue()),
       IsRtcOk());
   // Sanity check that video "m=" section was actually rejected.
-  const ContentInfo* answer_video_content =
-      GetFirstVideoContent(callee()->pc()->local_description()->description());
+  const ContentInfo* answer_video_content = cricket::GetFirstVideoContent(
+      callee()->pc()->local_description()->description());
   ASSERT_NE(nullptr, answer_video_content);
   ASSERT_TRUE(answer_video_content->rejected);
 
@@ -2355,7 +2355,7 @@ TEST_P(PeerConnectionIntegrationTest,
   } else {
     // The caller's transceiver is stopped, so we need to add another track.
     auto caller_transceiver =
-        caller()->GetFirstTransceiverOfType(webrtc::MediaType::VIDEO);
+        caller()->GetFirstTransceiverOfType(cricket::MEDIA_TYPE_VIDEO);
     EXPECT_EQ(nullptr, caller_transceiver.get());
     caller()->AddVideoTrack();
   }
@@ -2426,10 +2426,10 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
        MediaFlowsAfterEarlyWarmupWithAddTransceiver) {
   ASSERT_TRUE(CreatePeerConnectionWrappers());
   ConnectFakeSignaling();
-  auto audio_result = caller()->pc()->AddTransceiver(webrtc::MediaType::AUDIO);
+  auto audio_result = caller()->pc()->AddTransceiver(cricket::MEDIA_TYPE_AUDIO);
   ASSERT_EQ(RTCErrorType::NONE, audio_result.error().type());
   auto caller_audio_sender = audio_result.MoveValue()->sender();
-  auto video_result = caller()->pc()->AddTransceiver(webrtc::MediaType::VIDEO);
+  auto video_result = caller()->pc()->AddTransceiver(cricket::MEDIA_TYPE_VIDEO);
   ASSERT_EQ(RTCErrorType::NONE, video_result.error().type());
   auto caller_video_sender = video_result.MoveValue()->sender();
   callee()->SetRemoteOfferHandler([this] {
@@ -2531,14 +2531,18 @@ TEST_P(PeerConnectionIntegrationTestWithFakeClock,
       signaling_trip_delay_ms * required_signaling_trips +
       allowed_internal_delay_ms;
 
-  static const SocketAddress turn_server_1_internal_address{"88.88.88.0", 3478};
-  static const SocketAddress turn_server_1_external_address{"88.88.88.1", 0};
-  static const SocketAddress turn_server_2_internal_address{"99.99.99.0", 3478};
-  static const SocketAddress turn_server_2_external_address{"99.99.99.1", 0};
-  TestTurnServer* turn_server_1 = CreateTurnServer(
+  static const rtc::SocketAddress turn_server_1_internal_address{"88.88.88.0",
+                                                                 3478};
+  static const rtc::SocketAddress turn_server_1_external_address{"88.88.88.1",
+                                                                 0};
+  static const rtc::SocketAddress turn_server_2_internal_address{"99.99.99.0",
+                                                                 3478};
+  static const rtc::SocketAddress turn_server_2_external_address{"99.99.99.1",
+                                                                 0};
+  cricket::TestTurnServer* turn_server_1 = CreateTurnServer(
       turn_server_1_internal_address, turn_server_1_external_address);
 
-  TestTurnServer* turn_server_2 = CreateTurnServer(
+  cricket::TestTurnServer* turn_server_2 = CreateTurnServer(
       turn_server_2_internal_address, turn_server_2_external_address);
   // Bypass permission check on received packets so media can be sent before
   // the candidate is signaled.
@@ -2676,10 +2680,14 @@ TEST_P(PeerConnectionIntegrationTestWithFakeClock,
 // is actually used by the underlying TURN candidate pair.
 // Note that turnport_unittest.cc contains more detailed, lower-level tests.
 TEST_P(PeerConnectionIntegrationTest, TurnCustomizerUsedForTurnConnections) {
-  static const SocketAddress turn_server_1_internal_address{"88.88.88.0", 3478};
-  static const SocketAddress turn_server_1_external_address{"88.88.88.1", 0};
-  static const SocketAddress turn_server_2_internal_address{"99.99.99.0", 3478};
-  static const SocketAddress turn_server_2_external_address{"99.99.99.1", 0};
+  static const rtc::SocketAddress turn_server_1_internal_address{"88.88.88.0",
+                                                                 3478};
+  static const rtc::SocketAddress turn_server_1_external_address{"88.88.88.1",
+                                                                 0};
+  static const rtc::SocketAddress turn_server_2_internal_address{"99.99.99.0",
+                                                                 3478};
+  static const rtc::SocketAddress turn_server_2_external_address{"99.99.99.1",
+                                                                 0};
   CreateTurnServer(turn_server_1_internal_address,
                    turn_server_1_external_address);
   CreateTurnServer(turn_server_2_internal_address,
@@ -2726,8 +2734,9 @@ TEST_P(PeerConnectionIntegrationTest, TurnCustomizerUsedForTurnConnections) {
 // Verifies that you can use TCP instead of UDP to connect to a TURN server and
 // send media between the caller and the callee.
 TEST_P(PeerConnectionIntegrationTest, TCPUsedForTurnConnections) {
-  static const SocketAddress turn_server_internal_address{"88.88.88.0", 3478};
-  static const SocketAddress turn_server_external_address{"88.88.88.1", 0};
+  static const rtc::SocketAddress turn_server_internal_address{"88.88.88.0",
+                                                               3478};
+  static const rtc::SocketAddress turn_server_external_address{"88.88.88.1", 0};
 
   // Enable TCP for the fake turn server.
   CreateTurnServer(turn_server_internal_address, turn_server_external_address,
@@ -2775,8 +2784,9 @@ TEST_P(PeerConnectionIntegrationTest, TCPUsedForTurnConnections) {
 // contains more detailed, lower-level tests.
 TEST_P(PeerConnectionIntegrationTest,
        SSLCertificateVerifierUsedForTurnConnections) {
-  static const SocketAddress turn_server_internal_address{"88.88.88.0", 3478};
-  static const SocketAddress turn_server_external_address{"88.88.88.1", 0};
+  static const rtc::SocketAddress turn_server_internal_address{"88.88.88.0",
+                                                               3478};
+  static const rtc::SocketAddress turn_server_external_address{"88.88.88.1", 0};
 
   // Enable TCP-TLS for the fake turn server. We need to pass in 88.88.88.0 so
   // that host name verification passes on the fake certificate.
@@ -2799,20 +2809,20 @@ TEST_P(PeerConnectionIntegrationTest,
   client_2_config.type = PeerConnectionInterface::kRelay;
 
   // Get a copy to the pointer so we can verify calls later.
-  TestCertificateVerifier* client_1_cert_verifier =
-      new TestCertificateVerifier();
+  rtc::TestCertificateVerifier* client_1_cert_verifier =
+      new rtc::TestCertificateVerifier();
   client_1_cert_verifier->verify_certificate_ = true;
-  TestCertificateVerifier* client_2_cert_verifier =
-      new TestCertificateVerifier();
+  rtc::TestCertificateVerifier* client_2_cert_verifier =
+      new rtc::TestCertificateVerifier();
   client_2_cert_verifier->verify_certificate_ = true;
 
   // Create the dependencies with the test certificate verifier.
   PeerConnectionDependencies client_1_deps(nullptr);
   client_1_deps.tls_cert_verifier =
-      std::unique_ptr<TestCertificateVerifier>(client_1_cert_verifier);
+      std::unique_ptr<rtc::TestCertificateVerifier>(client_1_cert_verifier);
   PeerConnectionDependencies client_2_deps(nullptr);
   client_2_deps.tls_cert_verifier =
-      std::unique_ptr<TestCertificateVerifier>(client_2_cert_verifier);
+      std::unique_ptr<rtc::TestCertificateVerifier>(client_2_cert_verifier);
 
   ASSERT_TRUE(CreatePeerConnectionWrappersWithConfigAndDeps(
       client_1_config, std::move(client_1_deps), client_2_config,
@@ -2870,7 +2880,7 @@ TEST_P(PeerConnectionIntegrationTest, CodecNamesAreCaseInsensitive) {
   // casing of the caller's generated offer.
   caller()->SetGeneratedSdpMunger(
       [](std::unique_ptr<SessionDescriptionInterface>& sdp) {
-        AudioContentDescription* audio =
+        cricket::AudioContentDescription* audio =
             GetFirstAudioContentDescription(sdp->description());
         ASSERT_NE(nullptr, audio);
         auto audio_codecs = audio->codecs();
@@ -2884,7 +2894,7 @@ TEST_P(PeerConnectionIntegrationTest, CodecNamesAreCaseInsensitive) {
         audio_codecs[0].name = "OpUs";
         audio->set_codecs(audio_codecs);
 
-        VideoContentDescription* video =
+        cricket::VideoContentDescription* video =
             GetFirstVideoContentDescription(sdp->description());
         ASSERT_NE(nullptr, video);
         auto video_codecs = video->codecs();
@@ -2924,7 +2934,7 @@ TEST_P(PeerConnectionIntegrationTest, GetSourcesAudio) {
   ASSERT_TRUE(ExpectNewFrames(media_expectations));
   ASSERT_EQ(callee()->pc()->GetReceivers().size(), 1u);
   auto receiver = callee()->pc()->GetReceivers()[0];
-  ASSERT_EQ(receiver->media_type(), webrtc::MediaType::AUDIO);
+  ASSERT_EQ(receiver->media_type(), cricket::MEDIA_TYPE_AUDIO);
   auto sources = receiver->GetSources();
   ASSERT_GT(receiver->GetParameters().encodings.size(), 0u);
   EXPECT_EQ(receiver->GetParameters().encodings[0].ssrc,
@@ -2947,7 +2957,7 @@ TEST_P(PeerConnectionIntegrationTest, GetSourcesVideo) {
   ASSERT_TRUE(ExpectNewFrames(media_expectations));
   ASSERT_EQ(callee()->pc()->GetReceivers().size(), 1u);
   auto receiver = callee()->pc()->GetReceivers()[0];
-  ASSERT_EQ(receiver->media_type(), webrtc::MediaType::VIDEO);
+  ASSERT_EQ(receiver->media_type(), cricket::MEDIA_TYPE_VIDEO);
   auto sources = receiver->GetSources();
   ASSERT_GT(receiver->GetParameters().encodings.size(), 0u);
   ASSERT_GT(sources.size(), 0u);
@@ -3385,8 +3395,9 @@ TEST_P(PeerConnectionIntegrationTest,
 }
 
 TEST_P(PeerConnectionIntegrationTest, RegatherAfterChangingIceTransportType) {
-  static const SocketAddress turn_server_internal_address{"88.88.88.0", 3478};
-  static const SocketAddress turn_server_external_address{"88.88.88.1", 0};
+  static const rtc::SocketAddress turn_server_internal_address{"88.88.88.0",
+                                                               3478};
+  static const rtc::SocketAddress turn_server_external_address{"88.88.88.1", 0};
 
   CreateTurnServer(turn_server_internal_address, turn_server_external_address);
 
@@ -3475,8 +3486,9 @@ TEST_P(PeerConnectionIntegrationTest, RegatherAfterChangingIceTransportType) {
 }
 
 TEST_P(PeerConnectionIntegrationTest, OnIceCandidateError) {
-  static const SocketAddress turn_server_internal_address{"88.88.88.0", 3478};
-  static const SocketAddress turn_server_external_address{"88.88.88.1", 0};
+  static const rtc::SocketAddress turn_server_internal_address{"88.88.88.0",
+                                                               3478};
+  static const rtc::SocketAddress turn_server_external_address{"88.88.88.1", 0};
 
   CreateTurnServer(turn_server_internal_address, turn_server_external_address);
 
@@ -3620,7 +3632,7 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
   caller()->AddVideoTrack();
   callee()->AddVideoTrack();
   auto munger = [](std::unique_ptr<SessionDescriptionInterface>& sdp) {
-    VideoContentDescription* video =
+    cricket::VideoContentDescription* video =
         GetFirstVideoContentDescription(sdp->description());
     auto codecs = video->codecs();
     for (auto&& codec : codecs) {
@@ -3646,7 +3658,7 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
   // Observe that after munging the parameter is present in generated SDP.
   caller()->SetGeneratedSdpMunger(
       [](std::unique_ptr<SessionDescriptionInterface>& sdp) {
-        VideoContentDescription* video =
+        cricket::VideoContentDescription* video =
             GetFirstVideoContentDescription(sdp->description());
         for (auto&& codec : video->codecs()) {
           if (codec.name == "H264") {
@@ -3665,7 +3677,7 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
   config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   ASSERT_TRUE(CreatePeerConnectionWrappersWithConfig(config, config));
   ConnectFakeSignaling();
-  caller()->pc()->AddTransceiver(webrtc::MediaType::AUDIO);
+  caller()->pc()->AddTransceiver(cricket::MEDIA_TYPE_AUDIO);
 
   caller()->CreateAndSetAndSignalOffer();
   ASSERT_THAT(
@@ -3679,17 +3691,17 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
   while (current_size < 8) {
     // Double the number of tracks
     for (int i = 0; i < current_size; i++) {
-      caller()->pc()->AddTransceiver(webrtc::MediaType::AUDIO);
+      caller()->pc()->AddTransceiver(cricket::MEDIA_TYPE_AUDIO);
     }
     current_size = caller()->pc()->GetTransceivers().size();
     RTC_LOG(LS_INFO) << "Renegotiating with " << current_size << " tracks";
-    auto start_time_ms = TimeMillis();
+    auto start_time_ms = rtc::TimeMillis();
     caller()->CreateAndSetAndSignalOffer();
     // We want to stop when the time exceeds one second.
     ASSERT_THAT(
         WaitUntil([&] { return SignalingStateStable(); }, ::testing::IsTrue()),
         IsRtcOk());
-    auto elapsed_time_ms = TimeMillis() - start_time_ms;
+    auto elapsed_time_ms = rtc::TimeMillis() - start_time_ms;
     RTC_LOG(LS_INFO) << "Renegotiating took " << elapsed_time_ms << " ms";
     ASSERT_GT(1000, elapsed_time_ms)
         << "Audio transceivers: Negotiation took too long after "
@@ -3703,7 +3715,7 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
   config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   ASSERT_TRUE(CreatePeerConnectionWrappersWithConfig(config, config));
   ConnectFakeSignaling();
-  caller()->pc()->AddTransceiver(webrtc::MediaType::VIDEO);
+  caller()->pc()->AddTransceiver(cricket::MEDIA_TYPE_VIDEO);
 
   caller()->CreateAndSetAndSignalOffer();
   ASSERT_THAT(
@@ -3719,17 +3731,17 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
   while (current_size < 8) {
     // Double the number of tracks
     for (int i = 0; i < current_size; i++) {
-      caller()->pc()->AddTransceiver(webrtc::MediaType::VIDEO);
+      caller()->pc()->AddTransceiver(cricket::MEDIA_TYPE_VIDEO);
     }
     current_size = caller()->pc()->GetTransceivers().size();
     RTC_LOG(LS_INFO) << "Renegotiating with " << current_size << " tracks";
-    auto start_time_ms = TimeMillis();
+    auto start_time_ms = rtc::TimeMillis();
     caller()->CreateAndSetAndSignalOffer();
     // We want to stop when the time exceeds one second.
     ASSERT_THAT(
         WaitUntil([&] { return SignalingStateStable(); }, ::testing::IsTrue()),
         IsRtcOk());
-    auto elapsed_time_ms = TimeMillis() - start_time_ms;
+    auto elapsed_time_ms = rtc::TimeMillis() - start_time_ms;
     RTC_LOG(LS_INFO) << "Renegotiating took " << elapsed_time_ms << " ms";
     ASSERT_GT(1000, elapsed_time_ms)
         << "Video transceivers: Negotiation took too long after "
@@ -3765,17 +3777,17 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
   while (current_size < 16) {
     // Double the number of tracks
     for (int i = 0; i < current_size; i++) {
-      caller()->pc()->AddTransceiver(webrtc::MediaType::VIDEO);
+      caller()->pc()->AddTransceiver(cricket::MEDIA_TYPE_VIDEO);
     }
     current_size = caller()->pc()->GetTransceivers().size();
     RTC_LOG(LS_INFO) << "Renegotiating with " << current_size << " tracks";
-    auto start_time_ms = TimeMillis();
+    auto start_time_ms = rtc::TimeMillis();
     caller()->CreateAndSetAndSignalOffer();
     // We want to stop when the time exceeds one second.
     ASSERT_THAT(
         WaitUntil([&] { return SignalingStateStable(); }, ::testing::IsTrue()),
         IsRtcOk());
-    auto elapsed_time_ms = TimeMillis() - start_time_ms;
+    auto elapsed_time_ms = rtc::TimeMillis() - start_time_ms;
     RTC_LOG(LS_INFO) << "Renegotiating took " << elapsed_time_ms << " ms";
     // This is a guard against the test using excessive amounts of time.
     ASSERT_GT(5000, elapsed_time_ms)
@@ -3789,7 +3801,7 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
 TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
        GetParametersHasEncodingsBeforeNegotiation) {
   ASSERT_TRUE(CreatePeerConnectionWrappers());
-  auto result = caller()->pc()->AddTransceiver(webrtc::MediaType::VIDEO);
+  auto result = caller()->pc()->AddTransceiver(cricket::MEDIA_TYPE_VIDEO);
   auto transceiver = result.MoveValue();
   auto parameters = transceiver->sender()->GetParameters();
   EXPECT_EQ(parameters.encodings.size(), 1u);
@@ -3801,7 +3813,7 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
   RtpTransceiverInit init;
   init.send_encodings.push_back({});
   init.send_encodings[0].max_bitrate_bps = 12345;
-  auto result = caller()->pc()->AddTransceiver(webrtc::MediaType::VIDEO, init);
+  auto result = caller()->pc()->AddTransceiver(cricket::MEDIA_TYPE_VIDEO, init);
   auto transceiver = result.MoveValue();
   auto parameters = transceiver->sender()->GetParameters();
   ASSERT_EQ(parameters.encodings.size(), 1u);
@@ -3866,7 +3878,7 @@ TEST_P(PeerConnectionIntegrationInteropTest, OneAudioLocalToNoMediaRemote) {
   // has the same track ID as the sending track.
   auto receivers = callee()->pc()->GetReceivers();
   ASSERT_EQ(1u, receivers.size());
-  EXPECT_EQ(webrtc::MediaType::AUDIO, receivers[0]->media_type());
+  EXPECT_EQ(cricket::MEDIA_TYPE_AUDIO, receivers[0]->media_type());
   EXPECT_EQ(receivers[0]->track()->id(), audio_sender->track()->id());
 
   MediaExpectations media_expectations;
@@ -3887,10 +3899,12 @@ TEST_P(PeerConnectionIntegrationInteropTest, OneAudioOneVideoToNoMediaRemote) {
 
   // Verify that one audio and one video receiver have been created on the
   // remote and that they have the same track IDs as the sending tracks.
-  auto audio_receivers = callee()->GetReceiversOfType(webrtc::MediaType::AUDIO);
+  auto audio_receivers =
+      callee()->GetReceiversOfType(cricket::MEDIA_TYPE_AUDIO);
   ASSERT_EQ(1u, audio_receivers.size());
   EXPECT_EQ(audio_receivers[0]->track()->id(), audio_sender->track()->id());
-  auto video_receivers = callee()->GetReceiversOfType(webrtc::MediaType::VIDEO);
+  auto video_receivers =
+      callee()->GetReceiversOfType(cricket::MEDIA_TYPE_VIDEO);
   ASSERT_EQ(1u, video_receivers.size());
   EXPECT_EQ(video_receivers[0]->track()->id(), video_sender->track()->id());
 
@@ -3929,7 +3943,7 @@ TEST_P(PeerConnectionIntegrationInteropTest,
       IsRtcOk());
 
   // Verify that only the audio track has been negotiated.
-  EXPECT_EQ(0u, caller()->GetReceiversOfType(webrtc::MediaType::VIDEO).size());
+  EXPECT_EQ(0u, caller()->GetReceiversOfType(cricket::MEDIA_TYPE_VIDEO).size());
   // Might also check that the callee's NegotiationNeeded flag is set.
 
   // Reverse roles.
@@ -4275,7 +4289,7 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan,
   caller()->SetGeneratedSdpMunger(
       [](std::unique_ptr<SessionDescriptionInterface>& sdp) {
         for (ContentInfo& content : sdp->description()->contents()) {
-          MediaContentDescription* media = content.media_description();
+          cricket::MediaContentDescription* media = content.media_description();
           std::vector<cricket::Codec> codecs = media->codecs();
           std::vector<cricket::Codec> codecs_out;
           for (cricket::Codec codec : codecs) {
@@ -4330,7 +4344,7 @@ TEST_F(PeerConnectionIntegrationTestUnifiedPlan, VideoPacketLossCausesNack) {
   caller()->SetGeneratedSdpMunger(
       [](std::unique_ptr<SessionDescriptionInterface>& sdp) {
         for (ContentInfo& content : sdp->description()->contents()) {
-          MediaContentDescription* media = content.media_description();
+          cricket::MediaContentDescription* media = content.media_description();
           std::vector<cricket::Codec> codecs = media->codecs();
           std::vector<cricket::Codec> codecs_out;
           for (const cricket::Codec& codec : codecs) {

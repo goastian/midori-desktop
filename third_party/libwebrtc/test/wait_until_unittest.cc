@@ -89,7 +89,7 @@ TEST(WaitUntilTest, ReturnsWhenConditionIsMetWithSimulatedClock) {
 }
 
 TEST(WaitUntilTest, ReturnsWhenConditionIsMetWithThreadProcessingFakeClock) {
-  ScopedFakeClock fake_clock;
+  rtc::ScopedFakeClock fake_clock;
 
   int counter = 0;
   RTCErrorOr<int> result =
@@ -101,7 +101,7 @@ TEST(WaitUntilTest, ReturnsWhenConditionIsMetWithThreadProcessingFakeClock) {
 }
 
 TEST(WaitUntilTest, ReturnsWhenConditionIsMetWithFakeClock) {
-  FakeClock fake_clock;
+  rtc::FakeClock fake_clock;
 
   int counter = 0;
   RTCErrorOr<int> result =

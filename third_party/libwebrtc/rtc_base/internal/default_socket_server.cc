@@ -22,12 +22,11 @@
 
 namespace rtc {
 
-std::unique_ptr<webrtc::SocketServer> CreateDefaultSocketServer() {
+std::unique_ptr<SocketServer> CreateDefaultSocketServer() {
 #if defined(__native_client__) || defined(WEBRTC_BSD)
   return std::unique_ptr<SocketServer>(new rtc::NullSocketServer);
 #else
-  return std::unique_ptr<webrtc::SocketServer>(
-      new webrtc::PhysicalSocketServer);
+  return std::unique_ptr<SocketServer>(new rtc::PhysicalSocketServer);
 #endif
 }
 

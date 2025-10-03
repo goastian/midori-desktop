@@ -14,7 +14,7 @@
 
 #include "rtc_base/buffer.h"
 
-namespace webrtc {
+namespace rtc {
 
 int Socket::RecvFrom(ReceiveBuffer& buffer) {
   static constexpr int BUF_SIZE = 64 * 1024;
@@ -24,10 +24,10 @@ int Socket::RecvFrom(ReceiveBuffer& buffer) {
                      &buffer.source_address, &timestamp);
   buffer.payload.SetSize(len > 0 ? len : 0);
   if (len > 0 && timestamp != -1) {
-    buffer.arrival_time = Timestamp::Micros(timestamp);
+    buffer.arrival_time = webrtc::Timestamp::Micros(timestamp);
   }
 
   return len;
 }
 
-}  // namespace webrtc
+}  // namespace rtc

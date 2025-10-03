@@ -30,15 +30,14 @@ from .compression_utils import HAS_BROTLI, BrotliDecompressor, ZLibDecompressor
 from .helpers import (
     _EXC_SENTINEL,
     DEBUG,
-    EMPTY_BODY_METHODS,
-    EMPTY_BODY_STATUS_CODES,
     NO_EXTENSIONS,
     BaseTimerContext,
+    method_must_be_empty_body,
     set_exception,
+    status_code_must_be_empty_body,
 )
 from .http_exceptions import (
     BadHttpMessage,
-    BadHttpMethod,
     BadStatusLine,
     ContentEncodingError,
     ContentLengthError,
@@ -377,8 +376,8 @@ class HttpParser(abc.ABC, Generic[_MsgT]):
 
                         assert self.protocol is not None
                         # calculate payload
-                        empty_body = code in EMPTY_BODY_STATUS_CODES or bool(
-                            method and method in EMPTY_BODY_METHODS
+                        empty_body = status_code_must_be_empty_body(code) or bool(
+                            method and method_must_be_empty_body(method)
                         )
                         if not empty_body and (
                             ((length is not None and length > 0) or msg.chunked)
@@ -577,7 +576,7 @@ class HttpRequestParser(HttpParser[RawRequestMessage]):
         try:
             method, path, version = line.split(" ", maxsplit=2)
         except ValueError:
-            raise BadHttpMethod(line) from None
+            raise BadStatusLine(line) from None
 
         if len(path) > self.max_line_size:
             raise LineTooLong(
@@ -586,7 +585,7 @@ class HttpRequestParser(HttpParser[RawRequestMessage]):
 
         # method
         if not TOKENRE.fullmatch(method):
-            raise BadHttpMethod(method)
+            raise BadStatusLine(method)
 
         # version
         match = VERSRE.fullmatch(version)
@@ -804,11 +803,11 @@ class HttpPayloadParser:
             self.payload.feed_eof()
         elif self._type == ParseState.PARSE_LENGTH:
             raise ContentLengthError(
-                "Not enough data to satisfy content length header."
+                "Not enough data for satisfy content length header."
             )
         elif self._type == ParseState.PARSE_CHUNKED:
             raise TransferEncodingError(
-                "Not enough data to satisfy transfer length header."
+                "Not enough data for satisfy transfer length header."
             )
 
     def feed_data(

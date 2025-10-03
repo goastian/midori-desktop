@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "api/candidate.h"
+#include "p2p/base/p2p_constants.h"
 #include "p2p/base/transport_description.h"
 
 namespace cricket {

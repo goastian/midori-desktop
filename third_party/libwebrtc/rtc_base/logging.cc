@@ -54,7 +54,7 @@ static const int kMaxLogLineSize = 1024 - 60;
 #include "rtc_base/thread_annotations.h"
 #include "rtc_base/time_utils.h"
 
-namespace webrtc {
+namespace rtc {
 
 bool LogMessage::aec_debug_ = false;
 std::string LogMessage::aec_filename_base_;
@@ -97,16 +97,16 @@ const char* FilenameFromPath(const char* file) {
 }
 
 // Global lock for log subsystem, only needed to serialize access to streams_.
-Mutex& GetLoggingLock() {
-  static Mutex& mutex = *new Mutex();
+webrtc::Mutex& GetLoggingLock() {
+  static webrtc::Mutex& mutex = *new webrtc::Mutex();
   return mutex;
 }
 
 }  // namespace
 
 std::string LogLineRef::DefaultLogLine() const {
-  StringBuilder log_output;
-  if (timestamp_ != Timestamp::MinusInfinity()) {
+  webrtc::StringBuilder log_output;
+  if (timestamp_ != webrtc::Timestamp::MinusInfinity()) {
     // TODO(kwiberg): Switch to absl::StrFormat, if binary size is ok.
     char timestamp[50];  // Maximum string length of an int64_t is 20.
     int len =
@@ -164,11 +164,11 @@ LogMessage::LogMessage(const char* file,
     // Also ensure WallClockStartTime is initialized, so that it matches
     // LogStartTime.
     WallClockStartTime();
-    log_line_.set_timestamp(Timestamp::Millis(time));
+    log_line_.set_timestamp(webrtc::Timestamp::Millis(time));
   }
 
   if (log_thread_) {
-    log_line_.set_thread_id(rtc::CurrentThreadId());
+    log_line_.set_thread_id(CurrentThreadId());
   }
 
   if (file != nullptr) {
@@ -181,7 +181,7 @@ LogMessage::LogMessage(const char* file,
 
   if (err_ctx != ERRCTX_NONE) {
     char tmp_buf[1024];
-    SimpleStringBuilder tmp(tmp_buf);
+    webrtc::SimpleStringBuilder tmp(tmp_buf);
     tmp.AppendFormat("[0x%08X]", err);
     switch (err_ctx) {
       case ERRCTX_ERRNO:
@@ -231,7 +231,7 @@ LogMessage::~LogMessage() {
     OutputToDebug(log_line_);
   }
 
-  MutexLock lock(&GetLoggingLock());
+  webrtc::MutexLock lock(&GetLoggingLock());
   for (LogSink* entry = streams_; entry != nullptr; entry = entry->next_) {
     if (log_line_.severity() >= entry->min_severity_) {
       entry->OnLogMessage(log_line_);
@@ -245,7 +245,7 @@ void LogMessage::AddTag([[maybe_unused]] const char* tag) {
 #endif
 }
 
-StringBuilder& LogMessage::stream() {
+webrtc::StringBuilder& LogMessage::stream() {
   return print_stream_;
 }
 
@@ -275,7 +275,7 @@ void LogMessage::LogTimestamps(bool on) {
 }
 
 void LogMessage::LogToDebug(LoggingSeverity min_sev) {
-  MutexLock lock(&GetLoggingLock());
+  webrtc::MutexLock lock(&GetLoggingLock());
   g_dbg_sev = min_sev;
   UpdateMinLogSeverity();
 }
@@ -285,7 +285,7 @@ void LogMessage::SetLogToStderr(bool log_to_stderr) {
 }
 
 int LogMessage::GetLogToStream(LogSink* stream) {
-  MutexLock lock(&GetLoggingLock());
+  webrtc::MutexLock lock(&GetLoggingLock());
   LoggingSeverity sev = LS_NONE;
   for (LogSink* entry = streams_; entry != nullptr; entry = entry->next_) {
     if (stream == nullptr || stream == entry) {
@@ -296,7 +296,7 @@ int LogMessage::GetLogToStream(LogSink* stream) {
 }
 
 void LogMessage::AddLogToStream(LogSink* stream, LoggingSeverity min_sev) {
-  MutexLock lock(&GetLoggingLock());
+  webrtc::MutexLock lock(&GetLoggingLock());
   stream->min_severity_ = min_sev;
   stream->next_ = streams_;
   streams_ = stream;
@@ -305,7 +305,7 @@ void LogMessage::AddLogToStream(LogSink* stream, LoggingSeverity min_sev) {
 }
 
 void LogMessage::RemoveLogToStream(LogSink* stream) {
-  MutexLock lock(&GetLoggingLock());
+  webrtc::MutexLock lock(&GetLoggingLock());
   for (LogSink** entry = &streams_; *entry != nullptr;
        entry = &(*entry)->next_) {
     if (*entry == stream) {
@@ -322,7 +322,7 @@ void LogMessage::ConfigureLogging(absl::string_view params) {
   LoggingSeverity debug_level = GetLogToDebug();
 
   std::vector<std::string> tokens;
-  rtc::tokenize(params, ' ', &tokens);
+  tokenize(params, ' ', &tokens);
 
   for (const std::string& token : tokens) {
     if (token.empty())
@@ -564,10 +564,10 @@ void Log(const LogArgType* fmt, ...) {
 }
 
 }  // namespace webrtc_logging_impl
-}  // namespace webrtc
+}  // namespace rtc
 #endif
 
-namespace webrtc {
+namespace rtc {
 // Default implementation, override is recomended.
 void LogSink::OnLogMessage(const LogLineRef& log_line) {
 #if defined(WEBRTC_ANDROID)
@@ -605,4 +605,4 @@ void LogSink::OnLogMessage(absl::string_view msg,
 void LogSink::OnLogMessage(absl::string_view msg) {
   OnLogMessage(std::string(msg));
 }
-}  // namespace webrtc
+}  // namespace rtc

@@ -34,10 +34,10 @@ std::optional<T> MaybeGetValue(const std::unordered_map<size_t, T>& map,
 
 }  // namespace
 
-AnalyzerStreamState::AnalyzerStreamState(size_t sender,
-                                         std::set<size_t> receivers,
-                                         Timestamp stream_started_time,
-                                         Clock* clock)
+StreamState::StreamState(size_t sender,
+                         std::set<size_t> receivers,
+                         Timestamp stream_started_time,
+                         Clock* clock)
     : sender_(sender),
       stream_started_time_(stream_started_time),
       clock_(clock),
@@ -51,7 +51,7 @@ AnalyzerStreamState::AnalyzerStreamState(size_t sender,
   }
 }
 
-uint16_t AnalyzerStreamState::PopFront(size_t peer) {
+uint16_t StreamState::PopFront(size_t peer) {
   RTC_CHECK_NE(peer, kAliveFramesQueueIndex);
   std::optional<uint16_t> frame_id = frame_ids_.PopFront(peer);
   RTC_DCHECK(frame_id.has_value());
@@ -71,14 +71,14 @@ uint16_t AnalyzerStreamState::PopFront(size_t peer) {
   return frame_id.value();
 }
 
-void AnalyzerStreamState::AddPeer(size_t peer) {
+void StreamState::AddPeer(size_t peer) {
   RTC_CHECK_NE(peer, kAliveFramesQueueIndex);
   frame_ids_.AddReader(peer, kAliveFramesQueueIndex);
   receivers_.insert(peer);
   pausable_state_.emplace(peer, PausableState(clock_));
 }
 
-void AnalyzerStreamState::RemovePeer(size_t peer) {
+void StreamState::RemovePeer(size_t peer) {
   RTC_CHECK_NE(peer, kAliveFramesQueueIndex);
   frame_ids_.RemoveReader(peer);
   receivers_.erase(peer);
@@ -94,15 +94,14 @@ void AnalyzerStreamState::RemovePeer(size_t peer) {
   }
 }
 
-PausableState* AnalyzerStreamState::GetPausableState(size_t peer) {
+PausableState* StreamState::GetPausableState(size_t peer) {
   auto it = pausable_state_.find(peer);
   RTC_CHECK(it != pausable_state_.end())
       << "No pausable state for receiver " << peer;
   return &it->second;
 }
 
-void AnalyzerStreamState::SetLastRenderedFrameTime(size_t peer,
-                                                   Timestamp time) {
+void StreamState::SetLastRenderedFrameTime(size_t peer, Timestamp time) {
   auto it = last_rendered_frame_time_.find(peer);
   if (it == last_rendered_frame_time_.end()) {
     last_rendered_frame_time_.insert({peer, time});
@@ -111,12 +110,12 @@ void AnalyzerStreamState::SetLastRenderedFrameTime(size_t peer,
   }
 }
 
-std::optional<Timestamp> AnalyzerStreamState::last_rendered_frame_time(
+std::optional<Timestamp> StreamState::last_rendered_frame_time(
     size_t peer) const {
   return MaybeGetValue(last_rendered_frame_time_, peer);
 }
 
-size_t AnalyzerStreamState::GetLongestReceiverQueue() const {
+size_t StreamState::GetLongestReceiverQueue() const {
   size_t max = 0;
   for (size_t receiver : receivers_) {
     size_t cur_size = frame_ids_.size(receiver);

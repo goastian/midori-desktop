@@ -16,25 +16,29 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "api/environment/environment_factory.h"
+#include "api/field_trials.h"
 #include "api/jsep.h"
 #include "api/media_types.h"
 #include "api/peer_connection_interface.h"
 #include "api/rtc_error.h"
 #include "api/rtc_event_log/rtc_event_log_factory.h"
+#include "api/rtc_event_log/rtc_event_log_factory_interface.h"
 #include "api/rtp_parameters.h"
 #include "api/rtp_transceiver_direction.h"
 #include "api/rtp_transceiver_interface.h"
 #include "api/scoped_refptr.h"
 #include "api/task_queue/default_task_queue_factory.h"
+#include "api/task_queue/task_queue_factory.h"
 #include "media/base/fake_media_engine.h"
+#include "media/base/media_engine.h"
+#include "p2p/base/port_allocator.h"
 #include "p2p/test/fake_port_allocator.h"
 #include "pc/peer_connection_wrapper.h"
 #include "pc/session_description.h"
 #include "pc/test/enable_fake_media.h"
 #include "pc/test/mock_peer_connection_observers.h"
 #include "rtc_base/internal/default_socket_server.h"
-#include "rtc_base/socket_server.h"
+#include "rtc_base/rtc_certificate_generator.h"
 #include "rtc_base/strings/string_builder.h"
 #include "rtc_base/thread.h"
 #include "test/gmock.h"
@@ -50,7 +54,7 @@ using ::testing::Values;
 
 class PeerConnectionHeaderExtensionTest
     : public ::testing::TestWithParam<
-          std::tuple<webrtc::MediaType, SdpSemantics>> {
+          std::tuple<cricket::MediaType, SdpSemantics>> {
  protected:
   PeerConnectionHeaderExtensionTest()
       : socket_server_(rtc::CreateDefaultSocketServer()),
@@ -71,17 +75,17 @@ class PeerConnectionHeaderExtensionTest
                  RtpTransceiverDirection::kSendRecv)}) {}
 
   std::unique_ptr<PeerConnectionWrapper> CreatePeerConnection(
-      webrtc::MediaType media_type,
+      cricket::MediaType media_type,
       std::optional<SdpSemantics> semantics) {
     auto media_engine = std::make_unique<cricket::FakeMediaEngine>();
-    if (media_type == webrtc::MediaType::AUDIO)
+    if (media_type == cricket::MediaType::MEDIA_TYPE_AUDIO)
       media_engine->fake_voice_engine()->SetRtpHeaderExtensions(extensions_);
     else
       media_engine->fake_video_engine()->SetRtpHeaderExtensions(extensions_);
     PeerConnectionFactoryDependencies factory_dependencies;
-    factory_dependencies.network_thread = Thread::Current();
-    factory_dependencies.worker_thread = Thread::Current();
-    factory_dependencies.signaling_thread = Thread::Current();
+    factory_dependencies.network_thread = rtc::Thread::Current();
+    factory_dependencies.worker_thread = rtc::Thread::Current();
+    factory_dependencies.signaling_thread = rtc::Thread::Current();
     factory_dependencies.task_queue_factory = CreateDefaultTaskQueueFactory();
     EnableFakeMedia(factory_dependencies, std::move(media_engine));
 
@@ -92,7 +96,9 @@ class PeerConnectionHeaderExtensionTest
         CreateModularPeerConnectionFactory(std::move(factory_dependencies));
 
     auto fake_port_allocator = std::make_unique<cricket::FakePortAllocator>(
-        CreateEnvironment(), socket_server_.get());
+        rtc::Thread::Current(),
+        std::make_unique<rtc::BasicPacketSocketFactory>(socket_server_.get()),
+        field_trials_.get());
     auto observer = std::make_unique<MockPeerConnectionObserver>();
     PeerConnectionInterface::RTCConfiguration config;
     if (semantics)
@@ -107,13 +113,14 @@ class PeerConnectionHeaderExtensionTest
         pc_factory, result.MoveValue(), std::move(observer));
   }
 
-  std::unique_ptr<SocketServer> socket_server_;
-  AutoSocketServerThread main_thread_;
+  std::unique_ptr<FieldTrials> field_trials_ = FieldTrials::CreateNoGlobal("");
+  std::unique_ptr<rtc::SocketServer> socket_server_;
+  rtc::AutoSocketServerThread main_thread_;
   std::vector<RtpHeaderExtensionCapability> extensions_;
 };
 
 TEST_P(PeerConnectionHeaderExtensionTest, TransceiverOffersHeaderExtensions) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -126,7 +133,7 @@ TEST_P(PeerConnectionHeaderExtensionTest, TransceiverOffersHeaderExtensions) {
 
 TEST_P(PeerConnectionHeaderExtensionTest,
        SenderReceiverCapabilitiesReturnNotStoppedExtensions) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   std::unique_ptr<PeerConnectionWrapper> wrapper =
@@ -146,7 +153,7 @@ TEST_P(PeerConnectionHeaderExtensionTest,
 }
 
 TEST_P(PeerConnectionHeaderExtensionTest, OffersUnstoppedDefaultExtensions) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -165,7 +172,7 @@ TEST_P(PeerConnectionHeaderExtensionTest, OffersUnstoppedDefaultExtensions) {
 }
 
 TEST_P(PeerConnectionHeaderExtensionTest, OffersUnstoppedModifiedExtensions) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -189,7 +196,7 @@ TEST_P(PeerConnectionHeaderExtensionTest, OffersUnstoppedModifiedExtensions) {
 }
 
 TEST_P(PeerConnectionHeaderExtensionTest, AnswersUnstoppedModifiedExtensions) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -222,7 +229,7 @@ TEST_P(PeerConnectionHeaderExtensionTest, AnswersUnstoppedModifiedExtensions) {
 }
 
 TEST_P(PeerConnectionHeaderExtensionTest, NegotiatedExtensionsAreAccessible) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -258,7 +265,7 @@ TEST_P(PeerConnectionHeaderExtensionTest, NegotiatedExtensionsAreAccessible) {
 }
 
 TEST_P(PeerConnectionHeaderExtensionTest, OfferedExtensionsArePerTransceiver) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -288,7 +295,7 @@ TEST_P(PeerConnectionHeaderExtensionTest, OfferedExtensionsArePerTransceiver) {
 }
 
 TEST_P(PeerConnectionHeaderExtensionTest, RemovalAfterRenegotiation) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -320,7 +327,7 @@ TEST_P(PeerConnectionHeaderExtensionTest, RemovalAfterRenegotiation) {
 
 TEST_P(PeerConnectionHeaderExtensionTest,
        StoppedByDefaultExtensionCanBeActivatedByRemoteSdp) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -355,7 +362,7 @@ TEST_P(PeerConnectionHeaderExtensionTest,
 
 TEST_P(PeerConnectionHeaderExtensionTest,
        UnknownExtensionInRemoteOfferDoesNotShowUp) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -372,7 +379,7 @@ TEST_P(PeerConnectionHeaderExtensionTest,
       "AD:7E:77:43:2A:29:EC:93\r\n"
       "a=ice-ufrag:6HHHdzzeIhkE0CKj\r\n"
       "a=ice-pwd:XYDGVpfvklQIEnZ6YnyLsAew\r\n";
-  if (media_type == webrtc::MediaType::AUDIO) {
+  if (media_type == cricket::MEDIA_TYPE_AUDIO) {
     sdp +=
         "m=audio 9 RTP/AVPF 111\r\n"
         "a=rtpmap:111 fake_audio_codec/8000\r\n";
@@ -409,7 +416,7 @@ TEST_P(PeerConnectionHeaderExtensionTest,
 // of the API to only offer non-stopped extensions.
 TEST_P(PeerConnectionHeaderExtensionTest,
        SdpMungingAnswerWithoutApiUsageEnablesExtensions) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -426,7 +433,7 @@ TEST_P(PeerConnectionHeaderExtensionTest,
       "AD:7E:77:43:2A:29:EC:93\r\n"
       "a=ice-ufrag:6HHHdzzeIhkE0CKj\r\n"
       "a=ice-pwd:XYDGVpfvklQIEnZ6YnyLsAew\r\n";
-  if (media_type == webrtc::MediaType::AUDIO) {
+  if (media_type == cricket::MEDIA_TYPE_AUDIO) {
     sdp +=
         "m=audio 9 RTP/AVPF 111\r\n"
         "a=rtpmap:111 fake_audio_codec/8000\r\n";
@@ -466,7 +473,7 @@ TEST_P(PeerConnectionHeaderExtensionTest,
 
 TEST_P(PeerConnectionHeaderExtensionTest,
        SdpMungingOfferWithoutApiUsageEnablesExtensions) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -496,7 +503,7 @@ TEST_P(PeerConnectionHeaderExtensionTest,
 }
 
 TEST_P(PeerConnectionHeaderExtensionTest, EnablingExtensionsAfterRemoteOffer) {
-  webrtc::MediaType media_type;
+  cricket::MediaType media_type;
   SdpSemantics semantics;
   std::tie(media_type, semantics) = GetParam();
   if (semantics != SdpSemantics::kUnifiedPlan)
@@ -513,7 +520,7 @@ TEST_P(PeerConnectionHeaderExtensionTest, EnablingExtensionsAfterRemoteOffer) {
       "AD:7E:77:43:2A:29:EC:93\r\n"
       "a=ice-ufrag:6HHHdzzeIhkE0CKj\r\n"
       "a=ice-pwd:XYDGVpfvklQIEnZ6YnyLsAew\r\n";
-  if (media_type == webrtc::MediaType::AUDIO) {
+  if (media_type == cricket::MEDIA_TYPE_AUDIO) {
     sdp +=
         "m=audio 9 RTP/AVPF 111\r\n"
         "a=rtpmap:111 fake_audio_codec/8000\r\n";
@@ -558,17 +565,19 @@ INSTANTIATE_TEST_SUITE_P(
     ,
     PeerConnectionHeaderExtensionTest,
     Combine(Values(SdpSemantics::kPlanB_DEPRECATED, SdpSemantics::kUnifiedPlan),
-            Values(webrtc::MediaType::AUDIO, webrtc::MediaType::VIDEO)),
+            Values(cricket::MediaType::MEDIA_TYPE_AUDIO,
+                   cricket::MediaType::MEDIA_TYPE_VIDEO)),
     [](const testing::TestParamInfo<
         PeerConnectionHeaderExtensionTest::ParamType>& info) {
-      webrtc::MediaType media_type;
+      cricket::MediaType media_type;
       SdpSemantics semantics;
       std::tie(media_type, semantics) = info.param;
       return (rtc::StringBuilder("With")
               << (semantics == SdpSemantics::kPlanB_DEPRECATED ? "PlanB"
                                                                : "UnifiedPlan")
               << "And"
-              << (media_type == webrtc::MediaType::AUDIO ? "Voice" : "Video")
+              << (media_type == cricket::MediaType::MEDIA_TYPE_AUDIO ? "Voice"
+                                                                     : "Video")
               << "Engine")
           .str();
     });

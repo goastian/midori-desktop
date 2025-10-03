@@ -23,7 +23,7 @@
 #include "test/gtest.h"
 #include "test/wait_until.h"
 
-namespace webrtc {
+namespace rtc {
 
 TEST(NullSocketServerTest, WaitAndSet) {
   AutoThread main_thread;
@@ -33,19 +33,20 @@ TEST(NullSocketServerTest, WaitAndSet) {
   thread->PostTask([&ss] { ss.WakeUp(); });
   // The process_io will be ignored.
   const bool process_io = true;
-  EXPECT_THAT(webrtc::WaitUntil(
-                  [&] { return ss.Wait(SocketServer::kForever, process_io); },
-                  ::testing::IsTrue(), {.timeout = TimeDelta::Millis(5'000)}),
-              webrtc::IsRtcOk());
+  EXPECT_THAT(
+      webrtc::WaitUntil(
+          [&] { return ss.Wait(SocketServer::kForever, process_io); },
+          ::testing::IsTrue(), {.timeout = webrtc::TimeDelta::Millis(5'000)}),
+      webrtc::IsRtcOk());
 }
 
 TEST(NullSocketServerTest, TestWait) {
   NullSocketServer ss;
   int64_t start = TimeMillis();
-  ss.Wait(TimeDelta::Millis(200), true);
+  ss.Wait(webrtc::TimeDelta::Millis(200), true);
   // The actual wait time is dependent on the resolution of the timer used by
   // the Event class. Allow for the event to signal ~20ms early.
   EXPECT_GE(TimeSince(start), 180);
 }
 
-}  // namespace webrtc
+}  // namespace rtc

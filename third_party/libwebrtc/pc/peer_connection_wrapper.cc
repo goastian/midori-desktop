@@ -154,7 +154,7 @@ PeerConnectionWrapper::CreateRollback() {
 }
 
 std::unique_ptr<SessionDescriptionInterface> PeerConnectionWrapper::CreateSdp(
-    FunctionView<void(CreateSessionDescriptionObserver*)> fn,
+    rtc::FunctionView<void(CreateSessionDescriptionObserver*)> fn,
     std::string* error_out) {
   auto observer = rtc::make_ref_counted<MockCreateSessionDescriptionObserver>();
   fn(observer.get());
@@ -216,7 +216,7 @@ bool PeerConnectionWrapper::SetRemoteDescription(
 }
 
 bool PeerConnectionWrapper::SetSdp(
-    FunctionView<void(SetSessionDescriptionObserver*)> fn,
+    rtc::FunctionView<void(SetSessionDescriptionObserver*)> fn,
     std::string* error_out) {
   auto observer = rtc::make_ref_counted<MockSetSessionDescriptionObserver>();
   fn(observer.get());
@@ -277,7 +277,7 @@ bool PeerConnectionWrapper::ExchangeOfferAnswerWith(
 }
 
 rtc::scoped_refptr<RtpTransceiverInterface>
-PeerConnectionWrapper::AddTransceiver(webrtc::MediaType media_type) {
+PeerConnectionWrapper::AddTransceiver(cricket::MediaType media_type) {
   RTCErrorOr<rtc::scoped_refptr<RtpTransceiverInterface>> result =
       pc()->AddTransceiver(media_type);
   EXPECT_EQ(RTCErrorType::NONE, result.error().type());
@@ -285,7 +285,7 @@ PeerConnectionWrapper::AddTransceiver(webrtc::MediaType media_type) {
 }
 
 rtc::scoped_refptr<RtpTransceiverInterface>
-PeerConnectionWrapper::AddTransceiver(webrtc::MediaType media_type,
+PeerConnectionWrapper::AddTransceiver(cricket::MediaType media_type,
                                       const RtpTransceiverInit& init) {
   RTCErrorOr<rtc::scoped_refptr<RtpTransceiverInterface>> result =
       pc()->AddTransceiver(media_type, init);

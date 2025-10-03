@@ -127,7 +127,7 @@ class EventLogAnalyzer {
   void CreateTimestampGraph(PacketDirection direction, Plot* plot) const;
   void CreateSenderAndReceiverReportPlot(
       PacketDirection direction,
-      FunctionView<float(const rtcp::ReportBlock&)> fy,
+      rtc::FunctionView<float(const rtcp::ReportBlock&)> fy,
       std::string title,
       std::string yaxis_label,
       Plot* plot) const;

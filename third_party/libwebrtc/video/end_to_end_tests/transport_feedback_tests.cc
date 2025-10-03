@@ -157,7 +157,7 @@ TEST(TransportFeedbackMultiStreamTest, AssignsTransportSequenceNumbers) {
 
    private:
     Mutex lock_;
-    Event done_;
+    rtc::Event done_;
     RtpHeaderExtensionMap extensions_;
     RtpSequenceNumberUnwrapper unwrapper_;
     std::set<int64_t> received_packed_ids_;

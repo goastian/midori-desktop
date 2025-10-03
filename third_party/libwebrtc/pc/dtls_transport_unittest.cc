@@ -34,6 +34,7 @@ namespace webrtc {
 
 constexpr int kNonsenseCipherSuite = 1234;
 
+using cricket::FakeDtlsTransport;
 using ::testing::ElementsAre;
 
 class TestDtlsTransportObserver : public DtlsTransportObserverInterface {
@@ -64,7 +65,7 @@ class DtlsTransportTest : public ::testing::Test {
   DtlsTransport* transport() { return transport_.get(); }
   DtlsTransportObserverInterface* observer() { return &observer_; }
 
-  void CreateTransport(FakeSSLCertificate* certificate = nullptr) {
+  void CreateTransport(rtc::FakeSSLCertificate* certificate = nullptr) {
     auto cricket_transport = std::make_unique<FakeDtlsTransport>(
         "audio", cricket::ICE_CANDIDATE_COMPONENT_RTP);
     if (certificate) {
@@ -79,16 +80,16 @@ class DtlsTransportTest : public ::testing::Test {
     auto fake_dtls1 = static_cast<FakeDtlsTransport*>(transport_->internal());
     auto fake_dtls2 = std::make_unique<FakeDtlsTransport>(
         "audio", cricket::ICE_CANDIDATE_COMPONENT_RTP);
-    auto cert1 = RTCCertificate::Create(
+    auto cert1 = rtc::RTCCertificate::Create(
         rtc::SSLIdentity::Create("session1", rtc::KT_DEFAULT));
     fake_dtls1->SetLocalCertificate(cert1);
-    auto cert2 = RTCCertificate::Create(
+    auto cert2 = rtc::RTCCertificate::Create(
         rtc::SSLIdentity::Create("session1", rtc::KT_DEFAULT));
     fake_dtls2->SetLocalCertificate(cert2);
     fake_dtls1->SetDestination(fake_dtls2.get());
   }
 
-  AutoThread main_thread_;
+  rtc::AutoThread main_thread_;
   rtc::scoped_refptr<DtlsTransport> transport_;
   TestDtlsTransportObserver observer_;
 };
@@ -135,7 +136,7 @@ TEST_F(DtlsTransportTest, CloseWhenClearing) {
 }
 
 TEST_F(DtlsTransportTest, RoleAppearsOnConnect) {
-  FakeSSLCertificate fake_certificate("fake data");
+  rtc::FakeSSLCertificate fake_certificate("fake data");
   CreateTransport(&fake_certificate);
   transport()->RegisterObserver(observer());
   EXPECT_FALSE(transport()->Information().role());
@@ -149,7 +150,7 @@ TEST_F(DtlsTransportTest, RoleAppearsOnConnect) {
 }
 
 TEST_F(DtlsTransportTest, CertificateAppearsOnConnect) {
-  FakeSSLCertificate fake_certificate("fake data");
+  rtc::FakeSSLCertificate fake_certificate("fake data");
   CreateTransport(&fake_certificate);
   transport()->RegisterObserver(observer());
   CompleteDtlsHandshake();
@@ -160,7 +161,7 @@ TEST_F(DtlsTransportTest, CertificateAppearsOnConnect) {
 }
 
 TEST_F(DtlsTransportTest, CertificateDisappearsOnClose) {
-  FakeSSLCertificate fake_certificate("fake data");
+  rtc::FakeSSLCertificate fake_certificate("fake data");
   CreateTransport(&fake_certificate);
   transport()->RegisterObserver(observer());
   CompleteDtlsHandshake();

@@ -14,15 +14,6 @@
 
 namespace rtc {
 
-PacketOptions::PacketOptions() = default;
-PacketOptions::PacketOptions(DiffServCodePoint dscp) : dscp(dscp) {}
-PacketOptions::PacketOptions(const PacketOptions& other) = default;
-PacketOptions::~PacketOptions() = default;
-
-}  // namespace rtc
-
-namespace webrtc {
-
 PacketTimeUpdateParams::PacketTimeUpdateParams() = default;
 
 PacketTimeUpdateParams::PacketTimeUpdateParams(
@@ -30,11 +21,16 @@ PacketTimeUpdateParams::PacketTimeUpdateParams(
 
 PacketTimeUpdateParams::~PacketTimeUpdateParams() = default;
 
+PacketOptions::PacketOptions() = default;
+PacketOptions::PacketOptions(DiffServCodePoint dscp) : dscp(dscp) {}
+PacketOptions::PacketOptions(const PacketOptions& other) = default;
+PacketOptions::~PacketOptions() = default;
+
 AsyncPacketSocket::~AsyncPacketSocket() = default;
 
 void AsyncPacketSocket::SubscribeCloseEvent(
     const void* removal_tag,
-    std::function<void(webrtc::AsyncPacketSocket*, int)> callback) {
+    std::function<void(AsyncPacketSocket*, int)> callback) {
   RTC_DCHECK_RUN_ON(&network_checker_);
   on_close_.AddReceiver(removal_tag, std::move(callback));
 }
@@ -45,8 +41,7 @@ void AsyncPacketSocket::UnsubscribeCloseEvent(const void* removal_tag) {
 }
 
 void AsyncPacketSocket::RegisterReceivedPacketCallback(
-    absl::AnyInvocable<void(webrtc::AsyncPacketSocket*,
-                            const rtc::ReceivedPacket&)>
+    absl::AnyInvocable<void(AsyncPacketSocket*, const rtc::ReceivedPacket&)>
         received_packet_callback) {
   RTC_DCHECK_RUN_ON(&network_checker_);
   RTC_CHECK(!received_packet_callback_);
@@ -74,4 +69,4 @@ void CopySocketInformationToPacketInfo(size_t packet_size_bytes,
   info->ip_overhead_bytes = socket_from.GetLocalAddress().ipaddr().overhead();
 }
 
-}  // namespace webrtc
+}  // namespace rtc

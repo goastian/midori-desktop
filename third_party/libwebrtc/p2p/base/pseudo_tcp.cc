@@ -19,14 +19,12 @@
 #include <memory>
 #include <set>
 
-#include "api/array_view.h"
 #include "rtc_base/byte_buffer.h"
 #include "rtc_base/byte_order.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_minmax.h"
 #include "rtc_base/socket.h"
-#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/time_utils.h"
 
 // The following logging is for detailed (packet-level) analysis only.
@@ -144,19 +142,19 @@ const uint32_t IDLE_TIMEOUT = 90 * 1000;  // 90 seconds;
 //////////////////////////////////////////////////////////////////////
 
 inline void long_to_bytes(uint32_t val, void* buf) {
-  *static_cast<uint32_t*>(buf) = webrtc::HostToNetwork32(val);
+  *static_cast<uint32_t*>(buf) = rtc::HostToNetwork32(val);
 }
 
 inline void short_to_bytes(uint16_t val, void* buf) {
-  *static_cast<uint16_t*>(buf) = webrtc::HostToNetwork16(val);
+  *static_cast<uint16_t*>(buf) = rtc::HostToNetwork16(val);
 }
 
 inline uint32_t bytes_to_long(const void* buf) {
-  return webrtc::NetworkToHost32(*static_cast<const uint32_t*>(buf));
+  return rtc::NetworkToHost32(*static_cast<const uint32_t*>(buf));
 }
 
 inline uint16_t bytes_to_short(const void* buf) {
-  return webrtc::NetworkToHost16(*static_cast<const uint16_t*>(buf));
+  return rtc::NetworkToHost16(*static_cast<const uint16_t*>(buf));
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -205,7 +203,7 @@ uint32_t PseudoTcp::Now() {
 #if 0  // Use this to synchronize timers with logging timestamps (easier debug)
   return static_cast<uint32_t>(rtc::TimeSince(StartTime()));
 #else
-  return webrtc::Time32();
+  return rtc::Time32();
 #endif
 }
 
@@ -288,7 +286,7 @@ void PseudoTcp::NotifyClock(uint32_t now) {
     return;
 
   // Check if it's time to retransmit a segment
-  if (m_rto_base && (webrtc::TimeDiff32(m_rto_base + m_rx_rto, now) <= 0)) {
+  if (m_rto_base && (rtc::TimeDiff32(m_rto_base + m_rx_rto, now) <= 0)) {
     if (m_slist.empty()) {
       RTC_DCHECK_NOTREACHED();
     } else {
@@ -319,9 +317,8 @@ void PseudoTcp::NotifyClock(uint32_t now) {
   }
 
   // Check if it's time to probe closed windows
-  if ((m_snd_wnd == 0) &&
-      (webrtc::TimeDiff32(m_lastsend + m_rx_rto, now) <= 0)) {
-    if (webrtc::TimeDiff32(now, m_lastrecv) >= 15000) {
+  if ((m_snd_wnd == 0) && (rtc::TimeDiff32(m_lastsend + m_rx_rto, now) <= 0)) {
+    if (rtc::TimeDiff32(now, m_lastrecv) >= 15000) {
       closedown(ECONNABORTED);
       return;
     }
@@ -335,7 +332,7 @@ void PseudoTcp::NotifyClock(uint32_t now) {
   }
 
   // Check if it's time to send delayed acks
-  if (m_t_ack && (webrtc::TimeDiff32(m_t_ack + m_ack_delay, now) <= 0)) {
+  if (m_t_ack && (rtc::TimeDiff32(m_t_ack + m_ack_delay, now) <= 0)) {
     packet(m_snd_nxt, 0, 0, 0);
   }
 
@@ -612,16 +609,16 @@ bool PseudoTcp::clock_check(uint32_t now, long& nTimeout) {
   nTimeout = DEFAULT_TIMEOUT;
 
   if (m_t_ack) {
-    nTimeout = std::min<int32_t>(
-        nTimeout, webrtc::TimeDiff32(m_t_ack + m_ack_delay, now));
+    nTimeout = std::min<int32_t>(nTimeout,
+                                 rtc::TimeDiff32(m_t_ack + m_ack_delay, now));
   }
   if (m_rto_base) {
-    nTimeout = std::min<int32_t>(
-        nTimeout, webrtc::TimeDiff32(m_rto_base + m_rx_rto, now));
+    nTimeout = std::min<int32_t>(nTimeout,
+                                 rtc::TimeDiff32(m_rto_base + m_rx_rto, now));
   }
   if (m_snd_wnd == 0) {
-    nTimeout = std::min<int32_t>(
-        nTimeout, webrtc::TimeDiff32(m_lastsend + m_rx_rto, now));
+    nTimeout = std::min<int32_t>(nTimeout,
+                                 rtc::TimeDiff32(m_lastsend + m_rx_rto, now));
   }
 #if PSEUDO_KEEPALIVE
   if (m_state == TCP_ESTABLISHED) {
@@ -703,7 +700,7 @@ bool PseudoTcp::process(Segment& seg) {
   if ((seg.ack > m_snd_una) && (seg.ack <= m_snd_nxt)) {
     // Calculate round-trip time
     if (seg.tsecr) {
-      int32_t rtt = webrtc::TimeDiff32(now, seg.tsecr);
+      int32_t rtt = rtc::TimeDiff32(now, seg.tsecr);
       if (rtt >= 0) {
         if (m_rx_srtt == 0) {
           m_rx_srtt = rtt;
@@ -1049,7 +1046,7 @@ bool PseudoTcp::transmit(const SList::iterator& seg, uint32_t now) {
 void PseudoTcp::attemptSend(SendFlags sflags) {
   uint32_t now = Now();
 
-  if (webrtc::TimeDiff32(now, m_lastsend) > static_cast<long>(m_rx_rto)) {
+  if (rtc::TimeDiff32(now, m_lastsend) > static_cast<long>(m_rx_rto)) {
     m_cwnd = m_mss;
   }
 

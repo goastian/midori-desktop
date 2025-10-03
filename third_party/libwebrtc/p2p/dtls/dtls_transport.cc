@@ -27,15 +27,12 @@
 #include "api/rtc_event_log/rtc_event_log.h"
 #include "api/scoped_refptr.h"
 #include "api/sequence_checker.h"
-#include "api/task_queue/pending_task_safety_flag.h"
 #include "api/transport/stun.h"
-#include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
 #include "logging/rtc_event_log/events/rtc_event_dtls_transport_state.h"
 #include "logging/rtc_event_log/events/rtc_event_dtls_writable_state.h"
 #include "p2p/base/ice_transport_internal.h"
 #include "p2p/base/packet_transport_internal.h"
-#include "p2p/dtls/dtls_stun_piggyback_callbacks.h"
 #include "p2p/dtls/dtls_stun_piggyback_controller.h"
 #include "p2p/dtls/dtls_transport_internal.h"
 #include "p2p/dtls/dtls_utils.h"
@@ -50,55 +47,26 @@
 #include "rtc_base/socket_address.h"
 #include "rtc_base/ssl_stream_adapter.h"
 #include "rtc_base/stream.h"
-#include "rtc_base/thread.h"
 #include "rtc_base/time_utils.h"
-
-namespace webrtc {
-
-template <typename Sink>
-void AbslStringify(Sink& sink, webrtc::DtlsTransportState state) {
-  switch (state) {
-    case webrtc::DtlsTransportState::kNew:
-      sink.Append("kNew");
-      break;
-    case webrtc::DtlsTransportState::kConnecting:
-      sink.Append("kConnecting");
-      break;
-    case webrtc::DtlsTransportState::kConnected:
-      sink.Append("kConnected");
-      break;
-    case webrtc::DtlsTransportState::kClosed:
-      sink.Append("kClosed");
-      break;
-    case webrtc::DtlsTransportState::kFailed:
-      sink.Append("kFailed");
-      break;
-    case webrtc::DtlsTransportState::kNumValues:
-      sink.Append("kNumValues");
-      break;
-  }
-}
-
-}  // namespace webrtc
 
 namespace cricket {
 
 // We don't pull the RTP constants from rtputils.h, to avoid a layer violation.
-constexpr size_t kMinRtpPacketLen = 12;
+static const size_t kMinRtpPacketLen = 12;
 
 // Maximum number of pending packets in the queue. Packets are read immediately
 // after they have been written, so a capacity of "1" is sufficient.
 //
 // However, this bug seems to indicate that's not the case: crbug.com/1063834
 // So, temporarily increasing it to 2 to see if that makes a difference.
-constexpr size_t kMaxPendingPackets = 2;
+static const size_t kMaxPendingPackets = 2;
 
 // Minimum and maximum values for the initial DTLS handshake timeout. We'll pick
 // an initial timeout based on ICE RTT estimates, but clamp it to this range.
-constexpr int kMinDtlsHandshakeTimeoutMs = 50;
-constexpr int kMaxDtlsHandshakeTimeoutMs = 3000;
+static const int kMinHandshakeTimeoutMs = 50;
+static const int kMaxHandshakeTimeoutMs = 3000;
 // This effectively disables the handshake timeout.
-constexpr int kDisabledHandshakeTimeoutMs = 3600 * 1000 * 24;
+static const int kDisabledHandshakeTimeoutMs = 3600 * 1000 * 24;
 
 static bool IsRtpPacket(rtc::ArrayView<const uint8_t> payload) {
   const uint8_t* u = payload.data();
@@ -106,9 +74,9 @@ static bool IsRtpPacket(rtc::ArrayView<const uint8_t> payload) {
 }
 
 StreamInterfaceChannel::StreamInterfaceChannel(
-    webrtc::IceTransportInternal* ice_transport)
+    IceTransportInternal* ice_transport)
     : ice_transport_(ice_transport),
-      state_(webrtc::SS_OPEN),
+      state_(rtc::SS_OPEN),
       packets_(kMaxPendingPackets, kMaxDtlsPacketLen) {}
 
 void StreamInterfaceChannel::SetDtlsStunPiggybackController(
@@ -121,16 +89,16 @@ rtc::StreamResult StreamInterfaceChannel::Read(rtc::ArrayView<uint8_t> buffer,
                                                int& /* error */) {
   RTC_DCHECK_RUN_ON(&callback_sequence_);
 
-  if (state_ == webrtc::SS_CLOSED)
-    return webrtc::SR_EOS;
-  if (state_ == webrtc::SS_OPENING)
-    return webrtc::SR_BLOCK;
+  if (state_ == rtc::SS_CLOSED)
+    return rtc::SR_EOS;
+  if (state_ == rtc::SS_OPENING)
+    return rtc::SR_BLOCK;
 
   if (!packets_.ReadFront(buffer.data(), buffer.size(), &read)) {
-    return webrtc::SR_BLOCK;
+    return rtc::SR_BLOCK;
   }
 
-  return webrtc::SR_SUCCESS;
+  return rtc::SR_SUCCESS;
 }
 
 rtc::StreamResult StreamInterfaceChannel::Write(
@@ -139,17 +107,23 @@ rtc::StreamResult StreamInterfaceChannel::Write(
     int& /* error */) {
   RTC_DCHECK_RUN_ON(&callback_sequence_);
 
-  // If we use DTLS-in-STUN, DTLS packets will be sent as part of STUN
-  // packets, they are captured by the controller.
-  if (dtls_stun_piggyback_controller_) {
-    dtls_stun_piggyback_controller_->CapturePacket(data);
+  // If we try to use DTLS-in-STUN, DTLS packets will be sent as part of STUN
+  // packets and are consumed here.
+  if (ice_transport_->config().dtls_handshake_in_stun &&
+      dtls_stun_piggyback_controller_ &&
+      dtls_stun_piggyback_controller_->MaybeConsumePacket(data)) {
+    written = data.size();
+    return rtc::SR_SUCCESS;
   }
 
+  // Always succeeds, since this is an unreliable transport anyway.
+  // TODO(zhihuang): Should this block if ice_transport_'s temporarily
+  // unwritable?
   rtc::PacketOptions packet_options;
   ice_transport_->SendPacket(reinterpret_cast<const char*>(data.data()),
                              data.size(), packet_options);
   written = data.size();
-  return webrtc::SR_SUCCESS;
+  return rtc::SR_SUCCESS;
 }
 
 bool StreamInterfaceChannel::OnPacketReceived(const char* data, size_t size) {
@@ -165,7 +139,7 @@ bool StreamInterfaceChannel::OnPacketReceived(const char* data, size_t size) {
     // packet currently in packets_.
     RTC_LOG(LS_ERROR) << "Failed to write packet to queue.";
   }
-  FireEvent(webrtc::SE_READ, 0);
+  FireEvent(rtc::SE_READ, 0);
   return ret;
 }
 
@@ -177,13 +151,13 @@ rtc::StreamState StreamInterfaceChannel::GetState() const {
 void StreamInterfaceChannel::Close() {
   RTC_DCHECK_RUN_ON(&callback_sequence_);
   packets_.Clear();
-  state_ = webrtc::SS_CLOSED;
+  state_ = rtc::SS_CLOSED;
 }
 
-DtlsTransport::DtlsTransport(webrtc::IceTransportInternal* ice_transport,
+DtlsTransport::DtlsTransport(IceTransportInternal* ice_transport,
                              const webrtc::CryptoOptions& crypto_options,
                              webrtc::RtcEventLog* event_log,
-                             webrtc::SSLProtocolVersion max_version)
+                             rtc::SSLProtocolVersion max_version)
     : component_(ice_transport->component()),
       ice_transport_(ice_transport),
       downward_(nullptr),
@@ -197,22 +171,15 @@ DtlsTransport::DtlsTransport(webrtc::IceTransportInternal* ice_transport,
             }
             piggybacked_dtls_callback_(
                 this, rtc::ReceivedPacket(piggybacked_dtls_packet,
-                                          webrtc::SocketAddress()));
+                                          rtc::SocketAddress()));
           }) {
   RTC_DCHECK(ice_transport_);
   ConnectToIceTransport();
-  if (auto field_trials = ice_transport_->field_trials()) {
-    dtls_in_stun_ = field_trials->IsEnabled("WebRTC-IceHandshakeDtls");
-  } else {
-    // TODO (BUG=webrtc:367395350): Fix upstream testcase(s).
-    RTC_DLOG(LS_ERROR) << "ice_transport_>field_trials() is NULL";
-    dtls_in_stun_ = false;
-  }
 }
 
 DtlsTransport::~DtlsTransport() {
   if (ice_transport_) {
-    ice_transport_->ResetDtlsStunPiggybackCallbacks();
+    ice_transport_->SetDtlsPiggybackingCallbacks(nullptr, nullptr, nullptr);
     ice_transport_->DeregisterReceivedPacketCallback(this);
   }
 }
@@ -234,7 +201,7 @@ bool DtlsTransport::IsDtlsActive() const {
 }
 
 bool DtlsTransport::SetLocalCertificate(
-    const rtc::scoped_refptr<webrtc::RTCCertificate>& certificate) {
+    const rtc::scoped_refptr<rtc::RTCCertificate>& certificate) {
   if (dtls_active_) {
     if (certificate == local_certificate_) {
       // This may happen during renegotiation.
@@ -258,12 +225,12 @@ bool DtlsTransport::SetLocalCertificate(
   return true;
 }
 
-rtc::scoped_refptr<webrtc::RTCCertificate> DtlsTransport::GetLocalCertificate()
+rtc::scoped_refptr<rtc::RTCCertificate> DtlsTransport::GetLocalCertificate()
     const {
   return local_certificate_;
 }
 
-bool DtlsTransport::SetDtlsRole(webrtc::SSLRole role) {
+bool DtlsTransport::SetDtlsRole(rtc::SSLRole role) {
   if (dtls_) {
     RTC_DCHECK(dtls_role_);
     if (*dtls_role_ != role) {
@@ -278,7 +245,7 @@ bool DtlsTransport::SetDtlsRole(webrtc::SSLRole role) {
   return true;
 }
 
-bool DtlsTransport::GetDtlsRole(webrtc::SSLRole* role) const {
+bool DtlsTransport::GetDtlsRole(rtc::SSLRole* role) const {
   if (!dtls_role_) {
     return false;
   }
@@ -305,7 +272,7 @@ webrtc::RTCError DtlsTransport::SetRemoteParameters(
     absl::string_view digest_alg,
     const uint8_t* digest,
     size_t digest_len,
-    std::optional<webrtc::SSLRole> role) {
+    std::optional<rtc::SSLRole> role) {
   rtc::Buffer remote_fingerprint_value(digest, digest_len);
   bool is_dtls_restart =
       dtls_active_ && remote_fingerprint_value_ != remote_fingerprint_value;
@@ -373,9 +340,9 @@ bool DtlsTransport::SetRemoteFingerprint(absl::string_view digest_alg,
     // This can occur if DTLS is set up before a remote fingerprint is
     // received. For instance, if we set up DTLS due to receiving an early
     // ClientHello.
-    webrtc::SSLPeerCertificateDigestError err = dtls_->SetPeerCertificateDigest(
+    rtc::SSLPeerCertificateDigestError err = dtls_->SetPeerCertificateDigest(
         remote_fingerprint_algorithm_, remote_fingerprint_value_);
-    if (err != webrtc::SSLPeerCertificateDigestError::NONE) {
+    if (err != rtc::SSLPeerCertificateDigestError::NONE) {
       RTC_LOG(LS_ERROR) << ToString()
                         << ": Couldn't set DTLS certificate digest.";
       set_dtls_state(webrtc::DtlsTransportState::kFailed);
@@ -383,7 +350,7 @@ bool DtlsTransport::SetRemoteFingerprint(absl::string_view digest_alg,
       // this means the fingerprint was formatted correctly but didn't match
       // the certificate from the DTLS handshake. Thus the DTLS state should go
       // to "failed", but SetRemoteDescription shouldn't fail.
-      return err == webrtc::SSLPeerCertificateDigestError::VERIFICATION_FAILED;
+      return err == rtc::SSLPeerCertificateDigestError::VERIFICATION_FAILED;
     }
     return true;
   }
@@ -420,17 +387,13 @@ bool DtlsTransport::ExportSrtpKeyingMaterial(
 
 bool DtlsTransport::SetupDtls() {
   RTC_DCHECK(dtls_role_);
-
-  dtls_in_stun_ = ice_transport_->config().dtls_handshake_in_stun;
   {
     auto downward = std::make_unique<StreamInterfaceChannel>(ice_transport_);
     StreamInterfaceChannel* downward_ptr = downward.get();
 
-    if (dtls_in_stun_) {
-      downward_ptr->SetDtlsStunPiggybackController(
-          &dtls_stun_piggyback_controller_);
-    }
-    dtls_ = webrtc::SSLStreamAdapter::Create(
+    downward_ptr->SetDtlsStunPiggybackController(
+        &dtls_stun_piggyback_controller_);
+    dtls_ = rtc::SSLStreamAdapter::Create(
         std::move(downward),
         [this](rtc::SSLHandshakeError error) { OnDtlsHandshakeError(error); },
         ice_transport_->field_trials());
@@ -449,7 +412,7 @@ bool DtlsTransport::SetupDtls() {
   if (remote_fingerprint_value_.size() &&
       dtls_->SetPeerCertificateDigest(remote_fingerprint_algorithm_,
                                       remote_fingerprint_value_) !=
-          webrtc::SSLPeerCertificateDigestError::NONE) {
+          rtc::SSLPeerCertificateDigestError::NONE) {
     RTC_LOG(LS_ERROR) << ToString()
                       << ": Couldn't set DTLS certificate digest.";
     return false;
@@ -465,8 +428,7 @@ bool DtlsTransport::SetupDtls() {
     RTC_LOG(LS_INFO) << ToString() << ": Not using DTLS-SRTP.";
   }
 
-  RTC_LOG(LS_INFO) << ToString()
-                   << ": DTLS setup complete, dtls_in_stun: " << dtls_in_stun_;
+  RTC_LOG(LS_INFO) << ToString() << ": DTLS setup complete.";
 
   // If the underlying ice_transport is already writable at this point, we may
   // be able to start DTLS right away.
@@ -492,7 +454,7 @@ bool DtlsTransport::GetSslVersionBytes(int* version) const {
 
 uint16_t DtlsTransport::GetSslPeerSignatureAlgorithm() const {
   if (dtls_state() != webrtc::DtlsTransportState::kConnected) {
-    return webrtc::kSslSignatureAlgorithmUnknown;  // "not applicable"
+    return rtc::kSslSignatureAlgorithmUnknown;  // "not applicable"
   }
   return dtls_->GetPeerSignatureAlgorithm();
 }
@@ -530,7 +492,7 @@ int DtlsTransport::SendPacket(const char* data,
         return (dtls_->WriteAll(
                     rtc::MakeArrayView(reinterpret_cast<const uint8_t*>(data),
                                        size),
-                    written, error) == webrtc::SR_SUCCESS)
+                    written, error) == rtc::SR_SUCCESS)
                    ? static_cast<int>(size)
                    : -1;
       }
@@ -552,7 +514,7 @@ int DtlsTransport::SendPacket(const char* data,
   }
 }
 
-webrtc::IceTransportInternal* DtlsTransport::ice_transport() {
+IceTransportInternal* DtlsTransport::ice_transport() {
   return ice_transport_;
 }
 
@@ -576,11 +538,11 @@ std::optional<rtc::NetworkRoute> DtlsTransport::network_route() const {
   return ice_transport_->network_route();
 }
 
-bool DtlsTransport::GetOption(webrtc::Socket::Option opt, int* value) {
+bool DtlsTransport::GetOption(rtc::Socket::Option opt, int* value) {
   return ice_transport_->GetOption(opt, value);
 }
 
-int DtlsTransport::SetOption(webrtc::Socket::Option opt, int value) {
+int DtlsTransport::SetOption(rtc::Socket::Option opt, int value) {
   return ice_transport_->SetOption(opt, value);
 }
 
@@ -591,7 +553,7 @@ void DtlsTransport::ConnectToIceTransport() {
   ice_transport_->RegisterReceivedPacketCallback(
       this, [&](rtc::PacketTransportInternal* transport,
                 const rtc::ReceivedPacket& packet) {
-        OnReadPacket(transport, packet, /* piggybacked= */ false);
+        OnReadPacket(transport, packet);
       });
 
   ice_transport_->SignalSentPacket.connect(this, &DtlsTransport::OnSentPacket);
@@ -601,24 +563,20 @@ void DtlsTransport::ConnectToIceTransport() {
       this, &DtlsTransport::OnReceivingState);
   ice_transport_->SignalNetworkRouteChanged.connect(
       this, &DtlsTransport::OnNetworkRouteChanged);
-  ice_transport_->SetDtlsStunPiggybackCallbacks(DtlsStunPiggybackCallbacks(
-      [&](auto stun_message_type) {
-        std::optional<absl::string_view> data;
-        std::optional<absl::string_view> ack;
-        if (dtls_in_stun_) {
-          data = dtls_stun_piggyback_controller_.GetDataToPiggyback(
-              stun_message_type);
-          ack = dtls_stun_piggyback_controller_.GetAckToPiggyback(
-              stun_message_type);
-        }
-        return std::make_pair(data, ack);
+  ice_transport_->SetDtlsPiggybackingCallbacks(
+      [this](StunMessageType stun_message_type) {
+        return dtls_stun_piggyback_controller_.GetDataToPiggyback(
+            stun_message_type);
       },
-      [&](auto data, auto ack) {
-        if (!dtls_in_stun_) {
-          return;
-        }
+      [this](StunMessageType stun_message_type) {
+        return dtls_stun_piggyback_controller_.GetAckToPiggyback(
+            stun_message_type);
+      },
+      [this](const StunByteStringAttribute* data,
+             const StunByteStringAttribute* ack) {
         dtls_stun_piggyback_controller_.ReportDataPiggybacked(data, ack);
-      }));
+      });
+
   SetPiggybackDtlsDataCallback([this](rtc::PacketTransportInternal* transport,
                                       const rtc::ReceivedPacket& packet) {
     RTC_DCHECK(dtls_active_);
@@ -630,7 +588,7 @@ void DtlsTransport::ConnectToIceTransport() {
     if (!IsDtlsPacket(packet.payload())) {
       return;
     }
-    OnReadPacket(ice_transport_, packet, /* piggybacked= */ true);
+    OnReadPacket(ice_transport_, packet);
   });
 }
 
@@ -647,17 +605,9 @@ void DtlsTransport::ConnectToIceTransport() {
 void DtlsTransport::OnWritableState(rtc::PacketTransportInternal* transport) {
   RTC_DCHECK_RUN_ON(&thread_checker_);
   RTC_DCHECK(transport == ice_transport_);
-  RTC_LOG(LS_INFO) << ToString() << ": ice_transport writable state changed to "
-                   << ice_transport_->writable()
-                   << " dtls_state: " << dtls_state();
-
-  if (!ice_has_been_writable_) {
-    // Ice starts as not writable. The first time this method is called, it
-    // should be when ice change to writable = true.
-    RTC_DCHECK(ice_transport_->writable());
-  }
-  bool first_ice_writable = !ice_has_been_writable_;
-  ice_has_been_writable_ = true;
+  RTC_LOG(LS_VERBOSE) << ToString()
+                      << ": ice_transport writable state changed to "
+                      << ice_transport_->writable();
 
   if (!dtls_active_) {
     // Not doing DTLS.
@@ -666,28 +616,43 @@ void DtlsTransport::OnWritableState(rtc::PacketTransportInternal* transport) {
     return;
   }
 
+  // The opportunistic attempt to do DTLS piggybacking failed.
+  // Recreate the DTLS session. Note: this assumes we can consider
+  // the previous DTLS session state beyond repair and no packet
+  // reached the peer.
+  if (ice_transport_->config().dtls_handshake_in_stun && dtls_ &&
+      !was_ever_connected_ && !IsDtlsPiggybackSupportedByPeer() &&
+      (dtls_state() == webrtc::DtlsTransportState::kConnecting ||
+       dtls_state() == webrtc::DtlsTransportState::kNew)) {
+    RTC_LOG(LS_INFO) << "DTLS piggybacking not supported, restarting...";
+    ice_transport_->SetDtlsPiggybackingCallbacks(nullptr, nullptr, nullptr);
+
+    downward_->SetDtlsStunPiggybackController(nullptr);
+    dtls_.reset(nullptr);
+    set_dtls_state(webrtc::DtlsTransportState::kNew);
+    set_writable(false);
+
+    if (!SetupDtls()) {
+      RTC_LOG(LS_ERROR)
+          << "Failed to setup DTLS again after attempted piggybacking.";
+      set_dtls_state(webrtc::DtlsTransportState::kFailed);
+      return;
+    }
+    // SetupDtls has called MaybeStartDtls() already.
+    return;
+  }
+
   switch (dtls_state()) {
     case webrtc::DtlsTransportState::kNew:
       MaybeStartDtls();
       break;
     case webrtc::DtlsTransportState::kConnected:
+      was_ever_connected_ = true;
       // Note: SignalWritableState fired by set_writable.
-      if (dtls_in_stun_ && dtls_ && first_ice_writable) {
-        // Dtls1.3 has one remaining packet after it has become kConnected (?),
-        // make sure that this packet is sent too.
-        ConfigureHandshakeTimeout();
-        PeriodicRetransmitDtlsPacketUntilDtlsConnected();
-      }
       set_writable(ice_transport_->writable());
       break;
     case webrtc::DtlsTransportState::kConnecting:
-      if (dtls_in_stun_ && dtls_) {
-        // If DTLS piggybacking is enabled, we set the timeout
-        // on the DTLS object (which is then different from the
-        // inital kDisabledHandshakeTimeoutMs)
-        ConfigureHandshakeTimeout();
-        PeriodicRetransmitDtlsPacketUntilDtlsConnected();
-      }
+      // Do nothing.
       break;
     case webrtc::DtlsTransportState::kFailed:
       // Should not happen. Do nothing.
@@ -721,8 +686,7 @@ void DtlsTransport::OnReceivingState(rtc::PacketTransportInternal* transport) {
 }
 
 void DtlsTransport::OnReadPacket(rtc::PacketTransportInternal* transport,
-                                 const rtc::ReceivedPacket& packet,
-                                 bool piggybacked) {
+                                 const rtc::ReceivedPacket& packet) {
   RTC_DCHECK_RUN_ON(&thread_checker_);
   RTC_DCHECK(transport == ice_transport_);
 
@@ -753,7 +717,7 @@ void DtlsTransport::OnReadPacket(rtc::PacketTransportInternal* transport,
         // the peer has chosen the client role, and proceed with the handshake.
         // The fingerprint will be verified when it's set.
         if (!dtls_ && local_certificate_) {
-          SetDtlsRole(webrtc::SSL_SERVER);
+          SetDtlsRole(rtc::SSL_SERVER);
           SetupDtls();
         }
       } else {
@@ -821,24 +785,24 @@ void DtlsTransport::OnDtlsEvent(int sig, int err) {
   RTC_DCHECK_RUN_ON(&thread_checker_);
   RTC_DCHECK(dtls_);
 
-  if (sig & webrtc::SE_OPEN) {
+  if (sig & rtc::SE_OPEN) {
     // This is the first time.
     RTC_LOG(LS_INFO) << ToString() << ": DTLS handshake complete.";
     // The check for OPEN shouldn't be necessary but let's make
     // sure we don't accidentally frob the state if it's closed.
-    if (dtls_->GetState() == webrtc::SS_OPEN) {
+    if (dtls_->GetState() == rtc::SS_OPEN) {
       int ssl_version_bytes;
       bool ret = dtls_->GetSslVersionBytes(&ssl_version_bytes);
       RTC_DCHECK(ret);
       dtls_stun_piggyback_controller_.SetDtlsHandshakeComplete(
-          dtls_role_ == webrtc::SSL_CLIENT,
-          ssl_version_bytes == webrtc::kDtls13VersionBytes);
+          dtls_role_ == rtc::SSL_CLIENT,
+          ssl_version_bytes == rtc::kDtls13VersionBytes);
       downward_->SetDtlsStunPiggybackController(nullptr);
       set_dtls_state(webrtc::DtlsTransportState::kConnected);
       set_writable(true);
     }
   }
-  if (sig & webrtc::SE_READ) {
+  if (sig & rtc::SE_READ) {
     uint8_t buf[kMaxDtlsPacketLen];
     size_t read;
     int read_error;
@@ -847,21 +811,21 @@ void DtlsTransport::OnDtlsEvent(int sig, int err) {
     // one packet, so read all of them.
     do {
       ret = dtls_->Read(buf, read, read_error);
-      if (ret == webrtc::SR_SUCCESS) {
+      if (ret == rtc::SR_SUCCESS) {
         // TODO(bugs.webrtc.org/15368): It should be possible to use information
         // from the original packet here to populate socket address and
         // timestamp.
         NotifyPacketReceived(rtc::ReceivedPacket(
-            rtc::MakeArrayView(buf, read), webrtc::SocketAddress(),
-            webrtc::Timestamp::Micros(webrtc::TimeMicros()),
+            rtc::MakeArrayView(buf, read), rtc::SocketAddress(),
+            webrtc::Timestamp::Micros(rtc::TimeMicros()),
             rtc::EcnMarking::kNotEct, rtc::ReceivedPacket::kDtlsDecrypted));
-      } else if (ret == webrtc::SR_EOS) {
+      } else if (ret == rtc::SR_EOS) {
         // Remote peer shut down the association with no error.
         RTC_LOG(LS_INFO) << ToString() << ": DTLS transport closed by remote";
         set_writable(false);
         set_dtls_state(webrtc::DtlsTransportState::kClosed);
         NotifyOnClose();
-      } else if (ret == webrtc::SR_ERROR) {
+      } else if (ret == rtc::SR_ERROR) {
         // Remote peer shut down the association with an error.
         RTC_LOG(LS_INFO)
             << ToString()
@@ -871,10 +835,10 @@ void DtlsTransport::OnDtlsEvent(int sig, int err) {
         set_dtls_state(webrtc::DtlsTransportState::kFailed);
         NotifyOnClose();
       }
-    } while (ret == webrtc::SR_SUCCESS);
+    } while (ret == rtc::SR_SUCCESS);
   }
-  if (sig & webrtc::SE_CLOSE) {
-    RTC_DCHECK(sig == webrtc::SE_CLOSE);  // SE_CLOSE should be by itself.
+  if (sig & rtc::SE_CLOSE) {
+    RTC_DCHECK(sig == rtc::SE_CLOSE);  // SE_CLOSE should be by itself.
     set_writable(false);
     if (!err) {
       RTC_LOG(LS_INFO) << ToString() << ": DTLS transport closed";
@@ -896,8 +860,10 @@ void DtlsTransport::MaybeStartDtls() {
   RTC_DCHECK(ice_transport_);
   //  When adding the DTLS handshake in STUN we want to call StartSSL even
   //  before the ICE transport is ready.
-  if (dtls_ && (ice_transport_->writable() || dtls_in_stun_)) {
-    ConfigureHandshakeTimeout();
+  bool start_early_for_dtls_in_stun =
+      ice_transport_->config().dtls_handshake_in_stun;
+  if (dtls_ && (ice_transport_->writable() || start_early_for_dtls_in_stun)) {
+    ConfigureHandshakeTimeout(start_early_for_dtls_in_stun);
 
     if (dtls_->StartSSL()) {
       // This should never fail:
@@ -913,13 +879,12 @@ void DtlsTransport::MaybeStartDtls() {
     }
     RTC_LOG(LS_INFO) << ToString()
                      << ": DtlsTransport: Started DTLS handshake active="
-                     << IsDtlsActive() << " role="
-                     << (*dtls_role_ == rtc::SSL_SERVER ? "server" : "client");
+                     << IsDtlsActive();
     set_dtls_state(webrtc::DtlsTransportState::kConnecting);
     // Now that the handshake has started, we can process a cached ClientHello
     // (if one exists).
     if (cached_client_hello_.size()) {
-      if (*dtls_role_ == webrtc::SSL_SERVER) {
+      if (*dtls_role_ == rtc::SSL_SERVER) {
         RTC_LOG(LS_INFO) << ToString()
                          << ": Handling cached DTLS ClientHello packet.";
         if (!HandleDtlsPacket(cached_client_hello_)) {
@@ -955,16 +920,6 @@ void DtlsTransport::set_writable(bool writable) {
   if (writable_ == writable) {
     return;
   }
-  if (writable && !ice_has_been_writable_) {
-    // Wait with reporting writable until ICE has become writable once,
-    // so as to not confuse other part of stack (such as sctp).
-    RTC_DCHECK(dtls_in_stun_);
-    RTC_LOG(LS_INFO)
-        << ToString()
-        << ": defer set_writable(true) until ICE has become writable once";
-    return;
-  }
-
   if (event_log_) {
     event_log_->Log(
         std::make_unique<webrtc::RtcEventDtlsWritableState>(writable));
@@ -992,32 +947,30 @@ void DtlsTransport::set_dtls_state(webrtc::DtlsTransportState state) {
   SendDtlsState(this, state);
 }
 
-void DtlsTransport::OnDtlsHandshakeError(webrtc::SSLHandshakeError error) {
+void DtlsTransport::OnDtlsHandshakeError(rtc::SSLHandshakeError error) {
   SendDtlsHandshakeError(error);
 }
 
-int ComputeRetransmissionTimeout(int rtt_ms) {
-  return std::max(kMinDtlsHandshakeTimeoutMs,
-                  std::min(kMaxDtlsHandshakeTimeoutMs, 2 * (rtt_ms)));
-}
-
-void DtlsTransport::ConfigureHandshakeTimeout() {
+void DtlsTransport::ConfigureHandshakeTimeout(bool uses_dtls_in_stun) {
   RTC_DCHECK(dtls_);
   std::optional<int> rtt_ms = ice_transport_->GetRttEstimate();
-  if (rtt_ms) {
-    // Limit the timeout to a reasonable range in case the ICE RTT takes
-    // extreme values.
-    int initial_timeout_ms = ComputeRetransmissionTimeout(*rtt_ms);
-    RTC_LOG(LS_INFO) << ToString() << ": configuring DTLS handshake timeout "
-                     << initial_timeout_ms << "ms based on ICE RTT " << *rtt_ms;
-    dtls_->SetInitialRetransmissionTimeout(initial_timeout_ms);
-  } else if (dtls_in_stun_) {
+  if (uses_dtls_in_stun) {
     // Configure a very high timeout to effectively disable the DTLS timeout
     // and avoid fragmented resends. This is ok since DTLS-in-STUN caches
     // the handshake pacets and resends them using the pacing of ICE.
     RTC_LOG(LS_INFO) << ToString() << ": configuring DTLS handshake timeout "
                      << kDisabledHandshakeTimeoutMs << "ms for DTLS-in-STUN";
     dtls_->SetInitialRetransmissionTimeout(kDisabledHandshakeTimeoutMs);
+  } else if (rtt_ms) {
+    // Limit the timeout to a reasonable range in case the ICE RTT takes
+    // extreme values.
+    int initial_timeout_ms =
+        std::max(kMinHandshakeTimeoutMs,
+                 std::min(kMaxHandshakeTimeoutMs, 2 * (*rtt_ms)));
+    RTC_LOG(LS_INFO) << ToString() << ": configuring DTLS handshake timeout "
+                     << initial_timeout_ms << "ms based on ICE RTT " << *rtt_ms;
+
+    dtls_->SetInitialRetransmissionTimeout(initial_timeout_ms);
   } else {
     RTC_LOG(LS_INFO)
         << ToString()
@@ -1035,75 +988,19 @@ void DtlsTransport::SetPiggybackDtlsDataCallback(
 bool DtlsTransport::IsDtlsPiggybackSupportedByPeer() {
   RTC_DCHECK_RUN_ON(&thread_checker_);
   RTC_DCHECK(ice_transport_);
-  return dtls_in_stun_ && (dtls_stun_piggyback_controller_.state() !=
-                           DtlsStunPiggybackController::State::OFF);
+  return ice_transport_->config().dtls_handshake_in_stun &&
+         dtls_stun_piggyback_controller_.state() !=
+             DtlsStunPiggybackController::State::OFF;
 }
 
-bool DtlsTransport::WasDtlsCompletedByPiggybacking() {
+bool DtlsTransport::IsDtlsPiggybackHandshaking() {
   RTC_DCHECK_RUN_ON(&thread_checker_);
   RTC_DCHECK(ice_transport_);
-  return dtls_in_stun_ && (dtls_stun_piggyback_controller_.state() ==
-                               DtlsStunPiggybackController::State::COMPLETE ||
-                           dtls_stun_piggyback_controller_.state() ==
-                               DtlsStunPiggybackController::State::PENDING);
-}
-
-// TODO (jonaso, webrtc:367395350): Switch to upcoming
-// DTLSv1_set_timeout_duration. Remove once we can get DTLS to handle
-// retransmission also when handshake is not complete but we become writable
-// (e.g. by setting a good timeout).
-void DtlsTransport::PeriodicRetransmitDtlsPacketUntilDtlsConnected() {
-  RTC_DCHECK_RUN_ON(&thread_checker_);
-  if (pending_periodic_retransmit_dtls_packet_ == true) {
-    // PeriodicRetransmitDtlsPacketUntilDtlsConnected is called in two places
-    // a) Either by PostTask, where pending_ping_until_dtls_connected_ is FALSE
-    // b) When Ice get connected, in which it is unknown if
-    // pending_periodic_retransmit_dtls_packet_.
-    return;
-  }
-  if (ice_transport_->writable() && dtls_in_stun_) {
-    auto data_to_send = dtls_stun_piggyback_controller_.GetDataToPiggyback(
-        STUN_BINDING_INDICATION);
-    if (!data_to_send) {
-      // No data to send, we're done.
-      return;
-    }
-    rtc::PacketOptions packet_options;
-    ice_transport_->SendPacket(data_to_send->data(), data_to_send->size(),
-                               packet_options, /* flags= */ 0);
-  }
-
-  const auto rtt_ms = ice_transport_->GetRttEstimate().value_or(100);
-  const int delay_ms = ComputeRetransmissionTimeout(rtt_ms);
-
-  // Set pending before we post task.
-  pending_periodic_retransmit_dtls_packet_ = true;
-  webrtc::Thread::Current()->PostDelayedHighPrecisionTask(
-      webrtc::SafeTask(safety_flag_.flag(),
-                       [this] {
-                         RTC_DCHECK_RUN_ON(&thread_checker_);
-                         // Clear pending then the PostTask runs.
-                         pending_periodic_retransmit_dtls_packet_ = false;
-                         PeriodicRetransmitDtlsPacketUntilDtlsConnected();
-                       }),
-      webrtc::TimeDelta::Millis(delay_ms));
-  RTC_LOG(LS_INFO) << ToString()
-                   << ": Scheduled retransmit of DTLS packet, delay_ms: "
-                   << delay_ms;
-}
-
-int DtlsTransport::GetRetransmissionCount() const {
-  if (!dtls_) {
-    return 0;
-  }
-  return dtls_->GetRetransmissionCount();
-}
-
-int DtlsTransport::GetStunDataCount() const {
-  if (!dtls_in_stun_) {
-    return 0;
-  }
-  return dtls_stun_piggyback_controller_.GetCountOfReceivedData();
+  return ice_transport_->config().dtls_handshake_in_stun &&
+         (dtls_stun_piggyback_controller_.state() ==
+              DtlsStunPiggybackController::State::TENTATIVE ||
+          dtls_stun_piggyback_controller_.state() ==
+              DtlsStunPiggybackController::State::CONFIRMED);
 }
 
 }  // namespace cricket

@@ -10,7 +10,6 @@
 
 #include "pc/ice_transport.h"
 
-#include "api/ice_transport_interface.h"
 #include "api/sequence_checker.h"
 
 namespace webrtc {
@@ -24,7 +23,7 @@ IceTransportWithPointer::~IceTransportWithPointer() {
   }
 }
 
-IceTransportInternal* IceTransportWithPointer::internal() {
+cricket::IceTransportInternal* IceTransportWithPointer::internal() {
   RTC_DCHECK_RUN_ON(creator_thread_);
   return internal_;
 }

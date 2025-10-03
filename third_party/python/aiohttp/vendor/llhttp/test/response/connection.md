@@ -16,8 +16,6 @@ hello world
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -58,8 +56,6 @@ HTTP/1.0 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.0"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -86,8 +82,6 @@ HTTP/1.0 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.0"
 off=8 version complete
 off=13 len=10 span[status]="No content"
@@ -100,8 +94,6 @@ off=51 headers complete status=204 v=1/0 flags=1 content_length=0
 off=51 message complete
 off=51 reset
 off=51 message begin
-off=51 len=4 span[protocol]="HTTP"
-off=55 protocol complete
 off=56 len=3 span[version]="1.0"
 off=59 version complete
 off=64 len=2 span[status]="OK"
@@ -121,8 +113,6 @@ HTTP/1.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -144,8 +134,6 @@ HTTP/1.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=10 span[status]="No content"
@@ -154,8 +142,6 @@ off=27 headers complete status=204 v=1/1 flags=0 content_length=0
 off=27 message complete
 off=27 reset
 off=27 message begin
-off=27 len=4 span[protocol]="HTTP"
-off=31 protocol complete
 off=32 len=3 span[version]="1.1"
 off=35 version complete
 off=40 len=2 span[status]="OK"
@@ -173,8 +159,6 @@ HTTP/1.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=10 span[status]="No content"
@@ -203,8 +187,6 @@ Connection: close
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=10 span[status]="No content"
@@ -237,8 +219,6 @@ Connection: close
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=10 span[status]="No content"
@@ -269,8 +249,6 @@ HTTP/1.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=10 span[status]="No content"
@@ -283,8 +261,6 @@ off=46 headers complete status=204 v=1/1 flags=2 content_length=0
 off=46 message complete
 off=46 reset
 off=46 message begin
-off=46 len=4 span[protocol]="HTTP"
-off=50 protocol complete
 off=51 len=3 span[version]="1.1"
 off=54 version complete
 off=59 len=2 span[status]="OK"
@@ -305,8 +281,6 @@ proto
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=19 span[status]="Switching Protocols"
@@ -348,8 +322,6 @@ proto
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=19 span[status]="Switching Protocols"
@@ -384,8 +356,6 @@ body
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -416,8 +386,6 @@ body
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -459,8 +427,6 @@ dy
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -505,8 +471,6 @@ hello
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=12 span[status]="Not Modified"
@@ -519,8 +483,6 @@ off=49 headers complete status=304 v=1/1 flags=20 content_length=10
 off=49 message complete
 off=51 reset
 off=51 message begin
-off=51 len=4 span[protocol]="HTTP"
-off=55 protocol complete
 off=56 len=3 span[version]="1.1"
 off=59 version complete
 off=64 len=2 span[status]="OK"
@@ -552,8 +514,6 @@ hello
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=12 span[status]="Not Modified"
@@ -566,8 +526,6 @@ off=57 headers complete status=304 v=1/1 flags=208 content_length=0
 off=57 message complete
 off=57 reset
 off=57 message begin
-off=57 len=4 span[protocol]="HTTP"
-off=61 protocol complete
 off=62 len=3 span[version]="1.1"
 off=65 version complete
 off=70 len=2 span[status]="OK"
@@ -601,8 +559,6 @@ Server: Python/3.10 aiohttp/4.0.0a2.dev0
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=8 span[status]="Continue"
@@ -611,8 +567,6 @@ off=25 headers complete status=100 v=1/1 flags=0 content_length=0
 off=25 message complete
 off=27 reset
 off=27 message begin
-off=27 len=4 span[protocol]="HTTP"
-off=31 protocol complete
 off=32 len=3 span[version]="1.1"
 off=35 version complete
 off=40 len=9 span[status]="Not Found"
@@ -656,8 +610,6 @@ response content
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=11 span[status]="Early Hints"
@@ -670,8 +622,6 @@ off=72 headers complete status=103 v=1/1 flags=0 content_length=0
 off=72 message complete
 off=72 reset
 off=72 message begin
-off=72 len=4 span[protocol]="HTTP"
-off=76 protocol complete
 off=77 len=3 span[version]="1.1"
 off=80 version complete
 off=85 len=2 span[status]="OK"

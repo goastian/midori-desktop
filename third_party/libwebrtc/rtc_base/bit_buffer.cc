@@ -48,7 +48,7 @@ uint8_t WritePartialByte(uint8_t source,
 
 }  // namespace
 
-namespace webrtc {
+namespace rtc {
 
 BitBufferWriter::BitBufferWriter(uint8_t* bytes, size_t byte_count)
     : writable_bytes_(bytes),
@@ -227,4 +227,4 @@ bool BitBufferWriter::WriteString(absl::string_view data) {
   return success;
 }
 
-}  // namespace webrtc
+}  // namespace rtc

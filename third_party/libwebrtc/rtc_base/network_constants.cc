@@ -12,7 +12,7 @@
 
 #include "rtc_base/checks.h"
 
-namespace webrtc {
+namespace rtc {
 
 std::string AdapterTypeToString(AdapterType type) {
   switch (type) {
@@ -44,4 +44,4 @@ std::string AdapterTypeToString(AdapterType type) {
   }
 }
 
-}  // namespace webrtc
+}  // namespace rtc

@@ -14,25 +14,21 @@
 
 #include <cstdint>
 #include <initializer_list>
-#include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "api/make_ref_counted.h"
-#include "api/media_stream_interface.h"
 #include "api/media_types.h"
 #include "api/rtp_parameters.h"
-#include "api/scoped_refptr.h"
 #include "api/test/mock_video_track.h"
 #include "media/base/media_channel.h"
 #include "pc/audio_track.h"
-#include "pc/rtp_receiver.h"
-#include "pc/rtp_sender.h"
 #include "pc/test/fake_video_track_source.h"
 #include "pc/test/mock_rtp_receiver_internal.h"
 #include "pc/test/mock_rtp_sender_internal.h"
 #include "pc/video_track.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/thread.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
@@ -55,7 +51,7 @@ RtpParameters CreateRtpParametersWithSsrcs(
 }
 
 rtc::scoped_refptr<MockRtpSenderInternal> CreateMockRtpSender(
-    webrtc::MediaType media_type,
+    cricket::MediaType media_type,
     std::initializer_list<uint32_t> ssrcs,
     rtc::scoped_refptr<MediaStreamTrackInterface> track) {
   uint32_t first_ssrc;
@@ -77,7 +73,7 @@ rtc::scoped_refptr<MockRtpSenderInternal> CreateMockRtpSender(
 }
 
 rtc::scoped_refptr<MockRtpReceiverInternal> CreateMockRtpReceiver(
-    webrtc::MediaType media_type,
+    cricket::MediaType media_type,
     std::initializer_list<uint32_t> ssrcs,
     rtc::scoped_refptr<MediaStreamTrackInterface> track) {
   auto receiver = rtc::make_ref_counted<MockRtpReceiverInternal>();
@@ -94,7 +90,7 @@ rtc::scoped_refptr<MockRtpReceiverInternal> CreateMockRtpReceiver(
 rtc::scoped_refptr<VideoTrackInterface> CreateVideoTrack(
     const std::string& id) {
   return VideoTrack::Create(id, FakeVideoTrackSource::Create(false),
-                            Thread::Current());
+                            rtc::Thread::Current());
 }
 
 rtc::scoped_refptr<VideoTrackInterface> CreateMockVideoTrack(
@@ -123,8 +119,8 @@ class TrackMediaInfoMapTest : public ::testing::Test {
                              MediaStreamTrackInterface* local_track) {
     rtc::scoped_refptr<MockRtpSenderInternal> rtp_sender = CreateMockRtpSender(
         local_track->kind() == MediaStreamTrackInterface::kAudioKind
-            ? webrtc::MediaType::AUDIO
-            : webrtc::MediaType::VIDEO,
+            ? cricket::MEDIA_TYPE_AUDIO
+            : cricket::MEDIA_TYPE_VIDEO,
         ssrcs, rtc::scoped_refptr<MediaStreamTrackInterface>(local_track));
     rtp_senders_.push_back(rtp_sender);
 
@@ -152,8 +148,8 @@ class TrackMediaInfoMapTest : public ::testing::Test {
                                MediaStreamTrackInterface* remote_track) {
     auto rtp_receiver = CreateMockRtpReceiver(
         remote_track->kind() == MediaStreamTrackInterface::kAudioKind
-            ? webrtc::MediaType::AUDIO
-            : webrtc::MediaType::VIDEO,
+            ? cricket::MEDIA_TYPE_AUDIO
+            : cricket::MEDIA_TYPE_VIDEO,
         ssrcs, rtc::scoped_refptr<MediaStreamTrackInterface>(remote_track));
     rtp_receivers_.push_back(rtp_receiver);
 
@@ -184,7 +180,7 @@ class TrackMediaInfoMapTest : public ::testing::Test {
   }
 
  private:
-  AutoThread main_thread_;
+  rtc::AutoThread main_thread_;
   cricket::VoiceMediaInfo voice_media_info_;
   cricket::VideoMediaInfo video_media_info_;
 

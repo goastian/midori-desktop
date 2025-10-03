@@ -23,7 +23,7 @@ VideoTrack::VideoTrack(
     absl::string_view label,
     rtc::scoped_refptr<
         VideoTrackSourceProxyWithInternal<VideoTrackSourceInterface>> source,
-    Thread* worker_thread)
+    rtc::Thread* worker_thread)
     : MediaStreamTrack<VideoTrackInterface>(label),
       worker_thread_(worker_thread),
       video_source_(std::move(source)),
@@ -123,7 +123,7 @@ MediaStreamTrackInterface::TrackState VideoTrack::state() const {
 
 void VideoTrack::OnChanged() {
   RTC_DCHECK_RUN_ON(&signaling_thread_);
-  Thread::ScopedDisallowBlockingCalls no_blocking_calls;
+  rtc::Thread::ScopedDisallowBlockingCalls no_blocking_calls;
   MediaSourceInterface::SourceState state = video_source_->state();
   set_state(state == MediaSourceInterface::kEnded ? kEnded : kLive);
 }
@@ -131,11 +131,11 @@ void VideoTrack::OnChanged() {
 rtc::scoped_refptr<VideoTrack> VideoTrack::Create(
     absl::string_view id,
     rtc::scoped_refptr<VideoTrackSourceInterface> source,
-    Thread* worker_thread) {
+    rtc::Thread* worker_thread) {
   rtc::scoped_refptr<
       VideoTrackSourceProxyWithInternal<VideoTrackSourceInterface>>
       source_proxy = VideoTrackSourceProxy::Create(
-          Thread::Current(), worker_thread, std::move(source));
+          rtc::Thread::Current(), worker_thread, std::move(source));
 
   return rtc::make_ref_counted<VideoTrack>(id, std::move(source_proxy),
                                            worker_thread);

@@ -15,10 +15,11 @@
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "rtc_base/ip_address.h"
 #include "rtc_base/network_constants.h"
 
-namespace webrtc {
+namespace rtc {
+
+class IPAddress;
 
 enum class NetworkBindingResult {
   SUCCESS = 0,   // No error
@@ -77,7 +78,7 @@ class NetworkMonitorInterface {
     AdapterType adapter_type;
 
     // Is ADAPTER_TYPE_UNKNOWN unless adapter_type == ADAPTER_TYPE_VPN.
-    AdapterType underlying_type_for_vpn = webrtc::ADAPTER_TYPE_UNKNOWN;
+    AdapterType underlying_type_for_vpn = ADAPTER_TYPE_UNKNOWN;
 
     // The OS/firmware specific preference of this interface.
     NetworkPreference network_preference = NetworkPreference::NEUTRAL;
@@ -133,16 +134,6 @@ class NetworkMonitorInterface {
   std::function<void()> networks_changed_callback_;
 };
 
-}  //  namespace webrtc
-
-// Re-export symbols from the webrtc namespace for backwards compatibility.
-// TODO(bugs.webrtc.org/4222596): Remove once all references are updated.
-namespace rtc {
-using ::webrtc::NetworkBinderInterface;
-using ::webrtc::NetworkBindingResult;
-using ::webrtc::NetworkMonitorInterface;
-using ::webrtc::NetworkPreference;
-using ::webrtc::NetworkPreferenceToString;
 }  // namespace rtc
 
 #endif  // RTC_BASE_NETWORK_MONITOR_H_

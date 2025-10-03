@@ -47,7 +47,7 @@ void RtpReplayer::Replay(
     const uint8_t* rtp_dump_data,
     size_t rtp_dump_size) {
   RunLoop loop;
-  ScopedBaseFakeClock fake_clock;
+  rtc::ScopedBaseFakeClock fake_clock;
 
   // Work around: webrtc calls webrtc::Random(clock.TimeInMicroseconds())
   // everywhere and Random expects non-zero seed. Let's set the clock non-zero
@@ -149,14 +149,14 @@ std::unique_ptr<test::RtpFileReader> RtpReplayer::CreateRtpReader(
 }
 
 void RtpReplayer::ReplayPackets(
-    FakeClock* clock,
+    rtc::FakeClock* clock,
     Call* call,
     test::RtpFileReader* rtp_reader,
     const RtpPacketReceived::ExtensionManager& extensions) {
   int64_t replay_start_ms = -1;
 
   while (true) {
-    int64_t now_ms = TimeMillis();
+    int64_t now_ms = rtc::TimeMillis();
     if (replay_start_ms == -1) {
       replay_start_ms = now_ms;
     }

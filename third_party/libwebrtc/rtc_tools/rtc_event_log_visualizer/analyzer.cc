@@ -2156,7 +2156,7 @@ void EventLogAnalyzer::CreateTimestampGraph(PacketDirection direction,
 
 void EventLogAnalyzer::CreateSenderAndReceiverReportPlot(
     PacketDirection direction,
-    FunctionView<float(const rtcp::ReportBlock&)> fy,
+    rtc::FunctionView<float(const rtcp::ReportBlock&)> fy,
     std::string title,
     std::string yaxis_label,
     Plot* plot) const {

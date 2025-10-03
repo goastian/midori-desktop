@@ -23,16 +23,17 @@
 
 namespace webrtc {
 
-inline void SendTask(TaskQueueBase* task_queue, FunctionView<void()> task) {
+inline void SendTask(TaskQueueBase* task_queue,
+                     rtc::FunctionView<void()> task) {
   if (task_queue->IsCurrent()) {
     task();
     return;
   }
 
-  Event event;
+  rtc::Event event;
   absl::Cleanup cleanup = [&event] { event.Set(); };
   task_queue->PostTask([task, cleanup = std::move(cleanup)] { task(); });
-  RTC_CHECK(event.Wait(/*give_up_after=*/Event::kForever,
+  RTC_CHECK(event.Wait(/*give_up_after=*/rtc::Event::kForever,
                        /*warn_after=*/TimeDelta::Seconds(10)));
 }
 
@@ -72,7 +73,9 @@ class TaskQueueForTest {
 
   // A convenience, test-only method that blocks the current thread while
   // a task executes on the task queue.
-  void SendTask(FunctionView<void()> task) { ::webrtc::SendTask(Get(), task); }
+  void SendTask(rtc::FunctionView<void()> task) {
+    ::webrtc::SendTask(Get(), task);
+  }
 
   // Wait for the completion of all tasks posted prior to the
   // WaitForPreviouslyPostedTasks() call.

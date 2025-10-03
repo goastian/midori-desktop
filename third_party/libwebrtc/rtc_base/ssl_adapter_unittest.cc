@@ -38,12 +38,11 @@ using ::testing::Return;
 
 static const webrtc::TimeDelta kTimeout = webrtc::TimeDelta::Millis(5000);
 
-static webrtc::Socket* CreateSocket() {
-  webrtc::SocketAddress address(webrtc::IPAddress(INADDR_ANY), 0);
+static rtc::Socket* CreateSocket() {
+  rtc::SocketAddress address(rtc::IPAddress(INADDR_ANY), 0);
 
-  webrtc::Socket* socket =
-      webrtc::Thread::Current()->socketserver()->CreateSocket(address.family(),
-                                                              SOCK_STREAM);
+  rtc::Socket* socket = rtc::Thread::Current()->socketserver()->CreateSocket(
+      address.family(), SOCK_STREAM);
   socket->Bind(address);
 
   return socket;
@@ -63,7 +62,7 @@ class SSLAdapterTestDummy : public sigslot::has_slots<> {
   explicit SSLAdapterTestDummy() : socket_(CreateSocket()) {}
   virtual ~SSLAdapterTestDummy() = default;
 
-  void CreateSSLAdapter(webrtc::Socket* socket, webrtc::SSLRole role) {
+  void CreateSSLAdapter(rtc::Socket* socket, rtc::SSLRole role) {
     ssl_adapter_.reset(rtc::SSLAdapter::Create(socket));
 
     // Ignore any certificate errors for the purpose of testing.
@@ -94,13 +93,11 @@ class SSLAdapterTestDummy : public sigslot::has_slots<> {
     ssl_adapter_->SetEllipticCurves(curves);
   }
 
-  webrtc::SocketAddress GetAddress() const {
+  rtc::SocketAddress GetAddress() const {
     return ssl_adapter_->GetLocalAddress();
   }
 
-  webrtc::Socket::ConnState GetState() const {
-    return ssl_adapter_->GetState();
-  }
+  rtc::Socket::ConnState GetState() const { return ssl_adapter_->GetState(); }
 
   const std::string& GetReceivedData() const { return data_; }
 
@@ -112,7 +109,7 @@ class SSLAdapterTestDummy : public sigslot::has_slots<> {
     return ssl_adapter_->Send(message.data(), message.length());
   }
 
-  void OnSSLAdapterReadEvent(webrtc::Socket* socket) {
+  void OnSSLAdapterReadEvent(rtc::Socket* socket) {
     char buffer[4096] = "";
 
     // Read data received from the server and store it in our internal buffer.
@@ -126,18 +123,18 @@ class SSLAdapterTestDummy : public sigslot::has_slots<> {
     }
   }
 
-  void OnSSLAdapterCloseEvent(webrtc::Socket* socket, int error) {
+  void OnSSLAdapterCloseEvent(rtc::Socket* socket, int error) {
     // OpenSSLAdapter signals handshake failure with a close event, but without
     // closing the socket! Let's close the socket here. This way GetState() can
     // return CS_CLOSED after failure.
-    if (socket->GetState() != webrtc::Socket::CS_CLOSED) {
+    if (socket->GetState() != rtc::Socket::CS_CLOSED) {
       socket->Close();
     }
   }
 
  protected:
   std::unique_ptr<rtc::SSLAdapter> ssl_adapter_;
-  std::unique_ptr<webrtc::Socket> socket_;
+  std::unique_ptr<rtc::Socket> socket_;
 
  private:
   std::string data_;
@@ -146,11 +143,10 @@ class SSLAdapterTestDummy : public sigslot::has_slots<> {
 class SSLAdapterTestDummyClient : public SSLAdapterTestDummy {
  public:
   explicit SSLAdapterTestDummyClient() : SSLAdapterTestDummy() {
-    CreateSSLAdapter(socket_.release(), webrtc::SSL_CLIENT);
+    CreateSSLAdapter(socket_.release(), rtc::SSL_CLIENT);
   }
 
-  int Connect(absl::string_view hostname,
-              const webrtc::SocketAddress& address) {
+  int Connect(absl::string_view hostname, const rtc::SocketAddress& address) {
     RTC_LOG(LS_INFO) << "Initiating connection with " << address.ToString();
     int rv = ssl_adapter_->Connect(address);
 
@@ -179,9 +175,7 @@ class SSLAdapterTestDummyServer : public SSLAdapterTestDummy {
                      << socket_->GetLocalAddress().ToString();
   }
 
-  webrtc::SocketAddress GetAddress() const {
-    return socket_->GetLocalAddress();
-  }
+  rtc::SocketAddress GetAddress() const { return socket_->GetLocalAddress(); }
 
   std::string GetHostname() const {
     // Since we don't have a real certificate anyway, the value here doesn't
@@ -190,8 +184,8 @@ class SSLAdapterTestDummyServer : public SSLAdapterTestDummy {
   }
 
  protected:
-  void OnReadEvent(webrtc::Socket* socket) {
-    CreateSSLAdapter(socket_->Accept(nullptr), webrtc::SSL_SERVER);
+  void OnReadEvent(rtc::Socket* socket) {
+    CreateSSLAdapter(socket_->Accept(nullptr), rtc::SSL_SERVER);
     ssl_adapter_->SetIdentity(ssl_identity_->Clone());
     if (ssl_adapter_->StartSSL(GetHostname()) != 0) {
       RTC_LOG(LS_ERROR) << "Starting SSL from server failed.";
@@ -205,7 +199,7 @@ class SSLAdapterTestDummyServer : public SSLAdapterTestDummy {
 class SSLAdapterTestBase : public ::testing::Test, public sigslot::has_slots<> {
  public:
   explicit SSLAdapterTestBase(const rtc::KeyParams& key_params)
-      : vss_(new webrtc::VirtualSocketServer()),
+      : vss_(new rtc::VirtualSocketServer()),
         thread_(vss_.get()),
         server_(new SSLAdapterTestDummyServer(key_params)),
         client_(new SSLAdapterTestDummyClient()),
@@ -245,19 +239,19 @@ class SSLAdapterTestBase : public ::testing::Test, public sigslot::has_slots<> {
     int rv;
 
     // The initial state is CS_CLOSED
-    ASSERT_EQ(webrtc::Socket::CS_CLOSED, client_->GetState());
+    ASSERT_EQ(rtc::Socket::CS_CLOSED, client_->GetState());
 
     rv = client_->Connect(server_->GetHostname(), server_->GetAddress());
     ASSERT_EQ(0, rv);
 
     // Now the state should be CS_CONNECTING
-    ASSERT_EQ(webrtc::Socket::CS_CONNECTING, client_->GetState());
+    ASSERT_EQ(rtc::Socket::CS_CONNECTING, client_->GetState());
 
     if (expect_success) {
       // If expecting success, the client should end up in the CS_CONNECTED
       // state after handshake.
       EXPECT_THAT(webrtc::WaitUntil([&] { return client_->GetState(); },
-                                    ::testing::Eq(webrtc::Socket::CS_CONNECTED),
+                                    ::testing::Eq(rtc::Socket::CS_CONNECTED),
                                     {.timeout = handshake_wait_}),
                   webrtc::IsRtcOk());
 
@@ -266,7 +260,7 @@ class SSLAdapterTestBase : public ::testing::Test, public sigslot::has_slots<> {
     } else {
       // On handshake failure the client should end up in the CS_CLOSED state.
       EXPECT_THAT(webrtc::WaitUntil([&] { return client_->GetState(); },
-                                    ::testing::Eq(webrtc::Socket::CS_CLOSED),
+                                    ::testing::Eq(rtc::Socket::CS_CLOSED),
                                     {.timeout = handshake_wait_}),
                   webrtc::IsRtcOk());
 
@@ -299,8 +293,8 @@ class SSLAdapterTestBase : public ::testing::Test, public sigslot::has_slots<> {
   }
 
  protected:
-  std::unique_ptr<webrtc::VirtualSocketServer> vss_;
-  webrtc::AutoSocketServerThread thread_;
+  std::unique_ptr<rtc::VirtualSocketServer> vss_;
+  rtc::AutoSocketServerThread thread_;
   std::unique_ptr<SSLAdapterTestDummyServer> server_;
   std::unique_ptr<SSLAdapterTestDummyClient> client_;
   std::unique_ptr<rtc::SSLCertificateVerifier> cert_verifier_;

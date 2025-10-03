@@ -11,45 +11,38 @@
 #ifndef P2P_TEST_TURN_SERVER_H_
 #define P2P_TEST_TURN_SERVER_H_
 
-#include <cstddef>
-#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
-#include "api/array_view.h"
-#include "api/packet_socket_factory.h"
 #include "api/sequence_checker.h"
 #include "api/task_queue/pending_task_safety_flag.h"
 #include "api/task_queue/task_queue_base.h"
 #include "api/units/time_delta.h"
 #include "p2p/base/port_interface.h"
 #include "rtc_base/async_packet_socket.h"
-#include "rtc_base/ip_address.h"
 #include "rtc_base/network/received_packet.h"
-#include "rtc_base/socket.h"
 #include "rtc_base/socket_address.h"
 #include "rtc_base/ssl_adapter.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
-#include "rtc_base/thread_annotations.h"
 
 namespace rtc {
 class ByteBufferWriter;
-
+class PacketSocketFactory;
 }  // namespace rtc
-namespace cricket {
-class StunMessage;
-class TurnMessage;
-}  // namespace cricket
 
-namespace webrtc {
+namespace cricket {
 
 constexpr int kMinTurnChannelNumber = 0x4000;
 constexpr int kMaxTurnChannelNumber = 0x7FFF;
 
+class StunMessage;
+class TurnMessage;
 class TurnServer;
 
 // The default server port for TURN, as specified in RFC5766.
@@ -58,21 +51,21 @@ const int TURN_SERVER_PORT = 3478;
 // Encapsulates the client's connection to the server.
 class TurnServerConnection {
  public:
-  TurnServerConnection() : proto_(webrtc::PROTO_UDP), socket_(NULL) {}
-  TurnServerConnection(const SocketAddress& src,
+  TurnServerConnection() : proto_(PROTO_UDP), socket_(NULL) {}
+  TurnServerConnection(const rtc::SocketAddress& src,
                        ProtocolType proto,
-                       AsyncPacketSocket* socket);
-  const SocketAddress& src() const { return src_; }
-  AsyncPacketSocket* socket() { return socket_; }
+                       rtc::AsyncPacketSocket* socket);
+  const rtc::SocketAddress& src() const { return src_; }
+  rtc::AsyncPacketSocket* socket() { return socket_; }
   bool operator==(const TurnServerConnection& t) const;
   bool operator<(const TurnServerConnection& t) const;
   std::string ToString() const;
 
  private:
-  SocketAddress src_;
-  SocketAddress dst_;
-  ProtocolType proto_;
-  AsyncPacketSocket* socket_;
+  rtc::SocketAddress src_;
+  rtc::SocketAddress dst_;
+  cricket::ProtocolType proto_;
+  rtc::AsyncPacketSocket* socket_;
 };
 
 // Encapsulates a TURN allocation.
@@ -83,9 +76,9 @@ class TurnServerConnection {
 class TurnServerAllocation final {
  public:
   TurnServerAllocation(TurnServer* server_,
-                       TaskQueueBase* thread,
+                       webrtc::TaskQueueBase* thread,
                        const TurnServerConnection& conn,
-                       AsyncPacketSocket* server_socket,
+                       rtc::AsyncPacketSocket* server_socket,
                        absl::string_view key);
   ~TurnServerAllocation();
 
@@ -100,58 +93,60 @@ class TurnServerAllocation final {
 
   std::string ToString() const;
 
-  void HandleTurnMessage(const cricket::TurnMessage* msg);
+  void HandleTurnMessage(const TurnMessage* msg);
   void HandleChannelData(rtc::ArrayView<const uint8_t> payload);
 
  private:
   struct Channel {
-    ScopedTaskSafety pending_delete;
+    webrtc::ScopedTaskSafety pending_delete;
     const uint16_t id;
-    const SocketAddress peer;
+    const rtc::SocketAddress peer;
   };
   struct Permission {
-    ScopedTaskSafety pending_delete;
-    IPAddress peer;
+    webrtc::ScopedTaskSafety pending_delete;
+    rtc::IPAddress peer;
   };
   using PermissionList = std::list<Permission>;
   using ChannelList = std::list<Channel>;
 
-  void PostDeleteSelf(TimeDelta delay);
+  void PostDeleteSelf(webrtc::TimeDelta delay);
 
-  void HandleAllocateRequest(const cricket::TurnMessage* msg);
-  void HandleRefreshRequest(const cricket::TurnMessage* msg);
-  void HandleSendIndication(const cricket::TurnMessage* msg);
-  void HandleCreatePermissionRequest(const cricket::TurnMessage* msg);
-  void HandleChannelBindRequest(const cricket::TurnMessage* msg);
+  void HandleAllocateRequest(const TurnMessage* msg);
+  void HandleRefreshRequest(const TurnMessage* msg);
+  void HandleSendIndication(const TurnMessage* msg);
+  void HandleCreatePermissionRequest(const TurnMessage* msg);
+  void HandleChannelBindRequest(const TurnMessage* msg);
 
-  void OnExternalPacket(AsyncPacketSocket* socket,
+  void OnExternalPacket(rtc::AsyncPacketSocket* socket,
                         const rtc::ReceivedPacket& packet);
 
-  static TimeDelta ComputeLifetime(const cricket::TurnMessage& msg);
-  bool HasPermission(const IPAddress& addr);
-  void AddPermission(const IPAddress& addr);
-  PermissionList::iterator FindPermission(const IPAddress& addr);
+  static webrtc::TimeDelta ComputeLifetime(const TurnMessage& msg);
+  bool HasPermission(const rtc::IPAddress& addr);
+  void AddPermission(const rtc::IPAddress& addr);
+  PermissionList::iterator FindPermission(const rtc::IPAddress& addr);
   ChannelList::iterator FindChannel(int channel_id);
-  ChannelList::iterator FindChannel(const SocketAddress& addr);
+  ChannelList::iterator FindChannel(const rtc::SocketAddress& addr);
 
-  void SendResponse(cricket::TurnMessage* msg);
-  void SendBadRequestResponse(const cricket::TurnMessage* req);
-  void SendErrorResponse(const cricket::TurnMessage* req,
+  void SendResponse(TurnMessage* msg);
+  void SendBadRequestResponse(const TurnMessage* req);
+  void SendErrorResponse(const TurnMessage* req,
                          int code,
                          absl::string_view reason);
-  void SendExternal(const void* data, size_t size, const SocketAddress& peer);
+  void SendExternal(const void* data,
+                    size_t size,
+                    const rtc::SocketAddress& peer);
 
   TurnServer* const server_;
-  TaskQueueBase* const thread_;
+  webrtc::TaskQueueBase* const thread_;
   TurnServerConnection conn_;
-  std::unique_ptr<AsyncPacketSocket> external_socket_;
+  std::unique_ptr<rtc::AsyncPacketSocket> external_socket_;
   std::string key_;
   std::string transaction_id_;
   std::string username_;
   std::string last_nonce_;
   PermissionList perms_;
   ChannelList channels_;
-  ScopedTaskSafety safety_;
+  webrtc::ScopedTaskSafety safety_;
 };
 
 // An interface through which the MD5 credential hash can be retrieved.
@@ -169,14 +164,14 @@ class TurnAuthInterface {
 // An interface enables Turn Server to control redirection behavior.
 class TurnRedirectInterface {
  public:
-  virtual bool ShouldRedirect(const SocketAddress& address,
-                              SocketAddress* out) = 0;
+  virtual bool ShouldRedirect(const rtc::SocketAddress& address,
+                              rtc::SocketAddress* out) = 0;
   virtual ~TurnRedirectInterface() {}
 };
 
 class StunMessageObserver {
  public:
-  virtual void ReceivedMessage(const cricket::TurnMessage* msg) = 0;
+  virtual void ReceivedMessage(const TurnMessage* msg) = 0;
   virtual void ReceivedChannelData(rtc::ArrayView<const uint8_t> payload) = 0;
   virtual ~StunMessageObserver() {}
 };
@@ -190,7 +185,7 @@ class TurnServer : public sigslot::has_slots<> {
   typedef std::map<TurnServerConnection, std::unique_ptr<TurnServerAllocation>>
       AllocationMap;
 
-  explicit TurnServer(TaskQueueBase* thread);
+  explicit TurnServer(webrtc::TaskQueueBase* thread);
   ~TurnServer() override;
 
   // Gets/sets the realm value to use for the server.
@@ -251,17 +246,17 @@ class TurnServer : public sigslot::has_slots<> {
   }
 
   // Starts listening for packets from internal clients.
-  void AddInternalSocket(AsyncPacketSocket* socket, ProtocolType proto);
+  void AddInternalSocket(rtc::AsyncPacketSocket* socket, ProtocolType proto);
   // Starts listening for the connections on this socket. When someone tries
   // to connect, the connection will be accepted and a new internal socket
   // will be added.
   void AddInternalServerSocket(
-      Socket* socket,
+      rtc::Socket* socket,
       ProtocolType proto,
       std::unique_ptr<rtc::SSLAdapterFactory> ssl_adapter_factory = nullptr);
   // Specifies the factory to use for creating external sockets.
-  void SetExternalSocketFactory(PacketSocketFactory* factory,
-                                const SocketAddress& address);
+  void SetExternalSocketFactory(rtc::PacketSocketFactory* factory,
+                                const rtc::SocketAddress& address);
   // For testing only.
   std::string SetTimestampForNextNonce(int64_t timestamp) {
     RTC_DCHECK_RUN_ON(thread_);
@@ -280,29 +275,27 @@ class TurnServer : public sigslot::has_slots<> {
   // TurnServerAllocation (via friend declaration).
 
   std::string GenerateNonce(int64_t now) const RTC_RUN_ON(thread_);
-  void OnInternalPacket(AsyncPacketSocket* socket,
+  void OnInternalPacket(rtc::AsyncPacketSocket* socket,
                         const rtc::ReceivedPacket& packet) RTC_RUN_ON(thread_);
 
-  void OnNewInternalConnection(Socket* socket);
+  void OnNewInternalConnection(rtc::Socket* socket);
 
   // Accept connections on this server socket.
-  void AcceptConnection(Socket* server_socket) RTC_RUN_ON(thread_);
-  void OnInternalSocketClose(AsyncPacketSocket* socket, int err);
+  void AcceptConnection(rtc::Socket* server_socket) RTC_RUN_ON(thread_);
+  void OnInternalSocketClose(rtc::AsyncPacketSocket* socket, int err);
 
   void HandleStunMessage(TurnServerConnection* conn,
                          rtc::ArrayView<const uint8_t> payload)
       RTC_RUN_ON(thread_);
-  void HandleBindingRequest(TurnServerConnection* conn,
-                            const cricket::StunMessage* msg)
+  void HandleBindingRequest(TurnServerConnection* conn, const StunMessage* msg)
       RTC_RUN_ON(thread_);
   void HandleAllocateRequest(TurnServerConnection* conn,
-                             const cricket::TurnMessage* msg,
+                             const TurnMessage* msg,
                              absl::string_view key) RTC_RUN_ON(thread_);
 
-  bool GetKey(const cricket::StunMessage* msg, std::string* key)
-      RTC_RUN_ON(thread_);
+  bool GetKey(const StunMessage* msg, std::string* key) RTC_RUN_ON(thread_);
   bool CheckAuthorization(TurnServerConnection* conn,
-                          cricket::StunMessage* msg,
+                          StunMessage* msg,
                           absl::string_view key) RTC_RUN_ON(thread_);
   bool ValidateNonce(absl::string_view nonce) const RTC_RUN_ON(thread_);
 
@@ -314,36 +307,37 @@ class TurnServer : public sigslot::has_slots<> {
       RTC_RUN_ON(thread_);
 
   void SendErrorResponse(TurnServerConnection* conn,
-                         const cricket::StunMessage* req,
+                         const StunMessage* req,
                          int code,
                          absl::string_view reason);
 
   void SendErrorResponseWithRealmAndNonce(TurnServerConnection* conn,
-                                          const cricket::StunMessage* req,
+                                          const StunMessage* req,
                                           int code,
                                           absl::string_view reason)
       RTC_RUN_ON(thread_);
 
   void SendErrorResponseWithAlternateServer(TurnServerConnection* conn,
-                                            const cricket::StunMessage* req,
-                                            const SocketAddress& addr)
+                                            const StunMessage* req,
+                                            const rtc::SocketAddress& addr)
       RTC_RUN_ON(thread_);
 
-  void SendStun(TurnServerConnection* conn, cricket::StunMessage* msg);
+  void SendStun(TurnServerConnection* conn, StunMessage* msg);
   void Send(TurnServerConnection* conn, const rtc::ByteBufferWriter& buf);
 
   void DestroyAllocation(TurnServerAllocation* allocation) RTC_RUN_ON(thread_);
-  void DestroyInternalSocket(AsyncPacketSocket* socket) RTC_RUN_ON(thread_);
+  void DestroyInternalSocket(rtc::AsyncPacketSocket* socket)
+      RTC_RUN_ON(thread_);
 
-  typedef std::map<AsyncPacketSocket*, ProtocolType> InternalSocketMap;
+  typedef std::map<rtc::AsyncPacketSocket*, ProtocolType> InternalSocketMap;
   struct ServerSocketInfo {
     ProtocolType proto;
     // If non-null, used to wrap accepted sockets.
     std::unique_ptr<rtc::SSLAdapterFactory> ssl_adapter_factory;
   };
-  typedef std::map<Socket*, ServerSocketInfo> ServerSocketMap;
+  typedef std::map<rtc::Socket*, ServerSocketInfo> ServerSocketMap;
 
-  TaskQueueBase* const thread_;
+  webrtc::TaskQueueBase* const thread_;
   const std::string nonce_key_;
   std::string realm_ RTC_GUARDED_BY(thread_);
   std::string software_ RTC_GUARDED_BY(thread_);
@@ -359,9 +353,9 @@ class TurnServer : public sigslot::has_slots<> {
 
   InternalSocketMap server_sockets_ RTC_GUARDED_BY(thread_);
   ServerSocketMap server_listen_sockets_ RTC_GUARDED_BY(thread_);
-  std::unique_ptr<PacketSocketFactory> external_socket_factory_
+  std::unique_ptr<rtc::PacketSocketFactory> external_socket_factory_
       RTC_GUARDED_BY(thread_);
-  SocketAddress external_addr_ RTC_GUARDED_BY(thread_);
+  rtc::SocketAddress external_addr_ RTC_GUARDED_BY(thread_);
 
   AllocationMap allocations_ RTC_GUARDED_BY(thread_);
 
@@ -376,20 +370,6 @@ class TurnServer : public sigslot::has_slots<> {
   friend class TurnServerAllocation;
 };
 
-}  //  namespace webrtc
-
-// Re-export symbols from the webrtc namespace for backwards compatibility.
-// TODO(bugs.webrtc.org/4222596): Remove once all references are updated.
-namespace cricket {
-using ::webrtc::kMaxTurnChannelNumber;
-using ::webrtc::kMinTurnChannelNumber;
-using ::webrtc::StunMessageObserver;
-using ::webrtc::TURN_SERVER_PORT;
-using ::webrtc::TurnAuthInterface;
-using ::webrtc::TurnRedirectInterface;
-using ::webrtc::TurnServer;
-using ::webrtc::TurnServerAllocation;
-using ::webrtc::TurnServerConnection;
 }  // namespace cricket
 
 #endif  // P2P_TEST_TURN_SERVER_H_

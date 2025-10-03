@@ -16,9 +16,9 @@
 #include <optional>
 #include <string>
 #include <type_traits>
-#include <variant>
 #include <vector>
 
+#include "absl/types/variant.h"
 #include "rtc_base/arraysize.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/string_encode.h"
@@ -140,27 +140,27 @@ const Attribute::StatVariant& Attribute::as_variant() const {
 }
 
 bool Attribute::has_value() const {
-  return std::visit([](const auto* attr) { return attr->has_value(); },
-                    attribute_);
+  return absl::visit([](const auto* attr) { return attr->has_value(); },
+                     attribute_);
 }
 
 bool Attribute::is_sequence() const {
-  return std::visit(VisitIsSequence(), attribute_);
+  return absl::visit(VisitIsSequence(), attribute_);
 }
 
 bool Attribute::is_string() const {
-  return std::holds_alternative<const std::optional<std::string>*>(attribute_);
+  return absl::holds_alternative<const std::optional<std::string>*>(attribute_);
 }
 
 std::string Attribute::ToString() const {
   if (!has_value()) {
     return "null";
   }
-  return std::visit(VisitToString(), attribute_);
+  return absl::visit(VisitToString(), attribute_);
 }
 
 bool Attribute::operator==(const Attribute& other) const {
-  return std::visit(VisitIsEqual{.other = other}, attribute_);
+  return absl::visit(VisitIsEqual{.other = other}, attribute_);
 }
 
 bool Attribute::operator!=(const Attribute& other) const {

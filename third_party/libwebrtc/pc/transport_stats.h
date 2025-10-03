@@ -30,13 +30,13 @@ struct TransportChannelStats {
 
   int component = 0;
   int ssl_version_bytes = 0;
-  int srtp_crypto_suite = webrtc::kSrtpInvalidCryptoSuite;
-  int ssl_cipher_suite = webrtc::kTlsNullWithNullNull;
+  int srtp_crypto_suite = rtc::kSrtpInvalidCryptoSuite;
+  int ssl_cipher_suite = rtc::kTlsNullWithNullNull;
   std::optional<absl::string_view> tls_cipher_suite_name;
-  std::optional<webrtc::SSLRole> dtls_role;
+  std::optional<rtc::SSLRole> dtls_role;
   webrtc::DtlsTransportState dtls_state = webrtc::DtlsTransportState::kNew;
-  webrtc::IceTransportStats ice_transport_stats;
-  uint16_t ssl_peer_signature_algorithm = webrtc::kSslSignatureAlgorithmUnknown;
+  IceTransportStats ice_transport_stats;
+  uint16_t ssl_peer_signature_algorithm = rtc::kSslSignatureAlgorithmUnknown;
 };
 
 // Information about all the channels of a transport.

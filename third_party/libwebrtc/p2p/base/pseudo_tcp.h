@@ -19,7 +19,6 @@
 
 #include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/system/rtc_export.h"
-#include "rtc_base/thread_annotations.h"
 
 namespace cricket {
 

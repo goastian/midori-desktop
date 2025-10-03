@@ -14,26 +14,25 @@
 #include <functional>
 #include <memory>
 
-#include "api/async_dns_resolver.h"
 #include "api/test/mock_async_dns_resolver.h"
 #include "p2p/base/basic_packet_socket_factory.h"
-#include "rtc_base/socket_factory.h"
 
-namespace webrtc {
+namespace rtc {
 
 // A PacketSocketFactory implementation for tests that uses a mock DnsResolver
 // and allows setting expectations on the resolver and results.
 class MockDnsResolvingPacketSocketFactory : public BasicPacketSocketFactory {
  public:
-  using Expectations =
-      std::function<void(MockAsyncDnsResolver*, MockAsyncDnsResolverResult*)>;
+  using Expectations = std::function<void(webrtc::MockAsyncDnsResolver*,
+                                          webrtc::MockAsyncDnsResolverResult*)>;
 
   explicit MockDnsResolvingPacketSocketFactory(SocketFactory* socket_factory)
       : BasicPacketSocketFactory(socket_factory) {}
 
-  std::unique_ptr<AsyncDnsResolverInterface> CreateAsyncDnsResolver() override {
-    std::unique_ptr<MockAsyncDnsResolver> resolver =
-        std::make_unique<MockAsyncDnsResolver>();
+  std::unique_ptr<webrtc::AsyncDnsResolverInterface> CreateAsyncDnsResolver()
+      override {
+    std::unique_ptr<webrtc::MockAsyncDnsResolver> resolver =
+        std::make_unique<webrtc::MockAsyncDnsResolver>();
     if (expectations_) {
       expectations_(resolver.get(), &resolver_result_);
     }
@@ -45,16 +44,10 @@ class MockDnsResolvingPacketSocketFactory : public BasicPacketSocketFactory {
   }
 
  private:
-  MockAsyncDnsResolverResult resolver_result_;
+  webrtc::MockAsyncDnsResolverResult resolver_result_;
   Expectations expectations_;
 };
 
-}  //  namespace webrtc
-
-// Re-export symbols from the webrtc namespace for backwards compatibility.
-// TODO(bugs.webrtc.org/4222596): Remove once all references are updated.
-namespace rtc {
-using ::webrtc::MockDnsResolvingPacketSocketFactory;
 }  // namespace rtc
 
 #endif  // P2P_TEST_MOCK_DNS_RESOLVING_PACKET_SOCKET_FACTORY_H_

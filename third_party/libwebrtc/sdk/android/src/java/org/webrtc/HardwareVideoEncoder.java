@@ -236,8 +236,8 @@ class HardwareVideoEncoder implements VideoEncoder {
 
     try {
       codec = mediaCodecWrapperFactory.createByCodecName(codecName);
-    } catch (IOException | IllegalArgumentException | IllegalStateException e) {
-      Logging.e(TAG, "Cannot create media encoder " + codecName, e);
+    } catch (IOException | IllegalArgumentException e) {
+      Logging.e(TAG, "Cannot create media encoder " + codecName);
       return VideoCodecStatus.FALLBACK_SOFTWARE;
     }
 

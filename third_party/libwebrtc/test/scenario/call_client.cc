@@ -236,9 +236,9 @@ CallClient::~CallClient() {
   SendTask([&] {
     call_.reset();
     fake_audio_setup_ = {};
-    Event done;
+    rtc::Event done;
     env_.event_log().StopLogging([&done] { done.Set(); });
-    done.Wait(Event::kForever);
+    done.Wait(rtc::Event::kForever);
   });
 }
 

@@ -29,6 +29,7 @@ rtc_library("rtc_stats") {
     "../rtc_base:checks",
     "../rtc_base:macromagic",
     "../rtc_base:stringutils",
+    "//third_party/abseil-cpp/absl/types:variant",
   ]
 }
 

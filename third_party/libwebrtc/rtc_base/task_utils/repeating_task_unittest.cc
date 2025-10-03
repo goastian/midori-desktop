@@ -208,7 +208,7 @@ TEST(RepeatingTaskTest, CompensatesForShortRunTime) {
 }
 
 TEST(RepeatingTaskTest, CancelDelayedTaskBeforeItRuns) {
-  Event done;
+  rtc::Event done;
   MockClosure mock;
   EXPECT_CALL(mock, Call).Times(0);
   EXPECT_CALL(mock, Delete).WillOnce(Invoke([&done] { done.Set(); }));
@@ -221,7 +221,7 @@ TEST(RepeatingTaskTest, CancelDelayedTaskBeforeItRuns) {
 }
 
 TEST(RepeatingTaskTest, CancelTaskAfterItRuns) {
-  Event done;
+  rtc::Event done;
   MockClosure mock;
   EXPECT_CALL(mock, Call).WillOnce(Return(TimeDelta::Millis(100)));
   EXPECT_CALL(mock, Delete).WillOnce(Invoke([&done] { done.Set(); }));
@@ -264,7 +264,7 @@ TEST(RepeatingTaskTest, TaskCanStopItselfByReturningInfinity) {
 
 TEST(RepeatingTaskTest, ZeroReturnValueRepostsTheTask) {
   NiceMock<MockClosure> closure;
-  Event done;
+  rtc::Event done;
   EXPECT_CALL(closure, Call())
       .WillOnce(Return(TimeDelta::Zero()))
       .WillOnce(Invoke([&] {
@@ -278,7 +278,7 @@ TEST(RepeatingTaskTest, ZeroReturnValueRepostsTheTask) {
 
 TEST(RepeatingTaskTest, StartPeriodicTask) {
   MockFunction<TimeDelta()> closure;
-  Event done;
+  rtc::Event done;
   EXPECT_CALL(closure, Call())
       .WillOnce(Return(TimeDelta::Millis(20)))
       .WillOnce(Return(TimeDelta::Millis(20)))

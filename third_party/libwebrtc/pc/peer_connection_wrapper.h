@@ -132,9 +132,9 @@ class PeerConnectionWrapper {
   // AddTransceiver method. They return the result of calling AddTransceiver
   // with the given arguments, DCHECKing if there is an error.
   rtc::scoped_refptr<RtpTransceiverInterface> AddTransceiver(
-      webrtc::MediaType media_type);
+      cricket::MediaType media_type);
   rtc::scoped_refptr<RtpTransceiverInterface> AddTransceiver(
-      webrtc::MediaType media_type,
+      cricket::MediaType media_type,
       const RtpTransceiverInit& init);
   rtc::scoped_refptr<RtpTransceiverInterface> AddTransceiver(
       rtc::scoped_refptr<MediaStreamTrackInterface> track);
@@ -194,9 +194,9 @@ class PeerConnectionWrapper {
 
  private:
   std::unique_ptr<SessionDescriptionInterface> CreateSdp(
-      FunctionView<void(CreateSessionDescriptionObserver*)> fn,
+      rtc::FunctionView<void(CreateSessionDescriptionObserver*)> fn,
       std::string* error_out);
-  bool SetSdp(FunctionView<void(SetSessionDescriptionObserver*)> fn,
+  bool SetSdp(rtc::FunctionView<void(SetSessionDescriptionObserver*)> fn,
               std::string* error_out);
 
   rtc::scoped_refptr<PeerConnectionFactoryInterface> pc_factory_;

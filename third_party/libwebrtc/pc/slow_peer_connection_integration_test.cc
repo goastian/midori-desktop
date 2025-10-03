@@ -62,7 +62,7 @@ class PeerConnectionIntegrationTest
 // where order of construction is finely controlled.
 // This also ensures peerconnection is closed before switching back to non-fake
 // clock, avoiding other races and DCHECK failures such as in rtp_sender.cc.
-class FakeClockForTest : public ScopedFakeClock {
+class FakeClockForTest : public rtc::ScopedFakeClock {
  protected:
   FakeClockForTest() {
     // Some things use a time of "0" as a special value, so we need to start out
@@ -172,8 +172,9 @@ class DummyDtmfObserver : public DtmfSenderObserverInterface {
 
 TEST_P(PeerConnectionIntegrationTest,
        SSLCertificateVerifierFailureUsedForTurnConnectionsFailsConnection) {
-  static const SocketAddress turn_server_internal_address{"88.88.88.0", 3478};
-  static const SocketAddress turn_server_external_address{"88.88.88.1", 0};
+  static const rtc::SocketAddress turn_server_internal_address{"88.88.88.0",
+                                                               3478};
+  static const rtc::SocketAddress turn_server_external_address{"88.88.88.1", 0};
 
   // Enable TCP-TLS for the fake turn server. We need to pass in 88.88.88.0 so
   // that host name verification passes on the fake certificate.
@@ -196,20 +197,20 @@ TEST_P(PeerConnectionIntegrationTest,
   client_2_config.type = PeerConnectionInterface::kRelay;
 
   // Get a copy to the pointer so we can verify calls later.
-  TestCertificateVerifier* client_1_cert_verifier =
-      new TestCertificateVerifier();
+  rtc::TestCertificateVerifier* client_1_cert_verifier =
+      new rtc::TestCertificateVerifier();
   client_1_cert_verifier->verify_certificate_ = false;
-  TestCertificateVerifier* client_2_cert_verifier =
-      new TestCertificateVerifier();
+  rtc::TestCertificateVerifier* client_2_cert_verifier =
+      new rtc::TestCertificateVerifier();
   client_2_cert_verifier->verify_certificate_ = false;
 
   // Create the dependencies with the test certificate verifier.
   PeerConnectionDependencies client_1_deps(nullptr);
   client_1_deps.tls_cert_verifier =
-      std::unique_ptr<TestCertificateVerifier>(client_1_cert_verifier);
+      std::unique_ptr<rtc::TestCertificateVerifier>(client_1_cert_verifier);
   PeerConnectionDependencies client_2_deps(nullptr);
   client_2_deps.tls_cert_verifier =
-      std::unique_ptr<TestCertificateVerifier>(client_2_cert_verifier);
+      std::unique_ptr<rtc::TestCertificateVerifier>(client_2_cert_verifier);
 
   ASSERT_TRUE(CreatePeerConnectionWrappersWithConfigAndDeps(
       client_1_config, std::move(client_1_deps), client_2_config,
@@ -280,8 +281,8 @@ class PeerConnectionIntegrationIceStatesTest
   }
 
   void StartStunServer(const SocketAddress& server_address) {
-    stun_server_ =
-        TestStunServer::Create(firewall(), server_address, *network_thread());
+    stun_server_ = cricket::TestStunServer::Create(firewall(), server_address,
+                                                   *network_thread());
   }
 
   bool TestIPv6() {
@@ -324,7 +325,7 @@ class PeerConnectionIntegrationIceStatesTest
 
  private:
   uint32_t port_allocator_flags_;
-  TestStunServer::StunServerPtr stun_server_;
+  cricket::TestStunServer::StunServerPtr stun_server_;
 };
 
 // Ensure FakeClockForTest is constructed first (see class for rationale).
@@ -341,7 +342,7 @@ class PeerConnectionIntegrationIceStatesTestWithFakeClock
 // to time out.
 TEST_P(PeerConnectionIntegrationIceStatesTestWithFakeClock, VerifyIceStates) {
   const SocketAddress kStunServerAddress =
-      SocketAddress("99.99.99.1", STUN_SERVER_PORT);
+      SocketAddress("99.99.99.1", cricket::STUN_SERVER_PORT);
   StartStunServer(kStunServerAddress);
 
   PeerConnectionInterface::RTCConfiguration config;

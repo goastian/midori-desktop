@@ -26,7 +26,6 @@
 #include "api/create_peerconnection_factory.h"
 #include "api/data_channel_interface.h"
 #include "api/environment/environment.h"
-#include "api/environment/environment_factory.h"
 #include "api/field_trials_view.h"
 #include "api/jsep.h"
 #include "api/make_ref_counted.h"
@@ -42,7 +41,6 @@
 #include "api/units/time_delta.h"
 #include "api/video/resolution.h"
 #include "api/video_codecs/sdp_video_format.h"
-#include "api/video_codecs/video_decoder_factory.h"
 #include "api/video_codecs/video_decoder_factory_template.h"
 #include "api/video_codecs/video_decoder_factory_template_dav1d_adapter.h"
 #include "api/video_codecs/video_decoder_factory_template_libvpx_vp8_adapter.h"
@@ -56,6 +54,8 @@
 #include "api/video_codecs/video_encoder_factory_template_libvpx_vp9_adapter.h"
 #include "api/video_codecs/video_encoder_factory_template_open_h264_adapter.h"
 #include "media/engine/simulcast_encoder_adapter.h"
+#include "p2p/base/basic_packet_socket_factory.h"
+#include "p2p/base/port_allocator.h"
 #include "p2p/test/fake_port_allocator.h"
 #include "pc/test/fake_audio_capture_module.h"
 #include "pc/test/fake_periodic_video_source.h"
@@ -143,9 +143,9 @@ void PeerConnectionTestWrapper::Connect(PeerConnectionTestWrapper* caller,
 
 PeerConnectionTestWrapper::PeerConnectionTestWrapper(
     const std::string& name,
-    webrtc::SocketServer* socket_server,
-    webrtc::Thread* network_thread,
-    webrtc::Thread* worker_thread)
+    rtc::SocketServer* socket_server,
+    rtc::Thread* network_thread,
+    rtc::Thread* worker_thread)
     : name_(name),
       socket_server_(socket_server),
       network_thread_(network_thread),
@@ -175,8 +175,11 @@ bool PeerConnectionTestWrapper::CreatePc(
     std::unique_ptr<webrtc::VideoEncoderFactory> video_encoder_factory,
     std::unique_ptr<webrtc::VideoDecoderFactory> video_decoder_factory,
     std::unique_ptr<webrtc::FieldTrialsView> field_trials) {
-  auto port_allocator = std::make_unique<cricket::FakePortAllocator>(
-      CreateEnvironment(field_trials.get()), socket_server_, network_thread_);
+  std::unique_ptr<cricket::PortAllocator> port_allocator(
+      new cricket::FakePortAllocator(
+          network_thread_,
+          std::make_unique<rtc::BasicPacketSocketFactory>(socket_server_),
+          field_trials.get()));
 
   RTC_DCHECK_RUN_ON(&pc_thread_checker_);
 
@@ -186,7 +189,7 @@ bool PeerConnectionTestWrapper::CreatePc(
   }
 
   peer_connection_factory_ = webrtc::CreatePeerConnectionFactory(
-      network_thread_, worker_thread_, webrtc::Thread::Current(),
+      network_thread_, worker_thread_, rtc::Thread::Current(),
       rtc::scoped_refptr<webrtc::AudioDeviceModule>(fake_audio_capture_module_),
       audio_encoder_factory, audio_decoder_factory,
       std::move(video_encoder_factory), std::move(video_decoder_factory),
@@ -196,7 +199,7 @@ bool PeerConnectionTestWrapper::CreatePc(
     return false;
   }
 
-  std::unique_ptr<webrtc::RTCCertificateGeneratorInterface> cert_generator(
+  std::unique_ptr<rtc::RTCCertificateGeneratorInterface> cert_generator(
       new FakeRTCCertificateGenerator());
   webrtc::PeerConnectionDependencies deps(this);
   deps.allocator = std::move(port_allocator);
@@ -243,7 +246,7 @@ PeerConnectionTestWrapper::CreateDataChannel(
 
 std::optional<webrtc::RtpCodecCapability>
 PeerConnectionTestWrapper::FindFirstSendCodecWithName(
-    webrtc::MediaType media_type,
+    cricket::MediaType media_type,
     const std::string& name) const {
   std::vector<webrtc::RtpCodecCapability> codecs =
       peer_connection_factory_->GetRtpSenderCapabilities(media_type).codecs;
@@ -470,7 +473,7 @@ PeerConnectionTestWrapper::GetUserMedia(
     // Set max frame rate to 10fps to reduce the risk of the tests to be flaky.
     webrtc::FakePeriodicVideoSource::Config config;
     config.frame_interval_ms = 100;
-    config.timestamp_offset_ms = webrtc::TimeMillis();
+    config.timestamp_offset_ms = rtc::TimeMillis();
     config.width = resolution.width;
     config.height = resolution.height;
 

@@ -28,6 +28,7 @@ __all__ = (
     "EofStream",
     "StreamReader",
     "DataQueue",
+    "FlowControlDataQueue",
 )
 
 _T = TypeVar("_T")
@@ -38,9 +39,6 @@ class EofStream(Exception):
 
 
 class AsyncStreamIterator(Generic[_T]):
-
-    __slots__ = ("read_func",)
-
     def __init__(self, read_func: Callable[[], Awaitable[_T]]) -> None:
         self.read_func = read_func
 
@@ -58,9 +56,6 @@ class AsyncStreamIterator(Generic[_T]):
 
 
 class ChunkTupleAsyncStreamIterator:
-
-    __slots__ = ("_stream",)
-
     def __init__(self, stream: "StreamReader") -> None:
         self._stream = stream
 
@@ -75,9 +70,6 @@ class ChunkTupleAsyncStreamIterator:
 
 
 class AsyncStreamReaderMixin:
-
-    __slots__ = ()
-
     def __aiter__(self) -> AsyncStreamIterator[bytes]:
         return AsyncStreamIterator(self.readline)  # type: ignore[attr-defined]
 
@@ -112,25 +104,7 @@ class StreamReader(AsyncStreamReaderMixin):
 
     """
 
-    __slots__ = (
-        "_protocol",
-        "_low_water",
-        "_high_water",
-        "_loop",
-        "_size",
-        "_cursor",
-        "_http_chunk_splits",
-        "_buffer",
-        "_buffer_offset",
-        "_eof",
-        "_waiter",
-        "_eof_waiter",
-        "_exception",
-        "_timer",
-        "_eof_callbacks",
-        "_eof_counter",
-        "total_bytes",
-    )
+    total_bytes = 0
 
     def __init__(
         self,
@@ -157,8 +131,6 @@ class StreamReader(AsyncStreamReaderMixin):
         self._exception: Optional[BaseException] = None
         self._timer = TimerNoop() if timer is None else timer
         self._eof_callbacks: List[Callable[[], None]] = []
-        self._eof_counter = 0
-        self.total_bytes = 0
 
     def __repr__(self) -> str:
         info = [self.__class__.__name__]
@@ -219,9 +191,6 @@ class StreamReader(AsyncStreamReaderMixin):
         if waiter is not None:
             self._eof_waiter = None
             set_result(waiter, None)
-
-        if self._protocol._reading_paused:
-            self._protocol.resume_reading()
 
         for cb in self._eof_callbacks:
             try:
@@ -293,7 +262,7 @@ class StreamReader(AsyncStreamReaderMixin):
         if self._http_chunk_splits is None:
             if self.total_bytes:
                 raise RuntimeError(
-                    "Called begin_http_chunk_receiving when some data was already fed"
+                    "Called begin_http_chunk_receiving when" "some data was already fed"
                 )
             self._http_chunk_splits = []
 
@@ -520,9 +489,8 @@ class StreamReader(AsyncStreamReaderMixin):
         else:
             data = self._buffer.popleft()
 
-        data_len = len(data)
-        self._size -= data_len
-        self._cursor += data_len
+        self._size -= len(data)
+        self._cursor += len(data)
 
         chunk_splits = self._http_chunk_splits
         # Prevent memory leak: drop useless chunk splits
@@ -550,12 +518,8 @@ class StreamReader(AsyncStreamReaderMixin):
 
 
 class EmptyStreamReader(StreamReader):  # lgtm [py/missing-call-to-init]
-
-    __slots__ = ("_read_eof_chunk",)
-
     def __init__(self) -> None:
         self._read_eof_chunk = False
-        self.total_bytes = 0
 
     def __repr__(self) -> str:
         return "<%s>" % self.__class__.__name__
@@ -627,6 +591,7 @@ class DataQueue(Generic[_T]):
         self._eof = False
         self._waiter: Optional[asyncio.Future[None]] = None
         self._exception: Optional[BaseException] = None
+        self._size = 0
         self._buffer: Deque[Tuple[_T, int]] = collections.deque()
 
     def __len__(self) -> int:
@@ -648,19 +613,26 @@ class DataQueue(Generic[_T]):
     ) -> None:
         self._eof = True
         self._exception = exc
-        if (waiter := self._waiter) is not None:
+
+        waiter = self._waiter
+        if waiter is not None:
             self._waiter = None
             set_exception(waiter, exc, exc_cause)
 
     def feed_data(self, data: _T, size: int = 0) -> None:
+        self._size += size
         self._buffer.append((data, size))
-        if (waiter := self._waiter) is not None:
+
+        waiter = self._waiter
+        if waiter is not None:
             self._waiter = None
             set_result(waiter, None)
 
     def feed_eof(self) -> None:
         self._eof = True
-        if (waiter := self._waiter) is not None:
+
+        waiter = self._waiter
+        if waiter is not None:
             self._waiter = None
             set_result(waiter, None)
 
@@ -673,12 +645,16 @@ class DataQueue(Generic[_T]):
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 self._waiter = None
                 raise
+
         if self._buffer:
-            data, _ = self._buffer.popleft()
+            data, size = self._buffer.popleft()
+            self._size -= size
             return data
-        if self._exception is not None:
-            raise self._exception
-        raise EofStream
+        else:
+            if self._exception is not None:
+                raise self._exception
+            else:
+                raise EofStream
 
     def __aiter__(self) -> AsyncStreamIterator[_T]:
         return AsyncStreamIterator(self.read)
@@ -688,40 +664,25 @@ class FlowControlDataQueue(DataQueue[_T]):
     """FlowControlDataQueue resumes and pauses an underlying stream.
 
     It is a destination for parsed data.
-
-    This class is deprecated and will be removed in version 4.0.
     """
 
     def __init__(
         self, protocol: BaseProtocol, limit: int, *, loop: asyncio.AbstractEventLoop
     ) -> None:
         super().__init__(loop=loop)
-        self._size = 0
+
         self._protocol = protocol
         self._limit = limit * 2
 
     def feed_data(self, data: _T, size: int = 0) -> None:
         super().feed_data(data, size)
-        self._size += size
 
         if self._size > self._limit and not self._protocol._reading_paused:
             self._protocol.pause_reading()
 
     async def read(self) -> _T:
-        if not self._buffer and not self._eof:
-            assert not self._waiter
-            self._waiter = self._loop.create_future()
-            try:
-                await self._waiter
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                self._waiter = None
-                raise
-        if self._buffer:
-            data, size = self._buffer.popleft()
-            self._size -= size
+        try:
+            return await super().read()
+        finally:
             if self._size < self._limit and self._protocol._reading_paused:
                 self._protocol.resume_reading()
-            return data
-        if self._exception is not None:
-            raise self._exception
-        raise EofStream

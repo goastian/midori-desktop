@@ -1,13 +1,12 @@
 """Async gunicorn worker for aiohttp.web"""
 
 import asyncio
-import inspect
 import os
 import re
 import signal
 import sys
 from types import FrameType
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Awaitable, Callable, Optional, Union  # noqa
 
 from gunicorn.config import AccessLogFormat as GunicornAccessLogFormat
 from gunicorn.workers import base
@@ -18,18 +17,13 @@ from .helpers import set_result
 from .web_app import Application
 from .web_log import AccessLogger
 
-if TYPE_CHECKING:
+try:
     import ssl
 
     SSLContext = ssl.SSLContext
-else:
-    try:
-        import ssl
-
-        SSLContext = ssl.SSLContext
-    except ImportError:  # pragma: no cover
-        ssl = None  # type: ignore[assignment]
-        SSLContext = object  # type: ignore[misc,assignment]
+except ImportError:  # pragma: no cover
+    ssl = None  # type: ignore[assignment]
+    SSLContext = object  # type: ignore[misc,assignment]
 
 
 __all__ = ("GunicornWebWorker", "GunicornUVLoopWebWorker")
@@ -72,9 +66,7 @@ class GunicornWebWorker(base.Worker):  # type: ignore[misc,no-any-unimported]
         runner = None
         if isinstance(self.wsgi, Application):
             app = self.wsgi
-        elif inspect.iscoroutinefunction(self.wsgi) or (
-            sys.version_info < (3, 14) and asyncio.iscoroutinefunction(self.wsgi)
-        ):
+        elif asyncio.iscoroutinefunction(self.wsgi):
             wsgi = await self.wsgi()
             if isinstance(wsgi, web.AppRunner):
                 runner = wsgi

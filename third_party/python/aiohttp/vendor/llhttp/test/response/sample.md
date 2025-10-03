@@ -15,8 +15,6 @@ Content-Length: 0
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -37,46 +35,6 @@ off=73 headers complete status=200 v=1/1 flags=20 content_length=0
 off=73 message complete
 ```
 
-## RTSP response
-
-<!-- meta={"type": "response"} -->
-```http
-RTSP/1.1 200 OK
-
-
-```
-
-```log
-off=0 message begin
-off=0 len=4 span[protocol]="RTSP"
-off=4 protocol complete
-off=5 len=3 span[version]="1.1"
-off=8 version complete
-off=13 len=2 span[status]="OK"
-off=17 status complete
-off=19 headers complete status=200 v=1/1 flags=0 content_length=0
-```
-
-## ICE response
-
-<!-- meta={"type": "response"} -->
-```http
-ICE/1.1 200 OK
-
-
-```
-
-```log
-off=0 message begin
-off=0 len=3 span[protocol]="ICE"
-off=3 protocol complete
-off=4 len=3 span[version]="1.1"
-off=7 version complete
-off=12 len=2 span[status]="OK"
-off=16 status complete
-off=18 headers complete status=200 v=1/1 flags=0 content_length=0
-```
-
 ## Error on invalid response start
 
 Every response must start with `HTTP/`.
@@ -90,9 +48,7 @@ HTTPER/1.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
-off=4 error code=8 reason="Expected HTTP/, RTSP/ or ICE/"
+off=4 error code=8 reason="Expected HTTP/"
 ```
 
 ## Empty body should not trigger spurious span callbacks
@@ -106,8 +62,6 @@ HTTP/1.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -140,8 +94,6 @@ _(Note the `$` char in header field)_
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=17 span[status]="Moved Permanently"
@@ -217,8 +169,6 @@ Transfer-Encoding: chunked
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=16 span[status]="MovedPermanently"
@@ -279,8 +229,6 @@ HTTP/1.1 404 Not Found
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=9 span[status]="Not Found"
@@ -299,8 +247,6 @@ HTTP/1.1 301
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=14 status complete
@@ -318,8 +264,6 @@ HTTP/1.1 200 \r\n\
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=0 span[status]=""
@@ -340,8 +284,6 @@ these headers are from http://news.ycombinator.com/
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -361,8 +303,6 @@ these headers are from http://news.ycombinator.com/
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -396,8 +336,6 @@ DCLK_imp: v7;x;114750856;0-0;0;17820020;0/0;21603567/21621457/1;;~okv=;dcmt=text
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -445,8 +383,6 @@ Connection: keep-alive
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.0"
 off=8 version complete
 off=13 len=17 span[status]="Moved Permanently"
@@ -515,8 +451,6 @@ Connection: close
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -589,8 +523,6 @@ Connection: keep-alive
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -620,8 +552,6 @@ Connection: close
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=19 span[status]="Oriëntatieprobleem"
@@ -653,8 +583,6 @@ HTTP/0.9 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="0.9"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -678,8 +606,6 @@ hello world
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -706,8 +632,6 @@ Content-Length: 0
 
 ```log
 off=2 message begin
-off=2 len=4 span[protocol]="HTTP"
-off=6 protocol complete
 off=7 len=3 span[version]="1.1"
 off=10 version complete
 off=15 len=2 span[status]="OK"

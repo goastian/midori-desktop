@@ -22,7 +22,6 @@ class JNILogging {
   }
 
   @CalledByNative
-  @SuppressWarnings("EnumOrdinal")
   public void logToInjectable(String message, Integer severity, String tag) {
     loggable.onLogMessage(message, Severity.values()[severity], tag);
   }

@@ -13,6 +13,7 @@
 
 #include <stdint.h>
 
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,10 +32,13 @@
 #include "rtc_base/ssl_certificate.h"
 #include "rtc_base/system/rtc_export.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
+#include "rtc_base/thread.h"
 
 namespace webrtc {
-
 class TurnCustomizer;
+}  // namespace webrtc
+
+namespace cricket {
 
 // PortAllocator is responsible for allocating Port types for a given
 // P2PSocket. It also handles port freeing.
@@ -149,11 +153,11 @@ struct RelayCredentials {
   std::string password;
 };
 
-typedef std::vector<cricket::ProtocolAddress> PortList;
+typedef std::vector<ProtocolAddress> PortList;
 // TODO(deadbeef): Rename to TurnServerConfig.
 struct RTC_EXPORT RelayServerConfig {
   RelayServerConfig();
-  RelayServerConfig(const SocketAddress& address,
+  RelayServerConfig(const rtc::SocketAddress& address,
                     absl::string_view username,
                     absl::string_view password,
                     ProtocolType proto);
@@ -244,7 +248,7 @@ class RTC_EXPORT PortAllocatorSession : public sigslot::has_slots<> {
   // Get candidate-level stats from all candidates on the ready ports and return
   // the stats to the given list.
   virtual void GetCandidateStatsFromReadyPorts(
-      cricket::CandidateStatsList* /* candidate_stats_list */) const {}
+      CandidateStatsList* /* candidate_stats_list */) const {}
   // Set the interval at which STUN candidates will resend STUN binding requests
   // on the underlying ports to keep NAT bindings open.
   // The default value of the interval in implementation is restored if a null
@@ -271,8 +275,7 @@ class RTC_EXPORT PortAllocatorSession : public sigslot::has_slots<> {
       SignalPortsPruned;
   sigslot::signal2<PortAllocatorSession*, const std::vector<Candidate>&>
       SignalCandidatesReady;
-  sigslot::signal2<PortAllocatorSession*,
-                   const cricket::IceCandidateErrorEvent&>
+  sigslot::signal2<PortAllocatorSession*, const IceCandidateErrorEvent&>
       SignalCandidateError;
   // Candidates should be signaled to be removed when the port that generated
   // the candidates is removed.
@@ -360,22 +363,22 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
   //
   // Returns true if the configuration could successfully be changed.
   // Deprecated
-  bool SetConfiguration(const cricket::ServerAddresses& stun_servers,
+  bool SetConfiguration(const ServerAddresses& stun_servers,
                         const std::vector<RelayServerConfig>& turn_servers,
                         int candidate_pool_size,
                         bool prune_turn_ports,
-                        TurnCustomizer* turn_customizer = nullptr,
+                        webrtc::TurnCustomizer* turn_customizer = nullptr,
                         const std::optional<int>&
                             stun_candidate_keepalive_interval = std::nullopt);
-  bool SetConfiguration(const cricket::ServerAddresses& stun_servers,
+  bool SetConfiguration(const ServerAddresses& stun_servers,
                         const std::vector<RelayServerConfig>& turn_servers,
                         int candidate_pool_size,
-                        PortPrunePolicy turn_port_prune_policy,
-                        TurnCustomizer* turn_customizer = nullptr,
+                        webrtc::PortPrunePolicy turn_port_prune_policy,
+                        webrtc::TurnCustomizer* turn_customizer = nullptr,
                         const std::optional<int>&
                             stun_candidate_keepalive_interval = std::nullopt);
 
-  const cricket::ServerAddresses& stun_servers() const {
+  const ServerAddresses& stun_servers() const {
     CheckRunOnValidThreadIfInitialized();
     return stun_servers_;
   }
@@ -404,7 +407,7 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
 
   // Set whether VPN connections should be preferred, avoided, mandated or
   // blocked.
-  virtual void SetVpnPreference(VpnPreference preference) {
+  virtual void SetVpnPreference(webrtc::VpnPreference preference) {
     vpn_preference_ = preference;
   }
 
@@ -435,7 +438,7 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
   // Returns the next session that would be returned by TakePooledSession
   // optionally restricting it to sessions with specified ice credentials.
   const PortAllocatorSession* GetPooledSession(
-      const cricket::IceParameters* ice_credentials = nullptr) const;
+      const IceParameters* ice_credentials = nullptr) const;
 
   // Discard any remaining pooled sessions.
   void DiscardCandidatePool();
@@ -553,12 +556,12 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
     return turn_port_prune_policy_ == webrtc::PRUNE_BASED_ON_PRIORITY;
   }
 
-  PortPrunePolicy turn_port_prune_policy() const {
+  webrtc::PortPrunePolicy turn_port_prune_policy() const {
     CheckRunOnValidThreadIfInitialized();
     return turn_port_prune_policy_;
   }
 
-  TurnCustomizer* turn_customizer() {
+  webrtc::TurnCustomizer* turn_customizer() {
     CheckRunOnValidThreadIfInitialized();
     return turn_customizer_;
   }
@@ -569,10 +572,10 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
   // pooled session is taken by P2PTransportChannel, and the
   // candidate stats can be collected from P2PTransportChannel::GetStats.
   virtual void GetCandidateStatsFromPooledSessions(
-      cricket::CandidateStatsList* candidate_stats_list);
+      CandidateStatsList* candidate_stats_list);
 
   // Return IceParameters of the pooled sessions.
-  std::vector<cricket::IceParameters> GetPooledIceCredentials();
+  std::vector<IceParameters> GetPooledIceCredentials();
 
   // Fired when `candidate_filter_` changes.
   sigslot::signal2<uint32_t /* prev_filter */, uint32_t /* cur_filter */>
@@ -613,20 +616,20 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
   bool allow_tcp_listen_;
   uint32_t candidate_filter_;
   std::string origin_;
-  SequenceChecker thread_checker_;
-  VpnPreference vpn_preference_ = VpnPreference::kDefault;
+  webrtc::SequenceChecker thread_checker_;
+  webrtc::VpnPreference vpn_preference_ = webrtc::VpnPreference::kDefault;
 
  private:
-  cricket::ServerAddresses stun_servers_;
+  ServerAddresses stun_servers_;
   std::vector<RelayServerConfig> turn_servers_;
   int candidate_pool_size_ = 0;  // Last value passed into SetConfiguration.
   std::vector<std::unique_ptr<PortAllocatorSession>> pooled_sessions_;
-  PortPrunePolicy turn_port_prune_policy_ = webrtc::NO_PRUNE;
+  webrtc::PortPrunePolicy turn_port_prune_policy_ = webrtc::NO_PRUNE;
 
   // Customizer for TURN messages.
   // The instance is owned by application and will be shared among
   // all TurnPort(s) created.
-  TurnCustomizer* turn_customizer_ = nullptr;
+  webrtc::TurnCustomizer* turn_customizer_ = nullptr;
 
   std::optional<int> stun_candidate_keepalive_interval_;
 
@@ -637,48 +640,12 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
   // Returns iterator to pooled session with specified ice_credentials or first
   // if ice_credentials is nullptr.
   std::vector<std::unique_ptr<PortAllocatorSession>>::const_iterator
-  FindPooledSession(
-      const cricket::IceParameters* ice_credentials = nullptr) const;
+  FindPooledSession(const IceParameters* ice_credentials = nullptr) const;
 
   // ICE tie breaker.
   uint64_t tiebreaker_;
 };
 
-}  //  namespace webrtc
-
-// Re-export symbols from the webrtc namespace for backwards compatibility.
-// TODO(bugs.webrtc.org/4222596): Remove once all references are updated.
-namespace cricket {
-using ::webrtc::CF_ALL;
-using ::webrtc::CF_HOST;
-using ::webrtc::CF_NONE;
-using ::webrtc::CF_REFLEXIVE;
-using ::webrtc::CF_RELAY;
-using ::webrtc::IceRegatheringReason;
-using ::webrtc::kDefaultMaxIPv6Networks;
-using ::webrtc::kDefaultPortAllocatorFlags;
-using ::webrtc::kDefaultStepDelay;
-using ::webrtc::kMinimumStepDelay;
-using ::webrtc::PortAllocator;
-using ::webrtc::PORTALLOCATOR_DISABLE_ADAPTER_ENUMERATION;
-using ::webrtc::PORTALLOCATOR_DISABLE_COSTLY_NETWORKS;
-using ::webrtc::PORTALLOCATOR_DISABLE_DEFAULT_LOCAL_CANDIDATE;
-using ::webrtc::PORTALLOCATOR_DISABLE_LINK_LOCAL_NETWORKS;
-using ::webrtc::PORTALLOCATOR_DISABLE_RELAY;
-using ::webrtc::PORTALLOCATOR_DISABLE_STUN;
-using ::webrtc::PORTALLOCATOR_DISABLE_TCP;
-using ::webrtc::PORTALLOCATOR_DISABLE_UDP;
-using ::webrtc::PORTALLOCATOR_DISABLE_UDP_RELAY;
-using ::webrtc::PORTALLOCATOR_ENABLE_ANY_ADDRESS_PORTS;
-using ::webrtc::PORTALLOCATOR_ENABLE_IPV6;
-using ::webrtc::PORTALLOCATOR_ENABLE_IPV6_ON_WIFI;
-using ::webrtc::PORTALLOCATOR_ENABLE_SHARED_SOCKET;
-using ::webrtc::PORTALLOCATOR_ENABLE_STUN_RETRANSMIT_ATTRIBUTE;
-using ::webrtc::PortAllocatorSession;
-using ::webrtc::PortList;
-using ::webrtc::RelayCredentials;
-using ::webrtc::RelayServerConfig;
-using ::webrtc::TlsCertPolicy;
 }  // namespace cricket
 
 #endif  // P2P_BASE_PORT_ALLOCATOR_H_

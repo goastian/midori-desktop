@@ -15,32 +15,32 @@
 #include "system_wrappers/include/clock.h"
 #include "test/gtest.h"
 
-namespace webrtc {
+namespace rtc {
 
 TEST(EventTest, InitiallySignaled) {
   Event event(false, true);
-  ASSERT_TRUE(event.Wait(TimeDelta::Zero()));
+  ASSERT_TRUE(event.Wait(webrtc::TimeDelta::Zero()));
 }
 
 TEST(EventTest, ManualReset) {
   Event event(true, false);
-  ASSERT_FALSE(event.Wait(TimeDelta::Zero()));
+  ASSERT_FALSE(event.Wait(webrtc::TimeDelta::Zero()));
 
   event.Set();
-  ASSERT_TRUE(event.Wait(TimeDelta::Zero()));
-  ASSERT_TRUE(event.Wait(TimeDelta::Zero()));
+  ASSERT_TRUE(event.Wait(webrtc::TimeDelta::Zero()));
+  ASSERT_TRUE(event.Wait(webrtc::TimeDelta::Zero()));
 
   event.Reset();
-  ASSERT_FALSE(event.Wait(TimeDelta::Zero()));
+  ASSERT_FALSE(event.Wait(webrtc::TimeDelta::Zero()));
 }
 
 TEST(EventTest, AutoReset) {
   Event event;
-  ASSERT_FALSE(event.Wait(TimeDelta::Zero()));
+  ASSERT_FALSE(event.Wait(webrtc::TimeDelta::Zero()));
 
   event.Set();
-  ASSERT_TRUE(event.Wait(TimeDelta::Zero()));
-  ASSERT_FALSE(event.Wait(TimeDelta::Zero()));
+  ASSERT_TRUE(event.Wait(webrtc::TimeDelta::Zero()));
+  ASSERT_FALSE(event.Wait(webrtc::TimeDelta::Zero()));
 }
 
 class SignalerThread {
@@ -50,7 +50,7 @@ class SignalerThread {
     reader_ = reader;
     thread_ = PlatformThread::SpawnJoinable(
         [this] {
-          while (!stop_event_.Wait(TimeDelta::Zero())) {
+          while (!stop_event_.Wait(webrtc::TimeDelta::Zero())) {
             writer_->Set();
             reader_->Wait(Event::kForever);
           }
@@ -68,11 +68,12 @@ class SignalerThread {
 };
 
 TEST(EventTest, UnsignaledWaitDoesNotReturnBeforeTimeout) {
-  constexpr TimeDelta kDuration = TimeDelta::Micros(10'499);
+  constexpr webrtc::TimeDelta kDuration = webrtc::TimeDelta::Micros(10'499);
   Event event;
-  auto begin = Clock::GetRealTimeClock()->CurrentTime();
+  auto begin = webrtc::Clock::GetRealTimeClock()->CurrentTime();
   EXPECT_FALSE(event.Wait(kDuration));
-  EXPECT_GE(Clock::GetRealTimeClock()->CurrentTime(), begin + kDuration);
+  EXPECT_GE(webrtc::Clock::GetRealTimeClock()->CurrentTime(),
+            begin + kDuration);
 }
 
 // These tests are disabled by default and only intended to be run manually.
@@ -81,7 +82,7 @@ TEST(EventTest, DISABLED_PerformanceSingleThread) {
   Event event;
   for (int i = 0; i < kNumIterations; ++i) {
     event.Set();
-    event.Wait(TimeDelta::Zero());
+    event.Wait(webrtc::TimeDelta::Zero());
   }
 }
 
@@ -111,4 +112,4 @@ TEST(EventTestDeathTest, DisallowEventWait) {
 }
 #endif  // RTC_DCHECK_IS_ON && GTEST_HAS_DEATH_TEST && !defined(WEBRTC_ANDROID)
 
-}  // namespace webrtc
+}  // namespace rtc

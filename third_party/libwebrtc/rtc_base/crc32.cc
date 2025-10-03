@@ -12,7 +12,7 @@
 
 #include "rtc_base/arraysize.h"
 
-namespace webrtc {
+namespace rtc {
 
 // This implementation is based on the sample implementation in RFC 1952.
 
@@ -47,4 +47,4 @@ uint32_t UpdateCrc32(uint32_t start, const void* buf, size_t len) {
   return c ^ 0xFFFFFFFF;
 }
 
-}  // namespace webrtc
+}  // namespace rtc

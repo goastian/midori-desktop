@@ -15,14 +15,12 @@
 #include <map>
 #include <optional>
 #include <queue>
-#include <variant>
 
+#include "absl/types/variant.h"
 #include "api/video/encoded_image.h"
 #include "api/video/video_codec_type.h"
 #include "api/video/video_frame.h"
 #include "common_video/frame_instrumentation_data.h"
-#include "rtc_base/synchronization/mutex.h"
-#include "rtc_base/thread_annotations.h"
 #include "video/corruption_detection/halton_frame_sampler.h"
 
 namespace webrtc {
@@ -38,16 +36,14 @@ class FrameInstrumentationGenerator {
 
   ~FrameInstrumentationGenerator() = default;
 
-  void OnCapturedFrame(VideoFrame frame) RTC_LOCKS_EXCLUDED(mutex_);
+  void OnCapturedFrame(VideoFrame frame);
   std::optional<
-      std::variant<FrameInstrumentationSyncData, FrameInstrumentationData>>
-  OnEncodedImage(const EncodedImage& encoded_image) RTC_LOCKS_EXCLUDED(mutex_);
+      absl::variant<FrameInstrumentationSyncData, FrameInstrumentationData>>
+  OnEncodedImage(const EncodedImage& encoded_image);
 
   // Returns `std::nullopt` if there is no context for the given layer.
-  std::optional<int> GetHaltonSequenceIndex(int layer_id) const
-      RTC_LOCKS_EXCLUDED(mutex_);
-  void SetHaltonSequenceIndex(int index, int layer_id)
-      RTC_LOCKS_EXCLUDED(mutex_);
+  std::optional<int> GetHaltonSequenceIndex(int layer_id) const;
+  void SetHaltonSequenceIndex(int index, int layer_id);
 
   int GetLayerId(const EncodedImage& encoded_image) const;
 
@@ -58,11 +54,10 @@ class FrameInstrumentationGenerator {
   };
 
   // Incoming video frames in capture order.
-  std::queue<VideoFrame> captured_frames_ RTC_GUARDED_BY(mutex_);
+  std::queue<VideoFrame> captured_frames_;
   // Map from spatial or simulcast index to sampling context.
-  std::map<int, Context> contexts_ RTC_GUARDED_BY(mutex_);
+  std::map<int, Context> contexts_;
   const VideoCodecType video_codec_type_;
-  mutable Mutex mutex_;
 };
 
 }  // namespace webrtc

@@ -19,8 +19,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.1"
 off=17 version complete
 off=19 len=10 span[header_field]="Connection"
@@ -50,8 +48,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.1"
 off=17 version complete
 off=19 len=10 span[header_field]="Connection"
@@ -66,8 +62,6 @@ off=45 len=3 span[method]="PUT"
 off=48 method complete
 off=49 len=4 span[url]="/url"
 off=54 url complete
-off=54 len=4 span[protocol]="HTTP"
-off=58 protocol complete
 off=59 len=3 span[version]="1.1"
 off=62 version complete
 off=64 len=10 span[header_field]="Connection"
@@ -95,8 +89,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.0"
 off=17 version complete
 off=21 headers complete method=4 v=1/0 flags=0 content_length=0
@@ -126,8 +118,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.0"
 off=17 version complete
 off=19 len=14 span[header_field]="Content-Length"
@@ -142,8 +132,6 @@ off=40 len=3 span[method]="PUT"
 off=43 method complete
 off=44 len=4 span[url]="/url"
 off=49 url complete
-off=49 len=4 span[protocol]="HTTP"
-off=53 protocol complete
 off=54 len=3 span[version]="1.1"
 off=57 version complete
 off=59 len=17 span[header_field]="Transfer-Encoding"
@@ -174,8 +162,6 @@ off=0 len=4 span[method]="POST"
 off=4 method complete
 off=5 len=1 span[url]="/"
 off=7 url complete
-off=7 len=4 span[protocol]="HTTP"
-off=11 protocol complete
 off=12 len=3 span[version]="1.1"
 off=15 version complete
 off=17 len=4 span[header_field]="Host"
@@ -199,8 +185,6 @@ off=118 len=3 span[method]="GET"
 off=121 method complete
 off=122 len=1 span[url]="/"
 off=124 url complete
-off=124 len=4 span[protocol]="HTTP"
-off=128 protocol complete
 off=129 len=3 span[version]="1.1"
 off=132 version complete
 ```
@@ -221,8 +205,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.1"
 off=17 version complete
 off=19 len=10 span[header_field]="Connection"
@@ -249,8 +231,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.1"
 off=17 version complete
 off=19 len=10 span[header_field]="Connection"
@@ -285,8 +265,6 @@ off=0 len=4 span[method]="POST"
 off=4 method complete
 off=5 len=1 span[url]="/"
 off=7 url complete
-off=7 len=4 span[protocol]="HTTP"
-off=11 protocol complete
 off=12 len=3 span[version]="1.1"
 off=15 version complete
 off=17 len=4 span[header_field]="Host"
@@ -335,8 +313,6 @@ off=0 len=4 span[method]="POST"
 off=4 method complete
 off=5 len=1 span[url]="/"
 off=7 url complete
-off=7 len=4 span[protocol]="HTTP"
-off=11 protocol complete
 off=12 len=3 span[version]="1.1"
 off=15 version complete
 off=17 len=4 span[header_field]="Host"
@@ -364,8 +340,6 @@ off=137 len=3 span[method]="GET"
 off=140 method complete
 off=141 len=1 span[url]="/"
 off=143 url complete
-off=143 len=4 span[protocol]="HTTP"
-off=147 protocol complete
 off=148 len=3 span[version]="1.1"
 off=151 version complete
 ```
@@ -388,8 +362,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.1"
 off=17 version complete
 off=19 len=10 span[header_field]="Connection"
@@ -423,8 +395,6 @@ off=0 len=3 span[method]="GET"
 off=3 method complete
 off=4 len=5 span[url]="/demo"
 off=10 url complete
-off=10 len=4 span[protocol]="HTTP"
-off=14 protocol complete
 off=15 len=3 span[version]="1.1"
 off=18 version complete
 off=20 len=4 span[header_field]="Host"
@@ -478,8 +448,6 @@ off=0 len=3 span[method]="GET"
 off=3 method complete
 off=4 len=5 span[url]="/demo"
 off=10 url complete
-off=10 len=4 span[protocol]="HTTP"
-off=14 protocol complete
 off=15 len=3 span[version]="1.1"
 off=18 version complete
 off=20 len=10 span[header_field]="Connection"
@@ -512,8 +480,6 @@ off=0 len=3 span[method]="GET"
 off=3 method complete
 off=4 len=5 span[url]="/demo"
 off=10 url complete
-off=10 len=4 span[protocol]="HTTP"
-off=14 protocol complete
 off=15 len=3 span[version]="1.1"
 off=18 version complete
 off=20 len=10 span[header_field]="Connection"
@@ -548,8 +514,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.1"
 off=17 version complete
 off=19 len=10 span[header_field]="Connection"
@@ -574,8 +538,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.1"
 off=17 version complete
 off=19 len=11 span[header_field]="Connection "
@@ -615,8 +577,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.1"
 off=17 version complete
 off=19 len=10 span[header_field]="Connection"
@@ -650,8 +610,6 @@ off=0 len=3 span[method]="PUT"
 off=3 method complete
 off=4 len=4 span[url]="/url"
 off=9 url complete
-off=9 len=4 span[protocol]="HTTP"
-off=13 protocol complete
 off=14 len=3 span[version]="1.1"
 off=17 version complete
 off=19 len=10 span[header_field]="Connection"
@@ -694,8 +652,6 @@ off=0 len=3 span[method]="GET"
 off=3 method complete
 off=4 len=5 span[url]="/demo"
 off=10 url complete
-off=10 len=4 span[protocol]="HTTP"
-off=14 protocol complete
 off=15 len=3 span[version]="1.1"
 off=18 version complete
 off=20 len=4 span[header_field]="Host"
@@ -751,8 +707,6 @@ off=0 len=4 span[method]="POST"
 off=4 method complete
 off=5 len=5 span[url]="/demo"
 off=11 url complete
-off=11 len=4 span[protocol]="HTTP"
-off=15 protocol complete
 off=16 len=3 span[version]="1.1"
 off=19 version complete
 off=21 len=4 span[header_field]="Host"

@@ -282,7 +282,7 @@ def user_cache_dir(appname=None, appauthor=None, version=None, opinion=True):
     the `CSIDL_LOCAL_APPDATA` directory. This is identical to the non-roaming
     app data dir (the default returned by `user_data_dir` above). Apps typically
     put cache data somewhere *under* the given dir here. Some examples:
-        ...\Mozilla\Firefox\Profiles\<ProfileName>\Cache
+        ...\Astian\Midori\Profiles\<ProfileName>\Cache
         ...\Acme\SuperApp\Cache\1.0
     OPINION: This function appends "Cache" to the `CSIDL_LOCAL_APPDATA` value.
     This can be disabled with the `opinion=False` option.

@@ -46,12 +46,12 @@ namespace webrtc {
 
 // Conversion function to convert candidate type string to the corresponding one
 // from  enum RTCStatsIceCandidateType.
-const char* IceCandidateTypeToStatsType(const Candidate& candidate);
+const char* IceCandidateTypeToStatsType(const cricket::Candidate& candidate);
 
 // Conversion function to convert adapter type to report string which are more
 // fitting to the general style of http://w3c.github.io/webrtc-stats. This is
 // only used by stats collector.
-const char* AdapterTypeToStatsType(AdapterType type);
+const char* AdapterTypeToStatsType(rtc::AdapterType type);
 
 // A mapping between track ids and their StatsReport.
 typedef std::map<std::string, StatsReport*> TrackIdMap;

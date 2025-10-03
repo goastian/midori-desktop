@@ -43,6 +43,12 @@ BYPASS_PROXY_METHOD0(void, UnregisterObserver)
 BYPASS_PROXY_CONSTMETHOD0(std::string, label)
 BYPASS_PROXY_CONSTMETHOD0(bool, reliable)
 BYPASS_PROXY_CONSTMETHOD0(bool, ordered)
+// TODO: issues.webrtc.org/42220231 - remove when deprecation done
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+BYPASS_PROXY_CONSTMETHOD0(uint16_t, maxRetransmitTime)
+BYPASS_PROXY_CONSTMETHOD0(uint16_t, maxRetransmits)
+#pragma clang diagnostic pop
 BYPASS_PROXY_CONSTMETHOD0(std::optional<int>, maxRetransmitsOpt)
 BYPASS_PROXY_CONSTMETHOD0(std::optional<int>, maxPacketLifeTime)
 BYPASS_PROXY_CONSTMETHOD0(std::string, protocol)
@@ -117,9 +123,9 @@ bool InternalDataChannelInit::IsValid() const {
   return true;
 }
 
-std::optional<StreamId> SctpSidAllocator::AllocateSid(SSLRole role) {
+std::optional<StreamId> SctpSidAllocator::AllocateSid(rtc::SSLRole role) {
   RTC_DCHECK_RUN_ON(&sequence_checker_);
-  int potential_sid = (role == SSL_CLIENT) ? 0 : 1;
+  int potential_sid = (role == rtc::SSL_CLIENT) ? 0 : 1;
   while (potential_sid <= static_cast<int>(cricket::kMaxSctpSid)) {
     StreamId sid(potential_sid);
     if (used_sids_.insert(sid).second)
@@ -264,14 +270,14 @@ class SctpDataChannel::ObserverAdapter : public DataChannelObserver {
 
   bool IsOkToCallOnTheNetworkThread() override { return true; }
 
-  Thread* signaling_thread() const { return signaling_thread_; }
-  Thread* network_thread() const { return channel_->network_thread_; }
+  rtc::Thread* signaling_thread() const { return signaling_thread_; }
+  rtc::Thread* network_thread() const { return channel_->network_thread_; }
 
   DataChannelObserver* delegate_ RTC_GUARDED_BY(signaling_thread()) = nullptr;
   SctpDataChannel* const channel_;
   // Make sure to keep our own signaling_thread_ pointer to avoid dereferencing
   // `channel_` in the `RTC_DCHECK_RUN_ON` checks on the signaling thread.
-  Thread* const signaling_thread_{channel_->signaling_thread_};
+  rtc::Thread* const signaling_thread_{channel_->signaling_thread_};
   ScopedTaskSafety safety_;
   rtc::scoped_refptr<PendingTaskSafetyFlag> signaling_safety_;
   CachedGetters* cached_getters_ RTC_GUARDED_BY(signaling_thread()) = nullptr;
@@ -283,8 +289,8 @@ rtc::scoped_refptr<SctpDataChannel> SctpDataChannel::Create(
     const std::string& label,
     bool connected_to_transport,
     const InternalDataChannelInit& config,
-    Thread* signaling_thread,
-    Thread* network_thread) {
+    rtc::Thread* signaling_thread,
+    rtc::Thread* network_thread) {
   RTC_DCHECK(config.IsValid());
   return rtc::make_ref_counted<SctpDataChannel>(
       config, std::move(controller), label, connected_to_transport,
@@ -309,8 +315,8 @@ SctpDataChannel::SctpDataChannel(
     WeakPtr<SctpDataChannelControllerInterface> controller,
     const std::string& label,
     bool connected_to_transport,
-    Thread* signaling_thread,
-    Thread* network_thread)
+    rtc::Thread* signaling_thread,
+    rtc::Thread* network_thread)
     : signaling_thread_(signaling_thread),
       network_thread_(network_thread),
       id_n_(config.id == -1 ? std::nullopt : std::make_optional(config.id)),
@@ -359,7 +365,7 @@ void SctpDataChannel::RegisterObserver(DataChannelObserver* observer) {
   // Check if we should set up an observer adapter that will make sure that
   // callbacks are delivered on the signaling thread rather than directly
   // on the network thread.
-  const auto* current_thread = Thread::Current();
+  const auto* current_thread = rtc::Thread::Current();
   // TODO(webrtc:11547): Eventually all DataChannelObserver implementations
   // should be called on the network thread and IsOkToCallOnTheNetworkThread().
   if (!observer->IsOkToCallOnTheNetworkThread()) {
@@ -399,7 +405,7 @@ void SctpDataChannel::RegisterObserver(DataChannelObserver* observer) {
 
 void SctpDataChannel::UnregisterObserver() {
   // Note: As with `RegisterObserver`, the proxy is being bypassed.
-  const auto* current_thread = Thread::Current();
+  const auto* current_thread = rtc::Thread::Current();
   // Callers must not be invoking the unregistration from the network thread
   // (assuming a multi-threaded environment where we have a dedicated network
   // thread). That would indicate non-network related work happening on the
@@ -446,6 +452,15 @@ bool SctpDataChannel::reliable() const {
 
 bool SctpDataChannel::ordered() const {
   return ordered_;
+}
+
+uint16_t SctpDataChannel::maxRetransmitTime() const {
+  return max_retransmit_time_ ? *max_retransmit_time_
+                              : static_cast<uint16_t>(-1);
+}
+
+uint16_t SctpDataChannel::maxRetransmits() const {
+  return max_retransmits_ ? *max_retransmits_ : static_cast<uint16_t>(-1);
 }
 
 std::optional<int> SctpDataChannel::maxPacketLifeTime() const {
@@ -500,7 +515,7 @@ SctpDataChannel::DataState SctpDataChannel::state() const {
   // getting put behind other messages on the network thread and eventually
   // fetch a different state value (since pending messages might cause the
   // state to change in the meantime).
-  const auto* current_thread = Thread::Current();
+  const auto* current_thread = rtc::Thread::Current();
   if (current_thread == signaling_thread_ && observer_adapter_ &&
       observer_adapter_->IsInsideCallback()) {
     return observer_adapter_->cached_state();
@@ -517,7 +532,7 @@ SctpDataChannel::DataState SctpDataChannel::state() const {
 }
 
 RTCError SctpDataChannel::error() const {
-  const auto* current_thread = Thread::Current();
+  const auto* current_thread = rtc::Thread::Current();
   if (current_thread == signaling_thread_ && observer_adapter_ &&
       observer_adapter_->IsInsideCallback()) {
     return observer_adapter_->cached_error();

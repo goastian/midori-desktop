@@ -37,7 +37,6 @@
 #include "p2p/base/port_interface.h"
 #include "p2p/base/stun_request.h"
 #include "p2p/base/transport_description.h"
-#include "p2p/dtls/dtls_stun_piggyback_callbacks.h"
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/network.h"
 #include "rtc_base/network/received_packet.h"
@@ -81,9 +80,9 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
 
   // Implementation of virtual methods in CandidatePairInterface.
   // Returns the description of the local port
-  const webrtc::Candidate& local_candidate() const override;
+  const Candidate& local_candidate() const override;
   // Returns the description of the remote port to which we communicate.
-  const webrtc::Candidate& remote_candidate() const override;
+  const Candidate& remote_candidate() const override;
 
   // Return local network for this connection.
   virtual const rtc::Network* network() const;
@@ -104,7 +103,7 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   bool writable() const;
   bool receiving() const;
 
-  const webrtc::PortInterface* port() const {
+  const PortInterface* port() const {
     RTC_DCHECK_RUN_ON(network_thread_);
     return port_.get();
   }
@@ -284,8 +283,7 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   // If `remote_candidate_` is peer reflexive and is equivalent to
   // `new_candidate` except the type, update `remote_candidate_` to
   // `new_candidate`.
-  void MaybeUpdatePeerReflexiveCandidate(
-      const webrtc::Candidate& new_candidate);
+  void MaybeUpdatePeerReflexiveCandidate(const Candidate& new_candidate);
 
   // Returns the last received time of any data, stun request, or stun
   // response in milliseconds
@@ -329,8 +327,8 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   void SendResponseMessage(const StunMessage& response);
 
   // An accessor for unit tests.
-  webrtc::PortInterface* PortForTest() { return port_.get(); }
-  const webrtc::PortInterface* PortForTest() const { return port_.get(); }
+  PortInterface* PortForTest() { return port_.get(); }
+  const PortInterface* PortForTest() const { return port_.get(); }
 
   std::unique_ptr<IceMessage> BuildPingRequestForTest() {
     RTC_DCHECK_RUN_ON(network_thread_);
@@ -362,20 +360,31 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
     goog_delta_ack_consumer_ = std::nullopt;
   }
 
-  void RegisterDtlsPiggyback(DtlsStunPiggybackCallbacks&& callbacks) {
-    dtls_stun_piggyback_callbacks_ = std::move(callbacks);
+  void RegisterDtlsPiggyback(
+      absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+          data_producer,
+      absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+          ack_producer,
+      absl::AnyInvocable<void(const StunByteStringAttribute*,
+                              const StunByteStringAttribute*)> consumer) {
+    dtls_stun_piggyback_data_producer_ = std::move(data_producer);
+    dtls_stun_piggyback_ack_producer_ = std::move(ack_producer);
+    dtls_stun_piggyback_consumer_ = std::move(consumer);
   }
-
-  void DeregisterDtlsPiggyback() { dtls_stun_piggyback_callbacks_.reset(); }
+  void DeregisterDtlsPiggyback() {
+    dtls_stun_piggyback_consumer_ = nullptr;
+    dtls_stun_piggyback_data_producer_ = nullptr;
+    dtls_stun_piggyback_ack_producer_ = nullptr;
+  }
 
  protected:
   // A ConnectionRequest is a simple STUN ping used to determine writability.
   class ConnectionRequest;
 
   // Constructs a new connection to the given remote port.
-  Connection(rtc::WeakPtr<webrtc::PortInterface> port,
+  Connection(rtc::WeakPtr<PortInterface> port,
              size_t index,
-             const webrtc::Candidate& candidate);
+             const Candidate& candidate);
 
   // Called back when StunRequestManager has a stun packet to send
   void OnSendStunPacket(const void* data, size_t size, StunRequest* req);
@@ -404,7 +413,7 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   void set_connected(bool value);
 
   // The local port where this connection sends and receives packets.
-  webrtc::PortInterface* port() { return port_.get(); }
+  PortInterface* port() { return port_.get(); }
 
   // NOTE: A pointer to the network thread is held by `port_` so in theory we
   // shouldn't need to hold on to this pointer here, but rather defer to
@@ -413,9 +422,9 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   // TODO(tommi): This ^^^ should be fixed.
   webrtc::TaskQueueBase* const network_thread_;
   const uint32_t id_;
-  rtc::WeakPtr<webrtc::PortInterface> port_;
-  webrtc::Candidate local_candidate_ RTC_GUARDED_BY(network_thread_);
-  webrtc::Candidate remote_candidate_;
+  rtc::WeakPtr<PortInterface> port_;
+  Candidate local_candidate_ RTC_GUARDED_BY(network_thread_);
+  Candidate remote_candidate_;
 
   ConnectionInfo stats_;
   rtc::RateTracker recv_rate_tracker_;
@@ -522,15 +531,21 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
       received_packet_callback_;
 
   void MaybeAddDtlsPiggybackingAttributes(StunMessage* msg);
-  DtlsStunPiggybackCallbacks dtls_stun_piggyback_callbacks_;
+  absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+      dtls_stun_piggyback_data_producer_ = nullptr;
+  absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+      dtls_stun_piggyback_ack_producer_ = nullptr;
+  absl::AnyInvocable<void(const StunByteStringAttribute*,
+                          const StunByteStringAttribute*)>
+      dtls_stun_piggyback_consumer_ = nullptr;
 };
 
 // ProxyConnection defers all the interesting work to the port.
 class ProxyConnection : public Connection {
  public:
-  ProxyConnection(rtc::WeakPtr<webrtc::PortInterface> port,
+  ProxyConnection(rtc::WeakPtr<PortInterface> port,
                   size_t index,
-                  const webrtc::Candidate& remote_candidate);
+                  const Candidate& remote_candidate);
 
   int Send(const void* data,
            size_t size,

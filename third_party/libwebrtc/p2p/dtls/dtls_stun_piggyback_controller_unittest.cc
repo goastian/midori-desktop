@@ -18,7 +18,6 @@
 
 #include "api/array_view.h"
 #include "api/transport/stun.h"
-#include "test/gmock.h"
 #include "test/gtest.h"
 
 namespace {
@@ -56,7 +55,6 @@ const std::vector<uint8_t> empty = {};
 
 namespace cricket {
 
-using ::testing::MockFunction;
 using State = DtlsStunPiggybackController::State;
 
 class DtlsStunPiggybackControllerTest : public ::testing::Test {
@@ -68,7 +66,7 @@ class DtlsStunPiggybackControllerTest : public ::testing::Test {
   void SendClientToServer(const std::vector<uint8_t> data,
                           StunMessageType type) {
     if (!data.empty()) {
-      client_.CapturePacket(data);
+      EXPECT_TRUE(client_.MaybeConsumePacket(data));
     } else {
       client_.ClearCachedPacketForTesting();
     }
@@ -87,7 +85,7 @@ class DtlsStunPiggybackControllerTest : public ::testing::Test {
   void SendServerToClient(const std::vector<uint8_t> data,
                           StunMessageType type) {
     if (!data.empty()) {
-      server_.CapturePacket(data);
+      EXPECT_TRUE(server_.MaybeConsumePacket(data));
     } else {
       server_.ClearCachedPacketForTesting();
     }

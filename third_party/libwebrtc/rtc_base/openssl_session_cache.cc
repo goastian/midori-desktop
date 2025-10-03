@@ -16,8 +16,7 @@
 
 namespace rtc {
 
-OpenSSLSessionCache::OpenSSLSessionCache(webrtc::SSLMode ssl_mode,
-                                         SSL_CTX* ssl_ctx)
+OpenSSLSessionCache::OpenSSLSessionCache(SSLMode ssl_mode, SSL_CTX* ssl_ctx)
     : ssl_mode_(ssl_mode), ssl_ctx_(ssl_ctx) {
   // It is invalid to pass in a null context.
   RTC_DCHECK(ssl_ctx != nullptr);
@@ -48,7 +47,7 @@ SSL_CTX* OpenSSLSessionCache::GetSSLContext() const {
   return ssl_ctx_;
 }
 
-webrtc::SSLMode OpenSSLSessionCache::GetSSLMode() const {
+SSLMode OpenSSLSessionCache::GetSSLMode() const {
   return ssl_mode_;
 }
 

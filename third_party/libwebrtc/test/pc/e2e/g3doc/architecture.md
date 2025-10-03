@@ -1,9 +1,5 @@
 <!-- go/cmark -->
-<!--* freshness: {
-  owner: 'jleconte'
-  reviewed: '2025-03-31'
-  review_interval: '1 year'
-} *-->
+<!--* freshness: {owner: 'jleconte' reviewed: '2024-09-11'} *-->
 
 # PeerConnection level framework fixture architecture
 

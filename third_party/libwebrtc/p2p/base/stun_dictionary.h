@@ -11,12 +11,9 @@
 #ifndef P2P_BASE_STUN_DICTIONARY_H_
 #define P2P_BASE_STUN_DICTIONARY_H_
 
-#include <cstddef>
-#include <cstdint>
 #include <deque>
 #include <map>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 

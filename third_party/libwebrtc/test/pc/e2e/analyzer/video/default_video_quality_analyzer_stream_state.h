@@ -35,12 +35,12 @@ namespace webrtc {
 // dead.
 //
 // Supports peer indexes from 0 to max(size_t) - 1.
-class AnalyzerStreamState {
+class StreamState {
  public:
-  AnalyzerStreamState(size_t sender,
-                      std::set<size_t> receivers,
-                      Timestamp stream_started_time,
-                      Clock* clock);
+  StreamState(size_t sender,
+              std::set<size_t> receivers,
+              Timestamp stream_started_time,
+              Clock* clock);
 
   size_t sender() const { return sender_; }
   Timestamp stream_started_time() const { return stream_started_time_; }

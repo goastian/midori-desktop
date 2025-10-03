@@ -349,6 +349,11 @@ StyleDynamicRange Gecko_MediaFeatures_VideoDynamicRange(
     return StyleDynamicRange::Standard;
   }
 #ifdef MOZ_WAYLAND
+  // Wayland compositors allow to process HDR content even without HDR monitor
+  // attached.
+  if (StaticPrefs::gfx_wayland_hdr_force_enabled_AtStartup()) {
+    return StyleDynamicRange::High;
+  }
   if (!StaticPrefs::gfx_wayland_hdr_AtStartup()) {
     return StyleDynamicRange::Standard;
   }

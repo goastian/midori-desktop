@@ -15,7 +15,7 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/strings/string_builder.h"
 
-namespace webrtc {
+namespace cricket {
 namespace {
 
 ContentInfo* FindContentInfoByName(ContentInfos* contents,
@@ -85,7 +85,7 @@ bool ContentGroup::RemoveContentName(absl::string_view content_name) {
 }
 
 std::string ContentGroup::ToString() const {
-  StringBuilder acc;
+  rtc::StringBuilder acc;
   acc << semantics_ << "(";
   if (!content_names_.empty()) {
     for (const auto& name : content_names_) {
@@ -191,14 +191,12 @@ bool SessionDescription::RemoveContentByName(const std::string& name) {
   return false;
 }
 
-void SessionDescription::AddTransportInfo(
-    const cricket::TransportInfo& transport_info) {
+void SessionDescription::AddTransportInfo(const TransportInfo& transport_info) {
   transport_infos_.push_back(transport_info);
 }
 
 bool SessionDescription::RemoveTransportInfoByName(const std::string& name) {
-  for (cricket::TransportInfos::iterator transport_info =
-           transport_infos_.begin();
+  for (TransportInfos::iterator transport_info = transport_infos_.begin();
        transport_info != transport_infos_.end(); ++transport_info) {
     if (transport_info->content_name == name) {
       transport_infos_.erase(transport_info);
@@ -208,9 +206,9 @@ bool SessionDescription::RemoveTransportInfoByName(const std::string& name) {
   return false;
 }
 
-const cricket::TransportInfo* SessionDescription::GetTransportInfoByName(
+const TransportInfo* SessionDescription::GetTransportInfoByName(
     const std::string& name) const {
-  for (cricket::TransportInfos::const_iterator iter = transport_infos_.begin();
+  for (TransportInfos::const_iterator iter = transport_infos_.begin();
        iter != transport_infos_.end(); ++iter) {
     if (iter->content_name == name) {
       return &(*iter);
@@ -219,9 +217,9 @@ const cricket::TransportInfo* SessionDescription::GetTransportInfoByName(
   return NULL;
 }
 
-cricket::TransportInfo* SessionDescription::GetTransportInfoByName(
+TransportInfo* SessionDescription::GetTransportInfoByName(
     const std::string& name) {
-  for (cricket::TransportInfos::iterator iter = transport_infos_.begin();
+  for (TransportInfos::iterator iter = transport_infos_.begin();
        iter != transport_infos_.end(); ++iter) {
     if (iter->content_name == name) {
       return &(*iter);
@@ -290,4 +288,4 @@ MediaContentDescription* ContentInfo::media_description() {
   return description_.get();
 }
 
-}  // namespace webrtc
+}  // namespace cricket

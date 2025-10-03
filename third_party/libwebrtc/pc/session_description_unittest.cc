@@ -11,7 +11,7 @@
 
 #include "test/gtest.h"
 
-namespace webrtc {
+namespace cricket {
 
 TEST(MediaContentDescriptionTest, ExtmapAllowMixedDefaultValue) {
   VideoContentDescription video_desc;
@@ -130,4 +130,4 @@ TEST(SessionDescriptionTest, AddContentTransfersExtmapAllowMixedSetting) {
                 ->extmap_allow_mixed_enum());
 }
 
-}  // namespace webrtc
+}  // namespace cricket

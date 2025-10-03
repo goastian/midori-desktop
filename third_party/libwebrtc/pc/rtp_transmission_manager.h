@@ -28,8 +28,6 @@
 #include "api/scoped_refptr.h"
 #include "api/sequence_checker.h"
 #include "media/base/media_channel.h"
-#include "pc/codec_vendor.h"
-#include "pc/connection_context.h"
 #include "pc/legacy_stats_collector_interface.h"
 #include "pc/rtp_receiver.h"
 #include "pc/rtp_receiver_proxy.h"
@@ -40,8 +38,11 @@
 #include "pc/usage_pattern.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/thread_annotations.h"
-#include "rtc_base/unique_id_generator.h"
 #include "rtc_base/weak_ptr.h"
+
+namespace rtc {
+class Thread;
+}
 
 namespace webrtc {
 
@@ -73,7 +74,6 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
   RtpTransmissionManager(const Environment& env,
                          bool is_unified_plan,
                          ConnectionContext* context,
-                         cricket::CodecLookupHelper* codec_lookup_helper,
                          UsagePattern* usage_pattern,
                          PeerConnectionObserver* observer,
                          LegacyStatsCollectorInterface* legacy_stats,
@@ -97,7 +97,7 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
 
   // Create a new RTP sender. Does not associate with a transceiver.
   rtc::scoped_refptr<RtpSenderProxyWithInternal<RtpSenderInternal>>
-  CreateSender(webrtc::MediaType media_type,
+  CreateSender(cricket::MediaType media_type,
                const std::string& id,
                rtc::scoped_refptr<MediaStreamTrackInterface> track,
                const std::vector<std::string>& stream_ids,
@@ -105,7 +105,7 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
 
   // Create a new RTP receiver. Does not associate with a transceiver.
   rtc::scoped_refptr<RtpReceiverProxyWithInternal<RtpReceiverInternal>>
-  CreateReceiver(webrtc::MediaType media_type, const std::string& receiver_id);
+  CreateReceiver(cricket::MediaType media_type, const std::string& receiver_id);
 
   // Create a new RtpTransceiver of the given type and add it to the list of
   // registered transceivers.
@@ -155,14 +155,14 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
   // implementation and triggers CreateAudioReceiver or CreateVideoReceiver.
   void OnRemoteSenderAdded(const RtpSenderInfo& sender_info,
                            MediaStreamInterface* stream,
-                           webrtc::MediaType media_type);
+                           cricket::MediaType media_type);
 
   // Triggered when a remote sender has been removed from a remote session
   // description. It removes the remote sender with id `sender_id` from a remote
   // MediaStream and triggers DestroyAudioReceiver or DestroyVideoReceiver.
   void OnRemoteSenderRemoved(const RtpSenderInfo& sender_info,
                              MediaStreamInterface* stream,
-                             webrtc::MediaType media_type);
+                             cricket::MediaType media_type);
 
   // Triggered when a local sender has been seen for the first time in a local
   // session description.
@@ -170,7 +170,7 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
   // streams in the local SessionDescription can be mapped to a MediaStreamTrack
   // in a MediaStream in `local_streams_`
   void OnLocalSenderAdded(const RtpSenderInfo& sender_info,
-                          webrtc::MediaType media_type);
+                          cricket::MediaType media_type);
 
   // Triggered when a local sender has been removed from a local session
   // description.
@@ -178,11 +178,12 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
   // has been removed from the local SessionDescription and the stream can be
   // mapped to a MediaStreamTrack in a MediaStream in `local_streams_`.
   void OnLocalSenderRemoved(const RtpSenderInfo& sender_info,
-                            webrtc::MediaType media_type);
+                            cricket::MediaType media_type);
 
   std::vector<RtpSenderInfo>* GetRemoteSenderInfos(
-      webrtc::MediaType media_type);
-  std::vector<RtpSenderInfo>* GetLocalSenderInfos(webrtc::MediaType media_type);
+      cricket::MediaType media_type);
+  std::vector<RtpSenderInfo>* GetLocalSenderInfos(
+      cricket::MediaType media_type);
   const RtpSenderInfo* FindSenderInfo(const std::vector<RtpSenderInfo>& infos,
                                       const std::string& stream_id,
                                       const std::string& sender_id) const;
@@ -212,8 +213,8 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
       const;
 
  private:
-  Thread* signaling_thread() const { return context_->signaling_thread(); }
-  Thread* worker_thread() const { return context_->worker_thread(); }
+  rtc::Thread* signaling_thread() const { return context_->signaling_thread(); }
+  rtc::Thread* worker_thread() const { return context_->worker_thread(); }
   bool IsUnifiedPlan() const { return is_unified_plan_; }
   void NoteUsageEvent(UsageEvent event) {
     usage_pattern_->NoteUsageEvent(event);
@@ -267,7 +268,6 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
   bool closed_ = false;
   bool const is_unified_plan_;
   ConnectionContext* context_;
-  cricket::CodecLookupHelper* codec_lookup_helper_;
   UsagePattern* usage_pattern_;
   PeerConnectionObserver* observer_;
   LegacyStatsCollectorInterface* const legacy_stats_;

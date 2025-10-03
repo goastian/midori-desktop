@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
 #include "api/array_view.h"
@@ -40,7 +41,6 @@
 #include "p2p/base/port_interface.h"
 #include "p2p/base/stun_request.h"
 #include "p2p/base/transport_description.h"
-#include "p2p/dtls/dtls_stun_piggyback_callbacks.h"
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/byte_buffer.h"
 #include "rtc_base/checks.h"
@@ -98,7 +98,7 @@ inline bool TooLongWithoutResponse(
 
 // Helper methods for converting string values of log description fields to
 // enum.
-IceCandidateType GetRtcEventLogCandidateType(const webrtc::Candidate& c) {
+IceCandidateType GetRtcEventLogCandidateType(const Candidate& c) {
   if (c.is_local()) {
     return IceCandidateType::kHost;
   } else if (c.is_stun()) {
@@ -134,21 +134,21 @@ webrtc::IceCandidatePairAddressFamily GetAddressFamilyByInt(
   return webrtc::IceCandidatePairAddressFamily::kUnknown;
 }
 
-webrtc::IceCandidateNetworkType ConvertNetworkType(webrtc::AdapterType type) {
+webrtc::IceCandidateNetworkType ConvertNetworkType(rtc::AdapterType type) {
   switch (type) {
-    case webrtc::ADAPTER_TYPE_ETHERNET:
+    case rtc::ADAPTER_TYPE_ETHERNET:
       return webrtc::IceCandidateNetworkType::kEthernet;
-    case webrtc::ADAPTER_TYPE_LOOPBACK:
+    case rtc::ADAPTER_TYPE_LOOPBACK:
       return webrtc::IceCandidateNetworkType::kLoopback;
-    case webrtc::ADAPTER_TYPE_WIFI:
+    case rtc::ADAPTER_TYPE_WIFI:
       return webrtc::IceCandidateNetworkType::kWifi;
-    case webrtc::ADAPTER_TYPE_VPN:
+    case rtc::ADAPTER_TYPE_VPN:
       return webrtc::IceCandidateNetworkType::kVpn;
-    case webrtc::ADAPTER_TYPE_CELLULAR:
-    case webrtc::ADAPTER_TYPE_CELLULAR_2G:
-    case webrtc::ADAPTER_TYPE_CELLULAR_3G:
-    case webrtc::ADAPTER_TYPE_CELLULAR_4G:
-    case webrtc::ADAPTER_TYPE_CELLULAR_5G:
+    case rtc::ADAPTER_TYPE_CELLULAR:
+    case rtc::ADAPTER_TYPE_CELLULAR_2G:
+    case rtc::ADAPTER_TYPE_CELLULAR_3G:
+    case rtc::ADAPTER_TYPE_CELLULAR_4G:
+    case rtc::ADAPTER_TYPE_CELLULAR_5G:
       return webrtc::IceCandidateNetworkType::kCellular;
     default:
       return webrtc::IceCandidateNetworkType::kUnknown;
@@ -230,11 +230,11 @@ int Connection::ConnectionRequest::resend_delay() {
   return CONNECTION_RESPONSE_TIMEOUT;
 }
 
-Connection::Connection(rtc::WeakPtr<webrtc::PortInterface> port,
+Connection::Connection(rtc::WeakPtr<PortInterface> port,
                        size_t index,
-                       const webrtc::Candidate& remote_candidate)
+                       const Candidate& remote_candidate)
     : network_thread_(port->thread()),
-      id_(webrtc::CreateRandomId()),
+      id_(rtc::CreateRandomId()),
       port_(std::move(port)),
       local_candidate_(port_->Candidates()[index]),
       remote_candidate_(remote_candidate),
@@ -255,9 +255,8 @@ Connection::Connection(rtc::WeakPtr<webrtc::PortInterface> port,
       last_data_received_(0),
       last_ping_response_received_(0),
       state_(IceCandidatePairState::WAITING),
-      time_created_ms_(webrtc::TimeMillis()),
-      delta_internal_unix_epoch_ms_(webrtc::TimeUTCMillis() -
-                                    webrtc::TimeMillis()),
+      time_created_ms_(rtc::TimeMillis()),
+      delta_internal_unix_epoch_ms_(rtc::TimeUTCMillis() - rtc::TimeMillis()),
       field_trials_(&kDefaultFieldTrials),
       rtt_estimate_(DEFAULT_RTT_ESTIMATE_HALF_TIME_MS) {
   RTC_DCHECK_RUN_ON(network_thread_);
@@ -275,12 +274,12 @@ webrtc::TaskQueueBase* Connection::network_thread() const {
   return network_thread_;
 }
 
-const webrtc::Candidate& Connection::local_candidate() const {
+const Candidate& Connection::local_candidate() const {
   RTC_DCHECK_RUN_ON(network_thread_);
   return local_candidate_;
 }
 
-const webrtc::Candidate& Connection::remote_candidate() const {
+const Candidate& Connection::remote_candidate() const {
   return remote_candidate_;
 }
 
@@ -491,13 +490,13 @@ void Connection::OnReadPacket(const rtc::ReceivedPacket& packet) {
   RTC_DCHECK_RUN_ON(network_thread_);
   std::unique_ptr<IceMessage> msg;
   std::string remote_ufrag;
-  const webrtc::SocketAddress& addr(remote_candidate_.address());
+  const rtc::SocketAddress& addr(remote_candidate_.address());
   if (!port_->GetStunMessage(
           reinterpret_cast<const char*>(packet.payload().data()),
           packet.payload().size(), addr, &msg, &remote_ufrag)) {
     // The packet did not parse as a valid STUN message
     // This is a data packet, pass it along.
-    last_data_received_ = webrtc::TimeMillis();
+    last_data_received_ = rtc::TimeMillis();
     UpdateReceiving(last_data_received_);
     recv_rate_tracker_.AddSamples(packet.payload().size());
     stats_.packets_received++;
@@ -579,6 +578,15 @@ void Connection::OnReadPacket(const rtc::ReceivedPacket& packet) {
       // This doesn't just check, it makes callbacks if transaction
       // id's match.
     case STUN_BINDING_RESPONSE:
+      if (dtls_stun_piggyback_consumer_) {
+        const StunByteStringAttribute* dtls_piggyback_attribute =
+            msg->GetByteString(STUN_ATTR_META_DTLS_IN_STUN);
+        const StunByteStringAttribute* dtls_piggyback_ack =
+            msg->GetByteString(STUN_ATTR_META_DTLS_IN_STUN_ACK);
+        dtls_stun_piggyback_consumer_(dtls_piggyback_attribute,
+                                      dtls_piggyback_ack);
+      }
+      ABSL_FALLTHROUGH_INTENDED;
     case STUN_BINDING_ERROR_RESPONSE:
       requests_.CheckResponse(msg.get());
       break;
@@ -604,25 +612,32 @@ void Connection::OnReadPacket(const rtc::ReceivedPacket& packet) {
 }
 
 void Connection::MaybeAddDtlsPiggybackingAttributes(StunMessage* msg) {
-  if (dtls_stun_piggyback_callbacks_.empty()) {
+  if (!(dtls_stun_piggyback_data_producer_ &&
+        dtls_stun_piggyback_ack_producer_)) {
     return;
   }
+  std::optional<absl::string_view> dtls_piggyback_attr =
+      dtls_stun_piggyback_data_producer_(STUN_BINDING_RESPONSE);
+  std::optional<absl::string_view> dtls_piggyback_ack =
+      dtls_stun_piggyback_ack_producer_(STUN_BINDING_REQUEST);
 
-  const auto& [attr, ack] = dtls_stun_piggyback_callbacks_.send_data(
-      static_cast<StunMessageType>(msg->type()));
-
-  size_t need_length = (attr ? attr->length() + kStunAttributeHeaderSize : 0) +
-                       (ack ? ack->length() + kStunAttributeHeaderSize : 0);
+  size_t need_length =
+      (dtls_piggyback_attr
+           ? dtls_piggyback_attr->length() + kStunAttributeHeaderSize
+           : 0) +
+      (dtls_piggyback_ack
+           ? dtls_piggyback_ack->length() + kStunAttributeHeaderSize
+           : 0);
   if (msg->length() + need_length > kMaxStunBindingLength) {
     return;
   }
-  if (attr) {
+  if (dtls_piggyback_attr) {
     msg->AddAttribute(std::make_unique<StunByteStringAttribute>(
-        STUN_ATTR_META_DTLS_IN_STUN, *attr));
+        STUN_ATTR_META_DTLS_IN_STUN, *dtls_piggyback_attr));
   }
-  if (ack) {
+  if (dtls_piggyback_ack) {
     msg->AddAttribute(std::make_unique<StunByteStringAttribute>(
-        STUN_ATTR_META_DTLS_IN_STUN_ACK, *ack));
+        STUN_ATTR_META_DTLS_IN_STUN_ACK, *dtls_piggyback_ack));
   }
 }
 
@@ -633,7 +648,7 @@ void Connection::HandleStunBindingOrGoogPingRequest(IceMessage* msg) {
   if (field_trials_->extra_ice_ping && last_ping_response_received_ == 0) {
     if (local_candidate().is_relay() || local_candidate().is_prflx() ||
         remote_candidate().is_relay() || remote_candidate().is_prflx()) {
-      const int64_t now = webrtc::TimeMillis();
+      const int64_t now = rtc::TimeMillis();
       if (last_ping_sent_ + kMinExtraPingDelayMs <= now) {
         RTC_LOG(LS_INFO) << ToString()
                          << "WebRTC-ExtraICEPing/Sending extra ping"
@@ -651,7 +666,7 @@ void Connection::HandleStunBindingOrGoogPingRequest(IceMessage* msg) {
     }
   }
 
-  const webrtc::SocketAddress& remote_addr = remote_candidate_.address();
+  const rtc::SocketAddress& remote_addr = remote_candidate_.address();
   if (msg->type() == STUN_BINDING_REQUEST) {
     // Check for role conflicts.
     const std::string& remote_ufrag = remote_candidate_.username();
@@ -668,13 +683,13 @@ void Connection::HandleStunBindingOrGoogPingRequest(IceMessage* msg) {
 
   // This is a validated stun request from remote peer.
   if (msg->type() == STUN_BINDING_REQUEST) {
-    if (!dtls_stun_piggyback_callbacks_.empty()) {
+    if (dtls_stun_piggyback_consumer_) {
       const StunByteStringAttribute* dtls_piggyback_attribute =
           msg->GetByteString(STUN_ATTR_META_DTLS_IN_STUN);
       const StunByteStringAttribute* dtls_piggyback_ack =
           msg->GetByteString(STUN_ATTR_META_DTLS_IN_STUN_ACK);
-      dtls_stun_piggyback_callbacks_.recv_data(dtls_piggyback_attribute,
-                                               dtls_piggyback_ack);
+      dtls_stun_piggyback_consumer_(dtls_piggyback_attribute,
+                                    dtls_piggyback_ack);
     }
     SendStunBindingResponse(msg);
   } else {
@@ -821,7 +836,7 @@ void Connection::SendGoogPingResponse(const StunMessage* message) {
 void Connection::SendResponseMessage(const StunMessage& response) {
   RTC_DCHECK_RUN_ON(network_thread_);
   // Where I send the response.
-  const webrtc::SocketAddress& addr = remote_candidate_.address();
+  const rtc::SocketAddress& addr = remote_candidate_.address();
 
   // Send the response.
   rtc::ByteBufferWriter buf;
@@ -1171,7 +1186,7 @@ int64_t Connection::last_ping_received() const {
 
 void Connection::ReceivedPing(const std::optional<std::string>& request_id) {
   RTC_DCHECK_RUN_ON(network_thread_);
-  last_ping_received_ = webrtc::TimeMillis();
+  last_ping_received_ = rtc::TimeMillis();
   last_ping_id_received_ = request_id;
   UpdateReceiving(last_ping_received_);
 }
@@ -1193,7 +1208,7 @@ void Connection::HandlePiggybackCheckAcknowledgementIfAny(StunMessage* msg) {
       RTC_LOG_V(sev) << ToString()
                      << ": Received piggyback STUN ping response, id="
                      << rtc::hex_encode(request_id);
-      const int64_t rtt = webrtc::TimeMillis() - iter->sent_time;
+      const int64_t rtt = rtc::TimeMillis() - iter->sent_time;
       ReceivedPingResponse(rtt, request_id, iter->nomination);
     }
   }
@@ -1224,7 +1239,7 @@ void Connection::ReceivedPingResponse(
     acked_nomination_ = nomination.value();
   }
 
-  int64_t now = webrtc::TimeMillis();
+  int64_t now = rtc::TimeMillis();
   total_round_trip_time_ms_ += rtt;
   current_round_trip_time_ms_ = static_cast<uint32_t>(rtt);
   rtt_estimate_.AddSample(now, rtt);
@@ -1382,8 +1397,8 @@ std::string Connection::ToString() const {
        << ":";
   }
 
-  const webrtc::Candidate& local = local_candidate();
-  const webrtc::Candidate& remote = remote_candidate();
+  const Candidate& local = local_candidate();
+  const Candidate& remote = remote_candidate();
   ss << local.id() << ":" << local.component() << ":" << local.generation()
      << ":" << local.type_name() << ":" << local.protocol() << ":"
      << local.address().ToSensitiveString() << "->" << remote.id() << ":"
@@ -1417,8 +1432,8 @@ const webrtc::IceCandidatePairDescription& Connection::ToLogDescription() {
   if (log_description_.has_value()) {
     return log_description_.value();
   }
-  const webrtc::Candidate& local = local_candidate();
-  const webrtc::Candidate& remote = remote_candidate();
+  const Candidate& local = local_candidate();
+  const Candidate& remote = remote_candidate();
   const rtc::Network* network = port()->Network();
   log_description_ = webrtc::IceCandidatePairDescription(
       GetRtcEventLogCandidateType(local), GetRtcEventLogCandidateType(remote));
@@ -1541,7 +1556,7 @@ void Connection::OnConnectionRequestResponse(StunRequest* request,
     RTC_LOG(LS_ERROR) << "Discard GOOG_DELTA_ACK, no consumer";
   }
 
-  if (!dtls_stun_piggyback_callbacks_.empty()) {
+  if (dtls_stun_piggyback_consumer_) {
     const bool sent_dtls_piggyback =
         request->msg()->GetByteString(STUN_ATTR_META_DTLS_IN_STUN) != nullptr;
     const bool sent_dtls_piggyback_ack =
@@ -1552,8 +1567,7 @@ void Connection::OnConnectionRequestResponse(StunRequest* request,
     const StunByteStringAttribute* dtls_piggyback_ack =
         response->GetByteString(STUN_ATTR_META_DTLS_IN_STUN_ACK);
     if (sent_dtls_piggyback || sent_dtls_piggyback_ack) {
-      dtls_stun_piggyback_callbacks_.recv_data(dtls_piggyback_attr,
-                                               dtls_piggyback_ack);
+      dtls_stun_piggyback_consumer_(dtls_piggyback_attr, dtls_piggyback_ack);
     }
   }
 }
@@ -1644,7 +1658,7 @@ void Connection::MaybeSetRemoteIceParametersAndGeneration(
 }
 
 void Connection::MaybeUpdatePeerReflexiveCandidate(
-    const webrtc::Candidate& new_candidate) {
+    const Candidate& new_candidate) {
   if (remote_candidate_.is_prflx() && !new_candidate.is_prflx() &&
       remote_candidate_.protocol() == new_candidate.protocol() &&
       remote_candidate_.address() == new_candidate.address() &&
@@ -1850,9 +1864,9 @@ void Connection::ForgetLearnedState() {
   pings_since_last_response_.clear();
 }
 
-ProxyConnection::ProxyConnection(rtc::WeakPtr<webrtc::PortInterface> port,
+ProxyConnection::ProxyConnection(rtc::WeakPtr<PortInterface> port,
                                  size_t index,
-                                 const webrtc::Candidate& remote_candidate)
+                                 const Candidate& remote_candidate)
     : Connection(std::move(port), index, remote_candidate) {}
 
 int ProxyConnection::Send(const void* data,
@@ -1865,7 +1879,7 @@ int ProxyConnection::Send(const void* data,
   stats_.sent_total_packets++;
   int sent =
       port_->SendTo(data, size, remote_candidate_.address(), options, true);
-  int64_t now = webrtc::TimeMillis();
+  int64_t now = rtc::TimeMillis();
   if (sent <= 0) {
     RTC_DCHECK(sent < 0);
     error_ = port_->GetError();

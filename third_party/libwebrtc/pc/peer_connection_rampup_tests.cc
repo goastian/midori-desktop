@@ -71,7 +71,7 @@ using ::webrtc::test::Unit;
 static const int kDefaultTestTimeMs = 15000;
 static const int kRampUpTimeMs = 5000;
 static const int kPollIntervalTimeMs = 50;
-static const SocketAddress kDefaultLocalAddress("1.1.1.1", 0);
+static const rtc::SocketAddress kDefaultLocalAddress("1.1.1.1", 0);
 static const char kTurnInternalAddress[] = "88.88.88.0";
 static const char kTurnExternalAddress[] = "88.88.88.1";
 static const int kTurnInternalPort = 3478;
@@ -131,14 +131,15 @@ class PeerConnectionWrapperForRampUpTest : public PeerConnectionWrapper {
     video_track_sources_.back()->Start();
     return rtc::scoped_refptr<VideoTrackInterface>(
         pc_factory()->CreateVideoTrack(video_track_sources_.back(),
-                                       CreateRandomUuid()));
+                                       rtc::CreateRandomUuid()));
   }
 
   rtc::scoped_refptr<AudioTrackInterface> CreateLocalAudioTrack(
       const cricket::AudioOptions options) {
     rtc::scoped_refptr<AudioSourceInterface> source =
         pc_factory()->CreateAudioSource(options);
-    return pc_factory()->CreateAudioTrack(CreateRandomUuid(), source.get());
+    return pc_factory()->CreateAudioTrack(rtc::CreateRandomUuid(),
+                                          source.get());
   }
 
  private:
@@ -153,7 +154,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
       : clock_(Clock::GetRealTimeClock()),
         firewall_socket_server_(&virtual_socket_server_),
         network_thread_(&firewall_socket_server_),
-        worker_thread_(Thread::Create()) {
+        worker_thread_(rtc::Thread::Create()) {
     network_thread_.SetName("PCNetworkThread", this);
     worker_thread_->SetName("PCWorkerThread", this);
     RTC_CHECK(network_thread_.Start());
@@ -178,9 +179,9 @@ class PeerConnectionRampUpTest : public ::testing::Test {
     PeerConnectionFactoryDependencies pcf_deps;
     pcf_deps.network_thread = network_thread();
     pcf_deps.worker_thread = worker_thread_.get();
-    pcf_deps.signaling_thread = Thread::Current();
+    pcf_deps.signaling_thread = rtc::Thread::Current();
     pcf_deps.socket_factory = &firewall_socket_server_;
-    auto network_manager = std::make_unique<FakeNetworkManager>();
+    auto network_manager = std::make_unique<rtc::FakeNetworkManager>();
     network_manager->AddInterface(kDefaultLocalAddress);
     pcf_deps.network_manager = std::move(network_manager);
     pcf_deps.adm = FakeAudioCaptureModule::Create();
@@ -199,7 +200,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
     auto observer = std::make_unique<MockPeerConnectionObserver>();
     PeerConnectionDependencies dependencies(observer.get());
     dependencies.tls_cert_verifier =
-        std::make_unique<TestCertificateVerifier>();
+        std::make_unique<rtc::TestCertificateVerifier>();
 
     auto result = pc_factory->CreatePeerConnectionOrError(
         config, std::move(dependencies));
@@ -247,17 +248,17 @@ class PeerConnectionRampUpTest : public ::testing::Test {
                 IsRtcOk());
   }
 
-  void CreateTurnServer(ProtocolType type,
+  void CreateTurnServer(cricket::ProtocolType type,
                         const std::string& common_name = "test turn server") {
-    Thread* thread = network_thread();
-    SocketFactory* factory = &firewall_socket_server_;
-    std::unique_ptr<TestTurnServer> turn_server;
+    rtc::Thread* thread = network_thread();
+    rtc::SocketFactory* factory = &firewall_socket_server_;
+    std::unique_ptr<cricket::TestTurnServer> turn_server;
     SendTask(network_thread(), [&] {
-      static const SocketAddress turn_server_internal_address{
+      static const rtc::SocketAddress turn_server_internal_address{
           kTurnInternalAddress, kTurnInternalPort};
-      static const SocketAddress turn_server_external_address{
+      static const rtc::SocketAddress turn_server_external_address{
           kTurnExternalAddress, kTurnExternalPort};
-      turn_server = std::make_unique<TestTurnServer>(
+      turn_server = std::make_unique<cricket::TestTurnServer>(
           thread, factory, turn_server_internal_address,
           turn_server_external_address, type, true /*ignore_bad_certs=*/,
           common_name);
@@ -271,12 +272,12 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   // bandwidth estimations and prints the bandwidth estimation result as a perf
   // metric.
   void RunTest(const std::string& test_string) {
-    Thread::Current()->ProcessMessages(kRampUpTimeMs);
+    rtc::Thread::Current()->ProcessMessages(kRampUpTimeMs);
     int number_of_polls =
         (kDefaultTestTimeMs - kRampUpTimeMs) / kPollIntervalTimeMs;
     int total_bwe = 0;
     for (int i = 0; i < number_of_polls; ++i) {
-      Thread::Current()->ProcessMessages(kPollIntervalTimeMs);
+      rtc::Thread::Current()->ProcessMessages(kPollIntervalTimeMs);
       total_bwe += static_cast<int>(GetCallerAvailableBitrateEstimate());
     }
     double average_bandwidth_estimate = total_bwe / number_of_polls;
@@ -288,9 +289,9 @@ class PeerConnectionRampUpTest : public ::testing::Test {
         ImprovementDirection::kNeitherIsBetter);
   }
 
-  Thread* network_thread() { return &network_thread_; }
+  rtc::Thread* network_thread() { return &network_thread_; }
 
-  FirewallSocketServer* firewall_socket_server() {
+  rtc::FirewallSocketServer* firewall_socket_server() {
     return &firewall_socket_server_;
   }
 
@@ -327,7 +328,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   Clock* const clock_;
   // The turn servers should be accessed & deleted on the network thread to
   // avoid a race with the socket read/write which occurs on the network thread.
-  std::vector<std::unique_ptr<TestTurnServer>> turn_servers_;
+  std::vector<std::unique_ptr<cricket::TestTurnServer>> turn_servers_;
   // `virtual_socket_server_` is used by `network_thread_` so it must be
   // destroyed later.
   // TODO(bugs.webrtc.org/7668): We would like to update the virtual network we
@@ -342,18 +343,18 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   // the VirtualSocketServer. The first ramp down time is very noisy and the
   // second ramp up time can take up to 300 seconds, most likely due to a built
   // up queue.
-  VirtualSocketServer virtual_socket_server_;
-  FirewallSocketServer firewall_socket_server_;
+  rtc::VirtualSocketServer virtual_socket_server_;
+  rtc::FirewallSocketServer firewall_socket_server_;
 
-  Thread network_thread_;
-  std::unique_ptr<Thread> worker_thread_;
+  rtc::Thread network_thread_;
+  std::unique_ptr<rtc::Thread> worker_thread_;
 
   std::unique_ptr<PeerConnectionWrapperForRampUpTest> caller_;
   std::unique_ptr<PeerConnectionWrapperForRampUpTest> callee_;
 };
 
 TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTCP) {
-  CreateTurnServer(ProtocolType::PROTO_TCP);
+  CreateTurnServer(cricket::ProtocolType::PROTO_TCP);
   PeerConnectionInterface::IceServer ice_server;
   std::string ice_server_url = "turn:" + std::string(kTurnInternalAddress) +
                                ":" + std::to_string(kTurnInternalPort) +
@@ -376,7 +377,7 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTCP) {
 }
 
 TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverUDP) {
-  CreateTurnServer(ProtocolType::PROTO_UDP);
+  CreateTurnServer(cricket::ProtocolType::PROTO_UDP);
   PeerConnectionInterface::IceServer ice_server;
   std::string ice_server_url = "turn:" + std::string(kTurnInternalAddress) +
                                ":" + std::to_string(kTurnInternalPort);
@@ -399,7 +400,7 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverUDP) {
 }
 
 TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTLS) {
-  CreateTurnServer(ProtocolType::PROTO_TLS, kTurnInternalAddress);
+  CreateTurnServer(cricket::ProtocolType::PROTO_TLS, kTurnInternalAddress);
   PeerConnectionInterface::IceServer ice_server;
   std::string ice_server_url = "turns:" + std::string(kTurnInternalAddress) +
                                ":" + std::to_string(kTurnInternalPort) +

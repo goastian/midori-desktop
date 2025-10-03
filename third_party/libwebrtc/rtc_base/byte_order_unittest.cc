@@ -14,7 +14,7 @@
 
 #include "test/gtest.h"
 
-namespace webrtc {
+namespace rtc {
 
 // Test memory set functions put values into memory in expected order.
 TEST(ByteOrderTest, TestSet) {
@@ -80,4 +80,4 @@ TEST(ByteOrderTest, TestGet) {
   EXPECT_EQ(UINT64_C(0xefcdab8967452301), GetLE64(buf));
 }
 
-}  // namespace webrtc
+}  // namespace rtc

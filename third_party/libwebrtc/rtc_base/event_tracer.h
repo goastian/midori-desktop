@@ -72,7 +72,9 @@ class EventTracer {
 };
 #endif
 
-namespace tracing {
+}  // namespace webrtc
+
+namespace rtc::tracing {
 // Set up internal event tracer.
 // TODO(webrtc:15917): Implement for perfetto.
 RTC_EXPORT void SetupInternalTracer(bool enable_all_categories = true);
@@ -81,18 +83,6 @@ RTC_EXPORT void StartInternalCaptureToFile(FILE* file);
 RTC_EXPORT void StopInternalCapture();
 // Make sure we run this, this will tear down the internal tracing.
 RTC_EXPORT void ShutdownInternalTracer();
-}  // namespace tracing
-
-}  // namespace webrtc
-
-// Re-export symbols from the webrtc namespace for backwards compatibility.
-// TODO(bugs.webrtc.org/4222596): Remove once all references are updated.
-namespace rtc::tracing {
-using ::webrtc::tracing::SetupInternalTracer;
-using ::webrtc::tracing::ShutdownInternalTracer;
-using ::webrtc::tracing::StartInternalCapture;
-using ::webrtc::tracing::StartInternalCaptureToFile;
-using ::webrtc::tracing::StopInternalCapture;
 }  // namespace rtc::tracing
 
 #endif  // RTC_BASE_EVENT_TRACER_H_

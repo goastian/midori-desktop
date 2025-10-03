@@ -37,7 +37,7 @@ class RTC_EXPORT ReceivedPacket {
   // Caller must keep memory pointed to by payload and address valid for the
   // lifetime of this ReceivedPacket.
   ReceivedPacket(rtc::ArrayView<const uint8_t> payload,
-                 const webrtc::SocketAddress& source_address,
+                 const SocketAddress& source_address,
                  std::optional<webrtc::Timestamp> arrival_time = std::nullopt,
                  EcnMarking ecn = EcnMarking::kNotEct,
                  DecryptionInfo decryption = kNotDecrypted);
@@ -45,9 +45,7 @@ class RTC_EXPORT ReceivedPacket {
   ReceivedPacket CopyAndSet(DecryptionInfo decryption_info) const;
 
   // Address/port of the packet sender.
-  const webrtc::SocketAddress& source_address() const {
-    return source_address_;
-  }
+  const SocketAddress& source_address() const { return source_address_; }
   rtc::ArrayView<const uint8_t> payload() const { return payload_; }
 
   // Timestamp when this packet was received. Not available on all socket
@@ -65,7 +63,7 @@ class RTC_EXPORT ReceivedPacket {
       const char* data,
       size_t size,
       int64_t packet_time_us,
-      const webrtc::SocketAddress& addr = webrtc::SocketAddress()) {
+      const rtc::SocketAddress& addr = rtc::SocketAddress()) {
     return CreateFromLegacy(reinterpret_cast<const uint8_t*>(data), size,
                             packet_time_us, addr);
   }
@@ -74,12 +72,12 @@ class RTC_EXPORT ReceivedPacket {
       const uint8_t* data,
       size_t size,
       int64_t packet_time_us,
-      const webrtc::SocketAddress& = webrtc::SocketAddress());
+      const rtc::SocketAddress& = rtc::SocketAddress());
 
  private:
   rtc::ArrayView<const uint8_t> payload_;
   std::optional<webrtc::Timestamp> arrival_time_;
-  const webrtc::SocketAddress& source_address_;
+  const SocketAddress& source_address_;
   EcnMarking ecn_;
   DecryptionInfo decryption_info_;
 };

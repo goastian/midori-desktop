@@ -363,9 +363,9 @@ void CreateNetEqStatsGraphInternal(
     const ParsedRtcEventLog& parsed_log,
     const AnalyzerConfig& config,
     const NetEqStatsGetterMap& neteq_stats,
-    FunctionView<const std::vector<std::pair<int64_t, NetEqStatsType>>*(
+    rtc::FunctionView<const std::vector<std::pair<int64_t, NetEqStatsType>>*(
         const test::NetEqStatsGetter*)> data_extractor,
-    FunctionView<float(const NetEqStatsType&)> stats_extractor,
+    rtc::FunctionView<float(const NetEqStatsType&)> stats_extractor,
     const std::string& plot_name,
     Plot* plot) {
   std::map<uint32_t, TimeSeries> time_series;
@@ -398,7 +398,7 @@ void CreateNetEqNetworkStatsGraph(
     const ParsedRtcEventLog& parsed_log,
     const AnalyzerConfig& config,
     const NetEqStatsGetterMap& neteq_stats,
-    FunctionView<float(const NetEqNetworkStatistics&)> stats_extractor,
+    rtc::FunctionView<float(const NetEqNetworkStatistics&)> stats_extractor,
     const std::string& plot_name,
     Plot* plot) {
   CreateNetEqStatsGraphInternal<NetEqNetworkStatistics>(
@@ -413,7 +413,7 @@ void CreateNetEqLifetimeStatsGraph(
     const ParsedRtcEventLog& parsed_log,
     const AnalyzerConfig& config,
     const NetEqStatsGetterMap& neteq_stats,
-    FunctionView<float(const NetEqLifetimeStatistics&)> stats_extractor,
+    rtc::FunctionView<float(const NetEqLifetimeStatistics&)> stats_extractor,
     const std::string& plot_name,
     Plot* plot) {
   CreateNetEqStatsGraphInternal<NetEqLifetimeStatistics>(

@@ -22,7 +22,7 @@
 #include "test/gmock.h"
 #include "test/gtest.h"
 
-namespace webrtc {
+namespace rtc {
 
 namespace {
 
@@ -315,9 +315,7 @@ TEST(LogTest, Perf) {
   LogMessage::AddLogToStream(&stream, LS_VERBOSE);
 
   const std::string message(80, 'X');
-  {
-    LogMessageForTesting sanity_check_msg(__FILE__, __LINE__, LS_VERBOSE);
-  }
+  { LogMessageForTesting sanity_check_msg(__FILE__, __LINE__, LS_VERBOSE); }
 
   // We now know how many bytes the logging framework will tag onto every msg.
   const size_t logging_overhead = str.size();
@@ -414,5 +412,5 @@ TEST(LogTest, EnumSupportsAbslStringify) {
   LogMessage::RemoveLogToStream(&stream);
 }
 
-}  // namespace webrtc
+}  // namespace rtc
 #endif  // RTC_LOG_ENABLED()

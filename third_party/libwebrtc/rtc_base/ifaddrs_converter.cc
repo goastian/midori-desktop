@@ -18,25 +18,25 @@ IfAddrsConverter::~IfAddrsConverter() {}
 
 bool IfAddrsConverter::ConvertIfAddrsToIPAddress(
     const struct ifaddrs* interface,
-    webrtc::InterfaceAddress* ip,
-    webrtc::IPAddress* mask) {
+    InterfaceAddress* ip,
+    IPAddress* mask) {
   switch (interface->ifa_addr->sa_family) {
     case AF_INET: {
-      *ip = webrtc::InterfaceAddress(webrtc::IPAddress(
+      *ip = InterfaceAddress(IPAddress(
           reinterpret_cast<sockaddr_in*>(interface->ifa_addr)->sin_addr));
-      *mask = webrtc::IPAddress(
+      *mask = IPAddress(
           reinterpret_cast<sockaddr_in*>(interface->ifa_netmask)->sin_addr);
       return true;
     }
     case AF_INET6: {
-      int ip_attributes = webrtc::IPV6_ADDRESS_FLAG_NONE;
+      int ip_attributes = IPV6_ADDRESS_FLAG_NONE;
       if (!ConvertNativeAttributesToIPAttributes(interface, &ip_attributes)) {
         return false;
       }
-      *ip = webrtc::InterfaceAddress(
+      *ip = InterfaceAddress(
           reinterpret_cast<sockaddr_in6*>(interface->ifa_addr)->sin6_addr,
           ip_attributes);
-      *mask = webrtc::IPAddress(
+      *mask = IPAddress(
           reinterpret_cast<sockaddr_in6*>(interface->ifa_netmask)->sin6_addr);
       return true;
     }
@@ -49,7 +49,7 @@ bool IfAddrsConverter::ConvertIfAddrsToIPAddress(
 bool IfAddrsConverter::ConvertNativeAttributesToIPAttributes(
     const struct ifaddrs* /* interface */,
     int* ip_attributes) {
-  *ip_attributes = webrtc::IPV6_ADDRESS_FLAG_NONE;
+  *ip_attributes = IPV6_ADDRESS_FLAG_NONE;
   return true;
 }
 

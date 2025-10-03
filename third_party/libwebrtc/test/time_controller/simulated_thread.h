@@ -17,13 +17,13 @@
 
 namespace webrtc {
 
-class SimulatedThread : public Thread,
+class SimulatedThread : public rtc::Thread,
                         public sim_time_impl::SimulatedSequenceRunner {
  public:
   using CurrentThreadSetter = CurrentThreadSetter;
   SimulatedThread(sim_time_impl::SimulatedTimeControllerImpl* handler,
                   absl::string_view name,
-                  std::unique_ptr<SocketServer> socket_server);
+                  std::unique_ptr<rtc::SocketServer> socket_server);
   ~SimulatedThread() override;
 
   void RunReady(Timestamp at_time) override;
@@ -36,7 +36,7 @@ class SimulatedThread : public Thread,
   TaskQueueBase* GetAsTaskQueue() override { return this; }
 
   // Thread interface
-  void BlockingCallImpl(FunctionView<void()> functor,
+  void BlockingCallImpl(rtc::FunctionView<void()> functor,
                         const Location& location) override;
   void PostTaskImpl(absl::AnyInvocable<void() &&> task,
                     const PostTaskTraits& traits,

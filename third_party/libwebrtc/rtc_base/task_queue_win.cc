@@ -64,22 +64,22 @@ void CALLBACK InitializeQueueThread(ULONG_PTR param) {
   data->Set();
 }
 
-ThreadPriority TaskQueuePriorityToThreadPriority(
+rtc::ThreadPriority TaskQueuePriorityToThreadPriority(
     TaskQueueFactory::Priority priority) {
   switch (priority) {
     case TaskQueueFactory::Priority::HIGH:
-      return ThreadPriority::kRealtime;
+      return rtc::ThreadPriority::kRealtime;
     case TaskQueueFactory::Priority::LOW:
-      return ThreadPriority::kLow;
+      return rtc::ThreadPriority::kLow;
     case TaskQueueFactory::Priority::NORMAL:
-      return ThreadPriority::kNormal;
+      return rtc::ThreadPriority::kNormal;
   }
 }
 
 Timestamp CurrentTime() {
   static const UINT kPeriod = 1;
   bool high_res = (timeBeginPeriod(kPeriod) == TIMERR_NOERROR);
-  Timestamp ret = Timestamp::Micros(TimeMicros());
+  Timestamp ret = Timestamp::Micros(rtc::TimeMicros());
   if (high_res)
     timeEndPeriod(kPeriod);
   return ret;
@@ -165,7 +165,7 @@ class MultimediaTimer {
 
 class TaskQueueWin : public TaskQueueBase {
  public:
-  TaskQueueWin(absl::string_view queue_name, ThreadPriority priority);
+  TaskQueueWin(absl::string_view queue_name, rtc::ThreadPriority priority);
   ~TaskQueueWin() override = default;
 
   void Delete() override;
@@ -196,7 +196,7 @@ class TaskQueueWin : public TaskQueueBase {
                       std::greater<DelayedTaskInfo>>
       timer_tasks_;
   UINT_PTR timer_id_ = 0;
-  PlatformThread thread_;
+  rtc::PlatformThread thread_;
   Mutex pending_lock_;
   std::queue<absl::AnyInvocable<void() &&>> pending_
       RTC_GUARDED_BY(pending_lock_);
@@ -204,17 +204,17 @@ class TaskQueueWin : public TaskQueueBase {
 };
 
 TaskQueueWin::TaskQueueWin(absl::string_view queue_name,
-                           ThreadPriority priority)
+                           rtc::ThreadPriority priority)
     : in_queue_(::CreateEvent(nullptr, true, false, nullptr)) {
   RTC_DCHECK(in_queue_);
   thread_ = rtc::PlatformThread::SpawnJoinable(
       [this] { RunThreadMain(); }, queue_name,
       rtc::ThreadAttributes().SetPriority(priority));
 
-  Event event(false, false);
+  rtc::Event event(false, false);
   RTC_CHECK(thread_.QueueAPC(&InitializeQueueThread,
                              reinterpret_cast<ULONG_PTR>(&event)));
-  event.Wait(Event::kForever);
+  event.Wait(rtc::Event::kForever);
 }
 
 void TaskQueueWin::Delete() {

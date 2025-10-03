@@ -15,7 +15,7 @@
 
 #include "api/array_view.h"
 
-namespace webrtc {
+namespace rtc {
 
 ///////////////////////////////////////////////////////////////////////////////
 // StreamInterface
@@ -44,4 +44,4 @@ bool StreamInterface::Flush() {
 
 StreamInterface::StreamInterface() {}
 
-}  // namespace webrtc
+}  // namespace rtc

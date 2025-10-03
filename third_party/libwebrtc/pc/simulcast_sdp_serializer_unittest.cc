@@ -284,7 +284,7 @@ class RidDescriptionSdpSerializerTest : public TestWithParam<const char*> {
   // Runs a test for deserializing Rid Descriptions.
   // `str` - The serialized Rid Description to parse.
   // `expected` - The expected output RidDescription to compare to.
-  void TestDeserialization(const MediaContentDescription& media_desc,
+  void TestDeserialization(const cricket::MediaContentDescription& media_desc,
                            const std::string& str,
                            const RidDescription& expected) const {
     SimulcastSdpSerializer deserializer;
@@ -296,7 +296,7 @@ class RidDescriptionSdpSerializerTest : public TestWithParam<const char*> {
   // Runs a test for serializing RidDescriptions.
   // `rid_description` - The RidDescription to serialize.
   // `expected` - The expected output string to compare to.
-  void TestSerialization(const MediaContentDescription& media_desc,
+  void TestSerialization(const cricket::MediaContentDescription& media_desc,
                          const RidDescription& rid_description,
                          const std::string& expected) const {
     SimulcastSdpSerializer serializer;
@@ -309,20 +309,22 @@ class RidDescriptionSdpSerializerTest : public TestWithParam<const char*> {
 // Test serialization for RidDescription that only specifies send.
 TEST_F(RidDescriptionSdpSerializerTest, Serialize_OnlyDirectionSend) {
   RidDescription rid_description("1", RidDirection::kSend);
-  TestSerialization(VideoContentDescription(), rid_description, "1 send");
+  TestSerialization(cricket::VideoContentDescription(), rid_description,
+                    "1 send");
 }
 
 // Test serialization for RidDescription that only specifies receive.
 TEST_F(RidDescriptionSdpSerializerTest, Serialize_OnlyDirectionReceive) {
   RidDescription rid_description("2", RidDirection::kReceive);
-  TestSerialization(VideoContentDescription(), rid_description, "2 recv");
+  TestSerialization(cricket::VideoContentDescription(), rid_description,
+                    "2 recv");
 }
 
 // Test serialization for RidDescription with format list.
 TEST_F(RidDescriptionSdpSerializerTest, Serialize_FormatList) {
   cricket::Codec vp8 = cricket::CreateVideoCodec(101, "VP8");
   cricket::Codec vp9 = cricket::CreateVideoCodec(102, "VP9");
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({vp8, vp9});
 
   RidDescription rid_description("3", RidDirection::kSend);
@@ -333,7 +335,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Serialize_FormatList) {
 // Test serialization for RidDescription with format list.
 TEST_F(RidDescriptionSdpSerializerTest, Serialize_FormatListSingleFormat) {
   cricket::Codec vp8 = cricket::CreateVideoCodec(100, "VP8");
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({vp8});
 
   RidDescription rid_description("4", RidDirection::kReceive);
@@ -347,7 +349,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Serialize_AttributeList) {
   RidDescription rid_description("5", RidDirection::kSend);
   rid_description.restrictions["max-width"] = "1280";
   rid_description.restrictions["max-height"] = "720";
-  TestSerialization(VideoContentDescription(), rid_description,
+  TestSerialization(cricket::VideoContentDescription(), rid_description,
                     "5 send max-height=720;max-width=1280");
 }
 
@@ -356,7 +358,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Serialize_AttributeList) {
 TEST_F(RidDescriptionSdpSerializerTest, Serialize_FormatAndAttributeList) {
   cricket::Codec vp8 = cricket::CreateVideoCodec(103, "VP8");
   cricket::Codec vp9 = cricket::CreateVideoCodec(104, "VP9");
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({vp8, vp9});
 
   RidDescription rid_description("6", RidDirection::kSend);
@@ -371,7 +373,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Serialize_FormatAndAttributeList) {
 // Note: restriction list will be sorted because it is stored in a map.
 TEST_F(RidDescriptionSdpSerializerTest, Serialize_RestrictionWithoutValue) {
   cricket::Codec vp8 = cricket::CreateVideoCodec(103, "VP8");
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({vp8});
 
   RidDescription rid_description("7", RidDirection::kReceive);
@@ -386,19 +388,21 @@ TEST_F(RidDescriptionSdpSerializerTest, Serialize_RestrictionWithoutValue) {
 // Test simulcast deserialization with simple send stream.
 TEST_F(RidDescriptionSdpSerializerTest, Deserialize_SimpleSendCase) {
   RidDescription rid_description("1", RidDirection::kSend);
-  TestDeserialization(VideoContentDescription(), "1 send", rid_description);
+  TestDeserialization(cricket::VideoContentDescription(), "1 send",
+                      rid_description);
 }
 
 // Test simulcast deserialization with simple receive stream.
 TEST_F(RidDescriptionSdpSerializerTest, Deserialize_SimpleReceiveCase) {
   RidDescription rid_description("2", RidDirection::kReceive);
-  TestDeserialization(VideoContentDescription(), "2 recv", rid_description);
+  TestDeserialization(cricket::VideoContentDescription(), "2 recv",
+                      rid_description);
 }
 
 // Test simulcast deserialization with single format.
 TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithFormat) {
   cricket::Codec vp8 = cricket::CreateVideoCodec(101, "VP8");
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({vp8});
 
   RidDescription rid_description("3", RidDirection::kSend);
@@ -410,7 +414,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithFormat) {
 // a payload type that does not refer to any codec in the media description.
 TEST_F(RidDescriptionSdpSerializerTest, Deserialize_ReferencingUnknownCodec) {
   cricket::Codec vp8 = cricket::CreateVideoCodec(101, "VP8");
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({vp8});
 
   RidDescription rid_description("3", RidDirection::kSend);
@@ -424,7 +428,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithMultipleFormats) {
   cricket::Codec vp9 = cricket::CreateVideoCodec(102, "VP9");
   cricket::Codec av1 = cricket::CreateVideoCodec(103, "AV1");
   cricket::Codec h264 = cricket::CreateVideoCodec(104, "H264");
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({vp8, vp9, av1, h264});
 
   RidDescription rid_description("4", RidDirection::kSend);
@@ -436,8 +440,8 @@ TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithMultipleFormats) {
 TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithRestriction) {
   RidDescription rid_description("5", RidDirection::kReceive);
   rid_description.restrictions["max-height"] = "720";
-  TestDeserialization(VideoContentDescription(), "5 recv max-height=720",
-                      rid_description);
+  TestDeserialization(cricket::VideoContentDescription(),
+                      "5 recv max-height=720", rid_description);
 }
 
 // Test simulcast deserialization with multiple restrictions.
@@ -448,7 +452,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithMultipleRestrictions) {
   rid_description.restrictions["max-fr"] = "60";
   rid_description.restrictions["max-bps"] = "14000";
   TestDeserialization(
-      VideoContentDescription(),
+      cricket::VideoContentDescription(),
       "6 recv max-height=720;max-width=1920;max-bps=14000;max-fr=60",
       rid_description);
 }
@@ -458,7 +462,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithCustomRestrictions) {
   RidDescription rid_description("7", RidDirection::kSend);
   rid_description.restrictions["foo"] = "bar";
   rid_description.restrictions["max-height"] = "720";
-  TestDeserialization(VideoContentDescription(),
+  TestDeserialization(cricket::VideoContentDescription(),
                       "7 send max-height=720;foo=bar", rid_description);
 }
 
@@ -466,7 +470,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithCustomRestrictions) {
 TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithFormatAndRestrictions) {
   cricket::Codec av1 = cricket::CreateVideoCodec(103, "AV1");
   cricket::Codec h264 = cricket::CreateVideoCodec(104, "H264");
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({av1, h264});
 
   RidDescription rid_description("8", RidDirection::kSend);
@@ -481,7 +485,7 @@ TEST_F(RidDescriptionSdpSerializerTest, Deserialize_WithFormatAndRestrictions) {
 // Test simulcast deserialization with restriction that has no value.
 TEST_F(RidDescriptionSdpSerializerTest, Deserialize_RestrictionHasNoValue) {
   cricket::Codec h264 = cricket::CreateVideoCodec(104, "H264");
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({h264});
 
   RidDescription rid_description("9", RidDirection::kReceive);
@@ -500,13 +504,13 @@ TEST_F(RidDescriptionSdpSerializerTest, Deserialize_RestrictionHasNoValue) {
 TEST_F(RidDescriptionSdpSerializerTest, Deserialize_AmbiguousCase) {
   RidDescription rid_description("1", RidDirection::kSend);
   rid_description.restrictions["recv"];  // No value.
-  TestDeserialization(VideoContentDescription(), "1 send recv",
+  TestDeserialization(cricket::VideoContentDescription(), "1 send recv",
                       rid_description);
 }
 
 // Parameterized negative test case for deserialization with invalid inputs.
 TEST_P(RidDescriptionSdpSerializerTest, RidDescriptionDeserializationFailed) {
-  VideoContentDescription video_desc;
+  cricket::VideoContentDescription video_desc;
   video_desc.set_codecs({cricket::CreateVideoCodec(101, "VP8"),
                          cricket::CreateVideoCodec(102, "VP9")});
 

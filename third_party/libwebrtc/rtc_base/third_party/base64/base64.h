@@ -19,7 +19,7 @@
 
 #include "absl/strings/string_view.h"
 
-namespace webrtc {
+namespace rtc {
 
 class Base64 {
  public:
@@ -122,12 +122,6 @@ class Base64 {
                                       size_t* data_used);
 };
 
-}  //  namespace webrtc
-
-// Re-export symbols from the webrtc namespace for backwards compatibility.
-// TODO(bugs.webrtc.org/4222596): Remove once all references are updated.
-namespace rtc {
-using ::webrtc::Base64;
 }  // namespace rtc
 
 #endif /* RTC_BASE_THIRD_PARTY_BASE64_BASE64_H_ */

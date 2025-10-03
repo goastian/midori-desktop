@@ -12,8 +12,7 @@ HTP/1.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=2 span[protocol]="HT"
-off=2 error code=8 reason="Expected HTTP/, RTSP/ or ICE/"
+off=2 error code=8 reason="Expected HTTP/"
 ```
 
 ### Extra digit in HTTP major version
@@ -27,8 +26,6 @@ HTTP/01.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=1 span[version]="0"
 off=6 error code=9 reason="Expected dot"
 ```
@@ -44,8 +41,6 @@ HTTP/11.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=1 span[version]="1"
 off=6 error code=9 reason="Expected dot"
 ```
@@ -61,8 +56,6 @@ HTTP/1.01 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.0"
 off=8 version complete
 off=8 error code=9 reason="Expected space after version"
@@ -80,8 +73,6 @@ HTTP/1.1\t200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=8 error code=9 reason="Expected space after version"
@@ -98,8 +89,6 @@ off=8 error code=9 reason="Expected space after version"
 
 ```log
 off=1 message begin
-off=1 len=4 span[protocol]="HTTP"
-off=5 protocol complete
 off=6 len=3 span[version]="1.1"
 off=9 version complete
 off=9 error code=9 reason="Expected space after version"
@@ -117,8 +106,6 @@ Foo: 1\rBar: 2
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -140,8 +127,6 @@ HTTP/5.6 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="5.6"
 off=8 error code=9 reason="Invalid HTTP version"
 ```
@@ -156,8 +141,6 @@ HTTP/1.1 200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -176,8 +159,6 @@ HTTP/1.1  200 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=9 error code=13 reason="Invalid status code"
@@ -194,8 +175,6 @@ HTTP/1.1 200  OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=3 span[status]=" OK"
@@ -214,8 +193,6 @@ HTTP/1.1 2 OK
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=10 error code=13 reason="Invalid status code"
@@ -230,8 +207,6 @@ HTTP/1.1 200 OK\nContent-Length: 0\n\n
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -247,8 +222,6 @@ HTTP/1.1 200 OK\nContent-Length: 0\n\n
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -274,8 +247,6 @@ BODY\n\
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"
@@ -295,8 +266,6 @@ BODY\n\
 
 ```log
 off=0 message begin
-off=0 len=4 span[protocol]="HTTP"
-off=4 protocol complete
 off=5 len=3 span[version]="1.1"
 off=8 version complete
 off=13 len=2 span[status]="OK"

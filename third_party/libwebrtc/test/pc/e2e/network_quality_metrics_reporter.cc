@@ -110,7 +110,7 @@ void NetworkQualityMetricsReporter::StopAndReportResults() {
 
 EmulatedNetworkStats NetworkQualityMetricsReporter::PopulateStats(
     EmulatedNetworkManagerInterface* network) {
-  Event wait;
+  rtc::Event wait;
   EmulatedNetworkStats stats;
   network->GetStats([&](EmulatedNetworkStats s) {
     stats = std::move(s);

@@ -27,7 +27,6 @@
 #include "api/rtc_event_log/rtc_event_log.h"
 #include "api/scoped_refptr.h"
 #include "api/sequence_checker.h"
-#include "api/task_queue/pending_task_safety_flag.h"
 #include "p2p/base/ice_transport_internal.h"
 #include "p2p/dtls/dtls_stun_piggyback_controller.h"
 #include "p2p/dtls/dtls_transport_internal.h"
@@ -37,9 +36,9 @@
 #include "rtc_base/network/received_packet.h"
 #include "rtc_base/network/sent_packet.h"
 #include "rtc_base/network_route.h"
-#include "rtc_base/rtc_certificate.h"
 #include "rtc_base/socket.h"
 #include "rtc_base/ssl_certificate.h"
+#include "rtc_base/ssl_fingerprint.h"
 #include "rtc_base/ssl_stream_adapter.h"
 #include "rtc_base/stream.h"
 #include "rtc_base/strings/string_builder.h"
@@ -56,7 +55,7 @@ namespace cricket {
 // the bottom and a StreamInterface on the top.
 class StreamInterfaceChannel : public rtc::StreamInterface {
  public:
-  explicit StreamInterfaceChannel(webrtc::IceTransportInternal* ice_transport);
+  explicit StreamInterfaceChannel(IceTransportInternal* ice_transport);
 
   void SetDtlsStunPiggybackController(
       DtlsStunPiggybackController* dtls_stun_piggyback_controller);
@@ -78,9 +77,9 @@ class StreamInterfaceChannel : public rtc::StreamInterface {
                           int& error) override;
 
  private:
-  webrtc::IceTransportInternal* const ice_transport_;  // owned by DtlsTransport
-  DtlsStunPiggybackController* dtls_stun_piggyback_controller_ =
-      nullptr;  // owned by DtlsTransport
+  IceTransportInternal* const ice_transport_;  // owned by DtlsTransport
+  DtlsStunPiggybackController*
+      dtls_stun_piggyback_controller_;  // owned by DtlsTransport
   rtc::StreamState state_ RTC_GUARDED_BY(callback_sequence_);
   rtc::BufferQueue packets_ RTC_GUARDED_BY(callback_sequence_);
 };
@@ -124,10 +123,10 @@ class DtlsTransport : public DtlsTransportInternal {
   // `event_log` is an optional RtcEventLog for logging state changes. It should
   // outlive the DtlsTransport.
   DtlsTransport(
-      webrtc::IceTransportInternal* ice_transport,
+      IceTransportInternal* ice_transport,
       const webrtc::CryptoOptions& crypto_options,
       webrtc::RtcEventLog* event_log,
-      webrtc::SSLProtocolVersion max_version = webrtc::SSL_PROTOCOL_DTLS_12);
+      rtc::SSLProtocolVersion max_version = rtc::SSL_PROTOCOL_DTLS_12);
 
   ~DtlsTransport() override;
 
@@ -150,9 +149,8 @@ class DtlsTransport : public DtlsTransportInternal {
   // "active" or not (acting as a passthrough if not active), just require this
   // certificate on construction or "Start".
   bool SetLocalCertificate(
-      const rtc::scoped_refptr<webrtc::RTCCertificate>& certificate) override;
-  rtc::scoped_refptr<webrtc::RTCCertificate> GetLocalCertificate()
-      const override;
+      const rtc::scoped_refptr<rtc::RTCCertificate>& certificate) override;
+  rtc::scoped_refptr<rtc::RTCCertificate> GetLocalCertificate() const override;
 
   // SetRemoteFingerprint must be called after SetLocalCertificate, and any
   // other methods like SetDtlsRole. It's what triggers the actual DTLS setup.
@@ -166,7 +164,7 @@ class DtlsTransport : public DtlsTransportInternal {
       absl::string_view digest_alg,
       const uint8_t* digest,
       size_t digest_len,
-      std::optional<webrtc::SSLRole> role) override;
+      std::optional<rtc::SSLRole> role) override;
 
   // Called to send a packet (via DTLS, if turned on).
   int SendPacket(const char* data,
@@ -174,7 +172,7 @@ class DtlsTransport : public DtlsTransportInternal {
                  const rtc::PacketOptions& options,
                  int flags) override;
 
-  bool GetOption(webrtc::Socket::Option opt, int* value) override;
+  bool GetOption(rtc::Socket::Option opt, int* value) override;
 
   // Find out which TLS version was negotiated
   bool GetSslVersionBytes(int* version) const override;
@@ -187,8 +185,8 @@ class DtlsTransport : public DtlsTransportInternal {
   // If not applicable, it returns zero.
   uint16_t GetSslPeerSignatureAlgorithm() const override;
 
-  bool GetDtlsRole(webrtc::SSLRole* role) const override;
-  bool SetDtlsRole(webrtc::SSLRole role) override;
+  bool GetDtlsRole(rtc::SSLRole* role) const override;
+  bool SetDtlsRole(rtc::SSLRole role) override;
 
   // Find out which DTLS cipher was negotiated
   bool GetSslCipherSuite(int* cipher) const override;
@@ -205,7 +203,7 @@ class DtlsTransport : public DtlsTransportInternal {
   bool ExportSrtpKeyingMaterial(
       rtc::ZeroOnFreeBuffer<uint8_t>& keying_material) override;
 
-  webrtc::IceTransportInternal* ice_transport() override;
+  IceTransportInternal* ice_transport() override;
 
   // For informational purposes. Tells if the DTLS handshake has finished.
   // This may be true even if writable() is false, if the remote fingerprint
@@ -219,7 +217,7 @@ class DtlsTransport : public DtlsTransportInternal {
 
   std::optional<rtc::NetworkRoute> network_route() const override;
 
-  int SetOption(webrtc::Socket::Option opt, int value) override;
+  int SetOption(rtc::Socket::Option opt, int value) override;
 
   std::string ToString() const {
     const absl::string_view RECEIVING_ABBREV[2] = {"_", "R"};
@@ -230,24 +228,17 @@ class DtlsTransport : public DtlsTransportInternal {
     return sb.Release();
   }
 
-  // Number of times "DTLS retransmission" has been triggered.
-  // Currently used for testing but maybe put into stats in the future?
-  int GetRetransmissionCount() const;
-
-  // Number of times data has been received from a STUN BINDING.
-  int GetStunDataCount() const;
-
-  // Two methods for testing.
+  void SetPiggybackDtlsDataCallback(
+      absl::AnyInvocable<void(rtc::PacketTransportInternal* transport,
+                              const rtc::ReceivedPacket& packet)> callback);
   bool IsDtlsPiggybackSupportedByPeer();
-  bool WasDtlsCompletedByPiggybacking();
 
  private:
   void ConnectToIceTransport();
 
   void OnWritableState(rtc::PacketTransportInternal* transport);
   void OnReadPacket(rtc::PacketTransportInternal* transport,
-                    const rtc::ReceivedPacket& packet,
-                    bool piggybacked);
+                    const rtc::ReceivedPacket& packet);
   void OnSentPacket(rtc::PacketTransportInternal* transport,
                     const rtc::SentPacket& sent_packet);
   void OnReadyToSend(rtc::PacketTransportInternal* transport);
@@ -257,32 +248,28 @@ class DtlsTransport : public DtlsTransportInternal {
   bool SetupDtls();
   void MaybeStartDtls();
   bool HandleDtlsPacket(rtc::ArrayView<const uint8_t> payload);
-  void OnDtlsHandshakeError(webrtc::SSLHandshakeError error);
-  void ConfigureHandshakeTimeout();
+  void OnDtlsHandshakeError(rtc::SSLHandshakeError error);
+  void ConfigureHandshakeTimeout(bool uses_dtls_in_stun);
 
   void set_receiving(bool receiving);
   void set_writable(bool writable);
   // Sets the DTLS state, signaling if necessary.
   void set_dtls_state(webrtc::DtlsTransportState state);
-  void SetPiggybackDtlsDataCallback(
-      absl::AnyInvocable<void(rtc::PacketTransportInternal* transport,
-                              const rtc::ReceivedPacket& packet)> callback);
-  void PeriodicRetransmitDtlsPacketUntilDtlsConnected();
 
   RTC_NO_UNIQUE_ADDRESS webrtc::SequenceChecker thread_checker_;
 
   const int component_;
   webrtc::DtlsTransportState dtls_state_ = webrtc::DtlsTransportState::kNew;
   // Underlying ice_transport, not owned by this class.
-  webrtc::IceTransportInternal* const ice_transport_;
-  std::unique_ptr<webrtc::SSLStreamAdapter> dtls_;  // The DTLS stream
+  IceTransportInternal* const ice_transport_;
+  std::unique_ptr<rtc::SSLStreamAdapter> dtls_;  // The DTLS stream
   StreamInterfaceChannel*
       downward_;  // Wrapper for ice_transport_, owned by dtls_.
   const std::vector<int> srtp_ciphers_;  // SRTP ciphers to use with DTLS.
   bool dtls_active_ = false;
-  rtc::scoped_refptr<webrtc::RTCCertificate> local_certificate_;
-  std::optional<webrtc::SSLRole> dtls_role_;
-  const webrtc::SSLProtocolVersion ssl_max_version_;
+  rtc::scoped_refptr<rtc::RTCCertificate> local_certificate_;
+  std::optional<rtc::SSLRole> dtls_role_;
+  const rtc::SSLProtocolVersion ssl_max_version_;
   rtc::Buffer remote_fingerprint_value_;
   std::string remote_fingerprint_algorithm_;
 
@@ -294,32 +281,18 @@ class DtlsTransport : public DtlsTransportInternal {
   bool receiving_ = false;
   bool writable_ = false;
 
-  // Keep track if ICE has ever been writable.
-  // This is used to prevent "spurious" Dtls::Writable with DTLS-in-STUN,
-  // where DTLS can become writable before ICE. This can confuse other parts
-  // of the stack.
-  bool ice_has_been_writable_ = false;
+  bool was_ever_connected_ = false;
 
   webrtc::RtcEventLog* const event_log_;
-
-  // Initialized in constructor based on WebRTC-IceHandshakeDtls,
-  // (so that we return PIGGYBACK_ACK to client if we get STUN_BINDING_REQUEST
-  // directly). Maybe disabled in SetupDtls has been called.
-  bool dtls_in_stun_ = false;
 
   // A controller for piggybacking DTLS in STUN.
   DtlsStunPiggybackController dtls_stun_piggyback_controller_;
 
+  bool IsDtlsPiggybackHandshaking();
+
   absl::AnyInvocable<void(rtc::PacketTransportInternal*,
                           const rtc::ReceivedPacket&)>
       piggybacked_dtls_callback_;
-
-  // When ICE get writable during dtls piggybacked handshake
-  // there is currently no safe way of updating the timeout
-  // in boringssl (that is work in progress). Therefore
-  // DtlsTransport has a "hack" to periodically retransmit.
-  bool pending_periodic_retransmit_dtls_packet_ = false;
-  webrtc::ScopedTaskSafetyDetached safety_flag_;
 };
 
 }  // namespace cricket
