@@ -1606,6 +1606,8 @@ pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.section.highli
 pref("services.sync.prefs.sync-seen.browser.newtabpage.activity-stream.section.highlights.includePocket", false);
 pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.section.highlights.rows", true);
 pref("services.sync.prefs.sync.browser.newtabpage.enabled", true);
+// Desactiva la página New Tab nativa para delegar en la extensión
+pref("browser.newtabpage.enabled", false);
 pref("services.sync.prefs.sync.browser.newtabpage.pinned", true);
 pref("services.sync.prefs.sync.browser.pdfjs.feature-tour", true);
 pref("services.sync.prefs.sync.browser.safebrowsing.downloads.enabled", true);
@@ -1736,7 +1738,7 @@ pref("browser.partnerlink.attributionURL", "https://topsites.services.mozilla.co
 pref("browser.partnerlink.campaign.topsites", "amzn_2020_a1");
 
 // Activates preloading of the new tab url.
-pref("browser.newtab.preload", true);
+pref("browser.newtab.preload", false);
 
 // Do not enable the preonboarding experience on Linux
 #ifdef XP_LINUX
