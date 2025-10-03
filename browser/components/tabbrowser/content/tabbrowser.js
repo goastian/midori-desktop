@@ -5221,6 +5221,7 @@
       let timeBeforeUnload = performance.now();
       let numberOfTabsUnloaded = 0;
       await Promise.all(tabs.map(tab => this.prepareDiscardBrowser(tab)));
+      await Promise.all(tabs.map(tab => this.prepareDiscardBrowser(tab)));
 
       for (let tab of tabs) {
         numberOfTabsUnloaded += this.discardBrowser(tab, true) ? 1 : 0;
