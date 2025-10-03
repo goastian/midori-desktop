@@ -353,69 +353,67 @@ nsIWidget::ContentAndAPZEventStatus PuppetWidget::DispatchInputEvent(
 nsresult PuppetWidget::SynthesizeNativeKeyEvent(
     int32_t aNativeKeyboardLayout, int32_t aNativeKeyCode,
     uint32_t aModifierFlags, const nsAString& aCharacters,
-    const nsAString& aUnmodifiedCharacters,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    const nsAString& aUnmodifiedCharacters, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "keyevent");
   if (!mBrowserChild) {
     return NS_ERROR_FAILURE;
   }
   mBrowserChild->SendSynthesizeNativeKeyEvent(
       aNativeKeyboardLayout, aNativeKeyCode, aModifierFlags, aCharacters,
-      aUnmodifiedCharacters, notifier.SaveCallback());
+      aUnmodifiedCharacters, notifier.SaveObserver());
   return NS_OK;
 }
 
 nsresult PuppetWidget::SynthesizeNativeMouseEvent(
     mozilla::LayoutDeviceIntPoint aPoint, NativeMouseMessage aNativeMessage,
     MouseButton aButton, nsIWidget::Modifiers aModifierFlags,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "mouseevent");
   if (!mBrowserChild) {
     return NS_ERROR_FAILURE;
   }
   mBrowserChild->SendSynthesizeNativeMouseEvent(
       aPoint, static_cast<uint32_t>(aNativeMessage),
       static_cast<int16_t>(aButton), static_cast<uint32_t>(aModifierFlags),
-      notifier.SaveCallback());
+      notifier.SaveObserver());
   return NS_OK;
 }
 
 nsresult PuppetWidget::SynthesizeNativeMouseMove(
-    mozilla::LayoutDeviceIntPoint aPoint,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    mozilla::LayoutDeviceIntPoint aPoint, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "mousemove");
   if (!mBrowserChild) {
     return NS_ERROR_FAILURE;
   }
-  mBrowserChild->SendSynthesizeNativeMouseMove(aPoint, notifier.SaveCallback());
+  mBrowserChild->SendSynthesizeNativeMouseMove(aPoint, notifier.SaveObserver());
   return NS_OK;
 }
 
 nsresult PuppetWidget::SynthesizeNativeMouseScrollEvent(
     mozilla::LayoutDeviceIntPoint aPoint, uint32_t aNativeMessage,
     double aDeltaX, double aDeltaY, double aDeltaZ, uint32_t aModifierFlags,
-    uint32_t aAdditionalFlags, nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    uint32_t aAdditionalFlags, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "mousescrollevent");
   if (!mBrowserChild) {
     return NS_ERROR_FAILURE;
   }
   mBrowserChild->SendSynthesizeNativeMouseScrollEvent(
       aPoint, aNativeMessage, aDeltaX, aDeltaY, aDeltaZ, aModifierFlags,
-      aAdditionalFlags, notifier.SaveCallback());
+      aAdditionalFlags, notifier.SaveObserver());
   return NS_OK;
 }
 
 nsresult PuppetWidget::SynthesizeNativeTouchPoint(
     uint32_t aPointerId, TouchPointerState aPointerState,
     LayoutDeviceIntPoint aPoint, double aPointerPressure,
-    uint32_t aPointerOrientation, nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    uint32_t aPointerOrientation, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "touchpoint");
   if (!mBrowserChild) {
     return NS_ERROR_FAILURE;
   }
   mBrowserChild->SendSynthesizeNativeTouchPoint(
       aPointerId, aPointerState, aPoint, aPointerPressure, aPointerOrientation,
-      notifier.SaveCallback());
+      notifier.SaveObserver());
   return NS_OK;
 }
 
@@ -430,30 +428,38 @@ nsresult PuppetWidget::SynthesizeNativeTouchPadPinch(
   return NS_OK;
 }
 
-nsresult PuppetWidget::SynthesizeNativeTouchTap(
-    LayoutDeviceIntPoint aPoint, bool aLongTap,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+nsresult PuppetWidget::SynthesizeNativeTouchTap(LayoutDeviceIntPoint aPoint,
+                                                bool aLongTap,
+                                                nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "touchtap");
   if (!mBrowserChild) {
     return NS_ERROR_FAILURE;
   }
   mBrowserChild->SendSynthesizeNativeTouchTap(aPoint, aLongTap,
-                                              notifier.SaveCallback());
+                                              notifier.SaveObserver());
+  return NS_OK;
+}
+
+nsresult PuppetWidget::ClearNativeTouchSequence(nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "cleartouch");
+  if (!mBrowserChild) {
+    return NS_ERROR_FAILURE;
+  }
+  mBrowserChild->SendClearNativeTouchSequence(notifier.SaveObserver());
   return NS_OK;
 }
 
 nsresult PuppetWidget::SynthesizeNativePenInput(
     uint32_t aPointerId, TouchPointerState aPointerState,
     LayoutDeviceIntPoint aPoint, double aPressure, uint32_t aRotation,
-    int32_t aTiltX, int32_t aTiltY, int32_t aButton,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    int32_t aTiltX, int32_t aTiltY, int32_t aButton, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "peninput");
   if (!mBrowserChild) {
     return NS_ERROR_FAILURE;
   }
   mBrowserChild->SendSynthesizeNativePenInput(
       aPointerId, aPointerState, aPoint, aPressure, aRotation, aTiltX, aTiltY,
-      aButton, notifier.SaveCallback());
+      aButton, notifier.SaveObserver());
   return NS_OK;
 }
 
@@ -469,14 +475,14 @@ nsresult PuppetWidget::SynthesizeNativeTouchpadDoubleTap(
 nsresult PuppetWidget::SynthesizeNativeTouchpadPan(
     TouchpadGesturePhase aEventPhase, LayoutDeviceIntPoint aPoint,
     double aDeltaX, double aDeltaY, int32_t aModifierFlags,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "touchpadpanevent");
   if (!mBrowserChild) {
     return NS_ERROR_FAILURE;
   }
   mBrowserChild->SendSynthesizeNativeTouchpadPan(aEventPhase, aPoint, aDeltaX,
                                                  aDeltaY, aModifierFlags,
-                                                 notifier.SaveCallback());
+                                                 notifier.SaveObserver());
   return NS_OK;
 }
 

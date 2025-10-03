@@ -110,8 +110,11 @@ class faviconAsyncLoader : public AsyncStatementCallback, public nsICancelable {
       NS_ENSURE_SUCCESS(rv, rv);
 
       // Obtain the binary blob that contains our favicon data.
-      rv = row->GetBlobAsUTF8String(0, mData);
+      uint8_t* data;
+      uint32_t dataLen;
+      rv = row->GetBlob(0, &dataLen, &data);
       NS_ENSURE_SUCCESS(rv, rv);
+      mData.Adopt(TO_CHARBUFFER(data), dataLen);
     }
 
     return NS_OK;

@@ -107,40 +107,17 @@ class MainBenchmarkClient {
         this._metrics = metrics;
 
         const scoreResults = this._computeResults(this._measuredValuesList, "score");
-        if (scoreResults.isValid)
-            this._populateValidScore(scoreResults);
-        else
-            this._populateInvalidScore();
-
-        this._populateDetailedResults(metrics);
-        if (params.developerMode)
-            this.showResultsDetails();
-        else
-            this.showResultsSummary();
-    }
-
-    handleError(error) {
-        console.assert(this._isRunning);
-        this._isRunning = false;
-        this._hasResults = true;
-        this._metrics = Object.create(null);
-        this._populateInvalidScore();
-        this.showResultsSummary();
-    }
-
-    _populateValidScore(scoreResults) {
-        document.getElementById("summary").className = "valid";
-
         this._updateGaugeNeedle(scoreResults.mean);
         document.getElementById("result-number").textContent = scoreResults.formattedMean;
         if (scoreResults.formattedDelta)
             document.getElementById("confidence-number").textContent = `\u00b1 ${scoreResults.formattedDelta}`;
-    }
 
-    _populateInvalidScore() {
-        document.getElementById("summary").className = "invalid";
-        document.getElementById("result-number").textContent = "Error";
-        document.getElementById("confidence-number").textContent = "";
+        this._populateDetailedResults(metrics);
+
+        if (params.developerMode)
+            this.showResultsDetails();
+        else
+            this.showResultsSummary();
     }
 
     _computeResults(measuredValuesList, displayUnit) {
@@ -160,7 +137,9 @@ class MainBenchmarkClient {
         }
 
         const values = measuredValuesList.map(valueForUnit);
-        const sum = values.reduce((a, b) => a + b, 0);
+        const sum = values.reduce((a, b) => {
+            return a + b;
+        }, 0);
         const arithmeticMean = sum / values.length;
         let meanSigFig = 4;
         let formattedDelta;
@@ -183,7 +162,6 @@ class MainBenchmarkClient {
             formattedMean: formattedMean,
             formattedDelta: formattedDelta,
             formattedMeanAndDelta: formattedMean + (formattedDelta ? ` \xb1 ${formattedDelta} (${formattedPercentDelta})` : ""),
-            isValid: values.length > 0 && isFinite(sum) && sum > 0,
         };
     }
 
@@ -389,7 +367,7 @@ class MainBenchmarkClient {
     _updateDocumentTitle(hash) {
         const maybeSection = document.querySelector(hash);
         const sectionTitle = maybeSection?.getAttribute("data-title") ?? "";
-        document.title = `Speedometer 3.1 ${sectionTitle}`.trimEnd();
+        document.title = `Speedometer 3 ${sectionTitle}`.trimEnd();
     }
 
     _removeLocationHash() {

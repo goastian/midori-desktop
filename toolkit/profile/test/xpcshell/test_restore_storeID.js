@@ -35,6 +35,7 @@ add_task(
 
     Assert.equal(profile.rootDir.path, defaultProfile.path);
     Assert.equal(service.currentProfile, profile);
+    Assert.equal(service.groupProfile, profile);
     Assert.equal(profile.storeID, "bishbashbosh");
     Assert.equal(storeID, "bishbashbosh");
 

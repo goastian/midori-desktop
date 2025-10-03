@@ -5,13 +5,10 @@ const { RemoteSettings } = ChromeUtils.importESModule(
 );
 
 let rsClient;
-let secureRsClient;
 
 add_setup(async function () {
   rsClient = RemoteSettings("nimbus-desktop-experiments");
-  secureRsClient = RemoteSettings("nimbus-secure-experiments");
   await rsClient.db.importChanges({}, Date.now(), [], { clear: true });
-  await secureRsClient.db.importChanges({}, Date.now(), [], { clear: true });
 
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -27,7 +24,6 @@ add_setup(async function () {
   registerCleanupFunction(async () => {
     await SpecialPowers.popPrefEnv();
     await rsClient.db.clear();
-    await secureRsClient.db.clear();
   });
 });
 
@@ -44,7 +40,7 @@ add_task(async function test_experimentEnrollment() {
   let meta = NimbusFeatures.testFeature.getEnrollmentMetadata();
   Assert.equal(meta.slug, recipe.slug, "Enrollment active");
 
-  ExperimentAPI.manager.unenroll(recipe.slug);
+  await ExperimentAPI.manager.unenroll(recipe.slug);
 
   meta = NimbusFeatures.testFeature.getEnrollmentMetadata();
   Assert.ok(!meta, "Experiment is no longer active");

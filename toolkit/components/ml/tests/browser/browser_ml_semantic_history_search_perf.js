@@ -206,7 +206,7 @@ async function prepareSemanticSearchTest({
   const lazy = {};
 
   ChromeUtils.defineESModuleGetters(lazy, {
-    getPlacesSemanticHistoryManager:
+    PlacesSemanticHistoryManager:
       "resource://gre/modules/PlacesSemanticHistoryManager.sys.mjs",
   });
 
@@ -227,17 +227,14 @@ async function prepareSemanticSearchTest({
     ],
   });
 
-  let semanticManager = lazy.getPlacesSemanticHistoryManager(
-    {
-      embeddingSize: 384,
-      rowLimit,
-      samplingAttrib: "frecency",
-      changeThresholdCount: 0,
-      distanceThreshold: 1.0,
-      testFlag,
-    },
-    true
-  );
+  const semanticManager = new lazy.PlacesSemanticHistoryManager({
+    embeddingSize: 384,
+    rowLimit,
+    samplingAttrib: "frecency",
+    changeThresholdCount: 0,
+    distanceThreshold: 1.0,
+    testFlag,
+  });
 
   if (!semanticManager.qualifiedForSemanticSearch) {
     info("Skipping test due to insufficient hardware.");

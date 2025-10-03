@@ -1,15 +1,17 @@
 #
 # This file is part of pyasn1 software.
 #
-# Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com>
-# License: https://pyasn1.readthedocs.io/en/latest/license.html
+# Copyright (c) 2005-2019, Ilya Etingof <etingof@gmail.com>
+# License: http://snmplabs.com/pyasn1/license.html
 #
 import math
 import sys
 
 from pyasn1 import error
 from pyasn1.codec.ber import eoo
+from pyasn1.compat import binary
 from pyasn1.compat import integer
+from pyasn1.compat import octets
 from pyasn1.type import base
 from pyasn1.type import constraint
 from pyasn1.type import namedtype
@@ -164,22 +166,39 @@ class Integer(base.SimpleAsn1Type):
     def __rfloordiv__(self, value):
         return self.clone(value // self._value)
 
-    def __truediv__(self, value):
-        return Real(self._value / value)
+    if sys.version_info[0] <= 2:
+        def __div__(self, value):
+            if isinstance(value, float):
+                return Real(self._value / value)
+            else:
+                return self.clone(self._value / value)
 
-    def __rtruediv__(self, value):
-        return Real(value / self._value)
+        def __rdiv__(self, value):
+            if isinstance(value, float):
+                return Real(value / self._value)
+            else:
+                return self.clone(value / self._value)
+    else:
+        def __truediv__(self, value):
+            return Real(self._value / value)
 
-    def __divmod__(self, value):
-        return self.clone(divmod(self._value, value))
+        def __rtruediv__(self, value):
+            return Real(value / self._value)
 
-    def __rdivmod__(self, value):
-        return self.clone(divmod(value, self._value))
+        def __divmod__(self, value):
+            return self.clone(divmod(self._value, value))
 
-    __hash__ = base.SimpleAsn1Type.__hash__
+        def __rdivmod__(self, value):
+            return self.clone(divmod(value, self._value))
+
+        __hash__ = base.SimpleAsn1Type.__hash__
 
     def __int__(self):
         return int(self._value)
+
+    if sys.version_info[0] <= 2:
+        def __long__(self):
+            return long(self._value)
 
     def __float__(self):
         return float(self._value)
@@ -212,8 +231,9 @@ class Integer(base.SimpleAsn1Type):
     def __ceil__(self):
         return math.ceil(self._value)
 
-    def __trunc__(self):
-        return self.clone(math.trunc(self._value))
+    if sys.version_info[0:2] > (2, 5):
+        def __trunc__(self):
+            return self.clone(math.trunc(self._value))
 
     def __lt__(self, value):
         return self._value < value
@@ -241,9 +261,9 @@ class Integer(base.SimpleAsn1Type):
             try:
                 return self.namedValues[value]
 
-            except KeyError as exc:
+            except KeyError:
                 raise error.PyAsn1Error(
-                    'Can\'t coerce %r into integer: %s' % (value, exc)
+                    'Can\'t coerce %r into integer: %s' % (value, sys.exc_info()[1])
                 )
 
     def prettyOut(self, value):
@@ -322,18 +342,23 @@ class Boolean(Integer):
     # Optimization for faster codec lookup
     typeId = Integer.getTypeId()
 
+if sys.version_info[0] < 3:
+    SizedIntegerBase = long
+else:
+    SizedIntegerBase = int
 
-class SizedInteger(int):
+
+class SizedInteger(SizedIntegerBase):
     bitLength = leadingZeroBits = None
 
     def setBitLength(self, bitLength):
         self.bitLength = bitLength
-        self.leadingZeroBits = max(bitLength - self.bit_length(), 0)
+        self.leadingZeroBits = max(bitLength - integer.bitLength(self), 0)
         return self
 
     def __len__(self):
         if self.bitLength is None:
-            self.setBitLength(self.bit_length())
+            self.setBitLength(integer.bitLength(self))
 
         return self.bitLength
 
@@ -528,10 +553,14 @@ class BitString(base.SimpleAsn1Type):
         return self.clone(SizedInteger(self._value >> count).setBitLength(max(0, len(self._value) - count)))
 
     def __int__(self):
-        return int(self._value)
+        return self._value
 
     def __float__(self):
         return float(self._value)
+
+    if sys.version_info[0] < 3:
+        def __long__(self):
+            return self._value
 
     def asNumbers(self):
         """Get |ASN.1| value as a sequence of 8-bit integers.
@@ -539,7 +568,7 @@ class BitString(base.SimpleAsn1Type):
         If |ASN.1| object length is not a multiple of 8, result
         will be left-padded with zeros.
         """
-        return tuple(self.asOctets())
+        return tuple(octets.octs2ints(self.asOctets()))
 
     def asOctets(self):
         """Get |ASN.1| value as a sequence of octets.
@@ -557,7 +586,7 @@ class BitString(base.SimpleAsn1Type):
     def asBinary(self):
         """Get |ASN.1| value as a text string of bits.
         """
-        binString = bin(self._value)[2:]
+        binString = binary.bin(self._value)[2:]
         return '0' * (len(self._value) - len(binString)) + binString
 
     @classmethod
@@ -572,8 +601,8 @@ class BitString(base.SimpleAsn1Type):
         try:
             value = SizedInteger(value, 16).setBitLength(len(value) * 4)
 
-        except ValueError as exc:
-            raise error.PyAsn1Error('%s.fromHexString() error: %s' % (cls.__name__, exc))
+        except ValueError:
+            raise error.PyAsn1Error('%s.fromHexString() error: %s' % (cls.__name__, sys.exc_info()[1]))
 
         if prepend is not None:
             value = SizedInteger(
@@ -597,8 +626,8 @@ class BitString(base.SimpleAsn1Type):
         try:
             value = SizedInteger(value or '0', 2).setBitLength(len(value))
 
-        except ValueError as exc:
-            raise error.PyAsn1Error('%s.fromBinaryString() error: %s' % (cls.__name__, exc))
+        except ValueError:
+            raise error.PyAsn1Error('%s.fromBinaryString() error: %s' % (cls.__name__, sys.exc_info()[1]))
 
         if prepend is not None:
             value = SizedInteger(
@@ -616,10 +645,10 @@ class BitString(base.SimpleAsn1Type):
 
         Parameters
         ----------
-        value: :class:`bytes`
-            Text string like b'\\\\x01\\\\xff'
+        value: :class:`str` (Py2) or :class:`bytes` (Py3)
+            Text string like '\\\\x01\\\\xff' (Py2) or b'\\\\x01\\\\xff' (Py3)
         """
-        value = SizedInteger(int.from_bytes(bytes(value), 'big') >> padding).setBitLength(len(value) * 8 - padding)
+        value = SizedInteger(integer.from_bytes(value) >> padding).setBitLength(len(value) * 8 - padding)
 
         if prepend is not None:
             value = SizedInteger(
@@ -634,7 +663,7 @@ class BitString(base.SimpleAsn1Type):
     def prettyIn(self, value):
         if isinstance(value, SizedInteger):
             return value
-        elif isinstance(value, str):
+        elif octets.isStringType(value):
             if not value:
                 return SizedInteger(0).setBitLength(0)
 
@@ -681,7 +710,7 @@ class BitString(base.SimpleAsn1Type):
         elif isinstance(value, BitString):
             return SizedInteger(value).setBitLength(len(value))
 
-        elif isinstance(value, int):
+        elif isinstance(value, intTypes):
             return SizedInteger(value)
 
         else:
@@ -690,18 +719,32 @@ class BitString(base.SimpleAsn1Type):
             )
 
 
+try:
+    # noinspection PyStatementEffect
+    all
+
+except NameError:  # Python 2.4
+    # noinspection PyShadowingBuiltins
+    def all(iterable):
+        for element in iterable:
+            if not element:
+                return False
+        return True
+
+
 class OctetString(base.SimpleAsn1Type):
     """Create |ASN.1| schema or value object.
 
     |ASN.1| class is based on :class:`~pyasn1.type.base.SimpleAsn1Type`, its
-    objects are immutable and duck-type :class:`bytes`.
-    When used in Unicode context, |ASN.1| type
+    objects are immutable and duck-type Python 2 :class:`str` or
+    Python 3 :class:`bytes`. When used in Unicode context, |ASN.1| type
     assumes "|encoding|" serialisation.
 
     Keyword Args
     ------------
     value: :class:`unicode`, :class:`str`, :class:`bytes` or |ASN.1| object
-        :class:`bytes`, alternatively :class:`str`
+        class:`str` (Python 2) or :class:`bytes` (Python 3), alternatively
+        class:`unicode` object (Python 2) or :class:`str` (Python 3)
         representing character string to be serialised into octets
         (note `encoding` parameter) or |ASN.1| object.
         If `value` is not given, schema object will be created.
@@ -715,8 +758,8 @@ class OctetString(base.SimpleAsn1Type):
         instantiation.
 
     encoding: :py:class:`str`
-        Unicode codec ID to encode/decode
-        :class:`str` the payload when |ASN.1| object is used
+        Unicode codec ID to encode/decode :class:`unicode` (Python 2) or
+        :class:`str` (Python 3) the payload when |ASN.1| object is used
         in text string context.
 
     binValue: :py:class:`str`
@@ -793,50 +836,101 @@ class OctetString(base.SimpleAsn1Type):
 
         base.SimpleAsn1Type.__init__(self, value, **kwargs)
 
-    def prettyIn(self, value):
-        if isinstance(value, bytes):
-            return value
+    if sys.version_info[0] <= 2:
+        def prettyIn(self, value):
+            if isinstance(value, str):
+                return value
 
-        elif isinstance(value, str):
+            elif isinstance(value, unicode):
+                try:
+                    return value.encode(self.encoding)
+
+                except (LookupError, UnicodeEncodeError):
+                    exc = sys.exc_info()[1]
+                    raise error.PyAsn1UnicodeEncodeError(
+                        "Can't encode string '%s' with codec "
+                        "%s" % (value, self.encoding), exc
+                    )
+
+            elif isinstance(value, (tuple, list)):
+                try:
+                    return ''.join([chr(x) for x in value])
+
+                except ValueError:
+                    raise error.PyAsn1Error(
+                        "Bad %s initializer '%s'" % (self.__class__.__name__, value)
+                    )
+
+            else:
+                return str(value)
+
+        def __str__(self):
+            return str(self._value)
+
+        def __unicode__(self):
             try:
-                return value.encode(self.encoding)
+                return self._value.decode(self.encoding)
 
-            except UnicodeEncodeError as exc:
-                raise error.PyAsn1UnicodeEncodeError(
-                    "Can't encode string '%s' with '%s' "
-                    "codec" % (value, self.encoding), exc
+            except UnicodeDecodeError:
+                exc = sys.exc_info()[1]
+                raise error.PyAsn1UnicodeDecodeError(
+                    "Can't decode string '%s' with codec "
+                    "%s" % (self._value, self.encoding), exc
                 )
-        elif isinstance(value, OctetString):  # a shortcut, bytes() would work the same way
-            return value.asOctets()
 
-        elif isinstance(value, base.SimpleAsn1Type):  # this mostly targets Integer objects
-            return self.prettyIn(str(value))
+        def asOctets(self):
+            return str(self._value)
 
-        elif isinstance(value, (tuple, list)):
-            return self.prettyIn(bytes(value))
+        def asNumbers(self):
+            return tuple([ord(x) for x in self._value])
 
-        else:
-            return bytes(value)
+    else:
+        def prettyIn(self, value):
+            if isinstance(value, bytes):
+                return value
 
-    def __str__(self):
-        try:
-            return self._value.decode(self.encoding)
+            elif isinstance(value, str):
+                try:
+                    return value.encode(self.encoding)
 
-        except UnicodeDecodeError as exc:
-            raise error.PyAsn1UnicodeDecodeError(
-                "Can't decode string '%s' with '%s' codec at "
-                "'%s'" % (self._value, self.encoding,
-                            self.__class__.__name__), exc
-            )
+                except UnicodeEncodeError:
+                    exc = sys.exc_info()[1]
+                    raise error.PyAsn1UnicodeEncodeError(
+                        "Can't encode string '%s' with '%s' "
+                        "codec" % (value, self.encoding), exc
+                    )
+            elif isinstance(value, OctetString):  # a shortcut, bytes() would work the same way
+                return value.asOctets()
 
-    def __bytes__(self):
-        return bytes(self._value)
+            elif isinstance(value, base.SimpleAsn1Type):  # this mostly targets Integer objects
+                return self.prettyIn(str(value))
 
-    def asOctets(self):
-        return bytes(self._value)
+            elif isinstance(value, (tuple, list)):
+                return self.prettyIn(bytes(value))
 
-    def asNumbers(self):
-        return tuple(self._value)
+            else:
+                return bytes(value)
+
+        def __str__(self):
+            try:
+                return self._value.decode(self.encoding)
+
+            except UnicodeDecodeError:
+                exc = sys.exc_info()[1]
+                raise error.PyAsn1UnicodeDecodeError(
+                    "Can't decode string '%s' with '%s' codec at "
+                    "'%s'" % (self._value, self.encoding,
+                              self.__class__.__name__), exc
+                )
+
+        def __bytes__(self):
+            return bytes(self._value)
+
+        def asOctets(self):
+            return bytes(self._value)
+
+        def asNumbers(self):
+            return tuple(self._value)
 
     #
     # Normally, `.prettyPrint()` is called from `__str__()`. Historically,
@@ -905,7 +999,7 @@ class OctetString(base.SimpleAsn1Type):
 
         r.append(byte)
 
-        return bytes(r)
+        return octets.ints2octs(r)
 
     @staticmethod
     def fromHexString(value):
@@ -927,7 +1021,7 @@ class OctetString(base.SimpleAsn1Type):
         if p:
             r.append(int(p + '0', 16))
 
-        return bytes(r)
+        return octets.ints2octs(r)
 
     # Immutable sequence object protocol
 
@@ -1008,7 +1102,7 @@ class Null(OctetString):
     tagSet = tag.initTagSet(
         tag.Tag(tag.tagClassUniversal, tag.tagFormatSimple, 0x05)
     )
-    subtypeSpec = OctetString.subtypeSpec + constraint.SingleValueConstraint(b'')
+    subtypeSpec = OctetString.subtypeSpec + constraint.SingleValueConstraint(octets.str2octs(''))
 
     # Optimization for faster codec lookup
     typeId = OctetString.getTypeId()
@@ -1017,7 +1111,14 @@ class Null(OctetString):
         if value:
             return value
 
-        return b''
+        return octets.str2octs('')
+
+if sys.version_info[0] <= 2:
+    intTypes = (int, long)
+else:
+    intTypes = (int,)
+
+numericTypes = intTypes + (float,)
 
 
 class ObjectIdentifier(base.SimpleAsn1Type):
@@ -1129,160 +1230,30 @@ class ObjectIdentifier(base.SimpleAsn1Type):
     def prettyIn(self, value):
         if isinstance(value, ObjectIdentifier):
             return tuple(value)
-        elif isinstance(value, str):
+        elif octets.isStringType(value):
             if '-' in value:
                 raise error.PyAsn1Error(
-                    # sys.exc_info in case prettyIn was called while handling an exception
                     'Malformed Object ID %s at %s: %s' % (value, self.__class__.__name__, sys.exc_info()[1])
                 )
             try:
                 return tuple([int(subOid) for subOid in value.split('.') if subOid])
-            except ValueError as exc:
+            except ValueError:
                 raise error.PyAsn1Error(
-                    'Malformed Object ID %s at %s: %s' % (value, self.__class__.__name__, exc)
+                    'Malformed Object ID %s at %s: %s' % (value, self.__class__.__name__, sys.exc_info()[1])
                 )
 
         try:
             tupleOfInts = tuple([int(subOid) for subOid in value if subOid >= 0])
 
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError):
             raise error.PyAsn1Error(
-                'Malformed Object ID %s at %s: %s' % (value, self.__class__.__name__, exc)
+                'Malformed Object ID %s at %s: %s' % (value, self.__class__.__name__, sys.exc_info()[1])
             )
 
         if len(tupleOfInts) == len(value):
             return tupleOfInts
 
         raise error.PyAsn1Error('Malformed Object ID %s at %s' % (value, self.__class__.__name__))
-
-    def prettyOut(self, value):
-        return '.'.join([str(x) for x in value])
-
-
-class RelativeOID(base.SimpleAsn1Type):
-    """Create |ASN.1| schema or value object.
-    |ASN.1| class is based on :class:`~pyasn1.type.base.SimpleAsn1Type`, its
-    objects are immutable and duck-type Python :class:`tuple` objects
-    (tuple of non-negative integers).
-    Keyword Args
-    ------------
-    value: :class:`tuple`, :class:`str` or |ASN.1| object
-        Python sequence of :class:`int` or :class:`str` literal or |ASN.1| object.
-        If `value` is not given, schema object will be created.
-    tagSet: :py:class:`~pyasn1.type.tag.TagSet`
-        Object representing non-default ASN.1 tag(s)
-    subtypeSpec: :py:class:`~pyasn1.type.constraint.ConstraintsIntersection`
-        Object representing non-default ASN.1 subtype constraint(s). Constraints
-        verification for |ASN.1| type occurs automatically on object
-        instantiation.
-    Raises
-    ------
-    ~pyasn1.error.ValueConstraintError, ~pyasn1.error.PyAsn1Error
-        On constraint violation or bad initializer.
-    Examples
-    --------
-    .. code-block:: python
-        class RelOID(RelativeOID):
-            '''
-            ASN.1 specification:
-            id-pad-null RELATIVE-OID ::= { 0 }
-            id-pad-once RELATIVE-OID ::= { 5 6 }
-            id-pad-twice RELATIVE-OID ::= { 5 6 7 }
-            '''
-        id_pad_null = RelOID('0')
-        id_pad_once = RelOID('5.6')
-        id_pad_twice = id_pad_once + (7,)
-    """
-    #: Set (on class, not on instance) or return a
-    #: :py:class:`~pyasn1.type.tag.TagSet` object representing ASN.1 tag(s)
-    #: associated with |ASN.1| type.
-    tagSet = tag.initTagSet(
-        tag.Tag(tag.tagClassUniversal, tag.tagFormatSimple, 0x0d)
-    )
-
-    #: Set (on class, not on instance) or return a
-    #: :py:class:`~pyasn1.type.constraint.ConstraintsIntersection` object
-    #: imposing constraints on |ASN.1| type initialization values.
-    subtypeSpec = constraint.ConstraintsIntersection()
-
-    # Optimization for faster codec lookup
-    typeId = base.SimpleAsn1Type.getTypeId()
-
-    def __add__(self, other):
-        return self.clone(self._value + other)
-
-    def __radd__(self, other):
-        return self.clone(other + self._value)
-
-    def asTuple(self):
-        return self._value
-
-    # Sequence object protocol
-
-    def __len__(self):
-        return len(self._value)
-
-    def __getitem__(self, i):
-        if i.__class__ is slice:
-            return self.clone(self._value[i])
-        else:
-            return self._value[i]
-
-    def __iter__(self):
-        return iter(self._value)
-
-    def __contains__(self, value):
-        return value in self._value
-
-    def index(self, suboid):
-        return self._value.index(suboid)
-
-    def isPrefixOf(self, other):
-        """Indicate if this |ASN.1| object is a prefix of other |ASN.1| object.
-        Parameters
-        ----------
-        other: |ASN.1| object
-            |ASN.1| object
-        Returns
-        -------
-        : :class:`bool`
-            :obj:`True` if this |ASN.1| object is a parent (e.g. prefix) of the other |ASN.1| object
-            or :obj:`False` otherwise.
-        """
-        l = len(self)
-        if l <= len(other):
-            if self._value[:l] == other[:l]:
-                return True
-        return False
-
-    def prettyIn(self, value):
-        if isinstance(value, RelativeOID):
-            return tuple(value)
-        elif isinstance(value, str):
-            if '-' in value:
-                raise error.PyAsn1Error(
-                    # sys.exc_info in case prettyIn was called while handling an exception
-                    'Malformed RELATIVE-OID %s at %s: %s' % (value, self.__class__.__name__, sys.exc_info()[1])
-                )
-            try:
-                return tuple([int(subOid) for subOid in value.split('.') if subOid])
-            except ValueError as exc:
-                raise error.PyAsn1Error(
-                    'Malformed RELATIVE-OID %s at %s: %s' % (value, self.__class__.__name__, exc)
-                )
-
-        try:
-            tupleOfInts = tuple([int(subOid) for subOid in value if subOid >= 0])
-
-        except (ValueError, TypeError) as exc:
-            raise error.PyAsn1Error(
-                'Malformed RELATIVE-OID %s at %s: %s' % (value, self.__class__.__name__, exc)
-            )
-
-        if len(tupleOfInts) == len(value):
-            return tupleOfInts
-
-        raise error.PyAsn1Error('Malformed RELATIVE-OID %s at %s' % (value, self.__class__.__name__))
 
     def prettyOut(self, value):
         return '.'.join([str(x) for x in value])
@@ -1368,9 +1339,9 @@ class Real(base.SimpleAsn1Type):
 
     def prettyIn(self, value):
         if isinstance(value, tuple) and len(value) == 3:
-            if (not isinstance(value[0], (int, float)) or
-                    not isinstance(value[1], int) or
-                    not isinstance(value[2], int)):
+            if (not isinstance(value[0], numericTypes) or
+                    not isinstance(value[1], intTypes) or
+                    not isinstance(value[2], intTypes)):
                 raise error.PyAsn1Error('Lame Real value syntax: %s' % (value,))
             if (isinstance(value[0], float) and
                     self._inf and value[0] in self._inf):
@@ -1382,10 +1353,10 @@ class Real(base.SimpleAsn1Type):
             if value[1] == 10:
                 value = self.__normalizeBase10(value)
             return value
-        elif isinstance(value, int):
+        elif isinstance(value, intTypes):
             return self.__normalizeBase10((value, 10, 0))
-        elif isinstance(value, float) or isinstance(value, str):
-            if isinstance(value, str):
+        elif isinstance(value, float) or octets.isStringType(value):
+            if octets.isStringType(value):
                 try:
                     value = float(value)
                 except ValueError:
@@ -1472,20 +1443,31 @@ class Real(base.SimpleAsn1Type):
     def __rpow__(self, value):
         return self.clone(pow(value, float(self)))
 
-    def __truediv__(self, value):
-        return self.clone(float(self) / value)
+    if sys.version_info[0] <= 2:
+        def __div__(self, value):
+            return self.clone(float(self) / value)
 
-    def __rtruediv__(self, value):
-        return self.clone(value / float(self))
+        def __rdiv__(self, value):
+            return self.clone(value / float(self))
+    else:
+        def __truediv__(self, value):
+            return self.clone(float(self) / value)
 
-    def __divmod__(self, value):
-        return self.clone(float(self) // value)
+        def __rtruediv__(self, value):
+            return self.clone(value / float(self))
 
-    def __rdivmod__(self, value):
-        return self.clone(value // float(self))
+        def __divmod__(self, value):
+            return self.clone(float(self) // value)
+
+        def __rdivmod__(self, value):
+            return self.clone(value // float(self))
 
     def __int__(self):
         return int(float(self))
+
+    if sys.version_info[0] <= 2:
+        def __long__(self):
+            return long(float(self))
 
     def __float__(self):
         if self._value in self._inf:
@@ -1517,8 +1499,9 @@ class Real(base.SimpleAsn1Type):
     def __ceil__(self):
         return self.clone(math.ceil(float(self)))
 
-    def __trunc__(self):
-        return self.clone(math.trunc(float(self)))
+    if sys.version_info[0:2] > (2, 5):
+        def __trunc__(self):
+            return self.clone(math.trunc(float(self)))
 
     def __lt__(self, value):
         return float(self) < value
@@ -1538,10 +1521,14 @@ class Real(base.SimpleAsn1Type):
     def __ge__(self, value):
         return float(self) >= value
 
-    def __bool__(self):
-        return bool(float(self))
+    if sys.version_info[0] <= 2:
+        def __nonzero__(self):
+            return bool(float(self))
+    else:
+        def __bool__(self):
+            return bool(float(self))
 
-    __hash__ = base.SimpleAsn1Type.__hash__
+        __hash__ = base.SimpleAsn1Type.__hash__
 
     def __getitem__(self, idx):
         if self._value in self._inf:
@@ -1686,15 +1673,15 @@ class SequenceOfAndSetOfBase(base.ConstructedAsn1Type):
         try:
             return self.getComponentByPosition(idx)
 
-        except error.PyAsn1Error as exc:
-            raise IndexError(exc)
+        except error.PyAsn1Error:
+            raise IndexError(sys.exc_info()[1])
 
     def __setitem__(self, idx, value):
         try:
             self.setComponentByPosition(idx, value)
 
-        except error.PyAsn1Error as exc:
-            raise IndexError(exc)
+        except error.PyAsn1Error:
+            raise IndexError(sys.exc_info()[1])
 
     def append(self, value):
         if self._componentValues is noValue:
@@ -1727,8 +1714,8 @@ class SequenceOfAndSetOfBase(base.ConstructedAsn1Type):
         try:
             return indices[values.index(value, start, stop)]
 
-        except error.PyAsn1Error as exc:
-            raise ValueError(exc)
+        except error.PyAsn1Error:
+            raise ValueError(sys.exc_info()[1])
 
     def reverse(self):
         self._componentValues.reverse()
@@ -2085,7 +2072,8 @@ class SequenceOfAndSetOfBase(base.ConstructedAsn1Type):
             # Represent SequenceOf/SetOf as a bare dict to constraints chain
             self.subtypeSpec(mapping)
 
-        except error.PyAsn1Error as exc:
+        except error.PyAsn1Error:
+            exc = sys.exc_info()[1]
             return exc
 
         return False
@@ -2236,38 +2224,38 @@ class SequenceAndSetBase(base.ConstructedAsn1Type):
         self._dynamicNames = self._componentTypeLen or self.DynamicNames()
 
     def __getitem__(self, idx):
-        if isinstance(idx, str):
+        if octets.isStringType(idx):
             try:
                 return self.getComponentByName(idx)
 
-            except error.PyAsn1Error as exc:
+            except error.PyAsn1Error:
                 # duck-typing dict
-                raise KeyError(exc)
+                raise KeyError(sys.exc_info()[1])
 
         else:
             try:
                 return self.getComponentByPosition(idx)
 
-            except error.PyAsn1Error as exc:
+            except error.PyAsn1Error:
                 # duck-typing list
-                raise IndexError(exc)
+                raise IndexError(sys.exc_info()[1])
 
     def __setitem__(self, idx, value):
-        if isinstance(idx, str):
+        if octets.isStringType(idx):
             try:
                 self.setComponentByName(idx, value)
 
-            except error.PyAsn1Error as exc:
+            except error.PyAsn1Error:
                 # duck-typing dict
-                raise KeyError(exc)
+                raise KeyError(sys.exc_info()[1])
 
         else:
             try:
                 self.setComponentByPosition(idx, value)
 
-            except error.PyAsn1Error as exc:
+            except error.PyAsn1Error:
                 # duck-typing list
-                raise IndexError(exc)
+                raise IndexError(sys.exc_info()[1])
 
     def __contains__(self, key):
         if self._componentTypeLen:
@@ -2716,7 +2704,8 @@ class SequenceAndSetBase(base.ConstructedAsn1Type):
             # Represent Sequence/Set as a bare dict to constraints chain
             self.subtypeSpec(mapping)
 
-        except error.PyAsn1Error as exc:
+        except error.PyAsn1Error:
+            exc = sys.exc_info()[1]
             return exc
 
         return False
@@ -3025,8 +3014,12 @@ class Choice(Set):
             return self._componentValues[self._currentIdx] >= other
         return NotImplemented
 
-    def __bool__(self):
-        return bool(self._componentValues)
+    if sys.version_info[0] <= 2:
+        def __nonzero__(self):
+            return self._componentValues and True or False
+    else:
+        def __bool__(self):
+            return self._componentValues and True or False
 
     def __len__(self):
         return self._currentIdx is not None and 1 or 0
@@ -3231,14 +3224,15 @@ class Any(OctetString):
     """Create |ASN.1| schema or value object.
 
     |ASN.1| class is based on :class:`~pyasn1.type.base.SimpleAsn1Type`,
-    its objects are immutable and duck-type :class:`bytes`.
-    When used in Unicode context, |ASN.1| type assumes
+    its objects are immutable and duck-type Python 2 :class:`str` or Python 3
+    :class:`bytes`. When used in Unicode context, |ASN.1| type assumes
     "|encoding|" serialisation.
 
     Keyword Args
     ------------
     value: :class:`unicode`, :class:`str`, :class:`bytes` or |ASN.1| object
-        :class:`bytes`, alternatively :class:`str`
+        :class:`str` (Python 2) or :class:`bytes` (Python 3), alternatively
+        :class:`unicode` object (Python 2) or :class:`str` (Python 3)
         representing character string to be serialised into octets (note
         `encoding` parameter) or |ASN.1| object.
         If `value` is not given, schema object will be created.
@@ -3252,8 +3246,8 @@ class Any(OctetString):
         instantiation.
 
     encoding: :py:class:`str`
-        Unicode codec ID to encode/decode
-        :class:`str` the payload when |ASN.1| object is used
+        Unicode codec ID to encode/decode :class:`unicode` (Python 2) or
+        :class:`str` (Python 3) the payload when |ASN.1| object is used
         in text string context.
 
     binValue: :py:class:`str`

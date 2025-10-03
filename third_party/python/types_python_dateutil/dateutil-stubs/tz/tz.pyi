@@ -1,4 +1,5 @@
 import datetime
+from _typeshed import Incomplete
 from typing import ClassVar, Literal, Protocol, TypeVar
 
 from ..relativedelta import relativedelta
@@ -98,7 +99,7 @@ class _ICalReader(Protocol):
 class tzical:
     def __init__(self, fileobj: str | _ICalReader) -> None: ...
     def keys(self): ...
-    def get(self, tzid=None): ...
+    def get(self, tzid: Incomplete | None = None): ...
 
 TZFILES: list[str]
 TZPATHS: list[str]

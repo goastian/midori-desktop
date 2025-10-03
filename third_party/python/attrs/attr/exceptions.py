@@ -1,9 +1,5 @@
 # SPDX-License-Identifier: MIT
 
-from __future__ import annotations
-
-from typing import ClassVar
-
 
 class FrozenError(AttributeError):
     """
@@ -17,7 +13,7 @@ class FrozenError(AttributeError):
     """
 
     msg = "can't set attribute"
-    args: ClassVar[tuple[str]] = [msg]
+    args = [msg]
 
 
 class FrozenInstanceError(FrozenError):

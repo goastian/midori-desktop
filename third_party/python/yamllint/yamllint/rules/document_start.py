@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright (C) 2016 Adrien Vergé
 #
 # This program is free software: you can redistribute it and/or modify
@@ -20,14 +21,6 @@ Use this rule to require or forbid the use of document start marker (``---``).
 
 * Set ``present`` to ``true`` when the document start marker is required, or to
   ``false`` when it is forbidden.
-
-.. rubric:: Default values (when enabled)
-
-.. code-block:: yaml
-
- rules:
-   document-start:
-     present: true
 
 .. rubric:: Examples
 
@@ -74,6 +67,7 @@ Use this rule to require or forbid the use of document start marker (``---``).
 import yaml
 
 from yamllint.linter import LintProblem
+
 
 ID = 'document-start'
 TYPE = 'token'

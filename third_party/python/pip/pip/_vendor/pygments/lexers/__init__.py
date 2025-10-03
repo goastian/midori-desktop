@@ -4,7 +4,7 @@
 
     Pygments lexers.
 
-    :copyright: Copyright 2006-2024 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2023 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -22,7 +22,6 @@ from pip._vendor.pygments.util import ClassNotFound, guess_decode
 COMPAT = {
     'Python3Lexer': 'PythonLexer',
     'Python3TracebackLexer': 'PythonTracebackLexer',
-    'LeanLexer': 'Lean3Lexer',
 }
 
 __all__ = ['get_lexer_by_name', 'get_lexer_for_filename', 'find_lexer_class',
@@ -93,7 +92,7 @@ def find_lexer_class_by_name(_alias):
     .. versionadded:: 2.2
     """
     if not _alias:
-        raise ClassNotFound(f'no lexer for alias {_alias!r} found')
+        raise ClassNotFound('no lexer for alias %r found' % _alias)
     # lookup builtin lexers
     for module_name, name, aliases, _, _ in LEXERS.values():
         if _alias.lower() in aliases:
@@ -104,7 +103,7 @@ def find_lexer_class_by_name(_alias):
     for cls in find_plugin_lexers():
         if _alias.lower() in cls.aliases:
             return cls
-    raise ClassNotFound(f'no lexer for alias {_alias!r} found')
+    raise ClassNotFound('no lexer for alias %r found' % _alias)
 
 
 def get_lexer_by_name(_alias, **options):
@@ -117,7 +116,7 @@ def get_lexer_by_name(_alias, **options):
     found.
     """
     if not _alias:
-        raise ClassNotFound(f'no lexer for alias {_alias!r} found')
+        raise ClassNotFound('no lexer for alias %r found' % _alias)
 
     # lookup builtin lexers
     for module_name, name, aliases, _, _ in LEXERS.values():
@@ -129,7 +128,7 @@ def get_lexer_by_name(_alias, **options):
     for cls in find_plugin_lexers():
         if _alias.lower() in cls.aliases:
             return cls(**options)
-    raise ClassNotFound(f'no lexer for alias {_alias!r} found')
+    raise ClassNotFound('no lexer for alias %r found' % _alias)
 
 
 def load_lexer_from_file(filename, lexername="CustomLexer", **options):
@@ -154,16 +153,17 @@ def load_lexer_from_file(filename, lexername="CustomLexer", **options):
             exec(f.read(), custom_namespace)
         # Retrieve the class `lexername` from that namespace
         if lexername not in custom_namespace:
-            raise ClassNotFound(f'no valid {lexername} class found in {filename}')
+            raise ClassNotFound('no valid %s class found in %s' %
+                                (lexername, filename))
         lexer_class = custom_namespace[lexername]
         # And finally instantiate it with the options
         return lexer_class(**options)
     except OSError as err:
-        raise ClassNotFound(f'cannot read {filename}: {err}')
+        raise ClassNotFound('cannot read %s: %s' % (filename, err))
     except ClassNotFound:
         raise
     except Exception as err:
-        raise ClassNotFound(f'error when loading custom lexer: {err}')
+        raise ClassNotFound('error when loading custom lexer: %s' % err)
 
 
 def find_lexer_class_for_filename(_fn, code=None):
@@ -224,7 +224,7 @@ def get_lexer_for_filename(_fn, code=None, **options):
     """
     res = find_lexer_class_for_filename(_fn, code)
     if not res:
-        raise ClassNotFound(f'no lexer for filename {_fn!r} found')
+        raise ClassNotFound('no lexer for filename %r found' % _fn)
     return res(**options)
 
 
@@ -244,7 +244,7 @@ def get_lexer_for_mimetype(_mime, **options):
     for cls in find_plugin_lexers():
         if _mime in cls.mimetypes:
             return cls(**options)
-    raise ClassNotFound(f'no lexer for mimetype {_mime!r} found')
+    raise ClassNotFound('no lexer for mimetype %r found' % _mime)
 
 
 def _iter_lexerclasses(plugins=True):
@@ -279,7 +279,7 @@ def guess_lexer_for_filename(_fn, _text, **options):
                 matching_lexers.add(lexer)
                 primary[lexer] = False
     if not matching_lexers:
-        raise ClassNotFound(f'no lexer for filename {fn!r} found')
+        raise ClassNotFound('no lexer for filename %r found' % fn)
     if len(matching_lexers) == 1:
         return matching_lexers.pop()(**options)
     result = []

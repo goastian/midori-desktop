@@ -266,8 +266,6 @@ class nsDragSession : public nsBaseDragSession, public nsIObserver {
   static GdkAtom sFilePromiseURLMimeAtom;
   static GdkAtom sFilePromiseMimeAtom;
   static GdkAtom sNativeImageMimeAtom;
-  static GdkAtom sUTF8STRINGMimeAtom;
-  static GdkAtom sSTRINGMimeAtom;
 
   nsDragSession();
 
@@ -330,6 +328,9 @@ class nsDragSession : public nsBaseDragSession, public nsIObserver {
   // set the drag icon during drag-begin
   void SetDragIcon(GdkDragContext* aContext);
 
+  void MarkAsActive() { mActive = true; }
+  bool IsActive() const { return mActive; }
+
  protected:
   virtual ~nsDragSession();
 
@@ -362,6 +363,9 @@ class nsDragSession : public nsBaseDragSession, public nsIObserver {
 
   // the source of our drags
   GtkWidget* mHiddenWidget;
+  // Workaround for Bug 1979719. We consider D&D session running only after
+  // first "move" event on Wayland.
+  bool mActive = false;
 
   // get a list of the sources in gtk's format
   GtkTargetList* GetSourceList(void);

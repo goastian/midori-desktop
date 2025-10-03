@@ -1617,6 +1617,15 @@ add_task(async function testVerifyPostInstallPopupWithDataCollection() {
         `addons://detail/${encodeURIComponent(extensionId)}`,
         "Expected about:addons to show the detail view of the extension"
       );
+
+      // Asserting the browser chrome window url to guard against regressions
+      // like Bug 1983869.
+      Assert.equal(
+        AppConstants.BROWSER_CHROME_URL,
+        tab.ownerGlobal.window.location.href,
+        "Expect browser chrome window url to be unchanged"
+      );
+
       BrowserTestUtils.removeTab(tab);
 
       // Dismiss the popup by clicking "OK".

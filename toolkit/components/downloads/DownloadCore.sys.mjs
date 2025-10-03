@@ -113,13 +113,6 @@ async function isPlaceholder(path) {
 const kProgressUpdateIntervalMs = 400;
 
 /**
- * These sets represent the current download batch in public and private
- * contexts.
- */
-const gPublicBatch = new Set(),
-  gPrivateBatch = new Set();
-
-/**
  * Represents a single download, with associated state and actions.  This object
  * is transient, though it can be included in a DownloadList so that it can be
  * managed by the user interface and persisted across sessions.
@@ -303,22 +296,6 @@ Download.prototype = {
   launcherId: null,
 
   /**
-   * Any download that is running has this property set to true.  The property
-   * remains true until this download is canceled or until all downloads are
-   * stopped.  (If this download completes, isInCurrentBatch remains true for
-   * as long as any other download is running, even if the running download was
-   * started after this download completed.)
-   */
-  get isInCurrentBatch() {
-    return this._batch !== null;
-  },
-
-  /**
-   * Set containing this object, or null.
-   */
-  _batch: null,
-
-  /**
    * Raises the onchange notification.
    */
   _notifyChange: function D_notifyChange() {
@@ -407,10 +384,6 @@ Download.prototype = {
     // Initialize all the status properties for a new or restarted download.
     this.stopped = false;
     this.canceled = false;
-    if (!this._batch) {
-      this._batch = this.source.isPrivate ? gPrivateBatch : gPublicBatch;
-      this._batch.add(this);
-    }
     this.error = null;
     // Avoid serializing the previous error, or it would be restored on the next
     // startup, even if the download was restarted.
@@ -612,9 +585,7 @@ Download.prototype = {
             this._currentAttempt = null;
             this.stopped = true;
             this.speed = 0;
-            if (!this._batch || Download._updateBatch(this._batch)) {
-              this._notifyChange();
-            }
+            this._notifyChange();
             if (this.succeeded) {
               await this._succeed();
             }
@@ -643,6 +614,8 @@ Download.prototype = {
     if (this.launchWhenSucceeded) {
       this.launch().catch(console.error);
 
+      // Always schedule files to be deleted at the end of the private browsing
+      // mode, regardless of the value of the pref.
       if (this.source.isPrivate) {
         lazy.gExternalAppLauncher.deleteTemporaryPrivateFileWhenPossible(
           new lazy.FileUtils.File(this.target.path)
@@ -658,19 +631,6 @@ Download.prototype = {
           new lazy.FileUtils.File(this.target.path)
         );
       }
-    }
-
-    if (
-      Services.prefs.getBoolPref(
-        "browser.download.enableDeletePrivate",
-        false
-      ) &&
-      Services.prefs.getBoolPref("browser.download.deletePrivate", false) &&
-      this.source.isPrivate
-    ) {
-      lazy.gExternalAppLauncher.deletePrivateFileWhenPossible(
-        new lazy.FileUtils.File(this.target.path)
-      );
     }
   },
 
@@ -977,10 +937,6 @@ Download.prototype = {
 
       // Notify that the cancellation request was received.
       this.canceled = true;
-      let batch = this._batch;
-      this._batch = null;
-      batch.delete(this);
-      Download._updateBatch(batch);
       this._notifyChange();
 
       // Execute the actual cancellation through the saver object, in case it
@@ -1526,27 +1482,6 @@ Download.fromSerializable = function (aSerializable) {
 };
 
 /**
- * Checks a batch for any running downloads, emptying the batch if none are found.
- * Returns a boolean indicating if _notifyChange() needs to be called on the
- * triggering download (true) or if _updateBatch did the work of calling
- * _notifyChange() on all of the downloads in the batch (false).
- */
-Download._updateBatch = function (batch) {
-  const batchArray = Array.from(batch);
-  for (let download of batchArray) {
-    if (!download.stopped) {
-      return true;
-    }
-  }
-  batch.clear();
-  for (let download of batchArray) {
-    download._batch = null;
-    download._notifyChange();
-  }
-  return false;
-};
-
-/**
  * Represents the source of a download, for example a document or an URI.
  */
 export var DownloadSource = function () {};
@@ -2001,6 +1936,7 @@ export var DownloadError = function (aProperties) {
   } else if (aProperties.becauseBlockedByContentAnalysis) {
     this.becauseBlocked = true;
     this.becauseBlockedByContentAnalysis = true;
+    this.contentAnalysisCancelError = aProperties.contentAnalysisCancelError;
     this.contentAnalysisWarnRequestToken =
       aProperties.contentAnalysisWarnRequestToken;
     this.reputationCheckVerdict = aProperties.reputationCheckVerdict;
@@ -2067,6 +2003,12 @@ DownloadError.prototype = {
   becauseBlockedByContentAnalysis: false,
 
   /**
+   * The cancelError returned by the content analysis tool, which corresponds
+   * to the nsIContentAnalysisResponse.CancelError enum. May be undefined.
+   */
+  contentAnalysisCancelError: undefined,
+
+  /**
    * If becauseBlockedByReputationCheck is true, indicates the detailed reason
    * why the download was blocked, according to the "BLOCK_VERDICT_" constants.
    *
@@ -2128,7 +2070,8 @@ DownloadError.fromSerializable = function (aSerializable) {
       property != "becauseBlockedByParentalControls" &&
       property != "becauseBlockedByReputationCheck" &&
       property != "becauseBlockedByContentAnalysis" &&
-      property != "reputationCheckVerdict"
+      property != "reputationCheckVerdict" &&
+      property != "contentAnalysisCancelError"
   );
 
   return e;
@@ -2737,16 +2680,19 @@ DownloadCopySaver.prototype = {
       });
     };
 
-    let hasMostRestrictiveResult = ([result1, result2]) => {
+    let hasMostRestrictiveResult = ([
+      reputationResult,
+      contentAnalysisResult,
+    ]) => {
       // Verdicts are sorted from least-to-most restrictive.  However, a result that
       // shouldBlock is always more restrictive than one that does not.  Since
       // reputation allows shouldBlock to be overridden by prefs but content
       // analysis does not, we need to be careful of that.
-      if (result1.shouldBlock && !result2.shouldBlock) {
-        return result1;
+      if (reputationResult.shouldBlock && !contentAnalysisResult.shouldBlock) {
+        return reputationResult;
       }
-      if (result2.shouldBlock) {
-        return result2;
+      if (contentAnalysisResult.shouldBlock) {
+        return contentAnalysisResult;
       }
       // Verdicts are in a pre-defined order (see nsIApplicationReputationService),
       // so find the most restrictive one.
@@ -2757,10 +2703,10 @@ DownloadCopySaver.prototype = {
         [Ci.nsIApplicationReputationService.VERDICT_DANGEROUS_HOST]: 3,
         [Ci.nsIApplicationReputationService.VERDICT_DANGEROUS]: 4,
       };
-      return verdictToRestrictiveness[result1.verdict] >
-        verdictToRestrictiveness[result2.verdict]
-        ? result1
-        : result2;
+      return verdictToRestrictiveness[reputationResult.verdict] >
+        verdictToRestrictiveness[contentAnalysisResult.verdict]
+        ? reputationResult
+        : contentAnalysisResult;
     };
 
     let download = this.download;
@@ -2770,23 +2716,10 @@ DownloadCopySaver.prototype = {
     let reputationPromise = checkReputation(download);
     let caPromise = checkContentAnalysis(download);
 
-    let permissionResult = await Promise.any([
+    let permissionResult = await Promise.all([
       reputationPromise,
       caPromise,
-    ]).then(async result => {
-      // If the first result is the most restrictive one, we can return it
-      // immediately.
-      if (
-        result.shouldBlock &&
-        result.verdict == Ci.nsIApplicationReputationService.VERDICT_DANGEROUS
-      ) {
-        return result;
-      }
-      // Otherwise wait for both results and compare them.
-      return await Promise.all([reputationPromise, caPromise]).then(
-        hasMostRestrictiveResult
-      );
-    });
+    ]).then(hasMostRestrictiveResult);
 
     let downloadErrorVerdict = kVerdictMap[permissionResult.verdict] || "";
     permissionResult.verdict = downloadErrorVerdict;
@@ -2835,6 +2768,8 @@ DownloadCopySaver.prototype = {
         throw new DownloadError({
           becauseBlockedByContentAnalysis: true,
           reputationCheckVerdict: downloadErrorVerdict,
+          contentAnalysisCancelError:
+            permissionResult.contentAnalysisCancelError,
           contentAnalysisWarnRequestToken:
             permissionResult.contentAnalysisWarnRequestToken,
         });

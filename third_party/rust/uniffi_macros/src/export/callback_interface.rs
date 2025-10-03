@@ -7,8 +7,7 @@ use crate::{
     ffiops,
     fnsig::{FnKind, FnSignature, ReceiverArg},
     util::{
-        async_trait_annotation, create_metadata_items, derive_ffi_traits, ident_to_string,
-        mod_path, tagged_impl_header, wasm_single_threaded_annotation,
+        create_metadata_items, derive_ffi_traits, ident_to_string, mod_path, tagged_impl_header,
     },
 };
 use proc_macro2::{Span, TokenStream};
@@ -78,11 +77,7 @@ pub(super) fn trait_impl(
         .map(|sig| gen_method_impl(sig, &vtable_cell))
         .collect::<syn::Result<Vec<_>>>()?;
     let has_async_method = methods.iter().any(|m| m.is_async);
-
-    // Conditionally apply the async_trait attribute with or without ?Send based on the target
-    let impl_attributes = has_async_method.then(async_trait_annotation);
-
-    let single_threaded_annotation = wasm_single_threaded_annotation();
+    let impl_attributes = has_async_method.then(|| quote! { #[::async_trait::async_trait] });
 
     Ok(quote! {
         #[allow(missing_docs)]
@@ -110,7 +105,6 @@ pub(super) fn trait_impl(
             }
         }
 
-        #single_threaded_annotation
         ::uniffi::deps::static_assertions::assert_impl_all!(#trait_impl_ident: ::core::marker::Send);
 
         #impl_attributes

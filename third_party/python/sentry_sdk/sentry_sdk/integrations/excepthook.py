@@ -1,15 +1,12 @@
 import sys
 
-import sentry_sdk
-from sentry_sdk.utils import (
-    capture_internal_exceptions,
-    event_from_exception,
-)
+from sentry_sdk.hub import Hub
+from sentry_sdk.utils import capture_internal_exceptions, event_from_exception
 from sentry_sdk.integrations import Integration
 
-from typing import TYPE_CHECKING
+from sentry_sdk._types import MYPY
 
-if TYPE_CHECKING:
+if MYPY:
     from typing import Callable
     from typing import Any
     from typing import Type
@@ -48,22 +45,20 @@ def _make_excepthook(old_excepthook):
     # type: (Excepthook) -> Excepthook
     def sentry_sdk_excepthook(type_, value, traceback):
         # type: (Type[BaseException], BaseException, Optional[TracebackType]) -> None
-        integration = sentry_sdk.get_client().get_integration(ExcepthookIntegration)
+        hub = Hub.current
+        integration = hub.get_integration(ExcepthookIntegration)
 
-        # Note: If  we replace this with ensure_integration_enabled then
-        # we break the exceptiongroup backport;
-        # See: https://github.com/getsentry/sentry-python/issues/3097
-        if integration is None:
-            return old_excepthook(type_, value, traceback)
+        if integration is not None and _should_send(integration.always_run):
+            # If an integration is there, a client has to be there.
+            client = hub.client  # type: Any
 
-        if _should_send(integration.always_run):
             with capture_internal_exceptions():
                 event, hint = event_from_exception(
                     (type_, value, traceback),
-                    client_options=sentry_sdk.get_client().options,
+                    client_options=client.options,
                     mechanism={"type": "excepthook", "handled": False},
                 )
-                sentry_sdk.capture_event(event, hint=hint)
+                hub.capture_event(event, hint=hint)
 
         return old_excepthook(type_, value, traceback)
 

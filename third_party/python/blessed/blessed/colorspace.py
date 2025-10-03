@@ -11,7 +11,6 @@ References,
 - https://devblogs.microsoft.com/commandline/24-bit-color-in-the-windows-console/
 - http://jdebp.uk/Softwares/nosh/guide/TerminalCapabilities.html
 """
-
 # std imports
 import collections
 
@@ -22,7 +21,8 @@ __all__ = (
     'X11_COLORNAMES_TO_RGB',
 )
 
-CGA_COLORS = {'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'}
+CGA_COLORS = set(
+    ('black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'))
 
 
 class RGBColor(collections.namedtuple("RGBColor", ["red", "green", "blue"])):

@@ -1,5 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![allow(dead_code)] // some code is tested for type checking only
+#![allow(dead_code)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -38,23 +38,6 @@ enum MixedInts {
     Unit,
     #[try_into(ignore)]
     Unit2,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Wrapper<'a, const Y: usize, U>(&'a [U; Y]);
-
-enum Foo<'lt: 'static, T: Clone, const X: usize> {
-    X(Wrapper<'lt, X, T>),
-}
-
-enum EnumWithError {
-    Error,
-}
-
-/// Making sure that `TryInto` does not trigger an ambiguous associated item error for `Error`.
-#[derive(TryInto)]
-enum EnumIntoEnumWithError {
-    Foo(EnumWithError),
 }
 
 #[test]
@@ -247,5 +230,5 @@ fn test_try_into() {
         u32::try_from(i).unwrap_err().to_string(),
         "Only Unsigned, NamedUnsigned can be converted to u32"
     );
-    assert!(matches!(i.try_into().unwrap(), ()));
+    assert_eq!((), i.try_into().unwrap());
 }

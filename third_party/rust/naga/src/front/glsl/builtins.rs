@@ -2035,10 +2035,8 @@ impl MacroCall {
             )?,
             MacroCall::Barrier => {
                 ctx.emit_restart();
-                ctx.body.push(
-                    crate::Statement::ControlBarrier(crate::Barrier::all()),
-                    meta,
-                );
+                ctx.body
+                    .push(crate::Statement::Barrier(crate::Barrier::all()), meta);
                 return Ok(None);
             }
             MacroCall::SmoothStep { splatted } => {
@@ -2085,7 +2083,6 @@ fn texture_call(
                 offset,
                 level,
                 depth_ref: comps.depth_ref,
-                clamp_to_edge: false,
             },
             meta,
         )?)

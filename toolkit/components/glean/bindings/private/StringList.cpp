@@ -6,7 +6,6 @@
 
 #include "mozilla/glean/bindings/StringList.h"
 
-#include "mozilla/ErrorResult.h"
 #include "mozilla/ResultVariant.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "mozilla/dom/GleanMetricsBinding.h"

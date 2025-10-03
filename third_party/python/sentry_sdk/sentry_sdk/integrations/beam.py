@@ -1,25 +1,24 @@
+from __future__ import absolute_import
+
 import sys
 import types
-from functools import wraps
+from sentry_sdk._functools import wraps
 
-import sentry_sdk
+from sentry_sdk.hub import Hub
+from sentry_sdk._compat import reraise
+from sentry_sdk.utils import capture_internal_exceptions, event_from_exception
 from sentry_sdk.integrations import Integration
 from sentry_sdk.integrations.logging import ignore_logger
-from sentry_sdk.utils import (
-    capture_internal_exceptions,
-    ensure_integration_enabled,
-    event_from_exception,
-    reraise,
-)
+from sentry_sdk._types import MYPY
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
+if MYPY:
     from typing import Any
     from typing import Iterator
     from typing import TypeVar
+    from typing import Optional
     from typing import Callable
 
+    from sentry_sdk.client import Client
     from sentry_sdk._types import ExcInfo
 
     T = TypeVar("T")
@@ -117,7 +116,9 @@ def _wrap_task_call(func):
     # type: (F) -> F
     """
     Wrap task call with a try catch to get exceptions.
+    Pass the client on to raise_exception so it can get rebinded.
     """
+    client = Hub.current.client
 
     @wraps(func)
     def _inner(*args, **kwargs):
@@ -125,45 +126,53 @@ def _wrap_task_call(func):
         try:
             gen = func(*args, **kwargs)
         except Exception:
-            raise_exception()
+            raise_exception(client)
 
         if not isinstance(gen, types.GeneratorType):
             return gen
-        return _wrap_generator_call(gen)
+        return _wrap_generator_call(gen, client)
 
     setattr(_inner, USED_FUNC, True)
     return _inner  # type: ignore
 
 
-@ensure_integration_enabled(BeamIntegration)
-def _capture_exception(exc_info):
-    # type: (ExcInfo) -> None
+def _capture_exception(exc_info, hub):
+    # type: (ExcInfo, Hub) -> None
     """
     Send Beam exception to Sentry.
     """
-    client = sentry_sdk.get_client()
+    integration = hub.get_integration(BeamIntegration)
+    if integration is None:
+        return
+
+    client = hub.client
+    if client is None:
+        return
 
     event, hint = event_from_exception(
         exc_info,
         client_options=client.options,
         mechanism={"type": "beam", "handled": False},
     )
-    sentry_sdk.capture_event(event, hint=hint)
+    hub.capture_event(event, hint=hint)
 
 
-def raise_exception():
-    # type: () -> None
+def raise_exception(client):
+    # type: (Optional[Client]) -> None
     """
-    Raise an exception.
+    Raise an exception. If the client is not in the hub, rebind it.
     """
+    hub = Hub.current
+    if hub.client is None:
+        hub.bind_client(client)
     exc_info = sys.exc_info()
     with capture_internal_exceptions():
-        _capture_exception(exc_info)
+        _capture_exception(exc_info, hub)
     reraise(*exc_info)
 
 
-def _wrap_generator_call(gen):
-    # type: (Iterator[T]) -> Iterator[T]
+def _wrap_generator_call(gen, client):
+    # type: (Iterator[T], Optional[Client]) -> Iterator[T]
     """
     Wrap the generator to handle any failures.
     """
@@ -173,4 +182,4 @@ def _wrap_generator_call(gen):
         except StopIteration:
             break
         except Exception:
-            raise_exception()
+            raise_exception(client)

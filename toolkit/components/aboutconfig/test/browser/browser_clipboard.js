@@ -4,7 +4,6 @@
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       ["test.aboutconfig.copy.false", false],
       ["test.aboutconfig.copy.number", 10],
       ["test.aboutconfig.copy.spaces.1", " "],

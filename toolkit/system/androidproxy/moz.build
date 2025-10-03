@@ -15,8 +15,4 @@ XPCOM_MANIFESTS += [
     "components.conf",
 ]
 
-LOCAL_INCLUDES += [
-    "../commonproxy",
-]
-
 FINAL_LIBRARY = "xul"

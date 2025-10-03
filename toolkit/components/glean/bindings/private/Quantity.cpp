@@ -6,7 +6,6 @@
 
 #include "mozilla/glean/bindings/Quantity.h"
 
-#include "mozilla/ErrorResult.h"
 #include "mozilla/ResultVariant.h"
 #include "mozilla/dom/GleanMetricsBinding.h"
 #include "mozilla/glean/bindings/ScalarGIFFTMap.h"

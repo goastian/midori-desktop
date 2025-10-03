@@ -28,6 +28,7 @@ var perfMetadata = {
 
 /**
  * Convert a JS object from RemoteSettings to an nsIUrlClassifierExceptionListEntry.
+ * Copied from UrlClassifierExceptionListService.sys.mjs with modifications.
  * @param {Object} rsObject - The JS object from RemoteSettings to convert.
  * @returns {nsIUrlClassifierExceptionListEntry} The converted nsIUrlClassifierExceptionListEntry.
  */
@@ -37,7 +38,6 @@ function rsObjectToEntry(rsObject) {
   ].createInstance(Ci.nsIUrlClassifierExceptionListEntry);
 
   let {
-    category: categoryStr,
     urlPattern,
     topLevelUrlPattern = "",
     isPrivateBrowsingOnly = false,
@@ -45,17 +45,7 @@ function rsObjectToEntry(rsObject) {
     classifierFeatures = [],
   } = rsObject;
 
-  const CATEGORY_STR_TO_ENUM = {
-    "internal-pref":
-      Ci.nsIUrlClassifierExceptionListEntry.CATEGORY_INTERNAL_PREF,
-    baseline: Ci.nsIUrlClassifierExceptionListEntry.CATEGORY_BASELINE,
-    convenience: Ci.nsIUrlClassifierExceptionListEntry.CATEGORY_CONVENIENCE,
-  };
-
-  let category = CATEGORY_STR_TO_ENUM[categoryStr];
-
   entry.init(
-    category,
     urlPattern,
     topLevelUrlPattern,
     isPrivateBrowsingOnly,
@@ -83,7 +73,6 @@ function generateExceptionList() {
     for (let j = 0; j < 100; j++) {
       list.addEntry(
         rsObjectToEntry({
-          category: "baseline",
           urlPattern: `*://tracker${i}.com/*`,
           topLevelUrlPattern: `*://site${j}.com/*`,
         })

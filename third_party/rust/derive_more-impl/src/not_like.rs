@@ -35,10 +35,8 @@ pub fn expand(input: &DeriveInput, trait_name: &str) -> TokenStream {
     };
 
     quote! {
-        #[allow(unreachable_code)] // omit warnings for `!` and other unreachable types
         #[automatically_derived]
-        impl #impl_generics derive_more::core::ops::#trait_ident
-         for #input_type #ty_generics #where_clause {
+        impl #impl_generics ::core::ops::#trait_ident for #input_type #ty_generics #where_clause {
             type Output = #output_type;
 
             #[inline]
@@ -110,7 +108,7 @@ fn enum_output_type_and_content(
                 let method_iter = method_iter.by_ref();
                 let mut body = quote! { #subtype(#(#vars.#method_iter()),*) };
                 if has_unit_type {
-                    body = quote! { derive_more::core::result::Result::Ok(#body) }
+                    body = quote! { ::core::result::Result::Ok(#body) }
                 }
                 let matcher = quote! {
                     #subtype(#(#vars),*) => {
@@ -137,7 +135,7 @@ fn enum_output_type_and_content(
                     #subtype{#(#field_names: #vars.#method_iter()),*}
                 };
                 if has_unit_type {
-                    body = quote! { derive_more::core::result::Result::Ok(#body) }
+                    body = quote! { ::core::result::Result::Ok(#body) }
                 }
                 let matcher = quote! {
                     #subtype{#(#field_names: #vars),*} => {
@@ -149,8 +147,8 @@ fn enum_output_type_and_content(
             Fields::Unit => {
                 let operation_name = method_ident.to_string();
                 matches.push(quote! {
-                    #subtype => derive_more::core::result::Result::Err(
-                        derive_more::UnitError::new(#operation_name)
+                    #subtype => ::core::result::Result::Err(
+                        ::derive_more::ops::UnitError::new(#operation_name)
                     )
                 });
             }
@@ -164,9 +162,7 @@ fn enum_output_type_and_content(
     };
 
     let output_type = if has_unit_type {
-        quote! {
-            derive_more::core::result::Result<#input_type #ty_generics, derive_more::UnitError>
-        }
+        quote! { ::core::result::Result<#input_type #ty_generics, ::derive_more::ops::UnitError> }
     } else {
         quote! { #input_type #ty_generics }
     };

@@ -1201,6 +1201,9 @@ class WindowBase {
     return undefined;
   }
 
+  // The JSDoc validator does not support @returns tags in abstract functions or
+  // star functions without return statements.
+  /* eslint-disable valid-jsdoc */
   /**
    * Returns the window state of the given window.
    *
@@ -1253,6 +1256,7 @@ class WindowBase {
   getTabAtIndex(_index) {
     throw new Error("Not implemented");
   }
+  /* eslint-enable valid-jsdoc */
 }
 
 Object.assign(WindowBase, { WINDOW_ID_NONE, WINDOW_ID_CURRENT });
@@ -1367,6 +1371,9 @@ class TabTrackerBase extends EventEmitter {
     throw new Error("Not implemented");
   }
 
+  // The JSDoc validator does not support @returns tags in abstract functions or
+  // star functions without return statements.
+  /* eslint-disable valid-jsdoc */
   /**
    * Returns the numeric ID for the given native tab.
    *
@@ -1403,13 +1410,14 @@ class TabTrackerBase extends EventEmitter {
    * Returns basic information about the tab and window that the given browser
    * belongs to.
    *
-   * @param {XULElement} _browser
+   * @param {XULElement} browser
    *        The XUL browser element for which to return data.
    *
    * @returns {BrowserData}
    * @abstract
    */
-  getBrowserData(_browser) {
+  /* eslint-enable valid-jsdoc */
+  getBrowserData() {
     throw new Error("Not implemented");
   }
 
@@ -1504,15 +1512,19 @@ class WindowTrackerBase extends EventEmitter {
     return documentElement.getAttribute("windowtype") === "navigator:browser";
   }
 
+  // The JSDoc validator does not support @returns tags in abstract functions or
+  // star functions without return statements.
+  /* eslint-disable valid-jsdoc */
   /**
    * Returns an iterator for all currently active browser windows.
    *
-   * @param {boolean} [includeIncomplete = false]
+   * @param {boolean} [includeInomplete = false]
    *        If true, include browser windows which are not yet fully loaded.
    *        Otherwise, only include windows which are.
    *
    * @returns {Iterator<DOMWindow>}
    */
+  /* eslint-enable valid-jsdoc */
   *browserWindows(includeIncomplete = false) {
     // The window type parameter is only available once the window's document
     // element has been created. This means that, when looking for incomplete
@@ -2069,6 +2081,9 @@ class TabManagerBase {
     return this.getWrapper(nativeTab).convert(fallbackTabSize);
   }
 
+  // The JSDoc validator does not support @returns tags in abstract functions or
+  // star functions without return statements.
+  /* eslint-disable valid-jsdoc */
   /**
    * Returns an iterator of TabBase objects which match the given query info.
    *
@@ -2229,6 +2244,9 @@ class WindowManagerBase {
     );
   }
 
+  // The JSDoc validator does not support @returns tags in abstract functions or
+  // star functions without return statements.
+  /* eslint-disable valid-jsdoc */
   /**
    * Returns an iterator of WindowBase objects which match the given query info.
    *
@@ -2315,6 +2333,7 @@ class WindowManagerBase {
   wrapWindow(_window) {
     throw new Error("Not implemented");
   }
+  /* eslint-enable valid-jsdoc */
 }
 
 function getUserContextIdForCookieStoreId(

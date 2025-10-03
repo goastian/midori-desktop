@@ -13,8 +13,12 @@ import { useDataContext } from "@/context/data-context";
 import styles from "news-site-css/dist/layout.module.css";
 
 export default function Layout({ children, id }) {
+    const [showMessage, setShowMessage] = useState(false);
     const { content, links } = useDataContext();
-    const [showMessage, setShowMessage] = useState(Boolean(content[id].message));
+
+    useEffect(() => {
+        setShowMessage(content[id].message);
+    }, [id]);
 
     const pageRef = useRef(null);
     const { pathname } = useLocation();

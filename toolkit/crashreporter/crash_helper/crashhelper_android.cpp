@@ -30,36 +30,10 @@ Java_org_mozilla_gecko_crashhelper_CrashHelper_set_1breakpad_1opts(
   return true;
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_org_mozilla_gecko_crashhelper_CrashHelper_bind_1and_1listen(
-    JNIEnv* jenv, jclass, jint listen_fd) {
-  struct sockaddr_un addr = {
-      .sun_family = AF_UNIX,
-      .sun_path = {},
-  };
-
-  // The address' path deliberately starts with a null byte to inform the
-  // kernel that this is an abstract address and not an actual file path.
-  snprintf(addr.sun_path + 1, sizeof(addr.sun_path) - 2,
-           "gecko-crash-helper-pipe.%d", getpid());
-
-  int res = bind(listen_fd, (const struct sockaddr*)&addr, sizeof(addr));
-  if (res < 0) {
-    return false;
-  }
-
-  res = listen(listen_fd, 1);
-  if (res < 0) {
-    return false;
-  }
-
-  return true;
-}
-
 extern "C" JNIEXPORT void JNICALL
 Java_org_mozilla_gecko_crashhelper_CrashHelper_crash_1generator(
-    JNIEnv* jenv, jclass, jint client_pid, jint breakpad_fd,
-    jstring minidump_path, jint listen_fd, jint server_fd) {
+    JNIEnv* jenv, jclass, jint breakpad_fd, jstring minidump_path,
+    jint server_fd) {
   // The breakpad server socket needs to be put in non-blocking mode, we do it
   // here as the Rust code that picks it up won't touch it anymore and just
   // pass it along to Breakpad.
@@ -79,7 +53,6 @@ Java_org_mozilla_gecko_crashhelper_CrashHelper_crash_1generator(
 
   const char* minidump_path_str =
       jenv->GetStringUTFChars(minidump_path, nullptr);
-  crash_generator_logic_android(client_pid, breakpad_fd, minidump_path_str,
-                                listen_fd, server_fd);
+  crash_generator_logic_android(breakpad_fd, minidump_path_str, server_fd);
   jenv->ReleaseStringUTFChars(minidump_path, minidump_path_str);
 }

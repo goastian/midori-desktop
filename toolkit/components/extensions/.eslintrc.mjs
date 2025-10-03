@@ -32,7 +32,6 @@ export default [
         "error",
         {
           argsIgnorePattern: "^_",
-          caughtErrors: "none",
           vars: "all",
           varsIgnorePattern: "^console$",
         },
@@ -196,13 +195,12 @@ export default [
     },
   },
   {
-    files: ["test/xpcshell/head*.js", "test/browser/head*.js"],
+    files: "test/xpcshell/head*.js",
     rules: {
       "no-unused-vars": [
         "error",
         {
           argsIgnorePattern: "^_",
-          caughtErrors: "none",
           vars: "local",
         },
       ],

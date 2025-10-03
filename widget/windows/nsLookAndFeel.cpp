@@ -145,6 +145,9 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
 
   auto IsHighlightColor = [&] {
     switch (aID) {
+      case ColorID::MozButtonhoverface:
+      case ColorID::MozButtonactivetext:
+        return mHighContrastOn;
       case ColorID::MozMenuhover:
         return !UseNonNativeMenuColors();
       case ColorID::Highlight:
@@ -162,6 +165,9 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
 
   auto IsHighlightTextColor = [&] {
     switch (aID) {
+      case ColorID::MozButtonhovertext:
+      case ColorID::MozButtonactiveface:
+        return mHighContrastOn;
       case ColorID::MozMenubarhovertext:
         if (UseNonNativeMenuColors()) {
           return false;
@@ -271,55 +277,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
     }
   }
 
-  if (mHighContrastOn) {
-    switch (aID) {
-      case ColorID::MozButtonhoverborder:
-      case ColorID::MozButtonhoverface:
-      case ColorID::MozColheaderhover:
-      case ColorID::MozButtonactivetext:
-      case ColorID::MozColheaderactivetext:
-        aColor = GetColorForSysColorIndex(COLOR_HIGHLIGHT);
-        return NS_OK;
-      case ColorID::MozButtonhovertext:
-      case ColorID::MozColheaderhovertext:
-      case ColorID::MozButtonactiveface:
-      case ColorID::MozColheaderactive:
-        aColor = GetColorForSysColorIndex(COLOR_HIGHLIGHTTEXT);
-        return NS_OK;
-      case ColorID::MozButtondisabledborder:
-        aColor = GetColorForSysColorIndex(COLOR_GRAYTEXT);
-        return NS_OK;
-      case ColorID::Buttonface:
-      case ColorID::MozColheader:
-      case ColorID::MozButtondisabledface:
-      case ColorID::MozDisabledfield:
-      case ColorID::Field:
-        aColor = GetColorForSysColorIndex(COLOR_BTNFACE);
-        return NS_OK;
-      case ColorID::Buttontext:
-      case ColorID::MozColheadertext:
-      case ColorID::Buttonborder:
-      case ColorID::Fieldtext:
-      case ColorID::MozButtonactiveborder:
-        aColor = GetColorForSysColorIndex(COLOR_BTNTEXT);
-        return NS_OK;
-      case ColorID::Visitedtext: {
-        // The fallback visited link color on HCM (given there's no
-        // system-provided one) is produced by preserving the foreground's
-        // green and averaging the foreground and background for the red and
-        // blue.  This is how IE and Edge do it too.
-        auto windowText = GetColorForSysColorIndex(COLOR_WINDOWTEXT);
-        auto window = GetColorForSysColorIndex(COLOR_WINDOW);
-        aColor = NS_RGB(AVG2(NS_GET_R(windowText), NS_GET_R(window)),
-                        NS_GET_G(windowText),
-                        AVG2(NS_GET_B(windowText), NS_GET_B(window)));
-        return NS_OK;
-      }
-      default:
-        break;
-    }
-  }
-
   static constexpr auto kNonNativeMenuText = NS_RGB(0x15, 0x14, 0x1a);
   nsresult res = NS_OK;
   int idx;
@@ -349,19 +306,14 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       idx = COLOR_BACKGROUND;
       break;
     case ColorID::Buttonface:
-    case ColorID::MozColheader:
-    case ColorID::MozButtondisabledface:
-      // Taken from win11 task manager "new task" button.
-      aColor = NS_RGB(0xff, 0xff, 0xff);
-      return NS_OK;
     case ColorID::MozButtonhoverface:
-    case ColorID::MozColheaderhover:
-      aColor = NS_RGB(0xf6, 0xf6, 0xf6);
-      return NS_OK;
     case ColorID::MozButtonactiveface:
+    case ColorID::MozButtondisabledface:
+    case ColorID::MozColheader:
+    case ColorID::MozColheaderhover:
     case ColorID::MozColheaderactive:
-      aColor = NS_RGB(0xf9, 0xf9, 0xf9);
-      return NS_OK;
+      idx = COLOR_BTNFACE;
+      break;
     case ColorID::Buttonhighlight:
       idx = COLOR_BTNHIGHLIGHT;
       break;
@@ -371,8 +323,8 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
     case ColorID::Buttontext:
     case ColorID::MozButtonhovertext:
     case ColorID::MozButtonactivetext:
-      aColor = NS_RGB(0x1b, 0x1b, 0x1b);
-      return NS_OK;
+      idx = COLOR_BTNTEXT;
+      break;
     case ColorID::MozCellhighlighttext:
       aColor = NS_RGB(0, 0, 0);
       return NS_OK;
@@ -425,6 +377,7 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       idx = COLOR_3DHIGHLIGHT;
       break;
     case ColorID::Threedlightshadow:
+    case ColorID::Buttonborder:
     case ColorID::MozSidebarborder:
       idx = COLOR_3DLIGHT;
       break;
@@ -441,12 +394,14 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       idx = COLOR_WINDOWTEXT;
       break;
     case ColorID::MozDisabledfield:
-      idx = COLOR_3DLIGHT;
-      break;
-    case ColorID::Fieldtext:
-      idx = COLOR_WINDOWTEXT;
+      idx = mHighContrastOn ? COLOR_BTNFACE : COLOR_3DLIGHT;
       break;
     case ColorID::Field:
+      idx = mHighContrastOn ? COLOR_BTNFACE : COLOR_WINDOW;
+      break;
+    case ColorID::Fieldtext:
+      idx = mHighContrastOn ? COLOR_BTNTEXT : COLOR_WINDOWTEXT;
+      break;
     case ColorID::MozOddtreerow:
     case ColorID::MozSidebar:
     case ColorID::MozCombobox:
@@ -475,21 +430,33 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
     case ColorID::MozColheaderactivetext:
       idx = COLOR_WINDOWTEXT;
       break;
+    case ColorID::Visitedtext: {
+      if (mHighContrastOn) {
+        // The fallback visited link color on HCM (given there's no
+        // system-provided one) is produced by preserving the foreground's
+        // green and averaging the foreground and background for the red and
+        // blue.  This is how IE and Edge do it too.
+        auto windowText = GetColorForSysColorIndex(COLOR_WINDOWTEXT);
+        auto window = GetColorForSysColorIndex(COLOR_WINDOW);
+        aColor = NS_RGB(AVG2(NS_GET_R(windowText), NS_GET_R(window)),
+                        NS_GET_G(windowText),
+                        AVG2(NS_GET_B(windowText), NS_GET_B(window)));
+      } else {
+        // Otherwise use the stand-in.
+        aColor = GetStandinForNativeColor(aID, aScheme);
+      }
+      return NS_OK;
+    }
     case ColorID::Linktext:
       idx = COLOR_HOTLIGHT;
       break;
     case ColorID::Activetext:
-    case ColorID::Visitedtext:
     case ColorID::Marktext:
     case ColorID::Mark:
     case ColorID::SpellCheckerUnderline:
     case ColorID::MozAutofillBackground:
     case ColorID::TargetTextBackground:
     case ColorID::TargetTextForeground:
-    case ColorID::Buttonborder:
-    case ColorID::MozButtonhoverborder:
-    case ColorID::MozButtonactiveborder:
-    case ColorID::MozButtondisabledborder:
       aColor = GetStandinForNativeColor(aID, aScheme);
       return NS_OK;
     default:

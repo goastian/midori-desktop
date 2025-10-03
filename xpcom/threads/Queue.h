@@ -82,7 +82,7 @@ class Queue {
   }
 
   T& Push(T&& aElement) {
-    MOZ_ASSERT(mCount < std::numeric_limits<uint32_t>::max());
+    MOZ_RELEASE_ASSERT(mCount < std::numeric_limits<uint32_t>::max());
 
     if (!mHead) {
       // First page
@@ -133,7 +133,7 @@ class Queue {
   bool IsEmpty() const { return !mCount; }
 
   T Pop() {
-    MOZ_ASSERT(!IsEmpty());
+    MOZ_RELEASE_ASSERT(!IsEmpty());
 
     T result = std::move(mHead->mEvents[mOffsetHead]);
     mHead->mEvents[mOffsetHead].~T();
@@ -158,12 +158,12 @@ class Queue {
   }
 
   T& FirstElement() {
-    MOZ_ASSERT(!IsEmpty());
+    MOZ_RELEASE_ASSERT(!IsEmpty());
     return mHead->mEvents[mOffsetHead];
   }
 
   const T& FirstElement() const {
-    MOZ_ASSERT(!IsEmpty());
+    MOZ_RELEASE_ASSERT(!IsEmpty());
     return mHead->mEvents[mOffsetHead];
   }
 

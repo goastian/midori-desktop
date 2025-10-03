@@ -11,11 +11,10 @@
 
 [package]
 edition = "2021"
-rust-version = "1.75.0"
+rust-version = "1.65.0"
 name = "derive_more-impl"
-version = "2.0.1"
+version = "1.0.0-beta.2"
 authors = ["Jelte Fennema <github-tech@jeltef.nl>"]
-build = false
 include = [
     "src/**/*.rs",
     "doc/**/*.md",
@@ -23,11 +22,6 @@ include = [
     "README.md",
     "LICENSE",
 ]
-autolib = false
-autobins = false
-autoexamples = false
-autotests = false
-autobenches = false
 description = "Internal implementation of `derive_more` crate"
 documentation = "https://docs.rs/derive_more"
 readme = "README.md"
@@ -42,12 +36,10 @@ rustdoc-args = [
 ]
 
 [lib]
-name = "derive_more_impl"
-path = "src/lib.rs"
 proc-macro = true
 
 [dependencies.convert_case]
-version = "0.7"
+version = "0.6"
 optional = true
 
 [dependencies.proc-macro2]
@@ -57,14 +49,14 @@ version = "1.0"
 version = "1.0"
 
 [dependencies.syn]
-version = "2.0.45"
+version = "2.0"
 
 [dependencies.unicode-xid]
 version = "0.2.2"
 optional = true
 
 [dev-dependencies.itertools]
-version = "0.14.0"
+version = "0.11.0"
 
 [build-dependencies.rustc_version]
 version = "0.4"
@@ -73,10 +65,8 @@ optional = true
 [features]
 add = []
 add_assign = []
-as_ref = [
-    "syn/extra-traits",
-    "syn/visit",
-]
+as_mut = []
+as_ref = []
 constructor = []
 debug = [
     "syn/extra-traits",
@@ -95,6 +85,7 @@ from_str = []
 full = [
     "add",
     "add_assign",
+    "as_mut",
     "as_ref",
     "constructor",
     "debug",
@@ -113,7 +104,6 @@ full = [
     "mul_assign",
     "not",
     "sum",
-    "try_from",
     "try_into",
     "try_unwrap",
     "unwrap",
@@ -128,7 +118,6 @@ mul_assign = ["syn/extra-traits"]
 not = ["syn/extra-traits"]
 sum = []
 testing-helpers = ["dep:rustc_version"]
-try_from = []
 try_into = ["syn/extra-traits"]
 try_unwrap = ["dep:convert_case"]
 unwrap = ["dep:convert_case"]
@@ -136,11 +125,3 @@ unwrap = ["dep:convert_case"]
 [badges.github]
 repository = "JelteF/derive_more"
 workflow = "CI"
-
-[lints.rust.unexpected_cfgs]
-level = "warn"
-priority = 0
-check-cfg = [
-    "cfg(ci)",
-    "cfg(nightly)",
-]

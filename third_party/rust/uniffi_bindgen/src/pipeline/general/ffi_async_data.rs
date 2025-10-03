@@ -3,19 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::*;
-use heck::ToUpperCamelCase;
 
 pub fn pass(module: &mut Module) -> Result<()> {
     let namespace = module.crate_name.clone();
 
     // Change `is_async` to `async_data`
     module.visit_mut(|callable: &mut Callable| {
-        callable.async_data = callable.is_async.then(|| {
-            generate_async_data(
-                &namespace,
-                callable.return_type.ty.as_ref().map(|ty| &ty.ffi_type),
-            )
-        });
+        callable.async_data = callable
+            .is_async
+            .then(|| generate_async_data(&namespace, callable.ffi_return_type()));
     });
     module.visit_mut(|ffi_func: &mut FfiFunction| {
         ffi_func.async_data = ffi_func
@@ -25,8 +21,8 @@ pub fn pass(module: &mut Module) -> Result<()> {
     Ok(())
 }
 
-fn generate_async_data(namespace: &str, ffi_return_type: Option<&FfiTypeNode>) -> AsyncData {
-    let return_type_name = match &ffi_return_type.map(|ffi_type| &ffi_type.ty) {
+fn generate_async_data(namespace: &str, ffi_return_type: Option<&FfiType>) -> AsyncData {
+    let return_type_name = match ffi_return_type {
         Some(FfiType::UInt8) => "u8",
         Some(FfiType::Int8) => "i8",
         Some(FfiType::UInt16) => "u16",
@@ -55,10 +51,7 @@ fn generate_async_data(namespace: &str, ffi_return_type: Option<&FfiTypeNode>) -
         ffi_rust_future_free: RustFfiFunctionName(format!(
             "ffi_{namespace}_rust_future_free_{return_type_name}"
         )),
-        ffi_foreign_future_result: FfiStructName(format!(
-            "ForeignFutureResult{}",
-            return_type_name.to_upper_camel_case()
-        )),
+        ffi_foreign_future_result: FfiStructName(format!("ForeignFutureResult{return_type_name}")),
         ffi_foreign_future_complete: FfiFunctionTypeName(format!(
             "ForeignFutureComplete{return_type_name}"
         )),

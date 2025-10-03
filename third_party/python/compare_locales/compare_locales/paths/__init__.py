@@ -5,10 +5,8 @@
 from compare_locales import mozpath
 from .files import ProjectFiles, REFERENCE_LOCALE
 from .ini import (
-    L10nConfigParser,
-    SourceTreeConfigParser,
-    EnumerateApp,
-    EnumerateSourceTreeApp,
+    L10nConfigParser, SourceTreeConfigParser,
+    EnumerateApp, EnumerateSourceTreeApp,
 )
 from .matcher import Matcher
 from .project import ProjectConfig
@@ -16,20 +14,17 @@ from .configparser import TOMLParser, ConfigNotFound
 
 
 __all__ = [
-    "Matcher",
-    "ProjectConfig",
-    "L10nConfigParser",
-    "SourceTreeConfigParser",
-    "EnumerateApp",
-    "EnumerateSourceTreeApp",
-    "ProjectFiles",
-    "REFERENCE_LOCALE",
-    "TOMLParser",
-    "ConfigNotFound",
+    'Matcher',
+    'ProjectConfig',
+    'L10nConfigParser', 'SourceTreeConfigParser',
+    'EnumerateApp', 'EnumerateSourceTreeApp',
+    'ProjectFiles', 'REFERENCE_LOCALE',
+    'TOMLParser', 'ConfigNotFound',
 ]
 
 
 class File:
+
     def __init__(self, fullpath, file, module=None, locale=None):
         self.fullpath = fullpath
         self.file = file

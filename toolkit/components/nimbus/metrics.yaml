@@ -1053,27 +1053,11 @@ nimbus_events:
          The number of active enrollments in the ExperimentStore JSON file.
         type: quantity
         unit: enrollments
-
-      trigger:
-        description: >
-          What triggered the database consistency check. This is either
-          "migration" or "startup".
-        type: string
-
-      primary:
-        description: >
-          Which store was used at startup. This is either "database" or
-          "jsonfile".
-        type: string
-
     bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956079
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1956080
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1972427
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956082
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956080
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1972427
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956082
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956079
     notification_emails:
       - beth@mozilla.com
       - project-nimbus@mozilla.com
@@ -1101,51 +1085,6 @@ nimbus_events:
      - technical
     expires: never
 
-  remote_settings_sync:
-    type: event
-    description: >
-      Triggered whenever Nimbus attempts to get recipes from remote settings
-      collections, whether or not it succeeds.
-    extra_keys:
-      force_sync:
-        type: boolean
-        description: >
-          Whether or not a sync was forced when fetching recipes.
-
-      experiments_success:
-        type: boolean
-        description: >
-          Whether or not loading the experiments collection succeeded.
-
-      secure_experiments_success:
-        type: boolean
-        description: >
-          Whether or not loading the secure experiments collection succeeded.
-
-      experiments_empty:
-        type: boolean
-        description: >
-          Whether or not the experiments collection was empty.
-
-      secure_experiments_empty:
-        type: boolean
-        description: >
-          Whether or not the secure experiments collection was empty.
-
-      trigger:
-        type: string
-        description: >
-          The name of the event that triggered the sync.
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968792
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968792
-    data_sensitivity:
-      - technical
-    notification_emails:
-      - relud@mozilla.com
-      - project-nimbus@mozilla.com
-    expires: never
 
 normandy:
   expose_nimbus_experiment:

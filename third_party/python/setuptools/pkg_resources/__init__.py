@@ -2777,7 +2777,7 @@ class EntryPoint:
         if require:
             # We could pass `env` and `installer` directly,
             # but keeping `*args` and `**kwargs` for backwards compatibility
-            self.require(*args, **kwargs)  # type: ignore[arg-type]
+            self.require(*args, **kwargs)  # type: ignore
         return self.resolve()
 
     def resolve(self) -> _ResolvedEntryPoint:

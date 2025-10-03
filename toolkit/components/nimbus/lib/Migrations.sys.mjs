@@ -7,7 +7,6 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
   FirefoxLabs: "resource://nimbus/FirefoxLabs.sys.mjs",
-  NimbusEnrollments: "resource://nimbus/lib/Enrollments.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   NimbusTelemetry: "resource://nimbus/lib/Telemetry.sys.mjs",
   ProfilesDatastoreService:
@@ -63,11 +62,11 @@ export const NIMBUS_MIGRATION_PREFS = Object.fromEntries(
   Object.entries(Phase).map(([, v]) => [v, `nimbus.migrations.${v}`])
 );
 
-export const LABS_MIGRATION_FEATURE_MAP = Object.freeze({
+export const LABS_MIGRATION_FEATURE_MAP = {
   "auto-pip": "firefox-labs-auto-pip",
   "urlbar-ime-search": "firefox-labs-urlbar-ime-search",
   "jpeg-xl": "firefox-labs-jpeg-xl",
-});
+};
 
 /**
  * Migrate from the legacy migration state to multi-phase migration state.
@@ -92,12 +91,26 @@ function migrateMultiphase() {
 function migrateNoop() {
   // This migration intentionally left blank.
   //
-  // Use this migration to replace outdated migrations that should not be run on
-  // new clients.
+  // Bug 1956080 added `migrateEnrollmentsToSql` but the actual Nimbus profile
+  // ID added in that bug wasn't persistent (see bug 1969994) and reset every
+  // startup. Therefore the rows created by the first run of
+  // `migrateEnrollmentsToSql` are no longer associated with any profile and the
+  // `migrateEnrollmentsToSql` migration needs to run again with a new profile
+  // ID. A seperate migration was added in `ProfilesDatastoreService` to delete all
+  // entries from the `NimbusEnrollments` table.
+  //
+  // To prevent the `migrateEnrollmentsToSql` migration from running twice on a
+  // new client, this migration takes the place of the original
+  // `migrateEnrollmentsToSql`.
 }
 
 async function migrateEnrollmentsToSql() {
-  if (!lazy.NimbusEnrollments.databaseEnabled) {
+  if (
+    !Services.prefs.getBoolPref(
+      "nimbus.profilesdatastoreservice.enabled",
+      false
+    )
+  ) {
     // We are in an xpcshell test that has not initialized the
     // ProfilesDatastoreService.
     //
@@ -115,20 +128,11 @@ async function migrateEnrollmentsToSql() {
   // those enrollments need to exist in both the ExperimentStore and SQL
   // database.
 
-  await lazy.ExperimentAPI.manager.store.ready();
-
-  // Ensure we are copying the data from the JSONFile explicitly because if the
-  // NimbusEnrollments table is the source of truth, then getAll() will return
-  // an empty array.
-  const enrollments = Object.values(
-    lazy.ExperimentAPI.manager.store._jsonFile.data
-  );
+  const enrollments = await lazy.ExperimentAPI.manager.store.getAll();
 
   // Likewise, the set of all recipes is
   const { recipes } =
-    await lazy.ExperimentAPI._rsLoader.getRecipesFromAllCollections({
-      trigger: "migration",
-    });
+    await lazy.ExperimentAPI._rsLoader.getRecipesFromAllCollections();
 
   const recipesBySlug = new Map(recipes.map(r => [r.slug, r]));
 
@@ -160,9 +164,8 @@ async function migrateEnrollmentsToSql() {
         featureIds: enrollment.featureIds,
         isRollout: enrollment.isRollout ?? false,
         localizations: enrollment.localizations ?? null,
-        isEnrollmentPaused: true,
         isFirefoxLabsOptIn: enrollment.isFirefoxLabsOptIn ?? false,
-        firefoxLabsTitle: enrollment.firefoxLabsTitle ?? null,
+        firefoxLabsTitle: enrollment.firefoxLabsTitle ?? false,
         firefoxLabsDescription: enrollment.firefoxLabsDescription ?? null,
         firefoxLabsDescriptionLinks:
           enrollment.firefoxLabsDescriptionLinks ?? null,
@@ -215,20 +218,6 @@ async function migrateEnrollmentsToSql() {
       );
     }
   });
-
-  if (lazy.NimbusEnrollments.readFromDatabaseEnabled) {
-    // These now exist in the database and in the ExperimentStore's JSONFile
-    // data. However, the regular ExperimentStore data will not have been
-    // populated yet (because it will have read zero rows from the database
-    // during `SharedDataMap.init()`.
-    const store = lazy.ExperimentAPI.manager.store;
-    store._data = structuredClone(store._jsonFile.data);
-    store._syncToChildren({ flush: true });
-  }
-
-  await lazy.ExperimentAPI.manager.store._reportStartupDatabaseConsistency(
-    "migration"
-  );
 }
 
 /**
@@ -310,7 +299,7 @@ async function migrateFirefoxLabsEnrollments() {
         // structures without using set().
         // We do not have to sync these changes to child processes because the
         // data is only used in the parent process.
-        lazy.ExperimentAPI.manager.store._jsonFile.saveSoon();
+        lazy.ExperimentAPI.manager.store._store.saveSoon();
       }
     },
     { mode: "shared" }
@@ -330,8 +319,6 @@ export class MigrationError extends Error {
 export const NimbusMigrations = {
   Phase,
   migration,
-
-  NIMBUS_MIGRATION_PREFS,
 
   /**
    * Apply any outstanding migrations for the given phase.
@@ -390,36 +377,6 @@ export const NimbusMigrations = {
   },
 
   /**
-   * Return whether or not a specific migration has been completed.
-   *
-   * @param {Phase} phase The migration phase the specified migration occurs in.
-   * @param {string} The name of the migration.
-   *
-   * @returns {boolean} Whether or not the migration was completed.
-   */
-  isMigrationCompleted(phase, name) {
-    const phasePref = NIMBUS_MIGRATION_PREFS[phase];
-    const progress = Services.prefs.getIntPref(phasePref, -1);
-
-    const migrationIndex = this.MIGRATIONS[phase]?.findIndex(
-      m => m.name === name
-    );
-
-    if (migrationIndex === -1) {
-      return false;
-    }
-
-    return progress >= migrationIndex;
-  },
-
-  /**
-   * A mapping of each Nimbus initialization phase to the mirgations that will occur.
-   *
-   * N.B.: Migrations *cannot* be removed from this. If you want to remove a
-   * migration, you *must* replace it with {@link migrateNoop} otherwise clients
-   * that have already migrated will get out of sync and not perform new
-   * migrations correctly.
-   *
    * @type {Record<Phase, Migration[]>}
    */
   MIGRATIONS: {
@@ -428,13 +385,6 @@ export const NimbusMigrations = {
     ],
 
     [Phase.AFTER_STORE_INITIALIZED]: [
-      // Bug 1969994: This used to be migrateEnrollmentsToSql, but we had to
-      // wipe the NimbusEnrollments table and re-run the migration to work
-      // around ExperimentAPI.profileId not being persistent.
-      migration("noop", migrateNoop),
-      // Bug 1972427: This used to be migrateEnrollmentsToSql, but we had to
-      // re-create the NimbusEnrollments table with an altered schema and re-run
-      // the migration to ensure recipe was never null.
       migration("noop", migrateNoop),
       migration("import-enrollments-to-sql", migrateEnrollmentsToSql),
     ],

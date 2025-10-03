@@ -32,7 +32,7 @@ pub fn expand(input: &DeriveInput, trait_name: &str) -> TokenStream {
         },
         Data::Enum(ref data_enum) => (
             quote! {
-                derive_more::core::result::Result<#input_type #ty_generics, derive_more::BinaryError>
+                ::core::result::Result<#input_type #ty_generics, ::derive_more::ops::BinaryError>
             },
             enum_content(input_type, data_enum, &method_ident),
         ),
@@ -42,12 +42,10 @@ pub fn expand(input: &DeriveInput, trait_name: &str) -> TokenStream {
 
     quote! {
         #[automatically_derived]
-        impl #impl_generics derive_more::core::ops::#trait_ident
-         for #input_type #ty_generics #where_clause {
+        impl #impl_generics ::derive_more::#trait_ident for #input_type #ty_generics #where_clause {
             type Output = #output_type;
 
             #[inline]
-            #[track_caller]
             fn #method_ident(self, rhs: #input_type #ty_generics) -> #output_type {
                 #block
             }
@@ -100,9 +98,7 @@ fn enum_content(
                 let matcher = quote! {
                     (#subtype(#(#l_vars),*),
                      #subtype(#(#r_vars),*)) => {
-                        derive_more::core::result::Result::Ok(
-                            #subtype(#(#l_vars.#method_iter(#r_vars)),*)
-                        )
+                        ::core::result::Result::Ok(#subtype(#(#l_vars.#method_iter(#r_vars)),*))
                     }
                 };
                 matches.push(matcher);
@@ -121,9 +117,7 @@ fn enum_content(
                 let matcher = quote! {
                     (#subtype{#(#field_names: #l_vars),*},
                      #subtype{#(#field_names: #r_vars),*}) => {
-                        derive_more::core::result::Result::Ok(#subtype{
-                            #(#field_names: #l_vars.#method_iter(#r_vars)),*
-                        })
+                        ::core::result::Result::Ok(#subtype{#(#field_names: #l_vars.#method_iter(#r_vars)),*})
                     }
                 };
                 matches.push(matcher);
@@ -131,9 +125,9 @@ fn enum_content(
             Fields::Unit => {
                 let operation_name = method_ident.to_string();
                 matches.push(quote! {
-                    (#subtype, #subtype) => derive_more::core::result::Result::Err(
-                        derive_more::BinaryError::Unit(
-                            derive_more::UnitError::new(#operation_name)
+                    (#subtype, #subtype) => ::core::result::Result::Err(
+                        ::derive_more::ops::BinaryError::Unit(
+                            ::derive_more::ops::UnitError::new(#operation_name)
                         )
                     )
                 });
@@ -146,8 +140,8 @@ fn enum_content(
         // match.
         let operation_name = method_ident.to_string();
         matches.push(quote! {
-            _ => derive_more::core::result::Result::Err(derive_more::BinaryError::Mismatch(
-                derive_more::WrongVariantError::new(#operation_name)
+            _ => ::core::result::Result::Err(::derive_more::ops::BinaryError::Mismatch(
+                ::derive_more::ops::WrongVariantError::new(#operation_name)
             ))
         });
     }

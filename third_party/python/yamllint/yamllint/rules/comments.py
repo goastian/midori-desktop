@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright (C) 2016 Adrien Vergé
 #
 # This program is free software: you can redistribute it and/or modify
@@ -26,16 +27,6 @@ Use this rule to control the position and formatting of comments.
 * ``min-spaces-from-content`` is used to visually separate inline comments from
   content. It defines the minimal required number of spaces between a comment
   and its preceding content.
-
-.. rubric:: Default values (when enabled)
-
-.. code-block:: yaml
-
- rules:
-   comments:
-     require-starting-space: true
-     ignore-shebangs: true
-     min-spaces-from-content: 2
 
 .. rubric:: Examples
 
@@ -73,7 +64,10 @@ Use this rule to control the position and formatting of comments.
 """
 
 
+import re
+
 from yamllint.linter import LintProblem
+
 
 ID = 'comments'
 TYPE = 'comment'
@@ -90,8 +84,7 @@ def check(conf, comment):
             comment.pointer - comment.token_before.end_mark.pointer <
             conf['min-spaces-from-content']):
         yield LintProblem(comment.line_no, comment.column_no,
-                          'too few spaces before comment: expected '
-                          f'{conf["min-spaces-from-content"]}')
+                          'too few spaces before comment')
 
     if conf['require-starting-space']:
         text_start = comment.pointer + 1
@@ -102,11 +95,9 @@ def check(conf, comment):
             if (conf['ignore-shebangs'] and
                     comment.line_no == 1 and
                     comment.column_no == 1 and
-                    comment.buffer[text_start] == '!'):
+                    re.match(r'^!\S', comment.buffer[text_start:])):
                 return
-            # We can test for both \r and \r\n just by checking first char
-            # \r itself is a valid newline on some older OS.
-            elif comment.buffer[text_start] not in {' ', '\n', '\r', '\x00'}:
+            elif comment.buffer[text_start] not in (' ', '\n', '\0'):
                 column = comment.column_no + text_start - comment.pointer
                 yield LintProblem(comment.line_no,
                                   column,

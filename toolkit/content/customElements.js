@@ -794,6 +794,7 @@
       ["named-deck", "chrome://global/content/elements/named-deck.js"],
       ["named-deck-button", "chrome://global/content/elements/named-deck.js"],
       ["panel-list", "chrome://global/content/elements/panel-list.js"],
+      ["search-textbox", "chrome://global/content/elements/search-textbox.js"],
       ["stringbundle", "chrome://global/content/elements/stringbundle.js"],
       [
         "printpreview-pagination",
@@ -827,10 +828,6 @@
           ],
           ["moz-box-item", "chrome://global/content/elements/moz-box-item.mjs"],
           ["moz-box-link", "chrome://global/content/elements/moz-box-link.mjs"],
-          [
-            "moz-breadcrumb-group",
-            "chrome://global/content/elements/moz-breadcrumb-group.mjs",
-          ],
           ["moz-button", "chrome://global/content/elements/moz-button.mjs"],
           [
             "moz-button-group",
@@ -842,10 +839,6 @@
           [
             "moz-five-star",
             "chrome://global/content/elements/moz-five-star.mjs",
-          ],
-          [
-            "moz-input-color",
-            "chrome://global/content/elements/moz-input-color.mjs",
           ],
           [
             "moz-input-folder",
@@ -874,10 +867,6 @@
           [
             "moz-radio-group",
             "chrome://global/content/elements/moz-radio-group.mjs",
-          ],
-          [
-            "moz-reorderable-list",
-            "chrome://global/content/elements/moz-reorderable-list.mjs",
           ],
           ["moz-select", "chrome://global/content/elements/moz-select.mjs"],
           [

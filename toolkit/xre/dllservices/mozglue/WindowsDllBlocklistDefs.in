@@ -256,6 +256,10 @@ ALL_PROCESSES += [
 
     # Qihoo 360 Internet Security, bug 1958112
     DllBlocklistEntry("chromesafe64.dll", (2, 0, 0, 42)),
+
+    # Meta Quest Link App, bug 1986922
+    DllBlocklistEntry("magicdsfilterQuest3.dll", ALL_VERSIONS),
+    DllBlocklistEntry("magicdsfilterQuest3s.dll", ALL_VERSIONS),
 ]
 
 # Shell extensions that result in crashes when the file-dialog is opened. (These

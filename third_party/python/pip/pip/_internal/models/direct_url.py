@@ -1,10 +1,8 @@
 """ PEP 610 """
-
 import json
 import re
 import urllib.parse
-from dataclasses import dataclass
-from typing import Any, ClassVar, Dict, Iterable, Optional, Type, TypeVar, Union
+from typing import Any, Dict, Iterable, Optional, Type, TypeVar, Union
 
 __all__ = [
     "DirectUrl",
@@ -66,13 +64,18 @@ def _filter_none(**kwargs: Any) -> Dict[str, Any]:
     return {k: v for k, v in kwargs.items() if v is not None}
 
 
-@dataclass
 class VcsInfo:
-    name: ClassVar = "vcs_info"
+    name = "vcs_info"
 
-    vcs: str
-    commit_id: str
-    requested_revision: Optional[str] = None
+    def __init__(
+        self,
+        vcs: str,
+        commit_id: str,
+        requested_revision: Optional[str] = None,
+    ) -> None:
+        self.vcs = vcs
+        self.requested_revision = requested_revision
+        self.commit_id = commit_id
 
     @classmethod
     def _from_dict(cls, d: Optional[Dict[str, Any]]) -> Optional["VcsInfo"]:
@@ -136,11 +139,14 @@ class ArchiveInfo:
         return _filter_none(hash=self.hash, hashes=self.hashes)
 
 
-@dataclass
 class DirInfo:
-    name: ClassVar = "dir_info"
+    name = "dir_info"
 
-    editable: bool = False
+    def __init__(
+        self,
+        editable: bool = False,
+    ) -> None:
+        self.editable = editable
 
     @classmethod
     def _from_dict(cls, d: Optional[Dict[str, Any]]) -> Optional["DirInfo"]:
@@ -155,11 +161,16 @@ class DirInfo:
 InfoType = Union[ArchiveInfo, DirInfo, VcsInfo]
 
 
-@dataclass
 class DirectUrl:
-    url: str
-    info: InfoType
-    subdirectory: Optional[str] = None
+    def __init__(
+        self,
+        url: str,
+        info: InfoType,
+        subdirectory: Optional[str] = None,
+    ) -> None:
+        self.url = url
+        self.info = info
+        self.subdirectory = subdirectory
 
     def _remove_auth_from_netloc(self, netloc: str) -> str:
         if "@" not in netloc:

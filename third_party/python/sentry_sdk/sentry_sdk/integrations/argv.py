@@ -1,12 +1,14 @@
+from __future__ import absolute_import
+
 import sys
 
-import sentry_sdk
+from sentry_sdk.hub import Hub
 from sentry_sdk.integrations import Integration
 from sentry_sdk.scope import add_global_event_processor
 
-from typing import TYPE_CHECKING
+from sentry_sdk._types import MYPY
 
-if TYPE_CHECKING:
+if MYPY:
     from typing import Optional
 
     from sentry_sdk._types import Event, Hint
@@ -21,7 +23,7 @@ class ArgvIntegration(Integration):
         @add_global_event_processor
         def processor(event, hint):
             # type: (Event, Optional[Hint]) -> Optional[Event]
-            if sentry_sdk.get_client().get_integration(ArgvIntegration) is not None:
+            if Hub.current.get_integration(ArgvIntegration) is not None:
                 extra = event.setdefault("extra", {})
                 # If some event processor decided to set extra to e.g. an
                 # `int`, don't crash. Not here.

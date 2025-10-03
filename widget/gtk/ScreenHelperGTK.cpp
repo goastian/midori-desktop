@@ -317,8 +317,7 @@ bool IsMonitorHDR(gint aMonitorNum) {
   wp_image_description_info_v1_add_listener(
       descriptionInfo, &image_description_info_listener, &monitorInfo);
 
-  WaylandDisplayGet()->RequestAsyncRoundtrip();
-  WaylandDisplayGet()->WaitForAsyncRoundtrips();
+  wl_display_roundtrip(WaylandDisplayGet()->GetDisplay());
 
   wp_image_description_v1_destroy(description);
   wp_color_management_output_v1_destroy(output);

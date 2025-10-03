@@ -6154,9 +6154,8 @@ LRESULT nsWindow::ProcessKeyDownMessage(const MSG& aMsg,
 nsresult nsWindow::SynthesizeNativeKeyEvent(
     int32_t aNativeKeyboardLayout, int32_t aNativeKeyCode,
     uint32_t aModifierFlags, const nsAString& aCharacters,
-    const nsAString& aUnmodifiedCharacters,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    const nsAString& aUnmodifiedCharacters, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "keyevent");
 
   KeyboardLayout* keyboardLayout = KeyboardLayout::GetInstance();
   return keyboardLayout->SynthesizeNativeKeyEvent(
@@ -6167,8 +6166,8 @@ nsresult nsWindow::SynthesizeNativeKeyEvent(
 nsresult nsWindow::SynthesizeNativeMouseEvent(
     LayoutDeviceIntPoint aPoint, NativeMouseMessage aNativeMessage,
     MouseButton aButton, nsIWidget::Modifiers aModifierFlags,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "mouseevent");
 
   INPUT input;
   memset(&input, 0, sizeof(input));
@@ -6232,8 +6231,8 @@ nsresult nsWindow::SynthesizeNativeMouseEvent(
 nsresult nsWindow::SynthesizeNativeMouseScrollEvent(
     LayoutDeviceIntPoint aPoint, uint32_t aNativeMessage, double aDeltaX,
     double aDeltaY, double aDeltaZ, uint32_t aModifierFlags,
-    uint32_t aAdditionalFlags, nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    uint32_t aAdditionalFlags, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "mousescrollevent");
   return MouseScrollHandler::SynthesizeNativeMouseScrollEvent(
       this, aPoint, aNativeMessage,
       (aNativeMessage == WM_MOUSEWHEEL || aNativeMessage == WM_VSCROLL)
@@ -6242,11 +6241,12 @@ nsresult nsWindow::SynthesizeNativeMouseScrollEvent(
       aModifierFlags, aAdditionalFlags);
 }
 
-nsresult nsWindow::SynthesizeNativeTouchpadPan(
-    TouchpadGesturePhase aEventPhase, LayoutDeviceIntPoint aPoint,
-    double aDeltaX, double aDeltaY, int32_t aModifierFlags,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+nsresult nsWindow::SynthesizeNativeTouchpadPan(TouchpadGesturePhase aEventPhase,
+                                               LayoutDeviceIntPoint aPoint,
+                                               double aDeltaX, double aDeltaY,
+                                               int32_t aModifierFlags,
+                                               nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "touchpadpanevent");
   DirectManipulationOwner::SynthesizeNativeTouchpadPan(
       this, aEventPhase, aPoint, aDeltaX, aDeltaY, aModifierFlags);
   return NS_OK;
@@ -8353,8 +8353,8 @@ static Result<POINTER_FLAGS, nsresult> PointerStateToFlag(
 nsresult nsWindow::SynthesizeNativeTouchPoint(
     uint32_t aPointerId, nsIWidget::TouchPointerState aPointerState,
     LayoutDeviceIntPoint aPoint, double aPointerPressure,
-    uint32_t aPointerOrientation, nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    uint32_t aPointerOrientation, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "touchpoint");
 
   if (StaticPrefs::apz_test_fails_with_native_injection() ||
       !InitTouchInjection()) {
@@ -8415,6 +8415,27 @@ nsresult nsWindow::SynthesizeNativeTouchPoint(
   });
 }
 
+nsresult nsWindow::ClearNativeTouchSequence(nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "cleartouch");
+  if (!sTouchInjectInitialized) {
+    return NS_OK;
+  }
+
+  // cancel all input points
+  for (auto iter = mActivePointers.Iter(); !iter.Done(); iter.Next()) {
+    auto* info = iter.UserData();
+    if (info->mType != PointerInfo::PointerType::TOUCH) {
+      continue;
+    }
+    InjectTouchPoint(info->mPointerId, info->mPosition, POINTER_FLAG_CANCELED);
+    iter.Remove();
+  }
+
+  nsBaseWidget::ClearNativeTouchSequence(nullptr);
+
+  return NS_OK;
+}
+
 #if !defined(NTDDI_WIN10_RS5) || (NTDDI_VERSION < NTDDI_WIN10_RS5)
 static CreateSyntheticPointerDevicePtr CreateSyntheticPointerDevice;
 static DestroySyntheticPointerDevicePtr DestroySyntheticPointerDevice;
@@ -8460,9 +8481,8 @@ static bool InitPenInjection() {
 nsresult nsWindow::SynthesizeNativePenInput(
     uint32_t aPointerId, nsIWidget::TouchPointerState aPointerState,
     LayoutDeviceIntPoint aPoint, double aPressure, uint32_t aRotation,
-    int32_t aTiltX, int32_t aTiltY, int32_t aButton,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    int32_t aTiltX, int32_t aTiltY, int32_t aButton, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "peninput");
   if (!InitPenInjection()) {
     return NS_ERROR_UNEXPECTED;
   }

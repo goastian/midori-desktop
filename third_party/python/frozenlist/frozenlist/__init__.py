@@ -1,9 +1,11 @@
 import os
+import sys
 import types
 from collections.abc import MutableSequence
 from functools import total_ordering
+from typing import Any, Type
 
-__version__ = "1.7.0"
+__version__ = "1.5.0"
 
 __all__ = ("FrozenList", "PyFrozenList")  # type: Tuple[str, ...]
 
@@ -14,7 +16,17 @@ NO_EXTENSIONS = bool(os.environ.get("FROZENLIST_NO_EXTENSIONS"))  # type: bool
 @total_ordering
 class FrozenList(MutableSequence):
     __slots__ = ("_frozen", "_items")
-    __class_getitem__ = classmethod(types.GenericAlias)
+
+    if sys.version_info >= (3, 9):
+        __class_getitem__ = classmethod(types.GenericAlias)
+    else:
+
+        @classmethod
+        def __class_getitem__(
+            cls: Type["FrozenList"],
+            cls_item: Any,
+        ) -> Type["FrozenList"]:
+            return cls
 
     def __init__(self, items=None):
         self._frozen = False

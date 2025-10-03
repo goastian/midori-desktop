@@ -97,39 +97,40 @@ class HeadlessWidget final : public nsBaseWidget {
   nsresult DispatchEvent(WidgetGUIEvent* aEvent,
                          nsEventStatus& aStatus) override;
 
-  nsresult SynthesizeNativeMouseEvent(
-      LayoutDeviceIntPoint aPoint, NativeMouseMessage aNativeMessage,
-      mozilla::MouseButton aButton, nsIWidget::Modifiers aModifierFlags,
-      nsISynthesizedEventCallback* aCallback) override;
-  nsresult SynthesizeNativeMouseMove(
-      LayoutDeviceIntPoint aPoint,
-      nsISynthesizedEventCallback* aCallback) override {
+  nsresult SynthesizeNativeMouseEvent(LayoutDeviceIntPoint aPoint,
+                                      NativeMouseMessage aNativeMessage,
+                                      mozilla::MouseButton aButton,
+                                      nsIWidget::Modifiers aModifierFlags,
+                                      nsIObserver* aObserver) override;
+  nsresult SynthesizeNativeMouseMove(LayoutDeviceIntPoint aPoint,
+                                     nsIObserver* aObserver) override {
     return SynthesizeNativeMouseEvent(
         aPoint, NativeMouseMessage::Move, mozilla::MouseButton::eNotPressed,
-        nsIWidget::Modifiers::NO_MODIFIERS, aCallback);
+        nsIWidget::Modifiers::NO_MODIFIERS, aObserver);
   };
 
   nsresult SynthesizeNativeMouseScrollEvent(
       LayoutDeviceIntPoint aPoint, uint32_t aNativeMessage, double aDeltaX,
       double aDeltaY, double aDeltaZ, uint32_t aModifierFlags,
-      uint32_t aAdditionalFlags,
-      nsISynthesizedEventCallback* aCallback) override;
+      uint32_t aAdditionalFlags, nsIObserver* aObserver) override;
 
-  nsresult SynthesizeNativeTouchPoint(
-      uint32_t aPointerId, TouchPointerState aPointerState,
-      LayoutDeviceIntPoint aPoint, double aPointerPressure,
-      uint32_t aPointerOrientation,
-      nsISynthesizedEventCallback* aCallback) override;
+  nsresult SynthesizeNativeTouchPoint(uint32_t aPointerId,
+                                      TouchPointerState aPointerState,
+                                      LayoutDeviceIntPoint aPoint,
+                                      double aPointerPressure,
+                                      uint32_t aPointerOrientation,
+                                      nsIObserver* aObserver) override;
 
   nsresult SynthesizeNativeTouchPadPinch(TouchpadGesturePhase aEventPhase,
                                          float aScale,
                                          LayoutDeviceIntPoint aPoint,
                                          int32_t aModifierFlags) override;
 
-  nsresult SynthesizeNativeTouchpadPan(
-      TouchpadGesturePhase aEventPhase, LayoutDeviceIntPoint aPoint,
-      double aDeltaX, double aDeltaY, int32_t aModifierFlags,
-      nsISynthesizedEventCallback* aCallback) override;
+  nsresult SynthesizeNativeTouchpadPan(TouchpadGesturePhase aEventPhase,
+                                       LayoutDeviceIntPoint aPoint,
+                                       double aDeltaX, double aDeltaY,
+                                       int32_t aModifierFlags,
+                                       nsIObserver* aObserver) override;
 
  private:
   ~HeadlessWidget();

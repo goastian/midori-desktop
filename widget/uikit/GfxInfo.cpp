@@ -151,7 +151,7 @@ GfxInfo::GetDrmRenderDevice(nsACString& aDrmRenderDevice) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-const nsTArray<RefPtr<GfxDriverInfo>>& GfxInfo::GetGfxDriverInfo() {
+const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
   if (sDriverInfo->IsEmpty()) {
     APPEND_TO_DRIVER_BLOCKLIST2(
         OperatingSystem::Ios, DeviceFamily::All,
@@ -165,7 +165,7 @@ const nsTArray<RefPtr<GfxDriverInfo>>& GfxInfo::GetGfxDriverInfo() {
 
 nsresult GfxInfo::GetFeatureStatusImpl(
     int32_t aFeature, int32_t* aStatus, nsAString& aSuggestedDriverVersion,
-    const nsTArray<RefPtr<GfxDriverInfo>>& aDriverInfo, nsACString& aFailureId,
+    const nsTArray<GfxDriverInfo>& aDriverInfo, nsACString& aFailureId,
     OperatingSystem* aOS /* = nullptr */) {
   NS_ENSURE_ARG_POINTER(aStatus);
   aSuggestedDriverVersion.SetIsVoid(true);
@@ -206,11 +206,6 @@ NS_IMETHODIMP GfxInfo::SpoofDriverVersion(const nsAString& aDriverVersion) {
 }
 
 NS_IMETHODIMP GfxInfo::SpoofOSVersion(uint32_t aVersion) {
-  return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP GfxInfo::SpoofOSVersionEx(uint32_t aMajor, uint32_t aMinor,
-                                        uint32_t aBuild, uint32_t aRevision) {
   return NS_ERROR_FAILURE;
 }
 

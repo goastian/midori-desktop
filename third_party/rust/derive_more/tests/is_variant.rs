@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(nightly, feature(never_type))]
-#![allow(dead_code)] // some code is tested for type checking only
+#![allow(dead_code)]
 
 use derive_more::IsVariant;
 
@@ -44,16 +43,16 @@ pub fn test_is_variant() {
 
 #[derive(IsVariant)]
 enum Color {
-    Rgb(u8, u8, u8),
-    Cmyk { c: u8, m: u8, y: u8, k: u8 },
+    RGB(u8, u8, u8),
+    CMYK { c: u8, m: u8, y: u8, k: u8 },
 }
 
 const _: () = {
-    let color = Color::Rgb(0, 0, 0);
+    let color = Color::RGB(0, 0, 0);
     assert!(color.is_rgb());
     assert!(!color.is_cmyk());
 
-    let color = Color::Cmyk {
+    let color = Color::CMYK {
         c: 0,
         m: 0,
         y: 0,
@@ -162,16 +161,3 @@ const _: () = {
     assert!(!ks.is_never_mind());
     assert!(ks.is_nothing_to_see_here());
 };
-
-#[cfg(nightly)]
-mod never {
-    use super::*;
-
-    #[derive(IsVariant)]
-    enum Enum {
-        Tuple(!),
-        Struct { field: ! },
-        TupleMulti(i32, !),
-        StructMulti { field: !, other: i32 },
-    }
-}

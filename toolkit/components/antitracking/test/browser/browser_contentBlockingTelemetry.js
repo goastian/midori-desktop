@@ -148,7 +148,6 @@ add_setup(async function () {
         "privacy.restrict3rdpartystorage.heuristic.exclude_third_party_trackers",
         false,
       ],
-      ["network.lna.block_trackers", false],
     ],
   });
 

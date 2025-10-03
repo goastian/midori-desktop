@@ -1,12 +1,14 @@
 #
 # This file is part of pyasn1 software.
 #
-# Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com>
-# License: https://pyasn1.readthedocs.io/en/latest/license.html
+# Copyright (c) 2005-2019, Ilya Etingof <etingof@gmail.com>
+# License: http://snmplabs.com/pyasn1/license.html
 #
 import datetime
 
 from pyasn1 import error
+from pyasn1.compat import dateandtime
+from pyasn1.compat import string
 from pyasn1.type import char
 from pyasn1.type import tag
 from pyasn1.type import univ
@@ -72,9 +74,9 @@ class TimeMixIn(object):
 
         elif '-' in text or '+' in text:
             if '+' in text:
-                text, plusminus, tz = text.partition('+')
+                text, plusminus, tz = string.partition(text, '+')
             else:
-                text, plusminus, tz = text.partition('-')
+                text, plusminus, tz = string.partition(text, '-')
 
             if self._shortTZ and len(tz) == 2:
                 tz += '00'
@@ -97,9 +99,9 @@ class TimeMixIn(object):
 
         if '.' in text or ',' in text:
             if '.' in text:
-                text, _, ms = text.partition('.')
+                text, _, ms = string.partition(text, '.')
             else:
-                text, _, ms = text.partition(',')
+                text, _, ms = string.partition(text, ',')
 
             try:
                 ms = int(ms) * 1000
@@ -116,7 +118,7 @@ class TimeMixIn(object):
             text += '00'
 
         try:
-            dt = datetime.datetime.strptime(text, self._yearsDigits == 4 and '%Y%m%d%H%M%S' or '%y%m%d%H%M%S')
+            dt = dateandtime.strptime(text, self._yearsDigits == 4 and '%Y%m%d%H%M%S' or '%y%m%d%H%M%S')
 
         except ValueError:
             raise error.PyAsn1Error('malformed datetime format %s' % self)

@@ -4,9 +4,10 @@
 
     Formatter for Pixmap output.
 
-    :copyright: Copyright 2006-2024 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2023 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
+
 import os
 import sys
 
@@ -67,15 +68,6 @@ class FontManager:
         self.font_size = font_size
         self.fonts = {}
         self.encoding = None
-        self.variable = False
-        if hasattr(font_name, 'read') or os.path.isfile(font_name):
-            font = ImageFont.truetype(font_name, self.font_size)
-            self.variable = True
-            for style in STYLES:
-                self.fonts[style] = font
-
-            return
-
         if sys.platform.startswith('win'):
             if not font_name:
                 self.font_name = DEFAULT_FONT_NAME_WIN
@@ -90,7 +82,7 @@ class FontManager:
             self._create_nix()
 
     def _get_nix_font_path(self, name, style):
-        proc = subprocess.Popen(['fc-list', f"{name}:style={style}", 'file'],
+        proc = subprocess.Popen(['fc-list', "%s:style=%s" % (name, style), 'file'],
                                 stdout=subprocess.PIPE, stderr=None)
         stdout, _ = proc.communicate()
         if proc.returncode == 0:
@@ -110,7 +102,8 @@ class FontManager:
                 self.fonts['NORMAL'] = ImageFont.truetype(path, self.font_size)
                 break
         else:
-            raise FontNotFound(f'No usable fonts named: "{self.font_name}"')
+            raise FontNotFound('No usable fonts named: "%s"' %
+                               self.font_name)
         for style in ('ITALIC', 'BOLD', 'BOLDITALIC'):
             for stylename in STYLES[style]:
                 path = self._get_nix_font_path(self.font_name, stylename)
@@ -141,7 +134,8 @@ class FontManager:
                 self.fonts['NORMAL'] = ImageFont.truetype(path, self.font_size)
                 break
         else:
-            raise FontNotFound(f'No usable fonts named: "{self.font_name}"')
+            raise FontNotFound('No usable fonts named: "%s"' %
+                               self.font_name)
         for style in ('ITALIC', 'BOLD', 'BOLDITALIC'):
             for stylename in STYLES[style]:
                 path = self._get_mac_font_path(font_map, self.font_name, stylename)
@@ -158,14 +152,15 @@ class FontManager:
         for suffix in ('', ' (TrueType)'):
             for style in styles:
                 try:
-                    valname = '{}{}{}'.format(basename, style and ' '+style, suffix)
+                    valname = '%s%s%s' % (basename, style and ' '+style, suffix)
                     val, _ = _winreg.QueryValueEx(key, valname)
                     return val
                 except OSError:
                     continue
         else:
             if fail:
-                raise FontNotFound(f'Font {basename} ({styles[0]}) not found in registry')
+                raise FontNotFound('Font %s (%s) not found in registry' %
+                                   (basename, styles[0]))
             return None
 
     def _create_win(self):
@@ -228,42 +223,13 @@ class FontManager:
         Get the font based on bold and italic flags.
         """
         if bold and oblique:
-            if self.variable:
-                return self.get_style('BOLDITALIC')
-
             return self.fonts['BOLDITALIC']
         elif bold:
-            if self.variable:
-                return self.get_style('BOLD')
-
             return self.fonts['BOLD']
         elif oblique:
-            if self.variable:
-                return self.get_style('ITALIC')
-
             return self.fonts['ITALIC']
         else:
-            if self.variable:
-                return self.get_style('NORMAL')
-
             return self.fonts['NORMAL']
-
-    def get_style(self, style):
-        """
-        Get the specified style of the font if it is a variable font.
-        If not found, return the normal font.
-        """
-        font = self.fonts[style]
-        for style_name in STYLES[style]:
-            try:
-                font.set_variation_by_name(style_name)
-                return font
-            except ValueError:
-                pass
-            except OSError:
-                return font
-
-        return font
 
 
 class ImageFormatter(Formatter):
@@ -292,8 +258,6 @@ class ImageFormatter(Formatter):
         The font name to be used as the base font from which others, such as
         bold and italic fonts will be generated.  This really should be a
         monospace font to look sane.
-        If a filename or a file-like object is specified, the user must
-        provide different styles of the font.
 
         Default: "Courier New" on Windows, "Menlo" on Mac OS, and
                  "DejaVu Sans Mono" on \\*nix
@@ -630,11 +594,7 @@ class ImageFormatter(Formatter):
                                fill=self.hl_color)
         for pos, value, font, text_fg, text_bg in self.drawables:
             if text_bg:
-                # see deprecations https://pillow.readthedocs.io/en/stable/releasenotes/9.2.0.html#font-size-and-offset-methods
-                if hasattr(draw, 'textsize'):
-                    text_size = draw.textsize(text=value, font=font)
-                else:
-                    text_size = font.getbbox(value)[2:]
+                text_size = draw.textsize(text=value, font=font)
                 draw.rectangle([pos[0], pos[1], pos[0] + text_size[0], pos[1] + text_size[1]], fill=text_bg)
             draw.text(pos, value, font=font, fill=text_fg)
         im.save(outfile, self.image_format.upper())

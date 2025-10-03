@@ -43,14 +43,8 @@ def build(ctx, lib):
 
     if lib == "nsresult":
         xpc_msg = mozpath.join(ctx.topsrcdir, "js/xpconnect/src/xpc.msg")
-        errors_obj = mozpath.join(ctx.topobjdir, "xpcom/base/error_list.json")
-        errors_src = mozpath.join(ctx.topsrcdir, "tools/ts/config/error_list.json")
-
-        if os.path.exists(errors_obj):
-            print(f"[INFO] {errors_obj} -> {errors_src}")
-            shutil.copy(errors_obj, errors_src)
-
-        return node(ctx, "build_nsresult", lib_dts, xpc_msg, errors_src)
+        errors_json = mozpath.join(ctx.topsrcdir, "tools/ts/config/error_list.json")
+        return node(ctx, "build_nsresult", lib_dts, xpc_msg, errors_json)
 
     if lib == "services":
         services_json = mozpath.join(ctx.topobjdir, "xpcom/components/services.json")
@@ -106,16 +100,15 @@ def setup(ctx):
 def update(ctx):
     typelib_dir = mozpath.join(ctx.topsrcdir, "tools/@types/generated")
     platforms = ["darwin", "linux", "win32"]
-    retval = 0
 
-    for lib in targets + platforms + ["glean"]:
+    for lib in targets + platforms:
         file = f"lib.gecko.{lib}.d.ts"
         path = mozpath.join(ctx.distdir, "@types", file)
         if not os.path.exists(path):
-            if not lib in platforms:
-                print(f"[ERROR] {path} not found. Did you run `mach ts build`?")
-                retval = 1
-            continue
+            if lib in platforms:
+                continue
+            print(f"[ERROR] {path} not found. Did you run `mach ts build`?")
+            return 1
 
         # This command inherently goes in a confusing direction, we're copying:
         # from `<topobjdir>/dist/@types` files generated with `mach ts build`,
@@ -124,7 +117,19 @@ def update(ctx):
         shutil.copy(path, typelib_dir)
 
     print("[WARNING] Your source tree was updated, you should commit the changes.")
-    return retval
+
+
+@SubCommand("ts", "glean", description="Build Glean bindings.")
+def glean(ctx):
+    sys.path.append(mozpath.join(ctx.topsrcdir, "toolkit/components/glean/"))
+    from metrics_index import metrics_yamls, pings_yamls
+
+    typelib_dir = mozpath.join(ctx.topsrcdir, "tools/@types/generated")
+
+    maybe_setup(ctx)
+    return node(
+        ctx, "build_glean", ctx.topsrcdir, typelib_dir, *metrics_yamls, *pings_yamls
+    )
 
 
 @SubCommand("ts", "paths", description="Build module path mapping.")

@@ -8,7 +8,8 @@
  * Used to represent active RFPTargets.
  * We used to use uint64_t, but we ran out of bits.
  */
-[scriptable, builtinclass, uuid(6c072f47-f25c-484f-add8-051b07789593)]
+[scriptable, uuid(6c072f47-f25c-484f-add8-051b07789593)]
 interface nsIRFPTargetSetIDL : nsISupports {
-  uint32_t getNth32BitSet(in unsigned long aPart);
+  attribute uint64_t low;
+  attribute uint64_t high;
 };

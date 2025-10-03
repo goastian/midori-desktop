@@ -58,7 +58,6 @@ export default class MozCheckbox extends MozBaseInputElement {
       @change=${this.redispatchEvent}
       ?disabled=${this.disabled || this.parentDisabled}
       aria-describedby="description"
-      aria-label=${ifDefined(this.ariaLabel ?? undefined)}
       accesskey=${ifDefined(this.accessKey)}
     />`;
   }

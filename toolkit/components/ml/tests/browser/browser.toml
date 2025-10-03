@@ -16,15 +16,6 @@ support-files = [
 
 ["browser_ml_engine_process.js"]
 
-["browser_ml_native.js"]
-skip-if = [
-  "os == 'android'",
-  "bits == 32",
-  "debug",
-  "asan",
-  "tsan"
-]
-
 ["browser_ml_nlp_utils.js"]
 
 ["browser_ml_opfs.js"]
@@ -34,7 +25,5 @@ skip-if = [
 ["browser_ml_privatebrowsing.js"]
 
 ["browser_ml_telemetry.js"]
-
-["browser_ml_thompson_sample.js"]
 
 ["browser_ml_utils.js"]

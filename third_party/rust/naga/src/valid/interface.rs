@@ -212,12 +212,8 @@ impl VaryingContext<'_> {
                     Bi::ClipDistance | Bi::CullDistance => (
                         self.stage == St::Vertex && self.output,
                         match *ty_inner {
-                            Ti::Array { base, size, .. } => {
+                            Ti::Array { base, .. } => {
                                 self.types[base].inner == Ti::Scalar(crate::Scalar::F32)
-                                    && match size {
-                                        crate::ArraySize::Constant(non_zero) => non_zero.get() <= 8,
-                                        _ => false,
-                                    }
                             }
                             _ => false,
                         },

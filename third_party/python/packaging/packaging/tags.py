@@ -2,21 +2,22 @@
 # 2.0, and the BSD License. See the LICENSE file in the root of this repository
 # for complete details.
 
-from __future__ import annotations
-
 import logging
 import platform
-import re
-import struct
 import subprocess
 import sys
 import sysconfig
 from importlib.machinery import EXTENSION_SUFFIXES
 from typing import (
+    Dict,
+    FrozenSet,
     Iterable,
     Iterator,
+    List,
+    Optional,
     Sequence,
     Tuple,
+    Union,
     cast,
 )
 
@@ -25,9 +26,9 @@ from . import _manylinux, _musllinux
 logger = logging.getLogger(__name__)
 
 PythonVersion = Sequence[int]
-AppleVersion = Tuple[int, int]
+MacVersion = Tuple[int, int]
 
-INTERPRETER_SHORT_NAMES: dict[str, str] = {
+INTERPRETER_SHORT_NAMES: Dict[str, str] = {
     "python": "py",  # Generic.
     "cpython": "cp",
     "pypy": "pp",
@@ -36,7 +37,7 @@ INTERPRETER_SHORT_NAMES: dict[str, str] = {
 }
 
 
-_32_BIT_INTERPRETER = struct.calcsize("P") == 4
+_32_BIT_INTERPRETER = sys.maxsize <= 2**32
 
 
 class Tag:
@@ -47,7 +48,7 @@ class Tag:
     is also supported.
     """
 
-    __slots__ = ["_abi", "_hash", "_interpreter", "_platform"]
+    __slots__ = ["_interpreter", "_abi", "_platform", "_hash"]
 
     def __init__(self, interpreter: str, abi: str, platform: str) -> None:
         self._interpreter = interpreter.lower()
@@ -93,7 +94,7 @@ class Tag:
         return f"<{self} @ {id(self)}>"
 
 
-def parse_tag(tag: str) -> frozenset[Tag]:
+def parse_tag(tag: str) -> FrozenSet[Tag]:
     """
     Parses the provided tag (e.g. `py3-none-any`) into a frozenset of Tag instances.
 
@@ -109,8 +110,8 @@ def parse_tag(tag: str) -> frozenset[Tag]:
     return frozenset(tags)
 
 
-def _get_config_var(name: str, warn: bool = False) -> int | str | None:
-    value: int | str | None = sysconfig.get_config_var(name)
+def _get_config_var(name: str, warn: bool = False) -> Union[int, str, None]:
+    value: Union[int, str, None] = sysconfig.get_config_var(name)
     if value is None and warn:
         logger.debug(
             "Config variable '%s' is unset, Python ABI tag may be incorrect", name
@@ -122,37 +123,20 @@ def _normalize_string(string: str) -> str:
     return string.replace(".", "_").replace("-", "_").replace(" ", "_")
 
 
-def _is_threaded_cpython(abis: list[str]) -> bool:
-    """
-    Determine if the ABI corresponds to a threaded (`--disable-gil`) build.
-
-    The threaded builds are indicated by a "t" in the abiflags.
-    """
-    if len(abis) == 0:
-        return False
-    # expect e.g., cp313
-    m = re.match(r"cp\d+(.*)", abis[0])
-    if not m:
-        return False
-    abiflags = m.group(1)
-    return "t" in abiflags
-
-
-def _abi3_applies(python_version: PythonVersion, threading: bool) -> bool:
+def _abi3_applies(python_version: PythonVersion) -> bool:
     """
     Determine if the Python version supports abi3.
 
-    PEP 384 was first implemented in Python 3.2. The threaded (`--disable-gil`)
-    builds do not support abi3.
+    PEP 384 was first implemented in Python 3.2.
     """
-    return len(python_version) > 1 and tuple(python_version) >= (3, 2) and not threading
+    return len(python_version) > 1 and tuple(python_version) >= (3, 2)
 
 
-def _cpython_abis(py_version: PythonVersion, warn: bool = False) -> list[str]:
+def _cpython_abis(py_version: PythonVersion, warn: bool = False) -> List[str]:
     py_version = tuple(py_version)  # To allow for version comparison.
     abis = []
     version = _version_nodot(py_version[:2])
-    threading = debug = pymalloc = ucs4 = ""
+    debug = pymalloc = ucs4 = ""
     with_debug = _get_config_var("Py_DEBUG", warn)
     has_refcount = hasattr(sys, "gettotalrefcount")
     # Windows doesn't set Py_DEBUG, so checking for support of debug-compiled
@@ -161,8 +145,6 @@ def _cpython_abis(py_version: PythonVersion, warn: bool = False) -> list[str]:
     has_ext = "_d.pyd" in EXTENSION_SUFFIXES
     if with_debug or (with_debug is None and (has_refcount or has_ext)):
         debug = "d"
-    if py_version >= (3, 13) and _get_config_var("Py_GIL_DISABLED", warn):
-        threading = "t"
     if py_version < (3, 8):
         with_pymalloc = _get_config_var("WITH_PYMALLOC", warn)
         if with_pymalloc or with_pymalloc is None:
@@ -176,15 +158,20 @@ def _cpython_abis(py_version: PythonVersion, warn: bool = False) -> list[str]:
     elif debug:
         # Debug builds can also load "normal" extension modules.
         # We can also assume no UCS-4 or pymalloc requirement.
-        abis.append(f"cp{version}{threading}")
-    abis.insert(0, f"cp{version}{threading}{debug}{pymalloc}{ucs4}")
+        abis.append(f"cp{version}")
+    abis.insert(
+        0,
+        "cp{version}{debug}{pymalloc}{ucs4}".format(
+            version=version, debug=debug, pymalloc=pymalloc, ucs4=ucs4
+        ),
+    )
     return abis
 
 
 def cpython_tags(
-    python_version: PythonVersion | None = None,
-    abis: Iterable[str] | None = None,
-    platforms: Iterable[str] | None = None,
+    python_version: Optional[PythonVersion] = None,
+    abis: Optional[Iterable[str]] = None,
+    platforms: Optional[Iterable[str]] = None,
     *,
     warn: bool = False,
 ) -> Iterator[Tag]:
@@ -225,22 +212,20 @@ def cpython_tags(
     for abi in abis:
         for platform_ in platforms:
             yield Tag(interpreter, abi, platform_)
-
-    threading = _is_threaded_cpython(abis)
-    use_abi3 = _abi3_applies(python_version, threading)
-    if use_abi3:
+    if _abi3_applies(python_version):
         yield from (Tag(interpreter, "abi3", platform_) for platform_ in platforms)
     yield from (Tag(interpreter, "none", platform_) for platform_ in platforms)
 
-    if use_abi3:
+    if _abi3_applies(python_version):
         for minor_version in range(python_version[1] - 1, 1, -1):
             for platform_ in platforms:
-                version = _version_nodot((python_version[0], minor_version))
-                interpreter = f"cp{version}"
+                interpreter = "cp{version}".format(
+                    version=_version_nodot((python_version[0], minor_version))
+                )
                 yield Tag(interpreter, "abi3", platform_)
 
 
-def _generic_abi() -> list[str]:
+def _generic_abi() -> List[str]:
     """
     Return the ABI tag based on EXT_SUFFIX.
     """
@@ -282,9 +267,9 @@ def _generic_abi() -> list[str]:
 
 
 def generic_tags(
-    interpreter: str | None = None,
-    abis: Iterable[str] | None = None,
-    platforms: Iterable[str] | None = None,
+    interpreter: Optional[str] = None,
+    abis: Optional[Iterable[str]] = None,
+    platforms: Optional[Iterable[str]] = None,
     *,
     warn: bool = False,
 ) -> Iterator[Tag]:
@@ -328,9 +313,9 @@ def _py_interpreter_range(py_version: PythonVersion) -> Iterator[str]:
 
 
 def compatible_tags(
-    python_version: PythonVersion | None = None,
-    interpreter: str | None = None,
-    platforms: Iterable[str] | None = None,
+    python_version: Optional[PythonVersion] = None,
+    interpreter: Optional[str] = None,
+    platforms: Optional[Iterable[str]] = None,
 ) -> Iterator[Tag]:
     """
     Yields the sequence of tags that are compatible with a specific version of Python.
@@ -362,7 +347,7 @@ def _mac_arch(arch: str, is_32bit: bool = _32_BIT_INTERPRETER) -> str:
     return "i386"
 
 
-def _mac_binary_formats(version: AppleVersion, cpu_arch: str) -> list[str]:
+def _mac_binary_formats(version: MacVersion, cpu_arch: str) -> List[str]:
     formats = [cpu_arch]
     if cpu_arch == "x86_64":
         if version < (10, 4):
@@ -395,7 +380,7 @@ def _mac_binary_formats(version: AppleVersion, cpu_arch: str) -> list[str]:
 
 
 def mac_platforms(
-    version: AppleVersion | None = None, arch: str | None = None
+    version: Optional[MacVersion] = None, arch: Optional[str] = None
 ) -> Iterator[str]:
     """
     Yields the platform tags for a macOS system.
@@ -407,7 +392,7 @@ def mac_platforms(
     """
     version_str, _, cpu_arch = platform.mac_ver()
     if version is None:
-        version = cast("AppleVersion", tuple(map(int, version_str.split(".")[:2])))
+        version = cast("MacVersion", tuple(map(int, version_str.split(".")[:2])))
         if version == (10, 16):
             # When built against an older macOS SDK, Python will report macOS 10.16
             # instead of the real version.
@@ -421,9 +406,9 @@ def mac_platforms(
                 check=True,
                 env={"SYSTEM_VERSION_COMPAT": "0"},
                 stdout=subprocess.PIPE,
-                text=True,
+                universal_newlines=True,
             ).stdout
-            version = cast("AppleVersion", tuple(map(int, version_str.split(".")[:2])))
+            version = cast("MacVersion", tuple(map(int, version_str.split(".")[:2])))
     else:
         version = version
     if arch is None:
@@ -434,22 +419,24 @@ def mac_platforms(
     if (10, 0) <= version and version < (11, 0):
         # Prior to Mac OS 11, each yearly release of Mac OS bumped the
         # "minor" version number.  The major version was always 10.
-        major_version = 10
         for minor_version in range(version[1], -1, -1):
-            compat_version = major_version, minor_version
+            compat_version = 10, minor_version
             binary_formats = _mac_binary_formats(compat_version, arch)
             for binary_format in binary_formats:
-                yield f"macosx_{major_version}_{minor_version}_{binary_format}"
+                yield "macosx_{major}_{minor}_{binary_format}".format(
+                    major=10, minor=minor_version, binary_format=binary_format
+                )
 
     if version >= (11, 0):
         # Starting with Mac OS 11, each yearly release bumps the major version
         # number.   The minor versions are now the midyear updates.
-        minor_version = 0
         for major_version in range(version[0], 10, -1):
-            compat_version = major_version, minor_version
+            compat_version = major_version, 0
             binary_formats = _mac_binary_formats(compat_version, arch)
             for binary_format in binary_formats:
-                yield f"macosx_{major_version}_{minor_version}_{binary_format}"
+                yield "macosx_{major}_{minor}_{binary_format}".format(
+                    major=major_version, minor=0, binary_format=binary_format
+                )
 
     if version >= (11, 0):
         # Mac OS 11 on x86_64 is compatible with binaries from previous releases.
@@ -459,131 +446,38 @@ def mac_platforms(
         # However, the "universal2" binary format can have a
         # macOS version earlier than 11.0 when the x86_64 part of the binary supports
         # that version of macOS.
-        major_version = 10
         if arch == "x86_64":
             for minor_version in range(16, 3, -1):
-                compat_version = major_version, minor_version
+                compat_version = 10, minor_version
                 binary_formats = _mac_binary_formats(compat_version, arch)
                 for binary_format in binary_formats:
-                    yield f"macosx_{major_version}_{minor_version}_{binary_format}"
+                    yield "macosx_{major}_{minor}_{binary_format}".format(
+                        major=compat_version[0],
+                        minor=compat_version[1],
+                        binary_format=binary_format,
+                    )
         else:
             for minor_version in range(16, 3, -1):
-                compat_version = major_version, minor_version
+                compat_version = 10, minor_version
                 binary_format = "universal2"
-                yield f"macosx_{major_version}_{minor_version}_{binary_format}"
-
-
-def ios_platforms(
-    version: AppleVersion | None = None, multiarch: str | None = None
-) -> Iterator[str]:
-    """
-    Yields the platform tags for an iOS system.
-
-    :param version: A two-item tuple specifying the iOS version to generate
-        platform tags for. Defaults to the current iOS version.
-    :param multiarch: The CPU architecture+ABI to generate platform tags for -
-        (the value used by `sys.implementation._multiarch` e.g.,
-        `arm64_iphoneos` or `x84_64_iphonesimulator`). Defaults to the current
-        multiarch value.
-    """
-    if version is None:
-        # if iOS is the current platform, ios_ver *must* be defined. However,
-        # it won't exist for CPython versions before 3.13, which causes a mypy
-        # error.
-        _, release, _, _ = platform.ios_ver()  # type: ignore[attr-defined, unused-ignore]
-        version = cast("AppleVersion", tuple(map(int, release.split(".")[:2])))
-
-    if multiarch is None:
-        multiarch = sys.implementation._multiarch
-    multiarch = multiarch.replace("-", "_")
-
-    ios_platform_template = "ios_{major}_{minor}_{multiarch}"
-
-    # Consider any iOS major.minor version from the version requested, down to
-    # 12.0. 12.0 is the first iOS version that is known to have enough features
-    # to support CPython. Consider every possible minor release up to X.9. There
-    # highest the minor has ever gone is 8 (14.8 and 15.8) but having some extra
-    # candidates that won't ever match doesn't really hurt, and it saves us from
-    # having to keep an explicit list of known iOS versions in the code. Return
-    # the results descending order of version number.
-
-    # If the requested major version is less than 12, there won't be any matches.
-    if version[0] < 12:
-        return
-
-    # Consider the actual X.Y version that was requested.
-    yield ios_platform_template.format(
-        major=version[0], minor=version[1], multiarch=multiarch
-    )
-
-    # Consider every minor version from X.0 to the minor version prior to the
-    # version requested by the platform.
-    for minor in range(version[1] - 1, -1, -1):
-        yield ios_platform_template.format(
-            major=version[0], minor=minor, multiarch=multiarch
-        )
-
-    for major in range(version[0] - 1, 11, -1):
-        for minor in range(9, -1, -1):
-            yield ios_platform_template.format(
-                major=major, minor=minor, multiarch=multiarch
-            )
-
-
-def android_platforms(
-    api_level: int | None = None, abi: str | None = None
-) -> Iterator[str]:
-    """
-    Yields the :attr:`~Tag.platform` tags for Android. If this function is invoked on
-    non-Android platforms, the ``api_level`` and ``abi`` arguments are required.
-
-    :param int api_level: The maximum `API level
-        <https://developer.android.com/tools/releases/platforms>`__ to return. Defaults
-        to the current system's version, as returned by ``platform.android_ver``.
-    :param str abi: The `Android ABI <https://developer.android.com/ndk/guides/abis>`__,
-        e.g. ``arm64_v8a``. Defaults to the current system's ABI , as returned by
-        ``sysconfig.get_platform``. Hyphens and periods will be replaced with
-        underscores.
-    """
-    if platform.system() != "Android" and (api_level is None or abi is None):
-        raise TypeError(
-            "on non-Android platforms, the api_level and abi arguments are required"
-        )
-
-    if api_level is None:
-        # Python 3.13 was the first version to return platform.system() == "Android",
-        # and also the first version to define platform.android_ver().
-        api_level = platform.android_ver().api_level  # type: ignore[attr-defined]
-
-    if abi is None:
-        abi = sysconfig.get_platform().split("-")[-1]
-    abi = _normalize_string(abi)
-
-    # 16 is the minimum API level known to have enough features to support CPython
-    # without major patching. Yield every API level from the maximum down to the
-    # minimum, inclusive.
-    min_api_level = 16
-    for ver in range(api_level, min_api_level - 1, -1):
-        yield f"android_{ver}_{abi}"
+                yield "macosx_{major}_{minor}_{binary_format}".format(
+                    major=compat_version[0],
+                    minor=compat_version[1],
+                    binary_format=binary_format,
+                )
 
 
 def _linux_platforms(is_32bit: bool = _32_BIT_INTERPRETER) -> Iterator[str]:
     linux = _normalize_string(sysconfig.get_platform())
-    if not linux.startswith("linux_"):
-        # we should never be here, just yield the sysconfig one and return
-        yield linux
-        return
     if is_32bit:
         if linux == "linux_x86_64":
             linux = "linux_i686"
         elif linux == "linux_aarch64":
-            linux = "linux_armv8l"
+            linux = "linux_armv7l"
     _, arch = linux.split("_", 1)
-    archs = {"armv8l": ["armv8l", "armv7l"]}.get(arch, [arch])
-    yield from _manylinux.platform_tags(archs)
-    yield from _musllinux.platform_tags(archs)
-    for arch in archs:
-        yield f"linux_{arch}"
+    yield from _manylinux.platform_tags(linux, arch)
+    yield from _musllinux.platform_tags(arch)
+    yield linux
 
 
 def _generic_platforms() -> Iterator[str]:
@@ -596,10 +490,6 @@ def platform_tags() -> Iterator[str]:
     """
     if platform.system() == "Darwin":
         return mac_platforms()
-    elif platform.system() == "iOS":
-        return ios_platforms()
-    elif platform.system() == "Android":
-        return android_platforms()
     elif platform.system() == "Linux":
         return _linux_platforms()
     else:

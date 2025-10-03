@@ -1,12 +1,11 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const kPrefName = "logging.prof";
-const kPrefValue = 5;
+const kModulesPref = "logging.config.modules";
 add_task(async () => {
-  Services.prefs.setIntPref(kPrefName, kPrefValue);
+  Services.prefs.setStringPref(kModulesPref, "prof:5");
   registerCleanupFunction(() => {
-    Services.prefs.clearUserPref(kPrefName);
+    Services.prefs.clearUserPref(kModulesPref);
   });
 
   const entries = 10000;

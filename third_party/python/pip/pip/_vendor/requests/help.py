@@ -11,7 +11,11 @@ from pip._vendor import urllib3
 from . import __version__ as requests_version
 
 charset_normalizer = None
-chardet = None
+
+try:
+    from pip._vendor import chardet
+except ImportError:
+    chardet = None
 
 try:
     from pip._vendor.urllib3.contrib import pyopenssl

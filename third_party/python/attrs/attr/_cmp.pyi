@@ -1,13 +1,13 @@
-from typing import Any, Callable
+from typing import Any, Callable, Optional, Type
 
 _CompareWithType = Callable[[Any, Any], bool]
 
 def cmp_using(
-    eq: _CompareWithType | None = ...,
-    lt: _CompareWithType | None = ...,
-    le: _CompareWithType | None = ...,
-    gt: _CompareWithType | None = ...,
-    ge: _CompareWithType | None = ...,
+    eq: Optional[_CompareWithType] = ...,
+    lt: Optional[_CompareWithType] = ...,
+    le: Optional[_CompareWithType] = ...,
+    gt: Optional[_CompareWithType] = ...,
+    ge: Optional[_CompareWithType] = ...,
     require_same_type: bool = ...,
     class_name: str = ...,
-) -> type: ...
+) -> Type: ...

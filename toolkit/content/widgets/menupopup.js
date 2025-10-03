@@ -19,7 +19,7 @@
     if (AppConstants.platform == "macosx") {
       return "[checked=true], [selected=true]";
     }
-    if (AppConstants.platform == "win") {
+    if (AppConstants.platform == "windows") {
       return "[checked=true]";
     }
     return "[type=checkbox], [type=radio]";

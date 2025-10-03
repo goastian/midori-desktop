@@ -192,10 +192,9 @@ def get_scheme(
         data=paths["data"],
     )
     if root is not None:
-        converted_keys = {}
         for key in SCHEME_KEYS:
-            converted_keys[key] = change_root(root, getattr(scheme, key))
-        scheme = Scheme(**converted_keys)
+            value = change_root(root, getattr(scheme, key))
+            setattr(scheme, key, value)
     return scheme
 
 

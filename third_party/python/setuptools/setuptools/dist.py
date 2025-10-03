@@ -6,26 +6,14 @@ import numbers
 import os
 import re
 import sys
-from collections.abc import Iterable
 from glob import iglob
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    List,
-    MutableMapping,
-    Sequence,
-    Tuple,
-    Union,
-)
+from typing import TYPE_CHECKING, MutableMapping
 
 from more_itertools import partition, unique_everseen
 from packaging.markers import InvalidMarker, Marker
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import Version
-
-from setuptools._path import StrPath
 
 from . import (
     _entry_points,
@@ -33,7 +21,6 @@ from . import (
     command as _,  # noqa: F401 # imported for side-effects
 )
 from ._importlib import metadata
-from ._reqs import _StrOrIter
 from .config import pyprojecttoml, setupcfg
 from .discovery import ConfigDiscovery
 from .monkey import get_unpatched
@@ -49,41 +36,9 @@ from distutils.errors import DistutilsOptionError, DistutilsSetupError
 from distutils.fancy_getopt import translate_longopt
 from distutils.util import strtobool
 
-if TYPE_CHECKING:
-    from typing_extensions import TypeAlias
-
 __all__ = ['Distribution']
 
-_sequence = tuple, list
-"""
-:meta private:
-
-Supported iterable types that are known to be:
-- ordered (which `set` isn't)
-- not match a str (which `Sequence[str]` does)
-- not imply a nested type (like `dict`)
-for use with `isinstance`.
-"""
-_Sequence: TypeAlias = Union[Tuple[str, ...], List[str]]
-# This is how stringifying _Sequence would look in Python 3.10
-_sequence_type_repr = "tuple[str, ...] | list[str]"
-_OrderedStrSequence: TypeAlias = Union[str, Dict[str, Any], Sequence[str]]
-"""
-:meta private:
-Avoid single-use iterable. Disallow sets.
-A poor approximation of an OrderedSequence (dict doesn't match a Sequence).
-"""
-
-
-def __getattr__(name: str) -> Any:  # pragma: no cover
-    if name == "sequence":
-        SetuptoolsDeprecationWarning.emit(
-            "`setuptools.dist.sequence` is an internal implementation detail.",
-            "Please define your own `sequence = tuple, list` instead.",
-            due_date=(2025, 8, 28),  # Originally added on 2024-08-27
-        )
-        return _sequence
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+sequence = tuple, list
 
 
 def check_importable(dist, attr, value):
@@ -96,17 +51,17 @@ def check_importable(dist, attr, value):
         ) from e
 
 
-def assert_string_list(dist, attr: str, value: _Sequence) -> None:
+def assert_string_list(dist, attr, value):
     """Verify that value is a string list"""
     try:
         # verify that value is a list or tuple to exclude unordered
         # or single-use iterables
-        assert isinstance(value, _sequence)
+        assert isinstance(value, sequence)
         # verify that elements of value are strings
         assert ''.join(value) != value
     except (TypeError, ValueError, AttributeError, AssertionError) as e:
         raise DistutilsSetupError(
-            f"{attr!r} must be of type <{_sequence_type_repr}> (got {value!r})"
+            "%r must be a list of strings (got %r)" % (attr, value)
         ) from e
 
 
@@ -171,7 +126,8 @@ def _check_marker(marker):
 def assert_bool(dist, attr, value):
     """Verify that value is True, False, 0, or 1"""
     if bool(value) != value:
-        raise DistutilsSetupError(f"{attr!r} must be a boolean value (got {value!r})")
+        tmpl = "{attr!r} must be a boolean value (got {value!r})"
+        raise DistutilsSetupError(tmpl.format(attr=attr, value=value))
 
 
 def invalid_unless_false(dist, attr, value):
@@ -182,18 +138,18 @@ def invalid_unless_false(dist, attr, value):
     raise DistutilsSetupError(f"{attr} is invalid.")
 
 
-def check_requirements(dist, attr: str, value: _OrderedStrSequence) -> None:
+def check_requirements(dist, attr, value):
     """Verify that install_requires is a valid requirements list"""
     try:
         list(_reqs.parse(value))
-        if isinstance(value, set):
+        if isinstance(value, (dict, set)):
             raise TypeError("Unordered types are not allowed")
     except (TypeError, ValueError) as error:
-        msg = (
-            f"{attr!r} must be a string or iterable of strings "
-            f"containing valid project/version requirement specifiers; {error}"
+        tmpl = (
+            "{attr!r} must be a string or list of strings "
+            "containing valid project/version requirement specifiers; {error}"
         )
-        raise DistutilsSetupError(msg) from error
+        raise DistutilsSetupError(tmpl.format(attr=attr, error=error)) from error
 
 
 def check_specifier(dist, attr, value):
@@ -201,8 +157,8 @@ def check_specifier(dist, attr, value):
     try:
         SpecifierSet(value)
     except (InvalidSpecifier, AttributeError) as error:
-        msg = f"{attr!r} must be a string containing valid version specifiers; {error}"
-        raise DistutilsSetupError(msg) from error
+        tmpl = "{attr!r} must be a string containing valid version specifiers; {error}"
+        raise DistutilsSetupError(tmpl.format(attr=attr, error=error)) from error
 
 
 def check_entry_points(dist, attr, value):
@@ -239,8 +195,10 @@ def check_packages(dist, attr, value):
 
 
 if TYPE_CHECKING:
+    from typing_extensions import TypeAlias
+
     # Work around a mypy issue where type[T] can't be used as a base: https://github.com/python/mypy/issues/10962
-    from distutils.core import Distribution as _Distribution
+    _Distribution: TypeAlias = distutils.core.Distribution
 else:
     _Distribution = get_unpatched(distutils.core.Distribution)
 
@@ -304,8 +262,7 @@ class Distribution(_Distribution):
     # Used by build_py, editable_wheel and install_lib commands for legacy namespaces
     namespace_packages: list[str]  #: :meta private: DEPRECATED
 
-    # Any: Dynamic assignment results in Incompatible types in assignment
-    def __init__(self, attrs: MutableMapping[str, Any] | None = None) -> None:
+    def __init__(self, attrs: MutableMapping | None = None) -> None:
         have_package_data = hasattr(self, "package_data")
         if not have_package_data:
             self.package_data: dict[str, list[str]] = {}
@@ -314,9 +271,9 @@ class Distribution(_Distribution):
         self.include_package_data: bool | None = None
         self.exclude_package_data: dict[str, list[str]] | None = None
         # Filter-out setuptools' specific options.
-        self.src_root: str | None = attrs.pop("src_root", None)
-        self.dependency_links: list[str] = attrs.pop('dependency_links', [])
-        self.setup_requires: list[str] = attrs.pop('setup_requires', [])
+        self.src_root = attrs.pop("src_root", None)
+        self.dependency_links = attrs.pop('dependency_links', [])
+        self.setup_requires = attrs.pop('setup_requires', [])
         for ep in metadata.entry_points(group='distutils.setup_keywords'):
             vars(self).setdefault(ep.name, None)
 
@@ -518,7 +475,7 @@ class Distribution(_Distribution):
             except ValueError as e:
                 raise DistutilsOptionError(e) from e
 
-    def warn_dash_deprecation(self, opt: str, section: str):
+    def warn_dash_deprecation(self, opt, section):
         if section in (
             'options.extras_require',
             'options.data_files',
@@ -547,7 +504,7 @@ class Distribution(_Distribution):
                 versions. Please use the underscore name {underscore_opt!r} instead.
                 """,
                 see_docs="userguide/declarative_config.html",
-                due_date=(2025, 3, 3),
+                due_date=(2024, 9, 26),
                 # Warning initially introduced in 3 Mar 2021
             )
         return underscore_opt
@@ -560,7 +517,7 @@ class Distribution(_Distribution):
             # during bootstrapping, distribution doesn't exist
             return []
 
-    def make_option_lowercase(self, opt: str, section: str):
+    def make_option_lowercase(self, opt, section):
         if section != 'metadata' or opt.islower():
             return opt
 
@@ -572,7 +529,7 @@ class Distribution(_Distribution):
             future versions. Please use lowercase {lowercase_opt!r} instead.
             """,
             see_docs="userguide/declarative_config.html",
-            due_date=(2025, 3, 3),
+            due_date=(2024, 9, 26),
             # Warning initially introduced in 6 Mar 2021
         )
         return lowercase_opt
@@ -624,7 +581,7 @@ class Distribution(_Distribution):
             except ValueError as e:
                 raise DistutilsOptionError(e) from e
 
-    def _get_project_config_files(self, filenames: Iterable[StrPath] | None):
+    def _get_project_config_files(self, filenames):
         """Add default file and split between INI and TOML"""
         tomlfiles = []
         standard_project_metadata = Path(self.src_root or os.curdir, "pyproject.toml")
@@ -636,11 +593,7 @@ class Distribution(_Distribution):
             tomlfiles = [standard_project_metadata]
         return filenames, tomlfiles
 
-    def parse_config_files(
-        self,
-        filenames: Iterable[StrPath] | None = None,
-        ignore_option_errors: bool = False,
-    ):
+    def parse_config_files(self, filenames=None, ignore_option_errors=False):
         """Parses configuration files from various levels
         and loads configuration.
         """
@@ -657,7 +610,7 @@ class Distribution(_Distribution):
         self._finalize_requires()
         self._finalize_license_files()
 
-    def fetch_build_eggs(self, requires: _StrOrIter):
+    def fetch_build_eggs(self, requires):
         """Resolve pre-setup requirements"""
         from .installer import _fetch_build_eggs
 
@@ -728,7 +681,7 @@ class Distribution(_Distribution):
 
         return fetch_build_egg(self, req)
 
-    def get_command_class(self, command: str):
+    def get_command_class(self, command):
         """Pluggable version of get_command_class()"""
         if command in self.cmdclass:
             return self.cmdclass[command]
@@ -782,7 +735,7 @@ class Distribution(_Distribution):
             else:
                 self._include_misc(k, v)
 
-    def exclude_package(self, package: str):
+    def exclude_package(self, package):
         """Remove packages, modules, and extensions in named package"""
 
         pfx = package + '.'
@@ -803,7 +756,7 @@ class Distribution(_Distribution):
                 if p.name != package and not p.name.startswith(pfx)
             ]
 
-    def has_contents_for(self, package: str):
+    def has_contents_for(self, package):
         """Return true if 'exclude_package(package)' would do something"""
 
         pfx = package + '.'
@@ -814,43 +767,41 @@ class Distribution(_Distribution):
 
         return False
 
-    def _exclude_misc(self, name: str, value: _Sequence) -> None:
+    def _exclude_misc(self, name, value):
         """Handle 'exclude()' for list/tuple attrs without a special handler"""
-        if not isinstance(value, _sequence):
+        if not isinstance(value, sequence):
             raise DistutilsSetupError(
-                f"{name}: setting must be of type <{_sequence_type_repr}> (got {value!r})"
+                "%s: setting must be a list or tuple (%r)" % (name, value)
             )
         try:
             old = getattr(self, name)
         except AttributeError as e:
             raise DistutilsSetupError("%s: No such distribution setting" % name) from e
-        if old is not None and not isinstance(old, _sequence):
+        if old is not None and not isinstance(old, sequence):
             raise DistutilsSetupError(
                 name + ": this setting cannot be changed via include/exclude"
             )
         elif old:
             setattr(self, name, [item for item in old if item not in value])
 
-    def _include_misc(self, name: str, value: _Sequence) -> None:
+    def _include_misc(self, name, value):
         """Handle 'include()' for list/tuple attrs without a special handler"""
 
-        if not isinstance(value, _sequence):
-            raise DistutilsSetupError(
-                f"{name}: setting must be of type <{_sequence_type_repr}> (got {value!r})"
-            )
+        if not isinstance(value, sequence):
+            raise DistutilsSetupError("%s: setting must be a list (%r)" % (name, value))
         try:
             old = getattr(self, name)
         except AttributeError as e:
             raise DistutilsSetupError("%s: No such distribution setting" % name) from e
         if old is None:
             setattr(self, name, value)
-        elif not isinstance(old, _sequence):
+        elif not isinstance(old, sequence):
             raise DistutilsSetupError(
                 name + ": this setting cannot be changed via include/exclude"
             )
         else:
             new = [item for item in value if item not in old]
-            setattr(self, name, list(old) + new)
+            setattr(self, name, old + new)
 
     def exclude(self, **attrs):
         """Remove items from distribution that are named in keyword arguments
@@ -875,10 +826,10 @@ class Distribution(_Distribution):
             else:
                 self._exclude_misc(k, v)
 
-    def _exclude_packages(self, packages: _Sequence) -> None:
-        if not isinstance(packages, _sequence):
+    def _exclude_packages(self, packages):
+        if not isinstance(packages, sequence):
             raise DistutilsSetupError(
-                f"packages: setting must be of type <{_sequence_type_repr}> (got {packages!r})"
+                "packages: setting must be a list or tuple (%r)" % (packages,)
             )
         list(map(self.exclude_package, packages))
 

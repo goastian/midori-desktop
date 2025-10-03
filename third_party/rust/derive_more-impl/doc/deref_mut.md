@@ -73,19 +73,18 @@ struct CoolVec {
 Code like this will be generated:
 
 ```rust
-# use ::core::ops::Deref;
 # struct CoolVec {
 #     cool: bool,
 #     vec: Vec<i32>,
 # }
-# impl Deref for CoolVec {
+# impl ::core::ops::Deref for CoolVec {
 #     type Target = Vec<i32>;
 #     #[inline]
 #     fn deref(&self) -> &Self::Target {
 #         &self.vec
 #     }
 # }
-impl derive_more::core::ops::DerefMut for CoolVec {
+impl ::core::ops::DerefMut for CoolVec {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.vec
@@ -107,19 +106,18 @@ struct MyBoxedInt(Box<i32>);
 When deriving a forwarded `DerefMut` for a struct:
 
 ```rust
-# use ::core::ops::Deref;
 # struct MyBoxedInt(Box<i32>);
-# impl Deref for MyBoxedInt {
-#     type Target = <Box<i32> as Deref>::Target;
+# impl ::core::ops::Deref for MyBoxedInt {
+#     type Target = <Box<i32> as ::core::ops::Deref>::Target;
 #     #[inline]
 #     fn deref(&self) -> &Self::Target {
-#         <Box<i32> as Deref>::deref(&self.0)
+#         <Box<i32> as ::core::ops::Deref>::deref(&self.0)
 #     }
 # }
-impl derive_more::core::ops::DerefMut for MyBoxedInt {
+impl ::core::ops::DerefMut for MyBoxedInt {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        <Box<i32> as derive_more::core::ops::DerefMut>::deref_mut(&mut self.0)
+        <Box<i32> as ::core::ops::DerefMut>::deref_mut(&mut self.0)
     }
 }
 ```

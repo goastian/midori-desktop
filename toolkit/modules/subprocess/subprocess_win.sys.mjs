@@ -31,20 +31,35 @@ class WinPromiseWorker extends PromiseWorker {
   constructor(...args) {
     super(...args);
 
-    this.signalEvent = libc.CreateSemaphoreW(null, 0, 32, null);
+    // Used by the worker thread to block until any I/O completes. Used on this
+    // side to unblock the worker to receive messages from postMessage below.
+    const iocp = libc.CreateIoCompletionPort(
+      win32.INVALID_HANDLE_VALUE,
+      win32.NULL_HANDLE_VALUE,
+      0,
+      1 // The worker thread is the only consumer of IOCP.
+    );
+    if (!iocp) {
+      throw new Error(`Failed to create IOCP: ${ctypes.winLastError}`);
+    }
+    // Wrap in Handle to ensure that CloseHandle is called after worker exits.
+    this.iocpHandle = win32.Handle(iocp);
 
     this.call("init", [
       {
         comspec: Services.env.get("COMSPEC"),
-        signalEvent: String(
-          ctypes.cast(this.signalEvent, ctypes.uintptr_t).value
-        ),
+        iocpCompletionPort: String(ctypes.cast(iocp, ctypes.uintptr_t).value),
       },
     ]);
   }
 
   signalWorker() {
-    libc.ReleaseSemaphore(this.signalEvent, 1, null);
+    libc.PostQueuedCompletionStatus(
+      this.iocpHandle,
+      0,
+      win32.IOCP_COMPLETION_KEY_WAKE_WORKER,
+      win32.OVERLAPPED.ptr(0)
+    );
   }
 
   postMessage(...args) {

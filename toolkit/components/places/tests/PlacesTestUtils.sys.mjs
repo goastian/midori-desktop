@@ -598,7 +598,7 @@ export var PlacesTestUtils = Object.freeze({
    * @param {Sqlite.OpenedConnection} [db]
    *        The mirror database connection.
    * @param {String[]} [columns]
-   *        Columns to be printed, defaults to all.
+   *        Clumns to be printed, defaults to all.
    */
   async dumpTable({ table, db, columns }) {
     if (!table) {

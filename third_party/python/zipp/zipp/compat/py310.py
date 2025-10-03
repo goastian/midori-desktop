@@ -1,5 +1,5 @@
-import io
 import sys
+import io
 
 
 def _text_encoding(encoding, stacklevel=2, /):  # pragma: no cover

@@ -4,7 +4,7 @@
 
     Utility functions.
 
-    :copyright: Copyright 2006-2024 by the Pygments team, see AUTHORS.
+    :copyright: Copyright 2006-2023 by the Pygments team, see AUTHORS.
     :license: BSD, see LICENSE for details.
 """
 
@@ -46,7 +46,8 @@ def get_choice_opt(options, optname, allowed, default=None, normcase=False):
     if normcase:
         string = string.lower()
     if string not in allowed:
-        raise OptionError('Value for option {} must be one of {}'.format(optname, ', '.join(map(str, allowed))))
+        raise OptionError('Value for option %s must be one of %s' %
+                          (optname, ', '.join(map(str, allowed))))
     return string
 
 
@@ -68,15 +69,17 @@ def get_bool_opt(options, optname, default=None):
     elif isinstance(string, int):
         return bool(string)
     elif not isinstance(string, str):
-        raise OptionError(f'Invalid type {string!r} for option {optname}; use '
-                          '1/0, yes/no, true/false, on/off')
+        raise OptionError('Invalid type %r for option %s; use '
+                          '1/0, yes/no, true/false, on/off' % (
+                              string, optname))
     elif string.lower() in ('1', 'yes', 'true', 'on'):
         return True
     elif string.lower() in ('0', 'no', 'false', 'off'):
         return False
     else:
-        raise OptionError(f'Invalid value {string!r} for option {optname}; use '
-                          '1/0, yes/no, true/false, on/off')
+        raise OptionError('Invalid value %r for option %s; use '
+                          '1/0, yes/no, true/false, on/off' % (
+                              string, optname))
 
 
 def get_int_opt(options, optname, default=None):
@@ -85,11 +88,13 @@ def get_int_opt(options, optname, default=None):
     try:
         return int(string)
     except TypeError:
-        raise OptionError(f'Invalid type {string!r} for option {optname}; you '
-                          'must give an integer value')
+        raise OptionError('Invalid type %r for option %s; you '
+                          'must give an integer value' % (
+                              string, optname))
     except ValueError:
-        raise OptionError(f'Invalid value {string!r} for option {optname}; you '
-                          'must give an integer value')
+        raise OptionError('Invalid value %r for option %s; you '
+                          'must give an integer value' % (
+                              string, optname))
 
 def get_list_opt(options, optname, default=None):
     """
@@ -103,8 +108,9 @@ def get_list_opt(options, optname, default=None):
     elif isinstance(val, (list, tuple)):
         return list(val)
     else:
-        raise OptionError(f'Invalid type {val!r} for option {optname}; you '
-                          'must give a list value')
+        raise OptionError('Invalid type %r for option %s; you '
+                          'must give a list value' % (
+                              val, optname))
 
 
 def docstring_headline(obj):
@@ -175,7 +181,7 @@ def shebang_matches(text, regex):
                      if x and not x.startswith('-')][-1]
         except IndexError:
             return False
-        regex = re.compile(rf'^{regex}(\.(exe|cmd|bat|bin))?$', re.IGNORECASE)
+        regex = re.compile(r'^%s(\.(exe|cmd|bat|bin))?$' % regex, re.IGNORECASE)
         if regex.search(found) is not None:
             return True
     return False

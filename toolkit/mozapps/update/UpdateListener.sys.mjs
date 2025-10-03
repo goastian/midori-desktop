@@ -258,13 +258,9 @@ export var UpdateListener = {
   },
 
   showRestartNotification(update, dismissed) {
-    let notification = "restart";
-    if (lazy.AppUpdateService.isOtherInstanceHandlingUpdates) {
-      notification = "other-instance";
-      // It doesn't make sense to show the "Other Instance" notification in the
-      // dismissed (badge only) form because it has no menu component.
-      dismissed = false;
-    }
+    let notification = lazy.AppUpdateService.isOtherInstanceHandlingUpdates
+      ? "other-instance"
+      : "restart";
     if (!dismissed) {
       this.restartDoorhangerShown = true;
     }

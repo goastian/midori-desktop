@@ -77,7 +77,7 @@ class CacheControlAdapter(HTTPAdapter):
 
         return resp
 
-    def build_response(  # type: ignore[override]
+    def build_response(
         self,
         request: PreparedRequest,
         response: HTTPResponse,
@@ -125,25 +125,25 @@ class CacheControlAdapter(HTTPAdapter):
             else:
                 # Wrap the response file with a wrapper that will cache the
                 #   response when the stream has been consumed.
-                response._fp = CallbackFileWrapper(  # type: ignore[assignment]
-                    response._fp,  # type: ignore[arg-type]
+                response._fp = CallbackFileWrapper(  # type: ignore[attr-defined]
+                    response._fp,  # type: ignore[attr-defined]
                     functools.partial(
                         self.controller.cache_response, request, response
                     ),
                 )
                 if response.chunked:
-                    super_update_chunk_length = response._update_chunk_length
+                    super_update_chunk_length = response._update_chunk_length  # type: ignore[attr-defined]
 
                     def _update_chunk_length(self: HTTPResponse) -> None:
                         super_update_chunk_length()
                         if self.chunk_left == 0:
-                            self._fp._close()  # type: ignore[union-attr]
+                            self._fp._close()  # type: ignore[attr-defined]
 
-                    response._update_chunk_length = types.MethodType(  # type: ignore[method-assign]
+                    response._update_chunk_length = types.MethodType(  # type: ignore[attr-defined]
                         _update_chunk_length, response
                     )
 
-        resp: Response = super().build_response(request, response)
+        resp: Response = super().build_response(request, response)  # type: ignore[no-untyped-call]
 
         # See if we should invalidate the cache.
         if request.method in self.invalidating_methods and resp.ok:

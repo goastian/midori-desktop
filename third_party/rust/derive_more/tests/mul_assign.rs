@@ -1,5 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![allow(dead_code)] // some code is tested for type checking only
+#![allow(dead_code)]
 
 use core::marker::PhantomData;
 

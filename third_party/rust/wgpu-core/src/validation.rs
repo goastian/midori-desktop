@@ -36,7 +36,6 @@ pub enum BindingTypeName {
     Texture,
     Sampler,
     AccelerationStructure,
-    ExternalTexture,
 }
 
 impl From<&ResourceType> for BindingTypeName {
@@ -58,7 +57,6 @@ impl From<&BindingType> for BindingTypeName {
             BindingType::StorageTexture { .. } => BindingTypeName::Texture,
             BindingType::Sampler { .. } => BindingTypeName::Sampler,
             BindingType::AccelerationStructure { .. } => BindingTypeName::AccelerationStructure,
-            BindingType::ExternalTexture => BindingTypeName::ExternalTexture,
         }
     }
 }
@@ -468,7 +466,6 @@ impl Resource {
                 let view_dimension = match entry.ty {
                     BindingType::Texture { view_dimension, .. }
                     | BindingType::StorageTexture { view_dimension, .. } => view_dimension,
-                    BindingType::ExternalTexture => wgt::TextureViewDimension::D2,
                     _ => {
                         return Err(BindingError::WrongTextureViewDimension {
                             dim,
@@ -1150,9 +1147,6 @@ impl Interface {
                 );
                 let texture_sample_type = match texture_layout.ty {
                     BindingType::Texture { sample_type, .. } => sample_type,
-                    BindingType::ExternalTexture => {
-                        wgt::TextureSampleType::Float { filterable: true }
-                    }
                     _ => unreachable!(),
                 };
 

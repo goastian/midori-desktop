@@ -1,6 +1,5 @@
 """Primary application entrypoint.
 """
-
 import locale
 import logging
 import os

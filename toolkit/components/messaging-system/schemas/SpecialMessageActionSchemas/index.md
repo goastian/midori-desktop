@@ -462,9 +462,3 @@ interface SearchMode {
   }
 }
 ```
-
-### `SUMMARIZE_PAGE`
-
-Summarize current page content.
-
-* args: optional `string` entry value to identify initiator default "message"

@@ -48,6 +48,7 @@ class Bar(JupyterMixin):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
+
         width = min(
             self.width if self.width is not None else options.max_width,
             options.max_width,

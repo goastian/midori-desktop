@@ -97,7 +97,7 @@ const getExtensionInfoForAddon = (extension, addon) => {
 const allowedTypes = ["theme", "extension"];
 
 function checkAllowedAddon(addon) {
-  if (addon.isSystem) {
+  if (addon.isSystem || addon.isAPIExtension) {
     return false;
   }
   if (addon.type == "extension" && !addon.isWebExtension) {

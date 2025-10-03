@@ -197,8 +197,7 @@
         "BEGIN "                                                           \
         "DELETE FROM moz_openpages_temp "                                  \
         "WHERE url = NEW.url "                                             \
-        "AND userContextId = NEW.userContextId "                           \
-        "AND groupId IS NEW.groupId;"                                      \
+        "AND userContextId = NEW.userContextId;"                           \
         "END")
 
 /**

@@ -1,28 +1,22 @@
 import sys
-from functools import wraps
 
-import sentry_sdk
+from sentry_sdk._compat import reraise
+from sentry_sdk.hub import Hub
 from sentry_sdk.integrations import Integration, DidNotEnable
 from sentry_sdk.integrations.aws_lambda import _make_request_event_processor
-from sentry_sdk.tracing import TransactionSource
+from sentry_sdk.tracing import TRANSACTION_SOURCE_COMPONENT
 from sentry_sdk.utils import (
     capture_internal_exceptions,
     event_from_exception,
-    parse_version,
-    reraise,
 )
+from sentry_sdk._types import MYPY
+from sentry_sdk._functools import wraps
 
-try:
-    import chalice  # type: ignore
-    from chalice import __version__ as CHALICE_VERSION
-    from chalice import Chalice, ChaliceViewError
-    from chalice.app import EventSourceHandler as ChaliceEventSourceHandler  # type: ignore
-except ImportError:
-    raise DidNotEnable("Chalice is not installed")
+import chalice  # type: ignore
+from chalice import Chalice, ChaliceViewError
+from chalice.app import EventSourceHandler as ChaliceEventSourceHandler  # type: ignore
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
+if MYPY:
     from typing import Any
     from typing import Dict
     from typing import TypeVar
@@ -30,13 +24,19 @@ if TYPE_CHECKING:
 
     F = TypeVar("F", bound=Callable[..., Any])
 
+try:
+    from chalice import __version__ as CHALICE_VERSION
+except ImportError:
+    raise DidNotEnable("Chalice is not installed")
+
 
 class EventSourceHandler(ChaliceEventSourceHandler):  # type: ignore
     def __call__(self, event, context):
         # type: (Any, Any) -> Any
-        client = sentry_sdk.get_client()
+        hub = Hub.current
+        client = hub.client  # type: Any
 
-        with sentry_sdk.isolation_scope() as scope:
+        with hub.push_scope() as scope:
             with capture_internal_exceptions():
                 configured_time = context.get_remaining_time_in_millis()
                 scope.add_event_processor(
@@ -51,8 +51,8 @@ class EventSourceHandler(ChaliceEventSourceHandler):  # type: ignore
                     client_options=client.options,
                     mechanism={"type": "chalice", "handled": False},
                 )
-                sentry_sdk.capture_event(event, hint=hint)
-                client.flush()
+                hub.capture_event(event, hint=hint)
+                hub.flush()
                 reraise(*exc_info)
 
 
@@ -61,13 +61,14 @@ def _get_view_function_response(app, view_function, function_args):
     @wraps(view_function)
     def wrapped_view_function(**function_args):
         # type: (**Any) -> Any
-        client = sentry_sdk.get_client()
-        with sentry_sdk.isolation_scope() as scope:
+        hub = Hub.current
+        client = hub.client  # type: Any
+        with hub.push_scope() as scope:
             with capture_internal_exceptions():
                 configured_time = app.lambda_context.get_remaining_time_in_millis()
                 scope.set_transaction_name(
                     app.lambda_context.function_name,
-                    source=TransactionSource.COMPONENT,
+                    source=TRANSACTION_SOURCE_COMPONENT,
                 )
 
                 scope.add_event_processor(
@@ -88,8 +89,8 @@ def _get_view_function_response(app, view_function, function_args):
                     client_options=client.options,
                     mechanism={"type": "chalice", "handled": False},
                 )
-                sentry_sdk.capture_event(event, hint=hint)
-                client.flush()
+                hub.capture_event(event, hint=hint)
+                hub.flush()
                 raise
 
     return wrapped_view_function  # type: ignore
@@ -101,12 +102,10 @@ class ChaliceIntegration(Integration):
     @staticmethod
     def setup_once():
         # type: () -> None
-
-        version = parse_version(CHALICE_VERSION)
-
-        if version is None:
+        try:
+            version = tuple(map(int, CHALICE_VERSION.split(".")[:3]))
+        except (ValueError, TypeError):
             raise DidNotEnable("Unparsable Chalice version: {}".format(CHALICE_VERSION))
-
         if version < (1, 20):
             old_get_view_function_response = Chalice._get_view_function_response
         else:

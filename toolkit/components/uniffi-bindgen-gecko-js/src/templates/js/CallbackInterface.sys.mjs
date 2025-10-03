@@ -1,11 +1,13 @@
+{%- let cbi = ci.get_callback_interface_definition(name).unwrap() %}
+{#- See CallbackInterfaceRuntime.sys.mjs and CallbackInterfaceHandler.sys.mjs for the callback interface handler definition, referenced here as `{{ cbi.handler() }}` #}
 // Export the FFIConverter object to make external types work.
-export class {{ cbi.self_type.ffi_converter }} extends FfiConverter {
+export class {{ ffi_converter }} extends FfiConverter {
     static lower(callbackObj) {
-        return {{ cbi.vtable.js_handler_var }}.storeCallbackObj(callbackObj)
+        return {{ cbi.handler() }}.storeCallbackObj(callbackObj)
     }
 
     static lift(handleId) {
-        return {{ cbi.vtable.js_handler_var }}.getCallbackObj(handleId)
+        return {{ cbi.handler() }}.getCallbackObj(handleId)
     }
 
     static read(dataStream) {
@@ -20,6 +22,3 @@ export class {{ cbi.self_type.ffi_converter }} extends FfiConverter {
         return 8;
     }
 }
-
-{%- let vtable = cbi.vtable %}
-{%- include "CallbackInterfaceHandler.sys.mjs" %}

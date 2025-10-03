@@ -81,7 +81,6 @@ pub(super) fn convert_default_value(
         (weedle::literal::DefaultValue::EmptyArray(_), Type::Sequence { .. }) => {
             Literal::EmptySequence
         }
-        (weedle::literal::DefaultValue::EmptyDictionary(_), Type::Map { .. }) => Literal::EmptyMap,
         (weedle::literal::DefaultValue::String(s), Type::Enum { .. }) => {
             Literal::Enum(s.0.to_string(), type_.clone())
         }
@@ -139,16 +138,6 @@ mod test {
                 }
             )?,
             Literal::EmptySequence
-        ));
-        assert!(matches!(
-            parse_and_convert(
-                "{}",
-                Type::Map {
-                    key_type: Box::new(Type::String),
-                    value_type: Box::new(Type::String)
-                }
-            )?,
-            Literal::EmptyMap
         ));
         assert!(matches!(
             parse_and_convert(

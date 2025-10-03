@@ -62,9 +62,6 @@ namespace ffi {
 struct WGPUDMABufInfo;
 }
 }  // namespace webgpu
-namespace widget {
-class DMABufDeviceLock;
-}  // namespace widget
 }  // namespace mozilla
 
 typedef enum {
@@ -228,16 +225,10 @@ class DMABufSurface {
   static bool UseDmaBufGL(mozilla::gl::GLContext* aGLContext);
   static bool UseDmaBufExportExtension(mozilla::gl::GLContext* aGLContext);
 
-  static void ReleaseSnapshotGLContext();
-
   DMABufSurface(SurfaceType aSurfaceType);
 
  protected:
   virtual bool Create(const mozilla::layers::SurfaceDescriptor& aDesc) = 0;
-
-  static RefPtr<mozilla::gl::GLContext> ClaimSnapshotGLContext();
-  static void ReturnSnapshotGLContext(
-      RefPtr<mozilla::gl::GLContext> aGLContext);
 
   // Import global ref count object from IPC by file descriptor.
   // This adds global ref count reference to the surface.
@@ -252,10 +243,9 @@ class DMABufSurface {
                     uint32_t* aStride, int aGbmFlags, int aPlane = 0);
 #endif
 
-  virtual bool OpenFileDescriptorForPlane(
-      mozilla::widget::DMABufDeviceLock* aDeviceLock, int aPlane) = 0;
+  virtual bool OpenFileDescriptorForPlane(int aPlane) = 0;
 
-  bool OpenFileDescriptors(mozilla::widget::DMABufDeviceLock* aDeviceLock);
+  bool OpenFileDescriptors();
   void CloseFileDescriptors();
 
   nsresult ReadIntoBuffer(mozilla::gl::GLContext* aGLContext, uint8_t* aData,
@@ -390,8 +380,7 @@ class DMABufSurfaceRGBA final : public DMABufSurface {
               int aWidth, int aHeight);
 
   bool ImportSurfaceDescriptor(const mozilla::layers::SurfaceDescriptor& aDesc);
-  bool OpenFileDescriptorForPlane(
-      mozilla::widget::DMABufDeviceLock* aDeviceLock, int aPlane) override;
+  bool OpenFileDescriptorForPlane(int aPlane) override;
 
  private:
   int mWidth;
@@ -457,8 +446,7 @@ class DMABufSurfaceYUV final : public DMABufSurface {
   }
   bool IsHDRSurface() override {
     return mColorPrimaries == mozilla::gfx::ColorSpace2::BT2020 &&
-           (mTransferFunction == mozilla::gfx::TransferFunction::PQ ||
-            mTransferFunction == mozilla::gfx::TransferFunction::HLG);
+           mTransferFunction == mozilla::gfx::TransferFunction::PQ;
   }
 
   DMABufSurfaceYUV();
@@ -495,8 +483,7 @@ class DMABufSurfaceYUV final : public DMABufSurface {
   bool ImportSurfaceDescriptor(
       const mozilla::layers::SurfaceDescriptorDMABuf& aDesc);
 
-  bool OpenFileDescriptorForPlane(
-      mozilla::widget::DMABufDeviceLock* aDeviceLock, int aPlane) override;
+  bool OpenFileDescriptorForPlane(int aPlane) override;
 
   int mWidth[DMABUF_BUFFER_PLANES];
   int mHeight[DMABUF_BUFFER_PLANES];

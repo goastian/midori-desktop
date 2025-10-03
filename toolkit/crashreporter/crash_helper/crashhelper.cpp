@@ -49,16 +49,31 @@ static void free_breakpad_data(BreakpadRawData aData) {
 #endif
 }
 
+#define GET_CLIENT_PID_ARG(arguments) ((arguments)[1])
+#define GET_BREAKPAD_DATA_ARG(arguments) ((arguments)[2])
+#define GET_MINIDUMP_PATH_ARG(arguments) ((arguments)[3])
+#define GET_CONNECTOR_ARG(arguments) ((arguments)[4])
+#ifdef XP_WIN
+#  define GET_LISTENER_ARG(arguments) ((arguments)[5])
+#  define ARG_NUM (6)
+#else
+static char sDummy[1] = "";
+#  define GET_LISTENER_ARG(arguments) (sDummy)
+#  define ARG_NUM (5)
+#endif  // XP_WIN
+
 int main(int argc, char* argv[]) {
-  if (argc < 6) {
+  if (argc < ARG_NUM) {
     exit(EXIT_FAILURE);
   }
 
-  Pid client_pid = static_cast<Pid>(parse_int_or_exit(argv[1]));
-  BreakpadRawData breakpad_data = parse_breakpad_data(argv[2]);
-  char* minidump_path = argv[3];
-  char* listener = argv[4];
-  char* connector = argv[5];
+  Pid client_pid =
+      static_cast<Pid>(parse_int_or_exit(GET_CLIENT_PID_ARG(argv)));
+  BreakpadRawData breakpad_data =
+      parse_breakpad_data(GET_BREAKPAD_DATA_ARG(argv));
+  char* minidump_path = GET_MINIDUMP_PATH_ARG(argv);
+  char* connector = GET_CONNECTOR_ARG(argv);
+  char* listener = GET_LISTENER_ARG(argv);
 
   int res = crash_generator_logic_desktop(client_pid, breakpad_data,
                                           minidump_path, listener, connector);

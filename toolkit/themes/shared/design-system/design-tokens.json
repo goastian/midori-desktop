@@ -147,9 +147,6 @@
       },
       "medium": {
         "value": "8px"
-      },
-      "large": {
-        "value": "12px"
       }
     },
     "width": {
@@ -1014,22 +1011,10 @@
           }
         }
       },
-      "xsmall": {
-        "value": {
-          "brand": {
-            "default": "0.733rem",
-            "comment": "11px / Note this token is to be used in rare cases because its hard to read. Please consult with the Design Systems and A11y teams for case-by-case feedback."
-          },
-          "platform": {
-            "default": "unset"
-          }
-        }
-      },
       "small": {
         "value": {
           "brand": {
-            "default": "0.867rem",
-            "comment": "13px"
+            "default": "0.867rem"
           },
           "platform": {
             "default": "unset"
@@ -1039,8 +1024,7 @@
       "large": {
         "value": {
           "brand": {
-            "default": "1.133rem",
-            "comment": "17px"
+            "default": "1.133rem"
           },
           "platform": {
             "default": "unset"
@@ -1050,8 +1034,7 @@
       "xlarge": {
         "value": {
           "brand": {
-            "default": "1.467rem",
-            "comment": "22px"
+            "default": "1.467rem"
           },
           "platform": {
             "default": "unset"
@@ -1061,8 +1044,7 @@
       "xxlarge": {
         "value": {
           "brand": {
-            "default": "1.6rem",
-            "comment": "24px"
+            "default": "1.6rem"
           },
           "platform": {
             "default": "unset"

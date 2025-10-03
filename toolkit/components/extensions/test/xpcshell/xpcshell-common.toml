@@ -42,9 +42,13 @@ skip-if = ["os == 'android'"] # Bug 1545439
 
 ["test_ext_background_api_injection.js"]
 
+["test_ext_background_early_quit.js"]
+
 ["test_ext_background_early_shutdown.js"]
 
 ["test_ext_background_empty.js"]
+
+["test_ext_background_file_invalid.js"]
 
 ["test_ext_background_generated_load_events.js"]
 
@@ -143,8 +147,6 @@ run-sequentially = "very high failure rate in parallel"
 
 ["test_ext_contentscript_in_background.js"]
 
-["test_ext_contentscript_integritypolicy.js"]
-
 ["test_ext_contentscript_json_api.js"]
 
 ["test_ext_contentscript_module_import.js"]
@@ -189,8 +191,6 @@ skip-if = [
 
 ["test_ext_cookies_errors.js"]
 
-["test_ext_cookies_expirationDate.js"]
-
 ["test_ext_cookies_firstParty.js"]
 skip-if = [
   "appname == 'thunderbird'",
@@ -204,8 +204,6 @@ skip-if = [
 ["test_ext_cookies_samesite.js"]
 
 ["test_ext_cookies_sort.js"]
-
-["test_ext_cookies_validation.js"]
 
 ["test_ext_cors_mozextension.js"]
 

@@ -18,8 +18,6 @@ class nsRFPTargetSetIDL final : public nsIRFPTargetSetIDL {
   nsRFPTargetSetIDL() = default;
   explicit nsRFPTargetSetIDL(RFPTargetSet& aBits) : mBits(aBits) {};
 
-  RFPTargetSet ToRFPTargetSet() const { return mBits; }
-
  private:
   ~nsRFPTargetSetIDL() = default;
 

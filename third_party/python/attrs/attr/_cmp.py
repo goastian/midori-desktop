@@ -4,7 +4,7 @@
 import functools
 import types
 
-from ._make import __ne__
+from ._make import _make_ne
 
 
 _operation_names = {"eq": "==", "lt": "<", "le": "<=", "gt": ">", "ge": ">="}
@@ -26,31 +26,21 @@ def cmp_using(
     The resulting class will have a full set of ordering methods if at least
     one of ``{lt, le, gt, ge}`` and ``eq``  are provided.
 
-    Args:
-        eq (typing.Callable | None):
-            Callable used to evaluate equality of two objects.
+    :param Optional[callable] eq: `callable` used to evaluate equality of two
+        objects.
+    :param Optional[callable] lt: `callable` used to evaluate whether one
+        object is less than another object.
+    :param Optional[callable] le: `callable` used to evaluate whether one
+        object is less than or equal to another object.
+    :param Optional[callable] gt: `callable` used to evaluate whether one
+        object is greater than another object.
+    :param Optional[callable] ge: `callable` used to evaluate whether one
+        object is greater than or equal to another object.
 
-        lt (typing.Callable | None):
-            Callable used to evaluate whether one object is less than another
-            object.
+    :param bool require_same_type: When `True`, equality and ordering methods
+        will return `NotImplemented` if objects are not of the same type.
 
-        le (typing.Callable | None):
-            Callable used to evaluate whether one object is less than or equal
-            to another object.
-
-        gt (typing.Callable | None):
-            Callable used to evaluate whether one object is greater than
-            another object.
-
-        ge (typing.Callable | None):
-            Callable used to evaluate whether one object is greater than or
-            equal to another object.
-
-        require_same_type (bool):
-            When `True`, equality and ordering methods will return
-            `NotImplemented` if objects are not of the same type.
-
-        class_name (str | None): Name of class. Defaults to "Comparable".
+    :param Optional[str] class_name: Name of class. Defaults to 'Comparable'.
 
     See `comparison` for more details.
 
@@ -71,7 +61,7 @@ def cmp_using(
     if eq is not None:
         has_eq_function = True
         body["__eq__"] = _make_operator("eq", eq)
-        body["__ne__"] = __ne__
+        body["__ne__"] = _make_ne()
 
     if lt is not None:
         num_order_functions += 1
@@ -102,8 +92,10 @@ def cmp_using(
         if not has_eq_function:
             # functools.total_ordering requires __eq__ to be defined,
             # so raise early error here to keep a nice stack.
-            msg = "eq must be define is order to complete ordering from lt, le, gt, ge."
-            raise ValueError(msg)
+            raise ValueError(
+                "eq must be define is order to complete ordering from "
+                "lt, le, gt, ge."
+            )
         type_ = functools.total_ordering(type_)
 
     return type_
@@ -150,7 +142,10 @@ def _is_comparable_to(self, other):
     """
     Check whether `other` is comparable to `self`.
     """
-    return all(func(self, other) for func in self._requirements)
+    for func in self._requirements:
+        if not func(self, other):
+            return False
+    return True
 
 
 def _check_same_type(self, other):

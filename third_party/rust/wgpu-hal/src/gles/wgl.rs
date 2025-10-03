@@ -1,11 +1,12 @@
 use alloc::{borrow::ToOwned as _, ffi::CString, string::String, sync::Arc, vec::Vec};
 use core::{
-    ffi::{c_int, c_void, CStr},
+    ffi::{c_void, CStr},
     mem::{self, ManuallyDrop},
     ptr,
     time::Duration,
 };
 use std::{
+    os::raw::c_int,
     sync::{
         mpsc::{sync_channel, SyncSender},
         LazyLock,

@@ -1,10 +1,10 @@
 """propcache: An accelerated property cache for Python classes."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 _PUBLIC_API = ("cached_property", "under_cached_property")
 
-__version__ = "0.3.2"
+__version__ = "0.2.0"
 __all__ = ()
 
 # Imports have moved to `propcache.api` in 0.2.0+.
@@ -23,7 +23,7 @@ def _import_facade(attr: str) -> object:
     raise AttributeError(f"module '{__package__}' has no attribute '{attr}'")
 
 
-def _dir_facade() -> list[str]:
+def _dir_facade() -> List[str]:
     """Include the public API in the module's dir() output."""
     return [*_PUBLIC_API, *globals().keys()]
 

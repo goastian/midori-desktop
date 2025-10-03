@@ -209,6 +209,7 @@ export function nsAsyncShutdownService() {
 
   for (let _k of [
     // Parent process
+    "quitApplicationGranted",
     "appShutdownConfirmed",
     "profileBeforeChange",
     "profileChangeTeardown",

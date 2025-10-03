@@ -17,9 +17,7 @@ mod enums;
 mod ffi_async_data;
 mod ffi_functions;
 mod ffi_types;
-mod modules;
 mod objects;
-mod records;
 mod rust_buffer;
 mod rust_future;
 mod self_types;
@@ -40,17 +38,15 @@ use uniffi_pipeline::{new_pipeline, Node, Pipeline};
 pub fn pipeline() -> Pipeline<initial::Root, Root> {
     new_pipeline()
         .convert_ir_pass::<Root>()
-        .pass(modules::pass)
         .pass(callable::pass)
         .pass(rust_buffer::pass)
         .pass(rust_future::pass)
         .pass(self_types::pass)
         .pass(type_definitions_from_api::pass)
-        .pass(enums::pass)
-        .pass(records::pass)
         .pass(type_nodes::pass)
         .pass(ffi_types::pass)
         .pass(ffi_async_data::pass)
+        .pass(enums::pass)
         .pass(objects::pass)
         .pass(callback_interfaces::pass)
         .pass(ffi_functions::pass)

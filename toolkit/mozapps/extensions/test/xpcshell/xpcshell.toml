@@ -87,6 +87,8 @@ skip-if = ["os == 'android'"] # Non-extension add-ons are not supported on Andro
 
 ["test_crash_annotation_quoting.js"]
 
+["test_data_collection_not_in_db.js"]
+
 ["test_db_path.js"]
 head = ""
 skip-if = ["os == 'android'"] # Cannot override profdir path, see comment about do_get_profile() in test_db_path.js

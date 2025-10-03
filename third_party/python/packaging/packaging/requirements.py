@@ -1,15 +1,14 @@
 # This file is dual licensed under the terms of the Apache License, Version
 # 2.0, and the BSD License. See the LICENSE file in the root of this repository
 # for complete details.
-from __future__ import annotations
 
-from typing import Any, Iterator
+import urllib.parse
+from typing import Any, List, Optional, Set
 
 from ._parser import parse_requirement as _parse_requirement
 from ._tokenizer import ParserSyntaxError
 from .markers import Marker, _normalize_extra_values
 from .specifiers import SpecifierSet
-from .utils import canonicalize_name
 
 
 class InvalidRequirement(ValueError):
@@ -38,52 +37,57 @@ class Requirement:
             raise InvalidRequirement(str(e)) from e
 
         self.name: str = parsed.name
-        self.url: str | None = parsed.url or None
-        self.extras: set[str] = set(parsed.extras or [])
+        if parsed.url:
+            parsed_url = urllib.parse.urlparse(parsed.url)
+            if parsed_url.scheme == "file":
+                if urllib.parse.urlunparse(parsed_url) != parsed.url:
+                    raise InvalidRequirement("Invalid URL given")
+            elif not (parsed_url.scheme and parsed_url.netloc) or (
+                not parsed_url.scheme and not parsed_url.netloc
+            ):
+                raise InvalidRequirement(f"Invalid URL: {parsed.url}")
+            self.url: Optional[str] = parsed.url
+        else:
+            self.url = None
+        self.extras: Set[str] = set(parsed.extras if parsed.extras else [])
         self.specifier: SpecifierSet = SpecifierSet(parsed.specifier)
-        self.marker: Marker | None = None
+        self.marker: Optional[Marker] = None
         if parsed.marker is not None:
             self.marker = Marker.__new__(Marker)
             self.marker._markers = _normalize_extra_values(parsed.marker)
 
-    def _iter_parts(self, name: str) -> Iterator[str]:
-        yield name
+    def __str__(self) -> str:
+        parts: List[str] = [self.name]
 
         if self.extras:
             formatted_extras = ",".join(sorted(self.extras))
-            yield f"[{formatted_extras}]"
+            parts.append(f"[{formatted_extras}]")
 
         if self.specifier:
-            yield str(self.specifier)
+            parts.append(str(self.specifier))
 
         if self.url:
-            yield f"@ {self.url}"
+            parts.append(f"@ {self.url}")
             if self.marker:
-                yield " "
+                parts.append(" ")
 
         if self.marker:
-            yield f"; {self.marker}"
+            parts.append(f"; {self.marker}")
 
-    def __str__(self) -> str:
-        return "".join(self._iter_parts(self.name))
+        return "".join(parts)
 
     def __repr__(self) -> str:
         return f"<Requirement('{self}')>"
 
     def __hash__(self) -> int:
-        return hash(
-            (
-                self.__class__.__name__,
-                *self._iter_parts(canonicalize_name(self.name)),
-            )
-        )
+        return hash((self.__class__.__name__, str(self)))
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Requirement):
             return NotImplemented
 
         return (
-            canonicalize_name(self.name) == canonicalize_name(other.name)
+            self.name == other.name
             and self.extras == other.extras
             and self.specifier == other.specifier
             and self.url == other.url

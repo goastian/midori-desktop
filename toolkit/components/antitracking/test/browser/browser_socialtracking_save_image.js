@@ -52,7 +52,6 @@ add_setup(async function () {
 
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       ["privacy.trackingprotection.socialtracking.enabled", true],
       [
         "urlclassifier.features.socialtracking.blacklistHosts",

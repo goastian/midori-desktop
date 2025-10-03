@@ -1,64 +1,44 @@
 #
 # This file is part of pyasn1 software.
 #
-# Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com>
-# License: https://pyasn1.readthedocs.io/en/latest/license.html
+# Copyright (c) 2005-2019, Ilya Etingof <etingof@gmail.com>
+# License: http://snmplabs.com/pyasn1/license.html
 #
-import warnings
-
 from pyasn1.codec.cer import decoder
 from pyasn1.type import univ
 
-__all__ = ['decode', 'StreamingDecoder']
+__all__ = ['decode']
 
 
-class BitStringPayloadDecoder(decoder.BitStringPayloadDecoder):
+class BitStringDecoder(decoder.BitStringDecoder):
     supportConstructedForm = False
 
 
-class OctetStringPayloadDecoder(decoder.OctetStringPayloadDecoder):
+class OctetStringDecoder(decoder.OctetStringDecoder):
     supportConstructedForm = False
-
 
 # TODO: prohibit non-canonical encoding
-RealPayloadDecoder = decoder.RealPayloadDecoder
+RealDecoder = decoder.RealDecoder
 
-TAG_MAP = decoder.TAG_MAP.copy()
-TAG_MAP.update(
-    {univ.BitString.tagSet: BitStringPayloadDecoder(),
-     univ.OctetString.tagSet: OctetStringPayloadDecoder(),
-     univ.Real.tagSet: RealPayloadDecoder()}
+tagMap = decoder.tagMap.copy()
+tagMap.update(
+    {univ.BitString.tagSet: BitStringDecoder(),
+     univ.OctetString.tagSet: OctetStringDecoder(),
+     univ.Real.tagSet: RealDecoder()}
 )
 
-TYPE_MAP = decoder.TYPE_MAP.copy()
+typeMap = decoder.typeMap.copy()
 
 # Put in non-ambiguous types for faster codec lookup
-for typeDecoder in TAG_MAP.values():
+for typeDecoder in tagMap.values():
     if typeDecoder.protoComponent is not None:
         typeId = typeDecoder.protoComponent.__class__.typeId
-        if typeId is not None and typeId not in TYPE_MAP:
-            TYPE_MAP[typeId] = typeDecoder
-
-
-class SingleItemDecoder(decoder.SingleItemDecoder):
-    __doc__ = decoder.SingleItemDecoder.__doc__
-
-    TAG_MAP = TAG_MAP
-    TYPE_MAP = TYPE_MAP
-
-    supportIndefLength = False
-
-
-class StreamingDecoder(decoder.StreamingDecoder):
-    __doc__ = decoder.StreamingDecoder.__doc__
-
-    SINGLE_ITEM_DECODER = SingleItemDecoder
+        if typeId is not None and typeId not in typeMap:
+            typeMap[typeId] = typeDecoder
 
 
 class Decoder(decoder.Decoder):
-    __doc__ = decoder.Decoder.__doc__
-
-    STREAMING_DECODER = StreamingDecoder
+    supportIndefLength = False
 
 
 #: Turns DER octet stream into an ASN.1 object.
@@ -69,7 +49,7 @@ class Decoder(decoder.Decoder):
 #:
 #: Parameters
 #: ----------
-#: substrate: :py:class:`bytes`
+#: substrate: :py:class:`bytes` (Python 3) or :py:class:`str` (Python 2)
 #:     DER octet-stream
 #:
 #: Keyword Args
@@ -111,10 +91,4 @@ class Decoder(decoder.Decoder):
 #:    SequenceOf:
 #:     1 2 3
 #:
-decode = Decoder()
-
-def __getattr__(attr: str):
-    if newAttr := {"tagMap": "TAG_MAP", "typeMap": "TYPE_MAP"}.get(attr):
-        warnings.warn(f"{attr} is deprecated. Please use {newAttr} instead.", DeprecationWarning)
-        return globals()[newAttr]
-    raise AttributeError(attr)
+decode = Decoder(tagMap, typeMap)

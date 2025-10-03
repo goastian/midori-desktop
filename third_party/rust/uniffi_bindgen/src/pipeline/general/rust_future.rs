@@ -91,18 +91,17 @@ fn ffi_rust_future_poll(symbol_name: String) -> FfiDefinition {
         arguments: vec![
             FfiArgument {
                 name: "handle".to_owned(),
-                ty: FfiType::Handle(HandleKind::RustFuture).into(),
+                ty: FfiType::Handle(HandleKind::RustFuture),
             },
             FfiArgument {
                 name: "callback".to_owned(),
                 ty: FfiType::Function(FfiFunctionTypeName(
                     "RustFutureContinuationCallback".to_owned(),
-                ))
-                .into(),
+                )),
             },
             FfiArgument {
                 name: "callback_data".to_owned(),
-                ty: FfiType::Handle(HandleKind::RustFuture).into(),
+                ty: FfiType::Handle(HandleKind::RustFuture),
             },
         ],
         return_type: FfiReturnType { ty: None },
@@ -119,7 +118,7 @@ fn ffi_rust_future_cancel(symbol_name: String) -> FfiDefinition {
         async_data: None,
         arguments: vec![FfiArgument {
             name: "handle".to_owned(),
-            ty: FfiType::Handle(HandleKind::RustFuture).into(),
+            ty: FfiType::Handle(HandleKind::RustFuture),
         }],
         return_type: FfiReturnType { ty: None },
         has_rust_call_status_arg: false,
@@ -135,11 +134,9 @@ fn ffi_rust_future_complete(return_type: Option<FfiType>, symbol_name: String) -
         async_data: None,
         arguments: vec![FfiArgument {
             name: "handle".to_owned(),
-            ty: FfiType::Handle(HandleKind::RustFuture).into(),
+            ty: FfiType::Handle(HandleKind::RustFuture),
         }],
-        return_type: FfiReturnType {
-            ty: return_type.map(FfiTypeNode::from),
-        },
+        return_type: FfiReturnType { ty: return_type },
         has_rust_call_status_arg: true,
         kind: FfiFunctionKind::RustFutureComplete,
         ..FfiFunction::default()
@@ -153,7 +150,7 @@ fn ffi_rust_future_free(symbol_name: String) -> FfiDefinition {
         async_data: None,
         arguments: vec![FfiArgument {
             name: "handle".to_owned(),
-            ty: FfiType::Handle(HandleKind::RustFuture).into(),
+            ty: FfiType::Handle(HandleKind::RustFuture),
         }],
         return_type: FfiReturnType { ty: None },
         has_rust_call_status_arg: false,

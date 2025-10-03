@@ -13,6 +13,8 @@
  * @typedef {number} integer
  */
 
+/* eslint "valid-jsdoc": [2, {requireReturn: false, requireReturnDescription: false, prefer: {return: "returns"}}] */
+
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { XPIExports } from "resource://gre/modules/addons/XPIExports.sys.mjs";
@@ -2761,7 +2763,7 @@ export var XPIProvider = {
         // Keep version in sync with toolkit/mozapps/extensions/default-theme/manifest.json
         this.maybeInstallBuiltinAddon(
           "default-theme@mozilla.org",
-          "1.4.2",
+          "1.4.1",
           "resource://default-theme/"
         );
       }

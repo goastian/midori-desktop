@@ -97,11 +97,10 @@ class PageRouter {
 
     _hashDidChange()
     {
-        let unescapedHash = unescape(location.hash);
-        if (unescapedHash == this._hash)
+        if (unescape(location.hash) == this._hash)
             return;
         this.route();
-        this._hash = unescapedHash;
+        this._hash = null;
     }
 
     _serializeToHash(route, state)

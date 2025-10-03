@@ -10,13 +10,23 @@ Parses gettext po and pot files.
 
 import re
 
-from .base import CAN_SKIP, Entity, BadEntity, Parser
+from .base import (
+    CAN_SKIP,
+    Entity,
+    BadEntity,
+    Parser
+)
 
 
 class PoEntityMixin:
+
     @property
     def val(self):
-        return self.stringlist_val if self.stringlist_val else self.stringlist_key[0]
+        return (
+            self.stringlist_val
+            if self.stringlist_val
+            else self.stringlist_key[0]
+        )
 
     @property
     def key(self):
@@ -37,15 +47,16 @@ class PoEntity(PoEntityMixin, Entity):
 
 # Unescape and concat a string list
 def eval_stringlist(lines):
-    return "".join(
+    return ''.join(
         (
-            line.replace(r"\\", "\\")
-            .replace(r"\t", "\t")
-            .replace(r"\r", "\r")
-            .replace(r"\n", "\n")
-            .replace(r"\"", '"')
+            l
+            .replace(r'\\', '\\')
+            .replace(r'\t', '\t')
+            .replace(r'\r', '\r')
+            .replace(r'\n', '\n')
+            .replace(r'\"', '"')
         )
-        for line in lines
+        for l in lines
     )
 
 
@@ -53,9 +64,9 @@ class PoParser(Parser):
     # gettext l10n fallback at runtime, don't merge en-US strings
     capabilities = CAN_SKIP
 
-    reKey = re.compile("msgctxt|msgid")
-    reValue = re.compile("(?P<white>[ \t\r\n]*)(?P<cmd>msgstr)")
-    reComment = re.compile(r"(?:#.*?\n)+")
+    reKey = re.compile('msgctxt|msgid')
+    reValue = re.compile('(?P<white>[ \t\r\n]*)(?P<cmd>msgstr)')
+    reComment = re.compile(r'(?:#.*?\n)+')
     # string list item:
     # leading whitespace
     # `"`
@@ -70,7 +81,7 @@ class PoParser(Parser):
         start = cursor = m.start()
         id_start = cursor
         try:
-            msgctxt, cursor = self._parse_string_list(ctx, cursor, "msgctxt")
+            msgctxt, cursor = self._parse_string_list(ctx, cursor, 'msgctxt')
             m = self.reWhitespace.match(ctx.contents, cursor)
             if m:
                 cursor = m.end()
@@ -79,20 +90,20 @@ class PoParser(Parser):
             msgctxt = None
         if id_start is None:
             id_start = cursor
-        msgid, cursor = self._parse_string_list(ctx, cursor, "msgid")
+        msgid, cursor = self._parse_string_list(ctx, cursor, 'msgid')
         id_end = cursor
         m = self.reWhitespace.match(ctx.contents, cursor)
         if m:
             cursor = m.end()
         val_start = cursor
-        msgstr, cursor = self._parse_string_list(ctx, cursor, "msgstr")
+        msgstr, cursor = self._parse_string_list(ctx, cursor, 'msgstr')
         e = PoEntity(
             ctx,
             current_comment,
             white_space,
             (start, cursor),
             (id_start, id_end),
-            (val_start, cursor),
+            (val_start, cursor)
         )
         e.stringlist_key = (msgid, msgctxt)
         e.stringlist_val = msgstr

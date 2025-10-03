@@ -12,9 +12,5 @@ Services.scriptloader.loadSubScript(
 requestLongerTimeout(4);
 
 add_task(async function verifyOverridesBFppGranular() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-
   await runTestCases(generateTestCases(true, false));
 });

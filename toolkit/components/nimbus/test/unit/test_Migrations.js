@@ -52,6 +52,9 @@ add_setup(async function setup() {
  * @param {object} options
  * @param {number?} options.legacyMigrationState
  *        The value of the legacy migration pref.
+ * @param {Record<Phase, number>?} options.migrationState
+ *        The value that should be set for the Nimbus migration prefs. If
+ *        not provided, the pref will be unset.
  * @param {Record<Phase, Migration[]>} options.migrations
  *        An array of migrations that will replace the regular set of migrations
  *        for the duration of the test.
@@ -64,6 +67,7 @@ add_setup(async function setup() {
 
 async function setupTest({
   legacyMigrationState,
+  migrationState,
   migrations,
   init = true,
   ...args
@@ -87,6 +91,12 @@ async function setupTest({
   });
 
   const { sandbox } = ctx;
+
+  if (migrationState) {
+    for (const [phase, value] of Object.entries(migrationState)) {
+      Services.prefs.setIntPref(NIMBUS_MIGRATION_PREFS[phase], value);
+    }
+  }
 
   if (typeof legacyMigrationState !== "undefined") {
     Services.prefs.setIntPref(
@@ -755,7 +765,7 @@ add_task(async function test_migration_firefoxLabsEnrollments() {
           `Pref ${pref} should be set after enrollment`
         );
 
-        manager.unenroll(slug);
+        await manager.unenroll(slug);
         Assert.equal(
           Services.prefs.getBoolPref(pref),
           false,
@@ -909,7 +919,7 @@ add_task(async function test_migration_firefoxLabsEnrollments_idempotent() {
   );
 
   for (const { slug } of recipes) {
-    manager.unenroll(slug);
+    await manager.unenroll(slug);
   }
 
   await cleanup();
@@ -923,7 +933,7 @@ const IMPORT_TO_SQL_MIGRATION = NimbusMigrations.MIGRATIONS[
   NimbusMigrations.Phase.AFTER_STORE_INITIALIZED
 ].find(m => m.name === "import-enrollments-to-sql");
 
-async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
+add_task(async function testMigrateEnrollmentsToSql() {
   const PREFFLIPS_EXPERIMENT_VALUE = {
     prefs: {
       "foo.bar.baz": {
@@ -943,21 +953,12 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
       },
       {
         bogus: "foobar",
-        userFacingName: "experiment-1",
-        userFacingDescription: "experiment-1 description",
       }
     ),
-    NimbusTestUtils.factories.recipe.withFeatureConfig(
-      "experiment-2",
-      {
-        branchSlug: "experiment-2",
-        featureId: "no-feature-firefox-desktop",
-      },
-      {
-        userFacingName: "experiment-2",
-        userFacingDescription: "experiment-2 description",
-      }
-    ),
+    NimbusTestUtils.factories.recipe.withFeatureConfig("experiment-2", {
+      branchSlug: "experiment-2",
+      featureId: "no-feature-firefox-desktop",
+    }),
     NimbusTestUtils.factories.recipe.withFeatureConfig(
       "rollout-1",
       {
@@ -973,8 +974,6 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
         },
         firefoxLabsGroup: "group",
         requiresRestart: true,
-        userFacingName: "rollout-1",
-        userFacingDescription: "rollout-1 description",
       }
     ),
     NimbusTestUtils.factories.recipe.withFeatureConfig(
@@ -982,25 +981,14 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
       {
         featureId: "no-feature-firefox-desktop",
       },
-      {
-        isRollout: true,
-        userFacingName: "rollout-2",
-        userFacingDescription: "rollout-2 description",
-      }
+      { isRollout: true }
     ),
-    NimbusTestUtils.factories.recipe.withFeatureConfig(
-      "setPref-experiment",
-      {
-        featureId: "nimbus-qa-1",
-        value: {
-          value: "qa-1",
-        },
+    NimbusTestUtils.factories.recipe.withFeatureConfig("setPref-experiment", {
+      featureId: "nimbus-qa-1",
+      value: {
+        value: "qa-1",
       },
-      {
-        userFacingName: "setPref-experiment",
-        userFacingDescription: "setPref-experiment description",
-      }
-    ),
+    }),
     NimbusTestUtils.factories.recipe.withFeatureConfig(
       "setPref-rollout",
       {
@@ -1009,34 +997,18 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
           value: "qa-2",
         },
       },
-      {
-        isRollout: true,
-        userFacingName: "setPref-rollout",
-        userFacingDescription: "setPref-rollout description",
-      }
+      { isRollout: true }
     ),
   ];
   const secureExperiments = [
-    NimbusTestUtils.factories.recipe.withFeatureConfig(
-      "prefFlips-experiment",
-      {
-        featureId: "prefFlips",
-        value: PREFFLIPS_EXPERIMENT_VALUE,
-      },
-      {
-        userFacingName: "prefFlips-experiment",
-        userFacingDescription: "prefFlips-experiment description",
-      }
-    ),
+    NimbusTestUtils.factories.recipe.withFeatureConfig("prefFlips-experiment", {
+      featureId: "prefFlips",
+      value: PREFFLIPS_EXPERIMENT_VALUE,
+    }),
     NimbusTestUtils.factories.recipe.withFeatureConfig(
       "prefFlips-rollout",
       { featureId: "prefFlips", value: { prefs: {} } },
-      {
-        isRollout: true,
-
-        userFacingName: "prefFlips-rollout",
-        userFacingDescription: "prefFlips-rollout description",
-      }
+      { isRollout: true }
     ),
   ];
 
@@ -1045,8 +1017,7 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
 
     await store.init();
 
-    store.set(
-      "inactive-1",
+    store.addEnrollment(
       NimbusTestUtils.factories.experiment.withFeatureConfig(
         "inactive-1",
         { featureId: "no-feature-firefox-desktop" },
@@ -1057,8 +1028,7 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
         }
       )
     );
-    store.set(
-      "inactive-2",
+    store.addEnrollment(
       NimbusTestUtils.factories.experiment.withFeatureConfig(
         "inactive-2",
         { branchSlug: "treatment-a", featureId: "no-feature-firefox-desktop" },
@@ -1069,8 +1039,7 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
         }
       )
     );
-    store.set(
-      "expired-but-active",
+    store.addEnrollment(
       NimbusTestUtils.factories.experiment.withFeatureConfig(
         "expired-but-active",
         { featureId: "no-feature-firefox-desktop" },
@@ -1078,23 +1047,17 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
       )
     );
 
-    store.set(
-      "experiment-1",
+    store.addEnrollment(
       NimbusTestUtils.factories.experiment.withFeatureConfig(
         "experiment-1",
         {
           branchSlug: "experiment-1",
           featureId: "no-feature-firefox-desktop",
         },
-        {
-          source: NimbusTelemetry.EnrollmentSource.RS_LOADER,
-          userFacingName: "experiment-1",
-          userFacingDescription: "experiment-1 description",
-        }
+        { source: NimbusTelemetry.EnrollmentSource.RS_LOADER }
       )
     );
-    store.set(
-      "rollout-1",
+    store.addEnrollment(
       NimbusTestUtils.factories.experiment.withFeatureConfig(
         "rollout-1",
         { featureId: "no-feature-firefox-desktop" },
@@ -1109,13 +1072,10 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
           },
           firefoxLabsGroup: "group",
           requiresRestart: true,
-          userFacingName: "rollout-1",
-          userFacingDescription: "rollout-1 description",
         }
       )
     );
-    store.set(
-      "prefFlips-experiment",
+    store.addEnrollment(
       NimbusTestUtils.factories.experiment.withFeatureConfig(
         "prefFlips-experiment",
         {
@@ -1129,13 +1089,10 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
               "foo.bar.baz": "original-value",
             },
           },
-          userFacingName: "prefFlips-experiment",
-          userFacingDescription: "prefFlips-experiment description",
         }
       )
     );
-    store.set(
-      "setPref-experiment",
+    store.addEnrollment(
       NimbusTestUtils.factories.experiment.withFeatureConfig(
         "setPref-experiment",
         {
@@ -1153,28 +1110,20 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
               originalValue: "original-value",
             },
           ],
-          userFacingName: "setPref-experiment",
-          userFacingDescription: "setPref-experiment description",
         }
       )
     );
-    store.set(
-      "devtools",
+    store.addEnrollment(
       NimbusTestUtils.factories.experiment.withFeatureConfig(
         "devtools",
         {
           branchSlug: "devtools",
           featureId: "no-feature-firefox-desktop",
         },
-        {
-          source: "nimbus-devtools",
-          userFacingName: "devtools",
-          userFacingDescription: "devtools-description",
-        }
+        { source: "nimbus-devtools" }
       )
     );
-    store.set(
-      "optin",
+    store.addEnrollment(
       NimbusTestUtils.factories.experiment.withFeatureConfig(
         "optin",
         {
@@ -1188,8 +1137,6 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
               foo: "foo",
             },
           },
-          userFacingName: "optin",
-          userFacingDescription: "optin-description",
         }
       )
     );
@@ -1525,16 +1472,6 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
         },
         "optin: localizations is captured in recipe"
       );
-
-      if (NimbusEnrollments.readFromDatabaseEnabled) {
-        // store._data is a structuredClone of the ._jsonFile.data, so we need
-        // to reload the NimbusEnrollments table and compare against that instead.
-        const dbContents = await NimbusEnrollments.loadEnrollments();
-        Assert.deepEqual(
-          ExperimentAPI.manager.store._jsonFile.data,
-          dbContents
-        );
-      }
     } catch (e) {
       importMigrationError = e;
     }
@@ -1556,22 +1493,6 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
   if (importMigrationError) {
     throw importMigrationError;
   }
-
-  Assert.deepEqual(
-    Glean.nimbusEvents.startupDatabaseConsistency
-      .testGetValue("events")
-      .map(ev => ev.extra),
-    [
-      {
-        total_db_count: "9",
-        total_store_count: "9",
-        db_active_count: "7",
-        store_active_count: "7",
-        trigger: "migration",
-        primary,
-      },
-    ]
-  );
 
   await NimbusTestUtils.cleanupManager([
     "experiment-1",
@@ -1604,13 +1525,6 @@ async function testMigrateEnrollmentsToSql(primary = "jsonfile") {
     "nimbus.qa.pref-2 restored"
   );
   Services.prefs.deleteBranch("foo.bar.baz");
-}
-
-add_task(testMigrateEnrollmentsToSql);
-add_task(async function testMigrateEnrollmentsToSqlDb() {
-  const resetNimbusEnrollmentPrefs = NimbusTestUtils.enableNimbusEnrollments({
-    read: true,
-  });
-  await testMigrateEnrollmentsToSql("database");
-  resetNimbusEnrollmentPrefs();
+  Services.prefs.deleteBranch("nimbus.qa.pref-1");
+  Services.prefs.deleteBranch("nimbus.qa.pref-2");
 });

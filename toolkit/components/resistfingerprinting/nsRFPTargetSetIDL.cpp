@@ -8,18 +8,38 @@ namespace mozilla {
 
 NS_IMPL_ISUPPORTS(nsRFPTargetSetIDL, nsIRFPTargetSetIDL)
 
-constexpr uint32_t kBits = 128;  // Number of bits in the set
+NS_IMETHODIMP
+nsRFPTargetSetIDL::GetLow(uint64_t* aLow) {
+  std::bitset<128> bitset = mBits.serialize();
+  std::bitset<128> mask = std::bitset<128>(0xFFFFFFFFFFFFFFFF);
+  *aLow = (bitset & mask).to_ullong();
+  return NS_OK;
+}
 
 NS_IMETHODIMP
-nsRFPTargetSetIDL::GetNth32BitSet(uint32_t aPart, uint32_t* aValue) {
-  if (kBits / 32 <= aPart) {
-    return NS_ERROR_INVALID_ARG;
-  }
+nsRFPTargetSetIDL::GetHigh(uint64_t* aHigh) {
+  std::bitset<128> bitset = mBits.serialize();
+  std::bitset<128> mask = std::bitset<128>(0xFFFFFFFFFFFFFFFF);
+  *aHigh = ((bitset >> 64) & mask).to_ullong();
+  return NS_OK;
+}
 
-  std::bitset<kBits> bitset = mBits.serialize();
-  std::bitset<kBits> mask = std::bitset<kBits>(0xFFFFFFFF);
-  std::bitset<kBits> part = (bitset >> (aPart * 32)) & mask;
-  *aValue = static_cast<uint32_t>(part.to_ulong());
+NS_IMETHODIMP
+nsRFPTargetSetIDL::SetLow(uint64_t aLow) {
+  std::bitset<128> bitset = mBits.serialize();
+  bitset |= aLow;
+  mBits.deserialize(bitset);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsRFPTargetSetIDL::SetHigh(uint64_t aHigh) {
+  std::bitset<128> bitset = mBits.serialize();
+  std::bitset<128> mask = std::bitset<128>(0xFFFFFFFFFFFFFFFF);
+  uint64_t low = (bitset & mask).to_ullong();
+  bitset = aHigh;
+  bitset <<= 64;
+  bitset |= low;
   return NS_OK;
 }
 

@@ -44,7 +44,6 @@ const HF_HUB_HOSTNAME = "huggingface.co";
 const MOCHITESTS_HOSTNAME = "mochitests";
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 const DEFAULT_DELETE_TIMEOUT_MS = 5000;
-const LOCAL_CHROME_PREFIX = "chrome://";
 
 // Default indexedDB revision.
 const DEFAULT_MODEL_REVISION = 6;
@@ -1504,14 +1503,13 @@ export class ModelHub {
    * @returns {string} The full URL
    */
   #fileUrl({ model, revision, file, modelHubRootUrl, modelHubUrlTemplate }) {
-    const rootUrl = modelHubRootUrl || this.rootUrl;
     return lazy.createFileUrl({
       model,
       revision,
       file,
-      rootUrl,
+      rootUrl: modelHubRootUrl || this.rootUrl,
       urlTemplate: modelHubUrlTemplate || this.urlTemplate,
-      addDownloadParams: !rootUrl.startsWith(LOCAL_CHROME_PREFIX),
+      addDownloadParams: true,
     });
   }
 
@@ -1522,25 +1520,22 @@ export class ModelHub {
    * @param { string } file
    * @returns { Error } The error instance(can be null)
    */
-  static checkInput(model, revision, file) {
-    // Matches a string with the format 'organization/model' or just 'model' where:
+  #checkInput(model, revision, file) {
+    // Matches a string with the format 'organization/model' where:
     // - 'organization' consists only of letters, digits, and hyphens, cannot start or end with a hyphen,
     //   and cannot contain consecutive hyphens.
     // - 'model' can contain letters, digits, hyphens, underscores, or periods.
     //
     // Pattern breakdown:
     //   ^                                     Start of string
-    //    (?:                                  non-capturing group to make 'organization/' optional
-    //      (?!-)                              Negative lookahead for 'organization' not starting with hyphen
-    //           (?!.*--)                      Negative lookahead for 'organization' not containing consecutive hyphens
-    //                   [A-Za-z0-9-]+         'organization' part: Alphanumeric characters or hyphens
-    //                              (?<!-)     Negative lookbehind for 'organization' not ending with a hyphen
-    //                                    \/   Literal '/' character separating 'organization' and 'model'
-    //    )?                                   make 'organization/' group optional
-    //                                      [A-Za-z0-9-_.]+    'model' part: Alphanumeric characters, hyphens, underscores, or periods
-    //                                                    $    End of string
-    const modelRegex =
-      /^(?:(?!-)(?!.*--)[A-Za-z0-9-]+(?<!-)\/)?[A-Za-z0-9-_.]+$/;
+    //    (?!-)                                Negative lookahead for 'organization' not starting with hyphen
+    //         (?!.*--)                        Negative lookahead for 'organization' not containing consecutive hyphens
+    //                 [A-Za-z0-9-]+           'organization' part: Alphanumeric characters or hyphens
+    //                            (?<!-)       Negative lookbehind for 'organization' not ending with a hyphen
+    //                                  \/     Literal '/' character separating 'organization' and 'model'
+    //                                    [A-Za-z0-9-_.]+    'model' part: Alphanumeric characters, hyphens, underscores, or periods
+    //                                                  $    End of string
+    const modelRegex = /^(?!-)(?!.*--)[A-Za-z0-9-]+(?<!-)\/[A-Za-z0-9-_.]+$/;
 
     // Matches strings consisting of alphanumeric characters, hyphens, or periods.
     //
@@ -1548,7 +1543,7 @@ export class ModelHub {
     //                     [A-Za-z0-9-.]+     Alphanum characters, hyphens, or periods, one or more times
     const versionRegex = /^[A-Za-z0-9-.]+$/;
 
-    if (typeof model !== "string" || !modelRegex.test(model)) {
+    if (!modelRegex.test(model)) {
       return new Error("Invalid model name.");
     }
 
@@ -1831,7 +1826,7 @@ export class ModelHub {
     telemetryData = {},
   }) {
     // Make sure inputs are clean. We don't sanitize them but throw an exception
-    let checkError = ModelHub.checkInput(model, revision, file);
+    let checkError = this.#checkInput(model, revision, file);
     if (checkError) {
       throw checkError;
     }
@@ -1990,14 +1985,23 @@ export class ModelHub {
     lazy.console.debug(`Fetching ${url}`);
     let caughtError;
     try {
-      let isFirstCall = true;
       const response = await this.#fetch(url);
-      const fileObject = await lazy.OPFS.download({
-        savePath: localFilePath,
-        deletePreviousVersions: false,
-        skipIfExists: false,
-        source: response,
-        progressCallback: progressData => {
+      // After above call, we are sure the response was ok & no errors was thrown
+
+      let isFirstCall = true;
+
+      const fileHandle = await lazy.OPFS.getFileHandle(localFilePath, {
+        create: true,
+      });
+      const writeableStream = await fileHandle.createWritable({
+        keepExistingData: false,
+        mode: "siloed",
+      });
+
+      await lazy.Progress.readResponseToWriter(
+        response,
+        writeableStream,
+        progressData => {
           progressCallback?.(
             new lazy.Progress.ProgressAndStatusCallbackParams({
               ...progressInfo,
@@ -2010,8 +2014,8 @@ export class ModelHub {
             })
           );
           isFirstCall = false;
-        },
-      });
+        }
+      );
 
       this.#lastDownloadOk.set(sessionId, true);
       const end = Date.now();
@@ -2029,7 +2033,7 @@ export class ModelHub {
       });
 
       const headers = this.extractHeaders(response);
-      headers.fileSize = fileObject.size;
+      headers.fileSize = (await fileHandle.getFile()).size;
 
       await this.cache.put({
         engineId,

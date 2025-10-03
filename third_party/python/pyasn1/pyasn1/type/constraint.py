@@ -1,8 +1,8 @@
 #
 # This file is part of pyasn1 software.
 #
-# Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com>
-# License: https://pyasn1.readthedocs.io/en/latest/license.html
+# Copyright (c) 2005-2019, Ilya Etingof <etingof@gmail.com>
+# License: http://snmplabs.com/pyasn1/license.html
 #
 # Original concept and code by Mike C. Fletcher.
 #
@@ -31,9 +31,9 @@ class AbstractConstraint(object):
         try:
             self._testValue(value, idx)
 
-        except error.ValueConstraintError as exc:
+        except error.ValueConstraintError:
             raise error.ValueConstraintError(
-                '%s failed at: %r' % (self, exc)
+                '%s failed at: %r' % (self, sys.exc_info()[1])
             )
 
     def __repr__(self):
@@ -46,9 +46,7 @@ class AbstractConstraint(object):
         return '<%s>' % representation
 
     def __eq__(self, other):
-        if self is other:
-            return True
-        return self._values == other
+        return self is other and True or self._values == other
 
     def __ne__(self, other):
         return self._values != other
@@ -65,8 +63,12 @@ class AbstractConstraint(object):
     def __ge__(self, other):
         return self._values >= other
 
-    def __bool__(self):
-        return bool(self._values)
+    if sys.version_info[0] <= 2:
+        def __nonzero__(self):
+            return self._values and True or False
+    else:
+        def __bool__(self):
+            return self._values and True or False
 
     def __hash__(self):
         return self.__hash
@@ -147,6 +149,9 @@ class SingleValueConstraint(AbstractConstraint):
 
     def __iter__(self):
         return iter(self._set)
+
+    def __sub__(self, constraint):
+        return self.__class__(*(self._set.difference(constraint)))
 
     def __add__(self, constraint):
         return self.__class__(*(self._set.union(constraint)))

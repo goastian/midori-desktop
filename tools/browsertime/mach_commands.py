@@ -179,25 +179,25 @@ host_fetches = {
     "darwin": {
         "ffmpeg": {
             "type": "static-url",
-            "url": "https://github.com/mozilla/perf-automation/releases/download/FFMPEG-v7.1/ffmpeg-7.1.zip",  # noqa
+            "url": "https://github.com/mozilla/perf-automation/releases/download/FFMPEG-v4.4.1/ffmpeg-macos.zip",  # noqa
             # An extension to `fetch` syntax.
-            "path": "ffmpeg-7.1",
+            "path": "ffmpeg-macos",
         },
     },
     "linux64": {
         "ffmpeg": {
             "type": "static-url",
-            "url": "https://github.com/mozilla/perf-automation/releases/download/FFMPEG-v7.1/ffmpeg-master-latest-linux64-gpl-shared.tar.xz",  # noqa
+            "url": "https://github.com/mozilla/perf-automation/releases/download/FFMPEG-v4.4.1/ffmpeg-4.4.1-i686-static.tar.xz",  # noqa
             # An extension to `fetch` syntax.
-            "path": "ffmpeg-master-latest-linux64-gpl-shared",
+            "path": "ffmpeg-4.4.1-i686-static",
         },
     },
     "win64": {
         "ffmpeg": {
             "type": "static-url",
-            "url": "https://github.com/mozilla/perf-automation/releases/download/FFMPEG-v7.1/ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip",  # noqa
+            "url": "https://github.com/mozilla/perf-automation/releases/download/FFMPEG-v4.4.1/ffmpeg-4.4.1-full_build.zip",  # noqa
             # An extension to `fetch` syntax.
-            "path": "ffmpeg-n7.1-latest-win64-gpl-shared-7.1",
+            "path": "ffmpeg-4.4.1-full_build",
         },
     },
 }

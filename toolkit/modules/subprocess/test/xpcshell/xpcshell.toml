@@ -5,6 +5,7 @@ skip-if = ["os == 'android'"]
 subprocess = true
 support-files = [
   "data_text_file.txt",
+  "data_test_child.py",
   "data_test_script.py",
 ]
 
@@ -15,6 +16,8 @@ skip-if = [
 ]
 run-sequentially = "very high failure rate in parallel"
 
+["test_subprocess_child.js"]
+
 ["test_subprocess_connectRunning.js"]
 skip-if = [
   "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1936343
@@ -24,3 +27,5 @@ skip-if = [
 ["test_subprocess_getEnvironment.js"]
 
 ["test_subprocess_pathSearch.js"]
+
+["test_subprocess_polling.js"]

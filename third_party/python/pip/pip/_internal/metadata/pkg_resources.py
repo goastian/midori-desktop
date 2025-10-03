@@ -3,20 +3,11 @@ import email.parser
 import logging
 import os
 import zipfile
-from typing import (
-    Collection,
-    Iterable,
-    Iterator,
-    List,
-    Mapping,
-    NamedTuple,
-    Optional,
-)
+from typing import Collection, Iterable, Iterator, List, Mapping, NamedTuple, Optional
 
 from pip._vendor import pkg_resources
 from pip._vendor.packaging.requirements import Requirement
 from pip._vendor.packaging.utils import NormalizedName, canonicalize_name
-from pip._vendor.packaging.version import Version
 from pip._vendor.packaging.version import parse as parse_version
 
 from pip._internal.exceptions import InvalidWheel, NoneMetadataError, UnsupportedWheel
@@ -28,6 +19,7 @@ from .base import (
     BaseDistribution,
     BaseEntryPoint,
     BaseEnvironment,
+    DistributionVersion,
     InfoPath,
     Wheel,
 )
@@ -83,18 +75,6 @@ class InMemoryMetadata:
 class Distribution(BaseDistribution):
     def __init__(self, dist: pkg_resources.Distribution) -> None:
         self._dist = dist
-        # This is populated lazily, to avoid loading metadata for all possible
-        # distributions eagerly.
-        self.__extra_mapping: Optional[Mapping[NormalizedName, str]] = None
-
-    @property
-    def _extra_mapping(self) -> Mapping[NormalizedName, str]:
-        if self.__extra_mapping is None:
-            self.__extra_mapping = {
-                canonicalize_name(extra): extra for extra in self._dist.extras
-            }
-
-        return self.__extra_mapping
 
     @classmethod
     def from_directory(cls, directory: str) -> BaseDistribution:
@@ -188,12 +168,8 @@ class Distribution(BaseDistribution):
         return canonicalize_name(self._dist.project_name)
 
     @property
-    def version(self) -> Version:
+    def version(self) -> DistributionVersion:
         return parse_version(self._dist.version)
-
-    @property
-    def raw_version(self) -> str:
-        return self._dist.version
 
     def is_file(self, path: InfoPath) -> bool:
         return self._dist.has_metadata(str(path))
@@ -239,15 +215,16 @@ class Distribution(BaseDistribution):
         return feed_parser.close()
 
     def iter_dependencies(self, extras: Collection[str] = ()) -> Iterable[Requirement]:
-        if extras:
-            relevant_extras = set(self._extra_mapping) & set(
-                map(canonicalize_name, extras)
-            )
-            extras = [self._extra_mapping[extra] for extra in relevant_extras]
+        if extras:  # pkg_resources raises on invalid extras, so we sanitize.
+            extras = frozenset(pkg_resources.safe_extra(e) for e in extras)
+            extras = extras.intersection(self._dist.extras)
         return self._dist.requires(extras)
 
-    def iter_provided_extras(self) -> Iterable[NormalizedName]:
-        return self._extra_mapping.keys()
+    def iter_provided_extras(self) -> Iterable[str]:
+        return self._dist.extras
+
+    def is_extra_provided(self, extra: str) -> bool:
+        return pkg_resources.safe_extra(extra) in self._dist.extras
 
 
 class Environment(BaseEnvironment):

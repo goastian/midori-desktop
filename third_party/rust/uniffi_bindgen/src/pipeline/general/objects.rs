@@ -24,17 +24,13 @@ pub fn pass(module: &mut Module) -> Result<()> {
                     ty: FfiType::RustArcPtr {
                         module_name: module_name.clone(),
                         object_name: int.name.to_string(),
-                    }
-                    .into(),
+                    },
                 }],
                 return_type: FfiReturnType {
-                    ty: Some(
-                        FfiType::RustArcPtr {
-                            module_name: module_name.clone(),
-                            object_name: int.name.to_string(),
-                        }
-                        .into(),
-                    ),
+                    ty: Some(FfiType::RustArcPtr {
+                        module_name: module_name.clone(),
+                        object_name: int.name.to_string(),
+                    }),
                 },
                 has_rust_call_status_arg: true,
                 kind: FfiFunctionKind::ObjectClone,
@@ -51,8 +47,7 @@ pub fn pass(module: &mut Module) -> Result<()> {
                     ty: FfiType::RustArcPtr {
                         module_name: module_name.clone(),
                         object_name: int.name.to_string(),
-                    }
-                    .into(),
+                    },
                 }],
                 return_type: FfiReturnType { ty: None },
                 has_rust_call_status_arg: true,

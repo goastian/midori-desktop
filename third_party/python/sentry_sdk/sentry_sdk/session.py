@@ -1,11 +1,10 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
+from sentry_sdk._types import MYPY
 from sentry_sdk.utils import format_timestamp
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
+if MYPY:
     from typing import Optional
     from typing import Union
     from typing import Any
@@ -28,7 +27,7 @@ def _make_uuid(
     return uuid.UUID(val)
 
 
-class Session:
+class Session(object):
     def __init__(
         self,
         sid=None,  # type: Optional[Union[str, uuid.UUID]]
@@ -49,7 +48,7 @@ class Session:
         if sid is None:
             sid = uuid.uuid4()
         if started is None:
-            started = datetime.now(timezone.utc)
+            started = datetime.utcnow()
         if status is None:
             status = "ok"
         self.status = status
@@ -109,7 +108,7 @@ class Session:
         if did is not None:
             self.did = str(did)
         if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.utcnow()
         self.timestamp = timestamp
         if started is not None:
             self.started = started

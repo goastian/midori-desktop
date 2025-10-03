@@ -87,7 +87,6 @@ class nsMenuItemX final : public nsChangeObserver,
 
   void UncheckRadioSiblings(nsIContent* aCheckedElement);
   void SetKeyEquiv();
-  void SetBadge();
 
   nsCOMPtr<nsIContent> mContent;  // XUL <menuitem> or <menuseparator>
 

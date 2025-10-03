@@ -1,14 +1,14 @@
+from __future__ import absolute_import
+
 import ast
 
-import sentry_sdk
-from sentry_sdk import serializer
+from sentry_sdk import Hub, serializer
+from sentry_sdk._types import MYPY
 from sentry_sdk.integrations import Integration, DidNotEnable
 from sentry_sdk.scope import add_global_event_processor
 from sentry_sdk.utils import walk_exception_chain, iter_stacks
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
+if MYPY:
     from typing import Optional, Dict, Any, Tuple, List
     from types import FrameType
 
@@ -41,7 +41,7 @@ class PureEvalIntegration(Integration):
         @add_global_event_processor
         def add_executing_info(event, hint):
             # type: (Event, Optional[Hint]) -> Optional[Event]
-            if sentry_sdk.get_client().get_integration(PureEvalIntegration) is None:
+            if Hub.current.get_integration(PureEvalIntegration) is None:
                 return event
 
             if hint is None:
@@ -132,8 +132,7 @@ def pure_eval_frame(frame):
     atok = source.asttokens()
 
     expressions.sort(key=closeness, reverse=True)
-    vars = {
+    return {
         atok.get_text(nodes[0]): value
         for nodes, value in expressions[: serializer.MAX_DATABAG_BREADTH]
     }
-    return serializer.serialize(vars, is_vars=True)

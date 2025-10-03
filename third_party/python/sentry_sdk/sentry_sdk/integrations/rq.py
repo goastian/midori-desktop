@@ -1,17 +1,16 @@
-import weakref
+from __future__ import absolute_import
 
-import sentry_sdk
+import weakref
 from sentry_sdk.consts import OP
-from sentry_sdk.api import continue_trace
-from sentry_sdk.integrations import _check_minimum_version, DidNotEnable, Integration
+
+from sentry_sdk.hub import Hub
+from sentry_sdk.integrations import DidNotEnable, Integration
 from sentry_sdk.integrations.logging import ignore_logger
-from sentry_sdk.tracing import TransactionSource
+from sentry_sdk.tracing import Transaction, TRANSACTION_SOURCE_TASK
 from sentry_sdk.utils import (
     capture_internal_exceptions,
-    ensure_integration_enabled,
     event_from_exception,
     format_timestamp,
-    parse_version,
 )
 
 try:
@@ -19,16 +18,15 @@ try:
     from rq.timeouts import JobTimeoutException
     from rq.version import VERSION as RQ_VERSION
     from rq.worker import Worker
-    from rq.job import JobStatus
 except ImportError:
     raise DidNotEnable("RQ not installed")
 
-from typing import TYPE_CHECKING
+from sentry_sdk._types import MYPY
 
-if TYPE_CHECKING:
-    from typing import Any, Callable
+if MYPY:
+    from typing import Any, Callable, Dict
 
-    from sentry_sdk._types import Event, EventProcessor
+    from sentry_sdk._types import EventProcessor
     from sentry_sdk.utils import ExcInfo
 
     from rq.job import Job
@@ -36,37 +34,48 @@ if TYPE_CHECKING:
 
 class RqIntegration(Integration):
     identifier = "rq"
-    origin = f"auto.queue.{identifier}"
 
     @staticmethod
     def setup_once():
         # type: () -> None
-        version = parse_version(RQ_VERSION)
-        _check_minimum_version(RqIntegration, version)
+
+        try:
+            version = tuple(map(int, RQ_VERSION.split(".")[:3]))
+        except (ValueError, TypeError):
+            raise DidNotEnable("Unparsable RQ version: {}".format(RQ_VERSION))
+
+        if version < (0, 6):
+            raise DidNotEnable("RQ 0.6 or newer is required.")
 
         old_perform_job = Worker.perform_job
 
-        @ensure_integration_enabled(RqIntegration, old_perform_job)
         def sentry_patched_perform_job(self, job, *args, **kwargs):
             # type: (Any, Job, *Queue, **Any) -> bool
-            with sentry_sdk.new_scope() as scope:
+            hub = Hub.current
+            integration = hub.get_integration(RqIntegration)
+
+            if integration is None:
+                return old_perform_job(self, job, *args, **kwargs)
+
+            client = hub.client
+            assert client is not None
+
+            with hub.push_scope() as scope:
                 scope.clear_breadcrumbs()
                 scope.add_event_processor(_make_event_processor(weakref.ref(job)))
 
-                transaction = continue_trace(
+                transaction = Transaction.continue_from_headers(
                     job.meta.get("_sentry_trace_headers") or {},
                     op=OP.QUEUE_TASK_RQ,
                     name="unknown RQ task",
-                    source=TransactionSource.TASK,
-                    origin=RqIntegration.origin,
+                    source=TRANSACTION_SOURCE_TASK,
                 )
 
                 with capture_internal_exceptions():
                     transaction.name = job.func_name
 
-                with sentry_sdk.start_transaction(
-                    transaction,
-                    custom_sampling_context={"rq_job": job},
+                with hub.start_transaction(
+                    transaction, custom_sampling_context={"rq_job": job}
                 ):
                     rv = old_perform_job(self, job, *args, **kwargs)
 
@@ -74,7 +83,7 @@ class RqIntegration(Integration):
                 # We're inside of a forked process and RQ is
                 # about to call `os._exit`. Make sure that our
                 # events get sent out.
-                sentry_sdk.get_client().flush()
+                client.flush()
 
             return rv
 
@@ -84,14 +93,8 @@ class RqIntegration(Integration):
 
         def sentry_patched_handle_exception(self, job, *exc_info, **kwargs):
             # type: (Worker, Any, *Any, **Any) -> Any
-            retry = (
-                hasattr(job, "retries_left")
-                and job.retries_left
-                and job.retries_left > 0
-            )
-            failed = job._status == JobStatus.FAILED or job.is_failed
-            if failed and not retry:
-                _capture_exception(exc_info)
+            if job.is_failed:
+                _capture_exception(exc_info)  # type: ignore
 
             return old_handle_exception(self, job, *exc_info, **kwargs)
 
@@ -99,13 +102,12 @@ class RqIntegration(Integration):
 
         old_enqueue_job = Queue.enqueue_job
 
-        @ensure_integration_enabled(RqIntegration, old_enqueue_job)
         def sentry_patched_enqueue_job(self, job, **kwargs):
             # type: (Queue, Any, **Any) -> Any
-            scope = sentry_sdk.get_current_scope()
-            if scope.span is not None:
+            hub = Hub.current
+            if hub.get_integration(RqIntegration) is not None:
                 job.meta["_sentry_trace_headers"] = dict(
-                    scope.iter_trace_propagation_headers()
+                    hub.iter_trace_propagation_headers()
                 )
 
             return old_enqueue_job(self, job, **kwargs)
@@ -118,12 +120,12 @@ class RqIntegration(Integration):
 def _make_event_processor(weak_job):
     # type: (Callable[[], Job]) -> EventProcessor
     def event_processor(event, hint):
-        # type: (Event, dict[str, Any]) -> Event
+        # type: (Dict[str, Any], Dict[str, Any]) -> Dict[str, Any]
         job = weak_job()
         if job is not None:
             with capture_internal_exceptions():
                 extra = event.setdefault("extra", {})
-                rq_job = {
+                extra["rq-job"] = {
                     "job_id": job.id,
                     "func": job.func_name,
                     "args": job.args,
@@ -132,11 +134,9 @@ def _make_event_processor(weak_job):
                 }
 
                 if job.enqueued_at:
-                    rq_job["enqueued_at"] = format_timestamp(job.enqueued_at)
+                    extra["rq-job"]["enqueued_at"] = format_timestamp(job.enqueued_at)
                 if job.started_at:
-                    rq_job["started_at"] = format_timestamp(job.started_at)
-
-                extra["rq-job"] = rq_job
+                    extra["rq-job"]["started_at"] = format_timestamp(job.started_at)
 
         if "exc_info" in hint:
             with capture_internal_exceptions():
@@ -150,7 +150,12 @@ def _make_event_processor(weak_job):
 
 def _capture_exception(exc_info, **kwargs):
     # type: (ExcInfo, **Any) -> None
-    client = sentry_sdk.get_client()
+    hub = Hub.current
+    if hub.get_integration(RqIntegration) is None:
+        return
+
+    # If an integration is there, a client has to be there.
+    client = hub.client  # type: Any
 
     event, hint = event_from_exception(
         exc_info,
@@ -158,4 +163,4 @@ def _capture_exception(exc_info, **kwargs):
         mechanism={"type": "rq", "handled": False},
     )
 
-    sentry_sdk.capture_event(event, hint=hint)
+    hub.capture_event(event, hint=hint)

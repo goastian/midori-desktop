@@ -165,6 +165,10 @@
           "Clicking the description should not focus the toggle button"
         );
       });
+
+      add_task(async function testMozToggleWithoutVisibleLabel() {
+        await testHelpers.verifyAriaLabel("moz-toggle");
+      });
     </script>
   </body>
 </html>

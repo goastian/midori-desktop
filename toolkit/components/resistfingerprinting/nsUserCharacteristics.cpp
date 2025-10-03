@@ -5,7 +5,6 @@
 
 #include "nsUserCharacteristics.h"
 
-#include "nsComponentManagerUtils.h"
 #include "nsICryptoHash.h"
 #include "nsID.h"
 #include "nsIGfxInfo.h"

@@ -1,7 +1,6 @@
 from typing import Any, NewType, NoReturn, TypeVar
 
-from . import Attribute
-from attrs import _OnSetAttrType
+from . import Attribute, _OnSetAttrType
 
 _T = TypeVar("_T")
 

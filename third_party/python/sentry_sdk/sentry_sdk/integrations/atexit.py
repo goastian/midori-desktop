@@ -1,13 +1,17 @@
+from __future__ import absolute_import
+
 import os
 import sys
 import atexit
 
-import sentry_sdk
+from sentry_sdk.hub import Hub
 from sentry_sdk.utils import logger
 from sentry_sdk.integrations import Integration
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
+from sentry_sdk._types import MYPY
+
+if MYPY:
+
     from typing import Any
     from typing import Optional
 
@@ -23,7 +27,7 @@ def default_callback(pending, timeout):
         # type: (str) -> None
         sys.stderr.write(msg + "\n")
 
-    echo("Sentry is attempting to send %i pending events" % pending)
+    echo("Sentry is attempting to send %i pending error messages" % pending)
     echo("Waiting up to %s seconds" % timeout)
     echo("Press Ctrl-%s to quit" % (os.name == "nt" and "Break" or "C"))
     sys.stderr.flush()
@@ -44,14 +48,15 @@ class AtexitIntegration(Integration):
         @atexit.register
         def _shutdown():
             # type: () -> None
-            client = sentry_sdk.get_client()
-            integration = client.get_integration(AtexitIntegration)
-
-            if integration is None:
-                return
-
             logger.debug("atexit: got shutdown signal")
-            logger.debug("atexit: shutting down client")
-            sentry_sdk.get_isolation_scope().end_session()
+            hub = Hub.main
+            integration = hub.get_integration(AtexitIntegration)
+            if integration is not None:
+                logger.debug("atexit: shutting down client")
 
-            client.close(callback=integration.callback)
+                # If there is a session on the hub, close it now.
+                hub.end_session()
+
+                # If an integration is there, a client has to be there.
+                client = hub.client  # type: Any
+                client.close(callback=integration.callback)

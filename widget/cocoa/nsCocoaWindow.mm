@@ -8,12 +8,14 @@
 
 #include "nsArrayUtils.h"
 #include "nsCursorManager.h"
+#include "nsIAppStartup.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsILocalFileMac.h"
 #include "GLContextCGL.h"
 #include "MacThemeGeometryType.h"
 #include "NativeMenuSupport.h"
 #include "WindowRenderer.h"
+#include "mozilla/Components.h"
 #include "mozilla/MiscEvents.h"
 #include "mozilla/SwipeTracker.h"
 #include "mozilla/layers/APZInputBridge.h"
@@ -25,7 +27,6 @@
 #include "mozilla/layers/IAPZCTreeManager.h"
 #include "mozilla/dom/SimpleGestureEventBinding.h"
 #include "mozilla/dom/WheelEventBinding.h"
-#include "mozilla/ProfilerMarkers.h"
 #include "NativeKeyBindings.h"
 #include "ScreenHelperCocoa.h"
 #include "TextInputHandler.h"
@@ -389,9 +390,8 @@ void nsCocoaWindow::UnsuspendAsyncCATransactions() {
 nsresult nsCocoaWindow::SynthesizeNativeKeyEvent(
     int32_t aNativeKeyboardLayout, int32_t aNativeKeyCode,
     uint32_t aModifierFlags, const nsAString& aCharacters,
-    const nsAString& aUnmodifiedCharacters,
-    nsISynthesizedEventCallback* aCallback) {
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+    const nsAString& aUnmodifiedCharacters, nsIObserver* aObserver) {
+  AutoObserverNotifier notifier(aObserver, "keyevent");
   return mTextInputHandler->SynthesizeNativeKeyEvent(
       aNativeKeyboardLayout, aNativeKeyCode, aModifierFlags, aCharacters,
       aUnmodifiedCharacters);
@@ -400,10 +400,10 @@ nsresult nsCocoaWindow::SynthesizeNativeKeyEvent(
 nsresult nsCocoaWindow::SynthesizeNativeMouseEvent(
     LayoutDeviceIntPoint aPoint, NativeMouseMessage aNativeMessage,
     MouseButton aButton, nsIWidget::Modifiers aModifierFlags,
-    nsISynthesizedEventCallback* aCallback) {
+    nsIObserver* aObserver) {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
 
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+  AutoObserverNotifier notifier(aObserver, "mouseevent");
 
   NSPoint pt =
       nsCocoaUtils::DevPixelsToCocoaPoints(aPoint, BackingScaleFactor());
@@ -505,10 +505,10 @@ nsresult nsCocoaWindow::SynthesizeNativeMouseEvent(
 nsresult nsCocoaWindow::SynthesizeNativeMouseScrollEvent(
     mozilla::LayoutDeviceIntPoint aPoint, uint32_t aNativeMessage,
     double aDeltaX, double aDeltaY, double aDeltaZ, uint32_t aModifierFlags,
-    uint32_t aAdditionalFlags, nsISynthesizedEventCallback* aCallback) {
+    uint32_t aAdditionalFlags, nsIObserver* aObserver) {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
 
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+  AutoObserverNotifier notifier(aObserver, "mousescrollevent");
 
   NSPoint pt =
       nsCocoaUtils::DevPixelsToCocoaPoints(aPoint, BackingScaleFactor());
@@ -562,10 +562,10 @@ nsresult nsCocoaWindow::SynthesizeNativeMouseScrollEvent(
 nsresult nsCocoaWindow::SynthesizeNativeTouchPoint(
     uint32_t aPointerId, TouchPointerState aPointerState,
     mozilla::LayoutDeviceIntPoint aPoint, double aPointerPressure,
-    uint32_t aPointerOrientation, nsISynthesizedEventCallback* aCallback) {
+    uint32_t aPointerOrientation, nsIObserver* aObserver) {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
 
-  AutoSynthesizedEventCallbackNotifier notifier(aCallback);
+  AutoObserverNotifier notifier(aObserver, "touchpoint");
 
   MOZ_ASSERT(NS_IsMainThread());
   if (aPointerState == TOUCH_HOVER) {
@@ -841,7 +841,6 @@ void nsCocoaWindow::PaintWindowInContentLayer() {
 }
 
 void nsCocoaWindow::HandleMainThreadCATransaction() {
-  AUTO_PROFILER_TRACING_MARKER("Paint", "HandleMainThreadCATransaction", GRAPHICS);
   WillPaintWindow();
 
   if (GetWindowRenderer()->GetBackendType() == LayersBackend::LAYERS_NONE) {
@@ -2250,7 +2249,6 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
 
   EventMessage msg = aEnter ? eMouseEnterIntoWidget : eMouseExitFromWidget;
   WidgetMouseEvent event(true, msg, mGeckoChild, WidgetMouseEvent::eReal);
-  [self convertCocoaMouseEvent:aEvent toGeckoEvent:&event];
   event.mRefPoint = mGeckoChild->CocoaPointsToDevPixels(localEventLocation);
   if (event.mMessage == eMouseExitFromWidget) {
     event.mExitFrom = Some(aExitFrom);
@@ -4611,11 +4609,14 @@ nsresult nsCocoaWindow::Create(nsIWidget* aParent, const DesktopIntRect& aRect,
       initWithFrame:mWindow.childViewFrameRectForCurrentBounds
          geckoChild:this];
   mChildView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  [contentView addSubview:mChildView];
 
   mNativeLayerRoot =
       NativeLayerRootCA::CreateForCALayer(mChildView.rootCALayer);
   mNativeLayerRoot->SetBackingScale(BackingScaleFactor());
+
+  // Link mChildView into the native NSView hierarchy only after
+  // mNativeLayerRoot is initialized. This resolves bug 1986701.
+  [contentView addSubview:mChildView];
 
   [WindowDataMap.sharedWindowDataMap ensureDataForWindow:mWindow];
 
@@ -6846,6 +6847,13 @@ already_AddRefed<nsIWidget> nsIWidget::CreateChildWindow() {
 + (void)paintMenubarForWindow:(NSWindow*)aWindow {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
+  if (!NSApp.active) {
+    // Early exit if the app isn't active. This is because we can't safely
+    // set the NSApp.mainMenu property in such a case. We early exit so we
+    // also don't invoke any side effects.
+    return;
+  }
+
   // make sure we only act on windows that have this kind of
   // object as a delegate
   id windowDelegate = [aWindow delegate];
@@ -7106,9 +7114,17 @@ void nsCocoaWindow::CocoaWindowDidResize() {
   RefPtr<nsMenuBarX> hiddenWindowMenuBar =
       nsMenuUtilsX::GetHiddenWindowMenuBar();
   if (hiddenWindowMenuBar) {
-    // We do an async paint in order to prevent crashes when macOS is actively
-    // enumerating the menu items in `NSApp.mainMenu`.
-    hiddenWindowMenuBar->PaintAsyncIfNeeded();
+    bool isTerminating = false;
+    nsCOMPtr<nsIAppStartup> appStartup(components::AppStartup::Service());
+    if (appStartup) {
+      appStartup->GetAttemptingQuit(&isTerminating);
+    }
+
+    if (!isTerminating) {
+      // We do an async paint in order to prevent crashes when macOS is actively
+      // enumerating the menu items in `NSApp.mainMenu`.
+      hiddenWindowMenuBar->PaintAsyncIfNeeded();
+    }
   }
 
   NSWindow* window = [aNotification object];

@@ -17,8 +17,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRelevancy.sys.mjs",
   RelevancyStore:
     "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRelevancy.sys.mjs",
-  SharedRemoteSettingsService:
-    "resource://gre/modules/RustSharedRemoteSettingsService.sys.mjs",
+  RemoteSettingsConfig2:
+    "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRemoteSettings.sys.mjs",
+  RemoteSettingsService:
+    "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRemoteSettings.sys.mjs",
   score:
     "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRelevancy.sys.mjs",
 });
@@ -105,13 +107,6 @@ class RelevancyManager {
     // This will handle both Nimbus updates and pref changes.
     lazy.NimbusFeatures.contentRelevancy.onUpdate(this._nimbusUpdateCallback);
     this.#initialized = true;
-
-    // Interrupt sooner prior to the `profile-before-change` phase to allow
-    // all the in-progress IOs to exit.
-    lazy.AsyncShutdown.profileChangeTeardown.addBlocker(
-      "ContentRelevancyManager: Interrupt IO operations on relevancy store",
-      () => this.uninit()
-    );
   }
 
   uninit() {
@@ -123,9 +118,7 @@ class RelevancyManager {
 
     lazy.NimbusFeatures.contentRelevancy.offUpdate(this._nimbusUpdateCallback);
     Services.prefs.removeObserver(PREF_LOG_ENABLED, this);
-    this.interrupt();
     this.#disable();
-    this.#storeManager.shutdown();
     this.#storeManager = null;
 
     this.#initialized = false;
@@ -188,6 +181,13 @@ class RelevancyManager {
 
   #enable() {
     this.#storeManager.enable();
+    this._shutdownBlocker = () => this.interrupt();
+    // Interrupt sooner prior to the `profile-before-change` phase to allow
+    // all the in-progress IOs to exit.
+    lazy.AsyncShutdown.profileChangeTeardown.addBlocker(
+      "ContentRelevancyManager: Interrupt IO operations on relevancy store",
+      this._shutdownBlocker
+    );
     this.#startUpTimer();
   }
 
@@ -197,6 +197,12 @@ class RelevancyManager {
    * called.
    */
   #disable() {
+    if (this._shutdownBlocker) {
+      lazy.AsyncShutdown.profileChangeTeardown.removeBlocker(
+        this._shutdownBlocker
+      );
+      this._shutdownBlocker = null;
+    }
     lazy.timerManager.unregisterTimer(TIMER_ID);
     this.#storeManager.disable();
   }
@@ -376,7 +382,6 @@ class RelevancyManager {
       ) ??
       false
     ) {
-      await this.#storeManager.store.ensureInterestDataPopulated();
       interestVector = await this.#storeManager.store.ingest(urls);
     }
 
@@ -499,10 +504,18 @@ class RustRelevancyStoreManager {
     if (rustRelevancyStore === undefined) {
       rustRelevancyStore = lazy.RelevancyStore;
     }
-    this.#store = rustRelevancyStore.init(
-      path,
-      lazy.SharedRemoteSettingsService.rustService()
+    // Initialize a RemoteSettingsService for the relevancy store
+    // TODO (1956519): consolidate this with the Suggest code and only create a single app-wide remote settings
+    // service.  For now this duplication is okay though because we're not really shipping Relevancy -- it's only enabled via a
+    // pref.
+    const rsService = lazy.RemoteSettingsService.init(
+      PathUtils.join(
+        Services.dirsvc.get("ProfLD", Ci.nsIFile).path,
+        "remote-settings"
+      ),
+      new lazy.RemoteSettingsConfig2({})
     );
+    this.#store = rustRelevancyStore.init(path, rsService);
   }
 
   get store() {
@@ -517,14 +530,11 @@ class RustRelevancyStoreManager {
   }
 
   disable() {
-    this.enabled = false;
-  }
-
-  shutdown() {
     // Calling `close()` makes the store release all resources.  In particular, it closes all
     // database connections until a read/write method is called.  The `store` method ensures that
     // this won't happen before `enable` is called.
     this.#store.close();
+    this.enabled = false;
   }
 
   // The `RustRelevancy` store.

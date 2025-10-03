@@ -5,8 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "TextInputHandler.h"
-#include <Foundation/Foundation.h>
-#include <Foundation/NSObjCRuntime.h>
 
 #include "mozilla/Logging.h"
 
@@ -2427,12 +2425,17 @@ void TextInputHandler::InsertText(NSString* aString,
 
   MOZ_LOG_KEY_OR_IME(
       LogLevel::Info,
-      ("%p TextInputHandler::InsertText, aString=\"%s\", aReplacementRange=%s, "
-       "IsIMEComposing()=%s, keyevent=%p, keydownDispatched=%s, "
-       "keydownHandled=%s, keypressDispatched=%s, causedOtherKeyEvents=%s, "
-       "compositionDispatched=%s",
-       this, GetCharacters(aString),
-       aReplacementRange ? ToString(*aReplacementRange).c_str() : "nullptr",
+      ("%p TextInputHandler::InsertText, aString=\"%s\", "
+       "aReplacementRange=%p { location=%lu, length=%lu }, "
+       "IsIMEComposing()=%s, "
+       "keyevent=%p, keydownDispatched=%s, "
+       "keydownHandled=%s, keypressDispatched=%s, "
+       "causedOtherKeyEvents=%s, compositionDispatched=%s",
+       this, GetCharacters(aString), aReplacementRange,
+       static_cast<unsigned long>(
+           aReplacementRange ? aReplacementRange->location : 0),
+       static_cast<unsigned long>(aReplacementRange ? aReplacementRange->length
+                                                    : 0),
        TrueOrFalse(IsIMEComposing()),
        currentKeyEvent ? currentKeyEvent->mKeyEvent : nullptr,
        currentKeyEvent ? TrueOrFalse(currentKeyEvent->mKeyDownDispatched)
@@ -3742,13 +3745,15 @@ already_AddRefed<mozilla::TextRangeArray> IMEInputHandler::CreateTextRangeArray(
 }
 
 bool IMEInputHandler::DispatchCompositionStartEvent() {
-  MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p IMEInputHandler::DispatchCompositionStartEvent, "
-           "mSelectedRange=%s, Destroyed()=%s, mView=%p, mWidget=%p, "
-           "inputContext=%p, mIsIMEComposing=%s",
-           this, ToString(SelectedRange()).c_str(), TrueOrFalse(Destroyed()),
-           mView, mWidget, mView ? [mView inputContext] : nullptr,
-           TrueOrFalse(mIsIMEComposing)));
+  MOZ_LOG(
+      gIMELog, LogLevel::Info,
+      ("%p IMEInputHandler::DispatchCompositionStartEvent, "
+       "mSelectedRange={ location=%lu, length=%lu }, Destroyed()=%s, "
+       "mView=%p, mWidget=%p, inputContext=%p, mIsIMEComposing=%s",
+       this, static_cast<unsigned long>(SelectedRange().location),
+       static_cast<unsigned long>(mSelectedRange.length),
+       TrueOrFalse(Destroyed()), mView, mWidget,
+       mView ? [mView inputContext] : nullptr, TrueOrFalse(mIsIMEComposing)));
 
   RefPtr<IMEInputHandler> kungFuDeathGrip(this);
 
@@ -3769,11 +3774,6 @@ bool IMEInputHandler::DispatchCompositionStartEvent() {
                             currentKeyEvent->mKeyEvent);
 
   nsEventStatus status;
-  // IME may have already reterieved the selection and cache it.  Therefore, we
-  // should retreive selection range before dispatching eCompositionStart.
-  mIMECompositionStartBeforeStart = mIMECompositionStartInContent =
-      Some(SelectedRange().location);
-  mSelectedRangeOverride = Some(SelectedRange());
   rv = mDispatcher->StartComposition(status);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     MOZ_LOG(gIMELog, LogLevel::Error,
@@ -3791,9 +3791,15 @@ bool IMEInputHandler::DispatchCompositionStartEvent() {
     return false;
   }
 
-  // FYI: Dispathcing eCompositionStart may cause committing the composition if
-  // the focused editor is in chrome UI.
-  return mIsIMEComposing;
+  // FYI: compositionstart may cause committing composition by the webapp.
+  if (!mIsIMEComposing) {
+    return false;
+  }
+
+  // FYI: The selection range might have been modified by a compositionstart
+  //      event handler.
+  mIMECompositionStart = SelectedRange().location;
+  return true;
 }
 
 bool IMEInputHandler::DispatchCompositionChangeEvent(
@@ -3803,11 +3809,14 @@ bool IMEInputHandler::DispatchCompositionChangeEvent(
 
   MOZ_LOG(
       gIMELog, LogLevel::Info,
-      ("%p IMEInputHandler::DispatchCompositionChangeEvent, aText=\"%s\", "
-       "aAttrString=\"%s\", aSelectedRange=%s, Destroyed()=%s, mView=%p, "
+      ("%p IMEInputHandler::DispatchCompositionChangeEvent, "
+       "aText=\"%s\", aAttrString=\"%s\", "
+       "aSelectedRange={ location=%lu, length=%lu }, Destroyed()=%s, mView=%p, "
        "mWidget=%p, inputContext=%p, mIsIMEComposing=%s",
        this, NS_ConvertUTF16toUTF8(aText).get(),
-       GetCharacters([aAttrString string]), ToString(aSelectedRange).c_str(),
+       GetCharacters([aAttrString string]),
+       static_cast<unsigned long>(aSelectedRange.location),
+       static_cast<unsigned long>(aSelectedRange.length),
        TrueOrFalse(Destroyed()), mView, mWidget,
        mView ? [mView inputContext] : nullptr, TrueOrFalse(mIsIMEComposing)));
 
@@ -3838,12 +3847,8 @@ bool IMEInputHandler::DispatchCompositionChangeEvent(
     return false;
   }
 
-  // For avoiding IME to be confused at the preceding text changes during
-  // composition, we should not use the actual offset in content so that we
-  // should use the location at composition start.
-  mSelectedRangeOverride = Some(
-      NSMakeRange(*mIMECompositionStartBeforeStart + aSelectedRange.location,
-                  aSelectedRange.length));
+  mSelectedRange.location = mIMECompositionStart + aSelectedRange.location;
+  mSelectedRange.length = aSelectedRange.length;
 
   if (mIMECompositionString) {
     [mIMECompositionString release];
@@ -3892,17 +3897,11 @@ bool IMEInputHandler::DispatchCompositionCommitEvent(
 
   RefPtr<IMEInputHandler> kungFuDeathGrip(this);
 
-  // Finish overriding Selection and mSelectedRange will be updated before
-  // dispatching the committing composition below and allow OnSelectionChange()
-  // changes the result of SelectedRange().
-  mSelectedRangeOverride.reset();
-
   if (!Destroyed()) {
-    // mSelectedRange will be updated asynchronously if focused editor is in a
-    // remote process.  However, IME may retrieve selected range immediately.
-    // Therefore, we should emulate the selection after committing composition
-    // right now.
-    mSelectedRange.location = *mIMECompositionStartInContent;
+    // IME may query selection immediately after this, however, in e10s mode,
+    // OnSelectionChange() will be called asynchronously.  Until then, we
+    // should emulate expected selection range if the webapp does nothing.
+    mSelectedRange.location = mIMECompositionStart;
     if (aCommitString) {
       mSelectedRange.location += aCommitString->Length();
     } else if (mIMECompositionString) {
@@ -3931,8 +3930,7 @@ bool IMEInputHandler::DispatchCompositionCommitEvent(
   }
 
   mIsIMEComposing = mIsDeadKeyComposing = false;
-  mIMECompositionStartBeforeStart.reset();
-  mIMECompositionStartInContent.reset();
+  mIMECompositionStart = UINT32_MAX;
   if (mIMECompositionString) {
     [mIMECompositionString release];
     mIMECompositionString = nullptr;
@@ -4038,14 +4036,20 @@ void IMEInputHandler::InsertTextAsCommittingComposition(
     NSString* aString, NSRange* aReplacementRange) {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
-  MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p IMEInputHandler::InsertTextAsCommittingComposition, "
-           "aAttrString=\"%s\", aReplacementRange=%s, Destroyed()=%s, "
-           "IsIMEComposing()=%s, mMarkedRange=%s",
-           this, GetCharacters(aString),
-           aReplacementRange ? ToString(*aReplacementRange).c_str() : "nullptr",
-           TrueOrFalse(Destroyed()), TrueOrFalse(IsIMEComposing()),
-           ToString(mMarkedRange).c_str()));
+  MOZ_LOG(
+      gIMELog, LogLevel::Info,
+      ("%p IMEInputHandler::InsertTextAsCommittingComposition, "
+       "aAttrString=\"%s\", aReplacementRange=%p { location=%lu, length=%lu }, "
+       "Destroyed()=%s, IsIMEComposing()=%s, "
+       "mMarkedRange={ location=%lu, length=%lu }",
+       this, GetCharacters(aString), aReplacementRange,
+       static_cast<unsigned long>(
+           aReplacementRange ? aReplacementRange->location : 0),
+       static_cast<unsigned long>(aReplacementRange ? aReplacementRange->length
+                                                    : 0),
+       TrueOrFalse(Destroyed()), TrueOrFalse(IsIMEComposing()),
+       static_cast<unsigned long>(mMarkedRange.location),
+       static_cast<unsigned long>(mMarkedRange.length)));
 
   if (IgnoreIMECommit()) {
     MOZ_CRASH("IMEInputHandler::InsertTextAsCommittingComposition() must not"
@@ -4149,16 +4153,24 @@ void IMEInputHandler::SetMarkedText(NSAttributedString* aAttrString,
 
   MOZ_LOG(
       gIMELog, LogLevel::Info,
-      ("%p IMEInputHandler::SetMarkedText, aAttrString=\"%s\", "
-       "aSelectedRange=%s, aReplacementRange=%s, Destroyed()=%s, "
-       "IsIMEComposing()=%s, mMarkedRange=%s, keyevent=%p, "
-       "keydownDispatched=%s, keydownHandled=%s, keypressDispatched=%s, "
-       "causedOtherKeyEvents=%s, compositionDispatched=%s",
+      ("%p IMEInputHandler::SetMarkedText, "
+       "aAttrString=\"%s\", aSelectedRange={ location=%lu, length=%lu }, "
+       "aReplacementRange=%p { location=%lu, length=%lu }, "
+       "Destroyed()=%s, IsIMEComposing()=%s, "
+       "mMarkedRange={ location=%lu, length=%lu }, keyevent=%p, "
+       "keydownDispatched=%s, keydownHandled=%s, "
+       "keypressDispatched=%s, causedOtherKeyEvents=%s, "
+       "compositionDispatched=%s",
        this, GetCharacters([aAttrString string]),
-       ToString(aSelectedRange).c_str(),
-       aReplacementRange ? ToString(*aReplacementRange).c_str() : "nullptr",
+       static_cast<unsigned long>(aSelectedRange.location),
+       static_cast<unsigned long>(aSelectedRange.length), aReplacementRange,
+       static_cast<unsigned long>(
+           aReplacementRange ? aReplacementRange->location : 0),
+       static_cast<unsigned long>(aReplacementRange ? aReplacementRange->length
+                                                    : 0),
        TrueOrFalse(Destroyed()), TrueOrFalse(IsIMEComposing()),
-       ToString(mMarkedRange).c_str(),
+       static_cast<unsigned long>(mMarkedRange.location),
+       static_cast<unsigned long>(mMarkedRange.length),
        currentKeyEvent ? currentKeyEvent->mKeyEvent : nullptr,
        currentKeyEvent ? TrueOrFalse(currentKeyEvent->mKeyDownDispatched)
                        : "N/A",
@@ -4272,9 +4284,11 @@ NSAttributedString* IMEInputHandler::GetAttributedSubstringFromRange(
 
   MOZ_LOG(
       gIMELog, LogLevel::Info,
-      ("%p   IMEInputHandler::GetAttributedSubstringFromRange, aRange=%s, "
-       "aActualRange=%p, Destroyed()=%s",
-       this, ToString(aRange).c_str(), aActualRange, TrueOrFalse(Destroyed())));
+      ("%p   IMEInputHandler::GetAttributedSubstringFromRange, "
+       "aRange={ location=%lu, length=%lu }, aActualRange=%p, Destroyed()=%s",
+       this, static_cast<unsigned long>(aRange.location),
+       static_cast<unsigned long>(aRange.length), aActualRange,
+       TrueOrFalse(Destroyed())));
 
   if (aActualRange) {
     *aActualRange = NSMakeRange(NSNotFound, 0);
@@ -4296,12 +4310,12 @@ NSAttributedString* IMEInputHandler::GetAttributedSubstringFromRange(
   //     at least for now.
   NSUInteger compositionLength =
       mIMECompositionString ? [mIMECompositionString length] : 0;
-  if (mIMECompositionStartBeforeStart.isSome() &&
-      aRange.location >= *mIMECompositionStartBeforeStart &&
+  if (mIMECompositionStart != UINT32_MAX &&
+      aRange.location >= mIMECompositionStart &&
       aRange.location + aRange.length <=
-          *mIMECompositionStartBeforeStart + compositionLength) {
-    NSRange range = NSMakeRange(
-        aRange.location - *mIMECompositionStartBeforeStart, aRange.length);
+          mIMECompositionStart + compositionLength) {
+    NSRange range =
+        NSMakeRange(aRange.location - mIMECompositionStart, aRange.length);
     NSString* nsstr = [mIMECompositionString substringWithRange:range];
     NSMutableAttributedString* result =
         [[[NSMutableAttributedString alloc] initWithString:nsstr
@@ -4329,14 +4343,14 @@ NSAttributedString* IMEInputHandler::GetAttributedSubstringFromRange(
                                                 mWidget);
   WidgetQueryContentEvent::Options options;
   int64_t startOffset = aRange.location;
-  if (mIMECompositionStartBeforeStart.isSome()) {
+  if (IsIMEComposing()) {
     // The composition may be at different offset from the selection start
     // offset at dispatching compositionstart because start of composition
     // is fixed when composition string becomes non-empty in the editor.
     // Therefore, we need to use query event which is relative to insertion
     // point.
     options.mRelativeToInsertionPoint = true;
-    startOffset -= *mIMECompositionStartBeforeStart;
+    startOffset -= mIMECompositionStart;
   }
   queryTextContentEvent.InitForQueryTextContent(startOffset, aRange.length,
                                                 options);
@@ -4370,48 +4384,37 @@ NSAttributedString* IMEInputHandler::GetAttributedSubstringFromRange(
 
 bool IMEInputHandler::HasMarkedText() {
   MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p   IMEInputHandler::HasMarkedText, mMarkedRange=%s", this,
-           ToString(mMarkedRange).c_str()));
+          ("%p   IMEInputHandler::HasMarkedText, "
+           "mMarkedRange={ location=%lu, length=%lu }",
+           this, static_cast<unsigned long>(mMarkedRange.location),
+           static_cast<unsigned long>(mMarkedRange.length)));
 
   return (mMarkedRange.location != NSNotFound) && (mMarkedRange.length != 0);
 }
 
 NSRange IMEInputHandler::MarkedRange() {
   MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p   IMEInputHandler::MarkedRange, mMarkedRange=%s", this,
-           ToString(mMarkedRange).c_str()));
+          ("%p   IMEInputHandler::MarkedRange, "
+           "mMarkedRange={ location=%lu, length=%lu }",
+           this, static_cast<unsigned long>(mMarkedRange.location),
+           static_cast<unsigned long>(mMarkedRange.length)));
 
   if (!HasMarkedText()) {
     return NSMakeRange(NSNotFound, 0);
   }
-
-  // XXX If MarkedRange() is requred by IME, we could return actual range in
-  // content.  If we do that, IME can interact with the latest content
-  // information.  E.g., actual surrounding text which may have already been
-  // modified by the web apps during the composition.  On the other hand,
-  // there is no way to notify IME of when it's updated.  Therefore, if
-  // `SelectedRange()` is called before `MarkedRange()`, the ranges will
-  // mismatch in IME.  Therefore, probably we should not do that.
-
   return mMarkedRange;
 }
 
 NSRange IMEInputHandler::SelectedRange() {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
 
-  MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p   IMEInputHandler::SelectedRange, Destroyed()=%s, "
-           "mSelectedRange=%s, mSelectedRangeOverride=%s",
-           this, TrueOrFalse(Destroyed()), ToString(mSelectedRange).c_str(),
-           ToString(mSelectedRangeOverride).c_str()));
-
-  // If selection range is overridden during a composition, we should return the
-  // override instead of selected range in the content.  That makes IME work
-  // without confusion even if IME caches the compositing range at starting
-  // composition and the web app changes the preceding text of the composition.
-  if (mSelectedRangeOverride.isSome()) {
-    return *mSelectedRangeOverride;
-  }
+  MOZ_LOG(
+      gIMELog, LogLevel::Info,
+      ("%p   IMEInputHandler::SelectedRange, Destroyed()=%s, mSelectedRange={ "
+       "location=%lu, length=%lu }",
+       this, TrueOrFalse(Destroyed()),
+       static_cast<unsigned long>(mSelectedRange.location),
+       static_cast<unsigned long>(mSelectedRange.length)));
 
   if (Destroyed()) {
     return mSelectedRange;
@@ -4487,11 +4490,12 @@ NSRect IMEInputHandler::FirstRectForCharacterRange(NSRange& aRange,
                                                    NSRange* aActualRange) {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
 
-  MOZ_LOG(
-      gIMELog, LogLevel::Info,
-      ("%p IMEInputHandler::FirstRectForCharacterRange, Destroyed()=%s, "
-       "aRange=%s, aActualRange=%p }",
-       this, TrueOrFalse(Destroyed()), ToString(aRange).c_str(), aActualRange));
+  MOZ_LOG(gIMELog, LogLevel::Info,
+          ("%p IMEInputHandler::FirstRectForCharacterRange, Destroyed()=%s, "
+           "aRange={ location=%lu, length=%lu }, aActualRange=%p }",
+           this, TrueOrFalse(Destroyed()),
+           static_cast<unsigned long>(aRange.location),
+           static_cast<unsigned long>(aRange.length), aActualRange));
 
   // XXX this returns first character rect or caret rect, it is limitation of
   // now. We need more work for returns first line rect. But current
@@ -4514,14 +4518,14 @@ NSRect IMEInputHandler::FirstRectForCharacterRange(NSRange& aRange,
     WidgetQueryContentEvent queryTextRectEvent(true, eQueryTextRect, mWidget);
     WidgetQueryContentEvent::Options options;
     int64_t startOffset = aRange.location;
-    if (mIMECompositionStartBeforeStart.isSome()) {
+    if (IsIMEComposing()) {
       // The composition may be at different offset from the selection start
       // offset at dispatching compositionstart because start of composition
       // is fixed when composition string becomes non-empty in the editor.
       // Therefore, we need to use query event which is relative to insertion
       // point.
       options.mRelativeToInsertionPoint = true;
-      startOffset -= *mIMECompositionStartBeforeStart;
+      startOffset -= mIMECompositionStart;
     }
     queryTextRectEvent.InitForQueryTextRect(startOffset, 1, options);
     DispatchEvent(queryTextRectEvent);
@@ -4539,14 +4543,14 @@ NSRect IMEInputHandler::FirstRectForCharacterRange(NSRange& aRange,
     WidgetQueryContentEvent queryCaretRectEvent(true, eQueryCaretRect, mWidget);
     WidgetQueryContentEvent::Options options;
     int64_t startOffset = aRange.location;
-    if (mIMECompositionStartBeforeStart.isSome()) {
+    if (IsIMEComposing()) {
       // The composition may be at different offset from the selection start
       // offset at dispatching compositionstart because start of composition
       // is fixed when composition string becomes non-empty in the editor.
       // Therefore, we need to use query event which is relative to insertion
       // point.
       options.mRelativeToInsertionPoint = true;
-      startOffset -= *mIMECompositionStartBeforeStart;
+      startOffset -= mIMECompositionStart;
     }
     queryCaretRectEvent.InitForQueryCaretRect(startOffset, options);
     DispatchEvent(queryCaretRectEvent);
@@ -4569,10 +4573,13 @@ NSRect IMEInputHandler::FirstRectForCharacterRange(NSRange& aRange,
   }
 
   MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p   IMEInputHandler::FirstRectForCharacterRange, useCaretRect=%s "
-           "rect={ x=%f, y=%f, width=%f, height=%f }, actualRange=%s",
+          ("%p   IMEInputHandler::FirstRectForCharacterRange, "
+           "useCaretRect=%s rect={ x=%f, y=%f, width=%f, height=%f }, "
+           "actualRange={ location=%lu, length=%lu }",
            this, TrueOrFalse(useCaretRect), rect.origin.x, rect.origin.y,
-           rect.size.width, rect.size.height, ToString(actualRange).c_str()));
+           rect.size.width, rect.size.height,
+           static_cast<unsigned long>(actualRange.location),
+           static_cast<unsigned long>(actualRange.length)));
 
   return rect;
 
@@ -4650,6 +4657,8 @@ IMEInputHandler::IMEInputHandler(nsCocoaWindow* aWidget,
       mPendingMethods(0),
       mCandidatedTextSubstitutionResult(nullptr),
       mProcessTextSubstitution(false),
+      mIMECompositionString(nullptr),
+      mIMECompositionStart(UINT32_MAX),
       mRangeForWritingMode(),
       mIsIMEComposing(false),
       mIsDeadKeyComposing(false),
@@ -4960,21 +4969,10 @@ void IMEInputHandler::OpenSystemPreferredLanguageIME() {
 void IMEInputHandler::OnSelectionChange(
     const IMENotification& aIMENotification) {
   MOZ_ASSERT(aIMENotification.mSelectionChangeData.IsInitialized());
-
-  const IMENotification::SelectionChangeDataBase& selectionChangeData =
-      aIMENotification.mSelectionChangeData;
   MOZ_LOG(gIMELog, LogLevel::Info,
-          ("%p "
-           "IMEInputHandler::OnSelectionChange(aIMENotification."
-           "mSelectionChangeData=%s)",
-           this, ToString(selectionChangeData).c_str()));
+          ("%p IMEInputHandler::OnSelectionChange", this));
 
-  // mSelectedRange and mRangeForWritingMode should be the range in the actual
-  // content.  Therefore, they should be maintained here.  On the other hand,
-  // mSelectedRangeOverride needs to keep selection range which is probably
-  // expected by IME.  Therefore, we shouldn't touch the override here.
-
-  if (!selectionChangeData.HasRange()) {
+  if (!aIMENotification.mSelectionChangeData.HasRange()) {
     mSelectedRange.location = NSNotFound;
     mSelectedRange.length = 0;
     mRangeForWritingMode.location = NSNotFound;
@@ -4982,9 +4980,10 @@ void IMEInputHandler::OnSelectionChange(
     return;
   }
 
-  mWritingMode = selectionChangeData.GetWritingMode();
+  mWritingMode = aIMENotification.mSelectionChangeData.GetWritingMode();
   mRangeForWritingMode =
-      NSMakeRange(selectionChangeData.mOffset, selectionChangeData.Length());
+      NSMakeRange(aIMENotification.mSelectionChangeData.mOffset,
+                  aIMENotification.mSelectionChangeData.Length());
   if (mIMEHasFocus) {
     mSelectedRange = mRangeForWritingMode;
   }
@@ -5027,11 +5026,6 @@ static NSTextCheckingType GetTextCheckingTypes() {
 }
 
 void IMEInputHandler::OnTextChange(const IMENotification& aIMENotification) {
-  if (mIMECompositionStartInContent.isSome()) {
-    mIMECompositionStartInContent =
-        Some(aIMENotification.mTextChangeData.ComputeNewOffset(
-            *mIMECompositionStartInContent));
-  }
   HandleTextSubstitution(aIMENotification);
 }
 

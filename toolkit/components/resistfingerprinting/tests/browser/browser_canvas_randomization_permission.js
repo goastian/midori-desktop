@@ -88,7 +88,6 @@ const TEST_CASES = [
 add_setup(async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       ["privacy.resistFingerprinting", false],
       ["privacy.fingerprintingProtection", false],
     ],

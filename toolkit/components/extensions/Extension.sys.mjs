@@ -1467,7 +1467,7 @@ export class ExtensionData {
       ),
       data_collection: newPermissions.data_collection.filter(
         perm =>
-          !oldPermissions.data_collection.includes(perm) && perm !== "none"
+          !oldPermissions.data_collection?.includes(perm) && perm !== "none"
       ),
     };
   }
@@ -2763,7 +2763,6 @@ export class ExtensionData {
    *                             localized strings for various elements of a
    *                             permission dialog.
    */
-  // eslint-disable-next-line complexity
   static formatPermissionStrings(
     {
       addon,

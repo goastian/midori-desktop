@@ -954,7 +954,7 @@ add_setup(function test_common_initialize() {
   // Cache locks might prevent concurrent requests to the same resource, and
   // this may block tests that use the interruptible handlers.
   Services.prefs.setBoolPref("browser.cache.disk.enable", false);
-  Services.prefs.setBoolPref("browser.cache.memory.enable", true);
+  Services.prefs.setBoolPref("browser.cache.memory.enable", false);
   registerCleanupFunction(function () {
     Services.prefs.clearUserPref("browser.cache.disk.enable");
     Services.prefs.clearUserPref("browser.cache.memory.enable");

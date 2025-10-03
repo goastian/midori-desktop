@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright (C) 2016 Adrien Vergé
 #
 # This program is free software: you can redistribute it and/or modify
@@ -22,15 +23,6 @@ Use this rule to control the number of spaces before and after colons (``:``).
   colons (use ``-1`` to disable).
 * ``max-spaces-after`` defines the maximal number of spaces allowed after
   colons (use ``-1`` to disable).
-
-.. rubric:: Default values (when enabled)
-
-.. code-block:: yaml
-
- rules:
-   colons:
-     max-spaces-before: 0
-     max-spaces-after: 1
 
 .. rubric:: Examples
 
@@ -82,6 +74,7 @@ import yaml
 
 from yamllint.rules.common import is_explicit_key, spaces_after, spaces_before
 
+
 ID = 'colons'
 TYPE = 'token'
 CONF = {'max-spaces-before': int,
@@ -91,9 +84,7 @@ DEFAULT = {'max-spaces-before': 0,
 
 
 def check(conf, token, prev, next, nextnext, context):
-    if isinstance(token, yaml.ValueToken) and not (
-            isinstance(prev, yaml.AliasToken) and
-            token.start_mark.pointer - prev.end_mark.pointer == 1):
+    if isinstance(token, yaml.ValueToken):
         problem = spaces_before(token, prev, next,
                                 max=conf['max-spaces-before'],
                                 max_desc='too many spaces before colon')

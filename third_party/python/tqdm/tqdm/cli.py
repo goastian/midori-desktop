@@ -5,7 +5,6 @@ import logging
 import re
 import sys
 from ast import literal_eval as numeric
-from textwrap import indent
 
 from .std import TqdmKeyError, TqdmTypeError, tqdm
 from .version import __version__
@@ -178,9 +177,7 @@ def main(fp=sys.stderr, argv=None):
     logging.basicConfig(level=getattr(logging, logLevel),
                         format="%(levelname)s:%(module)s:%(lineno)d:%(message)s")
 
-    # py<3.13 doesn't dedent docstrings
-    d = (tqdm.__doc__ if sys.version_info < (3, 13)
-         else indent(tqdm.__doc__, "    ")) + CLI_EXTRA_DOC
+    d = tqdm.__doc__ + CLI_EXTRA_DOC
 
     opt_types = dict(RE_OPTS.findall(d))
     # opt_types['delim'] = 'chr'
@@ -258,21 +255,22 @@ Options:
             stdout = getattr(stdout, 'buffer', stdout)
         stdin = getattr(sys.stdin, 'buffer', sys.stdin)
         if manpath or comppath:
-            try:  # py<3.9
-                import importlib_resources as resources
-            except ImportError:
-                from importlib import resources
-            from pathlib import Path
+            from importlib import resources
+            from os import path
+            from shutil import copyfile
 
             def cp(name, dst):
                 """copy resource `name` to `dst`"""
-                fi = resources.files('tqdm') / name
-                dst.write_bytes(fi.read_bytes())
+                if hasattr(resources, 'files'):
+                    copyfile(str(resources.files('tqdm') / name), dst)
+                else:  # py<3.9
+                    with resources.path('tqdm', name) as src:
+                        copyfile(str(src), dst)
                 log.info("written:%s", dst)
             if manpath is not None:
-                cp('tqdm.1', Path(manpath) / 'tqdm.1')
+                cp('tqdm.1', path.join(manpath, 'tqdm.1'))
             if comppath is not None:
-                cp('completion.sh', Path(comppath) / 'tqdm_completion.sh')
+                cp('completion.sh', path.join(comppath, 'tqdm_completion.sh'))
             sys.exit(0)
         if tee:
             stdout_write = stdout.write

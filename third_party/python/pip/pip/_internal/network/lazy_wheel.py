@@ -159,7 +159,7 @@ class LazyZipOverHTTP:
                 try:
                     # For read-only ZIP files, ZipFile only needs
                     # methods read, seek, seekable and tell.
-                    ZipFile(self)
+                    ZipFile(self)  # type: ignore
                 except BadZipFile:
                     pass
                 else:

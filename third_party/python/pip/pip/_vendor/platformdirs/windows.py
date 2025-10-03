@@ -1,7 +1,7 @@
 """Windows."""
-
 from __future__ import annotations
 
+import ctypes
 import os
 import sys
 from functools import lru_cache
@@ -15,13 +15,15 @@ if TYPE_CHECKING:
 
 class Windows(PlatformDirsABC):
     """
-    `MSDN on where to store app data files <https://learn.microsoft.com/en-us/windows/win32/shell/knownfolderid>`_.
-
-    Makes use of the `appname <platformdirs.api.PlatformDirsABC.appname>`, `appauthor
-    <platformdirs.api.PlatformDirsABC.appauthor>`, `version <platformdirs.api.PlatformDirsABC.version>`, `roaming
-    <platformdirs.api.PlatformDirsABC.roaming>`, `opinion <platformdirs.api.PlatformDirsABC.opinion>`, `ensure_exists
-    <platformdirs.api.PlatformDirsABC.ensure_exists>`.
-
+    `MSDN on where to store app data files
+    <http://support.microsoft.com/default.aspx?scid=kb;en-us;310294#XSLTH3194121123120121120120>`_.
+    Makes use of the
+    `appname <platformdirs.api.PlatformDirsABC.appname>`,
+    `appauthor <platformdirs.api.PlatformDirsABC.appauthor>`,
+    `version <platformdirs.api.PlatformDirsABC.version>`,
+    `roaming <platformdirs.api.PlatformDirsABC.roaming>`,
+    `opinion <platformdirs.api.PlatformDirsABC.opinion>`,
+    `ensure_exists <platformdirs.api.PlatformDirsABC.ensure_exists>`.
     """
 
     @property
@@ -121,11 +123,6 @@ class Windows(PlatformDirsABC):
         return os.path.normpath(get_win_folder("CSIDL_MYMUSIC"))
 
     @property
-    def user_desktop_dir(self) -> str:
-        """:return: desktop directory tied to the user, e.g. ``%USERPROFILE%\\Desktop``"""
-        return os.path.normpath(get_win_folder("CSIDL_DESKTOPDIRECTORY"))
-
-    @property
     def user_runtime_dir(self) -> str:
         """
         :return: runtime directory tied to the user, e.g.
@@ -133,11 +130,6 @@ class Windows(PlatformDirsABC):
         """
         path = os.path.normpath(os.path.join(get_win_folder("CSIDL_LOCAL_APPDATA"), "Temp"))  # noqa: PTH118
         return self._append_parts(path)
-
-    @property
-    def site_runtime_dir(self) -> str:
-        """:return: runtime directory shared by users, same as `user_runtime_dir`"""
-        return self.user_runtime_dir
 
 
 def get_win_folder_from_env_vars(csidl_name: str) -> str:
@@ -162,7 +154,7 @@ def get_win_folder_from_env_vars(csidl_name: str) -> str:
 
 
 def get_win_folder_if_csidl_name_not_env_var(csidl_name: str) -> str | None:
-    """Get a folder for a CSIDL name that does not exist as an environment variable."""
+    """Get folder for a CSIDL name that does not exist as an environment variable."""
     if csidl_name == "CSIDL_PERSONAL":
         return os.path.join(os.path.normpath(os.environ["USERPROFILE"]), "Documents")  # noqa: PTH118
 
@@ -186,7 +178,6 @@ def get_win_folder_from_registry(csidl_name: str) -> str:
 
     This is a fallback technique at best. I'm not sure if using the registry for these guarantees us the correct answer
     for all CSIDL_* names.
-
     """
     shell_folder_name = {
         "CSIDL_APPDATA": "AppData",
@@ -203,7 +194,7 @@ def get_win_folder_from_registry(csidl_name: str) -> str:
         raise ValueError(msg)
     if sys.platform != "win32":  # only needed for mypy type checker to know that this code runs only on Windows
         raise NotImplementedError
-    import winreg  # noqa: PLC0415
+    import winreg
 
     key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
     directory, _ = winreg.QueryValueEx(key, shell_folder_name)
@@ -216,8 +207,6 @@ def get_win_folder_via_ctypes(csidl_name: str) -> str:
     # Use 'CSIDL_PROFILE' (40) and append the default folder 'Downloads' instead.
     # https://learn.microsoft.com/en-us/windows/win32/shell/knownfolderid
 
-    import ctypes  # noqa: PLC0415
-
     csidl_const = {
         "CSIDL_APPDATA": 26,
         "CSIDL_COMMON_APPDATA": 35,
@@ -227,7 +216,6 @@ def get_win_folder_via_ctypes(csidl_name: str) -> str:
         "CSIDL_MYVIDEO": 14,
         "CSIDL_MYMUSIC": 13,
         "CSIDL_DOWNLOADS": 40,
-        "CSIDL_DESKTOPDIRECTORY": 16,
     }.get(csidl_name)
     if csidl_const is None:
         msg = f"Unknown CSIDL name: {csidl_name}"
@@ -237,7 +225,7 @@ def get_win_folder_via_ctypes(csidl_name: str) -> str:
     windll = getattr(ctypes, "windll")  # noqa: B009 # using getattr to avoid false positive with mypy type checker
     windll.shell32.SHGetFolderPathW(None, csidl_const, None, 0, buf)
 
-    # Downgrade to short path name if it has high-bit chars.
+    # Downgrade to short path name if it has highbit chars.
     if any(ord(c) > 255 for c in buf):  # noqa: PLR2004
         buf2 = ctypes.create_unicode_buffer(1024)
         if windll.kernel32.GetShortPathNameW(buf.value, buf2, 1024):
@@ -250,15 +238,10 @@ def get_win_folder_via_ctypes(csidl_name: str) -> str:
 
 
 def _pick_get_win_folder() -> Callable[[str], str]:
+    if hasattr(ctypes, "windll"):
+        return get_win_folder_via_ctypes
     try:
-        import ctypes  # noqa: PLC0415
-    except ImportError:
-        pass
-    else:
-        if hasattr(ctypes, "windll"):
-            return get_win_folder_via_ctypes
-    try:
-        import winreg  # noqa: PLC0415, F401
+        import winreg  # noqa: F401
     except ImportError:
         return get_win_folder_from_env_vars
     else:

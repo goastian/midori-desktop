@@ -17,10 +17,12 @@ namespace mozilla::widget {
 WaylandSurfaceLock::WaylandSurfaceLock(RefPtr<WaylandSurface> aWaylandSurface,
                                        bool aForceCommit) {
 #ifdef MOZ_WAYLAND
-  MOZ_DIAGNOSTIC_ASSERT(aWaylandSurface);
   mWaylandSurface = std::move(aWaylandSurface);
   mForceCommit = aForceCommit;
   if (GdkIsWaylandDisplay()) {
+    MOZ_DIAGNOSTIC_ASSERT(mWaylandSurface);
+    // mSurface can be nullptr if we lock hidden MozContainer and
+    // that's correct, MozContainer is still locked.
     mSurface = mWaylandSurface->Lock(this);
   }
 #endif
@@ -36,7 +38,7 @@ WaylandSurfaceLock::~WaylandSurfaceLock() {
 #endif
 }
 
-WaylandSurface* WaylandSurfaceLock::GetWaylandSurface() const {
+WaylandSurface* WaylandSurfaceLock::GetWaylandSurface() {
 #ifdef MOZ_WAYLAND
   return mWaylandSurface.get();
 #else

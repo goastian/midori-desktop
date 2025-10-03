@@ -4,7 +4,6 @@ use wgt::{BufferAddress, DynamicOffset};
 use alloc::{borrow::Cow, boxed::Box, sync::Arc, vec::Vec};
 use core::{fmt, str};
 
-use crate::command::EncoderStateError;
 use crate::ray_tracing::AsAction;
 use crate::{
     binding_model::{
@@ -128,7 +127,7 @@ pub enum ComputePassErrorInner {
     #[error(transparent)]
     Device(#[from] DeviceError),
     #[error(transparent)]
-    EncoderState(#[from] EncoderStateError),
+    Encoder(#[from] CommandEncoderError),
     #[error("Parent encoder is invalid")]
     InvalidParentEncoder,
     #[error("Bind group index {index} is greater than the device's requested `max_bind_group` limit {max}")]
@@ -182,15 +181,15 @@ pub struct ComputePassError {
     pub(super) inner: ComputePassErrorInner,
 }
 
-impl<E> MapPassErr<ComputePassError> for E
+impl<T, E> MapPassErr<T, ComputePassError> for Result<T, E>
 where
     E: Into<ComputePassErrorInner>,
 {
-    fn map_pass_err(self, scope: PassErrorScope) -> ComputePassError {
-        ComputePassError {
+    fn map_pass_err(self, scope: PassErrorScope) -> Result<T, ComputePassError> {
+        self.map_err(|inner| ComputePassError {
             scope,
-            inner: self.into(),
-        }
+            inner: inner.into(),
+        })
     }
 }
 
@@ -302,7 +301,7 @@ impl Global {
 
         match cmd_buf.data.lock().lock_encoder() {
             Ok(_) => {}
-            Err(e) => return make_err(e.into(), arc_desc),
+            Err(e) => return make_err(e, arc_desc),
         };
 
         arc_desc.timestamp_writes = match desc
@@ -322,9 +321,6 @@ impl Global {
 
     /// Note that this differs from [`Self::compute_pass_end`], it will
     /// create a new pass, replay the commands and end the pass.
-    ///
-    /// # Panics
-    /// On any error.
     #[doc(hidden)]
     #[cfg(any(feature = "serde", feature = "replay"))]
     pub fn compute_pass_end_with_unresolved_commands(
@@ -332,7 +328,9 @@ impl Global {
         encoder_id: id::CommandEncoderId,
         base: BasePass<super::ComputeCommand>,
         timestamp_writes: Option<&PassTimestampWrites>,
-    ) {
+    ) -> Result<(), ComputePassError> {
+        let pass_scope = PassErrorScope::Pass;
+
         #[cfg(feature = "trace")]
         {
             let cmd_buf = self
@@ -340,7 +338,7 @@ impl Global {
                 .command_buffers
                 .get(encoder_id.into_command_buffer_id());
             let mut cmd_buf_data = cmd_buf.data.lock();
-            let cmd_buf_data = cmd_buf_data.get_inner();
+            let cmd_buf_data = cmd_buf_data.get_inner().map_pass_err(pass_scope)?;
 
             if let Some(ref mut list) = cmd_buf_data.commands {
                 list.push(crate::device::trace::Command::RunComputePass {
@@ -372,19 +370,21 @@ impl Global {
             },
         );
         if let Some(err) = encoder_error {
-            panic!("{:?}", err);
+            return Err(ComputePassError {
+                scope: pass_scope,
+                inner: err.into(),
+            });
         };
 
         compute_pass.base = Some(BasePass {
             label,
-            commands: super::ComputeCommand::resolve_compute_command_ids(&self.hub, &commands)
-                .unwrap(),
+            commands: super::ComputeCommand::resolve_compute_command_ids(&self.hub, &commands)?,
             dynamic_offsets,
             string_data,
             push_constant_data,
         });
 
-        self.compute_pass_end(&mut compute_pass).unwrap();
+        self.compute_pass_end(&mut compute_pass)
     }
 
     pub fn compute_pass_end(&self, pass: &mut ComputePass) -> Result<(), ComputePassError> {

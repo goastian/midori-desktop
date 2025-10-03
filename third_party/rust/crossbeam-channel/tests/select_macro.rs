@@ -858,7 +858,6 @@ fn fairness1() {
     assert!(hits.iter().all(|x| *x >= COUNT / hits.len() / 2));
 }
 
-#[cfg_attr(crossbeam_sanitize, ignore)] // TODO: flaky: https://github.com/crossbeam-rs/crossbeam/issues/1094
 #[test]
 fn fairness2() {
     #[cfg(miri)]

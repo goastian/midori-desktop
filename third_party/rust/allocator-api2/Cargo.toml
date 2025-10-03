@@ -9,14 +9,18 @@
 # will likely look very different (and much more reasonable).
 # See Cargo.toml.orig for the original contents.
 
-# This is a fork of allocator-api2 0.2.18 with Box removed.
-# See https://github.com/zakarumych/allocator-api2/issues/10
-
 [package]
 edition = "2018"
+rust-version = "1.63"
 name = "allocator-api2"
-version = "0.2.999"
+version = "0.2.21"
 authors = ["Zakarum <zaq.dev@icloud.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Mirror of Rust's allocator API"
 homepage = "https://github.com/zakarumych/allocator-api2"
 documentation = "https://docs.rs/allocator-api2"
@@ -24,15 +28,25 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/zakarumych/allocator-api2"
 
+[features]
+alloc = []
+default = ["std"]
+fresh-rust = []
+nightly = []
+std = ["alloc"]
+
+[lib]
+name = "allocator_api2"
+path = "src/lib.rs"
+
 [dependencies.serde]
 version = "1.0"
 optional = true
 
-[features]
-alloc = []
-default = ["std"]
-nightly = []
-std = ["alloc"]
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = ["cfg(no_global_oom_handling)"]
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(no_global_oom_handling)'] }
+[workspace]
+members = ["tests"]

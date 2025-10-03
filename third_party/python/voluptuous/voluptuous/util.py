@@ -1,65 +1,68 @@
-# F401: "imported but unused"
-# fmt: off
-import typing
+import sys
 
-from voluptuous import validators  # noqa: F401
-from voluptuous.error import Invalid, LiteralInvalid, TypeInvalid  # noqa: F401
-from voluptuous.schema_builder import DefaultFactory  # noqa: F401
-from voluptuous.schema_builder import Schema, default_factory, raises  # noqa: F401
-
-# fmt: on
+from voluptuous.error import LiteralInvalid, TypeInvalid, Invalid
+from voluptuous.schema_builder import Schema, default_factory, raises
+from voluptuous import validators
 
 __author__ = 'tusharmakkar08'
 
 
-def Lower(v: str) -> str:
+def _fix_str(v):
+    if sys.version_info[0] == 2 and isinstance(v, unicode):
+        s = v
+    else:
+        s = str(v)
+    return s
+
+
+def Lower(v):
     """Transform a string to lower case.
 
     >>> s = Schema(Lower)
     >>> s('HI')
     'hi'
     """
-    return str(v).lower()
+    return _fix_str(v).lower()
 
 
-def Upper(v: str) -> str:
+def Upper(v):
     """Transform a string to upper case.
 
     >>> s = Schema(Upper)
     >>> s('hi')
     'HI'
     """
-    return str(v).upper()
+    return _fix_str(v).upper()
 
 
-def Capitalize(v: str) -> str:
+def Capitalize(v):
     """Capitalise a string.
 
     >>> s = Schema(Capitalize)
     >>> s('hello world')
     'Hello world'
     """
-    return str(v).capitalize()
+    return _fix_str(v).capitalize()
 
 
-def Title(v: str) -> str:
+def Title(v):
     """Title case a string.
 
     >>> s = Schema(Title)
     >>> s('hello world')
     'Hello World'
     """
-    return str(v).title()
+    return _fix_str(v).title()
 
 
-def Strip(v: str) -> str:
+def Strip(v):
     """Strip whitespace from a string.
 
     >>> s = Schema(Strip)
     >>> s('  hello world  ')
     'hello world'
     """
-    return str(v).strip()
+    return _fix_str(v).strip()
 
 
 class DefaultTo(object):
@@ -73,7 +76,7 @@ class DefaultTo(object):
     []
     """
 
-    def __init__(self, default_value, msg: typing.Optional[str] = None) -> None:
+    def __init__(self, default_value, msg=None):
         self.default_value = default_factory(default_value)
         self.msg = msg
 
@@ -96,7 +99,7 @@ class SetTo(object):
     42
     """
 
-    def __init__(self, value) -> None:
+    def __init__(self, value):
         self.value = default_factory(value)
 
     def __call__(self, v):
@@ -118,14 +121,15 @@ class Set(object):
     ...   s([set([1, 2]), set([3, 4])])
     """
 
-    def __init__(self, msg: typing.Optional[str] = None) -> None:
+    def __init__(self, msg=None):
         self.msg = msg
 
     def __call__(self, v):
         try:
             set_v = set(v)
         except Exception as e:
-            raise TypeInvalid(self.msg or 'cannot be presented as set: {0}'.format(e))
+            raise TypeInvalid(
+                self.msg or 'cannot be presented as set: {0}'.format(e))
         return set_v
 
     def __repr__(self):
@@ -133,12 +137,14 @@ class Set(object):
 
 
 class Literal(object):
-    def __init__(self, lit) -> None:
+    def __init__(self, lit):
         self.lit = lit
 
-    def __call__(self, value, msg: typing.Optional[str] = None):
+    def __call__(self, value, msg=None):
         if self.lit != value:
-            raise LiteralInvalid(msg or '%s not match for %s' % (value, self.lit))
+            raise LiteralInvalid(
+                msg or '%s not match for %s' % (value, self.lit)
+            )
         else:
             return self.lit
 
@@ -147,3 +153,10 @@ class Literal(object):
 
     def __repr__(self):
         return repr(self.lit)
+
+
+def u(x):
+    if sys.version_info < (3,):
+        return unicode(x)
+    else:
+        return x

@@ -58,7 +58,6 @@ export default class MozInputText extends MozBaseInputElement {
         ?readonly=${this.readonly}
         accesskey=${ifDefined(this.accessKey)}
         placeholder=${ifDefined(this.placeholder)}
-        aria-label=${ifDefined(this.ariaLabel ?? undefined)}
         aria-describedby="description"
         @input=${this.handleInput}
         @change=${this.redispatchEvent}

@@ -1,15 +1,15 @@
-import sentry_sdk
+from sentry_sdk import configure_scope
+from sentry_sdk.hub import Hub
 from sentry_sdk.integrations import Integration
-from sentry_sdk.utils import capture_internal_exceptions, ensure_integration_enabled
+from sentry_sdk.utils import capture_internal_exceptions
 
-from typing import TYPE_CHECKING
+from sentry_sdk._types import MYPY
 
-if TYPE_CHECKING:
+if MYPY:
     from typing import Any
     from typing import Optional
 
     from sentry_sdk._types import Event, Hint
-    from pyspark import SparkContext
 
 
 class SparkIntegration(Integration):
@@ -18,7 +18,7 @@ class SparkIntegration(Integration):
     @staticmethod
     def setup_once():
         # type: () -> None
-        _setup_sentry_tracing()
+        patch_spark_context_init()
 
 
 def _set_app_properties():
@@ -31,18 +31,14 @@ def _set_app_properties():
 
     spark_context = SparkContext._active_spark_context
     if spark_context:
+        spark_context.setLocalProperty("sentry_app_name", spark_context.appName)
         spark_context.setLocalProperty(
-            "sentry_app_name",
-            spark_context.appName,
-        )
-        spark_context.setLocalProperty(
-            "sentry_application_id",
-            spark_context.applicationId,
+            "sentry_application_id", spark_context.applicationId
         )
 
 
 def _start_sentry_listener(sc):
-    # type: (SparkContext) -> None
+    # type: (Any) -> None
     """
     Start java gateway server to add custom `SparkListener`
     """
@@ -54,77 +50,62 @@ def _start_sentry_listener(sc):
     sc._jsc.sc().addSparkListener(listener)
 
 
-def _add_event_processor(sc):
-    # type: (SparkContext) -> None
-    scope = sentry_sdk.get_isolation_scope()
-
-    @scope.add_event_processor
-    def process_event(event, hint):
-        # type: (Event, Hint) -> Optional[Event]
-        with capture_internal_exceptions():
-            if sentry_sdk.get_client().get_integration(SparkIntegration) is None:
-                return event
-
-            if sc._active_spark_context is None:
-                return event
-
-            event.setdefault("user", {}).setdefault("id", sc.sparkUser())
-
-            event.setdefault("tags", {}).setdefault(
-                "executor.id", sc._conf.get("spark.executor.id")
-            )
-            event["tags"].setdefault(
-                "spark-submit.deployMode",
-                sc._conf.get("spark.submit.deployMode"),
-            )
-            event["tags"].setdefault("driver.host", sc._conf.get("spark.driver.host"))
-            event["tags"].setdefault("driver.port", sc._conf.get("spark.driver.port"))
-            event["tags"].setdefault("spark_version", sc.version)
-            event["tags"].setdefault("app_name", sc.appName)
-            event["tags"].setdefault("application_id", sc.applicationId)
-            event["tags"].setdefault("master", sc.master)
-            event["tags"].setdefault("spark_home", sc.sparkHome)
-
-            event.setdefault("extra", {}).setdefault("web_url", sc.uiWebUrl)
-
-        return event
-
-
-def _activate_integration(sc):
-    # type: (SparkContext) -> None
-
-    _start_sentry_listener(sc)
-    _set_app_properties()
-    _add_event_processor(sc)
-
-
-def _patch_spark_context_init():
+def patch_spark_context_init():
     # type: () -> None
     from pyspark import SparkContext
 
     spark_context_init = SparkContext._do_init
 
-    @ensure_integration_enabled(SparkIntegration, spark_context_init)
     def _sentry_patched_spark_context_init(self, *args, **kwargs):
         # type: (SparkContext, *Any, **Any) -> Optional[Any]
-        rv = spark_context_init(self, *args, **kwargs)
-        _activate_integration(self)
-        return rv
+        init = spark_context_init(self, *args, **kwargs)
+
+        if Hub.current.get_integration(SparkIntegration) is None:
+            return init
+
+        _start_sentry_listener(self)
+        _set_app_properties()
+
+        with configure_scope() as scope:
+
+            @scope.add_event_processor
+            def process_event(event, hint):
+                # type: (Event, Hint) -> Optional[Event]
+                with capture_internal_exceptions():
+                    if Hub.current.get_integration(SparkIntegration) is None:
+                        return event
+
+                    event.setdefault("user", {}).setdefault("id", self.sparkUser())
+
+                    event.setdefault("tags", {}).setdefault(
+                        "executor.id", self._conf.get("spark.executor.id")
+                    )
+                    event["tags"].setdefault(
+                        "spark-submit.deployMode",
+                        self._conf.get("spark.submit.deployMode"),
+                    )
+                    event["tags"].setdefault(
+                        "driver.host", self._conf.get("spark.driver.host")
+                    )
+                    event["tags"].setdefault(
+                        "driver.port", self._conf.get("spark.driver.port")
+                    )
+                    event["tags"].setdefault("spark_version", self.version)
+                    event["tags"].setdefault("app_name", self.appName)
+                    event["tags"].setdefault("application_id", self.applicationId)
+                    event["tags"].setdefault("master", self.master)
+                    event["tags"].setdefault("spark_home", self.sparkHome)
+
+                    event.setdefault("extra", {}).setdefault("web_url", self.uiWebUrl)
+
+                return event
+
+        return init
 
     SparkContext._do_init = _sentry_patched_spark_context_init
 
 
-def _setup_sentry_tracing():
-    # type: () -> None
-    from pyspark import SparkContext
-
-    if SparkContext._active_spark_context is not None:
-        _activate_integration(SparkContext._active_spark_context)
-        return
-    _patch_spark_context_init()
-
-
-class SparkListener:
+class SparkListener(object):
     def onApplicationEnd(self, applicationEnd):  # noqa: N802,N803
         # type: (Any) -> None
         pass
@@ -228,23 +209,14 @@ class SparkListener:
 
 
 class SentryListener(SparkListener):
-    def _add_breadcrumb(
-        self,
-        level,  # type: str
-        message,  # type: str
-        data=None,  # type: Optional[dict[str, Any]]
-    ):
-        # type: (...) -> None
-        sentry_sdk.get_isolation_scope().add_breadcrumb(
-            level=level, message=message, data=data
-        )
+    def __init__(self):
+        # type: () -> None
+        self.hub = Hub.current
 
     def onJobStart(self, jobStart):  # noqa: N802,N803
         # type: (Any) -> None
-        sentry_sdk.get_isolation_scope().clear_breadcrumbs()
-
         message = "Job {} Started".format(jobStart.jobId())
-        self._add_breadcrumb(level="info", message=message)
+        self.hub.add_breadcrumb(level="info", message=message)
         _set_app_properties()
 
     def onJobEnd(self, jobEnd):  # noqa: N802,N803
@@ -260,19 +232,14 @@ class SentryListener(SparkListener):
             level = "warning"
             message = "Job {} Failed".format(jobEnd.jobId())
 
-        self._add_breadcrumb(level=level, message=message, data=data)
+        self.hub.add_breadcrumb(level=level, message=message, data=data)
 
     def onStageSubmitted(self, stageSubmitted):  # noqa: N802,N803
         # type: (Any) -> None
         stage_info = stageSubmitted.stageInfo()
         message = "Stage {} Submitted".format(stage_info.stageId())
-
-        data = {"name": stage_info.name()}
-        attempt_id = _get_attempt_id(stage_info)
-        if attempt_id is not None:
-            data["attemptId"] = attempt_id
-
-        self._add_breadcrumb(level="info", message=message, data=data)
+        data = {"attemptId": stage_info.attemptId(), "name": stage_info.name()}
+        self.hub.add_breadcrumb(level="info", message=message, data=data)
         _set_app_properties()
 
     def onStageCompleted(self, stageCompleted):  # noqa: N802,N803
@@ -282,11 +249,7 @@ class SentryListener(SparkListener):
         stage_info = stageCompleted.stageInfo()
         message = ""
         level = ""
-
-        data = {"name": stage_info.name()}
-        attempt_id = _get_attempt_id(stage_info)
-        if attempt_id is not None:
-            data["attemptId"] = attempt_id
+        data = {"attemptId": stage_info.attemptId(), "name": stage_info.name()}
 
         # Have to Try Except because stageInfo.failureReason() is typed with Scala Option
         try:
@@ -297,19 +260,4 @@ class SentryListener(SparkListener):
             message = "Stage {} Completed".format(stage_info.stageId())
             level = "info"
 
-        self._add_breadcrumb(level=level, message=message, data=data)
-
-
-def _get_attempt_id(stage_info):
-    # type: (Any) -> Optional[int]
-    try:
-        return stage_info.attemptId()
-    except Exception:
-        pass
-
-    try:
-        return stage_info.attemptNumber()
-    except Exception:
-        pass
-
-    return None
+        self.hub.add_breadcrumb(level=level, message=message, data=data)

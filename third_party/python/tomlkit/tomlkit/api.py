@@ -50,9 +50,7 @@ def dumps(data: Mapping, sort_keys: bool = False) -> str:
     """
     Dumps a TOMLDocument into a string.
     """
-    if not isinstance(data, (Table, InlineTable, Container)) and isinstance(
-        data, Mapping
-    ):
+    if not isinstance(data, Container) and isinstance(data, Mapping):
         data = item(dict(data), _sort_keys=sort_keys)
 
     try:
@@ -60,7 +58,7 @@ def dumps(data: Mapping, sort_keys: bool = False) -> str:
         # for all type safe invocations of this function
         return data.as_string()  # type: ignore[attr-defined]
     except AttributeError as ex:
-        msg = f"Expecting Mapping or TOML Table or Container, {type(data)} given"
+        msg = f"Expecting Mapping or TOML Container, {type(data)} given"
         raise TypeError(msg) from ex
 
 
@@ -77,11 +75,6 @@ def dump(data: Mapping, fp: IO[str], *, sort_keys: bool = False) -> None:
 
     :param data: a dict-like object to dump
     :param sort_keys: if true, sort the keys in alphabetic order
-
-    :Example:
-
-    >>> with open("output.toml", "w") as fp:
-    ...     tomlkit.dump(data, fp)
     """
     fp.write(dumps(data, sort_keys=sort_keys))
 
@@ -167,7 +160,7 @@ def datetime(raw: str) -> DateTime:
     return item(value)
 
 
-def array(raw: str = "[]") -> Array:
+def array(raw: str = None) -> Array:
     """Create an array item for its string representation.
 
     :Example:
@@ -179,6 +172,9 @@ def array(raw: str = "[]") -> Array:
     >>> a
     [1, 2, 3]
     """
+    if raw is None:
+        raw = "[]"
+
     return value(raw)
 
 
@@ -300,7 +296,7 @@ E = TypeVar("E", bound=Encoder)
 def register_encoder(encoder: E) -> E:
     """Add a custom encoder, which should be a function that will be called
     if the value can't otherwise be converted. It should takes a single value
-    and return a TOMLKit item or raise a ``ConvertError``.
+    and return a TOMLKit item or raise a ``TypeError``.
     """
     CUSTOM_ENCODERS.append(encoder)
     return encoder

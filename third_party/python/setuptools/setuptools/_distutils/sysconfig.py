@@ -16,8 +16,7 @@ import re
 import sys
 import sysconfig
 
-from jaraco.functools import pass_none
-
+from ._functools import pass_none
 from .compat import py39
 from .errors import DistutilsPlatformError
 from .util import is_mingw

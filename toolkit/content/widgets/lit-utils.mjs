@@ -235,8 +235,6 @@ export class MozLitElement extends LitElement {
  * @property {boolean} parentDisabled - When this element is nested under another input and that
  *     input is disabled or unchecked/unpressed the parent will set this property to true so this
  *     element can be disabled.
- * @property {string} ariaLabel
- *  The aria-label text for cases where there is no visible label.
  */
 export class MozBaseInputElement extends MozLitElement {
   #internals;
@@ -252,7 +250,6 @@ export class MozBaseInputElement extends MozLitElement {
     supportPage: { type: String, attribute: "support-page" },
     accessKey: { type: String, mapped: true, fluent: true },
     parentDisabled: { type: Boolean, state: true },
-    ariaLabel: { type: String, mapped: true },
   };
   static inputLayout = "inline";
 
@@ -362,10 +359,6 @@ export class MozBaseInputElement extends MozLitElement {
     this.inputEl.focus();
   }
 
-  select() {
-    this.inputEl.select();
-  }
-
   blur() {
     this.inputEl.blur();
   }
@@ -427,8 +420,11 @@ export class MozBaseInputElement extends MozLitElement {
       return "";
     }
     return html`<span class="text-container"
-      >${this.iconTemplate()}<span class="text">${this.label}</span></span
-    >`;
+      >${this.iconTemplate()}<span
+        class="text"
+        .textContent=${this.label}
+      ></span
+    ></span>`;
   }
 
   descriptionTemplate() {

@@ -8,6 +8,7 @@ from pip._internal.utils.misc import normalize_version_info
 
 
 class TargetPython:
+
     """
     Encapsulates the properties of a Python interpreter one is targeting
     for a package install, download, etc.

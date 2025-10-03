@@ -1,5 +1,3 @@
-"""Type hint for terminal capability builder patterns"""
-
 # std imports
 from typing import Any, Dict, Tuple, OrderedDict
 

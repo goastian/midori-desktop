@@ -74,7 +74,7 @@ codespell:
     # + localization files
     extensions:
         - js
-        - jsx
+        - jxs
         - mjs
         - xml
         - html

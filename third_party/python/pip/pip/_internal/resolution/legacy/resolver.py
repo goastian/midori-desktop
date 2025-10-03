@@ -10,6 +10,9 @@ for sub-dependencies
     a. "first found, wins" (where the order is breadth first)
 """
 
+# The following comment should be removed at some point in the future.
+# mypy: strict-optional=False
+
 import logging
 import sys
 from collections import defaultdict
@@ -49,7 +52,7 @@ from pip._internal.utils.packaging import check_requires_python
 
 logger = logging.getLogger(__name__)
 
-DiscoveredDependencies = DefaultDict[Optional[str], List[InstallRequirement]]
+DiscoveredDependencies = DefaultDict[str, List[InstallRequirement]]
 
 
 def _check_dist_requires_python(
@@ -101,8 +104,9 @@ def _check_dist_requires_python(
         return
 
     raise UnsupportedPythonVersion(
-        f"Package {dist.raw_name!r} requires a different Python: "
-        f"{version} not in {requires_python!r}"
+        "Package {!r} requires a different Python: {} not in {!r}".format(
+            dist.raw_name, version, requires_python
+        )
     )
 
 
@@ -242,9 +246,9 @@ class Resolver(BaseResolver):
             return [install_req], None
 
         try:
-            existing_req: Optional[InstallRequirement] = (
-                requirement_set.get_requirement(install_req.name)
-            )
+            existing_req: Optional[
+                InstallRequirement
+            ] = requirement_set.get_requirement(install_req.name)
         except KeyError:
             existing_req = None
 
@@ -259,8 +263,9 @@ class Resolver(BaseResolver):
         )
         if has_conflicting_requirement:
             raise InstallationError(
-                f"Double requirement given: {install_req} "
-                f"(already in {existing_req}, name={install_req.name!r})"
+                "Double requirement given: {} (already in {}, name={!r})".format(
+                    install_req, existing_req, install_req.name
+                )
             )
 
         # When no existing requirement exists, add the requirement as a
@@ -318,7 +323,6 @@ class Resolver(BaseResolver):
         """
         # Don't uninstall the conflict if doing a user install and the
         # conflict is not a user install.
-        assert req.satisfied_by is not None
         if not self.use_user_site or req.satisfied_by.in_usersite:
             req.should_reinstall = True
         req.satisfied_by = None
@@ -417,8 +421,6 @@ class Resolver(BaseResolver):
 
         if self.wheel_cache is None or self.preparer.require_hashes:
             return
-
-        assert req.link is not None, "_find_requirement_link unexpectedly returned None"
         cache_entry = self.wheel_cache.get_cache_entry(
             link=req.link,
             package_name=req.name,
@@ -532,7 +534,6 @@ class Resolver(BaseResolver):
         with indent_log():
             # We add req_to_install before its dependencies, so that we
             # can refer to it when adding dependencies.
-            assert req_to_install.name is not None
             if not requirement_set.has_requirement(req_to_install.name):
                 # 'unnamed' requirements will get added here
                 # 'unnamed' requirements can only come from being directly

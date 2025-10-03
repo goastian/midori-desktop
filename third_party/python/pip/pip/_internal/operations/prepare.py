@@ -7,7 +7,6 @@
 import mimetypes
 import os
 import shutil
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
@@ -81,14 +80,13 @@ def unpack_vcs_link(link: Link, location: str, verbosity: int) -> None:
     vcs_backend.unpack(location, url=hide_url(link.url), verbosity=verbosity)
 
 
-@dataclass
 class File:
-    path: str
-    content_type: Optional[str] = None
-
-    def __post_init__(self) -> None:
-        if self.content_type is None:
-            self.content_type = mimetypes.guess_type(self.path)[0]
+    def __init__(self, path: str, content_type: Optional[str]) -> None:
+        self.path = path
+        if content_type is None:
+            self.content_type = mimetypes.guess_type(path)[0]
+        else:
+            self.content_type = content_type
 
 
 def get_http_url(

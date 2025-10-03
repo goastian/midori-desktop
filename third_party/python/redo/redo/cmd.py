@@ -4,30 +4,39 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 # ***** END LICENSE BLOCK *****
 import logging
+from subprocess import check_call, CalledProcessError
 import sys
-from subprocess import CalledProcessError, check_call
 
 from redo import retrying
 
 log = logging.getLogger(__name__)
 
 
-def main(argv=None):
-    from argparse import REMAINDER, ArgumentParser
-
-    if argv is None:
-        argv = sys.argv
+def main(argv):
+    from argparse import ArgumentParser, REMAINDER
 
     parser = ArgumentParser()
-    parser.add_argument("-a", "--attempts", type=int, default=5, help="How many times to retry.")
     parser.add_argument(
-        "-s", "--sleeptime", type=int, default=60, help="How long to sleep between attempts. Sleeptime doubles after each attempt."
+        "-a", "--attempts", type=int, default=5, help="How many times to retry."
     )
     parser.add_argument(
-        "-m", "--max-sleeptime", type=int, default=5 * 60, help="Maximum length of time to sleep between attempts (limits backoff length)."
+        "-s",
+        "--sleeptime",
+        type=int,
+        default=60,
+        help="How long to sleep between attempts. Sleeptime doubles after each attempt.",
+    )
+    parser.add_argument(
+        "-m",
+        "--max-sleeptime",
+        type=int,
+        default=5 * 60,
+        help="Maximum length of time to sleep between attempts (limits backoff length).",
     )
     parser.add_argument("-v", "--verbose", action="store_true", default=False)
-    parser.add_argument("cmd", nargs=REMAINDER, help="Command to run. Eg: wget http://blah")
+    parser.add_argument(
+        "cmd", nargs=REMAINDER, help="Command to run. Eg: wget http://blah"
+    )
 
     args = parser.parse_args(argv[1:])
 
@@ -50,10 +59,12 @@ def main(argv=None):
     except KeyboardInterrupt:
         sys.exit(-1)
     except Exception as e:
-        log.error("Unable to run command after %d attempts" % args.attempts, exc_info=True)
+        log.error(
+            "Unable to run command after %d attempts" % args.attempts, exc_info=True
+        )
         rc = getattr(e, "returncode", -2)
         sys.exit(rc)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)

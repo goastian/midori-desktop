@@ -24,7 +24,6 @@ let expectedCommonApis = [
   "i18n.detectLanguage",
   "i18n.getAcceptLanguages",
   "i18n.getMessage",
-  "i18n.getPreferredSystemLanguages",
   "i18n.getUILanguage",
   "runtime.OnInstalledReason",
   "runtime.OnRestartRequiredReason",

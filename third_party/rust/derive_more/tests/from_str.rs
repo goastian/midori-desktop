@@ -1,5 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![allow(dead_code)] // some code is tested for type checking only
+#![allow(dead_code)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
@@ -15,12 +15,6 @@ struct MyInt(i32);
 #[derive(FromStr)]
 struct Point1D {
     x: i32,
-}
-
-/// Making sure that `FromStr` does not trigger an ambiguous associated item error for `Err`.
-#[derive(FromStr)]
-enum EnumWithErr {
-    Err,
 }
 
 #[derive(Debug, FromStr, PartialEq, Eq)]

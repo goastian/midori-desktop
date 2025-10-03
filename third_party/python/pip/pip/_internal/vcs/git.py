@@ -4,7 +4,6 @@ import pathlib
 import re
 import urllib.parse
 import urllib.request
-from dataclasses import replace
 from typing import List, Optional, Tuple
 
 from pip._internal.exceptions import BadCommand, InstallationError
@@ -218,7 +217,7 @@ class Git(VersionControl):
 
         if sha is not None:
             rev_options = rev_options.make_new(sha)
-            rev_options = replace(rev_options, branch_name=(rev if is_branch else None))
+            rev_options.branch_name = rev if is_branch else None
 
             return rev_options
 

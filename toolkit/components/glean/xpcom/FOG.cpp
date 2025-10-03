@@ -19,7 +19,6 @@
 #include "mozilla/HelperMacros.h"
 #include "mozilla/Logging.h"
 #include "mozilla/MozPromise.h"
-#include "mozilla/ProfilerMarkers.h"
 #include "mozilla/ShutdownPhase.h"
 #include "mozilla/Unused.h"
 #include "nsContentUtils.h"
@@ -388,7 +387,6 @@ FOG::ApplyServerKnobsConfig(const nsACString& aJsonConfig) {
 
 NS_IMETHODIMP
 FOG::TestFlushAllChildren(JSContext* aCx, mozilla::dom::Promise** aOutPromise) {
-  TimeStamp before = TimeStamp::Now();
   MOZ_ASSERT(XRE_IsParentProcess());
   NS_ENSURE_ARG(aOutPromise);
   *aOutPromise = nullptr;
@@ -404,11 +402,8 @@ FOG::TestFlushAllChildren(JSContext* aCx, mozilla::dom::Promise** aOutPromise) {
   }
 
   glean::FlushAndUseFOGData()->Then(
-      GetCurrentSerialEventTarget(), __func__, [promise, before]() {
-        PROFILER_MARKER_UNTYPED("fog.testFlushAllChildren", TEST,
-                                MarkerTiming::IntervalUntilNowFrom(before));
-        promise->MaybeResolveWithUndefined();
-      });
+      GetCurrentSerialEventTarget(), __func__,
+      [promise]() { promise->MaybeResolveWithUndefined(); });
 
   promise.forget(aOutPromise);
   return NS_OK;
@@ -435,7 +430,6 @@ NS_IMETHODIMP
 FOG::TestResetFOG(const nsACString& aDataPathOverride,
                   const nsACString& aAppIdOverride) {
   MOZ_ASSERT(XRE_IsParentProcess());
-  PROFILER_MARKER_UNTYPED("fog.testResetFOG", TEST);
   nsresult rv =
       glean::impl::fog_test_reset(&aDataPathOverride, &aAppIdOverride);
   NS_ENSURE_SUCCESS(rv, rv);

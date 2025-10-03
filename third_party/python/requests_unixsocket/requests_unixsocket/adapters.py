@@ -4,6 +4,11 @@ from requests.adapters import HTTPAdapter
 from requests.compat import urlparse, unquote
 
 try:
+    import http.client as httplib
+except ImportError:
+    import httplib
+
+try:
     from requests.packages import urllib3
 except ImportError:
     import urllib3
@@ -11,7 +16,7 @@ except ImportError:
 
 # The following was adapted from some code from docker-py
 # https://github.com/docker/docker-py/blob/master/docker/transport/unixconn.py
-class UnixHTTPConnection(urllib3.connection.HTTPConnection, object):
+class UnixHTTPConnection(httplib.HTTPConnection, object):
 
     def __init__(self, unix_socket_url, timeout=60):
         """Create an HTTP connection to a unix domain socket
@@ -51,16 +56,13 @@ class UnixHTTPConnectionPool(urllib3.connectionpool.HTTPConnectionPool):
 
 class UnixAdapter(HTTPAdapter):
 
-    def __init__(self, timeout=60, pool_connections=25, *args, **kwargs):
-        super(UnixAdapter, self).__init__(*args, **kwargs)
+    def __init__(self, timeout=60, pool_connections=25):
+        super(UnixAdapter, self).__init__()
         self.timeout = timeout
         self.pools = urllib3._collections.RecentlyUsedContainer(
             pool_connections, dispose_func=lambda p: p.close()
         )
-
-    # Fix for requests 2.32.2+: https://github.com/psf/requests/pull/6710
-    def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
-        return self.get_connection(request.url, proxies)
+        super(UnixAdapter, self).__init__()
 
     def get_connection(self, url, proxies=None):
         proxies = proxies or {}

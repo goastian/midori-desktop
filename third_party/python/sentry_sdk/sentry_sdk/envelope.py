@@ -2,12 +2,12 @@ import io
 import json
 import mimetypes
 
+from sentry_sdk._compat import text_type, PY2
+from sentry_sdk._types import MYPY
 from sentry_sdk.session import Session
 from sentry_sdk.utils import json_dumps, capture_internal_exceptions
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
+if MYPY:
     from typing import Any
     from typing import Optional
     from typing import Union
@@ -19,20 +19,14 @@ if TYPE_CHECKING:
 
 
 def parse_json(data):
-    # type: (Union[bytes, str]) -> Any
+    # type: (Union[bytes, text_type]) -> Any
     # on some python 3 versions this needs to be bytes
-    if isinstance(data, bytes):
+    if not PY2 and isinstance(data, bytes):
         data = data.decode("utf-8", "replace")
     return json.loads(data)
 
 
-class Envelope:
-    """
-    Represents a Sentry Envelope. The calling code is responsible for adhering to the constraints
-    documented in the Sentry docs: https://develop.sentry.dev/sdk/envelopes/#data-model. In particular,
-    each envelope may have at most one Item with type "event" or "transaction" (but not both).
-    """
-
+class Envelope(object):
     def __init__(
         self,
         headers=None,  # type: Optional[Dict[str, Any]]
@@ -73,24 +67,6 @@ class Envelope:
     ):
         # type: (...) -> None
         self.add_item(Item(payload=PayloadRef(json=profile), type="profile"))
-
-    def add_profile_chunk(
-        self, profile_chunk  # type: Any
-    ):
-        # type: (...) -> None
-        self.add_item(
-            Item(
-                payload=PayloadRef(json=profile_chunk),
-                type="profile_chunk",
-                headers={"platform": profile_chunk.get("platform", "python")},
-            )
-        )
-
-    def add_checkin(
-        self, checkin  # type: Any
-    ):
-        # type: (...) -> None
-        self.add_item(Item(payload=PayloadRef(json=checkin), type="check_in"))
 
     def add_session(
         self, session  # type: Union[Session, Any]
@@ -173,11 +149,11 @@ class Envelope:
         return "<Envelope headers=%r items=%r>" % (self.headers, self.items)
 
 
-class PayloadRef:
+class PayloadRef(object):
     def __init__(
         self,
         bytes=None,  # type: Optional[bytes]
-        path=None,  # type: Optional[Union[bytes, str]]
+        path=None,  # type: Optional[Union[bytes, text_type]]
         json=None,  # type: Optional[Any]
     ):
         # type: (...) -> None
@@ -194,7 +170,9 @@ class PayloadRef:
                         self.bytes = f.read()
             elif self.json is not None:
                 self.bytes = json_dumps(self.json)
-        return self.bytes or b""
+            else:
+                self.bytes = b""
+        return self.bytes
 
     @property
     def inferred_content_type(self):
@@ -215,10 +193,10 @@ class PayloadRef:
         return "<Payload %r>" % (self.inferred_content_type,)
 
 
-class Item:
+class Item(object):
     def __init__(
         self,
-        payload,  # type: Union[bytes, str, PayloadRef]
+        payload,  # type: Union[bytes, text_type, PayloadRef]
         headers=None,  # type: Optional[Dict[str, Any]]
         type=None,  # type: Optional[str]
         content_type=None,  # type: Optional[str]
@@ -231,7 +209,7 @@ class Item:
         self.headers = headers
         if isinstance(payload, bytes):
             payload = PayloadRef(bytes=payload)
-        elif isinstance(payload, str):
+        elif isinstance(payload, text_type):
             payload = PayloadRef(bytes=payload.encode("utf-8"))
         else:
             payload = payload
@@ -264,7 +242,7 @@ class Item:
     def data_category(self):
         # type: (...) -> EventDataCategory
         ty = self.headers.get("type")
-        if ty == "session" or ty == "sessions":
+        if ty == "session":
             return "session"
         elif ty == "attachment":
             return "attachment"
@@ -272,18 +250,10 @@ class Item:
             return "transaction"
         elif ty == "event":
             return "error"
-        elif ty == "log":
-            return "log"
         elif ty == "client_report":
             return "internal"
         elif ty == "profile":
             return "profile"
-        elif ty == "profile_chunk":
-            return "profile_chunk"
-        elif ty == "statsd":
-            return "metric_bucket"
-        elif ty == "check_in":
-            return "monitor"
         else:
             return "default"
 

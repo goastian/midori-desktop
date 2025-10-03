@@ -7,7 +7,6 @@ import hashlib
 import os
 from textwrap import dedent
 from typing import IO, TYPE_CHECKING
-from pathlib import Path
 
 from pip._vendor.cachecontrol.cache import BaseCache, SeparateBodyBaseCache
 from pip._vendor.cachecontrol.controller import CacheController
@@ -64,7 +63,7 @@ class _FileCacheMixin:
 
     def __init__(
         self,
-        directory: str | Path,
+        directory: str,
         forever: bool = False,
         filemode: int = 0o0600,
         dirmode: int = 0o0700,
@@ -80,7 +79,7 @@ class _FileCacheMixin:
                 """
             NOTE: In order to use the FileCache you must have
             filelock installed. You can install it via pip:
-              pip install cachecontrol[filecache]
+              pip install filelock
             """
             )
             raise ImportError(notice)

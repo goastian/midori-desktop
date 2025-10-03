@@ -12,6 +12,8 @@ tags = "webextensions"
 ["test_ext_native_messaging.js"]
 run-sequentially = "very high failure rate in parallel"
 
+["test_ext_native_messaging_concurrent.js"]
+
 ["test_ext_native_messaging_perf.js"]
 skip-if = ["tsan"] # Unreasonably slow, bug 1612707
 

@@ -14,16 +14,11 @@
 
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/PFilePickerChild.h"
+#include "mozilla/dom/UnionTypes.h"
 
 class nsIWidget;
 class nsIFile;
 class nsPIDOMWindowInner;
-
-namespace mozilla::dom {
-
-class OwningFileOrDirectory;
-
-}  // namespace mozilla::dom
 
 /**
   This class creates a proxy file picker to be used in content processes.

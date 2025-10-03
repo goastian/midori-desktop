@@ -87,11 +87,9 @@ def deprecated(
         (reason, f"{DEPRECATION_MSG_PREFIX}{{}}"),
         (
             gone_in,
-            (
-                "pip {} will enforce this behaviour change."
-                if not is_gone
-                else "Since pip {}, this is no longer supported."
-            ),
+            "pip {} will enforce this behaviour change."
+            if not is_gone
+            else "Since pip {}, this is no longer supported.",
         ),
         (
             replacement,
@@ -99,11 +97,9 @@ def deprecated(
         ),
         (
             feature_flag,
-            (
-                "You can use the flag --use-feature={} to test the upcoming behaviour."
-                if not is_gone
-                else None
-            ),
+            "You can use the flag --use-feature={} to test the upcoming behaviour."
+            if not is_gone
+            else None,
         ),
         (
             issue,

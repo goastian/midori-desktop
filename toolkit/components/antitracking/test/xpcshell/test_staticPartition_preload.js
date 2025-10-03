@@ -99,7 +99,16 @@ add_task(async () => {
       // 2 hints because we have 2 different top-level origins, loading the
       // same resource. This will end up creating 2 separate cache entries.
       hints: 2,
+      prefValue: true,
       originAttributes: { partitionKey: "(http,example.org)" },
+    },
+    {
+      // 1 hint because, with network-state isolation, the cache entry will be
+      // reused for the second loading, even if the top-level origins are
+      // different.
+      hints: 1,
+      originAttributes: {},
+      prefValue: false,
     },
   ];
 
@@ -123,6 +132,12 @@ add_task(async () => {
 
     info("Reset the counter");
     gHints = 0;
+
+    info("Enabling network state partitioning");
+    Services.prefs.setBoolPref(
+      "privacy.partition.network_state",
+      test.prefValue
+    );
 
     let complete = new Promise(resolve => {
       server.registerPathHandler("/done", (metadata, response) => {
@@ -164,6 +179,10 @@ add_task(async () => {
     await checkCache(test.originAttributes);
     await contentPage.close();
 
-    Assert.equal(gHints, test.hints, "We have the current number of requests");
+    Assert.equal(
+      gHints,
+      test.hints,
+      "We have the current number of requests with pref " + test.prefValue
+    );
   }
 });

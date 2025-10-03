@@ -97,10 +97,7 @@ trace = [
 ]
 vulkan = ["wgpu-core-deps-windows-linux-android/vulkan"]
 vulkan-portability = ["wgpu-core-deps-apple/vulkan-portability"]
-webgl = [
-    "wgpu-core-deps-wasm/webgl",
-    "wgpu-types/web",
-]
+webgl = ["wgpu-core-deps-wasm/webgl"]
 wgsl = ["naga/wgsl-in"]
 
 [lib]
@@ -200,7 +197,6 @@ path = "../wgpu-hal"
 [dependencies.wgpu-types]
 version = "25.0.0"
 path = "../wgpu-types"
-default-features = false
 
 [build-dependencies.cfg_aliases]
 version = "0.2.1"

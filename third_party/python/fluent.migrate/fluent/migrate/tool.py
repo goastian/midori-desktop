@@ -117,10 +117,7 @@ class Migrator:
         try:
             self.client.commit(message, author)
         except Exception as err:
-            print(
-                "    \x1b[1;37;41mWARNING:\x1b[0m",  # bright white fg, red bg
-                f"\x1b[1;31mcommit failed ({err})\x1b[0m",  # bright red fg
-            )
+            print(f"    WARNING: commit failed ({err})")
 
 
 def main(

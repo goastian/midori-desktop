@@ -7,7 +7,6 @@
 #include "mozilla/glean/bindings/Object.h"
 
 #include "Common.h"
-#include "mozilla/ErrorResult.h"
 #include "mozilla/dom/GleanMetricsBinding.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "mozilla/Logging.h"
@@ -53,7 +52,7 @@ void GleanObject::TestGetValue(JSContext* aCx, const nsACString& aPingName,
                                ErrorResult& aRv) {
   aResult.set(nullptr);
 
-  auto result = mObject.TestGetValueAsJSONString(aPingName);
+  auto result = mObject.TestGetValue(aPingName);
   if (result.isErr()) {
     aRv.ThrowDataError(result.unwrapErr());
     return;

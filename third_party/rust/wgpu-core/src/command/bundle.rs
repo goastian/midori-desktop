@@ -1519,15 +1519,15 @@ impl RenderBundleError {
     }
 }
 
-impl<E> MapPassErr<RenderBundleError> for E
+impl<T, E> MapPassErr<T, RenderBundleError> for Result<T, E>
 where
     E: Into<RenderBundleErrorInner>,
 {
-    fn map_pass_err(self, scope: PassErrorScope) -> RenderBundleError {
-        RenderBundleError {
+    fn map_pass_err(self, scope: PassErrorScope) -> Result<T, RenderBundleError> {
+        self.map_err(|inner| RenderBundleError {
             scope,
-            inner: self.into(),
-        }
+            inner: inner.into(),
+        })
     }
 }
 

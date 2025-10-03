@@ -47,7 +47,6 @@ add_task(async function test_list_changes() {
     {
       id: "1",
       last_modified: 1000000000000001,
-      category: "internal-pref",
       classifierFeatures: [FEATURE_TRACKING_NAME],
       urlPattern: "*://example.com/*",
     },
@@ -82,7 +81,6 @@ add_task(async function test_list_changes() {
     {
       id: "2",
       last_modified: 1000000000000002,
-      category: "baseline",
       classifierFeatures: [FEATURE_TRACKING_NAME],
       urlPattern: "*://MOZILLA.ORG/*",
       topLevelUrlPattern: "*://example.com/*",
@@ -92,13 +90,11 @@ add_task(async function test_list_changes() {
     {
       id: "3",
       last_modified: 1000000000000003,
-      category: "convenience",
       classifierFeatures: ["some-other-feature"],
       urlPattern: "*://noinclude.com/*",
     },
     {
       last_modified: 1000000000000004,
-      category: "baseline",
       classifierFeatures: [FEATURE_TRACKING_NAME],
       urlPattern: "*://*.example.org/*",
     }
@@ -253,28 +249,24 @@ add_task(async function test_list_init_data() {
     {
       id: "1",
       last_modified: 1000000000000001,
-      category: "baseline",
       classifierFeatures: [FEATURE_TRACKING_NAME],
       urlPattern: "*://tracking.example.com/*",
     },
     {
       id: "2",
       last_modified: 1000000000000002,
-      category: "convenience",
       classifierFeatures: [FEATURE_SOCIAL_NAME],
       urlPattern: "*://social.example.com/*",
     },
     {
       id: "3",
       last_modified: 1000000000000003,
-      category: "baseline",
       classifierFeatures: [FEATURE_TRACKING_NAME],
       urlPattern: "*://*.tracking.org/*",
     },
     {
       id: "4",
       last_modified: 1000000000000004,
-      category: "convenience",
       classifierFeatures: [FEATURE_SOCIAL_NAME],
       urlPattern: "*://MOZILLA.ORG/*",
     },
@@ -348,21 +340,18 @@ add_task(async function test_list_init_data() {
     {
       id: "5",
       last_modified: 1000000000000002,
-      category: "baseline",
       classifierFeatures: [FEATURE_FINGERPRINTING_NAME],
       urlPattern: "*://fingerprinting.example.com/*",
     },
     {
       id: "6",
       last_modified: 1000000000000002,
-      category: "convenience",
       classifierFeatures: ["other-feature"],
       urlPattern: "*://not-a-fingerprinting.example.com/*",
     },
     {
       id: "7",
       last_modified: 1000000000000002,
-      category: "baseline",
       classifierFeatures: [FEATURE_FINGERPRINTING_NAME],
       urlPattern: "*://*.fingerprinting.org/*",
     }

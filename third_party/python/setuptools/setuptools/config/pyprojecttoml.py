@@ -44,8 +44,8 @@ def validate(config: dict, filepath: StrPath) -> bool:
 
     trove_classifier = validator.FORMAT_FUNCTIONS.get("trove-classifier")
     if hasattr(trove_classifier, "_disable_download"):
-        # Improve reproducibility by default. See abravalheri/validate-pyproject#31
-        trove_classifier._disable_download()  # type: ignore[union-attr]
+        # Improve reproducibility by default. See issue 31 for validate-pyproject.
+        trove_classifier._disable_download()  # type: ignore
 
     try:
         return validator.validate(config)
@@ -63,7 +63,7 @@ def validate(config: dict, filepath: StrPath) -> bool:
 def apply_configuration(
     dist: Distribution,
     filepath: StrPath,
-    ignore_option_errors: bool = False,
+    ignore_option_errors=False,
 ) -> Distribution:
     """Apply the configuration from a ``pyproject.toml`` file into an existing
     distribution object.
@@ -74,8 +74,8 @@ def apply_configuration(
 
 def read_configuration(
     filepath: StrPath,
-    expand: bool = True,
-    ignore_option_errors: bool = False,
+    expand=True,
+    ignore_option_errors=False,
     dist: Distribution | None = None,
 ) -> dict[str, Any]:
     """Read given configuration file and returns options from it as a dict.
@@ -129,9 +129,6 @@ def read_configuration(
     # Persist changes:
     asdict["tool"] = tool_table
     tool_table["setuptools"] = setuptools_table
-
-    if "ext-modules" in setuptools_table:
-        _ExperimentalConfiguration.emit(subject="[tool.setuptools.ext-modules]")
 
     with _ignore_errors(ignore_option_errors):
         # Don't complain about unrelated errors (e.g. tools not using the "tool" table)

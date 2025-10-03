@@ -1,6 +1,7 @@
 /* import-globals-from ../head.js */
 
-/* exported getBackgroundServiceWorkerRegistration, waitForTerminatedWorkers, runExtensionAPITest */
+/* exported getBackgroundServiceWorkerRegistration, waitForTerminatedWorkers,
+ *          runExtensionAPITest */
 
 "use strict";
 

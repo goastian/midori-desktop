@@ -6,7 +6,6 @@
 
 #include "mozilla/glean/bindings/GleanMetric.h"
 
-#include "nsIThread.h"
 #include "nsThreadUtils.h"
 #include "nsWrapperCache.h"
 #include "mozilla/AppShutdown.h"

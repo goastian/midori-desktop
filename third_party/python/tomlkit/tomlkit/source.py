@@ -119,7 +119,7 @@ class Source(str):
             self._idx = len(self)
             self._current = self.EOF
             if exception:
-                raise self.parse_error(exception) from None
+                raise self.parse_error(exception)
 
             return False
 

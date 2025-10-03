@@ -1,6 +1,9 @@
+from __future__ import absolute_import
+
 import sys
 
-import sentry_sdk
+from sentry_sdk import configure_scope
+from sentry_sdk.hub import Hub
 from sentry_sdk.integrations import Integration
 from sentry_sdk.utils import (
     capture_internal_exceptions,
@@ -10,9 +13,9 @@ from sentry_sdk.utils import (
     event_hint_with_exc_info,
 )
 
-from typing import TYPE_CHECKING
+from sentry_sdk._types import MYPY
 
-if TYPE_CHECKING:
+if MYPY:
     from typing import Any
     from typing import Optional
 
@@ -30,9 +33,11 @@ class SparkWorkerIntegration(Integration):
         original_daemon.worker_main = _sentry_worker_main
 
 
-def _capture_exception(exc_info):
-    # type: (ExcInfo) -> None
-    client = sentry_sdk.get_client()
+def _capture_exception(exc_info, hub):
+    # type: (ExcInfo, Hub) -> None
+    client = hub.client
+
+    client_options = client.options  # type: ignore
 
     mechanism = {"type": "spark", "handled": False}
 
@@ -46,61 +51,63 @@ def _capture_exception(exc_info):
         if exc_type not in (SystemExit, EOFError, ConnectionResetError):
             rv.append(
                 single_exception_from_error_tuple(
-                    exc_type, exc_value, tb, client.options, mechanism
+                    exc_type, exc_value, tb, client_options, mechanism
                 )
             )
 
     if rv:
         rv.reverse()
         hint = event_hint_with_exc_info(exc_info)
-        event = {"level": "error", "exception": {"values": rv}}  # type: Event
+        event = {"level": "error", "exception": {"values": rv}}
 
         _tag_task_context()
 
-        sentry_sdk.capture_event(event, hint=hint)
+        hub.capture_event(event, hint=hint)
 
 
 def _tag_task_context():
     # type: () -> None
     from pyspark.taskcontext import TaskContext
 
-    scope = sentry_sdk.get_isolation_scope()
+    with configure_scope() as scope:
 
-    @scope.add_event_processor
-    def process_event(event, hint):
-        # type: (Event, Hint) -> Optional[Event]
-        with capture_internal_exceptions():
-            integration = sentry_sdk.get_client().get_integration(
-                SparkWorkerIntegration
-            )
-            task_context = TaskContext.get()
+        @scope.add_event_processor
+        def process_event(event, hint):
+            # type: (Event, Hint) -> Optional[Event]
+            with capture_internal_exceptions():
+                integration = Hub.current.get_integration(SparkWorkerIntegration)
+                task_context = TaskContext.get()
 
-            if integration is None or task_context is None:
-                return event
+                if integration is None or task_context is None:
+                    return event
 
-            event.setdefault("tags", {}).setdefault(
-                "stageId", str(task_context.stageId())
-            )
-            event["tags"].setdefault("partitionId", str(task_context.partitionId()))
-            event["tags"].setdefault("attemptNumber", str(task_context.attemptNumber()))
-            event["tags"].setdefault("taskAttemptId", str(task_context.taskAttemptId()))
+                event.setdefault("tags", {}).setdefault(
+                    "stageId", str(task_context.stageId())
+                )
+                event["tags"].setdefault("partitionId", str(task_context.partitionId()))
+                event["tags"].setdefault(
+                    "attemptNumber", str(task_context.attemptNumber())
+                )
+                event["tags"].setdefault(
+                    "taskAttemptId", str(task_context.taskAttemptId())
+                )
 
-            if task_context._localProperties:
-                if "sentry_app_name" in task_context._localProperties:
-                    event["tags"].setdefault(
-                        "app_name", task_context._localProperties["sentry_app_name"]
-                    )
-                    event["tags"].setdefault(
-                        "application_id",
-                        task_context._localProperties["sentry_application_id"],
-                    )
+                if task_context._localProperties:
+                    if "sentry_app_name" in task_context._localProperties:
+                        event["tags"].setdefault(
+                            "app_name", task_context._localProperties["sentry_app_name"]
+                        )
+                        event["tags"].setdefault(
+                            "application_id",
+                            task_context._localProperties["sentry_application_id"],
+                        )
 
-                if "callSite.short" in task_context._localProperties:
-                    event.setdefault("extra", {}).setdefault(
-                        "callSite", task_context._localProperties["callSite.short"]
-                    )
+                    if "callSite.short" in task_context._localProperties:
+                        event.setdefault("extra", {}).setdefault(
+                            "callSite", task_context._localProperties["callSite.short"]
+                        )
 
-        return event
+            return event
 
 
 def _sentry_worker_main(*args, **kwargs):
@@ -110,7 +117,8 @@ def _sentry_worker_main(*args, **kwargs):
     try:
         original_worker.main(*args, **kwargs)
     except SystemExit:
-        if sentry_sdk.get_client().get_integration(SparkWorkerIntegration) is not None:
+        if Hub.current.get_integration(SparkWorkerIntegration) is not None:
+            hub = Hub.current
             exc_info = sys.exc_info()
             with capture_internal_exceptions():
-                _capture_exception(exc_info)
+                _capture_exception(exc_info, hub)

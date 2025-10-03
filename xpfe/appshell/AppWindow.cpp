@@ -60,7 +60,6 @@
 #include "mozilla/PresShell.h"
 #include "mozilla/Services.h"
 #include "mozilla/SpinEventLoopUntil.h"
-#include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/dom/BarProps.h"
 #include "mozilla/dom/DOMRect.h"
 #include "mozilla/dom/Element.h"
@@ -546,6 +545,19 @@ NS_IMETHODIMP AppWindow::Destroy() {
   // interactions with destroyed windows on X11 either.
 #ifndef MOZ_WIDGET_GTK
   if (mWindow) mWindow->Show(false);
+#endif
+
+  // Raise and focus our parent explicitly on Windows, if visible. Apparently
+  // Windows gets the z-order and focus wrong otherwise for nested modal
+  // windows, see bug 1977581.
+#ifdef XP_WIN
+  if (nsCOMPtr<nsIBaseWindow> parent = do_QueryReferent(mParentWindow)) {
+    nsCOMPtr<nsIWidget> parentWidget;
+    parent->GetMainWidget(getter_AddRefs(parentWidget));
+    if (parentWidget && parentWidget->IsVisible()) {
+      parentWidget->SetFocus(nsIWidget::Raise::Yes, dom::CallerType::System);
+    }
+  }
 #endif
 
   RemoveTooltipSupport();
@@ -2393,12 +2405,6 @@ AppWindow::NeedFastSnaphot() {
 void AppWindow::LoadPersistentWindowState() {
   nsCOMPtr<dom::Element> docShellElement = GetWindowDOMElement();
   if (!docShellElement) {
-    return;
-  }
-
-  // Disable state restoration, allowing the kiosk desktop environment
-  // to manage state and position.
-  if (StaticPrefs::browser_restoreWindowState_disabled()) {
     return;
   }
 

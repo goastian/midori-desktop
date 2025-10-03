@@ -13,6 +13,9 @@ ID01:
         - trademarkInfo
         # browser/aboutTabCrashed.ftl
         - crashed-include-URL-2
+        # browser/preferences/blocklists.ftl
+        - blocklist-item-moz-full-listName
+        - blocklist-item-moz-std-listName
         # toolkit/about/aboutAddons.ftl
         - shortcuts-browserAction2
         - shortcuts-pageAction
@@ -56,7 +59,7 @@ ID01:
         - clockSkewError-title
         - connectionFailure-title
         - contentEncodingError-title
-        - corruptedContentError-title
+        - corruptedContentErrorv2-title
         - deniedPortAccess-title
         - dnsNotFound-title
         - fileAccessDenied-title

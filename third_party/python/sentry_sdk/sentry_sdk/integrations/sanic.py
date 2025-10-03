@@ -1,39 +1,33 @@
 import sys
 import weakref
 from inspect import isawaitable
-from urllib.parse import urlsplit
 
-import sentry_sdk
-from sentry_sdk import continue_trace
-from sentry_sdk.consts import OP
-from sentry_sdk.integrations import _check_minimum_version, Integration, DidNotEnable
-from sentry_sdk.integrations._wsgi_common import RequestExtractor, _filter_headers
-from sentry_sdk.integrations.logging import ignore_logger
-from sentry_sdk.tracing import TransactionSource
+from sentry_sdk._compat import urlparse, reraise
+from sentry_sdk.hub import Hub
+from sentry_sdk.tracing import TRANSACTION_SOURCE_COMPONENT
 from sentry_sdk.utils import (
     capture_internal_exceptions,
-    ensure_integration_enabled,
     event_from_exception,
     HAS_REAL_CONTEXTVARS,
     CONTEXTVARS_ERROR_MESSAGE,
-    parse_version,
-    reraise,
 )
+from sentry_sdk.integrations import Integration, DidNotEnable
+from sentry_sdk.integrations._wsgi_common import RequestExtractor, _filter_headers
+from sentry_sdk.integrations.logging import ignore_logger
 
-from typing import TYPE_CHECKING
+from sentry_sdk._types import MYPY
 
-if TYPE_CHECKING:
-    from collections.abc import Container
+if MYPY:
     from typing import Any
     from typing import Callable
     from typing import Optional
     from typing import Union
+    from typing import Tuple
     from typing import Dict
 
     from sanic.request import Request, RequestParameters
-    from sanic.response import BaseHTTPResponse
 
-    from sentry_sdk._types import Event, EventProcessor, ExcInfo, Hint
+    from sentry_sdk._types import Event, EventProcessor, Hint
     from sanic.router import Route
 
 try:
@@ -57,24 +51,19 @@ except AttributeError:
 
 class SanicIntegration(Integration):
     identifier = "sanic"
-    origin = f"auto.http.{identifier}"
-    version = None
-
-    def __init__(self, unsampled_statuses=frozenset({404})):
-        # type: (Optional[Container[int]]) -> None
-        """
-        The unsampled_statuses parameter can be used to specify for which HTTP statuses the
-        transactions should not be sent to Sentry. By default, transactions are sent for all
-        HTTP statuses, except 404. Set unsampled_statuses to None to send transactions for all
-        HTTP statuses, including 404.
-        """
-        self._unsampled_statuses = unsampled_statuses or set()
+    version = (0, 0)  # type: Tuple[int, ...]
 
     @staticmethod
     def setup_once():
         # type: () -> None
-        SanicIntegration.version = parse_version(SANIC_VERSION)
-        _check_minimum_version(SanicIntegration, SanicIntegration.version)
+
+        try:
+            SanicIntegration.version = tuple(map(int, SANIC_VERSION.split(".")))
+        except (TypeError, ValueError):
+            raise DidNotEnable("Unparsable Sanic version: {}".format(SANIC_VERSION))
+
+        if SanicIntegration.version < (0, 8):
+            raise DidNotEnable("Sanic 0.8 or newer required.")
 
         if not HAS_REAL_CONTEXTVARS:
             # We better have contextvars or we're going to leak state between
@@ -96,7 +85,7 @@ class SanicIntegration(Integration):
             # https://github.com/huge-success/sanic/issues/1332
             ignore_logger("root")
 
-        if SanicIntegration.version is not None and SanicIntegration.version < (21, 9):
+        if SanicIntegration.version < (21, 9):
             _setup_legacy_sanic()
             return
 
@@ -156,13 +145,13 @@ async def _startup(self):
     # type: (Sanic) -> None
     # This happens about as early in the lifecycle as possible, just after the
     # Request object is created. The body has not yet been consumed.
-    self.signal("http.lifecycle.request")(_context_enter)
+    self.signal("http.lifecycle.request")(_hub_enter)
 
     # This happens after the handler is complete. In v21.9 this signal is not
     # dispatched when there is an exception. Therefore we need to close out
-    # and call _context_exit from the custom exception handler as well.
+    # and call _hub_exit from the custom exception handler as well.
     # See https://github.com/sanic-org/sanic/issues/2297
-    self.signal("http.lifecycle.response")(_context_exit)
+    self.signal("http.lifecycle.response")(_hub_exit)
 
     # This happens inside of request handling immediately after the route
     # has been identified by the router.
@@ -172,64 +161,40 @@ async def _startup(self):
     await old_startup(self)
 
 
-async def _context_enter(request):
+async def _hub_enter(request):
     # type: (Request) -> None
+    hub = Hub.current
     request.ctx._sentry_do_integration = (
-        sentry_sdk.get_client().get_integration(SanicIntegration) is not None
+        hub.get_integration(SanicIntegration) is not None
     )
 
     if not request.ctx._sentry_do_integration:
         return
 
     weak_request = weakref.ref(request)
-    request.ctx._sentry_scope = sentry_sdk.isolation_scope()
-    scope = request.ctx._sentry_scope.__enter__()
-    scope.clear_breadcrumbs()
-    scope.add_event_processor(_make_request_processor(weak_request))
+    request.ctx._sentry_hub = Hub(hub)
+    request.ctx._sentry_hub.__enter__()
 
-    transaction = continue_trace(
-        dict(request.headers),
-        op=OP.HTTP_SERVER,
-        # Unless the request results in a 404 error, the name and source will get overwritten in _set_transaction
-        name=request.path,
-        source=TransactionSource.URL,
-        origin=SanicIntegration.origin,
-    )
-    request.ctx._sentry_transaction = sentry_sdk.start_transaction(
-        transaction
-    ).__enter__()
+    with request.ctx._sentry_hub.configure_scope() as scope:
+        scope.clear_breadcrumbs()
+        scope.add_event_processor(_make_request_processor(weak_request))
 
 
-async def _context_exit(request, response=None):
-    # type: (Request, Optional[BaseHTTPResponse]) -> None
-    with capture_internal_exceptions():
-        if not request.ctx._sentry_do_integration:
-            return
-
-        integration = sentry_sdk.get_client().get_integration(SanicIntegration)
-
-        response_status = None if response is None else response.status
-
-        # This capture_internal_exceptions block has been intentionally nested here, so that in case an exception
-        # happens while trying to end the transaction, we still attempt to exit the hub.
-        with capture_internal_exceptions():
-            request.ctx._sentry_transaction.set_http_status(response_status)
-            request.ctx._sentry_transaction.sampled &= (
-                isinstance(integration, SanicIntegration)
-                and response_status not in integration._unsampled_statuses
-            )
-            request.ctx._sentry_transaction.__exit__(None, None, None)
-
-        request.ctx._sentry_scope.__exit__(None, None, None)
+async def _hub_exit(request, **_):
+    # type: (Request, **Any) -> None
+    request.ctx._sentry_hub.__exit__(None, None, None)
 
 
-async def _set_transaction(request, route, **_):
+async def _set_transaction(request, route, **kwargs):
     # type: (Request, Route, **Any) -> None
-    if request.ctx._sentry_do_integration:
+    hub = Hub.current
+    if hub.get_integration(SanicIntegration) is not None:
         with capture_internal_exceptions():
-            scope = sentry_sdk.get_current_scope()
-            route_name = route.name.replace(request.app.name, "").strip(".")
-            scope.set_transaction_name(route_name, source=TransactionSource.COMPONENT)
+            with hub.configure_scope() as scope:
+                route_name = route.name.replace(request.app.name, "").strip(".")
+                scope.set_transaction_name(
+                    route_name, source=TRANSACTION_SOURCE_COMPONENT
+                )
 
 
 def _sentry_error_handler_lookup(self, exception, *args, **kwargs):
@@ -240,7 +205,7 @@ def _sentry_error_handler_lookup(self, exception, *args, **kwargs):
     if old_error_handler is None:
         return None
 
-    if sentry_sdk.get_client().get_integration(SanicIntegration) is None:
+    if Hub.current.get_integration(SanicIntegration) is None:
         return old_error_handler
 
     async def sentry_wrapped_error_handler(request, exception):
@@ -260,22 +225,24 @@ def _sentry_error_handler_lookup(self, exception, *args, **kwargs):
         finally:
             # As mentioned in previous comment in _startup, this can be removed
             # after https://github.com/sanic-org/sanic/issues/2297 is resolved
-            if SanicIntegration.version and SanicIntegration.version == (21, 9):
-                await _context_exit(request)
+            if SanicIntegration.version == (21, 9):
+                await _hub_exit(request)
 
     return sentry_wrapped_error_handler
 
 
 async def _legacy_handle_request(self, request, *args, **kwargs):
     # type: (Any, Request, *Any, **Any) -> Any
-    if sentry_sdk.get_client().get_integration(SanicIntegration) is None:
-        return await old_handle_request(self, request, *args, **kwargs)
+    hub = Hub.current
+    if hub.get_integration(SanicIntegration) is None:
+        return old_handle_request(self, request, *args, **kwargs)
 
     weak_request = weakref.ref(request)
 
-    with sentry_sdk.isolation_scope() as scope:
-        scope.clear_breadcrumbs()
-        scope.add_event_processor(_make_request_processor(weak_request))
+    with Hub(hub) as hub:
+        with hub.configure_scope() as scope:
+            scope.clear_breadcrumbs()
+            scope.add_event_processor(_make_request_processor(weak_request))
 
         response = old_handle_request(self, request, *args, **kwargs)
         if isawaitable(response):
@@ -287,47 +254,51 @@ async def _legacy_handle_request(self, request, *args, **kwargs):
 def _legacy_router_get(self, *args):
     # type: (Any, Union[Any, Request]) -> Any
     rv = old_router_get(self, *args)
-    if sentry_sdk.get_client().get_integration(SanicIntegration) is not None:
+    hub = Hub.current
+    if hub.get_integration(SanicIntegration) is not None:
         with capture_internal_exceptions():
-            scope = sentry_sdk.get_isolation_scope()
-            if SanicIntegration.version and SanicIntegration.version >= (21, 3):
-                # Sanic versions above and including 21.3 append the app name to the
-                # route name, and so we need to remove it from Route name so the
-                # transaction name is consistent across all versions
-                sanic_app_name = self.ctx.app.name
-                sanic_route = rv[0].name
+            with hub.configure_scope() as scope:
+                if SanicIntegration.version and SanicIntegration.version >= (21, 3):
+                    # Sanic versions above and including 21.3 append the app name to the
+                    # route name, and so we need to remove it from Route name so the
+                    # transaction name is consistent across all versions
+                    sanic_app_name = self.ctx.app.name
+                    sanic_route = rv[0].name
 
-                if sanic_route.startswith("%s." % sanic_app_name):
-                    # We add a 1 to the len of the sanic_app_name because there is a dot
-                    # that joins app name and the route name
-                    # Format: app_name.route_name
-                    sanic_route = sanic_route[len(sanic_app_name) + 1 :]
+                    if sanic_route.startswith("%s." % sanic_app_name):
+                        # We add a 1 to the len of the sanic_app_name because there is a dot
+                        # that joins app name and the route name
+                        # Format: app_name.route_name
+                        sanic_route = sanic_route[len(sanic_app_name) + 1 :]
 
-                scope.set_transaction_name(
-                    sanic_route, source=TransactionSource.COMPONENT
-                )
-            else:
-                scope.set_transaction_name(
-                    rv[0].__name__, source=TransactionSource.COMPONENT
-                )
+                    scope.set_transaction_name(
+                        sanic_route, source=TRANSACTION_SOURCE_COMPONENT
+                    )
+                else:
+                    scope.set_transaction_name(
+                        rv[0].__name__, source=TRANSACTION_SOURCE_COMPONENT
+                    )
 
     return rv
 
 
-@ensure_integration_enabled(SanicIntegration)
 def _capture_exception(exception):
-    # type: (Union[ExcInfo, BaseException]) -> None
+    # type: (Union[Tuple[Optional[type], Optional[BaseException], Any], BaseException]) -> None
+    hub = Hub.current
+    integration = hub.get_integration(SanicIntegration)
+    if integration is None:
+        return
+
+    # If an integration is there, a client has to be there.
+    client = hub.client  # type: Any
+
     with capture_internal_exceptions():
         event, hint = event_from_exception(
             exception,
-            client_options=sentry_sdk.get_client().options,
+            client_options=client.options,
             mechanism={"type": "sanic", "handled": False},
         )
-
-        if hint and hasattr(hint["exc_info"][0], "quiet") and hint["exc_info"][0].quiet:
-            return
-
-        sentry_sdk.capture_event(event, hint=hint)
+        hub.capture_event(event, hint=hint)
 
 
 def _make_request_processor(weak_request):
@@ -350,7 +321,7 @@ def _make_request_processor(weak_request):
             extractor.extract_into_event(event)
 
             request_info = event["request"]
-            urlparts = urlsplit(request.url)
+            urlparts = urlparse.urlsplit(request.url)
 
             request_info["url"] = "%s://%s%s" % (
                 urlparts.scheme,

@@ -11,7 +11,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ASRouterTargeting:
     // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
     "resource:///modules/asrouter/ASRouterTargeting.sys.mjs",
-  AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
+  CleanupManager: "resource://normandy/lib/CleanupManager.sys.mjs",
   ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
   JsonSchema: "resource://gre/modules/JsonSchema.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
@@ -155,23 +155,16 @@ export const CheckRecipeResult = {
     };
   },
 
-  UnsupportedFeatures() {
+  UnsupportedFeatures(featureIds) {
     return {
       ok: false,
       reason: lazy.NimbusTelemetry.ValidationFailureReason.UNSUPPORTED_FEATURES,
+      featureIds,
     };
   },
 };
 
 export class RemoteSettingsExperimentLoader {
-  /**
-   * A shutdown blocker that will try to ensure that any ongoing update will
-   * finish.
-   *
-   * @type {function(): Promise<void>}
-   */
-  #shutdownBlocker;
-
   get LOCK_ID() {
     return "remote-settings-experiment-loader:update";
   }
@@ -251,28 +244,8 @@ export class RemoteSettingsExperimentLoader {
       return;
     }
 
-    if (
-      Services.startup.isInOrBeyondShutdownPhase(
-        Ci.nsIAppStartup.SHUTDOWN_PHASE_APPSHUTDOWNCONFIRMED
-      )
-    ) {
-      lazy.log.debug(
-        "Not enabling RemoteSettingsExperimentLoader: shutting down"
-      );
-      return;
-    }
-
-    this.#shutdownBlocker = async () => {
-      await this.finishedUpdating();
-      this.disable();
-    };
-
-    lazy.AsyncShutdown.appShutdownConfirmed.addBlocker(
-      "RemoteSettingsExperimentLoader: disabling",
-      this.#shutdownBlocker
-    );
-
     this.setTimer();
+    lazy.CleanupManager.addCleanupHandler(() => this.disable());
     this._enabled = true;
 
     await this.updateRecipes("enabled", { forceSync });
@@ -282,12 +255,6 @@ export class RemoteSettingsExperimentLoader {
     if (!this._enabled) {
       return;
     }
-
-    lazy.AsyncShutdown.appShutdownConfirmed.removeBlocker(
-      this.#shutdownBlocker
-    );
-    this.#shutdownBlocker = null;
-
     lazy.timerManager.unregisterTimer(TIMER_NAME);
     this._enabled = false;
     this._updating = false;
@@ -329,17 +296,6 @@ export class RemoteSettingsExperimentLoader {
       return;
     }
 
-    // If we've started shutting down, prevent an update from being triggered,
-    // which we might not complete in time and could result in partial state
-    // written to the database.
-    if (
-      Services.startup.isInOrBeyondShutdownPhase(
-        Ci.nsIAppStartup.SHUTDOWN_PHASE_APPSHUTDOWNCONFIRMED
-      )
-    ) {
-      return;
-    }
-
     this._updating = true;
 
     // If recipes have been updated once, replace the deferred with a new one so
@@ -369,8 +325,6 @@ export class RemoteSettingsExperimentLoader {
    *                  updating. Otherwise locally cached records will be used.
    */
   async #updateImpl(trigger, { forceSync = false } = {}) {
-    lazy.log.debug(`Updating recipes with trigger "${trigger ?? ""}"`);
-
     this.manager.optInRecipes = [];
 
     // The targeting context metrics do not work in artifact builds.
@@ -392,8 +346,11 @@ export class RemoteSettingsExperimentLoader {
         await SCHEMAS.NimbusExperiment
       );
     }
+
+    lazy.log.debug(`Updating recipes with trigger "${trigger ?? ""}"`);
+
     const { recipes: allRecipes, loadingError } =
-      await this.getRecipesFromAllCollections({ forceSync, trigger });
+      await this.getRecipesFromAllCollections({ forceSync });
 
     if (!loadingError) {
       const enrollmentsCtx = new EnrollmentsContext(
@@ -445,13 +402,11 @@ export class RemoteSettingsExperimentLoader {
    * @param {object} options
    * @param {boolean} options.forceSync Whether or not to force a sync when
    * fetching recipes.
-   * @param {string} options.trigger The name of the event that triggered the
-   * update.
    *
    * @returns {Promise<{ recipes: object[]; loadingError: boolean; }>} The
    * recipes from Remote Settings.
    */
-  async getRecipesFromAllCollections({ forceSync = false, trigger } = {}) {
+  async getRecipesFromAllCollections({ forceSync = false } = {}) {
     const recipes = [];
     let loadingError = false;
 
@@ -478,13 +433,6 @@ export class RemoteSettingsExperimentLoader {
     } else {
       loadingError = true;
     }
-
-    lazy.NimbusTelemetry.recordRemoteSettingsSync(
-      forceSync,
-      experiments,
-      secureExperiments,
-      trigger
-    );
 
     return { recipes, loadingError };
   }
@@ -520,17 +468,6 @@ export class RemoteSettingsExperimentLoader {
         forceSync,
         emptyListFallback: false, // Throw instead of returning an empty list.
       });
-      if (!Array.isArray(recipes)) {
-        throw new Error("Remote Settings did not return an array");
-      }
-      if (
-        recipes.length === 0 &&
-        (await client.db.getLastModified()) === null
-      ) {
-        throw new Error(
-          "Remote Settings returned an empty list but should have thrown (no last modified)"
-        );
-      }
       lazy.log.debug(
         `Got ${recipes.length} recipes from ${client.collectionName}`
       );
@@ -703,7 +640,7 @@ export class RemoteSettingsExperimentLoader {
     // The callbacks will be called soon after the timer is registered
     lazy.timerManager.registerTimer(
       TIMER_NAME,
-      () => this.updateRecipes("timer", { forceSync: true }),
+      () => this.updateRecipes("timer"),
       this.intervalInSeconds
     );
     lazy.log.debug("Registered update timer");
@@ -721,12 +658,10 @@ export class RemoteSettingsExperimentLoader {
    * Resolves when the RemoteSettingsExperimentLoader has updated at least once
    * and is not in the middle of an update.
    *
-   * If studies are disabled or the RemoteSettingsExperimentLoader has been
-   * disabled (i.e., during shutdown), then this will always resolve
-   * immediately.
+   * If studies are disabled, then this will always resolve immediately.
    */
   finishedUpdating() {
-    if (!lazy.ExperimentAPI.studiesEnabled || !this._enabled) {
+    if (!lazy.ExperimentAPI.studiesEnabled) {
       return Promise.resolve();
     }
 
@@ -861,7 +796,7 @@ export class EnrollmentsContext {
       // the background updater encounters a recipe with features it does not
       // support, which will happen with most recipes. Reporting these errors
       // results in an inordinate amount of telemetry being submitted.
-      return CheckRecipeResult.UnsupportedFeatures();
+      return CheckRecipeResult.UnsupportedFeatures(unsupportedFeatureIds);
     }
 
     if (recipe.isEnrollmentPaused) {

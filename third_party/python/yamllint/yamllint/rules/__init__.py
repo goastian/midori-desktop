@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright (C) 2016 Adrien Vergé
 #
 # This program is free software: you can redistribute it and/or modify
@@ -14,7 +15,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from yamllint.rules import (
-    anchors,
     braces,
     brackets,
     colons,
@@ -25,7 +25,6 @@ from yamllint.rules import (
     document_start,
     empty_lines,
     empty_values,
-    float_values,
     hyphens,
     indentation,
     key_duplicates,
@@ -40,7 +39,6 @@ from yamllint.rules import (
 )
 
 _RULES = {
-    anchors.ID: anchors,
     braces.ID: braces,
     brackets.ID: brackets,
     colons.ID: colons,
@@ -51,7 +49,6 @@ _RULES = {
     document_start.ID: document_start,
     empty_lines.ID: empty_lines,
     empty_values.ID: empty_values,
-    float_values.ID: float_values,
     hyphens.ID: hyphens,
     indentation.ID: indentation,
     key_duplicates.ID: key_duplicates,
@@ -68,6 +65,6 @@ _RULES = {
 
 def get(id):
     if id not in _RULES:
-        raise ValueError(f'no such rule: "{id}"')
+        raise ValueError('no such rule: "%s"' % id)
 
     return _RULES[id]

@@ -54,6 +54,10 @@ elif cmd == "ignore_sigterm":
             import time
 
             time.sleep(3600)
+elif cmd == "close_pipes_and_wait_for_stdin":
+    os.close(sys.stdout.fileno())
+    os.close(sys.stderr.fileno())
+    sys.stdin.buffer.read(1)
 elif cmd == "print":
     output(sys.argv[2], stream=sys.stdout, print_only=True)
     output(sys.argv[3], stream=sys.stderr, print_only=True)

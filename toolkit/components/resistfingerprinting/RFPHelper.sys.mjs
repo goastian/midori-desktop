@@ -715,7 +715,7 @@ class _RFPHelper {
   getTargetDefaults() {
     const key =
       Services.appinfo.OS === "Android" ? "ANDROID_DEFAULT" : "DESKTOP_DEFAULT";
-    return RFPTargetConstants.DefaultTargetsFPP[key];
+    return RFPTargetConstants.DefaultTargets[key];
   }
 }
 

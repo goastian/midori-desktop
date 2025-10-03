@@ -7,7 +7,7 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "Networking: DNS")
 
-MOZ_SRC_FILES += [
+EXTRA_JS_MODULES += [
     "DoHConfig.sys.mjs",
     "DoHController.sys.mjs",
     "DoHHeuristics.sys.mjs",

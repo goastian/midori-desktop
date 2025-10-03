@@ -228,15 +228,12 @@ class NotificationMessageBar extends MozLitElement {
     `;
   }
 
-  #renderUpdateLoginSuccess(id) {
-    const dataL10nId =
-      id == "update-username-success"
-        ? "contextual-manager-passwords-update-username-success-heading"
-        : "contextual-manager-passwords-update-password-success-heading";
+  #renderUpdateLoginSuccess() {
     return html`
       ${notificationShell({
         onDismiss: this.#handleDismiss,
-        dataL10nId,
+        dataL10nId:
+          "contextual-manager-passwords-update-password-success-heading",
         dataL10nAttrs: "heading",
         type: "success",
         primaryAction: {
@@ -375,7 +372,6 @@ class NotificationMessageBar extends MozLitElement {
       })}
     `;
   }
-
   render() {
     switch (this.notification?.id) {
       case "import-success":
@@ -389,7 +385,7 @@ class NotificationMessageBar extends MozLitElement {
       case "login-already-exists-warning":
         return this.#renderAddLoginAlreadyExistsWarning();
       case "update-login-success":
-        return this.#renderUpdateLoginSuccess(this.notification?.id);
+        return this.#renderUpdateLoginSuccess();
       case "delete-login-success":
         return this.#renderDeleteLoginSuccess();
       case "discard-changes":

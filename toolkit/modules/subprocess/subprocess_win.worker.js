@@ -23,9 +23,52 @@ const TERMINATE_EXIT_CODE = 0x7f;
 
 let io;
 
+// We use IOCP to monitor for IO completion on Pipe and process termination:
+// - CreateIoCompletionPort with Pipe.
+// - JOBOBJECT_ASSOCIATE_COMPLETION_PORT with Process.
+// - GetQueuedCompletionStatus to query completion (receives CompletionKey).
+//
+// The CompletionKey can be an arbitrarily chosen value, used to identify the
+// target of the IOCP notification. It is defined as ctypes.uintptr_t, so in
+// theory it could be 64 or 32 bit. The number of pipes and processes that we
+// create can be represented in fewer than 32 bits. We therefore use the higher
+// order bits to tag the ID to distinguish Pipes, Processes and custom IOCP
+// messages (e.g. IOCP_COMPLETION_KEY_WAKE_WORKER) from each other.
+class IOCPKeyGen {
+  // The IOCP_KEY_IS_PIPE and IOCP_KEY_IS_PROC bits are mutually exclusive.
+  static IOCP_KEY_IS_PIPE = 1 << 31;
+  static IOCP_KEY_IS_PROC = 1 << 30;
+
+  static keyForPipe(pipe) {
+    // pipe.id starts at 0 (nextPipeId in this file).
+    return (IOCPKeyGen.IOCP_KEY_IS_PIPE | pipe.id) >>> 0;
+  }
+  static keyForProcess(process) {
+    // process.id starts at 0 (nextProcessId++ in subprocess_worker_common.js).
+    return (IOCPKeyGen.IOCP_KEY_IS_PROC | process.id) >>> 0;
+  }
+
+  static isPipeKey(completionKey) {
+    return !!(IOCPKeyGen.IOCP_KEY_IS_PIPE & completionKey);
+  }
+  static isProcessKey(completionKey) {
+    return !!(IOCPKeyGen.IOCP_KEY_IS_PROC & completionKey);
+  }
+
+  // Only use this if isPipeKey(completionKey) is true:
+  static pipeIdFromKey(completionKey) {
+    return (~IOCPKeyGen.IOCP_KEY_IS_PIPE & completionKey) >>> 0;
+  }
+  // Only use this if isProcessKey(completionKey) is true:
+  static processIdFromKey(completionKey) {
+    return (~IOCPKeyGen.IOCP_KEY_IS_PROC & completionKey) >>> 0;
+  }
+}
+
 let nextPipeId = 0;
 
 class Pipe extends BasePipe {
+  // origHandle MUST be opened with the FILE_FLAG_OVERLAPPED flag.
   constructor(process, origHandle) {
     super();
 
@@ -49,21 +92,24 @@ class Pipe extends BasePipe {
 
     this.handle = win32.Handle(handle);
 
-    let event = libc.CreateEventW(null, false, false, null);
-
     this.overlapped = win32.OVERLAPPED();
-    this.overlapped.hEvent = event;
 
-    this._event = win32.Handle(event);
+    let ok = libc.CreateIoCompletionPort(
+      handle,
+      io.iocpCompletionPort,
+      IOCPKeyGen.keyForPipe(this),
+      0 // Ignored.
+    );
+    if (!ok) {
+      // Truly unexpected. We won't be able to observe IO on this Pipe.
+      debug(`Failed to associate IOCP: ${ctypes.winLastError}`);
+    }
 
     this.buffer = null;
   }
 
-  get event() {
-    if (this.pending.length) {
-      return this._event;
-    }
-    return null;
+  hasPendingIO() {
+    return !!this.pending.length;
   }
 
   maybeClose() {}
@@ -96,7 +142,6 @@ class Pipe extends BasePipe {
 
     if (!this.closed) {
       this.handle.dispose();
-      this._event.dispose();
 
       io.pipes.delete(this.id);
 
@@ -190,6 +235,7 @@ class InputPipe extends Pipe {
       this.overlapped.address()
     );
 
+    // TODO bug 1983138: libc.winLastError should be ctypes.winLastError
     if (!ok && (!this.process.handle || libc.winLastError)) {
       this.onError();
     } else {
@@ -287,6 +333,7 @@ class OutputPipe extends Pipe {
       this.overlapped.address()
     );
 
+    // TODO bug 1983138: libc.winLastError should be ctypes.winLastError
     if (!ok && libc.winLastError) {
       this.onError();
     } else {
@@ -327,38 +374,11 @@ class OutputPipe extends Pipe {
   }
 }
 
-class Signal {
-  constructor(event) {
-    this.event = event;
-  }
-
-  cleanup() {
-    libc.CloseHandle(this.event);
-    this.event = null;
-  }
-
-  onError() {
-    io.shutdown();
-  }
-
-  onReady() {
-    io.messageCount += 1;
-  }
-}
-
 class Process extends BaseProcess {
   constructor(...args) {
     super(...args);
 
     this.killed = false;
-  }
-
-  /**
-   * Returns our process handle for use as an event in a WaitForMultipleObjects
-   * call.
-   */
-  get event() {
-    return this.handle;
   }
 
   /**
@@ -572,9 +592,29 @@ class Process extends BaseProcess {
         ctypes.cast(info.address(), ctypes.voidptr_t),
         info.constructor.size
       );
-      errorMessage = `Failed to set job limits: 0x${(
-        ctypes.winLastError || 0
-      ).toString(16)}`;
+      if (!ok) {
+        errorMessage = `Failed to set job limits: 0x${(
+          ctypes.winLastError || 0
+        ).toString(16)}`;
+      }
+    }
+
+    if (ok) {
+      let acp = win32.JOBOBJECT_ASSOCIATE_COMPLETION_PORT();
+      acp.CompletionKey = win32.PVOID(IOCPKeyGen.keyForProcess(this));
+      acp.CompletionPort = io.iocpCompletionPort;
+
+      ok = libc.SetInformationJobObject(
+        this.jobHandle,
+        win32.JobObjectAssociateCompletionPortInformation,
+        ctypes.cast(acp.address(), ctypes.voidptr_t),
+        acp.constructor.size
+      );
+      if (!ok) {
+        errorMessage = `Failed to set IOCP: 0x${(
+          ctypes.winLastError || 0
+        ).toString(16)}`;
+      }
     }
 
     if (ok) {
@@ -644,6 +684,9 @@ class Process extends BaseProcess {
       this.handle.dispose();
       this.handle = null;
 
+      // This also terminates all child processes under this process, unless
+      // the child process was created with the CREATE_BREAKAWAY_FROM_JOB flag,
+      // in which case it would not be part of our job (and therefore survive).
       libc.TerminateJobObject(this.jobHandle, TERMINATE_EXIT_CODE);
       this.jobHandle.dispose();
       this.jobHandle = null;
@@ -660,8 +703,7 @@ class Process extends BaseProcess {
 }
 
 io = {
-  events: null,
-  eventHandlers: null,
+  iocpCompletionPort: null,
 
   pipes: new Map(),
 
@@ -676,11 +718,12 @@ io = {
   init(details) {
     this.comspec = details.comspec;
 
-    let signalEvent = ctypes.cast(
-      ctypes.uintptr_t(details.signalEvent),
+    // Note: not wrapped in win32.Handle - parent thread is responsible for
+    // releasing the resource when this thread terminates.
+    this.iocpCompletionPort = ctypes.cast(
+      ctypes.uintptr_t(details.iocpCompletionPort),
       win32.HANDLE
     );
-    this.signal = new Signal(signalEvent);
     this.updatePollEvents();
 
     setTimeout(this.loop.bind(this), 0);
@@ -689,9 +732,6 @@ io = {
   shutdown() {
     if (this.running) {
       this.running = false;
-
-      this.signal.cleanup();
-      this.signal = null;
 
       self.postMessage({ msg: "close" });
       self.close();
@@ -719,28 +759,36 @@ io = {
   },
 
   updatePollEvents() {
-    let handlers = [
-      this.signal,
-      ...this.pipes.values(),
-      ...this.processes.values(),
-    ];
-
-    handlers = handlers.filter(handler => handler.event);
+    let shouldPoll = false;
+    for (const process of this.processes.values()) {
+      // As long as the process is alive, it may notify IOCP.
+      // When the process exits, process.handle is cleared by its wait(), which
+      // calls updatePollEvents(), but before it is removed from io.processes.
+      // To ensure that we immediately stop polling if it was the last process,
+      // check if process.handle is set.
+      if (process.handle) {
+        shouldPoll = true;
+        break;
+      }
+    }
+    if (!shouldPoll) {
+      for (let pipe of this.pipes.values()) {
+        if (pipe.hasPendingIO()) {
+          shouldPoll = true;
+          break;
+        }
+      }
+    }
 
     // Our poll loop is only useful if we've got at least 1 thing to poll other than our own
     // signal.
-    if (handlers.length == 1) {
+    if (!shouldPoll) {
       this.polling = false;
     } else if (!this.polling && this.running) {
       // Restart the poll loop if necessary:
       setTimeout(this.loop.bind(this), 0);
       this.polling = true;
     }
-
-    this.eventHandlers = handlers;
-
-    let handles = handlers.map(handler => handler.event);
-    this.events = win32.HANDLE.array()(handles);
   },
 
   loop() {
@@ -751,28 +799,108 @@ io = {
   },
 
   poll() {
+    // On the first call, wait until any IO signaled. After that, immediately
+    // process all other IO that have signaled in the meantime.
     let timeout = this.messageCount > 0 ? 0 : POLL_TIMEOUT;
     for (; ; timeout = 0) {
-      let events = this.events;
-      let handlers = this.eventHandlers;
-
-      let result = libc.WaitForMultipleObjects(
-        events.length,
-        events,
-        false,
+      let numberOfBytesTransferred = win32.DWORD();
+      let completionKeyOut = win32.ULONG_PTR();
+      let lpOverlapped = win32.OVERLAPPED.ptr(0);
+      let ok = libc.GetQueuedCompletionStatus(
+        io.iocpCompletionPort,
+        numberOfBytesTransferred.address(),
+        completionKeyOut.address(),
+        lpOverlapped.address(),
         timeout
       );
 
-      if (result < handlers.length) {
+      const deqWinErr = ok ? 0 : ctypes.winLastError;
+      if (!ok) {
+        if (deqWinErr === win32.WAIT_TIMEOUT) {
+          // No changes, return (caller may schedule another loop/poll).
+          break;
+        }
+        if (deqWinErr === win32.ERROR_ABANDONED_WAIT_0) {
+          // iocpCompletionPort was closed.
+          io.shutdown();
+          break;
+        }
+        if (lpOverlapped.isNull()) {
+          // "If *lpOverlapped is NULL, the function did not dequeue a
+          // completion packet from the completion port."
+          // No remaining data, return (caller may schedule another loop/poll).
+          break;
+        }
+        // Received completion packet that failed, fall through.
+      }
+      let completionKey = parseInt(completionKeyOut.value, 10);
+      if (completionKey === win32.IOCP_COMPLETION_KEY_WAKE_WORKER) {
+        // Custom notification from the parent thread.
+        io.messageCount += 1;
+        // Continue to process any completed IO, then return (and eventually
+        // yield to the event loop to allow onmessage to receive messages).
+        continue;
+      }
+      if (IOCPKeyGen.isPipeKey(completionKey)) {
+        const pipeId = IOCPKeyGen.pipeIdFromKey(completionKey);
+        const pipe = io.pipes.get(pipeId);
+        if (!pipe) {
+          debug(`IOCP notification for unknown pipe: ${pipeId}`);
+          continue;
+        }
+        if (deqWinErr === win32.ERROR_BROKEN_PIPE) {
+          pipe.onError();
+          continue;
+        }
         try {
-          handlers[result].onReady();
+          pipe.onReady();
         } catch (e) {
           console.error(e);
           debug(`Worker error: ${e} :: ${e.stack}`);
-          handlers[result].onError();
+          pipe.onError();
+        }
+      } else if (IOCPKeyGen.isProcessKey(completionKey)) {
+        // This is a notification via JOBOBJECT_ASSOCIATE_COMPLETION_PORT.
+        // "numberOfBytesTransferred" is any of the JOB_OBJECT_MSG_* values.
+        // https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_associate_completion_port
+        const jobMsgId = numberOfBytesTransferred.value;
+        const processId = IOCPKeyGen.processIdFromKey(completionKey);
+
+        // The job reaching process count zero is a very strong indication that
+        // the process has exit. We also listen to the other *EXIT_PROCESS
+        // messages in case the process spawned child processes under the job,
+        // because that would suppress the JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO
+        // notification and prevent us from detecting process termination.
+        const isExit =
+          jobMsgId === win32.JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS ||
+          jobMsgId === win32.JOB_OBJECT_MSG_EXIT_PROCESS;
+        const isJobZero = jobMsgId === win32.JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO;
+        if (!isExit && !isJobZero) {
+          // Ignore non-exit notifications, such as additional new processes.
+          continue;
+        }
+        const process = io.processes.get(processId);
+        if (!process) {
+          // This may happen when isJobZero == true, because we could have
+          // observed isExit == true before.
+          continue;
+        }
+        if (isExit) {
+          let realPid = ctypes.cast(lpOverlapped, win32.DWORD).value;
+          if (process.pid !== realPid) {
+            // A random child process (spawned by the process) has exited.
+            continue;
+          }
+        }
+        try {
+          process.onReady();
+        } catch (e) {
+          // This is really unexpected, but don't break the poll loop.
+          console.error(e);
+          debug(`Worker error: ${e} :: ${e.stack}`);
         }
       } else {
-        break;
+        debug(`Unexpected IOCP CompletionKey: ${completionKey}`);
       }
     }
   },

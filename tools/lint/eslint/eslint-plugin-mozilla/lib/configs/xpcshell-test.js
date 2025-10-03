@@ -1,0 +1,21 @@
+// Parent config file for all xpcshell files.
+"use strict";
+
+module.exports = {
+  env: {
+    "mozilla/privileged": true,
+    "mozilla/xpcshell": true,
+  },
+
+  name: "mozilla/xpcshell-test",
+  plugins: ["mozilla", "@microsoft/sdl"],
+
+  rules: {
+    // Turn off no-insecure-url as it is not considered necessary for xpcshell
+    // level tests.
+    "@microsoft/sdl/no-insecure-url": "off",
+
+    "mozilla/no-comparison-or-assignment-inside-ok": "error",
+    "mozilla/no-useless-run-test": "error",
+  },
+};

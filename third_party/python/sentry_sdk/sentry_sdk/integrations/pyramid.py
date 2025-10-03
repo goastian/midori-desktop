@@ -1,20 +1,21 @@
-import functools
+from __future__ import absolute_import
+
 import os
 import sys
 import weakref
 
-import sentry_sdk
-from sentry_sdk.integrations import Integration, DidNotEnable
-from sentry_sdk.integrations._wsgi_common import RequestExtractor
-from sentry_sdk.integrations.wsgi import SentryWsgiMiddleware
-from sentry_sdk.scope import should_send_default_pii
+from sentry_sdk.hub import Hub, _should_send_default_pii
+from sentry_sdk.scope import Scope
 from sentry_sdk.tracing import SOURCE_FOR_STYLE
 from sentry_sdk.utils import (
     capture_internal_exceptions,
-    ensure_integration_enabled,
     event_from_exception,
-    reraise,
 )
+from sentry_sdk._compat import reraise, iteritems
+
+from sentry_sdk.integrations import Integration, DidNotEnable
+from sentry_sdk.integrations._wsgi_common import RequestExtractor
+from sentry_sdk.integrations.wsgi import SentryWsgiMiddleware
 
 try:
     from pyramid.httpexceptions import HTTPException
@@ -22,20 +23,20 @@ try:
 except ImportError:
     raise DidNotEnable("Pyramid not installed")
 
-from typing import TYPE_CHECKING
+from sentry_sdk._types import MYPY
 
-if TYPE_CHECKING:
+if MYPY:
     from pyramid.response import Response
     from typing import Any
     from sentry_sdk.integrations.wsgi import _ScopedResponse
     from typing import Callable
     from typing import Dict
     from typing import Optional
-    from webob.cookies import RequestCookies
-    from webob.request import _FieldStorageWithFile
+    from webob.cookies import RequestCookies  # type: ignore
+    from webob.compat import cgi_FieldStorage  # type: ignore
 
     from sentry_sdk.utils import ExcInfo
-    from sentry_sdk._types import Event, EventProcessor
+    from sentry_sdk._types import EventProcessor
 
 
 if getattr(Request, "authenticated_userid", None):
@@ -54,7 +55,6 @@ TRANSACTION_STYLE_VALUES = ("route_name", "route_pattern")
 
 class PyramidIntegration(Integration):
     identifier = "pyramid"
-    origin = f"auto.http.{identifier}"
 
     transaction_style = ""
 
@@ -74,20 +74,19 @@ class PyramidIntegration(Integration):
 
         old_call_view = router._call_view
 
-        @functools.wraps(old_call_view)
         def sentry_patched_call_view(registry, request, *args, **kwargs):
             # type: (Any, Request, *Any, **Any) -> Response
-            integration = sentry_sdk.get_client().get_integration(PyramidIntegration)
-            if integration is None:
-                return old_call_view(registry, request, *args, **kwargs)
+            hub = Hub.current
+            integration = hub.get_integration(PyramidIntegration)
 
-            _set_transaction_name_and_source(
-                sentry_sdk.get_current_scope(), integration.transaction_style, request
-            )
-            scope = sentry_sdk.get_isolation_scope()
-            scope.add_event_processor(
-                _make_event_processor(weakref.ref(request), integration)
-            )
+            if integration is not None:
+                with hub.configure_scope() as scope:
+                    _set_transaction_name_and_source(
+                        scope, integration.transaction_style, request
+                    )
+                    scope.add_event_processor(
+                        _make_event_processor(weakref.ref(request), integration)
+                    )
 
             return old_call_view(registry, request, *args, **kwargs)
 
@@ -104,8 +103,7 @@ class PyramidIntegration(Integration):
                     self.exc_info
                     and all(self.exc_info)
                     and rv.status_int == 500
-                    and sentry_sdk.get_client().get_integration(PyramidIntegration)
-                    is not None
+                    and Hub.current.get_integration(PyramidIntegration) is not None
                 ):
                     _capture_exception(self.exc_info)
 
@@ -115,9 +113,13 @@ class PyramidIntegration(Integration):
 
         old_wsgi_call = router.Router.__call__
 
-        @ensure_integration_enabled(PyramidIntegration, old_wsgi_call)
         def sentry_patched_wsgi_call(self, environ, start_response):
             # type: (Any, Dict[str, str], Callable[..., Any]) -> _ScopedResponse
+            hub = Hub.current
+            integration = hub.get_integration(PyramidIntegration)
+            if integration is None:
+                return old_wsgi_call(self, environ, start_response)
+
             def sentry_patched_inner_wsgi_call(environ, start_response):
                 # type: (Dict[str, Any], Callable[..., Any]) -> Any
                 try:
@@ -127,32 +129,35 @@ class PyramidIntegration(Integration):
                     _capture_exception(einfo)
                     reraise(*einfo)
 
-            middleware = SentryWsgiMiddleware(
-                sentry_patched_inner_wsgi_call,
-                span_origin=PyramidIntegration.origin,
+            return SentryWsgiMiddleware(sentry_patched_inner_wsgi_call)(
+                environ, start_response
             )
-            return middleware(environ, start_response)
 
         router.Router.__call__ = sentry_patched_wsgi_call
 
 
-@ensure_integration_enabled(PyramidIntegration)
 def _capture_exception(exc_info):
     # type: (ExcInfo) -> None
     if exc_info[0] is None or issubclass(exc_info[0], HTTPException):
         return
+    hub = Hub.current
+    if hub.get_integration(PyramidIntegration) is None:
+        return
+
+    # If an integration is there, a client has to be there.
+    client = hub.client  # type: Any
 
     event, hint = event_from_exception(
         exc_info,
-        client_options=sentry_sdk.get_client().options,
+        client_options=client.options,
         mechanism={"type": "pyramid", "handled": False},
     )
 
-    sentry_sdk.capture_event(event, hint=hint)
+    hub.capture_event(event, hint=hint)
 
 
 def _set_transaction_name_and_source(scope, transaction_style, request):
-    # type: (sentry_sdk.Scope, str, Request) -> None
+    # type: (Scope, str, Request) -> None
     try:
         name_for_style = {
             "route_name": request.matched_route.name,
@@ -187,20 +192,20 @@ class PyramidRequestExtractor(RequestExtractor):
         # type: () -> Dict[str, str]
         return {
             key: value
-            for key, value in self.request.POST.items()
+            for key, value in iteritems(self.request.POST)
             if not getattr(value, "filename", None)
         }
 
     def files(self):
-        # type: () -> Dict[str, _FieldStorageWithFile]
+        # type: () -> Dict[str, cgi_FieldStorage]
         return {
             key: value
-            for key, value in self.request.POST.items()
+            for key, value in iteritems(self.request.POST)
             if getattr(value, "filename", None)
         }
 
     def size_of_file(self, postdata):
-        # type: (_FieldStorageWithFile) -> int
+        # type: (cgi_FieldStorage) -> int
         file = postdata.file
         try:
             return os.fstat(file.fileno()).st_size
@@ -210,8 +215,8 @@ class PyramidRequestExtractor(RequestExtractor):
 
 def _make_event_processor(weak_request, integration):
     # type: (Callable[[], Request], PyramidIntegration) -> EventProcessor
-    def pyramid_event_processor(event, hint):
-        # type: (Event, Dict[str, Any]) -> Event
+    def event_processor(event, hint):
+        # type: (Dict[str, Any], Dict[str, Any]) -> Dict[str, Any]
         request = weak_request()
         if request is None:
             return event
@@ -219,11 +224,11 @@ def _make_event_processor(weak_request, integration):
         with capture_internal_exceptions():
             PyramidRequestExtractor(request).extract_into_event(event)
 
-        if should_send_default_pii():
+        if _should_send_default_pii():
             with capture_internal_exceptions():
                 user_info = event.setdefault("user", {})
                 user_info.setdefault("id", authenticated_userid(request))
 
         return event
 
-    return pyramid_event_processor
+    return event_processor

@@ -17,11 +17,10 @@ from functools import partial, reduce
 from inspect import cleandoc
 from itertools import chain
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, Union
 
 from .._path import StrPath
 from ..errors import RemovedConfigError
-from ..extension import Extension
 from ..warnings import SetuptoolsWarning
 
 if TYPE_CHECKING:
@@ -30,13 +29,12 @@ if TYPE_CHECKING:
     from setuptools._importlib import metadata
     from setuptools.dist import Distribution
 
-    from distutils.dist import _OptionsList  # Comes from typeshed
-
+    from distutils.dist import _OptionsList
 
 EMPTY: Mapping = MappingProxyType({})  # Immutable dict-like
 _ProjectReadmeValue: TypeAlias = Union[str, Dict[str, str]]
-_Correspondence: TypeAlias = Callable[["Distribution", Any, Union[StrPath, None]], None]
-_T = TypeVar("_T")
+_CorrespFn: TypeAlias = Callable[["Distribution", Any, StrPath], None]
+_Correspondence: TypeAlias = Union[str, _CorrespFn]
 
 _logger = logging.getLogger(__name__)
 
@@ -119,14 +117,13 @@ def json_compatible_key(key: str) -> str:
 
 
 def _set_config(dist: Distribution, field: str, value: Any):
-    val = _PREPROCESS.get(field, _noop)(dist, value)
     setter = getattr(dist.metadata, f"set_{field}", None)
     if setter:
-        setter(val)
+        setter(value)
     elif hasattr(dist.metadata, field) or field in SETUPTOOLS_PATCHES:
-        setattr(dist.metadata, field, val)
+        setattr(dist.metadata, field, value)
     else:
-        setattr(dist, field, val)
+        setattr(dist, field, value)
 
 
 _CONTENT_TYPES = {
@@ -149,9 +146,7 @@ def _guess_content_type(file: str) -> str | None:
     raise ValueError(f"Undefined content type for {file}, {msg}")
 
 
-def _long_description(
-    dist: Distribution, val: _ProjectReadmeValue, root_dir: StrPath | None
-):
+def _long_description(dist: Distribution, val: _ProjectReadmeValue, root_dir: StrPath):
     from setuptools.config import expand
 
     file: str | tuple[()]
@@ -173,7 +168,7 @@ def _long_description(
         dist._referenced_files.add(file)
 
 
-def _license(dist: Distribution, val: dict, root_dir: StrPath | None):
+def _license(dist: Distribution, val: dict, root_dir: StrPath):
     from setuptools.config import expand
 
     if "file" in val:
@@ -183,7 +178,7 @@ def _license(dist: Distribution, val: dict, root_dir: StrPath | None):
         _set_config(dist, "license", val["text"])
 
 
-def _people(dist: Distribution, val: list[dict], _root_dir: StrPath | None, kind: str):
+def _people(dist: Distribution, val: list[dict], _root_dir: StrPath, kind: str):
     field = []
     email_field = []
     for person in val:
@@ -201,39 +196,26 @@ def _people(dist: Distribution, val: list[dict], _root_dir: StrPath | None, kind
         _set_config(dist, f"{kind}_email", ", ".join(email_field))
 
 
-def _project_urls(dist: Distribution, val: dict, _root_dir: StrPath | None):
+def _project_urls(dist: Distribution, val: dict, _root_dir):
     _set_config(dist, "project_urls", val)
 
 
-def _python_requires(dist: Distribution, val: str, _root_dir: StrPath | None):
+def _python_requires(dist: Distribution, val: str, _root_dir):
     from packaging.specifiers import SpecifierSet
 
     _set_config(dist, "python_requires", SpecifierSet(val))
 
 
-def _dependencies(dist: Distribution, val: list, _root_dir: StrPath | None):
+def _dependencies(dist: Distribution, val: list, _root_dir):
     if getattr(dist, "install_requires", []):
         msg = "`install_requires` overwritten in `pyproject.toml` (dependencies)"
         SetuptoolsWarning.emit(msg)
     dist.install_requires = val
 
 
-def _optional_dependencies(dist: Distribution, val: dict, _root_dir: StrPath | None):
-    if getattr(dist, "extras_require", None):
-        msg = "`extras_require` overwritten in `pyproject.toml` (optional-dependencies)"
-        SetuptoolsWarning.emit(msg)
-    dist.extras_require = val
-
-
-def _ext_modules(dist: Distribution, val: list[dict]) -> list[Extension]:
-    existing = dist.ext_modules or []
-    args = ({k.replace("-", "_"): v for k, v in x.items()} for x in val)
-    new = [Extension(**kw) for kw in args]
-    return [*existing, *new]
-
-
-def _noop(_dist: Distribution, val: _T) -> _T:
-    return val
+def _optional_dependencies(dist: Distribution, val: dict, _root_dir):
+    existing = getattr(dist, "extras_require", None) or {}
+    dist.extras_require = {**existing, **val}
 
 
 def _unify_entry_points(project_table: dict):
@@ -392,10 +374,6 @@ SETUPTOOLS_PATCHES = {
     "provides_extras",
     "license_file",
     "license_files",
-}
-
-_PREPROCESS = {
-    "ext_modules": _ext_modules,
 }
 
 _PREVIOUSLY_DEFINED = {

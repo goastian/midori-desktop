@@ -350,7 +350,7 @@ webextensions:
         - toolkit/components/extensions/test/
         - toolkit/mozapps/extensions/test/
     query:
-        - "'android | '64/ | 'windows11-64-24h2 !wpt !gpu !msix !-lite !-asan"
+        - "'64-qr/ | 'windows11-64-2009-qr !wpt !gpu !msix"
 
 webgpu:
     selector: fuzzy
@@ -368,7 +368,7 @@ webrender:
     description: >-
         Runs the conformance tests relevant to WebRender.
     query:
-        - "!talos !raptor !shippable !asan !components"
+        - "!talos !raptor !shippable !asan '-qr !components"
         - "^webrender-"
 
 webrender-reftests:
@@ -390,9 +390,9 @@ webrender-perf:
     description: >-
         Runs the performance tests relevant to WebRender.
     query:
-        - "'svgr"
-        - "'g1"
-        - "'g4"
-        - "'tp5"
-        - "'talos-webgl"
-        - "'motionmark-animometer"
+        - "'-qr 'svgr"
+        - "'-qr 'g1"
+        - "'-qr 'g4"
+        - "'-qr 'tp5"
+        - "'-qr 'talos-webgl"
+        - "'-qr 'motionmark-animometer"

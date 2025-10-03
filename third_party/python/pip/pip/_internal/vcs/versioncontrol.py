@@ -5,14 +5,13 @@ import os
 import shutil
 import sys
 import urllib.parse
-from dataclasses import dataclass, field
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     Iterable,
     Iterator,
     List,
-    Literal,
     Mapping,
     Optional,
     Tuple,
@@ -38,6 +37,14 @@ from pip._internal.utils.subprocess import (
     format_command_args,
     make_command,
 )
+from pip._internal.utils.urls import get_url_scheme
+
+if TYPE_CHECKING:
+    # Literal was introduced in Python 3.8.
+    #
+    # TODO: Remove `if TYPE_CHECKING` when dropping support for Python 3.7.
+    from typing import Literal
+
 
 __all__ = ["vcs"]
 
@@ -51,8 +58,8 @@ def is_url(name: str) -> bool:
     """
     Return true if the name looks like a URL.
     """
-    scheme = urllib.parse.urlsplit(name).scheme
-    if not scheme:
+    scheme = get_url_scheme(name)
+    if scheme is None:
         return False
     return scheme in ["http", "https", "file", "ftp"] + vcs.all_schemes
 
@@ -114,22 +121,34 @@ class RemoteNotValidError(Exception):
         self.url = url
 
 
-@dataclass(frozen=True)
 class RevOptions:
+
     """
     Encapsulates a VCS-specific revision to install, along with any VCS
     install options.
 
-    Args:
-        vc_class: a VersionControl subclass.
-        rev: the name of the revision to install.
-        extra_args: a list of extra options.
+    Instances of this class should be treated as if immutable.
     """
 
-    vc_class: Type["VersionControl"]
-    rev: Optional[str] = None
-    extra_args: CommandArgs = field(default_factory=list)
-    branch_name: Optional[str] = None
+    def __init__(
+        self,
+        vc_class: Type["VersionControl"],
+        rev: Optional[str] = None,
+        extra_args: Optional[CommandArgs] = None,
+    ) -> None:
+        """
+        Args:
+          vc_class: a VersionControl subclass.
+          rev: the name of the revision to install.
+          extra_args: a list of extra options.
+        """
+        if extra_args is None:
+            extra_args = []
+
+        self.extra_args = extra_args
+        self.rev = rev
+        self.vc_class = vc_class
+        self.branch_name: Optional[str] = None
 
     def __repr__(self) -> str:
         return f"<RevOptions {self.vc_class.name}: rev={self.rev!r}>"
@@ -343,7 +362,7 @@ class VersionControl:
           rev: the name of a revision to install.
           extra_args: a list of extra options.
         """
-        return RevOptions(cls, rev, extra_args=extra_args or [])
+        return RevOptions(cls, rev, extra_args=extra_args)
 
     @classmethod
     def _is_local_repository(cls, repo: str) -> bool:
@@ -641,8 +660,6 @@ class VersionControl:
                 log_failed_cmd=log_failed_cmd,
                 stdout_only=stdout_only,
             )
-        except NotADirectoryError:
-            raise BadCommand(f"Cannot find command {cls.name!r} - invalid PATH")
         except FileNotFoundError:
             # errno.ENOENT = no such file or directory
             # In other words, the VCS executable isn't available

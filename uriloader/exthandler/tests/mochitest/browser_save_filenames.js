@@ -29,8 +29,6 @@ let types = {
   tar: "application/x-tar",
   mp2: "audio/mpeg",
   wav: "audio/x-wav",
-  m4a: "audio/mp4",
-  mp4: "video/mp4",
 };
 
 const PNG_DATA = atob(

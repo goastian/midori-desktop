@@ -153,10 +153,17 @@ let requests = {
     });
   },
 
+  // For testing.
+  getIsPolling() {
+    return { data: io.polling };
+  },
+
+  // For testing.
   getOpenFiles() {
     return { data: new Set(io.pipes.keys()) };
   },
 
+  // For testing.
   getProcesses() {
     let data = new Map(
       Array.from(io.processes.values())
@@ -166,6 +173,7 @@ let requests = {
     return { data };
   },
 
+  // For testing.
   waitForNoProcesses() {
     return Promise.all(
       Array.from(io.processes.values(), proc => proc.awaitFinished())

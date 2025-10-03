@@ -93,7 +93,7 @@ bool WaylandBuffer::IsAttachedToSurface(WaylandSurface* aWaylandSurface) {
   return mAttachedToSurface == aWaylandSurface;
 }
 
-wl_buffer* WaylandBuffer::BorrowBuffer(const WaylandSurfaceLock& aSurfaceLock) {
+wl_buffer* WaylandBuffer::BorrowBuffer(WaylandSurfaceLock& aSurfaceLock) {
   LOGWAYLAND(
       "WaylandBuffer::BorrowBuffer() [%p] WaylandSurface [%p] wl_buffer [%p]",
       (void*)this,
@@ -134,8 +134,7 @@ void WaylandBuffer::DeleteWlBuffer() {
   }
 }
 
-void WaylandBuffer::ReturnBufferDetached(
-    const WaylandSurfaceLock& aSurfaceLock) {
+void WaylandBuffer::ReturnBufferDetached(WaylandSurfaceLock& aSurfaceLock) {
   LOGWAYLAND("WaylandBuffer::ReturnBufferDetached() [%p] WaylandSurface [%p]",
              (void*)this, mAttachedToSurface.get());
   MOZ_DIAGNOSTIC_ASSERT(aSurfaceLock.GetWaylandSurface() == mAttachedToSurface);

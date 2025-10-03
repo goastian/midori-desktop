@@ -2,8 +2,10 @@
 # std imports
 import platform
 
+# 3rd party
+import six
+
 # local
-from blessed._compat import TextType, StringType
 from blessed.colorspace import CGA_COLORS, X11_COLORNAMES_TO_RGB
 
 # isort: off
@@ -46,7 +48,7 @@ COLORS = _make_colors()
 COMPOUNDABLES = set('bold underline reverse blink italic standout'.split())
 
 
-class ParameterizingString(TextType):
+class ParameterizingString(six.text_type):
     r"""
     A Unicode string which can be called as a parameterizing termcap.
 
@@ -68,7 +70,7 @@ class ParameterizingString(TextType):
         :arg str normal: terminating sequence for this capability (optional).
         :arg str name: name of this terminal capability (optional).
         """
-        new = TextType.__new__(cls, cap)
+        new = six.text_type.__new__(cls, cap)
         new._normal = normal
         new._name = name
         return new
@@ -95,7 +97,7 @@ class ParameterizingString(TextType):
         except TypeError as err:
             # If the first non-int (i.e. incorrect) arg was a string, suggest
             # something intelligent:
-            if args and isinstance(args[0], StringType):
+            if args and isinstance(args[0], six.string_types):
                 raise TypeError(
                     "Unknown terminal capability, %r, or, TypeError "
                     "for arguments %r: %s" % (self._name, args, err))
@@ -106,12 +108,12 @@ class ParameterizingString(TextType):
             # ignore 'tparm() returned NULL', you won't get any styling,
             # even if does_styling is True. This happens on win32 platforms
             # with http://www.lfd.uci.edu/~gohlke/pythonlibs/#curses installed
-            if "tparm() returned NULL" not in TextType(err):
+            if "tparm() returned NULL" not in six.text_type(err):
                 raise
             return NullCallableString()
 
 
-class ParameterizingProxyString(TextType):
+class ParameterizingProxyString(six.text_type):
     r"""
     A Unicode string which can be called to proxy missing termcap entries.
 
@@ -148,7 +150,7 @@ class ParameterizingProxyString(TextType):
         """
         assert isinstance(fmt_pair, tuple), fmt_pair
         assert callable(fmt_pair[1]), fmt_pair[1]
-        new = TextType.__new__(cls, fmt_pair[0])
+        new = six.text_type.__new__(cls, fmt_pair[0])
         new._fmt_args = fmt_pair[1]
         new._normal = normal
         new._name = name
@@ -170,7 +172,7 @@ class ParameterizingProxyString(TextType):
                                 self._normal)
 
 
-class FormattingString(TextType):
+class FormattingString(six.text_type):
     r"""
     A Unicode string which doubles as a callable.
 
@@ -197,7 +199,7 @@ class FormattingString(TextType):
         :arg str sequence: terminal attribute sequence.
         :arg str normal: terminating sequence for this attribute (optional).
         """
-        new = TextType.__new__(cls, sequence)
+        new = six.text_type.__new__(cls, sequence)
         new._normal = normal
         return new
 
@@ -215,11 +217,13 @@ class FormattingString(TextType):
         #
         # >>> t.red('This is ', t.bold('extremely'), ' dangerous!')
         for idx, ucs_part in enumerate(args):
-            if not isinstance(ucs_part, StringType):
+            if not isinstance(ucs_part, six.string_types):
+                expected_types = ', '.join(_type.__name__ for _type in six.string_types)
                 raise TypeError(
-                    "TypeError for FormattingString argument, %r, at position %s: expected type "
-                    "%s, got %s" % (ucs_part, idx, StringType.__name__, type(ucs_part).__name__)
-                )
+                    "TypeError for FormattingString argument, "
+                    "%r, at position %s: expected type %s, "
+                    "got %s" % (ucs_part, idx, expected_types,
+                                type(ucs_part).__name__))
         postfix = u''
         if self and self._normal:
             postfix = self._normal
@@ -230,7 +234,7 @@ class FormattingString(TextType):
         return self + u''.join(args) + postfix
 
 
-class FormattingOtherString(TextType):
+class FormattingOtherString(six.text_type):
     r"""
     A Unicode string which doubles as a callable for another sequence when called.
 
@@ -256,20 +260,22 @@ class FormattingOtherString(TextType):
         :arg str direct: capability name for direct formatting, eg ``('x' + term.right)``.
         :arg str target: capability name for callable, eg ``('x' + term.right(99))``.
         """
-        new = TextType.__new__(cls, direct)
+        new = six.text_type.__new__(cls, direct)
         new._callable = target
         return new
 
     def __getnewargs__(self):
         # return arguments used for the __new__ method upon unpickling.
-        return TextType.__new__(TextType, self), self._callable
+        return six.text_type.__new__(six.text_type, self), self._callable
 
     def __call__(self, *args):
         """Return ``text`` by ``target``."""
-        return self._callable(*args) if args else self
+        if args:
+            return self._callable(*args)
+        return self
 
 
-class NullCallableString(TextType):
+class NullCallableString(six.text_type):
     """
     A dummy callable Unicode alternative to :class:`FormattingString`.
 
@@ -279,19 +285,20 @@ class NullCallableString(TextType):
 
     def __new__(cls):
         """Class constructor."""
-        return TextType.__new__(cls, u'')
+        return six.text_type.__new__(cls, u'')
 
     def __call__(self, *args):
         """
         Allow empty string to be callable, returning given string, if any.
 
-        When called with an int as the first arg, return an empty Unicode. An int is a good hint
-        that I am a :class:`ParameterizingString`, as there are only about half a dozen string-
-        returning capabilities listed in terminfo(5) which accept non-int arguments, they are seldom
-        used.
+        When called with an int as the first arg, return an empty Unicode. An
+        int is a good hint that I am a :class:`ParameterizingString`, as there
+        are only about half a dozen string-returning capabilities listed in
+        terminfo(5) which accept non-int arguments, they are seldom used.
 
-        When called with a non-int as the first arg (no no args at all), return the first arg,
-        acting in place of :class:`FormattingString` without any attributes.
+        When called with a non-int as the first arg (no no args at all), return
+        the first arg, acting in place of :class:`FormattingString` without
+        any attributes.
         """
         if not args or isinstance(args[0], int):
             # As a NullCallableString, even when provided with a parameter,

@@ -22,7 +22,7 @@ easiest to implement by adding `#[derive(MulSelf)]`.
 struct MyInts(i32, i64);
 
 let int_vec = vec![MyInts(2, 3), MyInts(4, 5), MyInts(6, 7)];
-assert!(MyInts(12, 15) == int_vec.into_iter().sum());
+assert!(MyInts(12, 15) == int_vec.into_iter().sum())
 ```
 
 
@@ -42,24 +42,23 @@ struct MyInts(i32, i64);
 Code like this will be generated for the `Sum` implementation:
 
 ```rust
-# use ::core::ops::Add;
 # struct MyInts(i32, i64);
-# impl Add for MyInts {
+# impl ::core::ops::Add for MyInts {
 #     type Output = MyInts;
 #     #[inline]
 #     fn add(self, rhs: MyInts) -> MyInts {
 #         MyInts(self.0.add(rhs.0), self.1.add(rhs.1))
 #     }
 # }
-impl derive_more::core::iter::Sum for MyInts {
+impl ::core::iter::Sum for MyInts {
     #[inline]
-    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+    fn sum<I: ::core::iter::Iterator<Item = Self>>(iter: I) -> Self {
         iter.fold(
             MyInts(
-                derive_more::core::iter::empty::<i32>().sum(),
-                derive_more::core::iter::empty::<i64>().sum(),
+                ::core::iter::empty::<i32>().sum(),
+                ::core::iter::empty::<i64>().sum(),
             ),
-            derive_more::core::ops::Add::add,
+            ::core::ops::Add::add,
         )
     }
 }

@@ -14,7 +14,6 @@ export default [
         "error",
         {
           argsIgnorePattern: "^_",
-          caughtErrors: "none",
           vars: "all",
         },
       ],
@@ -27,7 +26,6 @@ export default [
         "error",
         {
           argsIgnorePattern: "^_",
-          caughtErrors: "none",
           vars: "local",
         },
       ],

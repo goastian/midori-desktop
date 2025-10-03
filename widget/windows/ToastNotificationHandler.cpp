@@ -294,10 +294,7 @@ void ToastNotificationHandler::UnregisterHandler() {
 
   mNotification = nullptr;
   mNotifier = nullptr;
-}
 
-void ToastNotificationHandler::HandleCloseFromBrowser() {
-  UnregisterHandler();
   SendFinished();
 }
 
@@ -548,8 +545,8 @@ ComPtr<IXmlDocument> ToastNotificationHandler::CreateToastXmlDocument() {
 
     AddActionNode(toastXml, actionsNode, disableButtonTitle,
                   // TODO: launch into `about:preferences`?
-                  launchArgWithoutAction,
-                  ActionArgsJSONString(kAlertActionDisable), u"contextmenu"_ns);
+                  launchArgWithoutAction, ActionArgsJSONString(u"snooze"_ns),
+                  u"contextmenu"_ns);
   }
 
   bool wantSettings = true;
@@ -568,7 +565,7 @@ ComPtr<IXmlDocument> ToastNotificationHandler::CreateToastXmlDocument() {
     success = AddActionNode(
         toastXml, actionsNode, settingsButtonTitle, launchArgWithoutAction,
         // TODO: launch into `about:preferences`?
-        ActionArgsJSONString(kAlertActionSettings), u"contextmenu"_ns);
+        ActionArgsJSONString(u"settings"_ns), u"contextmenu"_ns);
     NS_ENSURE_TRUE(success, nullptr);
   }
 
@@ -868,9 +865,9 @@ ToastNotificationHandler::OnActivate(
       // dismiss action. For this case `arguments` only includes a keyword so we
       // don't need to compare with a parsed result.
       SendFinished();
-    } else if (actionString == kAlertActionSettings) {
+    } else if (actionString.EqualsLiteral("settings")) {
       mAlertListener->Observe(nullptr, "alertsettingscallback", mCookie.get());
-    } else if (actionString == kAlertActionDisable) {
+    } else if (actionString.EqualsLiteral("snooze")) {
       mAlertListener->Observe(nullptr, "alertdisablecallback", mCookie.get());
     } else if (mClickable) {
       // When clicking toast, focus moves to another process, but we want to set
@@ -914,7 +911,6 @@ ToastNotificationHandler::OnActivate(
       mAlertListener->Observe(alertAction, "alertclickcallback", mCookie.get());
     }
   }
-  SendFinished();
   mBackend->RemoveHandler(mName, this);
   return S_OK;
 }
@@ -1022,7 +1018,6 @@ ToastNotificationHandler::OnFail(const ComPtr<IToastNotification>& notification,
 
 nsresult ToastNotificationHandler::TryShowAlert() {
   if (NS_WARN_IF(!ShowAlert())) {
-    SendFinished();
     mBackend->RemoveHandler(mName, this);
     return NS_ERROR_FAILURE;
   }

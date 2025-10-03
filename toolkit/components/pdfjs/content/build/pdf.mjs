@@ -20,10 +20,6 @@
  * JavaScript code in this page
  */
 
-/**
- * pdfjsVersion = 5.3.42
- * pdfjsBuild = 250cc7d29
- */
 
 ;// ./src/shared/util.js
 const isNodeJS = false;
@@ -2698,7 +2694,7 @@ class AnnotationEditorUIManager {
       return;
     }
     for (const editor of this.#allEditors.values()) {
-      if (editor.annotationElementId === editId || editor.id === editId) {
+      if (editor.annotationElementId === editId) {
         this.setSelected(editor);
         editor.enterInEditMode();
       } else {
@@ -2712,13 +2708,13 @@ class AnnotationEditorUIManager {
       this.currentLayer.addNewEditor();
     }
   }
-  updateToolbar(options) {
-    if (options.mode === this.#mode) {
+  updateToolbar(mode) {
+    if (mode === this.#mode) {
       return;
     }
     this._eventBus.dispatch("switchannotationeditormode", {
       source: this,
-      ...options
+      mode
     });
   }
   updateParams(type, value) {
@@ -3778,7 +3774,6 @@ class AnnotationEditor {
   #prevDragY = 0;
   #telemetryTimeouts = null;
   #touchManager = null;
-  isSelected = false;
   _isCopy = false;
   _editToolbar = null;
   _initialOptions = Object.create(null);
@@ -4521,7 +4516,7 @@ class AnnotationEditor {
     }
     const [tx, ty] = this.getInitialTranslation();
     this.translate(tx, ty);
-    bindEvents(this, div, ["keydown", "pointerdown", "dblclick"]);
+    bindEvents(this, div, ["keydown", "pointerdown"]);
     if (this.isResizable && this._uiManager._supportsPinchToZoom) {
       this.#touchManager ||= new TouchManager({
         container: div,
@@ -4598,6 +4593,9 @@ class AnnotationEditor {
       return;
     }
     this.#selectOnPointerEvent(event);
+  }
+  get isSelected() {
+    return this._uiManager.isSelected(this);
   }
   #selectOnPointerEvent(event) {
     const {
@@ -4744,20 +4742,10 @@ class AnnotationEditor {
     return false;
   }
   enableEditMode() {
-    if (this.isInEditMode()) {
-      return false;
-    }
-    this.parent.setEditingState(false);
     this.#isInEditMode = true;
-    return true;
   }
   disableEditMode() {
-    if (!this.isInEditMode()) {
-      return false;
-    }
-    this.parent.setEditingState(true);
     this.#isInEditMode = false;
-    return true;
   }
   isInEditMode() {
     return this.#isInEditMode;
@@ -4974,11 +4962,6 @@ class AnnotationEditor {
     this.div.focus();
   }
   select() {
-    if (this.isSelected && this._editToolbar) {
-      this._editToolbar.show();
-      return;
-    }
-    this.isSelected = true;
     this.makeResizable();
     this.div?.classList.add("selectedEditor");
     if (!this._editToolbar) {
@@ -4993,10 +4976,6 @@ class AnnotationEditor {
     this.#altText?.toggleAltTextBadge(false);
   }
   unselect() {
-    if (!this.isSelected) {
-      return;
-    }
-    this.isSelected = false;
     this.#resizersDiv?.classList.add("hidden");
     this.div?.classList.remove("selectedEditor");
     if (this.div?.contains(document.activeElement)) {
@@ -5010,23 +4989,7 @@ class AnnotationEditor {
   updateParams(type, value) {}
   disableEditing() {}
   enableEditing() {}
-  get canChangeContent() {
-    return false;
-  }
-  enterInEditMode() {
-    if (!this.canChangeContent) {
-      return;
-    }
-    this.enableEditMode();
-    this.div.focus();
-  }
-  dblclick(event) {
-    this.enterInEditMode();
-    this.parent.updateToolbar({
-      mode: this.constructor._editorType,
-      editId: this.id
-    });
-  }
+  enterInEditMode() {}
   getElementForAltText() {
     return this.div;
   }
@@ -5631,79 +5594,6 @@ class FontFaceObject {
       objs.delete(objId);
     }
     return this.compiledGlyphs[character] = path;
-  }
-}
-
-;// ./src/display/api_utils.js
-
-function getUrlProp(val) {
-  return null;
-}
-function getDataProp(val) {
-  if (val instanceof Uint8Array && val.byteLength === val.buffer.byteLength) {
-    return val;
-  }
-  if (typeof val === "string") {
-    return stringToBytes(val);
-  }
-  if (val instanceof ArrayBuffer || ArrayBuffer.isView(val) || typeof val === "object" && !isNaN(val?.length)) {
-    return new Uint8Array(val);
-  }
-  throw new Error("Invalid PDF binary data: either TypedArray, " + "string, or array-like object is expected in the data property.");
-}
-function getFactoryUrlProp(val) {
-  if (typeof val !== "string") {
-    return null;
-  }
-  if (val.endsWith("/")) {
-    return val;
-  }
-  throw new Error(`Invalid factory url: "${val}" must include trailing slash.`);
-}
-const isRefProxy = v => typeof v === "object" && Number.isInteger(v?.num) && v.num >= 0 && Number.isInteger(v?.gen) && v.gen >= 0;
-const isNameProxy = v => typeof v === "object" && typeof v?.name === "string";
-const isValidExplicitDest = _isValidExplicitDest.bind(null, isRefProxy, isNameProxy);
-class LoopbackPort {
-  #listeners = new Map();
-  #deferred = Promise.resolve();
-  postMessage(obj, transfer) {
-    const event = {
-      data: structuredClone(obj, transfer ? {
-        transfer
-      } : null)
-    };
-    this.#deferred.then(() => {
-      for (const [listener] of this.#listeners) {
-        listener.call(this, event);
-      }
-    });
-  }
-  addEventListener(name, listener, options = null) {
-    let rmAbort = null;
-    if (options?.signal instanceof AbortSignal) {
-      const {
-        signal
-      } = options;
-      if (signal.aborted) {
-        warn("LoopbackPort - cannot use an `aborted` signal.");
-        return;
-      }
-      const onAbort = () => this.removeEventListener(name, listener);
-      rmAbort = () => signal.removeEventListener("abort", onAbort);
-      signal.addEventListener("abort", onAbort);
-    }
-    this.#listeners.set(listener, rmAbort);
-  }
-  removeEventListener(name, listener) {
-    const rmAbort = this.#listeners.get(listener);
-    rmAbort?.();
-    this.#listeners.delete(listener);
-  }
-  terminate() {
-    for (const [, rmAbort] of this.#listeners) {
-      rmAbort?.();
-    }
-    this.#listeners.clear();
   }
 }
 
@@ -6564,16 +6454,18 @@ class TilingPattern {
       current = graphics.current;
     switch (paintType) {
       case PaintType.COLORED:
-        const {
-          fillStyle,
-          strokeStyle
-        } = this.ctx;
-        context.fillStyle = current.fillColor = fillStyle;
-        context.strokeStyle = current.strokeColor = strokeStyle;
+        const ctx = this.ctx;
+        context.fillStyle = ctx.fillStyle;
+        context.strokeStyle = ctx.strokeStyle;
+        current.fillColor = ctx.fillStyle;
+        current.strokeColor = ctx.strokeStyle;
         break;
       case PaintType.UNCOLORED:
-        context.fillStyle = context.strokeStyle = color;
-        current.fillColor = current.strokeColor = color;
+        const cssColor = Util.makeHexColor(color[0], color[1], color[2]);
+        context.fillStyle = cssColor;
+        context.strokeStyle = cssColor;
+        current.fillColor = cssColor;
+        current.strokeColor = cssColor;
         break;
       default:
         throw new FormatError(`Unsupported paint type: ${paintType}`);
@@ -7528,12 +7420,13 @@ class CanvasGraphics {
     let maskX = layerOffsetX - maskOffsetX;
     let maskY = layerOffsetY - maskOffsetY;
     if (backdrop) {
+      const backdropRGB = Util.makeHexColor(...backdrop);
       if (maskX < 0 || maskY < 0 || maskX + width > maskCanvas.width || maskY + height > maskCanvas.height) {
         const canvas = this.cachedCanvases.getCanvas("maskExtension", width, height);
         const ctx = canvas.context;
         ctx.drawImage(maskCanvas, -maskX, -maskY);
         ctx.globalCompositeOperation = "destination-atop";
-        ctx.fillStyle = backdrop;
+        ctx.fillStyle = backdropRGB;
         ctx.fillRect(0, 0, width, height);
         ctx.globalCompositeOperation = "source-over";
         maskCanvas = canvas.canvas;
@@ -7546,7 +7439,7 @@ class CanvasGraphics {
         clip.rect(maskX, maskY, width, height);
         maskCtx.clip(clip);
         maskCtx.globalCompositeOperation = "destination-atop";
-        maskCtx.fillStyle = backdrop;
+        maskCtx.fillStyle = backdropRGB;
         maskCtx.fillRect(maskX, maskY, width, height);
         maskCtx.restore();
       }
@@ -8139,16 +8032,16 @@ class CanvasGraphics {
     this.current.fillColor = this.getColorN_Pattern(arguments);
     this.current.patternFill = true;
   }
-  setStrokeRGBColor(color) {
-    this.ctx.strokeStyle = this.current.strokeColor = color;
+  setStrokeRGBColor(r, g, b) {
+    this.ctx.strokeStyle = this.current.strokeColor = Util.makeHexColor(r, g, b);
     this.current.patternStroke = false;
   }
   setStrokeTransparent() {
     this.ctx.strokeStyle = this.current.strokeColor = "transparent";
     this.current.patternStroke = false;
   }
-  setFillRGBColor(color) {
-    this.ctx.fillStyle = this.current.fillColor = color;
+  setFillRGBColor(r, g, b) {
+    this.ctx.fillStyle = this.current.fillColor = Util.makeHexColor(r, g, b);
     this.current.patternFill = false;
   }
   setFillTransparent() {
@@ -9709,67 +9602,6 @@ class PDFDataTransportStreamRangeReader {
   }
 }
 
-;// ./src/display/pdf_objects.js
-const INITIAL_DATA = Symbol("INITIAL_DATA");
-class PDFObjects {
-  #objs = Object.create(null);
-  #ensureObj(objId) {
-    return this.#objs[objId] ||= {
-      ...Promise.withResolvers(),
-      data: INITIAL_DATA
-    };
-  }
-  get(objId, callback = null) {
-    if (callback) {
-      const obj = this.#ensureObj(objId);
-      obj.promise.then(() => callback(obj.data));
-      return null;
-    }
-    const obj = this.#objs[objId];
-    if (!obj || obj.data === INITIAL_DATA) {
-      throw new Error(`Requesting object that isn't resolved yet ${objId}.`);
-    }
-    return obj.data;
-  }
-  has(objId) {
-    const obj = this.#objs[objId];
-    return !!obj && obj.data !== INITIAL_DATA;
-  }
-  delete(objId) {
-    const obj = this.#objs[objId];
-    if (!obj || obj.data === INITIAL_DATA) {
-      return false;
-    }
-    delete this.#objs[objId];
-    return true;
-  }
-  resolve(objId, data = null) {
-    const obj = this.#ensureObj(objId);
-    obj.data = data;
-    obj.resolve();
-  }
-  clear() {
-    for (const objId in this.#objs) {
-      const {
-        data
-      } = this.#objs[objId];
-      data?.bitmap?.close();
-    }
-    this.#objs = Object.create(null);
-  }
-  *[Symbol.iterator]() {
-    for (const objId in this.#objs) {
-      const {
-        data
-      } = this.#objs[objId];
-      if (data === INITIAL_DATA) {
-        continue;
-      }
-      yield [objId, data];
-    }
-  }
-}
-
 ;// ./src/display/text_layer.js
 
 
@@ -10191,8 +10023,7 @@ class XfaText {
 
 
 
-
-
+const DEFAULT_RANGE_CHUNK_SIZE = 65536;
 const RENDERING_CANCELLED_TIMEOUT = 100;
 function getDocument(src = {}) {
   const task = new PDFDocumentLoadingTask();
@@ -10205,7 +10036,7 @@ function getDocument(src = {}) {
   const withCredentials = src.withCredentials === true;
   const password = src.password ?? null;
   const rangeTransport = src.range instanceof PDFDataRangeTransport ? src.range : null;
-  const rangeChunkSize = Number.isInteger(src.rangeChunkSize) && src.rangeChunkSize > 0 ? src.rangeChunkSize : 2 ** 16;
+  const rangeChunkSize = Number.isInteger(src.rangeChunkSize) && src.rangeChunkSize > 0 ? src.rangeChunkSize : DEFAULT_RANGE_CHUNK_SIZE;
   let worker = src.worker instanceof PDFWorker ? src.worker : null;
   const verbosity = src.verbosity;
   const docBaseUrl = typeof src.docBaseUrl === "string" && !isDataScheme(src.docBaseUrl) ? src.docBaseUrl : null;
@@ -10254,15 +10085,16 @@ function getDocument(src = {}) {
     wasmFactory: null
   };
   if (!worker) {
-    worker = PDFWorker.create({
+    const workerParams = {
       verbosity,
       port: GlobalWorkerOptions.workerPort
-    });
+    };
+    worker = workerParams.port ? PDFWorker.fromPort(workerParams) : new PDFWorker(workerParams);
     task._worker = worker;
   }
   const docParams = {
     docId,
-    apiVersion: "5.3.42",
+    apiVersion: "5.2.183",
     data,
     password,
     disableAutoFetch,
@@ -10329,6 +10161,33 @@ function getDocument(src = {}) {
   }).catch(task._capability.reject);
   return task;
 }
+function getUrlProp(val) {
+  return null;
+}
+function getDataProp(val) {
+  if (val instanceof Uint8Array && val.byteLength === val.buffer.byteLength) {
+    return val;
+  }
+  if (typeof val === "string") {
+    return stringToBytes(val);
+  }
+  if (val instanceof ArrayBuffer || ArrayBuffer.isView(val) || typeof val === "object" && !isNaN(val?.length)) {
+    return new Uint8Array(val);
+  }
+  throw new Error("Invalid PDF binary data: either TypedArray, " + "string, or array-like object is expected in the data property.");
+}
+function getFactoryUrlProp(val) {
+  if (typeof val !== "string") {
+    return null;
+  }
+  if (val.endsWith("/")) {
+    return val;
+  }
+  throw new Error(`Invalid factory url: "${val}" must include trailing slash.`);
+}
+const isRefProxy = v => typeof v === "object" && Number.isInteger(v?.num) && v.num >= 0 && Number.isInteger(v?.gen) && v.gen >= 0;
+const isNameProxy = v => typeof v === "object" && typeof v?.name === "string";
+const isValidExplicitDest = _isValidExplicitDest.bind(null, isRefProxy, isNameProxy);
 class PDFDocumentLoadingTask {
   static #docId = 0;
   _capability = Promise.withResolvers();
@@ -10343,17 +10202,7 @@ class PDFDocumentLoadingTask {
   }
   async destroy() {
     this.destroyed = true;
-    try {
-      if (this._worker?.port) {
-        this._worker._pendingDestroy = true;
-      }
-      await this._transport?.destroy();
-    } catch (ex) {
-      if (this._worker?.port) {
-        delete this._worker._pendingDestroy;
-      }
-      throw ex;
-    }
+    await this._transport?.destroy();
     this._transport = null;
     this._worker?.destroy();
     this._worker = null;
@@ -10363,57 +10212,57 @@ class PDFDocumentLoadingTask {
   }
 }
 class PDFDataRangeTransport {
-  #capability = Promise.withResolvers();
-  #progressiveDoneListeners = [];
-  #progressiveReadListeners = [];
-  #progressListeners = [];
-  #rangeListeners = [];
   constructor(length, initialData, progressiveDone = false, contentDispositionFilename = null) {
     this.length = length;
     this.initialData = initialData;
     this.progressiveDone = progressiveDone;
     this.contentDispositionFilename = contentDispositionFilename;
+    this._rangeListeners = [];
+    this._progressListeners = [];
+    this._progressiveReadListeners = [];
+    this._progressiveDoneListeners = [];
+    this._readyCapability = Promise.withResolvers();
   }
   addRangeListener(listener) {
-    this.#rangeListeners.push(listener);
+    this._rangeListeners.push(listener);
   }
   addProgressListener(listener) {
-    this.#progressListeners.push(listener);
+    this._progressListeners.push(listener);
   }
   addProgressiveReadListener(listener) {
-    this.#progressiveReadListeners.push(listener);
+    this._progressiveReadListeners.push(listener);
   }
   addProgressiveDoneListener(listener) {
-    this.#progressiveDoneListeners.push(listener);
+    this._progressiveDoneListeners.push(listener);
   }
   onDataRange(begin, chunk) {
-    for (const listener of this.#rangeListeners) {
+    for (const listener of this._rangeListeners) {
       listener(begin, chunk);
     }
   }
   onDataProgress(loaded, total) {
-    this.#capability.promise.then(() => {
-      for (const listener of this.#progressListeners) {
+    this._readyCapability.promise.then(() => {
+      for (const listener of this._progressListeners) {
         listener(loaded, total);
       }
     });
   }
   onDataProgressiveRead(chunk) {
-    this.#capability.promise.then(() => {
-      for (const listener of this.#progressiveReadListeners) {
+    this._readyCapability.promise.then(() => {
+      for (const listener of this._progressiveReadListeners) {
         listener(chunk);
       }
     });
   }
   onDataProgressiveDone() {
-    this.#capability.promise.then(() => {
-      for (const listener of this.#progressiveDoneListeners) {
+    this._readyCapability.promise.then(() => {
+      for (const listener of this._progressiveDoneListeners) {
         listener();
       }
     });
   }
   transportReady() {
-    this.#capability.resolve();
+    this._readyCapability.resolve();
   }
   requestDataRange(begin, end) {
     unreachable("Abstract method PDFDataRangeTransport.requestDataRange");
@@ -10932,14 +10781,53 @@ class PDFPageProxy {
     return this._stats;
   }
 }
+class LoopbackPort {
+  #listeners = new Map();
+  #deferred = Promise.resolve();
+  postMessage(obj, transfer) {
+    const event = {
+      data: structuredClone(obj, transfer ? {
+        transfer
+      } : null)
+    };
+    this.#deferred.then(() => {
+      for (const [listener] of this.#listeners) {
+        listener.call(this, event);
+      }
+    });
+  }
+  addEventListener(name, listener, options = null) {
+    let rmAbort = null;
+    if (options?.signal instanceof AbortSignal) {
+      const {
+        signal
+      } = options;
+      if (signal.aborted) {
+        warn("LoopbackPort - cannot use an `aborted` signal.");
+        return;
+      }
+      const onAbort = () => this.removeEventListener(name, listener);
+      rmAbort = () => signal.removeEventListener("abort", onAbort);
+      signal.addEventListener("abort", onAbort);
+    }
+    this.#listeners.set(listener, rmAbort);
+  }
+  removeEventListener(name, listener) {
+    const rmAbort = this.#listeners.get(listener);
+    rmAbort?.();
+    this.#listeners.delete(listener);
+  }
+  terminate() {
+    for (const [, rmAbort] of this.#listeners) {
+      rmAbort?.();
+    }
+    this.#listeners.clear();
+  }
+}
 class PDFWorker {
-  #capability = Promise.withResolvers();
-  #messageHandler = null;
-  #port = null;
-  #webWorker = null;
   static #fakeWorkerId = 0;
   static #isWorkerDisabled = false;
-  static #workerPorts = new WeakMap();
+  static #workerPorts;
   constructor({
     name = null,
     port = null,
@@ -10948,40 +10836,33 @@ class PDFWorker {
     this.name = name;
     this.destroyed = false;
     this.verbosity = verbosity;
-    if (port) {
-      if (PDFWorker.#workerPorts.has(port)) {
-        throw new Error("Cannot use more than one PDFWorker per port.");
-      }
-      PDFWorker.#workerPorts.set(port, this);
-      this.#initializeFromPort(port);
-    } else {
-      this.#initialize();
-    }
+    this._readyCapability = Promise.withResolvers();
+    this._port = null;
+    this._webWorker = null;
+    this._messageHandler = null;
+    this._initialize();
   }
   get promise() {
-    return this.#capability.promise;
+    return this._readyCapability.promise;
   }
   #resolve() {
-    this.#capability.resolve();
-    this.#messageHandler.send("configure", {
+    this._readyCapability.resolve();
+    this._messageHandler.send("configure", {
       verbosity: this.verbosity
     });
   }
   get port() {
-    return this.#port;
+    return this._port;
   }
   get messageHandler() {
-    return this.#messageHandler;
+    return this._messageHandler;
   }
-  #initializeFromPort(port) {
-    this.#port = port;
-    this.#messageHandler = new MessageHandler("main", "worker", port);
-    this.#messageHandler.on("ready", () => {});
-    this.#resolve();
+  _initializeFromPort(port) {
+    throw new Error("Not implemented: _initializeFromPort");
   }
-  #initialize() {
+  _initialize() {
     if (PDFWorker.#isWorkerDisabled || PDFWorker.#mainThreadWorkerMessageHandler) {
-      this.#setupFakeWorker();
+      this._setupFakeWorker();
       return;
     }
     let {
@@ -10997,14 +10878,14 @@ class PDFWorker {
         messageHandler.destroy();
         worker.terminate();
         if (this.destroyed) {
-          this.#capability.reject(new Error("Worker was destroyed"));
+          this._readyCapability.reject(new Error("Worker was destroyed"));
         } else {
-          this.#setupFakeWorker();
+          this._setupFakeWorker();
         }
       };
       const ac = new AbortController();
       worker.addEventListener("error", () => {
-        if (!this.#webWorker) {
+        if (!this._webWorker) {
           terminateEarly();
         }
       }, {
@@ -11016,9 +10897,9 @@ class PDFWorker {
           terminateEarly();
           return;
         }
-        this.#messageHandler = messageHandler;
-        this.#port = worker;
-        this.#webWorker = worker;
+        this._messageHandler = messageHandler;
+        this._port = worker;
+        this._webWorker = worker;
         this.#resolve();
       });
       messageHandler.on("ready", data => {
@@ -11030,7 +10911,7 @@ class PDFWorker {
         try {
           sendTest();
         } catch {
-          this.#setupFakeWorker();
+          this._setupFakeWorker();
         }
       });
       const sendTest = () => {
@@ -11042,47 +10923,40 @@ class PDFWorker {
     } catch {
       info("The worker has been disabled.");
     }
-    this.#setupFakeWorker();
+    this._setupFakeWorker();
   }
-  #setupFakeWorker() {
+  _setupFakeWorker() {
     if (!PDFWorker.#isWorkerDisabled) {
       warn("Setting up fake worker.");
       PDFWorker.#isWorkerDisabled = true;
     }
     PDFWorker._setupFakeWorkerGlobal.then(WorkerMessageHandler => {
       if (this.destroyed) {
-        this.#capability.reject(new Error("Worker was destroyed"));
+        this._readyCapability.reject(new Error("Worker was destroyed"));
         return;
       }
       const port = new LoopbackPort();
-      this.#port = port;
+      this._port = port;
       const id = `fake${PDFWorker.#fakeWorkerId++}`;
       const workerHandler = new MessageHandler(id + "_worker", id, port);
       WorkerMessageHandler.setup(workerHandler, port);
-      this.#messageHandler = new MessageHandler(id, id + "_worker", port);
+      this._messageHandler = new MessageHandler(id, id + "_worker", port);
       this.#resolve();
     }).catch(reason => {
-      this.#capability.reject(new Error(`Setting up fake worker failed: "${reason.message}".`));
+      this._readyCapability.reject(new Error(`Setting up fake worker failed: "${reason.message}".`));
     });
   }
   destroy() {
     this.destroyed = true;
-    this.#webWorker?.terminate();
-    this.#webWorker = null;
-    PDFWorker.#workerPorts.delete(this.#port);
-    this.#port = null;
-    this.#messageHandler?.destroy();
-    this.#messageHandler = null;
+    this._webWorker?.terminate();
+    this._webWorker = null;
+    PDFWorker.#workerPorts?.delete(this._port);
+    this._port = null;
+    this._messageHandler?.destroy();
+    this._messageHandler = null;
   }
-  static create(params) {
-    const cachedPort = this.#workerPorts.get(params?.port);
-    if (cachedPort) {
-      if (cachedPort._pendingDestroy) {
-        throw new Error("PDFWorker.create - the worker is being destroyed.\n" + "Please remember to await `PDFDocumentLoadingTask.destroy()`-calls.");
-      }
-      return cachedPort;
-    }
-    return new PDFWorker(params);
+  static fromPort(params) {
+    throw new Error("Not implemented: fromPort");
   }
   static get workerSrc() {
     if (GlobalWorkerOptions.workerSrc) {
@@ -11628,6 +11502,65 @@ class WorkerTransport {
     return this.#pageRefCache.get(refStr) ?? null;
   }
 }
+const INITIAL_DATA = Symbol("INITIAL_DATA");
+class PDFObjects {
+  #objs = Object.create(null);
+  #ensureObj(objId) {
+    return this.#objs[objId] ||= {
+      ...Promise.withResolvers(),
+      data: INITIAL_DATA
+    };
+  }
+  get(objId, callback = null) {
+    if (callback) {
+      const obj = this.#ensureObj(objId);
+      obj.promise.then(() => callback(obj.data));
+      return null;
+    }
+    const obj = this.#objs[objId];
+    if (!obj || obj.data === INITIAL_DATA) {
+      throw new Error(`Requesting object that isn't resolved yet ${objId}.`);
+    }
+    return obj.data;
+  }
+  has(objId) {
+    const obj = this.#objs[objId];
+    return !!obj && obj.data !== INITIAL_DATA;
+  }
+  delete(objId) {
+    const obj = this.#objs[objId];
+    if (!obj || obj.data === INITIAL_DATA) {
+      return false;
+    }
+    delete this.#objs[objId];
+    return true;
+  }
+  resolve(objId, data = null) {
+    const obj = this.#ensureObj(objId);
+    obj.data = data;
+    obj.resolve();
+  }
+  clear() {
+    for (const objId in this.#objs) {
+      const {
+        data
+      } = this.#objs[objId];
+      data?.bitmap?.close();
+    }
+    this.#objs = Object.create(null);
+  }
+  *[Symbol.iterator]() {
+    for (const objId in this.#objs) {
+      const {
+        data
+      } = this.#objs[objId];
+      if (data === INITIAL_DATA) {
+        continue;
+      }
+      yield [objId, data];
+    }
+  }
+}
 class RenderTask {
   #internalRenderTask = null;
   onContinue = null;
@@ -11796,8 +11729,8 @@ class InternalRenderTask {
     }
   }
 }
-const version = "5.3.42";
-const build = "250cc7d29";
+const version = "5.2.183";
+const build = "3f1ecc1ba";
 
 ;// ./src/shared/scripting_utils.js
 function makeColorComp(n) {
@@ -14893,9 +14826,12 @@ class FreeTextEditor extends AnnotationEditor {
     }
   }
   enableEditMode() {
-    if (!super.enableEditMode()) {
-      return false;
+    if (this.isInEditMode()) {
+      return;
     }
+    this.parent.setEditingState(false);
+    this.parent.updateToolbar(AnnotationEditorType.FREETEXT);
+    super.enableEditMode();
     this.overlayDiv.classList.remove("enabled");
     this.editorDiv.contentEditable = true;
     this._isDraggable = false;
@@ -14917,12 +14853,13 @@ class FreeTextEditor extends AnnotationEditor {
     this.editorDiv.addEventListener("paste", this.editorDivPaste.bind(this), {
       signal
     });
-    return true;
   }
   disableEditMode() {
-    if (!super.disableEditMode()) {
-      return false;
+    if (!this.isInEditMode()) {
+      return;
     }
+    this.parent.setEditingState(true);
+    super.disableEditMode();
     this.overlayDiv.classList.add("enabled");
     this.editorDiv.contentEditable = false;
     this.div.setAttribute("aria-activedescendant", this.#editorDivId);
@@ -14934,7 +14871,6 @@ class FreeTextEditor extends AnnotationEditor {
     });
     this.isEditing = false;
     this.parent.div.classList.add("freetextEditing");
-    return true;
   }
   focusin(event) {
     if (!this._focusEventsAllowed) {
@@ -15050,6 +14986,9 @@ class FreeTextEditor extends AnnotationEditor {
     this.enableEditMode();
     this.editorDiv.focus();
   }
+  dblclick(event) {
+    this.enterInEditMode();
+  }
   keydown(event) {
     if (event.target === this.div && event.key === "Enter") {
       this.enterInEditMode();
@@ -15075,9 +15014,6 @@ class FreeTextEditor extends AnnotationEditor {
   enableEditing() {
     this.editorDiv.setAttribute("role", "textbox");
     this.editorDiv.setAttribute("aria-multiline", true);
-  }
-  get canChangeContent() {
-    return true;
   }
   render() {
     if (this.div) {
@@ -15105,6 +15041,7 @@ class FreeTextEditor extends AnnotationEditor {
     this.overlayDiv = document.createElement("div");
     this.overlayDiv.classList.add("overlay", "enabled");
     this.div.append(this.overlayDiv);
+    bindEvents(this, this.div, ["dblclick", "keydown"]);
     if (this._isCopy || this.annotationElementId) {
       const [parentWidth, parentHeight] = this.parentDimensions;
       if (this.annotationElementId) {
@@ -18931,8 +18868,14 @@ class SignatureExtractor {
       const isteps = Math.floor(steps);
       steps = steps === isteps ? isteps - 1 : isteps;
       for (let i = 0; i < steps; i++) {
-        newWidth = Math.ceil(prevWidth / 2);
-        newHeight = Math.ceil(prevHeight / 2);
+        newWidth = prevWidth;
+        newHeight = prevHeight;
+        if (newWidth > maxDim) {
+          newWidth = Math.ceil(newWidth / 2);
+        }
+        if (newHeight > maxDim) {
+          newHeight = Math.ceil(newHeight / 2);
+        }
         const offscreen = new OffscreenCanvas(newWidth, newHeight);
         const ctx = offscreen.getContext("2d");
         ctx.drawImage(bitmap, 0, 0, prevWidth, prevHeight, 0, 0, newWidth, newHeight);
@@ -19637,9 +19580,7 @@ class StampEditor extends AnnotationEditor {
     return SupportedImageMimeTypes.includes(mime);
   }
   static paste(item, parent) {
-    parent.pasteEditor({
-      mode: AnnotationEditorType.STAMP
-    }, {
+    parent.pasteEditor(AnnotationEditorType.STAMP, {
       bitmapFile: item.getAsFile()
     });
   }
@@ -20338,8 +20279,8 @@ class AnnotationEditorLayer {
   get isInvisible() {
     return this.isEmpty && this.#uiManager.getMode() === AnnotationEditorType.NONE;
   }
-  updateToolbar(options) {
-    this.#uiManager.updateToolbar(options);
+  updateToolbar(mode) {
+    this.#uiManager.updateToolbar(mode);
   }
   updateMode(mode = this.#uiManager.getMode()) {
     this.#cleanup();
@@ -20688,9 +20629,9 @@ class AnnotationEditorLayer {
   canCreateNewEmptyEditor() {
     return this.#currentEditorType?.canCreateNewEmptyEditor();
   }
-  async pasteEditor(options, params) {
-    this.updateToolbar(options);
-    await this.#uiManager.updateMode(options.mode);
+  async pasteEditor(mode, params) {
+    this.#uiManager.updateToolbar(mode);
+    await this.#uiManager.updateMode(mode);
     const {
       offsetX,
       offsetY
@@ -21169,7 +21110,8 @@ class DrawLayer {
 
 
 
-
+const pdfjsVersion = "5.2.183";
+const pdfjsBuild = "3f1ecc1ba";
 globalThis.pdfjsLib = {
   AbortException: AbortException,
   AnnotationEditorLayer: AnnotationEditorLayer,

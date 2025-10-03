@@ -107,11 +107,9 @@ add_task(async function test_translations_actor_sync_delete_wasm() {
     errorMessage = error?.message;
   });
 
-  info("Error message: " + errorMessage);
-  ok(
-    errorMessage.startsWith(
-      "No bergamot-translators were found that matched the major version:"
-    ),
+  is(
+    errorMessage,
+    "Unable to get the bergamot translator from Remote Settings.",
     "The WASM was successfully removed."
   );
 

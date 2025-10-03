@@ -29,7 +29,6 @@ class FreezeCommand(Command):
     packages are listed in a case-insensitive sorted order.
     """
 
-    ignore_require_venv = True
     usage = """
       %prog [options]"""
     log_streams = ("ext://sys.stderr", "ext://sys.stderr")

@@ -1,20 +1,22 @@
-# ruff: noqa: F401
-import os
-
-from .exceptions import *  # noqa: F403
+# coding: utf-8
+from .exceptions import *
 from .ext import ExtType, Timestamp
 
-version = (1, 1, 0)
-__version__ = "1.1.0"
+import os
+import sys
 
 
-if os.environ.get("MSGPACK_PUREPYTHON"):
-    from .fallback import Packer, Unpacker, unpackb
+version = (1, 0, 5)
+__version__ = "1.0.5"
+
+
+if os.environ.get("MSGPACK_PUREPYTHON") or sys.version_info[0] == 2:
+    from .fallback import Packer, unpackb, Unpacker
 else:
     try:
-        from ._cmsgpack import Packer, Unpacker, unpackb
+        from ._cmsgpack import Packer, unpackb, Unpacker
     except ImportError:
-        from .fallback import Packer, Unpacker, unpackb
+        from .fallback import Packer, unpackb, Unpacker
 
 
 def pack(o, stream, **kwargs):

@@ -1,15 +1,15 @@
 """
-Copied from raven-python.
-
-Despite being called "legacy" in some places this resolver is very much still
-in use.
+Copied from raven-python. Used for
+`DjangoIntegration(transaction_fron="raven_legacy")`.
 """
+
+from __future__ import absolute_import
 
 import re
 
-from typing import TYPE_CHECKING
+from sentry_sdk._types import MYPY
 
-if TYPE_CHECKING:
+if MYPY:
     from django.urls.resolvers import URLResolver
     from typing import Dict
     from typing import List
@@ -18,13 +18,6 @@ if TYPE_CHECKING:
     from typing import Tuple
     from typing import Union
     from re import Pattern
-
-from django import VERSION as DJANGO_VERSION
-
-if DJANGO_VERSION >= (2, 0):
-    from django.urls.resolvers import RoutePattern
-else:
-    RoutePattern = None
 
 try:
     from django.urls import get_resolver
@@ -42,10 +35,7 @@ def get_regex(resolver_or_pattern):
     return regex
 
 
-class RavenResolver:
-    _new_style_group_matcher = re.compile(
-        r"<(?:([^>:]+):)?([^>]+)>"
-    )  # https://github.com/django/django/blob/21382e2743d06efbf5623e7c9b6dccf2a325669b/django/urls/resolvers.py#L245-L247
+class RavenResolver(object):
     _optional_group_matcher = re.compile(r"\(\?\:([^\)]+)\)")
     _named_group_matcher = re.compile(r"\(\?P<(\w+)>[^\)]+\)+")
     _non_named_group_matcher = re.compile(r"\([^\)]+\)")
@@ -56,7 +46,7 @@ class RavenResolver:
     _cache = {}  # type: Dict[URLPattern, str]
 
     def _simplify(self, pattern):
-        # type: (Union[URLPattern, URLResolver]) -> str
+        # type: (str) -> str
         r"""
         Clean up urlpattern regexes into something readable by humans:
 
@@ -66,24 +56,11 @@ class RavenResolver:
         To:
         > "{sport_slug}/athletes/{athlete_slug}/"
         """
-        # "new-style" path patterns can be parsed directly without turning them
-        # into regexes first
-        if (
-            RoutePattern is not None
-            and hasattr(pattern, "pattern")
-            and isinstance(pattern.pattern, RoutePattern)
-        ):
-            return self._new_style_group_matcher.sub(
-                lambda m: "{%s}" % m.group(2), str(pattern.pattern._route)
-            )
-
-        result = get_regex(pattern).pattern
-
         # remove optional params
         # TODO(dcramer): it'd be nice to change these into [%s] but it currently
         # conflicts with the other rules because we're doing regexp matches
         # rather than parsing tokens
-        result = self._optional_group_matcher.sub(lambda m: "%s" % m.group(1), result)
+        result = self._optional_group_matcher.sub(lambda m: "%s" % m.group(1), pattern)
 
         # handle named groups first
         result = self._named_group_matcher.sub(lambda m: "{%s}" % m.group(1), result)
@@ -136,8 +113,8 @@ class RavenResolver:
             except KeyError:
                 pass
 
-            prefix = "".join(self._simplify(p) for p in parents)
-            result = prefix + self._simplify(pattern)
+            prefix = "".join(self._simplify(get_regex(p).pattern) for p in parents)
+            result = prefix + self._simplify(get_regex(pattern).pattern)
             if not result.startswith("/"):
                 result = "/" + result
             self._cache[pattern] = result

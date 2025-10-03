@@ -8,15 +8,14 @@
 
 #[cfg(feature = "nss")]
 mod nss {
+    use bindgen::Builder;
+    use serde_derive::Deserialize;
     use std::{
         collections::HashMap,
         env, fs,
         path::{Path, PathBuf},
         process::Command,
     };
-
-    use bindgen::Builder;
-    use serde_derive::Deserialize;
 
     const BINDINGS_DIR: &str = "bindings";
     const BINDINGS_CONFIG: &str = "bindings.toml";
@@ -38,7 +37,7 @@ mod nss {
         opaque: Vec<String>,
         /// enumerations that are turned into a module (without this, the enum is
         /// mapped using the default, which means that the individual values are
-        /// formed with an underscore as `<enum_type>_<enum_value_name>`).
+        /// formed with an underscore as <enum_type>_<enum_value_name>).
         #[serde(default)]
         enums: Vec<String>,
 
@@ -115,6 +114,7 @@ mod nss {
         let mut build_nss = vec![
             String::from("./build.sh"),
             String::from("-Ddisable_tests=1"),
+            String::from("-Denable_draft_hpke=1"),
         ];
         if is_debug() {
             build_nss.push(String::from("--static"));
@@ -151,7 +151,7 @@ mod nss {
         libs.append(&mut nspr_libs());
 
         for lib in &libs {
-            println!("cargo:rustc-link-lib=dylib={lib}");
+            println!("cargo:rustc-link-lib=dylib={}", lib);
         }
     }
 
@@ -191,8 +191,16 @@ mod nss {
     }
 
     fn static_link(nsslibdir: &Path, use_static_softoken: bool, use_static_nspr: bool) {
-        // The ordering of these libraries is critical for the linker.
-        let mut static_libs = vec!["cryptohi", "nss_static"];
+        let mut static_libs = vec![
+            "certdb",
+            "certhi",
+            "cryptohi",
+            "nss_static",
+            "nssb",
+            "nssdev",
+            "nsspki",
+            "nssutil",
+        ];
         let mut dynamic_libs = vec![];
 
         if use_static_softoken {
@@ -202,8 +210,6 @@ mod nss {
             // Use dlopen to get softokn3.so
             static_libs.push("pk11wrap");
         }
-
-        static_libs.extend_from_slice(&["nsspki", "nssdev", "nssb", "certhi", "certdb", "nssutil"]);
 
         if use_static_nspr {
             static_libs.append(&mut nspr_libs());
@@ -224,10 +230,10 @@ mod nss {
         }
 
         for lib in &static_libs {
-            println!("cargo:rustc-link-lib=static={lib}");
+            println!("cargo:rustc-link-lib=static={}", lib);
         }
         for lib in &dynamic_libs {
-            println!("cargo:rustc-link-lib=dylib={lib}");
+            println!("cargo:rustc-link-lib=dylib={}", lib);
         }
     }
 
@@ -247,7 +253,7 @@ mod nss {
         let header = header_path.to_str().unwrap();
         let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join(String::from(base) + ".rs");
 
-        println!("cargo:rerun-if-changed={header}");
+        println!("cargo:rerun-if-changed={}", header);
 
         let mut builder = Builder::default().header(header);
         builder = builder.generate_comments(false);
@@ -335,7 +341,7 @@ mod nss {
 
     fn pkg_config() -> Vec<String> {
         let modversion = Command::new("pkg-config")
-            .args(["--modversion", "nss"])
+            .args(&["--modversion", "nss"])
             .output()
             .expect("pkg-config reports NSS as absent")
             .stdout;
@@ -358,7 +364,7 @@ mod nss {
         }
 
         let cfg = Command::new("pkg-config")
-            .args(["--cflags", "--libs", "nss"])
+            .args(&["--cflags", "--libs", "nss"])
             .output()
             .expect("NSS flags not returned by pkg-config")
             .stdout;
@@ -368,13 +374,13 @@ mod nss {
         for f in cfg_str.split(' ') {
             if let Some(include) = f.strip_prefix("-I") {
                 flags.push(String::from(f));
-                println!("cargo:include={include}");
+                println!("cargo:include={}", include);
             } else if let Some(path) = f.strip_prefix("-L") {
-                println!("cargo:rustc-link-search=native={path}");
+                println!("cargo:rustc-link-search=native={}", path);
             } else if let Some(lib) = f.strip_prefix("-l") {
-                println!("cargo:rustc-link-lib=dylib={lib}");
+                println!("cargo:rustc-link-lib=dylib={}", lib);
             } else {
-                println!("Warning: Unknown flag from pkg-config: {f}");
+                println!("Warning: Unknown flag from pkg-config: {}", f);
             }
         }
 
@@ -383,10 +389,7 @@ mod nss {
 
     #[cfg(feature = "gecko")]
     fn setup_for_gecko() -> Vec<String> {
-        use mozbuild::{
-            config::{BINDGEN_SYSTEM_FLAGS, NSPR_CFLAGS, NSS_CFLAGS},
-            TOPOBJDIR,
-        };
+        use mozbuild::TOPOBJDIR;
 
         let mut flags: Vec<String> = Vec::new();
 
@@ -432,11 +435,13 @@ mod nss {
             );
         }
 
-        flags = BINDGEN_SYSTEM_FLAGS
-            .iter()
-            .chain(&NSPR_CFLAGS)
-            .chain(&NSS_CFLAGS)
-            .map(|s| s.to_string())
+        let flags_path = TOPOBJDIR.join("netwerk/socket/neqo/extra-bindgen-flags");
+
+        println!("cargo:rerun-if-changed={}", flags_path.to_str().unwrap());
+        flags = fs::read_to_string(flags_path)
+            .expect("Failed to read extra-bindgen-flags file")
+            .split_whitespace()
+            .map(std::borrow::ToOwned::to_owned)
             .collect();
 
         flags.push(String::from("-include"));

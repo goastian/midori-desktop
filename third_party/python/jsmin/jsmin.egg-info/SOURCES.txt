@@ -2,7 +2,6 @@ CHANGELOG.txt
 LICENSE.txt
 MANIFEST.in
 README.rst
-notes.txt
 setup.cfg
 setup.py
 jsmin/__init__.py

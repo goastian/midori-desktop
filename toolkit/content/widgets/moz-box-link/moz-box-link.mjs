@@ -5,8 +5,6 @@
 import { MozBoxBase } from "../lit-utils.mjs";
 import { html } from "../vendor/lit.all.mjs";
 
-window.MozXULElement?.insertFTLIfNeeded("toolkit/global/mozBoxBase.ftl");
-
 /**
  * A link with a box-like shape that allows for custom title and description.
  *
@@ -56,18 +54,12 @@ export default class MozBoxLink extends MozBoxBase {
             class="button"
             is="moz-support-link"
             support-page=${supportPage}
-            data-l10n-id="moz-box-link-anchor"
           >
             ${template}
           </a>`
-        : html`<a
-            class="button"
-            href=${this.href}
-            target="_blank"
-            data-l10n-id="moz-box-link-anchor"
-          >
-            ${template}
-          </a>`}
+        : html`<a class="button" href=${this.href} target="_blank"
+            >${template}</a
+          >`}
     `;
   }
 }

@@ -4,6 +4,7 @@
 Commonly useful validators.
 """
 
+
 import operator
 import re
 
@@ -34,7 +35,7 @@ __all__ = [
     "min_len",
     "not_",
     "optional",
-    "or_",
+    "provides",
     "set_disabled",
 ]
 
@@ -45,8 +46,8 @@ def set_disabled(disabled):
 
     By default, they are run.
 
-    Args:
-        disabled (bool): If `True`, disable running all validators.
+    :param disabled: If ``True``, disable running all validators.
+    :type disabled: bool
 
     .. warning::
 
@@ -61,8 +62,8 @@ def get_disabled():
     """
     Return a bool indicating whether validators are currently disabled or not.
 
-    Returns:
-        bool:`True` if validators are currently disabled.
+    :return: ``True`` if validators are currently disabled.
+    :rtype: bool
 
     .. versionadded:: 21.3.0
     """
@@ -87,7 +88,7 @@ def disabled():
         set_run_validators(True)
 
 
-@attrs(repr=False, slots=True, unsafe_hash=True)
+@attrs(repr=False, slots=True, hash=True)
 class _InstanceOfValidator:
     type = attrib()
 
@@ -96,31 +97,37 @@ class _InstanceOfValidator:
         We use a callable class to be able to change the ``__repr__``.
         """
         if not isinstance(value, self.type):
-            msg = f"'{attr.name}' must be {self.type!r} (got {value!r} that is a {value.__class__!r})."
             raise TypeError(
-                msg,
+                "'{name}' must be {type!r} (got {value!r} that is a "
+                "{actual!r}).".format(
+                    name=attr.name,
+                    type=self.type,
+                    actual=value.__class__,
+                    value=value,
+                ),
                 attr,
                 self.type,
                 value,
             )
 
     def __repr__(self):
-        return f"<instance_of validator for type {self.type!r}>"
+        return "<instance_of validator for type {type!r}>".format(
+            type=self.type
+        )
 
 
 def instance_of(type):
     """
-    A validator that raises a `TypeError` if the initializer is called with a
-    wrong type for this particular attribute (checks are performed using
+    A validator that raises a `TypeError` if the initializer is called
+    with a wrong type for this particular attribute (checks are performed using
     `isinstance` therefore it's also valid to pass a tuple of types).
 
-    Args:
-        type (type | tuple[type]): The type to check for.
+    :param type: The type to check for.
+    :type type: type or tuple of type
 
-    Raises:
-        TypeError:
-            With a human readable error message, the attribute (of type
-            `attrs.Attribute`), the expected type, and the value it got.
+    :raises TypeError: With a human readable error message, the attribute
+        (of type `attrs.Attribute`), the expected type, and the value it
+        got.
     """
     return _InstanceOfValidator(type)
 
@@ -135,52 +142,56 @@ class _MatchesReValidator:
         We use a callable class to be able to change the ``__repr__``.
         """
         if not self.match_func(value):
-            msg = f"'{attr.name}' must match regex {self.pattern.pattern!r} ({value!r} doesn't)"
             raise ValueError(
-                msg,
+                "'{name}' must match regex {pattern!r}"
+                " ({value!r} doesn't)".format(
+                    name=attr.name, pattern=self.pattern.pattern, value=value
+                ),
                 attr,
                 self.pattern,
                 value,
             )
 
     def __repr__(self):
-        return f"<matches_re validator for pattern {self.pattern!r}>"
+        return "<matches_re validator for pattern {pattern!r}>".format(
+            pattern=self.pattern
+        )
 
 
 def matches_re(regex, flags=0, func=None):
     r"""
-    A validator that raises `ValueError` if the initializer is called with a
-    string that doesn't match *regex*.
+    A validator that raises `ValueError` if the initializer is called
+    with a string that doesn't match *regex*.
 
-    Args:
-        regex (str, re.Pattern):
-            A regex string or precompiled pattern to match against
-
-        flags (int):
-            Flags that will be passed to the underlying re function (default 0)
-
-        func (typing.Callable):
-            Which underlying `re` function to call. Valid options are
-            `re.fullmatch`, `re.search`, and `re.match`; the default `None`
-            means `re.fullmatch`. For performance reasons, the pattern is
-            always precompiled using `re.compile`.
+    :param regex: a regex string or precompiled pattern to match against
+    :param int flags: flags that will be passed to the underlying re function
+        (default 0)
+    :param callable func: which underlying `re` function to call. Valid options
+        are `re.fullmatch`, `re.search`, and `re.match`; the default ``None``
+        means `re.fullmatch`. For performance reasons, the pattern is always
+        precompiled using `re.compile`.
 
     .. versionadded:: 19.2.0
     .. versionchanged:: 21.3.0 *regex* can be a pre-compiled pattern.
     """
     valid_funcs = (re.fullmatch, None, re.search, re.match)
     if func not in valid_funcs:
-        msg = "'func' must be one of {}.".format(
-            ", ".join(
-                sorted((e and e.__name__) or "None" for e in set(valid_funcs))
+        raise ValueError(
+            "'func' must be one of {}.".format(
+                ", ".join(
+                    sorted(
+                        e and e.__name__ or "None" for e in set(valid_funcs)
+                    )
+                )
             )
         )
-        raise ValueError(msg)
 
     if isinstance(regex, Pattern):
         if flags:
-            msg = "'flags' can only be used with a string pattern; pass flags to re.compile() instead"
-            raise TypeError(msg)
+            raise TypeError(
+                "'flags' can only be used with a string pattern; "
+                "pass flags to re.compile() instead"
+            )
         pattern = regex
     else:
         pattern = re.compile(regex, flags)
@@ -195,7 +206,59 @@ def matches_re(regex, flags=0, func=None):
     return _MatchesReValidator(pattern, match_func)
 
 
-@attrs(repr=False, slots=True, unsafe_hash=True)
+@attrs(repr=False, slots=True, hash=True)
+class _ProvidesValidator:
+    interface = attrib()
+
+    def __call__(self, inst, attr, value):
+        """
+        We use a callable class to be able to change the ``__repr__``.
+        """
+        if not self.interface.providedBy(value):
+            raise TypeError(
+                "'{name}' must provide {interface!r} which {value!r} "
+                "doesn't.".format(
+                    name=attr.name, interface=self.interface, value=value
+                ),
+                attr,
+                self.interface,
+                value,
+            )
+
+    def __repr__(self):
+        return "<provides validator for interface {interface!r}>".format(
+            interface=self.interface
+        )
+
+
+def provides(interface):
+    """
+    A validator that raises a `TypeError` if the initializer is called
+    with an object that does not provide the requested *interface* (checks are
+    performed using ``interface.providedBy(value)`` (see `zope.interface
+    <https://zopeinterface.readthedocs.io/en/latest/>`_).
+
+    :param interface: The interface to check for.
+    :type interface: ``zope.interface.Interface``
+
+    :raises TypeError: With a human readable error message, the attribute
+        (of type `attrs.Attribute`), the expected interface, and the
+        value it got.
+
+    .. deprecated:: 23.1.0
+    """
+    import warnings
+
+    warnings.warn(
+        "attrs's zope-interface support is deprecated and will be removed in, "
+        "or after, April 2024.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _ProvidesValidator(interface)
+
+
+@attrs(repr=False, slots=True, hash=True)
 class _OptionalValidator:
     validator = attrib()
 
@@ -206,19 +269,19 @@ class _OptionalValidator:
         self.validator(inst, attr, value)
 
     def __repr__(self):
-        return f"<optional validator for {self.validator!r} or None>"
+        return "<optional validator for {what} or None>".format(
+            what=repr(self.validator)
+        )
 
 
 def optional(validator):
     """
     A validator that makes an attribute optional.  An optional attribute is one
-    which can be set to `None` in addition to satisfying the requirements of
+    which can be set to ``None`` in addition to satisfying the requirements of
     the sub-validator.
 
-    Args:
-        validator
-            (typing.Callable | tuple[typing.Callable] | list[typing.Callable]):
-            A validator (or validators) that is used for non-`None` values.
+    :param Callable | tuple[Callable] | list[Callable] validator: A validator
+        (or validators) that is used for non-``None`` values.
 
     .. versionadded:: 15.1.0
     .. versionchanged:: 17.1.0 *validator* can be a list of validators.
@@ -230,10 +293,9 @@ def optional(validator):
     return _OptionalValidator(validator)
 
 
-@attrs(repr=False, slots=True, unsafe_hash=True)
+@attrs(repr=False, slots=True, hash=True)
 class _InValidator:
     options = attrib()
-    _original_options = attrib(hash=False)
 
     def __call__(self, inst, attr, value):
         try:
@@ -242,54 +304,44 @@ class _InValidator:
             in_options = False
 
         if not in_options:
-            msg = f"'{attr.name}' must be in {self._original_options!r} (got {value!r})"
             raise ValueError(
-                msg,
+                "'{name}' must be in {options!r} (got {value!r})".format(
+                    name=attr.name, options=self.options, value=value
+                ),
                 attr,
-                self._original_options,
+                self.options,
                 value,
             )
 
     def __repr__(self):
-        return f"<in_ validator with options {self._original_options!r}>"
+        return "<in_ validator with options {options!r}>".format(
+            options=self.options
+        )
 
 
 def in_(options):
     """
-    A validator that raises a `ValueError` if the initializer is called with a
-    value that does not belong in the *options* provided.
+    A validator that raises a `ValueError` if the initializer is called
+    with a value that does not belong in the options provided.  The check is
+    performed using ``value in options``.
 
-    The check is performed using ``value in options``, so *options* has to
-    support that operation.
+    :param options: Allowed options.
+    :type options: list, tuple, `enum.Enum`, ...
 
-    To keep the validator hashable, dicts, lists, and sets are transparently
-    transformed into a `tuple`.
-
-    Args:
-        options: Allowed options.
-
-    Raises:
-        ValueError:
-            With a human readable error message, the attribute (of type
-            `attrs.Attribute`), the expected options, and the value it got.
+    :raises ValueError: With a human readable error message, the attribute (of
+       type `attrs.Attribute`), the expected options, and the value it
+       got.
 
     .. versionadded:: 17.1.0
     .. versionchanged:: 22.1.0
        The ValueError was incomplete until now and only contained the human
        readable error message. Now it contains all the information that has
        been promised since 17.1.0.
-    .. versionchanged:: 24.1.0
-       *options* that are a list, dict, or a set are now transformed into a
-       tuple to keep the validator hashable.
     """
-    repr_options = options
-    if isinstance(options, (list, dict, set)):
-        options = tuple(options)
-
-    return _InValidator(options, repr_options)
+    return _InValidator(options)
 
 
-@attrs(repr=False, slots=False, unsafe_hash=True)
+@attrs(repr=False, slots=False, hash=True)
 class _IsCallableValidator:
     def __call__(self, inst, attr, value):
         """
@@ -314,20 +366,19 @@ class _IsCallableValidator:
 def is_callable():
     """
     A validator that raises a `attrs.exceptions.NotCallableError` if the
-    initializer is called with a value for this particular attribute that is
-    not callable.
+    initializer is called with a value for this particular attribute
+    that is not callable.
 
     .. versionadded:: 19.1.0
 
-    Raises:
-        attrs.exceptions.NotCallableError:
-            With a human readable error message containing the attribute
-            (`attrs.Attribute`) name, and the value it got.
+    :raises attrs.exceptions.NotCallableError: With a human readable error
+        message containing the attribute (`attrs.Attribute`) name,
+        and the value it got.
     """
     return _IsCallableValidator()
 
 
-@attrs(repr=False, slots=True, unsafe_hash=True)
+@attrs(repr=False, slots=True, hash=True)
 class _DeepIterable:
     member_validator = attrib(validator=is_callable())
     iterable_validator = attrib(
@@ -351,8 +402,11 @@ class _DeepIterable:
             else f" {self.iterable_validator!r}"
         )
         return (
-            f"<deep_iterable validator for{iterable_identifier}"
-            f" iterables of {self.member_validator!r}>"
+            "<deep_iterable validator for{iterable_identifier}"
+            " iterables of {member!r}>"
+        ).format(
+            iterable_identifier=iterable_identifier,
+            member=self.member_validator,
         )
 
 
@@ -360,23 +414,20 @@ def deep_iterable(member_validator, iterable_validator=None):
     """
     A validator that performs deep validation of an iterable.
 
-    Args:
-        member_validator: Validator to apply to iterable members.
-
-        iterable_validator:
-            Validator to apply to iterable itself (optional).
-
-    Raises
-        TypeError: if any sub-validators fail
+    :param member_validator: Validator(s) to apply to iterable members
+    :param iterable_validator: Validator to apply to iterable itself
+        (optional)
 
     .. versionadded:: 19.1.0
+
+    :raises TypeError: if any sub-validators fail
     """
     if isinstance(member_validator, (list, tuple)):
         member_validator = and_(*member_validator)
     return _DeepIterable(member_validator, iterable_validator)
 
 
-@attrs(repr=False, slots=True, unsafe_hash=True)
+@attrs(repr=False, slots=True, hash=True)
 class _DeepMapping:
     key_validator = attrib(validator=is_callable())
     value_validator = attrib(validator=is_callable())
@@ -394,25 +445,23 @@ class _DeepMapping:
             self.value_validator(inst, attr, value[key])
 
     def __repr__(self):
-        return f"<deep_mapping validator for objects mapping {self.key_validator!r} to {self.value_validator!r}>"
+        return (
+            "<deep_mapping validator for objects mapping {key!r} to {value!r}>"
+        ).format(key=self.key_validator, value=self.value_validator)
 
 
 def deep_mapping(key_validator, value_validator, mapping_validator=None):
     """
     A validator that performs deep validation of a dictionary.
 
-    Args:
-        key_validator: Validator to apply to dictionary keys.
-
-        value_validator: Validator to apply to dictionary values.
-
-        mapping_validator:
-            Validator to apply to top-level mapping attribute (optional).
+    :param key_validator: Validator to apply to dictionary keys
+    :param value_validator: Validator to apply to dictionary values
+    :param mapping_validator: Validator to apply to top-level mapping
+        attribute (optional)
 
     .. versionadded:: 19.1.0
 
-    Raises:
-        TypeError: if any sub-validators fail
+    :raises TypeError: if any sub-validators fail
     """
     return _DeepMapping(key_validator, value_validator, mapping_validator)
 
@@ -428,22 +477,27 @@ class _NumberValidator:
         We use a callable class to be able to change the ``__repr__``.
         """
         if not self.compare_func(value, self.bound):
-            msg = f"'{attr.name}' must be {self.compare_op} {self.bound}: {value}"
-            raise ValueError(msg)
+            raise ValueError(
+                "'{name}' must be {op} {bound}: {value}".format(
+                    name=attr.name,
+                    op=self.compare_op,
+                    bound=self.bound,
+                    value=value,
+                )
+            )
 
     def __repr__(self):
-        return f"<Validator for x {self.compare_op} {self.bound}>"
+        return "<Validator for x {op} {bound}>".format(
+            op=self.compare_op, bound=self.bound
+        )
 
 
 def lt(val):
     """
-    A validator that raises `ValueError` if the initializer is called with a
-    number larger or equal to *val*.
+    A validator that raises `ValueError` if the initializer is called
+    with a number larger or equal to *val*.
 
-    The validator uses `operator.lt` to compare the values.
-
-    Args:
-        val: Exclusive upper bound for values.
+    :param val: Exclusive upper bound for values
 
     .. versionadded:: 21.3.0
     """
@@ -452,13 +506,10 @@ def lt(val):
 
 def le(val):
     """
-    A validator that raises `ValueError` if the initializer is called with a
-    number greater than *val*.
+    A validator that raises `ValueError` if the initializer is called
+    with a number greater than *val*.
 
-    The validator uses `operator.le` to compare the values.
-
-    Args:
-        val: Inclusive upper bound for values.
+    :param val: Inclusive upper bound for values
 
     .. versionadded:: 21.3.0
     """
@@ -467,13 +518,10 @@ def le(val):
 
 def ge(val):
     """
-    A validator that raises `ValueError` if the initializer is called with a
-    number smaller than *val*.
+    A validator that raises `ValueError` if the initializer is called
+    with a number smaller than *val*.
 
-    The validator uses `operator.ge` to compare the values.
-
-    Args:
-        val: Inclusive lower bound for values
+    :param val: Inclusive lower bound for values
 
     .. versionadded:: 21.3.0
     """
@@ -482,13 +530,10 @@ def ge(val):
 
 def gt(val):
     """
-    A validator that raises `ValueError` if the initializer is called with a
-    number smaller or equal to *val*.
+    A validator that raises `ValueError` if the initializer is called
+    with a number smaller or equal to *val*.
 
-    The validator uses `operator.ge` to compare the values.
-
-    Args:
-       val: Exclusive lower bound for values
+    :param val: Exclusive lower bound for values
 
     .. versionadded:: 21.3.0
     """
@@ -504,8 +549,11 @@ class _MaxLengthValidator:
         We use a callable class to be able to change the ``__repr__``.
         """
         if len(value) > self.max_length:
-            msg = f"Length of '{attr.name}' must be <= {self.max_length}: {len(value)}"
-            raise ValueError(msg)
+            raise ValueError(
+                "Length of '{name}' must be <= {max}: {len}".format(
+                    name=attr.name, max=self.max_length, len=len(value)
+                )
+            )
 
     def __repr__(self):
         return f"<max_len validator for {self.max_length}>"
@@ -516,8 +564,7 @@ def max_len(length):
     A validator that raises `ValueError` if the initializer is called
     with a string or iterable that is longer than *length*.
 
-    Args:
-        length (int): Maximum length of the string or iterable
+    :param int length: Maximum length of the string or iterable
 
     .. versionadded:: 21.3.0
     """
@@ -533,8 +580,11 @@ class _MinLengthValidator:
         We use a callable class to be able to change the ``__repr__``.
         """
         if len(value) < self.min_length:
-            msg = f"Length of '{attr.name}' must be >= {self.min_length}: {len(value)}"
-            raise ValueError(msg)
+            raise ValueError(
+                "Length of '{name}' must be => {min}: {len}".format(
+                    name=attr.name, min=self.min_length, len=len(value)
+                )
+            )
 
     def __repr__(self):
         return f"<min_len validator for {self.min_length}>"
@@ -545,15 +595,14 @@ def min_len(length):
     A validator that raises `ValueError` if the initializer is called
     with a string or iterable that is shorter than *length*.
 
-    Args:
-        length (int): Minimum length of the string or iterable
+    :param int length: Minimum length of the string or iterable
 
     .. versionadded:: 22.1.0
     """
     return _MinLengthValidator(length)
 
 
-@attrs(repr=False, slots=True, unsafe_hash=True)
+@attrs(repr=False, slots=True, hash=True)
 class _SubclassOfValidator:
     type = attrib()
 
@@ -562,36 +611,41 @@ class _SubclassOfValidator:
         We use a callable class to be able to change the ``__repr__``.
         """
         if not issubclass(value, self.type):
-            msg = f"'{attr.name}' must be a subclass of {self.type!r} (got {value!r})."
             raise TypeError(
-                msg,
+                "'{name}' must be a subclass of {type!r} "
+                "(got {value!r}).".format(
+                    name=attr.name,
+                    type=self.type,
+                    value=value,
+                ),
                 attr,
                 self.type,
                 value,
             )
 
     def __repr__(self):
-        return f"<subclass_of validator for type {self.type!r}>"
+        return "<subclass_of validator for type {type!r}>".format(
+            type=self.type
+        )
 
 
 def _subclass_of(type):
     """
-    A validator that raises a `TypeError` if the initializer is called with a
-    wrong type for this particular attribute (checks are performed using
+    A validator that raises a `TypeError` if the initializer is called
+    with a wrong type for this particular attribute (checks are performed using
     `issubclass` therefore it's also valid to pass a tuple of types).
 
-    Args:
-        type (type | tuple[type, ...]): The type(s) to check for.
+    :param type: The type to check for.
+    :type type: type or tuple of types
 
-    Raises:
-        TypeError:
-            With a human readable error message, the attribute (of type
-            `attrs.Attribute`), the expected type, and the value it got.
+    :raises TypeError: With a human readable error message, the attribute
+        (of type `attrs.Attribute`), the expected type, and the value it
+        got.
     """
     return _SubclassOfValidator(type)
 
 
-@attrs(repr=False, slots=True, unsafe_hash=True)
+@attrs(repr=False, slots=True, hash=True)
 class _NotValidator:
     validator = attrib()
     msg = attrib(
@@ -625,7 +679,12 @@ class _NotValidator:
             )
 
     def __repr__(self):
-        return f"<not_ validator wrapping {self.validator!r}, capturing {self.exc_types!r}>"
+        return (
+            "<not_ validator wrapping {what!r}, " "capturing {exc_types!r}>"
+        ).format(
+            what=self.validator,
+            exc_types=self.exc_types,
+        )
 
 
 def not_(validator, *, msg=None, exc_types=(ValueError, TypeError)):
@@ -638,22 +697,19 @@ def not_(validator, *, msg=None, exc_types=(ValueError, TypeError)):
     Intended to be used with existing validators to compose logic without
     needing to create inverted variants, for example, ``not_(in_(...))``.
 
-    Args:
-        validator: A validator to be logically inverted.
+    :param validator: A validator to be logically inverted.
+    :param msg: Message to raise if validator fails.
+        Formatted with keys ``exc_types`` and ``validator``.
+    :type msg: str
+    :param exc_types: Exception type(s) to capture.
+        Other types raised by child validators will not be intercepted and
+        pass through.
 
-        msg (str):
-            Message to raise if validator fails. Formatted with keys
-            ``exc_types`` and ``validator``.
-
-        exc_types (tuple[type, ...]):
-            Exception type(s) to capture. Other types raised by child
-            validators will not be intercepted and pass through.
-
-    Raises:
-        ValueError:
-            With a human readable error message, the attribute (of type
-            `attrs.Attribute`), the validator that failed to raise an
-            exception, the value it got, and the expected exception types.
+    :raises ValueError: With a human readable error message,
+        the attribute (of type `attrs.Attribute`),
+        the validator that failed to raise an exception,
+        the value it got,
+        and the expected exception types.
 
     .. versionadded:: 22.2.0
     """
@@ -662,49 +718,3 @@ def not_(validator, *, msg=None, exc_types=(ValueError, TypeError)):
     except TypeError:
         exc_types = (exc_types,)
     return _NotValidator(validator, msg, exc_types)
-
-
-@attrs(repr=False, slots=True, unsafe_hash=True)
-class _OrValidator:
-    validators = attrib()
-
-    def __call__(self, inst, attr, value):
-        for v in self.validators:
-            try:
-                v(inst, attr, value)
-            except Exception:  # noqa: BLE001, PERF203, S112
-                continue
-            else:
-                return
-
-        msg = f"None of {self.validators!r} satisfied for value {value!r}"
-        raise ValueError(msg)
-
-    def __repr__(self):
-        return f"<or validator wrapping {self.validators!r}>"
-
-
-def or_(*validators):
-    """
-    A validator that composes multiple validators into one.
-
-    When called on a value, it runs all wrapped validators until one of them is
-    satisfied.
-
-    Args:
-        validators (~collections.abc.Iterable[typing.Callable]):
-            Arbitrary number of validators.
-
-    Raises:
-        ValueError:
-            If no validator is satisfied. Raised with a human-readable error
-            message listing all the wrapped validators and the value that
-            failed all of them.
-
-    .. versionadded:: 24.1.0
-    """
-    vals = []
-    for v in validators:
-        vals.extend(v.validators if isinstance(v, _OrValidator) else [v])
-
-    return _OrValidator(tuple(vals))

@@ -225,9 +225,16 @@ add_task(async function validate_filename_method() {
     "audio.mp2"
   );
 
+  let expected = "audio.mp3";
+  if (AppConstants.platform == "linux") {
+    expected = "audio.mpga";
+  } else if (AppConstants.platform == "android") {
+    expected = "audio.mp4";
+  }
+
   Assert.equal(
     mimeService.validateFileNameForSaving("audio.mp4", "audio/mpeg", 0),
-    AppConstants.platform == "android" ? "audio.mp4" : "audio.mp3",
+    expected,
     "audio.mp4"
   );
 

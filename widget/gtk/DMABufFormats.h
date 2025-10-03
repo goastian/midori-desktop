@@ -113,8 +113,6 @@ class GlobalDMABufFormats final {
 
   GlobalDMABufFormats();
 
-  bool SupportsHDRComposition() { return !!mFormatP010 && !!mFormatNV12; }
-
  private:
   void LoadFormatModifiers();
   void SetModifiersToGfxVars();
@@ -122,7 +120,7 @@ class GlobalDMABufFormats final {
 
   // Formats passed to RDD process to WebGL process
   // where we can't get formats/modifiers from Wayland display.
-  // RGBA formats are mandatory, YUM optional (for direct HDR composition only).
+  // RGBA formats are mandatory, YUV ones are optional.
   RefPtr<DRMFormat> mFormatRGBA;
   RefPtr<DRMFormat> mFormatRGBX;
   RefPtr<DRMFormat> mFormatP010;

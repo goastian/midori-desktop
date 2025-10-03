@@ -38,7 +38,6 @@ class Spinner:
         self.text: "Union[RenderableType, Text]" = (
             Text.from_markup(text) if isinstance(text, str) else text
         )
-        self.name = name
         self.frames = cast(List[str], spinner["frames"])[:]
         self.interval = cast(float, spinner["interval"])
         self.start_time: Optional[float] = None

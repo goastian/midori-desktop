@@ -19,6 +19,10 @@ const COLLECTION_NAME = "fingerprinting-protection-overrides";
 
 const TARGET_PointerEvents = 1 << 2;
 
+function extractLow32Bits(value) {
+  return value & 0xffffffff;
+}
+
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [["privacy.fingerprintingProtection.remoteOverrides.testing", true]],
@@ -50,9 +54,9 @@ add_task(async function () {
 
   let overrides = null;
   try {
-    overrides = Services.rfp
-      .getFingerprintingOverrides(DOMAIN_KEY)
-      .getNth32BitSet(0);
+    overrides = extractLow32Bits(
+      Services.rfp.getFingerprintingOverrides(DOMAIN_KEY).low
+    );
     ok(
       true,
       "getFingerprintingOverrides should succeed because there should be overrides"
@@ -73,9 +77,9 @@ add_task(async function () {
   await addRemoteOverride(`'127.0.1'|versionCompare('128.0a1') >= 0`);
 
   try {
-    overrides = Services.rfp
-      .getFingerprintingOverrides(DOMAIN_KEY)
-      .getNth32BitSet(0);
+    overrides = extractLow32Bits(
+      Services.rfp.getFingerprintingOverrides(DOMAIN_KEY).low
+    );
     ok(
       false,
       "getFingerprintingOverrides should not succeed because there should be no overrides"

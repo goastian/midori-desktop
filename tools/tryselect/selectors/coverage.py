@@ -384,6 +384,7 @@ def run(
     dry_run=False,
     message="{msg}",
     closed_tree=False,
+    push_to_lando=False,
     push_to_vcs=False,
 ):
     setup_globals()
@@ -434,5 +435,6 @@ def run(
         stage_changes=stage_changes,
         dry_run=dry_run,
         closed_tree=closed_tree,
+        push_to_lando=push_to_lando,
         push_to_vcs=push_to_vcs,
     )

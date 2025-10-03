@@ -107,6 +107,7 @@ class Status(JupyterMixin):
 
 
 if __name__ == "__main__":  # pragma: no cover
+
     from time import sleep
 
     from .console import Console

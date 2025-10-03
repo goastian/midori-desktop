@@ -60,7 +60,7 @@ ITEM_VALUE(WidgetEvents,                36)
 ITEM_VALUE(MediaDevices,                37)
 ITEM_VALUE(MediaCapabilities,           38)
 ITEM_VALUE(AudioSampleRate,             39)
-ITEM_VALUE(NavigatorConnection,         40)
+ITEM_VALUE(NetworkConnection,           40)
 ITEM_VALUE(WindowDevicePixelRatio,      41)
 ITEM_VALUE(MouseEventScreenPoint,       42)
 // Visibility level of font families available to CSS font-matching
@@ -100,6 +100,7 @@ ITEM_VALUE(WebGPUSubgroupSizes,         66)
 ITEM_VALUE(JSLocalePrompt,              67)
 ITEM_VALUE(ScreenAvailToResolution,     68)
 ITEM_VALUE(UseHardcodedFontSubstitutes, 69)
+ITEM_VALUE(DiskStorageLimit,            70)
 
 
 // !!! Don't forget to update kDefaultFingerprintingProtections in nsRFPService.cpp

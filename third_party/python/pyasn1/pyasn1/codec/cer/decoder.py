@@ -1,93 +1,64 @@
 #
 # This file is part of pyasn1 software.
 #
-# Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com>
-# License: https://pyasn1.readthedocs.io/en/latest/license.html
+# Copyright (c) 2005-2019, Ilya Etingof <etingof@gmail.com>
+# License: http://snmplabs.com/pyasn1/license.html
 #
-import warnings
-
 from pyasn1 import error
-from pyasn1.codec.streaming import readFromStream
 from pyasn1.codec.ber import decoder
+from pyasn1.compat.octets import oct2int
 from pyasn1.type import univ
 
-__all__ = ['decode', 'StreamingDecoder']
-
-SubstrateUnderrunError = error.SubstrateUnderrunError
+__all__ = ['decode']
 
 
-class BooleanPayloadDecoder(decoder.AbstractSimplePayloadDecoder):
+class BooleanDecoder(decoder.AbstractSimpleDecoder):
     protoComponent = univ.Boolean(0)
 
     def valueDecoder(self, substrate, asn1Spec,
                      tagSet=None, length=None, state=None,
                      decodeFun=None, substrateFun=None,
                      **options):
-
-        if length != 1:
+        head, tail = substrate[:length], substrate[length:]
+        if not head or length != 1:
             raise error.PyAsn1Error('Not single-octet Boolean payload')
-
-        for chunk in readFromStream(substrate, length, options):
-            if isinstance(chunk, SubstrateUnderrunError):
-                yield chunk
-
-        byte = chunk[0]
-
+        byte = oct2int(head[0])
         # CER/DER specifies encoding of TRUE as 0xFF and FALSE as 0x0, while
         # BER allows any non-zero value as TRUE; cf. sections 8.2.2. and 11.1 
         # in https://www.itu.int/ITU-T/studygroups/com17/languages/X.690-0207.pdf
         if byte == 0xff:
             value = 1
-
         elif byte == 0x00:
             value = 0
-
         else:
             raise error.PyAsn1Error('Unexpected Boolean payload: %s' % byte)
-
-        yield self._createComponent(asn1Spec, tagSet, value, **options)
-
+        return self._createComponent(asn1Spec, tagSet, value, **options), tail
 
 # TODO: prohibit non-canonical encoding
-BitStringPayloadDecoder = decoder.BitStringPayloadDecoder
-OctetStringPayloadDecoder = decoder.OctetStringPayloadDecoder
-RealPayloadDecoder = decoder.RealPayloadDecoder
+BitStringDecoder = decoder.BitStringDecoder
+OctetStringDecoder = decoder.OctetStringDecoder
+RealDecoder = decoder.RealDecoder
 
-TAG_MAP = decoder.TAG_MAP.copy()
-TAG_MAP.update(
-    {univ.Boolean.tagSet: BooleanPayloadDecoder(),
-     univ.BitString.tagSet: BitStringPayloadDecoder(),
-     univ.OctetString.tagSet: OctetStringPayloadDecoder(),
-     univ.Real.tagSet: RealPayloadDecoder()}
+tagMap = decoder.tagMap.copy()
+tagMap.update(
+    {univ.Boolean.tagSet: BooleanDecoder(),
+     univ.BitString.tagSet: BitStringDecoder(),
+     univ.OctetString.tagSet: OctetStringDecoder(),
+     univ.Real.tagSet: RealDecoder()}
 )
 
-TYPE_MAP = decoder.TYPE_MAP.copy()
+typeMap = decoder.typeMap.copy()
 
 # Put in non-ambiguous types for faster codec lookup
-for typeDecoder in TAG_MAP.values():
+for typeDecoder in tagMap.values():
     if typeDecoder.protoComponent is not None:
         typeId = typeDecoder.protoComponent.__class__.typeId
-        if typeId is not None and typeId not in TYPE_MAP:
-            TYPE_MAP[typeId] = typeDecoder
-
-
-class SingleItemDecoder(decoder.SingleItemDecoder):
-    __doc__ = decoder.SingleItemDecoder.__doc__
-
-    TAG_MAP = TAG_MAP
-    TYPE_MAP = TYPE_MAP
-
-
-class StreamingDecoder(decoder.StreamingDecoder):
-    __doc__ = decoder.StreamingDecoder.__doc__
-
-    SINGLE_ITEM_DECODER = SingleItemDecoder
+        if typeId is not None and typeId not in typeMap:
+            typeMap[typeId] = typeDecoder
 
 
 class Decoder(decoder.Decoder):
-    __doc__ = decoder.Decoder.__doc__
-
-    STREAMING_DECODER = StreamingDecoder
+    pass
 
 
 #: Turns CER octet stream into an ASN.1 object.
@@ -98,7 +69,7 @@ class Decoder(decoder.Decoder):
 #:
 #: Parameters
 #: ----------
-#: substrate: :py:class:`bytes`
+#: substrate: :py:class:`bytes` (Python 3) or :py:class:`str` (Python 2)
 #:     CER octet-stream
 #:
 #: Keyword Args
@@ -140,10 +111,4 @@ class Decoder(decoder.Decoder):
 #:    SequenceOf:
 #:     1 2 3
 #:
-decode = Decoder()
-
-def __getattr__(attr: str):
-    if newAttr := {"tagMap": "TAG_MAP", "typeMap": "TYPE_MAP"}.get(attr):
-        warnings.warn(f"{attr} is deprecated. Please use {newAttr} instead.", DeprecationWarning)
-        return globals()[newAttr]
-    raise AttributeError(attr)
+decode = Decoder(tagMap, decoder.typeMap)

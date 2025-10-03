@@ -23,40 +23,27 @@ const { ProfilesDatastoreService } = ChromeUtils.importESModule(
  * onStartup()
  * - should set call setExperimentActive for each active experiment
  */
-async function test_onStartup_setExperimentActive_called() {
+add_task(async function test_onStartup_setExperimentActive_called() {
   let storePath;
 
   {
     const store = NimbusTestUtils.stubs.store();
     await store.init();
 
-    NimbusTestUtils.addEnrollmentForRecipe(
-      NimbusTestUtils.factories.recipe("foo"),
-      { store, branchSlug: "control" }
+    store.addEnrollment(NimbusTestUtils.factories.experiment("foo"));
+    store.addEnrollment(NimbusTestUtils.factories.rollout("bar"));
+    store.addEnrollment(
+      NimbusTestUtils.factories.experiment("baz", { active: false })
     );
-    NimbusTestUtils.addEnrollmentForRecipe(
-      NimbusTestUtils.factories.recipe("bar", { isRollout: true }),
-      { store }
-    );
-    NimbusTestUtils.addEnrollmentForRecipe(
-      NimbusTestUtils.factories.recipe("baz"),
-      { store, branchSlug: "control", extra: { active: false } }
-    );
-    NimbusTestUtils.addEnrollmentForRecipe(
-      NimbusTestUtils.factories.recipe("qux", { isRollout: true }),
-      { store, extra: { active: false } }
+    store.addEnrollment(
+      NimbusTestUtils.factories.rollout("qux", { active: false })
     );
 
     storePath = await NimbusTestUtils.saveStore(store);
   }
 
   const { sandbox, manager, initExperimentAPI, cleanup } =
-    await NimbusTestUtils.setupTest({
-      storePath,
-      init: false,
-      migrationState:
-        NimbusTestUtils.migrationState.IMPORTED_ENROLLMENTS_TO_SQL,
-    });
+    await NimbusTestUtils.setupTest({ storePath, init: false });
 
   sandbox.stub(NimbusTelemetry, "setExperimentActive");
 
@@ -79,22 +66,13 @@ async function test_onStartup_setExperimentActive_called() {
     )
   );
 
-  manager.unenroll("foo");
-  manager.unenroll("bar");
+  await manager.unenroll("foo");
+  await manager.unenroll("bar");
 
   await cleanup();
-}
-
-add_task(test_onStartup_setExperimentActive_called);
-add_task(async function test_onStartup_setExperimentActive_called_db() {
-  const resetNimbusEnrollmentPrefs = NimbusTestUtils.enableNimbusEnrollments({
-    read: true,
-  });
-  await test_onStartup_setExperimentActive_called();
-  resetNimbusEnrollmentPrefs();
 });
 
-async function test_startup_unenroll() {
+add_task(async function test_startup_unenroll() {
   Services.prefs.setBoolPref("app.shield.optoutstudies.enabled", false);
 
   let storePath;
@@ -102,9 +80,8 @@ async function test_startup_unenroll() {
     const store = NimbusTestUtils.stubs.store();
     await store.init();
 
-    NimbusTestUtils.addEnrollmentForRecipe(
-      NimbusTestUtils.factories.recipe("startup_unenroll"),
-      { store, branchSlug: "control" }
+    store.addEnrollment(
+      NimbusTestUtils.factories.experiment("startup_unenroll")
     );
 
     storePath = await NimbusTestUtils.saveStore(store);
@@ -130,15 +107,6 @@ async function test_startup_unenroll() {
   Services.prefs.clearUserPref("app.shield.optoutstudies.enabled");
 
   await cleanup();
-}
-
-add_task(test_startup_unenroll);
-add_task(async function test_startup_unenroll_db() {
-  const resetNimbusEnrollmentPrefs = NimbusTestUtils.enableNimbusEnrollments({
-    read: true,
-  });
-  await test_startup_unenroll();
-  resetNimbusEnrollmentPrefs();
 });
 
 add_task(async function test_onRecipe_enroll() {
@@ -173,7 +141,7 @@ add_task(async function test_onRecipe_enroll() {
     "should add recipe to the store"
   );
 
-  manager.unenroll(recipe.slug);
+  await manager.unenroll(recipe.slug);
 
   await cleanup();
 });
@@ -208,7 +176,7 @@ add_task(async function test_onRecipe_update() {
     "should call .updateEnrollment() if the recipe has already been enrolled"
   );
 
-  manager.unenroll(recipe.slug);
+  await manager.unenroll(recipe.slug);
 
   await cleanup();
 });
@@ -353,8 +321,8 @@ add_task(async function test_context_paramters() {
     "rollout",
   ]);
 
-  manager.unenroll(experiment.slug);
-  manager.unenroll(rollout.slug);
+  await manager.unenroll(experiment.slug);
+  await manager.unenroll(rollout.slug);
 
   targetingCtx = manager.createTargetingContext();
   Assert.deepEqual(await targetingCtx.activeExperiments, []);
@@ -384,7 +352,7 @@ add_task(async function test_experimentStore_updateEvent() {
   );
   stub.resetHistory();
 
-  manager.unenroll(
+  await manager.unenroll(
     "experiment",
     UnenrollmentCause.fromReason(
       NimbusTelemetry.UnenrollReason.INDIVIDUAL_OPT_OUT
@@ -403,6 +371,63 @@ add_task(async function test_experimentStore_updateEvent() {
 
 add_task(async function testDb() {
   const conn = await ProfilesDatastoreService.getConnection();
+
+  function processRow(row) {
+    const fields = [
+      "profileId",
+      "slug",
+      "branchSlug",
+      "recipe",
+      "active",
+      "unenrollReason",
+      "lastSeen",
+      "setPrefs",
+      "prefFlips",
+      "source",
+    ];
+
+    const processed = {};
+
+    for (const field of fields) {
+      processed[field] = row.getResultByName(field);
+    }
+
+    processed.recipe = JSON.parse(processed.recipe);
+    processed.setPrefs = JSON.parse(processed.setPrefs);
+    processed.prefFlips = JSON.parse(processed.prefFlips);
+
+    return processed;
+  }
+
+  async function getEnrollment(slug) {
+    const results = await conn.execute(
+      `
+      SELECT
+        profileId,
+        slug,
+        branchSlug,
+        json(recipe) AS recipe,
+        active,
+        unenrollReason,
+        lastSeen,
+        json(setPrefs) AS setPrefs,
+        json(prefFlips) AS prefFlips,
+        source
+      FROM NimbusEnrollments
+      WHERE
+        slug = :slug AND
+        profileId = :profileId;
+    `,
+      { slug, profileId: ExperimentAPI.profileId }
+    );
+
+    Assert.equal(
+      results.length,
+      1,
+      `Exactly one enrollment should be returned for ${slug}`
+    );
+    return processRow(results[0]);
+  }
 
   async function getEnrollmentSlugs() {
     const result = await conn.execute(
@@ -459,21 +484,13 @@ add_task(async function testDb() {
 
   // Enroll in an experiment
   await manager.enroll(experimentRecipe, "test");
-  await NimbusTestUtils.flushStore();
   Assert.deepEqual(
     await getEnrollmentSlugs(),
     [experimentRecipe.slug],
     "There is one enrollment"
   );
 
-  let experimentEnrollment = await NimbusTestUtils.queryEnrollment(
-    experimentRecipe.slug
-  );
-  Assert.notEqual(
-    experimentEnrollment,
-    null,
-    "experiment enrollment should exist"
-  );
+  let experimentEnrollment = await getEnrollment(experimentRecipe.slug);
   Assert.ok(experimentEnrollment.active, "experiment enrollment is active");
   Assert.deepEqual(
     experimentEnrollment.recipe,
@@ -488,17 +505,13 @@ add_task(async function testDb() {
 
   // Enroll in a rollout.
   await manager.enroll(rolloutRecipe, "test");
-  await NimbusTestUtils.flushStore();
   Assert.deepEqual(
     await getEnrollmentSlugs(),
     [experimentRecipe.slug, rolloutRecipe.slug].sort(),
     "There are two enrollments"
   );
 
-  let rolloutEnrollment = await NimbusTestUtils.queryEnrollment(
-    rolloutRecipe.slug
-  );
-  Assert.notEqual(rolloutEnrollment, null, "rollout enrollment exists");
+  let rolloutEnrollment = await getEnrollment(rolloutRecipe.slug);
   Assert.ok(rolloutEnrollment.active, "rollout enrollment is active");
   Assert.deepEqual(
     rolloutEnrollment.recipe,
@@ -512,17 +525,20 @@ add_task(async function testDb() {
   );
 
   // Unenroll from the rollout.
-  manager.unenroll(rolloutRecipe.slug, { reason: "recipe-not-seen" });
-  await NimbusTestUtils.flushStore();
+  await manager.unenroll(rolloutRecipe.slug, { reason: "recipe-not-seen" });
   Assert.deepEqual(
     await getEnrollmentSlugs(),
     [experimentRecipe.slug, rolloutRecipe.slug].sort(),
     "There are two enrollments"
   );
 
-  rolloutEnrollment = await NimbusTestUtils.queryEnrollment(rolloutRecipe.slug);
-  Assert.notEqual(rolloutEnrollment, null, "rollout enrollment exists");
+  rolloutEnrollment = await getEnrollment(rolloutRecipe.slug);
   Assert.ok(!rolloutEnrollment.active, "rollout enrollment is inactive");
+  Assert.equal(
+    rolloutEnrollment.recipe,
+    null,
+    "rollout enrollment recipe is null"
+  );
   Assert.equal(
     rolloutEnrollment.unenrollReason,
     "recipe-not-seen",
@@ -535,18 +551,15 @@ add_task(async function testDb() {
   );
 
   // Unenroll from the experiment.
-  manager.unenroll(experimentEnrollment.slug, { reason: "targeting" });
-  await NimbusTestUtils.flushStore();
+  await manager.unenroll(experimentEnrollment.slug, { reason: "targeting" });
 
-  experimentEnrollment = await NimbusTestUtils.queryEnrollment(
-    experimentRecipe.slug
-  );
-  Assert.notEqual(
-    experimentEnrollment,
-    null,
-    "experiment enrollment still exists"
-  );
+  experimentEnrollment = await getEnrollment(experimentRecipe.slug);
   Assert.ok(!experimentEnrollment.active, "experiment enrollment is inactive");
+  Assert.equal(
+    experimentEnrollment.recipe,
+    null,
+    "experiment enrollment recipe is null"
+  );
   Assert.equal(
     experimentEnrollment.unenrollReason,
     "targeting",

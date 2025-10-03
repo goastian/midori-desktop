@@ -1,10 +1,11 @@
 #
 # This file is part of pyasn1-modules software.
 #
-# Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com>
+# Copyright (c) 2005-2019, Ilya Etingof <etingof@gmail.com>
 # License: http://snmplabs.com/pyasn1/license.html
 #
 import base64
+import sys
 
 stSpam, stHam, stDump = 0, 1, 2
 
@@ -37,7 +38,10 @@ def readPemBlocksFromFile(fileObj, *markers):
             else:
                 certLines.append(certLine)
         if state == stDump:
-            substrate = ''.encode().join([base64.b64decode(x.encode()) for x in certLines])
+            if sys.version_info[0] <= 2:
+                substrate = ''.join([base64.b64decode(x) for x in certLines])
+            else:
+                substrate = ''.encode().join([base64.b64decode(x.encode()) for x in certLines])
             break
     return idx, substrate
 
@@ -51,7 +55,10 @@ def readPemFromFile(fileObj,
 
 
 def readBase64fromText(text):
-    return base64.b64decode(text.encode())
+    if sys.version_info[0] <= 2:
+        return base64.b64decode(text)
+    else:
+        return base64.b64decode(text.encode())
 
 
 def readBase64FromFile(fileObj):

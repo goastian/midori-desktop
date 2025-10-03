@@ -48,8 +48,10 @@ class MediaHardwareKeysEventSourceMacMediaCenter final
   void BeginListeningForEvents();
   void EndListeningForEvents();
   void HandleEvent(const dom::MediaControlAction& aAction);
+  void UpdatePositionInfo();
 
   bool mOpened = false;
+  Maybe<dom::PositionState> mPositionState;
   dom::MediaMetadataBase mMediaMetadata;
 
   // Should only be used on main thread

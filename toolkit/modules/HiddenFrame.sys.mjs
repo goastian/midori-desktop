@@ -34,23 +34,17 @@ function ensureCleanupRegistered() {
  * passing the window containing a blank XUL <window> back.
  */
 export class HiddenFrame {
-  /** @type {Window} */
   #frame = null;
-  /** @type {?nsIWindowlessBrowser} */
   #browser = null;
-  /** @type {object} */
   #listener = null;
-  /** @type {?nsIWebProgress} */
   #webProgress = null;
-  /** @type {?PromiseWithResolvers<Window>} */
   #deferred = null;
 
   /**
    * Gets the |contentWindow| of the hidden frame. Creates the frame if needed.
    *
-   * @returns {Promise<Window>}
-   *   Returns a promise which is resolved when the hidden frame has finished
-   *   loading.
+   * @returns {Promise} Returns a promise which is resolved when the hidden frame has finished
+   *          loading.
    */
   get() {
     if (!this.#deferred) {
@@ -64,7 +58,7 @@ export class HiddenFrame {
   /**
    * Fetch a sync ref to the window inside the frame (needed for the add-on SDK).
    *
-   * @returns {Window}
+   * @returns {DOMWindow}
    */
   getWindow() {
     this.get();
@@ -100,13 +94,13 @@ export class HiddenFrame {
       true,
       chromeFlags
     );
+    this.#browser.QueryInterface(Ci.nsIInterfaceRequestor);
     gAllHiddenFrames.add(this);
-    this.#webProgress = this.#browser
-      .QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsIWebProgress);
+    this.#webProgress = this.#browser.getInterface(Ci.nsIWebProgress);
     this.#listener = {
       QueryInterface: ChromeUtils.generateQI([
         "nsIWebProgressListener",
+        "nsIWebProgressListener2",
         "nsISupportsWeakReference",
       ]),
     };
@@ -159,6 +153,8 @@ export const HiddenBrowserManager = new (class HiddenBrowserManager {
 
   /**
    * Creates and returns a new hidden browser.
+   *
+   * @returns {Browser}
    */
   async #acquireBrowser() {
     this.#browsers++;
@@ -184,7 +180,7 @@ export const HiddenBrowserManager = new (class HiddenBrowserManager {
   /**
    * Releases the given hidden browser.
    *
-   * @param {XULBrowserElement} browser
+   * @param {Browser} browser
    *   The hidden browser element.
    */
   #releaseBrowser(browser) {
@@ -201,11 +197,10 @@ export const HiddenBrowserManager = new (class HiddenBrowserManager {
    * Calls a callback function with a new hidden browser.
    * This function will return whatever the callback function returns.
    *
-   * @template T
-   * @param {(XULBrowserElement) => T | Promise<T>} callback
+   * @param {Callback} callback
    *   The callback function will be called with the browser element and may
    *   be asynchronous.
-   * @returns {Promise<T>}
+   * @returns {T}
    */
   async withHiddenBrowser(callback) {
     let browser = await this.#acquireBrowser();

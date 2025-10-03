@@ -961,24 +961,17 @@ add_task(async function testDisabledDimming() {
   EventUtils.synthesizeMouseAtCenter(pageHeader, {}, win);
   AccessibilityUtils.resetEnv();
 
-  const normalize = val => Math.floor(val * 10);
-  const getOpacity = card => {
-    let { opacity } = card.ownerGlobal.getComputedStyle(card.firstElementChild);
-    return normalize(opacity);
-  };
   const checkOpacity = (card, expected, msg) => {
-    is(getOpacity(card), normalize(expected), msg);
+    let { opacity } = card.ownerGlobal.getComputedStyle(card.firstElementChild);
+    let normalize = val => Math.floor(val * 10);
+    is(normalize(opacity), normalize(expected), msg);
   };
-  const waitForOpacityTransitionEnd = (card, waitForOpacity) =>
+  const waitForTransition = card =>
     BrowserTestUtils.waitForEvent(
       card.firstElementChild,
       "transitionend",
       /* capture = */ false,
-      e => {
-        const isCardOpacity =
-          e.propertyName === "opacity" && e.target.classList.contains("card");
-        return isCardOpacity && getOpacity(card) === normalize(waitForOpacity);
-      }
+      e => e.propertyName === "opacity" && e.target.classList.contains("card")
     );
 
   let card = getCardByAddonId(doc, id);
@@ -995,14 +988,14 @@ add_task(async function testDisabledDimming() {
   checkOpacity(card, "0.6", "The opacity is dimmed when disabled");
 
   // Click on the menu button, this should un-dim the card.
-  let transitionEnded = waitForOpacityTransitionEnd(card, "1");
+  let transitionEnded = waitForTransition(card);
   let moreOptionsButton = card.querySelector(".more-options-button");
   EventUtils.synthesizeMouseAtCenter(moreOptionsButton, {}, win);
   await transitionEnded;
   checkOpacity(card, "1", "The opacity is 1 when the menu is open");
 
   // Close the menu, opacity should return.
-  transitionEnded = waitForOpacityTransitionEnd(card, "0.6");
+  transitionEnded = waitForTransition(card);
   // We intentionally turn off this a11y check, because the following click
   // is purposefully targeting a non-interactive element to dismiss the opened
   // menu with a mouse which can be done by assistive technology and keyboard

@@ -7,6 +7,7 @@ use crate::{
     Pid, IO_TIMEOUT,
 };
 use std::{
+    ffi::CString,
     mem::zeroed,
     os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle},
     ptr::{null, null_mut},
@@ -24,14 +25,16 @@ use windows_sys::Win32::{
     },
 };
 
+pub type ProcessHandle = OwnedHandle;
+
 pub(crate) fn get_last_error() -> WIN32_ERROR {
     // SAFETY: This is always safe to call
     unsafe { GetLastError() }
 }
 
-pub(crate) fn server_name(pid: Pid) -> String {
+pub fn server_addr(pid: Pid) -> CString {
     // We'll be passing this to CreateNamedPipeA() so we nul-terminate it.
-    format!("\\\\.\\pipe\\gecko-crash-helper-pipe.{pid:}\0")
+    CString::new(format!("\\\\.\\pipe\\gecko-crash-helper-pipe.{pid:}")).unwrap()
 }
 
 pub(crate) fn create_manual_reset_event() -> Result<OwnedHandle, IPCError> {

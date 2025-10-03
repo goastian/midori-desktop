@@ -277,6 +277,13 @@ var SessionHistoryInternal = {
       );
     }
 
+    if (shEntry.partitionedPrincipalToInherit) {
+      entry.partitionedPrincipalToInherit_base64 =
+        lazy.E10SUtils.serializePrincipal(
+          shEntry.partitionedPrincipalToInherit
+        );
+    }
+
     entry.hasUserInteraction = shEntry.hasUserInteraction;
 
     if (shEntry.triggeringPrincipal) {
@@ -316,7 +323,7 @@ var SessionHistoryInternal = {
       }
     }
 
-    entry.transient = shEntry.isTransient();
+    entry.persist = shEntry.persist;
 
     return entry;
   },
@@ -373,6 +380,7 @@ var SessionHistoryInternal = {
       if (!entry.url) {
         continue;
       }
+      let persist = "persist" in entry ? entry.persist : true;
       let shEntry = this.deserializeEntry(entry, idMap, docIdentMap, history);
 
       // To enable a smooth migration, we treat values of null/undefined as having
@@ -387,7 +395,7 @@ var SessionHistoryInternal = {
         shEntry.hasUserInteraction = entry.hasUserInteraction;
       }
 
-      history.addEntry(shEntry);
+      history.addEntry(shEntry, persist);
     }
 
     // Select the right history entry.
@@ -465,18 +473,6 @@ var SessionHistoryInternal = {
 
     if (entry.cacheKey) {
       shEntry.cacheKey = entry.cacheKey;
-    }
-
-    // The persist attribute was replaced by SetTransient() and IsTransient().
-    // But existing session storage might contain entries with the persist attribute,
-    // so we translate them to transient.
-    // Bug 1971274 tracks removing this.
-    if ("persist" in entry) {
-      entry.transient = !entry.persist;
-    }
-
-    if (entry.transient) {
-      shEntry.setTransient();
     }
 
     if (entry.ID) {
@@ -574,6 +570,12 @@ var SessionHistoryInternal = {
     );
     // As both partitionedPrincipal and principalToInherit are both not required to load
     // it's ok to keep these undefined when we don't have a previously defined principal.
+    if (entry.partitionedPrincipalToInherit_base64) {
+      shEntry.partitionedPrincipalToInherit =
+        lazy.E10SUtils.deserializePrincipal(
+          entry.partitionedPrincipalToInherit_base64
+        );
+    }
     if (entry.principalToInherit_base64) {
       shEntry.principalToInherit = lazy.E10SUtils.deserializePrincipal(
         entry.principalToInherit_base64

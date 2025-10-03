@@ -11,10 +11,7 @@ const SCRIPT_PAGE = `data:text/html,<script>window.open("about:blank", "_blank")
 // of a new tab.
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      ["browser.link.open_newwindow", 2],
-    ],
+    set: [["browser.link.open_newwindow", 2]],
   });
 });
 

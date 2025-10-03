@@ -4,6 +4,7 @@
 Commonly used hooks for on_setattr.
 """
 
+
 from . import _config
 from .exceptions import FrozenAttributeError
 
@@ -32,7 +33,7 @@ def frozen(_, __, ___):
 
     .. versionadded:: 20.1.0
     """
-    raise FrozenAttributeError
+    raise FrozenAttributeError()
 
 
 def validate(instance, attrib, new_value):
@@ -55,25 +56,18 @@ def validate(instance, attrib, new_value):
 
 def convert(instance, attrib, new_value):
     """
-    Run *attrib*'s converter -- if it has one -- on *new_value* and return the
+    Run *attrib*'s converter -- if it has one --  on *new_value* and return the
     result.
 
     .. versionadded:: 20.1.0
     """
     c = attrib.converter
     if c:
-        # This can be removed once we drop 3.8 and use attrs.Converter instead.
-        from ._make import Converter
-
-        if not isinstance(c, Converter):
-            return c(new_value)
-
-        return c(new_value, instance, attrib)
+        return c(new_value)
 
     return new_value
 
 
 # Sentinel for disabling class-wide *on_setattr* hooks for certain attributes.
-# Sphinx's autodata stopped working, so the docstring is inlined in the API
-# docs.
+# autodata stopped working, so the docstring is inlined in the API docs.
 NO_OP = object()

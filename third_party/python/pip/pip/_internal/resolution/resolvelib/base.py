@@ -1,15 +1,15 @@
-from dataclasses import dataclass
-from typing import FrozenSet, Iterable, Optional, Tuple
+from typing import FrozenSet, Iterable, Optional, Tuple, Union
 
 from pip._vendor.packaging.specifiers import SpecifierSet
 from pip._vendor.packaging.utils import NormalizedName
-from pip._vendor.packaging.version import Version
+from pip._vendor.packaging.version import LegacyVersion, Version
 
 from pip._internal.models.link import Link, links_equivalent
 from pip._internal.req.req_install import InstallRequirement
 from pip._internal.utils.hashes import Hashes
 
 CandidateLookup = Tuple[Optional["Candidate"], Optional[InstallRequirement]]
+CandidateVersion = Union[LegacyVersion, Version]
 
 
 def format_name(project: NormalizedName, extras: FrozenSet[NormalizedName]) -> str:
@@ -19,11 +19,13 @@ def format_name(project: NormalizedName, extras: FrozenSet[NormalizedName]) -> s
     return f"{project}[{extras_expr}]"
 
 
-@dataclass(frozen=True)
 class Constraint:
-    specifier: SpecifierSet
-    hashes: Hashes
-    links: FrozenSet[Link]
+    def __init__(
+        self, specifier: SpecifierSet, hashes: Hashes, links: FrozenSet[Link]
+    ) -> None:
+        self.specifier = specifier
+        self.hashes = hashes
+        self.links = links
 
     @classmethod
     def empty(cls) -> "Constraint":
@@ -114,7 +116,7 @@ class Candidate:
         raise NotImplementedError("Override in subclass")
 
     @property
-    def version(self) -> Version:
+    def version(self) -> CandidateVersion:
         raise NotImplementedError("Override in subclass")
 
     @property

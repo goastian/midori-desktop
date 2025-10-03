@@ -1,5 +1,4 @@
 """Main entry point."""
-
 from __future__ import annotations
 
 from pip._vendor.platformdirs import PlatformDirs, __version__
@@ -19,12 +18,11 @@ PROPS = (
     "site_data_dir",
     "site_config_dir",
     "site_cache_dir",
-    "site_runtime_dir",
 )
 
 
 def main() -> None:
-    """Run the main entry point."""
+    """Run main entry point."""
     app_name = "MyApp"
     app_author = "MyCompany"
 

@@ -680,28 +680,17 @@ export class LoginDataSource extends DataSourceBase {
     if (logins.length != 1) {
       return;
     }
-
-    let notificationId = "update-login-success";
     const modifiedLogin = logins[0].clone();
-
     if (login.hasOwnProperty("username")) {
-      const passwordModified = modifiedLogin.password !== login.password;
-      const usernameModified = modifiedLogin.username !== login.username;
-
-      if (!passwordModified && usernameModified) {
-        notificationId = "update-username-success";
-      }
       modifiedLogin.username = login.username;
     }
-
     if (login.hasOwnProperty("password")) {
       modifiedLogin.password = login.password;
     }
-
     try {
       Services.logins.modifyLogin(logins[0], modifiedLogin);
       this.setNotification({
-        id: notificationId,
+        id: "update-login-success",
         viewMode: VIEW_MODES.LIST,
       });
       this.#recordLoginsUpdate("edit");
@@ -781,7 +770,7 @@ export class LoginDataSource extends DataSourceBase {
       searchText,
       stats,
       login =>
-        login.origin.toUpperCase().includes(searchText) ||
+        login.displayOrigin.toUpperCase().includes(searchText) ||
         login.username.toUpperCase().includes(searchText) ||
         login.password.toUpperCase().includes(searchText)
     );
@@ -804,22 +793,11 @@ export class LoginDataSource extends DataSourceBase {
     }
 
     const logins = await LoginHelper.getAllUserFacingLogins();
+    this.beforeReloadingDataSource();
+
     const breachesMap = lazy.BREACH_ALERTS_ENABLED
       ? await lazy.LoginBreaches.getPotentialBreachesByLoginGUID(logins)
       : new Map();
-
-    this.#syncReloadDataSource(logins, breachesMap);
-
-    this.doneReloadDataSource = true;
-  }
-
-  /**
-   * Implementation between `beforeReloadingDataSource` and `afterReloadingDataSource`
-   * should be synchronous because the two functions operates on member variable
-   * #linesToForget and they don't expect it to be changed in the middle of reloading.
-   */
-  #syncReloadDataSource(logins, breachesMap) {
-    this.beforeReloadingDataSource();
 
     const loginsWithAlerts = logins.filter(
       login =>
@@ -881,6 +859,7 @@ export class LoginDataSource extends DataSourceBase {
     this.#header.value.total = logins.length;
     this.#header.value.alerts = loginsWithAlerts.length;
     this.afterReloadingDataSource();
+    this.doneReloadDataSource = true;
   }
 
   #reloadEmptyDataSource() {

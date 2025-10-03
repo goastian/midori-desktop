@@ -1,6 +1,5 @@
 CONSOLE_HTML_FORMAT = """\
 <!DOCTYPE html>
-<html>
 <head>
 <meta charset="UTF-8">
 <style>
@@ -11,8 +10,9 @@ body {{
 }}
 </style>
 </head>
+<html>
 <body>
-    <pre style="font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><code style="font-family:inherit">{code}</code></pre>
+    <pre style="font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace"><code>{code}</code></pre>
 </body>
 </html>
 """

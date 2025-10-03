@@ -56,7 +56,7 @@ export class BackendError extends Error {
       super(backendError.message);
       this.stack = backendError.stack;
     } else {
-      super(`Backend error: ${JSON.stringify(backendError)}`);
+      super(`Backend error: ${String(backendError)}`);
     }
     this.backendError = backendError;
     this.name = `${capitalizedBackend}BackendError`;

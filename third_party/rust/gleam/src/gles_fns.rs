@@ -2110,7 +2110,7 @@ impl Gl for GlesFns {
         }
 
         let mut output = Vec::new();
-        const CAPACITY: usize = 5;
+        const CAPACITY: usize = 4;
 
         let mut msg_data = vec![0u8; CAPACITY * max_message_len as usize];
         let mut sources = [0 as GLenum; CAPACITY];
@@ -2121,11 +2121,8 @@ impl Gl for GlesFns {
 
         loop {
             let count = unsafe {
-                // ANGLE can return one more message than the count argument specifies,
-                // so we deliberately request one less than the capacity of our buffers.
-                // https://issues.angleproject.org/issues/425579207
                 self.ffi_gl_.GetDebugMessageLog(
-                    (CAPACITY - 1) as _,
+                    CAPACITY as _,
                     msg_data.len() as _,
                     sources.as_mut_ptr(),
                     types.as_mut_ptr(),
@@ -2135,10 +2132,9 @@ impl Gl for GlesFns {
                     msg_data.as_mut_ptr() as *mut _,
                 )
             };
-            let count = CAPACITY.min(count as usize);
 
             let mut offset = 0;
-            output.extend((0..count).map(|i| {
+            output.extend((0..count as usize).map(|i| {
                 let len = lengths[i] as usize;
                 let slice = &msg_data[offset..offset + len];
                 offset += len;
