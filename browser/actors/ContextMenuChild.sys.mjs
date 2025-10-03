@@ -337,11 +337,6 @@ export class ContextMenuChild extends JSWindowActorChild {
       }
       case "ContextMenu:RemoveAllTextFragments": {
         this.contentWindow?.document?.fragmentDirective.removeAllTextDirectives();
-        this.contentWindow?.history.replaceState(
-          this.contentWindow.history.state,
-          "",
-          this.contentWindow.location.href
-        );
       }
     }
 

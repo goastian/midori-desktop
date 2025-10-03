@@ -10,11 +10,6 @@
  * liability, trademark and document use rules apply.
  */
 
-// https://www.w3.org/TR/selection-api/#dom-getcomposedrangesoptions
-dictionary GetComposedRangesOptions {
-  sequence<ShadowRoot> shadowRoots = [];
-};
-
 [Exposed=Window]
 interface Selection {
   [NeedsCallerType]
@@ -63,7 +58,7 @@ interface Selection {
   undefined empty();
 
   [Pref="dom.shadowdom.selection_across_boundary_enabled"]
-  sequence<StaticRange> getComposedRanges(optional (ShadowRoot or GetComposedRangesOptions) options = {}, ShadowRoot... shadowRoots);
+  sequence<StaticRange> getComposedRanges(ShadowRoot... shadowRoots);
 
   [Throws, BinaryName="collapseJS"]
   undefined collapse(Node? node, optional unsigned long offset = 0);

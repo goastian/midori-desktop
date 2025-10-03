@@ -21,10 +21,10 @@ import org.junit.runner.RunWith
 import org.mozilla.experiments.nimbus.internal.validateEventQueries
 import org.mozilla.fenix.GleanMetrics.Pings
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.GleanMetrics.NimbusSystem as GleanNimbus
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class RecordedNimbusContextTest {
 
     @get:Rule

@@ -41,6 +41,6 @@ more-from-moz-mozilla-monitor-button = Get { -monitor-brand-short-name }
 
 ## These strings are for the Solo card in about:preferences moreFromMozilla page
 
-more-from-moz-solo-title = { -solo-ai-brand-name } Cloud
-more-from-moz-solo-description = Store your files, collaborate, share, and edit files from one place.
-more-from-moz-solo-button = Try { -solo-ai-brand-name } Cloud
+more-from-moz-solo-title = { -solo-ai-brand-name } AI
+more-from-moz-solo-description = Create your website instantly and connect your own custom domain for free.
+more-from-moz-solo-button = Try { -solo-ai-brand-name }

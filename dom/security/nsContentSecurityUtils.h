@@ -74,7 +74,8 @@ class nsContentSecurityUtils {
       const mozilla::dom::Element& aElement);
 
   // Helper function to Check if a Download is allowed;
-  static long ClassifyDownload(nsIChannel* aChannel);
+  static long ClassifyDownload(nsIChannel* aChannel,
+                               const nsAutoCString& aMimeTypeGuess);
 
   // Public only for testing
   static FilenameTypeAndDetails FilenameToFilenameType(

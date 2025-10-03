@@ -45,9 +45,7 @@ import org.mozilla.fenix.crashes.SettingsCrashReportCache
 import org.mozilla.fenix.datastore.pocketStoriesSelectedCategoriesDataStore
 import org.mozilla.fenix.distributions.DefaultDistributionBrowserStoreProvider
 import org.mozilla.fenix.distributions.DefaultDistributionProviderChecker
-import org.mozilla.fenix.distributions.DefaultDistributionSettings
 import org.mozilla.fenix.distributions.DistributionIdManager
-import org.mozilla.fenix.distributions.LegacyDistributionProviderChecker
 import org.mozilla.fenix.ext.asRecentTabs
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.filterState
@@ -70,7 +68,6 @@ import org.mozilla.fenix.perf.StartupActivityLog
 import org.mozilla.fenix.perf.StartupStateProvider
 import org.mozilla.fenix.perf.StrictModeManager
 import org.mozilla.fenix.perf.lazyMonitored
-import org.mozilla.fenix.reviewprompt.ReviewPromptMiddleware
 import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.utils.isLargeScreenSize
 import org.mozilla.fenix.wifi.WifiConnectionMonitor
@@ -205,7 +202,7 @@ class Components(private val context: Context) {
             browserStore = core.store,
             storage = DefaultPrivateBrowsingLockStorage(
                 preferences = settings.preferences,
-                privateBrowsingLockPrefKey = context.getString(R.string.pref_key_private_browsing_locked),
+                privateBrowsingLockPrefKey = context.getString(R.string.pref_key_private_browsing_locked_enabled),
             ),
         )
     }
@@ -215,15 +212,8 @@ class Components(private val context: Context) {
 
     val reviewPromptController by lazyMonitored {
         ReviewPromptController(
-            playStoreReviewPromptController = playStoreReviewPromptController,
-            reviewSettings = FenixReviewSettings(settings),
-        )
-    }
-
-    val playStoreReviewPromptController by lazyMonitored {
-        PlayStoreReviewPromptController(
             manager = ReviewManagerFactory.create(context),
-            numberOfAppLaunches = { settings.numberOfAppLaunches },
+            reviewSettings = FenixReviewSettings(settings),
         )
     }
 
@@ -286,7 +276,6 @@ class Components(private val context: Context) {
                 HomeTelemetryMiddleware(),
                 SetupChecklistPreferencesMiddleware(DefaultSetupChecklistRepository(context)),
                 SetupChecklistTelemetryMiddleware(),
-                ReviewPromptMiddleware(settings),
             ),
         ).also {
             it.dispatch(AppAction.SetupChecklistAction.Init)
@@ -328,8 +317,6 @@ class Components(private val context: Context) {
             context = context,
             browserStoreProvider = DefaultDistributionBrowserStoreProvider(core.store),
             distributionProviderChecker = DefaultDistributionProviderChecker(context),
-            legacyDistributionProviderChecker = LegacyDistributionProviderChecker(context),
-            distributionSettings = DefaultDistributionSettings(settings),
         )
     }
 }

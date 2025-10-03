@@ -1909,8 +1909,7 @@ bool BuildTextRunsScanner::ContinueTextRunAcrossFrames(nsTextFrame* aFrame1,
                                           Side aSide) {
       while (aFrame != aAncestor) {
         ComputedStyle* ctx = aFrame->Style();
-        const auto anchorResolutionParams =
-            AnchorPosResolutionParams::From(aFrame);
+        const auto positionProperty = ctx->StyleDisplay()->mPosition;
         // According to https://drafts.csswg.org/css-text/#boundary-shaping:
         //
         // Text shaping must be broken at inline box boundaries when any of
@@ -1919,8 +1918,8 @@ bool BuildTextRunsScanner::ContinueTextRunAcrossFrames(nsTextFrame* aFrame1,
         //
         // 1. Any of margin/border/padding separating the two typographic
         //    character units in the inline axis is non-zero.
-        const auto margin = ctx->StyleMargin()->GetMargin(
-            aSide, anchorResolutionParams.mPosition);
+        const auto margin =
+            ctx->StyleMargin()->GetMargin(aSide, positionProperty);
         if (!margin->ConvertsToLength() ||
             margin->AsLengthPercentage().ToLength() != 0) {
           return true;
@@ -6884,10 +6883,10 @@ void nsTextFrame::PaintText(const PaintTextParams& aParams,
   gfx::Point textBaselinePt;
   if (verticalRun) {
     if (wm.IsVerticalLR()) {
-      textBaselinePt.x = nsLayoutUtils::GetMaybeSnappedBaselineX(
+      textBaselinePt.x = nsLayoutUtils::GetSnappedBaselineX(
           this, aParams.context, nscoord(aParams.framePt.x), mAscent);
     } else {
-      textBaselinePt.x = nsLayoutUtils::GetMaybeSnappedBaselineX(
+      textBaselinePt.x = nsLayoutUtils::GetSnappedBaselineX(
           this, aParams.context, nscoord(aParams.framePt.x) + frameWidth,
           -mAscent);
     }
@@ -6897,7 +6896,7 @@ void nsTextFrame::PaintText(const PaintTextParams& aParams,
     textBaselinePt =
         gfx::Point(reversed ? aParams.framePt.x.value + frameWidth
                             : aParams.framePt.x.value,
-                   nsLayoutUtils::GetMaybeSnappedBaselineY(
+                   nsLayoutUtils::GetSnappedBaselineY(
                        this, aParams.context, aParams.framePt.y, mAscent));
   }
   Range range = ComputeTransformedRange(provider);

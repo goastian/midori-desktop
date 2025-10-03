@@ -4,15 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import assert from 'node:assert';
-import {spawnSync} from 'node:child_process';
-import {existsSync, readFileSync} from 'node:fs';
-import {mkdir, unlink} from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-
-import type * as ProgressBar from 'progress';
-import ProgressBarClass from 'progress';
+import assert from 'assert';
+import {spawnSync} from 'child_process';
+import {existsSync, readFileSync} from 'fs';
+import {mkdir, unlink} from 'fs/promises';
+import os from 'os';
+import path from 'path';
 
 import {
   Browser,
@@ -74,13 +71,12 @@ export interface InstallOptions {
    */
   buildIdAlias?: string;
   /**
-   * Provides information about the progress of the download. If set to
-   * 'default', the default callback implementing a progress bar will be
-   * used.
+   * Provides information about the progress of the download.
    */
-  downloadProgressCallback?:
-    | 'default'
-    | ((downloadedBytes: number, totalBytes: number) => void);
+  downloadProgressCallback?: (
+    downloadedBytes: number,
+    totalBytes: number,
+  ) => void;
   /**
    * Determines the host that will be used for downloading.
    *
@@ -264,14 +260,7 @@ async function installUrl(
       `Cannot download a binary for the provided platform: ${os.platform()} (${os.arch()})`,
     );
   }
-  let downloadProgressCallback = options.downloadProgressCallback;
-  if (downloadProgressCallback === 'default') {
-    downloadProgressCallback = await makeProgressCallback(
-      options.browser,
-      options.buildIdAlias ?? options.buildId,
-    );
-  }
-  const fileName = decodeURIComponent(url.toString()).split('/').pop();
+  const fileName = url.toString().split('/').pop();
   assert(fileName, `A malformed download URL was found: ${url}.`);
   const cache = new Cache(options.cacheDir);
   const browserRoot = cache.browserRoot(options.browser);
@@ -286,7 +275,7 @@ async function installUrl(
     }
     debugInstall(`Downloading binary from ${url}`);
     debugTime('download');
-    await downloadFile(url, archivePath, downloadProgressCallback);
+    await downloadFile(url, archivePath, options.downloadProgressCallback);
     debugTimeEnd('download');
     return archivePath;
   }
@@ -319,7 +308,7 @@ async function installUrl(
     debugInstall(`Downloading binary from ${url}`);
     try {
       debugTime('download');
-      await downloadFile(url, archivePath, downloadProgressCallback);
+      await downloadFile(url, archivePath, options.downloadProgressCallback);
     } finally {
       debugTimeEnd('download');
     }
@@ -470,53 +459,11 @@ export async function canDownload(options: InstallOptions): Promise<boolean> {
   );
 }
 
-/**
- * Retrieves a URL for downloading the binary archive of a given browser.
- *
- * The archive is bound to the specific platform and build ID specified.
- *
- * @public
- */
-export function getDownloadUrl(
+function getDownloadUrl(
   browser: Browser,
   platform: BrowserPlatform,
   buildId: string,
   baseUrl?: string,
 ): URL {
   return new URL(downloadUrls[browser](platform, buildId, baseUrl));
-}
-
-/**
- * @public
- */
-export function makeProgressCallback(
-  browser: Browser,
-  buildId: string,
-): (downloadedBytes: number, totalBytes: number) => void {
-  let progressBar: ProgressBar;
-
-  let lastDownloadedBytes = 0;
-  return (downloadedBytes: number, totalBytes: number) => {
-    if (!progressBar) {
-      progressBar = new ProgressBarClass(
-        `Downloading ${browser} ${buildId} - ${toMegabytes(
-          totalBytes,
-        )} [:bar] :percent :etas `,
-        {
-          complete: '=',
-          incomplete: ' ',
-          width: 20,
-          total: totalBytes,
-        },
-      );
-    }
-    const delta = downloadedBytes - lastDownloadedBytes;
-    lastDownloadedBytes = downloadedBytes;
-    progressBar.tick(delta);
-  };
-}
-
-function toMegabytes(bytes: number) {
-  const mb = bytes / 1000 / 1000;
-  return `${Math.round(mb * 10) / 10} MB`;
 }

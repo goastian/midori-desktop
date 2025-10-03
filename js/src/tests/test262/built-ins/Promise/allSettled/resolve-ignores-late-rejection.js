@@ -6,7 +6,7 @@
 description: >
   Resolved promises ignore rejections through immediate invocation of the
     provided resolving function
-esid: sec-promise.allsettled
+esid: sec-promise.allSettled
 info: |
   Let result be PerformPromiseAllSettled(iteratorRecord, C, promiseCapability).
 

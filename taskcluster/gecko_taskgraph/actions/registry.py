@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
+import json
 import re
 from collections import namedtuple
 from types import FunctionType
@@ -11,7 +12,7 @@ from mozbuild.util import memoize
 from taskgraph import create
 from taskgraph.config import load_graph_config
 from taskgraph.parameters import Parameters
-from taskgraph.util import json, taskcluster, yaml
+from taskgraph.util import taskcluster, yaml
 from taskgraph.util.python_path import import_sibling_modules
 
 from gecko_taskgraph.util import hash

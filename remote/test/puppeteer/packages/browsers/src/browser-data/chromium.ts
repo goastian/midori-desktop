@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import path from 'node:path';
+import path from 'path';
 
 import {getText} from '../httpUtil.js';
 
@@ -12,7 +12,6 @@ import {BrowserPlatform} from './types.js';
 
 function archive(platform: BrowserPlatform, buildId: string): string {
   switch (platform) {
-    case BrowserPlatform.LINUX_ARM:
     case BrowserPlatform.LINUX:
       return 'chrome-linux';
     case BrowserPlatform.MAC_ARM:
@@ -31,7 +30,6 @@ function folder(platform: BrowserPlatform): string {
       return 'Linux_x64';
     case BrowserPlatform.MAC_ARM:
       return 'Mac_Arm';
-    case BrowserPlatform.LINUX_ARM:
     case BrowserPlatform.MAC:
       return 'Mac';
     case BrowserPlatform.WIN32:
@@ -70,7 +68,6 @@ export function relativeExecutablePath(
         'MacOS',
         'Chromium',
       );
-    case BrowserPlatform.LINUX_ARM:
     case BrowserPlatform.LINUX:
       return path.join('chrome-linux', 'chrome');
     case BrowserPlatform.WIN32:

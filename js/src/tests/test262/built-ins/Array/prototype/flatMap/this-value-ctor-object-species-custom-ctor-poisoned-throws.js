@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-array.prototype.flatmap
+esid: sec-array.prototype.flatMap
 description: >
   Assert behavior if this value has a poisoned custom species constructor
 info: |

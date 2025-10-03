@@ -332,7 +332,10 @@ nsIPrincipal* ScriptLoader::LoaderPrincipal() const {
 }
 
 nsIPrincipal* ScriptLoader::PartitionedPrincipal() const {
-  return mDocument->PartitionedPrincipal();
+  if (mDocument && StaticPrefs::privacy_partition_network_state()) {
+    return mDocument->PartitionedPrincipal();
+  }
+  return LoaderPrincipal();
 }
 
 bool ScriptLoader::ShouldBypassCache() const {
@@ -462,18 +465,6 @@ nsContentPolicyType ScriptLoadRequestToContentPolicyType(
   return nsIContentPolicy::TYPE_INTERNAL_SCRIPT;
 }
 
-RequestMode ComputeRequestModeForContentPolicy(
-    const ScriptLoadRequest* aRequest) {
-  auto corsMapping =
-      aRequest->IsModuleRequest()
-          ? nsContentSecurityManager::REQUIRE_CORS_CHECKS
-          : nsContentSecurityManager::CORS_NONE_MAPS_TO_DISABLED_CORS_CHECKS;
-  return nsContentSecurityManager::SecurityModeToRequestMode(
-      nsContentSecurityManager::ComputeSecurityMode(
-          nsContentSecurityManager::ComputeSecurityFlags(aRequest->CORSMode(),
-                                                         corsMapping)));
-}
-
 nsresult ScriptLoader::CheckContentPolicy(nsIScriptElement* aElement,
                                           const nsAString& aNonce,
                                           ScriptLoadRequest* aRequest) {
@@ -494,9 +485,6 @@ nsresult ScriptLoader::CheckContentPolicy(nsIScriptElement* aElement,
   secCheckLoadInfo->SetParserCreatedScript(aElement &&
                                            aElement->GetParserCreated() !=
                                                mozilla::dom::NOT_FROM_PARSER);
-  Maybe<RequestMode> requestMode =
-      Some(ComputeRequestModeForContentPolicy(aRequest));
-  secCheckLoadInfo->SetRequestMode(requestMode);
   // Use nonce of the current element, instead of the preload, because those
   // are allowed to differ.
   secCheckLoadInfo->SetCspNonce(aNonce);
@@ -1001,11 +989,7 @@ nsresult ScriptLoader::StartLoadInternal(
 
   LOG(("ScriptLoadRequest (%p): mode=%u tracking=%d", aRequest,
        unsigned(aRequest->GetScriptLoadContext()->mScriptMode),
-       net::UrlClassifierCommon::IsTrackingClassificationFlag(
-           aRequest->GetScriptLoadContext()
-               ->GetClassificationFlags()
-               .thirdPartyFlags,
-           NS_UsePrivateBrowsing(channel))));
+       aRequest->GetScriptLoadContext()->IsTracking()));
 
   PrepareRequestPriorityAndRequestDependencies(channel, aRequest);
 
@@ -1067,7 +1051,7 @@ static bool CSPAllowsInlineScript(nsIScriptElement* aElement,
   nsresult rv = csp->GetAllowsInline(
       nsIContentSecurityPolicy::SCRIPT_SRC_ELEM_DIRECTIVE,
       false /* aHasUnsafeHash */, aNonce, parserCreated, element,
-      nullptr /* nsICSPEventListener */, VoidString(),
+      nullptr /* nsICSPEventListener */, u""_ns,
       aElement->GetScriptLineNumber(),
       aElement->GetScriptColumnNumber().oneOriginValue(), &allowInlineScript);
   return NS_SUCCEEDED(rv) && allowInlineScript;
@@ -1832,6 +1816,7 @@ void ScriptLoader::CancelAndClearScriptLoadRequests() {
   mOffThreadCompilingRequests.CancelRequestsAndClear();
 
   if (mModuleLoader) {
+    mModuleLoader->CancelFetchingModules();
     mModuleLoader->CancelAndClearDynamicImports();
   }
 
@@ -2597,8 +2582,7 @@ nsresult ScriptLoader::FillCompileOptionsForRequest(
 
   if (mDocument) {
     mDocument->NoteScriptTrackingStatus(
-        aRequest->mURL,
-        aRequest->GetScriptLoadContext()->GetClassificationFlags());
+        aRequest->mURL, aRequest->GetScriptLoadContext()->IsTracking());
   }
 
   const char* introductionType;
@@ -3027,6 +3011,7 @@ void ScriptLoader::InstantiateClassicScriptFromMaybeEncodedSource(
       };
 
       MOZ_ASSERT(!maybeSource.empty());
+      TimeStamp startTime = TimeStamp::Now();
       maybeSource.mapNonEmpty(compile);
       aStencilOut = stencil.get();
 
@@ -3037,6 +3022,7 @@ void ScriptLoader::InstantiateClassicScriptFromMaybeEncodedSource(
                            erv, encodeBytecode);
       }
 
+      mMainThreadParseTime += TimeStamp::Now() - startTime;
       aRv = std::move(erv);
     }
   }
@@ -3376,6 +3362,11 @@ void ScriptLoader::RegisterForBytecodeEncoding(ScriptLoadRequest* aRequest) {
 void ScriptLoader::LoadEventFired() {
   mLoadEventFired = true;
   MaybeTriggerBytecodeEncoding();
+
+  if (!mMainThreadParseTime.IsZero()) {
+    glean::javascript_pageload::parse_time.AccumulateRawDuration(
+        mMainThreadParseTime);
+  }
 }
 
 void ScriptLoader::Destroy() {
@@ -4397,10 +4388,7 @@ nsresult ScriptLoader::PrepareLoadedRequest(ScriptLoadRequest* aRequest,
     MOZ_ASSERT(classifiedChannel);
     if (classifiedChannel &&
         classifiedChannel->IsThirdPartyTrackingResource()) {
-      net::ClassificationFlags flags{
-          classifiedChannel->GetFirstPartyClassificationFlags(),
-          classifiedChannel->GetThirdPartyClassificationFlags()};
-      aRequest->GetScriptLoadContext()->SetClassificationFlags(flags);
+      aRequest->GetScriptLoadContext()->SetIsTracking();
     }
   }
 

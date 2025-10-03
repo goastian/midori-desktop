@@ -346,15 +346,8 @@ RtpSendRates RtpSenderEgress::GetSendRates(Timestamp now) const {
 void RtpSenderEgress::GetDataCounters(StreamDataCounters* rtp_stats,
                                       StreamDataCounters* rtx_stats) const {
   RTC_DCHECK_RUN_ON(worker_queue_);
-  if (rtp_stats_callback_) {
-    *rtp_stats = rtp_stats_callback_->GetDataCounters(ssrc_);
-    if (rtx_ssrc_.has_value()) {
-      *rtx_stats = rtp_stats_callback_->GetDataCounters(*rtx_ssrc_);
-    }
-  } else {
-    *rtp_stats = rtp_stats_;
-    *rtx_stats = rtx_rtp_stats_;
-  }
+  *rtp_stats = rtp_stats_;
+  *rtx_stats = rtx_rtp_stats_;
 }
 
 void RtpSenderEgress::ForceIncludeSendPacketsInAllocation(
@@ -471,13 +464,8 @@ void RtpSenderEgress::UpdateRtpStats(Timestamp now,
   // worker thread.
   RtpSendRates send_rates;
 
-  StreamDataCounters* counters = nullptr;
-  if (rtp_stats_callback_) {
-    rtp_stats_ = rtp_stats_callback_->GetDataCounters(packet_ssrc);
-    counters = &rtp_stats_;
-  } else {
-    counters = packet_ssrc == rtx_ssrc_ ? &rtx_rtp_stats_ : &rtp_stats_;
-  }
+  StreamDataCounters* counters =
+      packet_ssrc == rtx_ssrc_ ? &rtx_rtp_stats_ : &rtp_stats_;
 
   counters->MaybeSetFirstPacketTime(now);
 

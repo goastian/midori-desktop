@@ -391,9 +391,9 @@ ModuleEnvironmentObject* ModuleEnvironmentObject::create(
       cx, script->bodyScope()->as<ModuleScope>().environmentShape());
   MOZ_ASSERT(shape->getObjectClass() == &class_);
 
-  ModuleEnvironmentObject* env =
-      CreateEnvironmentObject<ModuleEnvironmentObject>(cx, shape,
-                                                       TenuredObject);
+  Rooted<ModuleEnvironmentObject*> env(
+      cx, CreateEnvironmentObject<ModuleEnvironmentObject>(cx, shape,
+                                                           TenuredObject));
   if (!env) {
     return nullptr;
   }
@@ -478,9 +478,9 @@ ModuleEnvironmentObject* ModuleEnvironmentObject::createSynthetic(
 
   MOZ_ASSERT(shape->getObjectClass() == &class_);
 
-  ModuleEnvironmentObject* env =
-      CreateEnvironmentObject<ModuleEnvironmentObject>(cx, shape,
-                                                       TenuredObject);
+  Rooted<ModuleEnvironmentObject*> env(
+      cx, CreateEnvironmentObject<ModuleEnvironmentObject>(cx, shape,
+                                                           TenuredObject));
   if (!env) {
     return nullptr;
   }
@@ -519,7 +519,11 @@ bool ModuleEnvironmentObject::createImportBinding(JSContext* cx,
   RootedId importNameId(cx, AtomToId(importName));
   RootedId localNameId(cx, AtomToId(localName));
   Rooted<ModuleEnvironmentObject*> env(cx, &module->initialEnvironment());
-  return importBindings().put(cx, importNameId, env, localNameId);
+  if (!importBindings().put(cx, importNameId, env, localNameId)) {
+    return false;
+  }
+
+  return true;
 }
 
 bool ModuleEnvironmentObject::hasImportBinding(Handle<PropertyName*> name) {
@@ -927,9 +931,9 @@ NonSyntacticVariablesObject* NonSyntacticVariablesObject::create(
     return nullptr;
   }
 
-  NonSyntacticVariablesObject* obj =
-      CreateEnvironmentObject<NonSyntacticVariablesObject>(cx, shape,
-                                                           TenuredObject);
+  Rooted<NonSyntacticVariablesObject*> obj(
+      cx, CreateEnvironmentObject<NonSyntacticVariablesObject>(cx, shape,
+                                                               TenuredObject));
   if (!obj) {
     return nullptr;
   }
@@ -1118,8 +1122,8 @@ BlockLexicalEnvironmentObject* BlockLexicalEnvironmentObject::clone(
     JSContext* cx, Handle<BlockLexicalEnvironmentObject*> env) {
   Rooted<LexicalScope*> scope(cx, &env->scope());
   RootedObject enclosing(cx, &env->enclosingEnvironment());
-  BlockLexicalEnvironmentObject* copy =
-      create(cx, scope, enclosing, gc::Heap::Default);
+  Rooted<BlockLexicalEnvironmentObject*> copy(
+      cx, create(cx, scope, enclosing, gc::Heap::Default));
   if (!copy) {
     return nullptr;
   }

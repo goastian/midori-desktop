@@ -8,7 +8,3 @@ function firstCall() {
   secondCall();
   return 43;
 }
-
-function logPointTest(){
-  firstCall();
-}

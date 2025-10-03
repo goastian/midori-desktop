@@ -47,17 +47,17 @@ body {
 
 h1,
 h2 {
-  font-weight: var(--font-weight);
+  font-weight: normal;
 }
 
 .inner-border {
   border: $border-secondary;
   border-radius: var(--border-radius-small);
   height: 100%;
-  inset-inline-start: 0;
+  left: 0;
   pointer-events: none;
   position: absolute;
-  inset-block-start: 0;
+  top: 0;
   width: 100%;
   z-index: 100;
 }
@@ -89,7 +89,7 @@ h2 {
   flex-wrap: wrap;
   justify-content: flex-start;
   margin: 0;
-  padding: var(--space-large) var(--space-xlarge) 0;
+  padding: 15px 25px 0;
 }
 
 // Default button (grey)
@@ -100,8 +100,8 @@ h2 {
   border-radius: var(--border-radius-small);
   color: inherit;
   cursor: pointer;
-  margin-block-end: var(--space-large);
-  padding: var(--space-small) var(--space-xxlarge);
+  margin-bottom: 15px;
+  padding: 10px 30px;
   white-space: nowrap;
 
   &:hover:not(.dismiss),
@@ -192,7 +192,6 @@ input {
 @import '../components/DiscoveryStreamComponents/TopicsWidget/TopicsWidget';
 @import '../components/DiscoveryStreamComponents/FeatureHighlight/FeatureHighlight';
 @import '../components/DiscoveryStreamComponents/FeatureHighlight/DownloadMobilePromoHighlight';
-@import '../components/DiscoveryStreamComponents/FeatureHighlight/FollowSectionButtonHighlight';
 @import '../components/DiscoveryStreamComponents/FeatureHighlight/SponsoredContentHighlight';
 @import '../components/DiscoveryStreamComponents/FeatureHighlight/WallpaperFeatureHighlight';
 @import '../components/DiscoveryStreamComponents/TopicSelection/TopicSelection';
@@ -203,6 +202,5 @@ input {
 @import '../components/DiscoveryStreamComponents/InterestPicker/InterestPicker';
 @import '../components/DiscoveryStreamComponents/ReportContent/ReportContent';
 @import '../components/DiscoveryStreamComponents/PersonalizedCard/PersonalizedCard';
-@import '../components/DiscoveryStreamComponents/TrendingSearches/TrendingSearches';
 
 // stylelint-enable no-invalid-position-at-import-rule

@@ -214,6 +214,10 @@ pub enum SystemColor {
     Selecteditem,
     /// Used for selected and focused html cell text.
     Selecteditemtext,
+    /// Used to button text background when hovered.
+    MozButtonhoverface,
+    /// Used to button text color when hovered.
+    MozButtonhovertext,
     /// Used for menu item backgrounds when hovered.
     MozMenuhover,
     /// Used for menu item backgrounds when hovered and disabled.
@@ -228,31 +232,17 @@ pub enum SystemColor {
     /// foreground color.
     MozOddtreerow,
 
-    /// Used for button text background when hovered.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    MozButtonhoverface,
-    /// Used for button text color when hovered.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    MozButtonhovertext,
-    /// Used for button border color when hovered.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    MozButtonhoverborder,
-    /// Used for button background when pressed.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    MozButtonactiveface,
     /// Used for button text when pressed.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozButtonactivetext,
-    /// Used for button border when pressed.
+
+    /// Used for button background when pressed.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    MozButtonactiveborder,
+    MozButtonactiveface,
 
     /// Used for button background when disabled.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozButtondisabledface,
-    /// Used for button border when disabled.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    MozButtondisabledborder,
 
     /// Colors used for the header bar (sorta like the tab bar / menubar).
     #[parse(condition = "ParserContext::chrome_rules_enabled")]

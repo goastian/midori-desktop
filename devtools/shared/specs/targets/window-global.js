@@ -135,10 +135,6 @@ const windowGlobalTargetSpecPrototype = {
     workerListChanged: {
       type: "workerListChanged",
     },
-    contentScrolled: {
-      type: "contentScrolled",
-      deltaY: Arg(0, "number"),
-    },
 
     "resources-available-array": {
       type: "resources-available-array",

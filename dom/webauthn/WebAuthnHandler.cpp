@@ -959,14 +959,9 @@ void WebAuthnHandler::ResolveTransaction(
       break;
   }
 
-  // Bug 1969341 - we need to reset the transaction before resolving the
-  // promise. This lets us handle the case where resolving the promise initiates
-  // a new WebAuthn request.
-  RefPtr<Promise> promise = mTransaction.ref().mPromise;
+  mTransaction.ref().mPromise->MaybeResolve(aCredential);
   mTransaction.reset();
   Unfollow();
-
-  promise->MaybeResolve(aCredential);
 }
 
 template <typename T>
@@ -982,14 +977,9 @@ void WebAuthnHandler::RejectTransaction(const T& aReason) {
       break;
   }
 
-  // Bug 1969341 - we need to reset the transaction before rejecting the
-  // promise. This lets us handle the case where rejecting the promise initiates
-  // a new WebAuthn request.
-  RefPtr<Promise> promise = mTransaction.ref().mPromise;
+  mTransaction.ref().mPromise->MaybeReject(aReason);
   mTransaction.reset();
   Unfollow();
-
-  promise->MaybeReject(aReason);
 }
 
 }  // namespace mozilla::dom

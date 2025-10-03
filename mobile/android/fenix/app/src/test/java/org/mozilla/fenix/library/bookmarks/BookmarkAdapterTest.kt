@@ -14,10 +14,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.library.bookmarks.viewholders.BookmarkNodeViewHolder
-import org.robolectric.RobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 internal class BookmarkAdapterTest {
 
     private lateinit var bookmarkAdapter: BookmarkAdapter

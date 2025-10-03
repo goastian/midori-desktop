@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-array.prototype.reduceright
+esid: sec-array.prototype.reduceRight
 description: Array.prototype.reduceRight applied to boolean primitive
 ---*/
 

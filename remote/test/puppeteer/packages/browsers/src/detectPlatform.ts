@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import os from 'node:os';
+import os from 'os';
 
 import {BrowserPlatform} from './browser-data/browser-data.js';
 
@@ -13,18 +13,17 @@ import {BrowserPlatform} from './browser-data/browser-data.js';
  */
 export function detectBrowserPlatform(): BrowserPlatform | undefined {
   const platform = os.platform();
-  const arch = os.arch();
   switch (platform) {
     case 'darwin':
-      return arch === 'arm64' ? BrowserPlatform.MAC_ARM : BrowserPlatform.MAC;
+      return os.arch() === 'arm64'
+        ? BrowserPlatform.MAC_ARM
+        : BrowserPlatform.MAC;
     case 'linux':
-      return arch === 'arm64'
-        ? BrowserPlatform.LINUX_ARM
-        : BrowserPlatform.LINUX;
+      return BrowserPlatform.LINUX;
     case 'win32':
-      return arch === 'x64' ||
+      return os.arch() === 'x64' ||
         // Windows 11 for ARM supports x64 emulation
-        (arch === 'arm64' && isWindows11(os.release()))
+        (os.arch() === 'arm64' && isWindows11(os.release()))
         ? BrowserPlatform.WIN64
         : BrowserPlatform.WIN32;
     default:

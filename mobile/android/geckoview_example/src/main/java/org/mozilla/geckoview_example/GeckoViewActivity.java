@@ -13,8 +13,6 @@ import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender;
@@ -30,7 +28,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.SystemClock;
-import android.provider.MediaStore;
 import android.text.InputType;
 import android.util.Log;
 import android.util.LruCache;
@@ -48,7 +45,6 @@ import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
-import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
@@ -59,7 +55,9 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -93,7 +91,6 @@ import org.mozilla.geckoview.GeckoWebExecutor;
 import org.mozilla.geckoview.Image;
 import org.mozilla.geckoview.MediaSession;
 import org.mozilla.geckoview.OrientationController;
-import org.mozilla.geckoview.ProfilerController;
 import org.mozilla.geckoview.SlowScriptResponse;
 import org.mozilla.geckoview.TranslationsController;
 import org.mozilla.geckoview.WebExtension;
@@ -152,8 +149,7 @@ class WebExtensionManager
     return GeckoResult.fromValue(
         new org.mozilla.geckoview.WebExtension.PermissionPromptResponse(
             true, // isPermissionsGranted
-            true, // isPrivateModeGranted
-            false // isTechnicalAndInteractionDataGranted
+            true // isPrivateModeGranted
             ));
   }
 
@@ -1424,12 +1420,12 @@ public class GeckoViewActivity extends AppCompatActivity
   }
 
   private void createNewTab() {
-    Double startTime = ProfilerController.getProfilerTime();
+    Double startTime = sGeckoRuntime.getProfilerController().getProfilerTime();
     TabSession newSession = createSession();
     newSession.open(sGeckoRuntime);
     setGeckoViewSession(newSession);
     mToolbarView.updateTabCount();
-    ProfilerController.addMarker("Create new tab", startTime);
+    sGeckoRuntime.getProfilerController().addMarker("Create new tab", startTime);
   }
 
   @SuppressLint("WrongThread")
@@ -1856,46 +1852,35 @@ public class GeckoViewActivity extends AppCompatActivity
     }
   }
 
-  private String sanitizeMimeType(String mimeType) {
-    if (mimeType != null) {
-      if (mimeType.contains(";")) {
-        return mimeType.split(";")[0].trim();
-      } else {
-        return mimeType.trim();
-      }
-    } else {
-      return null;
-    }
-  }
-
   private void downloadFile(final WebResponse response) {
-    if (response.body == null) return;
+    if (response.body == null) {
+      return;
+    }
+
+    if (ContextCompat.checkSelfPermission(
+            GeckoViewActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        != PackageManager.PERMISSION_GRANTED) {
+      mPendingDownloads.add(response);
+      ActivityCompat.requestPermissions(
+          GeckoViewActivity.this,
+          new String[] {Manifest.permission.WRITE_EXTERNAL_STORAGE},
+          REQUEST_WRITE_EXTERNAL_STORAGE);
+      return;
+    }
 
     final String filename = getFileName(response);
-    Log.i(LOGTAG, "FileName:" + filename);
 
-    if (Build.VERSION.SDK_INT > Build.VERSION_CODES.Q) { // latest
-      ContentResolver contentResolver = getContentResolver();
-      String mime = sanitizeMimeType(response.headers.get("Content-Type"));
-      if (mime == null || mime.isEmpty()) mime = "*/*";
-      ContentValues contentValues = new ContentValues();
-      contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
-      contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-      Log.i(LOGTAG, "MimeType:" + mime);
-      contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
-      contentValues.put(MediaStore.MediaColumns.IS_PENDING, 1);
+    try {
+      String downloadsPath =
+          Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                  .getAbsolutePath()
+              + "/"
+              + filename;
 
-      Uri collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
-      Uri fileUri = contentResolver.insert(collection, contentValues);
-      if (fileUri == null) {
-        Toast.makeText(this, "Unable to access downloads directory", Toast.LENGTH_LONG).show();
-        return;
-      }
-      // write to file
-      Toast.makeText(this, "Downloading " + filename, Toast.LENGTH_LONG).show();
+      Log.i(LOGTAG, "Downloading to: " + downloadsPath);
       int bufferSize = 1024; // to read in 1Mb increments
       byte[] buffer = new byte[bufferSize];
-      try (OutputStream out = contentResolver.openOutputStream(fileUri)) {
+      try (OutputStream out = new BufferedOutputStream(new FileOutputStream(downloadsPath))) {
         int len;
         while ((len = response.body.read(buffer)) != -1) {
           out.write(buffer, 0, len);
@@ -1903,20 +1888,8 @@ public class GeckoViewActivity extends AppCompatActivity
       } catch (Throwable e) {
         Log.i(LOGTAG, String.valueOf(e.getStackTrace()));
       }
-      // Release Pending
-      contentValues.clear();
-      contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0);
-      contentResolver.update(fileUri, contentValues, null, null);
-    } else { // legacy support
-      if (ContextCompat.checkSelfPermission(
-              GeckoViewActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-          != PackageManager.PERMISSION_GRANTED) {
-        mPendingDownloads.add(response);
-        ActivityCompat.requestPermissions(
-            GeckoViewActivity.this,
-            new String[] {Manifest.permission.WRITE_EXTERNAL_STORAGE},
-            REQUEST_WRITE_EXTERNAL_STORAGE);
-      }
+    } catch (Throwable e) {
+      Log.i(LOGTAG, String.valueOf(e.getStackTrace()));
     }
   }
 
@@ -1932,7 +1905,7 @@ public class GeckoViewActivity extends AppCompatActivity
     Pattern pattern = Pattern.compile("(filename=\"?)(.+)(\"?)");
     Matcher matcher = pattern.matcher(contentDispositionHeader);
     if (matcher.find()) {
-      filename = matcher.group(2).replaceAll("\\s", "%20").replaceAll("\"", "");
+      filename = matcher.group(2).replaceAll("\\s", "%20");
     } else {
       filename = "GVEdownload";
     }

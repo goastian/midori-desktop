@@ -152,8 +152,6 @@ export class Downloader {
    * @param {string} [options.attachmentId] The attachment identifier to use for
    *                                      caching and accessing the attachment.
    *                                      (default: `record.id`)
-   * @param {Boolean} [options.cacheResult] if the client should cache a copy of the attachment.
-   *                                          (default: `true`)
    * @param {Boolean} [options.fallbackToCache] Return the cached attachment when the
    *                                          input record cannot be fetched.
    *                                          (default: `false`)
@@ -331,7 +329,6 @@ export class Downloader {
     });
   }
 
-  // eslint-disable-next-line complexity
   async #fetchAttachment(record, options) {
     let {
       retries,
@@ -340,7 +337,6 @@ export class Downloader {
       fallbackToCache = false,
       fallbackToDump = false,
       avoidDownload = false,
-      cacheResult = true,
     } = options || {};
     if (!attachmentId) {
       // Check for pre-condition. This should not happen, but it is explicitly
@@ -402,13 +398,11 @@ export class Downloader {
           retries,
           checkHash,
         });
-        if (cacheResult) {
-          const blob = new Blob([newBuffer]);
-          // Store in cache but don't wait for it before returning.
-          this.cacheImpl
-            .set(attachmentId, { record, blob })
-            .catch(e => console.error(e));
-        }
+        const blob = new Blob([newBuffer]);
+        // Store in cache but don't wait for it before returning.
+        this.cacheImpl
+          .set(attachmentId, { record, blob })
+          .catch(e => console.error(e));
         return { buffer: newBuffer, record, _source: "remote_match" };
       } catch (e) {
         // No network, corrupted content, etc.

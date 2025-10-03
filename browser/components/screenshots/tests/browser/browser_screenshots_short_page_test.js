@@ -3,12 +3,6 @@
 
 "use strict";
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 /**
  * This test ensures the overlay is covering the entire window event thought
  * the body is smaller than the viewport

@@ -20,7 +20,6 @@ add_task(async function test_restrictions() {
   await UrlbarProviderOpenTabs.registerOpenTab(
     "http://openpagematch.com/",
     0,
-    null,
     false
   );
 

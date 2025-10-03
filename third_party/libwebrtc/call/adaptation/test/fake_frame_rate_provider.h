@@ -11,15 +11,10 @@
 #ifndef CALL_ADAPTATION_TEST_FAKE_FRAME_RATE_PROVIDER_H_
 #define CALL_ADAPTATION_TEST_FAKE_FRAME_RATE_PROVIDER_H_
 
+#include <string>
 #include <vector>
 
-#include "api/video/video_adaptation_counters.h"
-#include "api/video/video_adaptation_reason.h"
-#include "api/video/video_bitrate_allocation.h"
-#include "api/video_codecs/video_codec.h"
-#include "api/video_codecs/video_encoder.h"
 #include "test/gmock.h"
-#include "video/config/video_encoder_config.h"
 #include "video/video_stream_encoder_observer.h"
 
 namespace webrtc {

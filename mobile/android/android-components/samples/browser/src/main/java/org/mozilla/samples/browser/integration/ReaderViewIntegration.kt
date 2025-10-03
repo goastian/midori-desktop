@@ -6,7 +6,6 @@ package org.mozilla.samples.browser.integration
 
 import android.content.Context
 import android.graphics.drawable.Drawable
-import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import mozilla.components.browser.state.selector.selectedTab
@@ -81,5 +80,5 @@ class ReaderViewIntegration(
 
 private fun getReaderDrawable(context: Context): Drawable {
     val drawable = iconsR.drawable.mozac_ic_reader_view_24
-    return AppCompatResources.getDrawable(context, drawable)!!
+    return ContextCompat.getDrawable(context, drawable)!!
 }

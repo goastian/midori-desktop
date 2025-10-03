@@ -17,9 +17,9 @@ import org.junit.runner.RunWith
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.NavGraphDirections
 import org.mozilla.fenix.ext.nav
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class OpenRecentlyClosedIntentProcessorTest {
     private lateinit var activity: HomeActivity
     private lateinit var navController: NavController

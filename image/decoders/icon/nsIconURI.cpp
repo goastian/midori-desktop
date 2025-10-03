@@ -567,10 +567,8 @@ void nsMozIconURI::Serialize(URIParams& aParams) {
   }
 
   params.size() = mSize;
-  params.contentType() = mContentType;
   params.fileName() = mFileName;
   params.stockIcon() = mStockIcon;
-
   params.iconScale() = mScale;
   params.iconDark() = mDark;
 

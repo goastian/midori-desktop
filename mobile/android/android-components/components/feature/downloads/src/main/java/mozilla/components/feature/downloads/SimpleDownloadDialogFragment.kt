@@ -19,7 +19,6 @@ import android.widget.RelativeLayout
 import androidx.annotation.StringRes
 import androidx.annotation.StyleRes
 import androidx.annotation.VisibleForTesting
-import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.marginBottom
@@ -98,7 +97,7 @@ class SimpleDownloadDialogFragment : DownloadDialogFragment() {
             }
 
             if (positiveButtonBackgroundColor != DEFAULT_VALUE) {
-                val backgroundTintList = AppCompatResources.getColorStateList(
+                val backgroundTintList = ContextCompat.getColorStateList(
                     requireContext(),
                     positiveButtonBackgroundColor,
                 )

@@ -381,7 +381,11 @@ pref("network.ohttp.relayURL", "https://mozilla-ohttp.fastly-edge.com/");
 // 0 no change
 // 1 complete progressbar at DOMContentLoaded
 // 2 complete progressbar at first MozAfterPaint after DOMContentLoaded
-pref("page_load.progressbar_completion", 2);
+#ifdef NIGHTLY_BUILD
+  pref("page_load.progressbar_completion", 2);
+#else
+  pref("page_load.progressbar_completion", 0);
+#endif
 
 // Try to convert PDFs sent as octet-stream (bug 1754499)
 pref("pdfjs.handleOctetStream", true);

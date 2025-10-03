@@ -1693,12 +1693,18 @@ Element* SVGObserverUtils::GetAndObserveBackgroundImage(nsIFrame* aFrame,
   } else {
     MOZ_ASSERT(hashtable, "this property should only store non-null values");
   }
-  nsAutoString localRef = u"#"_ns + nsDependentAtomString(aHref);
-  auto* doc = aFrame->GetContent()->OwnerDoc();
-  nsIURI* baseURI = aFrame->GetContent()->GetBaseURI();
+
+  nsAutoString elementId = u"#"_ns + nsDependentAtomString(aHref);
+  nsCOMPtr<nsIURI> targetURI;
+  nsContentUtils::NewURIWithDocumentCharset(
+      getter_AddRefs(targetURI), elementId,
+      aFrame->GetContent()->GetUncomposedDoc(),
+      aFrame->GetContent()->GetBaseURI());
   nsIReferrerInfo* referrerInfo =
-      doc->ReferrerInfoForInternalCSSAndSVGResources();
-  auto url = MakeRefPtr<SVGReference>(localRef, baseURI, referrerInfo);
+      aFrame->GetContent()
+          ->OwnerDoc()
+          ->ReferrerInfoForInternalCSSAndSVGResources();
+  auto url = MakeRefPtr<SVGReference>(targetURI, referrerInfo);
 
   return static_cast<SVGMozElementObserver*>(
              hashtable

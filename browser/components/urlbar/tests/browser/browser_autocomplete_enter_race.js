@@ -169,9 +169,9 @@ add_task(
     gURLBar.focus();
     gURLBar.value = "e";
     let recievedResult = new Promise(resolve => {
-      gURLBar.controller.addListener({
+      gURLBar.controller.addQueryListener({
         onQueryResults(queryContext) {
-          gURLBar.controller.removeListener(this);
+          gURLBar.controller.removeQueryListener(this);
           Assert.ok(
             queryContext.heuristicResult,
             "Recieved a heuristic result."

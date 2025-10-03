@@ -356,8 +356,7 @@ static bool DependsOnIntrinsicSize(const SizeOrMaxSize& aMinOrMaxSize) {
 // image's intrinsic size changing.
 static bool SizeDependsOnIntrinsicSize(const ReflowInput& aReflowInput) {
   const auto& position = *aReflowInput.mStylePosition;
-  const auto anchorResolutionParams =
-      AnchorPosResolutionParams::From(&aReflowInput);
+  const auto positionProperty = aReflowInput.mStyleDisplay->mPosition;
   WritingMode wm = aReflowInput.GetWritingMode();
   // Don't try to make this optimization when an image has percentages
   // in its 'width' or 'height'.  The percentages might be treated like
@@ -368,14 +367,10 @@ static bool SizeDependsOnIntrinsicSize(const ReflowInput& aReflowInput) {
   // don't need to check them.
   //
   // Flex item's min-[width|height]:auto resolution depends on intrinsic size.
-  return !position.GetHeight(anchorResolutionParams.mPosition)
-              ->ConvertsToLength() ||
-         !position.GetWidth(anchorResolutionParams.mPosition)
-              ->ConvertsToLength() ||
-         DependsOnIntrinsicSize(
-             *position.MinISize(wm, anchorResolutionParams.mPosition)) ||
-         DependsOnIntrinsicSize(
-             *position.MaxISize(wm, anchorResolutionParams.mPosition)) ||
+  return !position.GetHeight(positionProperty)->ConvertsToLength() ||
+         !position.GetWidth(positionProperty)->ConvertsToLength() ||
+         DependsOnIntrinsicSize(*position.MinISize(wm, positionProperty)) ||
+         DependsOnIntrinsicSize(*position.MaxISize(wm, positionProperty)) ||
          aReflowInput.mFrame->IsFlexItem();
 }
 

@@ -385,7 +385,7 @@ var FullScreen = {
       document.addEventListener("keypress", this._keyToggleCallback);
       document.addEventListener("popupshown", this._setPopupOpen);
       document.addEventListener("popuphidden", this._setPopupOpen);
-      gURLBar.controller.addListener(this);
+      gURLBar.controller.addQueryListener(this);
 
       // In DOM fullscreen mode, we hide toolbars with CSS
       if (!document.fullscreenElement) {
@@ -598,7 +598,7 @@ var FullScreen = {
       document.removeEventListener("keypress", this._keyToggleCallback);
       document.removeEventListener("popupshown", this._setPopupOpen);
       document.removeEventListener("popuphidden", this._setPopupOpen);
-      gURLBar.controller.removeListener(this);
+      gURLBar.controller.removeQueryListener(this);
     }
   },
 

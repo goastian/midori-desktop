@@ -111,8 +111,8 @@ class TransformableIncomingAudioFrame
         header_.extension.absolute_capture_time
             ->estimated_capture_clock_offset) {
       return TimeDelta::Micros(
-          Q32x32ToInt64Us(*header_.extension.absolute_capture_time
-                               ->estimated_capture_clock_offset));
+          UQ32x32ToInt64Us(*header_.extension.absolute_capture_time
+                                ->estimated_capture_clock_offset));
     }
     return std::nullopt;
   }

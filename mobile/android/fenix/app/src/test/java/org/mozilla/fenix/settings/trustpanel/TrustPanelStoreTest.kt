@@ -15,6 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.settings.PhoneFeature
 import org.mozilla.fenix.settings.trustpanel.store.AutoplayValue
 import org.mozilla.fenix.settings.trustpanel.store.TrustPanelAction
@@ -23,9 +24,8 @@ import org.mozilla.fenix.settings.trustpanel.store.TrustPanelStore
 import org.mozilla.fenix.settings.trustpanel.store.WebsitePermission
 import org.mozilla.fenix.trackingprotection.TrackingProtectionCategory
 import org.mozilla.fenix.utils.Settings
-import org.robolectric.RobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class TrustPanelStoreTest {
 
     @Test

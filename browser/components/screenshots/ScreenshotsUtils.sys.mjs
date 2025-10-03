@@ -450,11 +450,19 @@ export var ScreenshotsUtils = {
    * @param type The type of screenshot taken. Used for telemetry.
    */
   notify(window, type) {
-    Services.obs.notifyObservers(
-      window.event.currentTarget.ownerGlobal,
-      "menuitem-screenshot",
-      type
-    );
+    if (lazy.SCREENSHOTS_ENABLED) {
+      Services.obs.notifyObservers(
+        window.event.currentTarget.ownerGlobal,
+        "menuitem-screenshot",
+        type
+      );
+    } else {
+      Services.obs.notifyObservers(
+        null,
+        "menuitem-screenshot-extension",
+        type.toLowerCase()
+      );
+    }
   },
 
   /**

@@ -50,7 +50,7 @@ async function testRemoteClientPersistConnection(
   await selectThisFirefoxPage(document, window.AboutDebugging.store);
 
   await connectToRuntime(sidebarName, document);
-  await waitForRuntimePage(runtimeName, document);
+  await selectRuntime(sidebarName, runtimeName, document);
 
   info("Reload about:debugging");
   document = await reloadAboutDebugging(tab);

@@ -146,7 +146,7 @@ class SearchWidgetProvider : AppWidgetProvider() {
                     setOnClickPendingIntent(R.id.button_search_widget_new_tab, textSearchIntent)
                 }
                 R.layout.search_widget_small -> {
-                    setOnClickPendingIntent(R.id.button_search_widget_new_tab_icon, textSearchIntent)
+                    setOnClickPendingIntent(R.id.button_search_widget_new_tab, textSearchIntent)
                     setOnClickPendingIntent(R.id.button_search_widget_voice, voiceSearchIntent)
                 }
                 R.layout.search_widget_medium,
@@ -199,17 +199,9 @@ class SearchWidgetProvider : AppWidgetProvider() {
         private const val REQUEST_CODE_NEW_TAB = 0
         private const val REQUEST_CODE_VOICE = 1
 
-        /**
-         * Updates all instances of the search widget.
-         *
-         * This function is used to refresh the widget when its appearance or behavior
-         * needs to be changed, for example, when the voice search setting is toggled.
-         *
-         * @param context The application context.
-         * @param appWidgetManager An instance of [AppWidgetManager].
-         */
-        fun updateAllWidgets(context: Context, appWidgetManager: AppWidgetManager) {
-            val widgetIds = appWidgetManager.getAppWidgetIds(ComponentName(context, SearchWidgetProvider::class.java))
+        fun updateAllWidgets(context: Context) {
+            val widgetManager = AppWidgetManager.getInstance(context)
+            val widgetIds = widgetManager.getAppWidgetIds(ComponentName(context, SearchWidgetProvider::class.java))
 
             if (widgetIds.isNotEmpty()) {
                 context.sendBroadcast(

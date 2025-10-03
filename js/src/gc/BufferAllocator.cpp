@@ -139,8 +139,12 @@ struct BufferChunk : public ChunkBase,
   MainThreadOrGCTaskData<BufferMarkBitmap> markBits;
 
   using PerAllocBitmap = mozilla::BitSet<MaxAllocsPerChunk>;
+  using AtomicPerAllocBitmap =
+      mozilla::BitSet<MaxAllocsPerChunk,
+                      mozilla::Atomic<size_t, mozilla::Relaxed>>;
+
   MainThreadOrGCTaskData<PerAllocBitmap> allocBitmap;
-  MainThreadOrGCTaskData<PerAllocBitmap> nurseryOwnedBitmap;
+  MainThreadOrGCTaskData<AtomicPerAllocBitmap> nurseryOwnedBitmap;
 
   static constexpr size_t PagesPerChunk = ChunkSize / PageSize;
   using PerPageBitmap = mozilla::BitSet<PagesPerChunk, uint32_t>;
@@ -313,7 +317,14 @@ template <typename Pred>
 void BufferAllocator::FreeLists::eraseIf(Pred&& pred) {
   for (size_t i = 0; i < MediumAllocClasses; i++) {
     FreeList& freeList = lists[i];
-    freeList.eraseIf(std::forward<Pred>(pred));
+    FreeRegion* region = freeList.getFirst();
+    while (region) {
+      FreeRegion* next = region->getNext();
+      if (pred(region)) {
+        freeList.remove(region);
+      }
+      region = next;
+    }
     available[i] = !freeList.isEmpty();
   }
 }
@@ -2416,7 +2427,7 @@ LargeBuffer* BufferAllocator::lookupLargeBuffer(void* alloc, MaybeLock& lock) {
     lock.emplace(this);
   }
 
-  auto ptr = largeAllocMap.ref().readonlyThreadsafeLookup(alloc);
+  auto ptr = largeAllocMap.ref().lookup(alloc);
   MOZ_ASSERT(ptr);
   LargeBuffer* buffer = ptr->value();
   MOZ_ASSERT(buffer->data() == alloc);

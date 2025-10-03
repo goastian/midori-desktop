@@ -11,8 +11,9 @@
 #include "nsIURIContentListener.h"
 #include "nsWeakReference.h"
 #include "nsITimer.h"
+#include "mozilla/WeakPtr.h"
+#include "nsDocShell.h"
 
-class nsDocShell;
 class nsIInterfaceRequestor;
 class nsIWebNavigationInfo;
 class nsPIDOMWindowOuter;
@@ -85,7 +86,7 @@ class nsDSURIContentListener final : public nsIURIContentListener,
   }
 
  protected:
-  nsDocShell* mDocShell;
+  mozilla::MainThreadWeakPtr<nsDocShell> mDocShell;
   // Hack to handle multipart images without creating a new viewer
   nsCOMPtr<nsIStreamListener> mExistingJPEGStreamListener;
   nsCOMPtr<nsIChannel> mExistingJPEGRequest;

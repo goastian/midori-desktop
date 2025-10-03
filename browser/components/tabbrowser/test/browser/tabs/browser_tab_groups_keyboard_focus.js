@@ -2,10 +2,7 @@
 
 add_setup(() =>
   SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      ["browser.tabs.groups.enabled", true],
-    ],
+    set: [["browser.tabs.groups.enabled", true]],
   })
 );
 

@@ -32,9 +32,7 @@ tree[is="places-tree"] > treechildren::-moz-tree-cell {
 }
 
 #searchFilter {
-  flex: 1;
   max-width: 23em;
-  margin: var(--space-small);
 }
 
 .places-tooltip-box {

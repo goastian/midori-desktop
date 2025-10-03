@@ -315,10 +315,19 @@ class PresentationData {
   ~PresentationData() { MOZ_COUNT_DTOR(PresentationData); }
 };
 
-WebGPUParent::WebGPUParent() : mContext(ffi::wgpu_server_new(this)) {
+#ifdef MOZ_DXCOMPILER
+#  define MOZ_USE_DXC true
+#else
+#  define MOZ_USE_DXC false
+#endif
+
+WebGPUParent::WebGPUParent()
+    : mContext(ffi::wgpu_server_new(this, MOZ_USE_DXC)) {
   mTimer.Start(base::TimeDelta::FromMilliseconds(POLL_TIME_MS), this,
                &WebGPUParent::MaintainDevices);
 }
+
+#undef MOZ_USE_DXC
 
 WebGPUParent::~WebGPUParent() {}
 
@@ -426,6 +435,14 @@ ipc::IPCResult WebGPUParent::RecvInstanceRequestAdapter(
   resolver(std::move(infoByteBuf));
   ForwardError(0, error);
 
+  // free the unused IDs
+  ipc::ByteBuf dropByteBuf;
+  if (!success) {
+    wgpu_server_adapter_free(aAdapterId, ToFFI(&dropByteBuf));
+  }
+  if (dropByteBuf.mData && !SendDropAction(std::move(dropByteBuf))) {
+    NS_ERROR("Unable to free free unused adapter IDs");
+  }
   return IPC_OK();
 }
 
@@ -1433,7 +1450,6 @@ void WebGPUParent::PostExternalTexture(
   auto recycledTexture = mRemoteTextureOwner->GetRecycledExternalTexture(
       size, surfaceFormat, desc->type(), aOwnerId);
   if (recycledTexture) {
-    recycledTexture->CleanForRecycling();
     data->mRecycledExternalTextures.push_back(recycledTexture);
   }
 }
@@ -1628,6 +1644,13 @@ ipc::IPCResult WebGPUParent::RecvSwapChainDrop(
 
   mPresentationDataMap.erase(lookup);
 
+  ipc::ByteBuf dropByteBuf;
+  for (const auto bid : data->mUnassignedBufferIds) {
+    wgpu_server_buffer_free(bid, ToFFI(&dropByteBuf));
+  }
+  if (dropByteBuf.mData && !SendDropAction(std::move(dropByteBuf))) {
+    NS_WARNING("Unable to free an ID for non-assigned buffer");
+  }
   for (const auto bid : data->mAvailableBufferIds) {
     ffi::wgpu_server_buffer_drop(mContext.get(), bid);
   }
@@ -1705,6 +1728,23 @@ ipc::IPCResult WebGPUParent::RecvComputePass(RawId aEncoderId, RawId aDeviceId,
   return IPC_OK();
 }
 
+ipc::IPCResult WebGPUParent::RecvBumpImplicitBindGroupLayout(RawId aPipelineId,
+                                                             bool aIsCompute,
+                                                             uint32_t aIndex,
+                                                             RawId aAssignId) {
+  ErrorBuffer error;
+  if (aIsCompute) {
+    ffi::wgpu_server_compute_pipeline_get_bind_group_layout(
+        mContext.get(), aPipelineId, aIndex, aAssignId, error.ToFFI());
+  } else {
+    ffi::wgpu_server_render_pipeline_get_bind_group_layout(
+        mContext.get(), aPipelineId, aIndex, aAssignId, error.ToFFI());
+  }
+
+  ForwardError(0, error);
+  return IPC_OK();
+}
+
 ipc::IPCResult WebGPUParent::RecvDevicePushErrorScope(
     RawId aDeviceId, const dom::GPUErrorFilter aFilter) {
   const auto& itr = mErrorScopeStackByDevice.find(aDeviceId);
@@ -1771,10 +1811,10 @@ ipc::IPCResult WebGPUParent::RecvDevicePopErrorScope(
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvReportError(RawId aDeviceId,
-                                             GPUErrorFilter aType,
-                                             const nsCString& aMessage) {
-  this->ReportError(Some(aDeviceId), aType, aMessage);
+ipc::IPCResult WebGPUParent::RecvGenerateError(const Maybe<RawId> aDeviceId,
+                                               const dom::GPUErrorFilter aType,
+                                               const nsCString& aMessage) {
+  ReportError(aDeviceId, aType, aMessage);
   return IPC_OK();
 }
 

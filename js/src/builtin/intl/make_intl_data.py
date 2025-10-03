@@ -469,18 +469,17 @@ def writeVariantTagMappings(println, variant_mappings, description, source, url)
     """Writes a function definition that maps variant subtags."""
     println(
         """
-static auto ToSpan(const mozilla::Span<const char>& aSpan) {
-  return aSpan;
+static const char* ToCharPointer(const char* str) {
+  return str;
 }
 
-template <size_t N>
-static auto ToSpan(const mozilla::intl::LanguageTagSubtag<N>& aSubtag) {
-  return aSubtag.Span();
+static const char* ToCharPointer(const mozilla::intl::UniqueChars& str) {
+  return str.get();
 }
 
 template <typename T, typename U = T>
 static bool IsLessThan(const T& a, const U& b) {
-  return ToSpan(a) < ToSpan(b);
+  return strcmp(ToCharPointer(a), ToCharPointer(b)) < 0;
 }
 """
     )
@@ -496,24 +495,24 @@ bool mozilla::intl::Locale::PerformVariantMappings() {
     mVariants.erase(mVariants.begin() + index);
   };
 
-  auto insertVariantSortedIfNotPresent = [&](mozilla::Span<const char> variant) {
+  auto insertVariantSortedIfNotPresent = [&](const char* variant) {
     auto* p = std::lower_bound(
         mVariants.begin(), mVariants.end(), variant,
         IsLessThan<decltype(mVariants)::ElementType, decltype(variant)>);
 
     // Don't insert the replacement when already present.
-    if (p != mVariants.end() && p->Span() == variant) {
+    if (p != mVariants.end() && strcmp(p->get(), variant) == 0) {
       return true;
     }
 
     // Insert the preferred variant in sort order.
-    auto preferred = mozilla::intl::VariantSubtag{variant};
-    return !!mVariants.insert(p, preferred);
+    auto preferred = DuplicateStringToUniqueChars(variant);
+    return !!mVariants.insert(p, std::move(preferred));
   };
 
   for (size_t i = 0; i < mVariants.length();) {
-    const auto& variant = mVariants[i];
-    MOZ_ASSERT(IsCanonicallyCasedVariantTag(variant.Span()));
+    const char* variant = mVariants[i].get();
+    MOZ_ASSERT(IsCanonicallyCasedVariantTag(mozilla::MakeStringSpan(variant)));
 """.lstrip()
     )
 
@@ -522,7 +521,7 @@ bool mozilla::intl::Locale::PerformVariantMappings() {
     )
 
     no_replacements = " ||\n        ".join(
-        f"""variant.Span() == mozilla::MakeStringSpan("{deprecated_variant}")"""
+        f"""strcmp(variant, "{deprecated_variant}") == 0"""
         for (deprecated_variant, _) in sorted(no_alias, key=itemgetter(0))
     )
 
@@ -541,7 +540,7 @@ bool mozilla::intl::Locale::PerformVariantMappings() {
     ):
         println(
             f"""
-    else if (variant.Span() == mozilla::MakeStringSpan("{deprecated_variant}")) {{
+    else if (strcmp(variant, "{deprecated_variant}") == 0) {{
       removeVariantAt(i);
 """.strip(
                 "\n"
@@ -568,7 +567,7 @@ bool mozilla::intl::Locale::PerformVariantMappings() {
             assert type == "variant"
             println(
                 f"""
-      if (!insertVariantSortedIfNotPresent(mozilla::MakeStringSpan("{replacement}"))) {{
+      if (!insertVariantSortedIfNotPresent("{replacement}")) {{
         return false;
       }}
 """.strip(
@@ -629,30 +628,30 @@ bool mozilla::intl::Locale::UpdateLegacyMappings() {
   MOZ_ASSERT(std::is_sorted(mVariants.begin(), mVariants.end(),
                             IsLessThan<decltype(mVariants)::ElementType>));
 
-  auto findVariant = [this](mozilla::Span<const char> variant) {
+  auto findVariant = [this](const char* variant) {
     auto* p = std::lower_bound(mVariants.begin(), mVariants.end(), variant,
                                IsLessThan<decltype(mVariants)::ElementType,
                                           decltype(variant)>);
 
-    if (p != mVariants.end() && p->Span() == variant) {
+    if (p != mVariants.end() && strcmp(p->get(), variant) == 0) {
       return p;
     }
     return static_cast<decltype(p)>(nullptr);
   };
 
-  auto insertVariantSortedIfNotPresent = [&](mozilla::Span<const char> variant) {
+  auto insertVariantSortedIfNotPresent = [&](const char* variant) {
     auto* p = std::lower_bound(mVariants.begin(), mVariants.end(), variant,
                                IsLessThan<decltype(mVariants)::ElementType,
                                           decltype(variant)>);
 
     // Don't insert the replacement when already present.
-    if (p != mVariants.end() && p->Span() == variant) {
+    if (p != mVariants.end() && strcmp(p->get(), variant) == 0) {
       return true;
     }
 
     // Insert the preferred variant in sort order.
-    auto preferred = mozilla::intl::VariantSubtag{variant};
-    return !!mVariants.insert(p, preferred);
+    auto preferred = DuplicateStringToUniqueChars(variant);
+    return !!mVariants.insert(p, std::move(preferred));
   };
 
   auto removeVariant = [&](auto* p) {
@@ -699,11 +698,11 @@ bool mozilla::intl::Locale::UpdateLegacyMappings() {
         println(
             """
   if (mVariants.length() >= 2) {
-    if (auto* hepburn = findVariant(mozilla::MakeStringSpan("hepburn"))) {
-      if (auto* heploc = findVariant(mozilla::MakeStringSpan("heploc"))) {
+    if (auto* hepburn = findVariant("hepburn")) {
+      if (auto* heploc = findVariant("heploc")) {
         removeVariants(hepburn, heploc);
 
-        if (!insertVariantSortedIfNotPresent(mozilla::MakeStringSpan("alalc97"))) {
+        if (!insertVariantSortedIfNotPresent("alalc97")) {
           return false;
         }
       }
@@ -819,7 +818,7 @@ bool mozilla::intl::Locale::UpdateLegacyMappings() {
                 for i, variant in enumerate(sorted_variants):
                     println(
                         f"""
-    {"  " * i}{maybe_else}if (auto* {variant} = findVariant(mozilla::MakeStringSpan("{variant}"))) {{
+    {"  " * i}{maybe_else}if (auto* {variant} = findVariant("{variant}")) {{
 """.rstrip().lstrip(
                             "\n"
                         )

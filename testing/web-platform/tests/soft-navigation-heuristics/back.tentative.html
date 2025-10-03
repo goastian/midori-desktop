@@ -25,11 +25,12 @@
         addTextToDivOnMain();
       },
       link: link,
-      pushState: async () => {
-        history.back();
-        await waitForUrlToEndWith("foobar.html");
-      },
+      pushState: url=>{history.back()},
       test: "`history.back() properly works with SoftNavigationHeuristics"});
   </script>
 </body>
 </html>
+
+
+
+

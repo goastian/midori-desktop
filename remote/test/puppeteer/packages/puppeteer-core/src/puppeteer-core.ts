@@ -6,8 +6,8 @@
 
 export * from './index.js';
 
-import fs from 'node:fs';
-import path from 'node:path';
+import fs from 'fs';
+import path from 'path';
 
 import {environment} from './environment.js';
 

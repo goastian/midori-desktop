@@ -296,15 +296,11 @@ void SVGForeignObjectFrame::NotifySVGChanged(uint32_t aFlags) {
       needNewCanvasTM = true;
     }
 
-    const auto anchorResolutionParams = AnchorPosResolutionParams::From(this);
+    const auto positionProperty = StyleDisplay()->mPosition;
     // Our coordinate context's width/height has changed. If we have a
     // percentage width/height our dimensions will change so we must reflow.
-    if (StylePosition()
-            ->GetWidth(anchorResolutionParams.mPosition)
-            ->HasPercent() ||
-        StylePosition()
-            ->GetHeight(anchorResolutionParams.mPosition)
-            ->HasPercent()) {
+    if (StylePosition()->GetWidth(positionProperty)->HasPercent() ||
+        StylePosition()->GetHeight(positionProperty)->HasPercent()) {
       needNewBounds = true;
       needReflow = true;
     }

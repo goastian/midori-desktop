@@ -77,7 +77,11 @@ class TabsCleanupFeature(
         }
 
         val snackbarMessage = if (sessionCode == ALL_PRIVATE_TABS) {
-            context.getString(R.string.snackbar_private_data_deleted)
+            if (settings.feltPrivateBrowsingEnabled) {
+                context.getString(R.string.snackbar_private_data_deleted)
+            } else {
+                context.getString(R.string.snackbar_private_tabs_closed)
+            }
         } else {
             context.getString(R.string.snackbar_tabs_closed)
         }

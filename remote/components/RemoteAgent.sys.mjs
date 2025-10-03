@@ -5,6 +5,7 @@
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  CDP: "chrome://remote/content/cdp/CDP.sys.mjs",
   Deferred: "chrome://remote/content/shared/Sync.sys.mjs",
   HttpServer: "chrome://remote/content/server/httpd.sys.mjs",
   Log: "chrome://remote/content/shared/Log.sys.mjs",
@@ -15,6 +16,18 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
+
+ChromeUtils.defineLazyGetter(lazy, "activeProtocols", () => {
+  const protocols = Services.prefs.getIntPref("remote.active-protocols");
+  if (protocols < 1 || protocols > 3) {
+    throw Error(`Invalid remote protocol identifier: ${protocols}`);
+  }
+
+  return protocols;
+});
+
+const WEBDRIVER_BIDI_ACTIVE = 0x1;
+const CDP_ACTIVE = 0x2;
 
 const DEFAULT_HOST = "localhost";
 const DEFAULT_PORT = 9222;
@@ -38,6 +51,7 @@ class RemoteAgentParentProcess {
   #port;
   #server;
 
+  #cdp;
   #webDriverBiDi;
 
   constructor() {
@@ -53,6 +67,7 @@ class RemoteAgentParentProcess {
     this.#server = null;
 
     // Supported protocols
+    this.#cdp = null;
     this.#webDriverBiDi = null;
   }
 
@@ -114,6 +129,19 @@ class RemoteAgentParentProcess {
   get browserStartupFinished() {
     return this.#browserStartupFinished.promise;
   }
+
+  get cdp() {
+    return this.#cdp;
+  }
+
+  get debuggerAddress() {
+    if (!this.#server) {
+      return "";
+    }
+
+    return `${this.#host}:${this.#port}`;
+  }
+
   get enabled() {
     return this.#enabled;
   }
@@ -310,7 +338,7 @@ class RemoteAgentParentProcess {
 
       Services.obs.notifyObservers(null, "remote-listening", true);
 
-      await this.#webDriverBiDi?.start();
+      await Promise.all([this.#webDriverBiDi?.start(), this.#cdp?.start()]);
     } catch (e) {
       await this.#stop();
       lazy.logger.error(
@@ -383,6 +411,7 @@ class RemoteAgentParentProcess {
     }
 
     // Stop each protocol before stopping the HTTP server.
+    await this.#cdp?.stop();
     await this.#webDriverBiDi?.stop();
 
     try {
@@ -446,8 +475,25 @@ class RemoteAgentParentProcess {
           // Apply the common set of preferences for all supported protocols
           lazy.RecommendedPreferences.applyPreferences();
 
-          this.#webDriverBiDi = new lazy.WebDriverBiDi(this);
-          lazy.logger.debug("WebDriver BiDi enabled");
+          // With Bug 1717899 we will extend the lifetime of the Remote Agent to
+          // the whole Firefox session, which will be identical to Marionette. For
+          // now prevent logging if the component is not enabled during startup.
+          if (
+            (lazy.activeProtocols & WEBDRIVER_BIDI_ACTIVE) ===
+            WEBDRIVER_BIDI_ACTIVE
+          ) {
+            this.#webDriverBiDi = new lazy.WebDriverBiDi(this);
+            if (this.#enabled) {
+              lazy.logger.debug("WebDriver BiDi enabled");
+            }
+          }
+
+          if ((lazy.activeProtocols & CDP_ACTIVE) === CDP_ACTIVE) {
+            this.#cdp = new lazy.CDP(this);
+            if (this.#enabled) {
+              lazy.logger.debug("CDP enabled");
+            }
+          }
         }
         break;
 
@@ -497,7 +543,7 @@ class RemoteAgentParentProcess {
 
   helpInfo = `  --remote-debugging-port [<port>] Start the Firefox Remote Agent,
                      which is a low-level remote debugging interface used for WebDriver
-                     BiDi. Defaults to port 9222.
+                     BiDi and CDP. Defaults to port 9222.
   --remote-allow-hosts <hosts> Values of the Host header to allow for incoming requests.
                      Please read security guidelines at https://firefox-source-docs.mozilla.org/remote/Security.html
   --remote-allow-origins <origins> Values of the Origin header to allow for incoming requests.

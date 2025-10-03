@@ -30,7 +30,8 @@ localstorage.request:
     data_sensitivity:
       - technical
     notification_emails:
-      - jan.varga@gmail.com
+      - hsingh@mozilla.com
+      - jvarga@mozilla.com
       - storage-telemetry@mozilla.com
     expires: never
   send_cancel_counter:
@@ -46,8 +47,8 @@ localstorage.request:
     data_sensitivity:
       - technical
     notification_emails:
-      - jan.varga@gmail.com
-      - storage-telemetry@mozilla.com
+      - hsingh@mozilla.com
+      - jvarga@mozilla.com
     expires: never
   recv_cancel_counter:
     type: counter
@@ -62,7 +63,8 @@ localstorage.request:
     data_sensitivity:
       - technical
     notification_emails:
-      - jan.varga@gmail.com
+      - hsingh@mozilla.com
+      - jvarga@mozilla.com
       - storage-telemetry@mozilla.com
     expires: never
 localstorage.database:
@@ -82,7 +84,8 @@ localstorage.database:
     data_sensitivity:
       - technical
     notification_emails:
-      - jan.varga@gmail.com
+      - hsingh@mozilla.com
+      - jvarga@mozilla.com
       - storage-telemetry@mozilla.com
     expires: never
   request_allow_to_close_response_time:
@@ -100,6 +103,6 @@ localstorage.database:
     data_sensitivity:
       - technical
     notification_emails:
-      - jan.varga@gmail.com
+      - jvarga@mozilla.com
       - storage-telemetry@mozilla.com
-    expires: never
+    expires: 142

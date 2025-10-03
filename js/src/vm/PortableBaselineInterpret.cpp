@@ -702,7 +702,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
     DECLARE_CACHEOP_CASE(CompareInt32Result);
     DECLARE_CACHEOP_CASE(CompareNullUndefinedResult);
     DECLARE_CACHEOP_CASE(AssertPropertyLookup);
-    DECLARE_CACHEOP_CASE(GuardIsNonResizableTypedArray);
+    DECLARE_CACHEOP_CASE(GuardIsFixedLengthTypedArray);
     DECLARE_CACHEOP_CASE(GuardIndexIsNotDenseElement);
     DECLARE_CACHEOP_CASE(LoadFixedSlotTypedResult);
     DECLARE_CACHEOP_CASE(LoadDenseElementHoleResult);
@@ -1188,22 +1188,54 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         JSObject* object = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
         switch (kind) {
           case GuardClassKind::Array:
+            if (object->getClass() != &ArrayObject::class_) {
+              FAIL_IC();
+            }
+            break;
           case GuardClassKind::PlainObject:
+            if (object->getClass() != &PlainObject::class_) {
+              FAIL_IC();
+            }
+            break;
           case GuardClassKind::FixedLengthArrayBuffer:
-          case GuardClassKind::ImmutableArrayBuffer:
+            if (object->getClass() != &FixedLengthArrayBufferObject::class_) {
+              FAIL_IC();
+            }
+            break;
           case GuardClassKind::ResizableArrayBuffer:
+            if (object->getClass() != &ResizableArrayBufferObject::class_) {
+              FAIL_IC();
+            }
+            break;
           case GuardClassKind::FixedLengthSharedArrayBuffer:
+            if (object->getClass() !=
+                &FixedLengthSharedArrayBufferObject::class_) {
+              FAIL_IC();
+            }
+            break;
           case GuardClassKind::GrowableSharedArrayBuffer:
+            if (object->getClass() !=
+                &GrowableSharedArrayBufferObject::class_) {
+              FAIL_IC();
+            }
+            break;
           case GuardClassKind::FixedLengthDataView:
-          case GuardClassKind::ImmutableDataView:
+            if (object->getClass() != &FixedLengthDataViewObject::class_) {
+              FAIL_IC();
+            }
+            break;
           case GuardClassKind::ResizableDataView:
+            if (object->getClass() != &ResizableDataViewObject::class_) {
+              FAIL_IC();
+            }
+            break;
           case GuardClassKind::MappedArguments:
+            if (object->getClass() != &MappedArgumentsObject::class_) {
+              FAIL_IC();
+            }
+            break;
           case GuardClassKind::UnmappedArguments:
-          case GuardClassKind::Set:
-          case GuardClassKind::Map:
-          case GuardClassKind::BoundFunction:
-          case GuardClassKind::Date:
-            if (object->getClass() != jit::ClassFor(kind)) {
+            if (object->getClass() != &UnmappedArgumentsObject::class_) {
               FAIL_IC();
             }
             break;
@@ -1216,6 +1248,26 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             break;
           case GuardClassKind::JSFunction:
             if (!object->is<JSFunction>()) {
+              FAIL_IC();
+            }
+            break;
+          case GuardClassKind::Set:
+            if (object->getClass() != &SetObject::class_) {
+              FAIL_IC();
+            }
+            break;
+          case GuardClassKind::Map:
+            if (object->getClass() != &MapObject::class_) {
+              FAIL_IC();
+            }
+            break;
+          case GuardClassKind::BoundFunction:
+            if (object->getClass() != &BoundFunctionObject::class_) {
+              FAIL_IC();
+            }
+            break;
+          case GuardClassKind::Date:
+            if (object->getClass() != &DateObject::class_) {
               FAIL_IC();
             }
             break;
@@ -1334,11 +1386,10 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         DISPATCH_CACHEOP();
       }
 
-      CACHEOP_CASE(GuardIsNonResizableTypedArray) {
+      CACHEOP_CASE(GuardIsFixedLengthTypedArray) {
         ObjOperandId objId = cacheIRReader.objOperandId();
         JSObject* obj = reinterpret_cast<JSObject*>(READ_REG(objId.id()));
-        if (!IsFixedLengthTypedArrayClass(obj->getClass()) &&
-            !IsImmutableTypedArrayClass(obj->getClass())) {
+        if (!IsFixedLengthTypedArrayClass(obj->getClass())) {
           FAIL_IC();
         }
         DISPATCH_CACHEOP();
@@ -2415,7 +2466,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
       CACHEOP_CASE_FALLTHROUGH(CallScriptedSetter) {
         bool isSetter = cacheop == CacheOp::CallScriptedSetter;
         ObjOperandId receiverId = cacheIRReader.objOperandId();
-        ObjOperandId calleeId = cacheIRReader.objOperandId();
+        uint32_t getterSetterOffset = cacheIRReader.stubOffset();
         ValOperandId rhsId =
             isSetter ? cacheIRReader.valOperandId() : ValOperandId();
         bool sameRealm = cacheIRReader.readBool();
@@ -2425,8 +2476,8 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
         Value receiver = isSetter ? ObjectValue(*reinterpret_cast<JSObject*>(
                                         READ_REG(receiverId.id())))
                                   : READ_VALUE_REG(receiverId.id());
-        JSFunction* callee =
-            reinterpret_cast<JSFunction*>(READ_REG(calleeId.id()));
+        JSFunction* callee = reinterpret_cast<JSFunction*>(
+            stubInfo->getStubRawWord(cstub, getterSetterOffset));
         Value rhs = isSetter ? READ_VALUE_REG(rhsId.id()) : UndefinedValue();
 
         if (!sameRealm) {
@@ -6977,7 +7028,14 @@ PBIResult PortableBaselineInterpret(
         JSOp op = JSOp(*pc);
         uint16_t operand = GET_UINT16(pc);
         {
-          bool result = js::ConstantStrictEqual(VIRTPOP().asValue(), operand);
+          ReservedRooted<JS::Value> val(&state.value0, VIRTPOP().asValue());
+          bool result;
+          {
+            PUSH_EXIT_FRAME();
+            if (!js::ConstantStrictEqual(cx, val, operand, &result)) {
+              GOTO_ERROR();
+            }
+          }
           VIRTPUSH(StackVal(
               BooleanValue(op == JSOp::StrictConstantEq ? result : !result)));
         }

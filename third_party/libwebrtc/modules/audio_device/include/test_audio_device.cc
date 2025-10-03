@@ -43,7 +43,7 @@ namespace webrtc {
 namespace {
 
 constexpr int kFrameLengthUs = 10000;
-constexpr int kFramesPerSecond = kNumMicrosecsPerSec / kFrameLengthUs;
+constexpr int kFramesPerSecond = rtc::kNumMicrosecsPerSec / kFrameLengthUs;
 
 class TestAudioDeviceModuleImpl : public AudioDeviceModuleImpl {
  public:

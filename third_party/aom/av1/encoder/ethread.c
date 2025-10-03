@@ -704,9 +704,9 @@ static int enc_row_mt_worker_hook(void *arg1, void *unused) {
     if (this_tile->allow_update_cdf) {
       td->mb.row_ctx = this_tile->row_ctx;
       if (current_mi_row == tile_info->mi_row_start)
-        *td->mb.e_mbd.tile_ctx = this_tile->tctx;
+        memcpy(td->mb.e_mbd.tile_ctx, &this_tile->tctx, sizeof(FRAME_CONTEXT));
     } else {
-      *td->mb.e_mbd.tile_ctx = this_tile->tctx;
+      memcpy(td->mb.e_mbd.tile_ctx, &this_tile->tctx, sizeof(FRAME_CONTEXT));
     }
 
     av1_init_above_context(&cm->above_contexts, av1_num_planes(cm), tile_row,
@@ -1241,7 +1241,7 @@ int av1_compute_num_fp_contexts(AV1_PRIMARY *ppi, AV1EncoderConfig *oxcf) {
     if (num_fp_contexts < MAX_PARALLEL_FRAMES) num_fp_contexts = 1;
   }
 
-  num_fp_contexts = clamp(num_fp_contexts, 1, MAX_PARALLEL_FRAMES);
+  num_fp_contexts = AOMMAX(1, AOMMIN(num_fp_contexts, MAX_PARALLEL_FRAMES));
   // Limit recalculated num_fp_contexts to ppi->num_fp_contexts.
   num_fp_contexts = (ppi->num_fp_contexts == 1)
                         ? num_fp_contexts
@@ -1605,7 +1605,8 @@ static inline void prepare_enc_workers(AV1_COMP *cpi, AVxWorkerHook hook,
             cm, thread_data->td->mv_costs_alloc,
             (MvCosts *)aom_malloc(sizeof(*thread_data->td->mv_costs_alloc)));
         thread_data->td->mb.mv_costs = thread_data->td->mv_costs_alloc;
-        *thread_data->td->mb.mv_costs = *cpi->td.mb.mv_costs;
+        memcpy(thread_data->td->mb.mv_costs, cpi->td.mb.mv_costs,
+               sizeof(MvCosts));
       }
       if (cpi->sf.intra_sf.dv_cost_upd_level != INTERNAL_COST_UPD_OFF) {
         // Reset dv_costs to NULL for worker threads when dv cost update is
@@ -1617,7 +1618,8 @@ static inline void prepare_enc_workers(AV1_COMP *cpi, AVxWorkerHook hook,
                           (IntraBCMVCosts *)aom_malloc(
                               sizeof(*thread_data->td->dv_costs_alloc)));
           thread_data->td->mb.dv_costs = thread_data->td->dv_costs_alloc;
-          *thread_data->td->mb.dv_costs = *cpi->td.mb.dv_costs;
+          memcpy(thread_data->td->mb.dv_costs, cpi->td.mb.dv_costs,
+                 sizeof(IntraBCMVCosts));
         }
       }
     }
@@ -1629,7 +1631,7 @@ static inline void prepare_enc_workers(AV1_COMP *cpi, AVxWorkerHook hook,
     thread_data->td->mb.palette_pixels = 0;
 
     if (thread_data->td->counts != &cpi->counts) {
-      *thread_data->td->counts = cpi->counts;
+      memcpy(thread_data->td->counts, &cpi->counts, sizeof(cpi->counts));
     }
 
     if (i > 0) {

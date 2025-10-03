@@ -10,6 +10,7 @@ import mozilla.components.browser.state.state.SessionState
 import org.mozilla.focus.R
 import org.mozilla.focus.ext.components
 import org.mozilla.focus.ext.requireComponents
+import org.mozilla.focus.ext.showCrashReports
 import org.mozilla.focus.ext.showToolbar
 import org.mozilla.focus.state.AppAction
 import org.mozilla.focus.state.Screen
@@ -81,9 +82,7 @@ class MozillaSettingsFragment :
             }
 
             resources.getString(R.string.pref_key_crash_reports) -> {
-                requireComponents.appStore.dispatch(
-                    AppAction.OpenSettings(Screen.Settings.Page.CrashList),
-                )
+                context?.showCrashReports()
             }
         }
         return super.onPreferenceTreeClick(preference)

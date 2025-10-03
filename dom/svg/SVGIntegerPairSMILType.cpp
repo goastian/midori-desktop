@@ -12,7 +12,7 @@
 
 namespace mozilla {
 
-void SVGIntegerPairSMILType::InitValue(SMILValue& aValue) const {
+void SVGIntegerPairSMILType::Init(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.IsNull(), "Unexpected value type");
 
   aValue.mU.mIntPair[0] = 0;
@@ -20,7 +20,7 @@ void SVGIntegerPairSMILType::InitValue(SMILValue& aValue) const {
   aValue.mType = this;
 }
 
-void SVGIntegerPairSMILType::DestroyValue(SMILValue& aValue) const {
+void SVGIntegerPairSMILType::Destroy(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.mType == this, "Unexpected SMIL value");
   aValue.mU.mIntPair[0] = 0;
   aValue.mU.mIntPair[1] = 0;

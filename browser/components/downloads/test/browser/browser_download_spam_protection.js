@@ -31,10 +31,7 @@ add_setup(async function () {
     Services.perms.UNKNOWN_ACTION
   );
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      ["browser.download.enable_spam_prevention", true],
-    ],
+    set: [["browser.download.enable_spam_prevention", true]],
     clear: [
       ["browser.download.alwaysOpenPanel"],
       ["browser.download.always_ask_before_handling_new_types"],

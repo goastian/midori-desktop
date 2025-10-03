@@ -31,8 +31,8 @@ namespace webrtc {
 
 struct EmulatedIpPacket {
  public:
-  EmulatedIpPacket(const SocketAddress& from,
-                   const SocketAddress& to,
+  EmulatedIpPacket(const rtc::SocketAddress& from,
+                   const rtc::SocketAddress& to,
                    rtc::CopyOnWriteBuffer data,
                    Timestamp arrival_time,
                    uint16_t application_overhead = 0,
@@ -49,8 +49,8 @@ struct EmulatedIpPacket {
   const uint8_t* cdata() const { return data.cdata(); }
 
   size_t ip_packet_size() const { return size() + headers_size; }
-  SocketAddress from;
-  SocketAddress to;
+  rtc::SocketAddress from;
+  rtc::SocketAddress to;
   // Holds the UDP payload.
   rtc::CopyOnWriteBuffer data;
   uint16_t headers_size;
@@ -215,7 +215,7 @@ struct EmulatedNetworkStats {
 
   // List of IP addresses that were used to send data considered in this stats
   // object.
-  std::vector<IPAddress> local_addresses;
+  std::vector<rtc::IPAddress> local_addresses;
 
   // Overall outgoing stats for all IP addresses which were requested.
   EmulatedNetworkOutgoingStats overall_outgoing_stats;
@@ -224,9 +224,10 @@ struct EmulatedNetworkStats {
   // on requested interfaces.
   EmulatedNetworkIncomingStats overall_incoming_stats;
 
-  std::map<IPAddress, EmulatedNetworkOutgoingStats>
+  std::map<rtc::IPAddress, EmulatedNetworkOutgoingStats>
       outgoing_stats_per_destination;
-  std::map<IPAddress, EmulatedNetworkIncomingStats> incoming_stats_per_source;
+  std::map<rtc::IPAddress, EmulatedNetworkIncomingStats>
+      incoming_stats_per_source;
 
   // Duration between packet was received on network interface and was
   // dispatched to the network in microseconds.
@@ -258,8 +259,8 @@ class EmulatedEndpoint : public EmulatedNetworkReceiverInterface {
   // socket.
   // `to` will be used for routing verification and picking right socket by port
   // on destination endpoint.
-  virtual void SendPacket(const SocketAddress& from,
-                          const SocketAddress& to,
+  virtual void SendPacket(const rtc::SocketAddress& from,
+                          const rtc::SocketAddress& to,
                           rtc::CopyOnWriteBuffer packet_data,
                           uint16_t application_overhead = 0,
                           EcnMarking ecn = EcnMarking::kNotEct) = 0;
@@ -290,7 +291,7 @@ class EmulatedEndpoint : public EmulatedNetworkReceiverInterface {
   // Unbinds default receiver. Do nothing if no default receiver was bound
   // before.
   virtual void UnbindDefaultReceiver() = 0;
-  virtual IPAddress GetPeerLocalAddress() const = 0;
+  virtual rtc::IPAddress GetPeerLocalAddress() const = 0;
 
  private:
   // Ensure that there can be no other subclass than EmulatedEndpointImpl. This

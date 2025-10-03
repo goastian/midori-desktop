@@ -140,6 +140,3 @@ newtab-error-fallback-refresh-link = Verfris bladsy om weer te probeer.
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

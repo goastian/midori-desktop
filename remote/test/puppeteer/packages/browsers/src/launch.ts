@@ -4,17 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import childProcess from 'node:child_process';
-import {accessSync} from 'node:fs';
-import os from 'node:os';
-import readline from 'node:readline';
+import childProcess from 'child_process';
+import {accessSync} from 'fs';
+import os from 'os';
+import readline from 'readline';
 
 import {
   type Browser,
   type BrowserPlatform,
   resolveSystemExecutablePath,
   type ChromeReleaseChannel,
-  executablePathByBrowser,
 } from './browser-data/browser-data.js';
 import {Cache} from './Cache.js';
 import {debug} from './debug.js';
@@ -28,11 +27,8 @@ const debugLaunch = debug('puppeteer:browsers:launcher');
 export interface ComputeExecutablePathOptions {
   /**
    * Root path to the storage directory.
-   *
-   * Can be set to `null` if the executable path should be relative
-   * to the extracted download location. E.g. `./chrome-linux64/chrome`.
    */
-  cacheDir: string | null;
+  cacheDir: string;
   /**
    * Determines which platform the browser will be suited for.
    *
@@ -56,19 +52,6 @@ export interface ComputeExecutablePathOptions {
 export function computeExecutablePath(
   options: ComputeExecutablePathOptions,
 ): string {
-  if (options.cacheDir === null) {
-    options.platform ??= detectBrowserPlatform();
-    if (options.platform === undefined) {
-      throw new Error(
-        `No platform specified. Couldn't auto-detect browser platform.`,
-      );
-    }
-    return executablePathByBrowser[options.browser](
-      options.platform,
-      options.buildId,
-    );
-  }
-
   return new Cache(options.cacheDir).computeExecutablePath(options);
 }
 
@@ -93,11 +76,6 @@ export interface SystemOptions {
 }
 
 /**
- * Returns a path to a system-wide Chrome installation given a release channel
- * name by checking known installation locations (using
- * https://pptr.dev/browsers-api/browsers.computesystemexecutablepath/). If
- * Chrome instance is not found at the expected path, an error is thrown.
- *
  * @public
  */
 export function computeSystemExecutablePath(options: SystemOptions): string {
@@ -493,10 +471,11 @@ export class Process {
         timeout > 0 ? setTimeout(onTimeout, timeout) : undefined;
 
       const cleanup = (): void => {
-        clearTimeout(timeoutId);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
         rl.off('line', onLine);
         rl.off('close', onClose);
-        rl.close();
         this.#browserProcess.off('exit', onClose);
         this.#browserProcess.off('error', onClose);
       };

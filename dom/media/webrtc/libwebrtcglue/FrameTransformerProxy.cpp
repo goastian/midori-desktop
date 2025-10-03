@@ -196,13 +196,13 @@ bool FrameTransformerProxy::RequestKeyFrame() {
   return true;
 }
 
-void FrameTransformerProxy::KeyFrameRequestDone() {
+void FrameTransformerProxy::KeyFrameRequestDone(bool aSuccess) {
   MutexAutoLock lock(mMutex);
   if (mWorkerThread) {
     mWorkerThread->Dispatch(NS_NewRunnableFunction(
-        __func__, [this, self = RefPtr<FrameTransformerProxy>(this)] {
+        __func__, [this, self = RefPtr<FrameTransformerProxy>(this), aSuccess] {
           if (mScriptTransformer) {
-            mScriptTransformer->KeyFrameRequestDone();
+            mScriptTransformer->KeyFrameRequestDone(aSuccess);
           }
         }));
   }

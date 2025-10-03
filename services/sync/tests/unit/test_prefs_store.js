@@ -31,23 +31,6 @@ AddonTestUtils.createAppInfo(
 );
 AddonTestUtils.overrideCertDB();
 
-let prefsWithUserValue = new Set();
-add_setup(function record_prefsWithUserValue() {
-  for (const pref of Services.prefs.getChildList("")) {
-    if (Services.prefs.prefHasUserValue(pref)) {
-      prefsWithUserValue.add(pref);
-    }
-  }
-});
-
-function clearValues() {
-  for (const pref of Services.prefs.getChildList("")) {
-    if (!prefsWithUserValue.has(pref)) {
-      Services.prefs.clearUserPref(pref);
-    }
-  }
-}
-
 add_task(async function run_test() {
   _("Test fixtures.");
   // Part of this test ensures the default theme, via the preference
@@ -283,7 +266,9 @@ add_task(async function run_test() {
     await store.update(record);
     Assert.equal(Services.prefs.getIntPref("testing.int"), 42);
   } finally {
-    clearValues();
+    for (const pref of Services.prefs.getChildList("")) {
+      Services.prefs.clearUserPref(pref);
+    }
   }
 });
 
@@ -320,7 +305,9 @@ add_task(async function test_dangerously_allow() {
       Ci.nsIPrefBranch.PREF_INVALID
     );
   } finally {
-    clearValues();
+    for (const pref of Services.prefs.getChildList("")) {
+      Services.prefs.clearUserPref(pref);
+    }
   }
 });
 
@@ -365,7 +352,9 @@ add_task(async function test_outgoing_when_changed() {
 
   let engine = Service.engineManager.get("prefs");
   let store = engine._store;
-  clearValues();
+  for (const pref of Services.prefs.getChildList("")) {
+    Services.prefs.clearUserPref(pref);
+  }
 
   Services.prefs.readDefaultPrefsFromFile(
     do_get_file("prefs_test_prefs_store.js")

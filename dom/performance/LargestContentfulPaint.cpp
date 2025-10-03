@@ -269,10 +269,7 @@ void LCPHelpers::FinalizeLCPEntryForImage(
 
   RefPtr<LargestContentfulPaint> entry = new LargestContentfulPaint(
       performance, lcpTimings.mRenderTime.ref(), lcpTimings.mLoadTime, 0,
-      requestURI, aContainingBlock,
-      taoPassed ||
-          StaticPrefs::
-              dom_performance_largest_contentful_paint_coarsened_rendertime_enabled());
+      requestURI, aContainingBlock, taoPassed);
 
   entry->UpdateSize(aContainingBlock, aTargetRectRelativeToSelf, performance,
                     true);
@@ -313,7 +310,15 @@ DOMHighResTimeStamp LargestContentfulPaint::LoadTime() const {
 }
 
 DOMHighResTimeStamp LargestContentfulPaint::StartTime() const {
-  return mShouldExposeRenderTime ? RenderTime() : LoadTime();
+  if (mShouldExposeRenderTime) {
+    return GetReducedTimePrecisionDOMHighRes(mPerformance, mRenderTime);
+  }
+
+  if (mLoadTime.isNothing()) {
+    return 0;
+  }
+
+  return GetReducedTimePrecisionDOMHighRes(mPerformance, mLoadTime.ref());
 }
 
 /* static */
@@ -369,8 +374,7 @@ void LargestContentfulPaint::UpdateSize(
   // algorithm using element as the target and viewport as the root.
   // (From https://wicg.github.io/element-timing/#sec-report-image-element)
   IntersectionInput input = DOMIntersectionObserver::ComputeInput(
-      *frame->PresContext()->Document(), rootFrame->GetContent(), nullptr,
-      nullptr);
+      *frame->PresContext()->Document(), rootFrame->GetContent(), nullptr);
   const IntersectionOutput output =
       DOMIntersectionObserver::Intersect(input, *aContainingBlock);
 
@@ -428,10 +432,14 @@ void LargestContentfulPaint::UpdateSize(
                                  AppUnitsPerCSSPixel());
     LOG("  boundingClientArea = %f", boundingClientArea);
 
-    // If the scale factor is greater than 1, then adjust area.
-    if (boundingClientArea > naturalArea) {
-      LOG("  area before scaled down %f", area);
-      area *= (naturalArea / boundingClientArea);
+    // Let scaleFactor be boundingClientArea / naturalArea.
+    double scaleFactor = boundingClientArea / naturalArea;
+    LOG("  scaleFactor = %f", scaleFactor);
+
+    // If scaleFactor is greater than 1, then divide area by scaleFactor.
+    if (scaleFactor > 1) {
+      LOG("  area before sacled doown %f", area);
+      area = area / scaleFactor;
     }
   }
 

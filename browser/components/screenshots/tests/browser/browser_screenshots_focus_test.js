@@ -75,12 +75,6 @@ async function restoreFocusOnEscape(initialFocusElem, helper) {
   helper.assertPanelNotVisible();
 }
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 add_task(async function testPanelFocused() {
   await BrowserTestUtils.withNewTab(
     {

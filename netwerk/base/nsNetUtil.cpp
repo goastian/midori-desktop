@@ -38,7 +38,6 @@
 #include "nsIBufferedStreams.h"
 #include "nsBufferedStreams.h"
 #include "nsIChannelEventSink.h"
-#include "nsIClassifiedChannel.h"
 #include "nsIContentSniffer.h"
 #include "mozilla/dom/Document.h"
 #include "nsIDownloader.h"
@@ -490,15 +489,6 @@ nsresult NS_NewChannelInternal(
     if (aCookieJarSettings) {
       loadInfo->SetCookieJarSettings(aCookieJarSettings);
     }
-  }
-
-  if (aLoadingNode) {
-    nsCOMPtr<nsILoadInfo> loadInfo = channel->LoadInfo();
-    ClassificationFlags flags =
-        aLoadingNode->OwnerDoc()->GetScriptTrackingFlags();
-
-    loadInfo->SetTriggeringFirstPartyClassificationFlags(flags.firstPartyFlags);
-    loadInfo->SetTriggeringThirdPartyClassificationFlags(flags.thirdPartyFlags);
   }
 
   channel.forget(outChannel);
@@ -4176,9 +4166,8 @@ nsresult AddExtraHeaders(nsIHttpChannel* aHttpChannel,
   return NS_OK;
 }
 
-bool IsLocalNetworkAccess(
-    const nsILoadInfo::IPAddressSpace aParentIPAddressSpace,
-    const nsILoadInfo::IPAddressSpace aTargetIPAddressSpace) {
+bool IsLocalNetworkAccess(nsILoadInfo::IPAddressSpace aParentIPAddressSpace,
+                          nsILoadInfo::IPAddressSpace aTargetIPAddressSpace) {
   // Determine if the request is moving to a more private address space
   // i.e. Public -> Private or Local
   // Private -> Local

@@ -12,10 +12,7 @@ add_task(async function () {
   await new Promise(resolve => {
     SpecialPowers.pushPrefEnv(
       {
-        set: [
-          ["test.wait300msAfterTabSwitch", true],
-          ["browser.link.open_newwindow", 2],
-        ],
+        set: [["browser.link.open_newwindow", 2]],
       },
       resolve
     );

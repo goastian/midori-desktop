@@ -10,8 +10,6 @@
 
 #include "media/base/rid_description.h"
 
-#include <string>
-
 namespace cricket {
 
 RidDescription::RidDescription() = default;

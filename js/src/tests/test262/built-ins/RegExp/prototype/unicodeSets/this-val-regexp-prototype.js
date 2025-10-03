@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-get-regexp.prototype.unicodesets
+esid: sec-get-regexp.prototype.unicodeSets
 description: >
   Return value of `undefined` when the "this" value is the RegExp prototype
   object

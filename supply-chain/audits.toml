@@ -652,6 +652,17 @@ who = "Nicolas Silva <nical@fastmail.com>"
 criteria = "safe-to-deploy"
 version = "0.2.18"
 
+[[audits.allocator-api2]]
+who = "Mike Hommey <mh+mozilla@glandium.org>"
+criteria = "safe-to-deploy"
+delta = "0.2.20 -> 0.2.21"
+
+[[audits.allocator-api2]]
+who = "Mike Hommey <mh+mozilla@glandium.org>"
+criteria = "safe-to-deploy"
+delta = "0.2.21 -> 0.2.21@git:ad5f3d56a5a4519eff52af4ff85293431466ef5c"
+importable = false
+
 [[audits.alsa]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
@@ -661,12 +672,6 @@ delta = "0.4.3 -> 0.7.0"
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "0.7.0 -> 0.8.1"
-
-[[audits.alsa]]
-who = "Gabriele Svelto <gsvelto@mozilla.com>"
-criteria = "safe-to-deploy"
-delta = "0.8.1 -> 0.9.1"
-notes = "Most changes are safe and related to error handling, new unsafe blocks and ioctl() calls appear sound."
 
 [[audits.android-tzdata]]
 who = "Mark Hammond <mhammond@skippinet.com.au>"
@@ -1406,17 +1411,6 @@ delta = "0.2.12 -> 0.2.13"
 who = "Andreas Pehrson <apehrson@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "0.2.13 -> 0.2.14"
-
-[[audits.coremidi]]
-who = "Gabriele Svelto <gsvelto@mozilla.com>"
-criteria = "safe-to-deploy"
-version = "0.8.0"
-
-[[audits.coremidi-sys]]
-who = "Gabriele Svelto <gsvelto@mozilla.com>"
-criteria = "safe-to-deploy"
-delta = "3.1.0 -> 3.2.0"
-notes = "Machine generated bindings, no unsafe or dangerous changes"
 
 [[audits.cose]]
 who = "Mathew Hodson <mathew.hodson@gmail.com>"
@@ -2195,12 +2189,6 @@ criteria = "safe-to-deploy"
 delta = "0.4.6 -> 0.4.9"
 notes = "Mostly soundness fixes."
 
-[[audits.fallible_collections]]
-who = "Matthew Gregan <kinetik@flim.org>"
-criteria = "safe-to-deploy"
-delta = "0.4.9 -> 0.5.1"
-notes = "Changes are largely removal of Rust < 1.57 support and dependency updates."
-
 [[audits.fastrand]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
@@ -2619,11 +2607,6 @@ who = "Jamie Nicol <jnicol@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "0.13.1 -> 0.15.0"
 
-[[audits.gleam]]
-who = "Jamie Nicol <jnicol@mozilla.com>"
-criteria = "safe-to-deploy"
-delta = "0.15.0 -> 0.15.1"
-
 [[audits.glob]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
@@ -2711,11 +2694,6 @@ delta = "0.2.2 -> 0.2.3"
 who = "Erich Gubler <erichdongubler@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.2.3 -> 0.3.0"
-
-[[audits.gpu-descriptor]]
-who = "Andy Leiserson <aleiserson@mozilla.com>"
-criteria = "safe-to-deploy"
-delta = "0.3.0 -> 0.3.2"
 
 [[audits.gpu-descriptor-types]]
 who = "Erich Gubler <erichdongubler@gmail.com>"
@@ -3505,17 +3483,10 @@ criteria = "safe-to-deploy"
 delta = "0.7.0 -> 0.7.0@git:519e651241e867af3391db08f9ae6400bc023e18"
 
 [[audits.midir]]
-who = "Gabriele Svelto <gsvelto@mozilla.com>"
+who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
-delta = "0.7.0 -> 0.10.1"
-notes = "Large formatting changes and some safe additions, the very few modified unsafe blocks deal with explicit memory management and appear to be sound."
-
-[[audits.midir]]
-who = "Gabriele Svelto <gsvelto@mozilla.com>"
-criteria = "safe-to-deploy"
-delta = "0.10.1 -> 0.10.1@git:37ad39de3382c2aad0758dab49ba545331a2257d"
+delta = "0.7.0 -> 0.7.0@git:85156e360a37d851734118104619f86bd18e94c6"
 importable = false
-notes = "Minimal changes to enable vendoring the crate"
 
 [[audits.minidump-common]]
 who = "Gabriele Svelto <gsvelto@mozilla.com>"
@@ -3846,12 +3817,11 @@ delta = "24.0.0 -> 25.0.0"
 [[audits.naga]]
 who = [
     "Teodor Tanasoaia <ttanasoaia@mozilla.com>",
-    "Erich Gubler <erichdongubler@gmail.com>",
-    "Andy Leiserson <aleiserson@mozilla.com>",
     "Jim Blandy <jimb@red-bean.com>",
+    "Erich Gubler <erichdongubler@gmail.com>",
 ]
 criteria = "safe-to-deploy"
-delta = "25.0.0 -> 25.0.0@git:3a5d0f2747fd43a0c4db8d911be1aca510c9ee82"
+delta = "25.0.0 -> 25.0.0@git:88862f1fa3fd0f0c1010e9fc999dcfe47b5ae8fc"
 importable = false
 
 [[audits.net2]]
@@ -3899,6 +3869,12 @@ libc, but the usage looks correct.
 who = "Alex Franchuk <afranchuk@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "0.28.0 -> 0.29.0"
+
+[[audits.nix]]
+who = "Gabriele Svelto <gsvelto@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.29.0 -> 0.30.1"
+notes = "Some new wrappers, support for minor platforms and lots of work around type safety that reduces the unsafe surafce."
 
 [[audits.nom]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
@@ -4612,11 +4588,6 @@ delta = "0.6.26 -> 0.6.27"
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "0.6.27 -> 0.6.28"
-
-[[audits.replace_with]]
-who = "Lars Eggert <lars@eggert.org>"
-criteria = "safe-to-deploy"
-delta = "0.1.7 -> 0.1.8"
 
 [[audits.rinja]]
 who = "Ben Dean-Kawamura <bdk@mozilla.com>"
@@ -6152,12 +6123,11 @@ delta = "24.0.0 -> 25.0.0"
 [[audits.wgpu-core]]
 who = [
     "Teodor Tanasoaia <ttanasoaia@mozilla.com>",
-    "Erich Gubler <erichdongubler@gmail.com>",
-    "Andy Leiserson <aleiserson@mozilla.com>",
     "Jim Blandy <jimb@red-bean.com>",
+    "Erich Gubler <erichdongubler@gmail.com>",
 ]
 criteria = "safe-to-deploy"
-delta = "25.0.0 -> 25.0.0@git:3a5d0f2747fd43a0c4db8d911be1aca510c9ee82"
+delta = "25.0.0 -> 25.0.0@git:88862f1fa3fd0f0c1010e9fc999dcfe47b5ae8fc"
 importable = false
 
 [[audits.wgpu-core-deps-apple]]
@@ -6168,12 +6138,11 @@ version = "25.0.0"
 [[audits.wgpu-core-deps-apple]]
 who = [
     "Teodor Tanasoaia <ttanasoaia@mozilla.com>",
-    "Erich Gubler <erichdongubler@gmail.com>",
-    "Andy Leiserson <aleiserson@mozilla.com>",
     "Jim Blandy <jimb@red-bean.com>",
+    "Erich Gubler <erichdongubler@gmail.com>",
 ]
 criteria = "safe-to-deploy"
-delta = "25.0.0 -> 25.0.0@git:3a5d0f2747fd43a0c4db8d911be1aca510c9ee82"
+delta = "25.0.0 -> 25.0.0@git:88862f1fa3fd0f0c1010e9fc999dcfe47b5ae8fc"
 importable = false
 
 [[audits.wgpu-core-deps-windows-linux-android]]
@@ -6184,12 +6153,11 @@ version = "25.0.0"
 [[audits.wgpu-core-deps-windows-linux-android]]
 who = [
     "Teodor Tanasoaia <ttanasoaia@mozilla.com>",
-    "Erich Gubler <erichdongubler@gmail.com>",
-    "Andy Leiserson <aleiserson@mozilla.com>",
     "Jim Blandy <jimb@red-bean.com>",
+    "Erich Gubler <erichdongubler@gmail.com>",
 ]
 criteria = "safe-to-deploy"
-delta = "25.0.0 -> 25.0.0@git:3a5d0f2747fd43a0c4db8d911be1aca510c9ee82"
+delta = "25.0.0 -> 25.0.0@git:88862f1fa3fd0f0c1010e9fc999dcfe47b5ae8fc"
 importable = false
 
 [[audits.wgpu-hal]]
@@ -6278,12 +6246,11 @@ delta = "24.0.0 -> 25.0.0"
 [[audits.wgpu-hal]]
 who = [
     "Teodor Tanasoaia <ttanasoaia@mozilla.com>",
-    "Erich Gubler <erichdongubler@gmail.com>",
-    "Andy Leiserson <aleiserson@mozilla.com>",
     "Jim Blandy <jimb@red-bean.com>",
+    "Erich Gubler <erichdongubler@gmail.com>",
 ]
 criteria = "safe-to-deploy"
-delta = "25.0.0 -> 25.0.0@git:3a5d0f2747fd43a0c4db8d911be1aca510c9ee82"
+delta = "25.0.0 -> 25.0.0@git:88862f1fa3fd0f0c1010e9fc999dcfe47b5ae8fc"
 importable = false
 
 [[audits.wgpu-types]]
@@ -6367,12 +6334,11 @@ delta = "24.0.0 -> 25.0.0"
 [[audits.wgpu-types]]
 who = [
     "Teodor Tanasoaia <ttanasoaia@mozilla.com>",
-    "Erich Gubler <erichdongubler@gmail.com>",
-    "Andy Leiserson <aleiserson@mozilla.com>",
     "Jim Blandy <jimb@red-bean.com>",
+    "Erich Gubler <erichdongubler@gmail.com>",
 ]
 criteria = "safe-to-deploy"
-delta = "25.0.0 -> 25.0.0@git:3a5d0f2747fd43a0c4db8d911be1aca510c9ee82"
+delta = "25.0.0 -> 25.0.0@git:88862f1fa3fd0f0c1010e9fc999dcfe47b5ae8fc"
 importable = false
 
 [[audits.whatsys]]
@@ -6667,20 +6633,6 @@ criteria = "safe-to-deploy"
 user-id = 6743 # Ed Page (epage)
 start = "2022-04-15"
 end = "2025-08-21"
-
-[[trusted.derive_more]]
-criteria = "safe-to-deploy"
-user-id = 3797 # Jelte Fennema-Nio (JelteF)
-start = "2019-05-25"
-end = "2026-04-21"
-notes = "Jelte audits each PR that was submitted for security issues. He has not contributed much to Mozilla codebases, but is the maintainer of PgBouncer and is a Postgres contributor. Unsafe code is forbidden using #[forbid(unsafe_code)]."
-
-[[trusted.derive_more-impl]]
-criteria = "safe-to-deploy"
-user-id = 3797 # Jelte Fennema-Nio (JelteF)
-start = "2023-07-23"
-end = "2026-04-21"
-notes = "Jelte audits each PR that was submitted for security issues. He has not contributed much to Mozilla codebases, but is the maintainer of PgBouncer and is a Postgres contributor. Unsafe code is forbidden using #[forbid(unsafe_code)]."
 
 [[trusted.dtoa]]
 criteria = "safe-to-deploy"

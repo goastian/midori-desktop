@@ -101,8 +101,6 @@ import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.ext.secure
 import org.mozilla.fenix.ext.settings
-import org.mozilla.fenix.navigation.DefaultNavControllerProvider
-import org.mozilla.fenix.navigation.NavControllerProvider
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.search.awesomebar.AwesomeBarView
 import org.mozilla.fenix.search.awesomebar.toSearchProviderState
@@ -1037,13 +1035,10 @@ class SearchDialogFragment : AppCompatDialogFragment(), UserInteractionHandler {
      */
     @VisibleForTesting
     @SuppressLint("RestrictedApi")
-    internal fun getPreviousDestination(
-        navControllerProvider: NavControllerProvider = DefaultNavControllerProvider(),
-    ): NavBackStackEntry? {
+    internal fun getPreviousDestination(): NavBackStackEntry? {
         // This duplicates the platform functionality for "previousBackStackEntry" but additionally skips this entry.
 
-        val descendingEntries =
-            navControllerProvider.getNavController(this).currentBackStack.value.reversed().iterator()
+        val descendingEntries = findNavController().currentBackStack.value.reversed().iterator()
         // Throw the topmost destination away.
         if (descendingEntries.hasNext()) {
             descendingEntries.next()

@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
+import json
 import os
 import sys
 import time
@@ -10,7 +11,6 @@ import time
 import requests
 from mozbuild.util import memoize
 from taskgraph import create
-from taskgraph.util import json
 from taskgraph.util.taskcluster import requests_retry_session
 
 try:

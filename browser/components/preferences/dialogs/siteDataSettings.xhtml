@@ -47,12 +47,14 @@
       />
       <separator class="thin" />
 
-      <html:moz-input-search
-        id="searchBox"
-        data-l10n-id="site-data-search-textbox"
-        data-l10n-attrs="placeholder"
-      />
-
+      <hbox id="searchBoxContainer">
+        <search-textbox
+          id="searchBox"
+          flex="1"
+          data-l10n-id="site-data-search-textbox"
+          data-l10n-attrs="placeholder"
+        />
+      </hbox>
       <separator class="thin" />
 
       <listheader>

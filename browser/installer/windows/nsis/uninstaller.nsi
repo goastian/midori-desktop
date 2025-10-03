@@ -726,7 +726,7 @@ Section "Uninstall"
   ; subsequently deleted after checking. If the value is found during startup
   ; the browser will offer to Reset Firefox. We use the UpdateChannel to match
   ; uninstalls of Firefox-release with reinstalls of Firefox-release, for example.
-  WriteRegStr HKCU "Software\Mozilla\Firefox" "Uninstalled-${UpdateChannel}" "True"
+  WriteRegStr HKCU "Software\Astian\Midori" "Uninstalled-${UpdateChannel}" "True"
 
 !ifdef MOZ_MAINTENANCE_SERVICE
   ; Get the path the allowed cert is at and remove it

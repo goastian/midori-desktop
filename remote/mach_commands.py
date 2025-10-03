@@ -151,9 +151,8 @@ def vendor_puppeteer(command_context, repository, commitish, install):
             exit_on_fail=False,
         )
 
-        # Always use the `ci` command to not get updated sub-dependencies installed.
         run_npm(
-            "ci",
+            "install",
             cwd=os.path.join(command_context.topsrcdir, puppeteer_dir),
             env=env,
         )

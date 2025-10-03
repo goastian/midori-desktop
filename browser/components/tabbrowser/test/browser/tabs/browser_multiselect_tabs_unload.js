@@ -24,10 +24,6 @@ async function addBrowserTabs(numberOfTabs) {
 }
 
 add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-
   // This is helpful to avoid some weird race conditions in the test, specifically
   // the assertion that !this.blankTab in AsyncTabSwitcher when adding a new tab.
   await promiseTabLoadEvent(

@@ -30,10 +30,10 @@ import org.mozilla.fenix.GleanMetrics.RecentTabs
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
 @OptIn(ExperimentalCoroutinesApi::class)
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class RecentTabControllerTest {
 
     @get:Rule

@@ -134,6 +134,7 @@ bool js::intl::SharedIntlData::ensureTimeZones(JSContext* cx) {
     return false;
   }
 
+  Rooted<JSAtom*> timeZone(cx);
   for (auto timeZoneName : timeZones.unwrap()) {
     if (timeZoneName.isErr()) {
       ReportInternalError(cx);
@@ -146,7 +147,7 @@ bool js::intl::SharedIntlData::ensureTimeZones(JSContext* cx) {
       continue;
     }
 
-    JSAtom* timeZone = Atomize(cx, timeZoneSpan.data(), timeZoneSpan.size());
+    timeZone = Atomize(cx, timeZoneSpan.data(), timeZoneSpan.size());
     if (!timeZone) {
       return false;
     }
@@ -166,7 +167,7 @@ bool js::intl::SharedIntlData::ensureTimeZones(JSContext* cx) {
 
   for (const char* rawTimeZone : timezone::ianaZonesTreatedAsLinksByICU) {
     MOZ_ASSERT(rawTimeZone != nullptr);
-    JSAtom* timeZone = Atomize(cx, rawTimeZone, strlen(rawTimeZone));
+    timeZone = Atomize(cx, rawTimeZone, strlen(rawTimeZone));
     if (!timeZone) {
       return false;
     }
@@ -183,19 +184,21 @@ bool js::intl::SharedIntlData::ensureTimeZones(JSContext* cx) {
 
   ianaLinksCanonicalizedDifferentlyByICU.clearAndCompact();
 
+  Rooted<JSAtom*> linkName(cx);
+  Rooted<JSAtom*>& target = timeZone;
   for (const auto& linkAndTarget :
        timezone::ianaLinksCanonicalizedDifferentlyByICU) {
     const char* rawLinkName = linkAndTarget.link;
     const char* rawTarget = linkAndTarget.target;
 
     MOZ_ASSERT(rawLinkName != nullptr);
-    JSAtom* linkName = Atomize(cx, rawLinkName, strlen(rawLinkName));
+    linkName = Atomize(cx, rawLinkName, strlen(rawLinkName));
     if (!linkName) {
       return false;
     }
 
     MOZ_ASSERT(rawTarget != nullptr);
-    JSAtom* target = Atomize(cx, rawTarget, strlen(rawTarget));
+    target = Atomize(cx, rawTarget, strlen(rawTarget));
     if (!target) {
       return false;
     }
@@ -226,7 +229,7 @@ bool js::intl::SharedIntlData::validateTimeZoneName(
     return false;
   }
 
-  JSLinearString* timeZoneLinear = timeZone->ensureLinear(cx);
+  Rooted<JSLinearString*> timeZoneLinear(cx, timeZone->ensureLinear(cx));
   if (!timeZoneLinear) {
     return false;
   }
@@ -245,7 +248,7 @@ bool js::intl::SharedIntlData::tryCanonicalizeTimeZoneConsistentWithIANA(
     return false;
   }
 
-  JSLinearString* timeZoneLinear = timeZone->ensureLinear(cx);
+  Rooted<JSLinearString*> timeZoneLinear(cx, timeZone->ensureLinear(cx));
   if (!timeZoneLinear) {
     return false;
   }
@@ -515,7 +518,7 @@ bool js::intl::SharedIntlData::isSupportedLocale(JSContext* cx,
     return false;
   }
 
-  JSLinearString* localeLinear = locale->ensureLinear(cx);
+  Rooted<JSLinearString*> localeLinear(cx, locale->ensureLinear(cx));
   if (!localeLinear) {
     return false;
   }
@@ -594,6 +597,7 @@ bool js::intl::SharedIntlData::ensureUpperCaseFirstLocales(JSContext* cx) {
   // complete due to OOM, clear all data and start from scratch.
   upperCaseFirstLocales.clearAndCompact();
 
+  Rooted<JSAtom*> locale(cx);
   for (const char* rawLocale : mozilla::intl::Collator::GetAvailableLocales()) {
     auto collator = mozilla::intl::Collator::TryCreate(rawLocale);
     if (collator.isErr()) {
@@ -611,7 +615,7 @@ bool js::intl::SharedIntlData::ensureUpperCaseFirstLocales(JSContext* cx) {
       continue;
     }
 
-    JSAtom* locale = Atomize(cx, rawLocale, strlen(rawLocale));
+    locale = Atomize(cx, rawLocale, strlen(rawLocale));
     if (!locale) {
       return false;
     }
@@ -645,7 +649,7 @@ bool js::intl::SharedIntlData::isUpperCaseFirst(JSContext* cx,
   }
 #endif
 
-  JSLinearString* localeLinear = locale->ensureLinear(cx);
+  Rooted<JSLinearString*> localeLinear(cx, locale->ensureLinear(cx));
   if (!localeLinear) {
     return false;
   }
@@ -685,6 +689,7 @@ bool js::intl::SharedIntlData::ensureIgnorePunctuationLocales(JSContext* cx) {
   // complete due to OOM, clear all data and start from scratch.
   ignorePunctuationLocales.clearAndCompact();
 
+  Rooted<JSAtom*> locale(cx);
   for (const char* rawLocale : mozilla::intl::Collator::GetAvailableLocales()) {
     auto collator = mozilla::intl::Collator::TryCreate(rawLocale);
     if (collator.isErr()) {
@@ -702,7 +707,7 @@ bool js::intl::SharedIntlData::ensureIgnorePunctuationLocales(JSContext* cx) {
       continue;
     }
 
-    JSAtom* locale = Atomize(cx, rawLocale, strlen(rawLocale));
+    locale = Atomize(cx, rawLocale, strlen(rawLocale));
     if (!locale) {
       return false;
     }
@@ -736,7 +741,7 @@ bool js::intl::SharedIntlData::isIgnorePunctuation(JSContext* cx,
   }
 #endif
 
-  JSLinearString* localeLinear = locale->ensureLinear(cx);
+  Rooted<JSLinearString*> localeLinear(cx, locale->ensureLinear(cx));
   if (!localeLinear) {
     return false;
   }

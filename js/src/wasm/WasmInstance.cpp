@@ -1911,9 +1911,8 @@ static bool ArrayCopyFromElem(JSContext* cx, Handle<WasmArrayObject*> arrayObj,
                                             uint32_t src1, uint32_t src2,
                                             uint32_t len, uint8_t* memBase) {
   MOZ_ASSERT(SASigIntrI8VecMul.failureMode == FailureMode::FailOnNegI32);
-  MOZ_ASSERT(SASigIntrI8VecMul.failureTrap == Trap::OutOfBounds);
-  AutoUnsafeCallWithABI unsafe;
 
+  JSContext* cx = instance->cx();
   const WasmArrayRawBuffer* rawBuf = WasmArrayRawBuffer::fromDataPtr(memBase);
   size_t memLen = rawBuf->byteLength();
 
@@ -1922,6 +1921,7 @@ static bool ArrayCopyFromElem(JSContext* cx, Handle<WasmArrayObject*> arrayObj,
   uint64_t src1Limit = uint64_t(src1) + uint64_t(len);
   uint64_t src2Limit = uint64_t(src2) + uint64_t(len);
   if (destLimit > memLen || src1Limit > memLen || src2Limit > memLen) {
+    ReportTrapError(cx, JSMSG_WASM_OUT_OF_BOUNDS);
     return -1;
   }
 
@@ -1937,9 +1937,11 @@ static bool ArrayCopyFromElem(JSContext* cx, Handle<WasmArrayObject*> arrayObj,
     src2Ptr++;
     len--;
   }
+
   return 0;
 }
 
+#ifdef ENABLE_WASM_JS_STRING_BUILTINS
 template <bool isMutable>
 static WasmArrayObject* UncheckedCastToArrayI16(HandleAnyRef ref) {
   JSObject& object = ref.toJSObject();
@@ -2250,6 +2252,7 @@ int32_t Instance::stringCompare(Instance* instance, void* firstStringArg,
   }
   return result;
 }
+#endif  // ENABLE_WASM_JS_STRING_BUILTINS
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -2463,7 +2466,7 @@ bool Instance::init(JSContext* cx, const JSObjectVector& funcImports,
         import.instance = &fun->wasmInstance();
         import.realm = fun->realm();
         import.code = fun->wasmUncheckedCallEntry();
-      } else if (void* thunk = MaybeGetTypedNative(fun, funcType)) {
+      } else if (void* thunk = MaybeGetBuiltinThunk(fun, funcType)) {
         import.instance = this;
         import.realm = fun->realm();
         import.code = thunk;

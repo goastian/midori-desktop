@@ -103,27 +103,28 @@ struct BuiltinModuleIds {
 struct FeatureOptions {
   FeatureOptions()
       : disableOptimizingCompiler(false),
-        mozIntGemm(false),
         isBuiltinModule(false),
         jsStringBuiltins(false),
-        jsStringConstants(false) {}
+        jsStringConstants(false),
+        requireExnref(false) {}
 
   // Whether we should try to disable our optimizing compiler. Only available
   // with `IsSimdPrivilegedContext`.
   bool disableOptimizingCompiler;
-  // Whether we enable the mozIntGemm builtin module. Only available with
-  // `IsSimdPrivilegedContext`.
-  bool mozIntGemm;
 
   // Enables builtin module opcodes, only set in WasmBuiltinModule.cpp.
   bool isBuiltinModule;
 
-  // Enable JS String builtins for this module.
+  // Enable JS String builtins for this module, only available if the feature
+  // is also enabled.
   bool jsStringBuiltins;
   // Enable imported string constants for this module, only available if the
   // feature is also enabled.
   bool jsStringConstants;
   SharedChars jsStringConstantsNamespace;
+
+  // Enable exnref support.
+  bool requireExnref;
 
   // Parse the compile options bag.
   [[nodiscard]] bool init(JSContext* cx, HandleValue val);

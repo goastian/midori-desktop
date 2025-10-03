@@ -16,9 +16,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.R
 import org.mozilla.fenix.ext.settings
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class CustomEtpCookiesOptionsDropDownListPreferenceTest {
     @Test
     fun `GIVEN total cookie protection is enabled WHEN using this preference THEN show the total cookie protection option`() {

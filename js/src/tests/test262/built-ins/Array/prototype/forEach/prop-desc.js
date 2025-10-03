@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-array.prototype.foreach
+esid: sec-array.prototype.forEach
 description: >
   "forEach" property of Array.prototype
 info: |

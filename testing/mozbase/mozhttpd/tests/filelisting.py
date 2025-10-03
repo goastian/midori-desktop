@@ -11,6 +11,7 @@ from urllib.request import urlopen
 import mozhttpd
 import mozunit
 import pytest
+from six import ensure_str
 
 
 @pytest.fixture(name="docroot")
@@ -47,7 +48,7 @@ def test_filelist(httpd, docroot, path):
     pattern = r"""\<[a-zA-Z0-9\-\_\.\="'\/\\%\!\@\#\$\^\&\*\(\) :;]*\>"""
 
     for line in f.readlines():
-        subbed_lined = re.sub(pattern, "", line.decode().strip("\n"))
+        subbed_lined = re.sub(pattern, "", ensure_str(line).strip("\n"))
         webline = subbed_lined.strip("/").strip().strip("@")
 
         if (

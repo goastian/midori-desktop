@@ -13,7 +13,7 @@ index 45df0d2e26192..e2aa2d7c69404 100644
            ],
            'conditions': [
              # Disable LTO in libyuv_neon target due to gcc 4.9 compiler bug.
-@@ -83,16 +81,6 @@
+@@ -108,16 +106,6 @@
                  '-ffat-lto-objects',
                ],
              }],
@@ -30,7 +30,19 @@ index 45df0d2e26192..e2aa2d7c69404 100644
            ],
          }],
          ['build_msa != 0', {
-@@ -162,12 +150,105 @@
+@@ -157,6 +145,11 @@
+             }],
+           ],
+         }],
++        ['target_arch == "arm64" and moz_have_arm_sve2 != 1 and build_with_mozilla == 1', {
++          'defines' :[
++            'LIBYUV_DISABLE_SVE',
++          ]
++        }],
+       ], #conditions
+       'defines': [
+         # Enable the following 3 macros to turn off assembly for specified CPU.
+@@ -186,12 +179,94 @@
                '-Wl,--dynamic-linker,/system/bin/linker',
              ],
            }],
@@ -43,17 +55,6 @@ index 45df0d2e26192..e2aa2d7c69404 100644
 +            'dependencies': [
 +                 ':libyuv_sve',
 +            ],
-+            'defines' :[
-+              'LIBYUV_SVE',
-+            ]
-+          }],
-+          ['target_arch == "arm64" and moz_have_arm_sve2 == 1 and build_with_mozilla == 1', {
-+            'dependencies': [
-+                 ':libyuv_sve',
-+            ],
-+            'defines' :[
-+              'LIBYUV_SVE',
-+            ]
 +          }],
          ], #conditions
        },

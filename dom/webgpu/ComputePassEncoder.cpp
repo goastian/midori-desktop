@@ -10,13 +10,13 @@
 #include "ComputePipeline.h"
 #include "CommandEncoder.h"
 #include "Utility.h"
+
 #include "mozilla/webgpu/ffi/wgpu.h"
-#include "ipc/WebGPUChild.h"
 
 namespace mozilla::webgpu {
 
 GPU_IMPL_CYCLE_COLLECTION(ComputePassEncoder, mParent, mUsedBindGroups,
-                          mUsedBuffers, mUsedPipelines)
+                          mUsedPipelines)
 GPU_IMPL_JS_WRAP(ComputePassEncoder)
 
 void ffiWGPUComputePassDeleter::operator()(ffi::WGPURecordedComputePass* raw) {
@@ -53,7 +53,6 @@ void ComputePassEncoder::Cleanup() {
   mValid = false;
   mPass.release();
   mUsedBindGroups.Clear();
-  mUsedBuffers.Clear();
   mUsedPipelines.Clear();
 }
 
@@ -64,7 +63,6 @@ void ComputePassEncoder::SetBindGroup(uint32_t aSlot,
   RawId bindGroup = 0;
   if (aBindGroup) {
     mUsedBindGroups.AppendElement(aBindGroup);
-    mUsedCanvasContexts.AppendElements(aBindGroup->GetCanvasContexts());
     bindGroup = aBindGroup->mId;
   }
   ffi::wgpu_recorded_compute_pass_set_bind_group(
@@ -123,7 +121,6 @@ void ComputePassEncoder::DispatchWorkgroupsIndirect(
   if (!mValid) {
     return;
   }
-  mUsedBuffers.AppendElement(&aIndirectBuffer);
   ffi::wgpu_recorded_compute_pass_dispatch_workgroups_indirect(
       mPass.get(), aIndirectBuffer.mId, aIndirectOffset);
 }
@@ -151,17 +148,11 @@ void ComputePassEncoder::InsertDebugMarker(const nsAString& aString) {
 }
 
 void ComputePassEncoder::End() {
-  if (mParent->GetState() != CommandEncoderState::Locked &&
-      mParent->GetBridge()->CanSend()) {
-    mParent->GetBridge()->SendReportError(mParent->GetDevice()->mId,
-                                          dom::GPUErrorFilter::Validation,
-                                          "Encoding must not have ended"_ns);
-  }
   if (!mValid) {
     return;
   }
   MOZ_ASSERT(!!mPass);
-  mParent->EndComputePass(*mPass, mUsedCanvasContexts);
+  mParent->EndComputePass(*mPass);
   Cleanup();
 }
 

@@ -146,10 +146,11 @@ VideoFramePool<LIBAV_VER>::~VideoFramePool() {
 void VideoFramePool<LIBAV_VER>::ReleaseUnusedVAAPIFrames() {
   MutexAutoLock lock(mSurfaceLock);
   for (const auto& surface : mDMABufSurfaces) {
+#ifdef DEBUG
     if (!surface->mHoldByFFmpeg && surface->IsUsedByRenderer()) {
-      DMABUF_LOG("Copied and used surface UID %d",
-                 surface->GetDMABufSurface()->GetUID());
+      NS_WARNING("Not tracked but still used dmabug surface!");
     }
+#endif
     if (surface->mHoldByFFmpeg && !surface->IsUsedByRenderer()) {
       surface->ReleaseVAAPIData();
     }

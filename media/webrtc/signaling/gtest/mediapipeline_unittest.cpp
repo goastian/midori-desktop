@@ -25,12 +25,12 @@
 #include "MediaPipelineFilter.h"
 #include "MediaTrackGraph.h"
 #include "MediaTrackListener.h"
+#include "TaskQueueWrapper.h"
 #include "mtransport_test_utils.h"
 #include "SharedBuffer.h"
 #include "MediaTransportHandler.h"
 #include "WebrtcCallWrapper.h"
 #include "WebrtcEnvironmentWrapper.h"
-#include "WebrtcTaskQueueWrapper.h"
 #include "PeerConnectionCtx.h"
 
 #define GTEST_HAS_RTTI 0
@@ -42,52 +42,20 @@ MOZ_MTLOG_MODULE("transportbridge")
 static MtransportTestUtils* test_utils;
 
 namespace {
-class MainAsCurrent : public webrtc::TaskQueueBase {
+class MainAsCurrent : public TaskQueueWrapper<DeletionPolicy::NonBlocking> {
  public:
   MainAsCurrent()
-      : mTaskQueue(CreateWebrtcTaskQueueWrapper(
-            do_AddRef(GetMainThreadSerialEventTarget()), "MainAsCurrent"_ns,
-            false)),
-        mWebrtcTaskQueue(([&] {
-          // Shady but fine, as this raw pointer points to the WebrtcTaskQueue
-          // owned and kept alive by mTaskQueue.
-          webrtc::TaskQueueBase* queue{};
-          MOZ_ALWAYS_SUCCEEDS(mTaskQueue->Dispatch(NS_NewRunnableFunction(
-              "MainAsCurrent::Current",
-              [&] { queue = webrtc::TaskQueueBase::Current(); })));
-          NS_ProcessPendingEvents(nullptr);
-          MOZ_RELEASE_ASSERT(queue);
-          return queue;
-        })()),
-        mSetter(mWebrtcTaskQueue) {
+      : TaskQueueWrapper(
+            TaskQueue::Create(do_AddRef(GetMainThreadSerialEventTarget()),
+                              "MainAsCurrentTaskQueue"),
+            "MainAsCurrent"_ns),
+        mSetter(this) {
     MOZ_RELEASE_ASSERT(NS_IsMainThread());
   }
 
   ~MainAsCurrent() = default;
 
-  void Delete() override { delete this; }
-
-  void PostTaskImpl(absl::AnyInvocable<void() &&> task,
-                    const PostTaskTraits& traits,
-                    const webrtc::Location& location) override {
-    mWebrtcTaskQueue->PostTask(std::move(task), location);
-  }
-
-  void PostDelayedTaskImpl(absl::AnyInvocable<void() &&> task,
-                           webrtc::TimeDelta delay,
-                           const PostDelayedTaskTraits& traits,
-                           const webrtc::Location& location) override {
-    if (traits.high_precision) {
-      mWebrtcTaskQueue->PostDelayedHighPrecisionTask(std::move(task), delay,
-                                                     location);
-      return;
-    }
-    mWebrtcTaskQueue->PostDelayedTask(std::move(task), delay, location);
-  }
-
  private:
-  RefPtr<TaskQueue> mTaskQueue;
-  webrtc::TaskQueueBase* mWebrtcTaskQueue;
   CurrentTaskQueueSetter mSetter;
 };
 
@@ -175,7 +143,7 @@ void RunOnSts(Function&& aFunction) {
 
 class LoopbackTransport : public MediaTransportHandler {
  public:
-  LoopbackTransport() : MediaTransportHandler() {
+  LoopbackTransport() : MediaTransportHandler(nullptr) {
     RunOnSts([&] {
       SetState("mux", TransportLayer::TS_INIT);
       SetRtcpState("mux", TransportLayer::TS_INIT);
@@ -276,7 +244,7 @@ class LoopbackTransport : public MediaTransportHandler {
     if (aPacket.len() && aPacket.type() == MediaPacket::RTCP) {
       ++rtcp_packets_received_;
     }
-    mRtpPacketReceived.Notify(aTransportId, aPacket);
+    SignalPacketReceived(aTransportId, aPacket);
   }
 
   int RtcpPacketsReceived() const { return rtcp_packets_received_; }
@@ -284,13 +252,6 @@ class LoopbackTransport : public MediaTransportHandler {
  private:
   RefPtr<LoopbackTransport> peer_;
   std::atomic<int> rtcp_packets_received_{0};
-};
-
-struct MediaPipelineTestOptions {
-  bool is_rtcp_mux = true;
-  bool activate_receive = true;
-  unsigned int ms_until_filter_update = 500;
-  unsigned int ms_of_traffic_after_answer = 10000;
 };
 
 class TestAgent {
@@ -315,8 +276,7 @@ class TestAgent {
     LoopbackTransport::InitAndConnect(*client->transport_, *server->transport_);
   }
 
-  virtual void CreatePipeline(const std::string& aTransportId,
-                              const MediaPipelineTestOptions& aOptions) = 0;
+  virtual void CreatePipeline(const std::string& aTransportId) = 0;
 
   void SetState_s(const std::string& aTransportId,
                   TransportLayer::State aState) {
@@ -406,8 +366,7 @@ class TestAgentSend : public TestAgent {
     audio_track_ = new FakeAudioTrack();
   }
 
-  virtual void CreatePipeline(const std::string& aTransportId,
-                              const MediaPipelineTestOptions& aOptions) {
+  virtual void CreatePipeline(const std::string& aTransportId) {
     std::string test_pc;
 
     RefPtr<MediaPipelineTransmit> audio_pipeline =
@@ -438,8 +397,7 @@ class TestAgentReceive : public TestAgent {
     });
   }
 
-  virtual void CreatePipeline(const std::string& aTransportId,
-                              const MediaPipelineTestOptions& aOptions) {
+  virtual void CreatePipeline(const std::string& aTransportId) {
     std::string test_pc;
 
     auto audio_pipeline = MakeRefPtr<MediaPipelineReceiveAudio>(
@@ -452,9 +410,7 @@ class TestAgentReceive : public TestAgent {
       return GenericPromise::CreateAndResolve(true, __func__);
     }));
 
-    control_.Update([activate = aOptions.activate_receive](auto& aControl) {
-      aControl.mReceiving = activate;
-    });
+    control_.Update([](auto& aControl) { aControl.mReceiving = true; });
     audio_pipeline->UpdateTransport_m(aTransportId, std::move(bundle_filter_),
                                       true);
     audio_pipeline_ = audio_pipeline;
@@ -495,11 +451,10 @@ webrtc::AudioState::Config CreateAudioStateConfig(
 
 class MediaPipelineTest : public ::testing::Test {
  public:
-  explicit MediaPipelineTest(MediaPipelineTestOptions options = {})
+  MediaPipelineTest()
       : main_task_queue_(
-            std::unique_ptr<webrtc::TaskQueueBase, webrtc::TaskQueueDeleter>(
+            WrapUnique<TaskQueueWrapper<DeletionPolicy::NonBlocking>>(
                 new MainAsCurrent())),
-        options_(options),
         env_wrapper_(WebrtcEnvironmentWrapper::Create(
             mozilla::dom::RTCStatsTimestampMaker::Create())),
         shared_state_(MakeAndAddRef<SharedWebrtcState>(
@@ -529,22 +484,24 @@ class MediaPipelineTest : public ::testing::Test {
   }
 
   // Verify RTP and RTCP
-  void TestAudioSend(MediaPipelineTestOptions options,
+  void TestAudioSend(bool aIsRtcpMux,
                      UniquePtr<MediaPipelineFilter>&& initialFilter = nullptr,
-                     UniquePtr<MediaPipelineFilter>&& refinedFilter = nullptr) {
+                     UniquePtr<MediaPipelineFilter>&& refinedFilter = nullptr,
+                     unsigned int ms_until_filter_update = 500,
+                     unsigned int ms_of_traffic_after_answer = 10000) {
     bool bundle = !!(initialFilter);
     // We do not support testing bundle without rtcp mux, since that doesn't
     // make any sense.
-    ASSERT_FALSE(!options.is_rtcp_mux && bundle);
+    ASSERT_FALSE(!aIsRtcpMux && bundle);
 
     p2_.SetBundleFilter(std::move(initialFilter));
 
     // Setup transport flows
     InitTransports();
 
-    std::string transportId = options.is_rtcp_mux ? "mux" : "non-mux";
-    p1_.CreatePipeline(transportId, options);
-    p2_.CreatePipeline(transportId, options);
+    std::string transportId = aIsRtcpMux ? "mux" : "non-mux";
+    p1_.CreatePipeline(transportId);
+    p2_.CreatePipeline(transportId);
 
     // Set state of transports to CONNECTING. MediaPipeline doesn't really care
     // about this transition, but we're trying to simluate what happens in a
@@ -568,7 +525,7 @@ class MediaPipelineTest : public ::testing::Test {
     });
 
     if (bundle) {
-      WaitFor(TimeDuration::FromMilliseconds(options.ms_until_filter_update));
+      WaitFor(TimeDuration::FromMilliseconds(ms_until_filter_update));
 
       // Leaving refinedFilter not set implies we want to just update with
       // the other side's SSRC
@@ -584,7 +541,7 @@ class MediaPipelineTest : public ::testing::Test {
     }
 
     // wait for some RTP/RTCP tx and rx to happen
-    WaitFor(TimeDuration::FromMilliseconds(options.ms_of_traffic_after_answer));
+    WaitFor(TimeDuration::FromMilliseconds(ms_of_traffic_after_answer));
 
     p1_.Stop();
     p2_.Stop();
@@ -610,18 +567,18 @@ class MediaPipelineTest : public ::testing::Test {
   }
 
   void TestAudioReceiverBundle(
-      UniquePtr<MediaPipelineFilter>&& initialFilter,
+      bool bundle_accepted, UniquePtr<MediaPipelineFilter>&& initialFilter,
       UniquePtr<MediaPipelineFilter>&& refinedFilter = nullptr,
-      MediaPipelineTestOptions options = {}) {
-    TestAudioSend(options, std::move(initialFilter), std::move(refinedFilter));
+      unsigned int ms_until_answer = 500,
+      unsigned int ms_of_traffic_after_answer = 10000) {
+    TestAudioSend(true, std::move(initialFilter), std::move(refinedFilter),
+                  ms_until_answer, ms_of_traffic_after_answer);
   }
 
  protected:
   // main_task_queue_ has this type to make sure it goes through Delete() when
   // we're destroyed.
-  std::unique_ptr<webrtc::TaskQueueBase, webrtc::TaskQueueDeleter>
-      main_task_queue_;
-  const MediaPipelineTestOptions options_;
+  UniquePtr<TaskQueueWrapper<DeletionPolicy::NonBlocking>> main_task_queue_;
   const RefPtr<WebrtcEnvironmentWrapper> env_wrapper_;
   const RefPtr<SharedWebrtcState> shared_state_;
   TestAgentSend p1_;
@@ -741,13 +698,9 @@ TEST_F(MediaPipelineFilterTest, TestRemoteSDPNoSSRCs) {
   ASSERT_FALSE(Filter(filter, 555, 110));
 }
 
-TEST_F(MediaPipelineTest, TestAudioSendNoMux) {
-  TestAudioSend({.is_rtcp_mux = false});
-}
+TEST_F(MediaPipelineTest, TestAudioSendNoMux) { TestAudioSend(false); }
 
-TEST_F(MediaPipelineTest, TestAudioSendMux) {
-  TestAudioSend({.is_rtcp_mux = true});
-}
+TEST_F(MediaPipelineTest, TestAudioSendMux) { TestAudioSend(true); }
 
 TEST_F(MediaPipelineTest, TestAudioSendBundle) {
   auto filter = MakeUnique<MediaPipelineFilter>();
@@ -756,11 +709,10 @@ TEST_F(MediaPipelineTest, TestAudioSendBundle) {
   // is sometimes sent before the transports are ready, which causes it to
   // be dropped.
   TestAudioReceiverBundle(
-      std::move(filter),
+      true, std::move(filter),
       // We do not specify the filter for the remote description, so it will be
       // set to something sane after a short time.
-      nullptr,
-      {.ms_until_filter_update = 10000, .ms_of_traffic_after_answer = 10000});
+      nullptr, 10000, 10000);
 
   // Some packets should have been dropped, but not all
   ASSERT_GT(p1_.GetAudioRtpCountSent(), p2_.GetAudioRtpCountReceived());
@@ -771,21 +723,10 @@ TEST_F(MediaPipelineTest, TestAudioSendBundle) {
 TEST_F(MediaPipelineTest, TestAudioSendEmptyBundleFilter) {
   auto filter = MakeUnique<MediaPipelineFilter>();
   auto bad_answer_filter = MakeUnique<MediaPipelineFilter>();
-  TestAudioReceiverBundle(std::move(filter), std::move(bad_answer_filter));
+  TestAudioReceiverBundle(true, std::move(filter),
+                          std::move(bad_answer_filter));
   // Filter is empty, so should drop everything.
   ASSERT_EQ(0, p2_.GetAudioRtpCountReceived());
-}
-
-TEST_F(MediaPipelineTest, TestAudioInactiveNoRecv) {
-  auto filter = MakeUnique<MediaPipelineFilter>();
-  TestAudioReceiverBundle(std::move(filter), nullptr,
-                          {.activate_receive = false,
-                           .ms_until_filter_update = 200,
-                           .ms_of_traffic_after_answer = 800});
-
-  // Packets should have been sent but not received.
-  ASSERT_NE(p1_.GetAudioRtpCountSent(), 0);
-  ASSERT_EQ(p2_.GetAudioRtpCountReceived(), 0);
 }
 
 }  // end namespace

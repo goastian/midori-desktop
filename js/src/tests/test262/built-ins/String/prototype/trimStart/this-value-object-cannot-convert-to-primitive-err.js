@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-string.prototype.trimstart
+esid: sec-string.prototype.trimStart
 description: >
   This value is an object which cannot be converted to a primitive
 info: |

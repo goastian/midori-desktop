@@ -38,12 +38,6 @@ const TEST_DATA = [
   },
 ];
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 add_task(async function test_paste_then_switch_tab() {
   for (const testData of TEST_DATA) {
     gURLBar.focus();

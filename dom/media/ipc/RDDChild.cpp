@@ -152,7 +152,7 @@ mozilla::ipc::IPCResult RDDChild::RecvUpdateMediaCodecsSupported(
   }
 #endif
   dom::ContentParent::BroadcastMediaCodecsSupportedUpdate(
-      RemoteMediaIn::RddProcess, aSupported);
+      RemoteDecodeIn::RddProcess, aSupported);
   return IPC_OK();
 }
 

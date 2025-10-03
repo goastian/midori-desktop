@@ -25,8 +25,8 @@
 #include "builtin/Boolean-inl.h"  // js::EmulatesUndefined
 #include "vm/JSContext-inl.h"     // JSContext::check
 
-static bool EqualGivenSameType(JSContext* cx, const JS::Value& lval,
-                               const JS::Value& rval, bool* equal) {
+static bool EqualGivenSameType(JSContext* cx, JS::Handle<JS::Value> lval,
+                               JS::Handle<JS::Value> rval, bool* equal) {
   MOZ_ASSERT(JS::SameType(lval, rval));
 
   if (lval.isString()) {
@@ -45,7 +45,7 @@ static bool EqualGivenSameType(JSContext* cx, const JS::Value& lval,
 
   // Note: we can do a bitwise comparison even for Int32Value because both
   // Values have the same type.
-  MOZ_ASSERT(js::CanUseBitwiseCompareForStrictlyEqual(lval) || lval.isInt32());
+  MOZ_ASSERT(CanUseBitwiseCompareForStrictlyEqual(lval) || lval.isInt32());
 
   *equal = (lval.asRawBits() == rval.asRawBits());
   MOZ_ASSERT_IF(lval.isUndefined() || lval.isNull(), *equal);
@@ -190,25 +190,30 @@ JS_PUBLIC_API bool JS::LooselyEqual(JSContext* cx, Handle<Value> value1,
   return js::LooselyEqual(cx, value1, value2, equal);
 }
 
-bool js::ConstantStrictEqual(const JS::Value& val, uint16_t operand) {
+bool js::ConstantStrictEqual(JSContext* cx, JS::Handle<JS::Value> val,
+                             uint16_t operand, bool* equal) {
   ConstantCompareOperand constant =
       ConstantCompareOperand::fromRawValue(operand);
 
   switch (constant.type()) {
     case ConstantCompareOperand::EncodedType::Int32:
-      return val.isNumber() && val.toNumber() == constant.toNumber();
+      *equal = val.isNumber() && val.toNumber() == constant.toNumber();
+      return true;
     case ConstantCompareOperand::EncodedType::Boolean:
-      return val.isBoolean() && val.toBoolean() == constant.toBoolean();
+      *equal = val.isBoolean() && val.toBoolean() == constant.toBoolean();
+      return true;
     case ConstantCompareOperand::EncodedType::Undefined:
-      return val.isUndefined();
+      *equal = val.isUndefined();
+      return true;
     case ConstantCompareOperand::EncodedType::Null:
-      return val.isNull();
+      *equal = val.isNull();
+      return true;
   }
   MOZ_CRASH("Unknown constant compare operand type");
 }
 
-bool js::StrictlyEqual(JSContext* cx, const JS::Value& lval,
-                       const JS::Value& rval, bool* equal) {
+bool js::StrictlyEqual(JSContext* cx, JS::Handle<JS::Value> lval,
+                       JS::Handle<JS::Value> rval, bool* equal) {
   if (SameType(lval, rval)) {
     return EqualGivenSameType(cx, lval, rval, equal);
   }
@@ -239,8 +244,8 @@ static inline bool IsNaN(const JS::Value& v) {
   return v.isDouble() && std::isnan(v.toDouble());
 }
 
-bool js::SameValue(JSContext* cx, const JS::Value& v1, const JS::Value& v2,
-                   bool* same) {
+bool js::SameValue(JSContext* cx, JS::Handle<JS::Value> v1,
+                   JS::Handle<JS::Value> v2, bool* same) {
   if (IsNegativeZero(v1)) {
     *same = IsNegativeZero(v2);
     return true;
@@ -263,7 +268,7 @@ JS_PUBLIC_API bool JS::SameValue(JSContext* cx, Handle<Value> value1,
   return js::SameValue(cx, value1, value2, same);
 }
 
-bool js::SameValueZero(JSContext* cx, const Value& v1, const Value& v2,
+bool js::SameValueZero(JSContext* cx, Handle<Value> v1, Handle<Value> v2,
                        bool* same) {
   if (IsNaN(v1) && IsNaN(v2)) {
     *same = true;

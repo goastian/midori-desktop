@@ -3,28 +3,19 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-/* exported testSteps, disableWorkerTest */
+/* exported testGenerator, disableWorkerTest */
 var disableWorkerTest = "Need a way to set temporary prefs from a worker";
 
-async function testSteps() {
-  // Setting dom.indexedDB.dataThreshold to 99999 ensures that the first random
-  // view (size 100000) is stored as a separate file when
-  // dom.indexedDB.preprocessing is true. The second random view (size 10000)
-  // is always stored directly in the database. This setup creates a scenario
-  // where requests in a transaction are processed in the wrong order if they
-  // are not properly queued internally.
-  const dataThreshold = 99999;
+var testGenerator = testSteps();
 
+function* testSteps() {
   const name = this.window
     ? window.location.pathname
     : "test_view_put_get_values.js";
 
   const objectStoreName = "Views";
 
-  const viewDataArray = [
-    { key: 1, view: getRandomView(100000) },
-    { key: 2, view: getRandomView(10000) },
-  ];
+  const viewData = { key: 1, view: getRandomView(100000) };
 
   const tests = [
     {
@@ -43,24 +34,28 @@ async function testSteps() {
 
   for (let test of tests) {
     if (test.external) {
-      info("Setting data threshold pref");
-
       if (this.window) {
-        await SpecialPowers.pushPrefEnv({
-          set: [["dom.indexedDB.dataThreshold", dataThreshold]],
-        });
+        info("Setting data threshold pref");
+
+        SpecialPowers.pushPrefEnv(
+          { set: [["dom.indexedDB.dataThreshold", 0]] },
+          continueToNextStep
+        );
+        yield undefined;
       } else {
-        setDataThreshold(dataThreshold);
+        setDataThreshold(0);
       }
     }
 
     if (test.preprocessing) {
-      info("Setting preprocessing pref");
-
       if (this.window) {
-        await SpecialPowers.pushPrefEnv({
-          set: [["dom.indexedDB.preprocessing", true]],
-        });
+        info("Setting preprocessing pref");
+
+        SpecialPowers.pushPrefEnv(
+          { set: [["dom.indexedDB.preprocessing", true]] },
+          continueToNextStep
+        );
+        yield undefined;
       } else {
         enablePreprocessing();
       }
@@ -68,120 +63,79 @@ async function testSteps() {
 
     info("Opening database");
 
-    const db = await (async function () {
-      const request = indexedDB.open(name);
+    let request = indexedDB.open(name);
+    request.onerror = errorHandler;
+    request.onupgradeneeded = continueToNextStepSync;
+    request.onsuccess = unexpectedSuccessHandler;
+    yield undefined;
 
-      {
-        const event = await expectingUpgrade(request);
+    // upgradeneeded
+    request.onupgradeneeded = unexpectedSuccessHandler;
+    request.onsuccess = continueToNextStepSync;
 
-        const database = event.target.result;
+    info("Creating objectStore");
 
-        database.createObjectStore(objectStoreName);
-      }
+    request.result.createObjectStore(objectStoreName);
 
-      const event = await expectingSuccess(request);
+    yield undefined;
 
-      const database = event.target.result;
+    // success
+    let db = request.result;
+    db.onerror = errorHandler;
 
-      return database;
-    })();
+    info("Storing view");
 
-    {
-      const objectStore = db
-        .transaction([objectStoreName], "readwrite")
-        .objectStore(objectStoreName);
+    let objectStore = db
+      .transaction([objectStoreName], "readwrite")
+      .objectStore(objectStoreName);
+    request = objectStore.add(viewData.view, viewData.key);
+    request.onsuccess = continueToNextStepSync;
+    yield undefined;
 
-      info("Storing views");
+    is(request.result, viewData.key, "Got correct key");
 
-      for (const viewData of viewDataArray) {
-        const request = objectStore.add(viewData.view, viewData.key);
+    info("Getting view");
 
-        await requestSucceeded(request);
+    request = objectStore.get(viewData.key);
+    request.onsuccess = continueToNextStepSync;
+    yield undefined;
 
-        is(request.result, viewData.key, "Got correct key");
-      }
+    verifyView(request.result, viewData.view);
+    yield undefined;
 
-      info("Getting views");
+    info("Getting view in new transaction");
 
-      for (const viewData of viewDataArray) {
-        const request = objectStore.get(viewData.key);
+    request = db
+      .transaction([objectStoreName])
+      .objectStore(objectStoreName)
+      .get(viewData.key);
+    request.onsuccess = continueToNextStepSync;
+    yield undefined;
 
-        await requestSucceeded(request);
+    verifyView(request.result, viewData.view);
+    yield undefined;
 
-        verifyView(request.result, viewData.view);
-      }
+    getCurrentUsage(grabFileUsageAndContinueHandler);
+    let fileUsage = yield undefined;
+
+    if (test.external) {
+      ok(fileUsage > 0, "File usage is not zero");
+    } else {
+      ok(fileUsage == 0, "File usage is zero");
     }
 
-    info("Getting views in separate transactions");
+    db.close();
 
-    for (const viewData of viewDataArray) {
-      const request = db
-        .transaction([objectStoreName])
-        .objectStore(objectStoreName)
-        .get(viewData.key);
-
-      await requestSucceeded(request);
-
-      verifyView(request.result, viewData.view);
-    }
-
-    info("Getting file usage");
-
-    {
-      const fileUsage = await new Promise(function (resolve) {
-        getCurrentUsage(function (request) {
-          resolve(request.result.fileUsage);
-        });
-      });
-
-      if (test.external) {
-        ok(fileUsage > 0, "File usage is not zero");
-      } else {
-        ok(fileUsage == 0, "File usage is zero");
-      }
-    }
-
-    info("Getting views in parallel");
-
-    {
-      const objectStore = db
-        .transaction([objectStoreName])
-        .objectStore(objectStoreName);
-
-      const promises = [];
-      const keys = [];
-
-      for (const viewData of viewDataArray) {
-        const request = objectStore.get(viewData.key);
-
-        promises.push(
-          requestSucceeded(request, function () {
-            keys.push(viewData.key);
-          })
-        );
-      }
-
-      await Promise.all(promises);
-
-      is(keys.length, viewDataArray.length, "Correct number of keys");
-
-      for (let i = 0; i < keys.length; i++) {
-        is(keys[i], viewDataArray[i].key, "Correct key");
-      }
-    }
-
-    info("Deleting database");
-
-    {
-      db.close();
-      const request = indexedDB.deleteDatabase(name);
-      await expectingSuccess(request);
-    }
-
-    info("Resetting prefs");
+    request = indexedDB.deleteDatabase(name);
+    request.onerror = errorHandler;
+    request.onsuccess = continueToNextStepSync;
+    yield undefined;
 
     if (this.window) {
-      await SpecialPowers.popPrefEnv();
+      info("Resetting prefs");
+
+      SpecialPowers.popPrefEnv(continueToNextStep);
+      yield undefined;
     } else {
       if (test.external) {
         resetDataThreshold();
@@ -192,4 +146,6 @@ async function testSteps() {
       }
     }
   }
+
+  finishTest();
 }

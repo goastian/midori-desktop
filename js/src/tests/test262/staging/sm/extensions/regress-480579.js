@@ -4,7 +4,7 @@
  */
 
 /*---
-includes: [sm/non262.js, sm/non262-shell.js]
+includes: [sm/non262.js, sm/non262-shell.js, sm/non262-extensions-shell.js]
 flags:
   - noStrict
 description: |
@@ -24,6 +24,9 @@ test();
 
 function test()
 {
+  printBugNumber(BUGNUMBER);
+  printStatus (summary);
+
   expect = '12';
 
   a = {x: 1};

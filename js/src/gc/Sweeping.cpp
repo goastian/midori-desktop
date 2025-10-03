@@ -377,9 +377,9 @@ void ArenaLists::mergeSweptArenas(AllocKind kind, ArenaList& sweptArenas) {
 
 void ArenaLists::queueForegroundThingsForSweep() {
   gcCompactPropMapArenasToUpdate =
-      collectingArenaList(AllocKind::COMPACT_PROP_MAP).getFirst();
+      collectingArenaList(AllocKind::COMPACT_PROP_MAP).first();
   gcNormalPropMapArenasToUpdate =
-      collectingArenaList(AllocKind::NORMAL_PROP_MAP).getFirst();
+      collectingArenaList(AllocKind::NORMAL_PROP_MAP).first();
 }
 
 void GCRuntime::sweepBackgroundThings(ZoneList& zones) {
@@ -1361,13 +1361,19 @@ class ImmediateSweepWeakCacheTask : public GCParallelTask {
 };
 
 void GCRuntime::updateAtomsBitmap() {
-  atomMarking.refineZoneBitmapsForCollectedZones(this);
-
-  // Mark atoms used by uncollected zones after refining the atoms bitmaps.
-  auto& atomsToMark = atomsUsedByUncollectedZones.ref();
-  if (atomsToMark) {
-    atomMarking.markAtomsUsedByUncollectedZones(this, std::move(atomsToMark));
+  size_t collectedZones = 0;
+  size_t uncollectedZones = 0;
+  for (ZonesIter zone(this, SkipAtoms); !zone.done(); zone.next()) {
+    if (zone->isCollecting()) {
+      collectedZones++;
+    } else {
+      uncollectedZones++;
+    }
   }
+
+  atomMarking.refineZoneBitmapsForCollectedZones(this, collectedZones);
+
+  atomMarking.markAtomsUsedByUncollectedZones(this, uncollectedZones);
 
   // For convenience sweep these tables non-incrementally as part of bitmap
   // sweeping; they are likely to be much smaller than the main atoms table.

@@ -1259,7 +1259,7 @@ RStrictConstantCompareInt32::RStrictConstantCompareInt32(
 
 bool RStrictConstantCompareInt32::recover(JSContext* cx,
                                           SnapshotIterator& iter) const {
-  JS::Value lhs = iter.read();
+  JS::Rooted<JS::Value> lhs(cx, iter.read());
 
   iter.storeInstructionResult(
       BooleanValue(lhs.isNumber() && lhs.toNumber() == constant_));
@@ -1286,7 +1286,7 @@ RStrictConstantCompareBoolean::RStrictConstantCompareBoolean(
 
 bool RStrictConstantCompareBoolean::recover(JSContext* cx,
                                             SnapshotIterator& iter) const {
-  JS::Value lhs = iter.read();
+  JS::Rooted<JS::Value> lhs(cx, iter.read());
 
   iter.storeInstructionResult(
       BooleanValue(lhs.isBoolean() && lhs.toBoolean() == constant_));
@@ -2105,7 +2105,7 @@ RNewArray::RNewArray(CompactBufferReader& reader) {
 }
 
 bool RNewArray::recover(JSContext* cx, SnapshotIterator& iter) const {
-  JSObject* templateObject = iter.readObject();
+  RootedObject templateObject(cx, iter.readObject());
   Rooted<Shape*> shape(cx, templateObject->shape());
 
   ArrayObject* resultObject = NewArrayWithShape(cx, count_, shape);
@@ -2129,8 +2129,7 @@ RNewIterator::RNewIterator(CompactBufferReader& reader) {
 }
 
 bool RNewIterator::recover(JSContext* cx, SnapshotIterator& iter) const {
-  // Template object is not used when recovering MNewIterator.
-  (void)iter.readObject();
+  RootedObject templateObject(cx, iter.readObject());
 
   JSObject* resultObject = nullptr;
   switch (MNewIterator::Type(type_)) {
@@ -2206,7 +2205,7 @@ bool MNewCallObject::writeRecoverData(CompactBufferWriter& writer) const {
 RNewCallObject::RNewCallObject(CompactBufferReader& reader) {}
 
 bool RNewCallObject::recover(JSContext* cx, SnapshotIterator& iter) const {
-  CallObject* templateObj = &iter.readObject()->as<CallObject>();
+  Rooted<CallObject*> templateObj(cx, &iter.readObject()->as<CallObject>());
 
   Rooted<SharedShape*> shape(cx, templateObj->sharedShape());
 
@@ -2257,8 +2256,8 @@ RObjectState::RObjectState(CompactBufferReader& reader) {
 }
 
 bool RObjectState::recover(JSContext* cx, SnapshotIterator& iter) const {
-  JSObject* object = iter.readObject();
-  NativeObject* nativeObject = &object->as<NativeObject>();
+  RootedObject object(cx, iter.readObject());
+  Handle<NativeObject*> nativeObject = object.as<NativeObject>();
   MOZ_ASSERT(!Watchtower::watchesPropertyValueChange(nativeObject));
   MOZ_ASSERT(nativeObject->slotSpan() == numSlots());
 
@@ -2495,8 +2494,8 @@ RCreateArgumentsObject::RCreateArgumentsObject(CompactBufferReader& reader) {}
 bool RCreateArgumentsObject::recover(JSContext* cx,
                                      SnapshotIterator& iter) const {
   RootedObject callObject(cx, iter.readObject());
-  ArgumentsObject* result =
-      ArgumentsObject::createForIon(cx, iter.frame(), callObject);
+  RootedObject result(
+      cx, ArgumentsObject::createForIon(cx, iter.frame(), callObject));
   if (!result) {
     return false;
   }

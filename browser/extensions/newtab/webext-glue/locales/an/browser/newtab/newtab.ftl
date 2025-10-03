@@ -252,6 +252,3 @@ newtab-error-fallback-refresh-link = Refrescar la pachina pa tornar-lo a intenta
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

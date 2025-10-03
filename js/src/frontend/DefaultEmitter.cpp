@@ -32,10 +32,11 @@ bool DefaultEmitter::prepareForDefault() {
     //              [stack] VALUE VALUE
     return false;
   }
-
-  ConstantCompareOperand operand(
-      ConstantCompareOperand::EncodedType::Undefined);
-  if (!bce_->emitUint16Operand(JSOp::StrictConstantEq, operand.rawValue())) {
+  if (!bce_->emit1(JSOp::Undefined)) {
+    //              [stack] VALUE VALUE UNDEFINED
+    return false;
+  }
+  if (!bce_->emit1(JSOp::StrictEq)) {
     //              [stack] VALUE EQ?
     return false;
   }

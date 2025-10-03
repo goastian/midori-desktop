@@ -8,7 +8,7 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.Icon
+import androidx.compose.material.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,7 +16,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
@@ -25,7 +24,6 @@ import mozilla.components.compose.base.button.LongPressIconButton
 import mozilla.components.compose.base.menu.CustomPlacementPopup
 import mozilla.components.compose.base.menu.CustomPlacementPopupVerticalContent
 import mozilla.components.compose.base.theme.AcornTheme
-import mozilla.components.compose.browser.toolbar.concept.Action.ActionButton.State
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarInteraction
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarInteraction.BrowserToolbarEvent
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarInteraction.BrowserToolbarMenu
@@ -40,20 +38,17 @@ import mozilla.components.ui.icons.R
  *
  * @param icon Drawable resource for this button.
  * @param contentDescription Text used by accessibility services to describe what this button does.
- * @param state The current [State] of the action button.
  * @param highlighted Whether or not to highlight this button.
  * @param onClick [BrowserToolbarInteraction] describing how to handle this button being clicked.
  * @param onLongClick Optional [BrowserToolbarInteraction] describing how to handle this button being long clicked.
  * @param onInteraction Callback for handling [BrowserToolbarEvent]s on user interactions.
  */
 @Composable
-@Suppress("LongMethod", "CyclomaticComplexMethod")
 fun ActionButton(
     @DrawableRes icon: Int,
     @StringRes contentDescription: Int,
-    state: State = State.DEFAULT,
     highlighted: Boolean = false,
-    onClick: BrowserToolbarInteraction? = null,
+    onClick: BrowserToolbarInteraction,
     onLongClick: BrowserToolbarInteraction? = null,
     onInteraction: (BrowserToolbarEvent) -> Unit,
 ) {
@@ -61,21 +56,6 @@ fun ActionButton(
         onLongClick != null
     }
     var currentMenuState by remember { mutableStateOf(None) }
-    val colors = AcornTheme.colors
-    val tint = remember(state, colors) {
-        when (state) {
-            State.ACTIVE -> colors.iconAccentViolet
-            State.DISABLED -> colors.iconDisabled
-            State.DEFAULT -> colors.iconPrimary
-        }
-    }
-
-    val isEnabled = remember(state) {
-        when (state) {
-            State.DISABLED -> false
-            else -> true
-        }
-    }
 
     val handleInteraction: (BrowserToolbarInteraction) -> Unit = { interaction ->
         when (interaction) {
@@ -98,21 +78,16 @@ fun ActionButton(
 
     when (shouldReactToLongClicks) {
         true -> LongPressIconButton(
-            onClick = {
-                if (onClick != null) {
-                    handleInteraction(onClick)
-                }
-            },
+            onClick = { handleInteraction(onClick) },
             onLongClick = {
                 if (onLongClick != null) {
                     handleInteraction(onLongClick)
                 }
             },
-            enabled = isEnabled,
             contentDescription = stringResource(contentDescription),
         ) {
             Box {
-                ActionButtonIcon(icon, tint)
+                ActionButtonIcon(icon)
                 if (highlighted) {
                     DotHighlight(
                         modifier = Modifier.align(Alignment.BottomEnd),
@@ -130,16 +105,11 @@ fun ActionButton(
         }
 
         false -> IconButton(
-            onClick = {
-                if (onClick != null) {
-                    handleInteraction(onClick)
-                }
-            },
-            enabled = isEnabled,
+            onClick = { handleInteraction(onClick) },
             contentDescription = stringResource(contentDescription),
         ) {
             Box {
-                ActionButtonIcon(icon, tint)
+                ActionButtonIcon(icon)
                 if (highlighted) {
                     DotHighlight(
                         modifier = Modifier.align(Alignment.BottomEnd),
@@ -159,14 +129,11 @@ fun ActionButton(
 }
 
 @Composable
-private fun ActionButtonIcon(
-    @DrawableRes icon: Int,
-    tint: Color,
-) {
+private fun ActionButtonIcon(@DrawableRes icon: Int) {
     Icon(
         painter = painterResource(icon),
         contentDescription = null,
-        tint = tint,
+        tint = AcornTheme.colors.iconPrimary,
     )
 }
 

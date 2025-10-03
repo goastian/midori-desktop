@@ -169,7 +169,8 @@ NS_IMPL_CYCLE_COLLECTION_WEAK(nsFocusManager, mActiveWindow,
                               mActiveBrowsingContextInChrome, mFocusedWindow,
                               mFocusedBrowsingContextInContent,
                               mFocusedBrowsingContextInChrome, mFocusedElement,
-                              mWindowBeingLowered, mDelayedBlurFocusEvents)
+                              mFirstBlurEvent, mWindowBeingLowered,
+                              mDelayedBlurFocusEvents)
 
 StaticRefPtr<nsFocusManager> nsFocusManager::sInstance;
 bool nsFocusManager::sTestMode = false;
@@ -247,6 +248,7 @@ nsFocusManager::Observe(nsISupports* aSubject, const char* aTopic,
     mFocusedBrowsingContextInContent = nullptr;
     mFocusedBrowsingContextInChrome = nullptr;
     mFocusedElement = nullptr;
+    mFirstBlurEvent = nullptr;
     mWindowBeingLowered = nullptr;
     mDelayedBlurFocusEvents.Clear();
   }
@@ -2312,6 +2314,9 @@ bool nsFocusManager::BlurImpl(BrowsingContext* aBrowsingContextToClear,
       mFocusedElement = nullptr;
       return true;
     }
+    if (element == mFirstBlurEvent) {
+      return true;
+    }
   }
 
   RefPtr<BrowsingContext> focusedBrowsingContext = GetFocusedBrowsingContext();
@@ -2366,6 +2371,12 @@ bool nsFocusManager::BlurImpl(BrowsingContext* aBrowsingContextToClear,
     // preview.
     SetFocusedBrowsingContext(nullptr, aActionId);
     return true;
+  }
+
+  Maybe<AutoRestore<RefPtr<Element>>> ar;
+  if (!mFirstBlurEvent) {
+    ar.emplace(mFirstBlurEvent);
+    mFirstBlurEvent = element;
   }
 
   const RefPtr<nsPresContext> focusedPresContext =
@@ -2582,6 +2593,10 @@ void nsFocusManager::Focus(
   LOGFOCUS(("<<Focus begin actionid: %" PRIu64 ">>", aActionId));
 
   if (!aWindow) {
+    return;
+  }
+
+  if (aElement && aElement == mFirstBlurEvent) {
     return;
   }
 
@@ -5534,6 +5549,10 @@ void nsFocusManager::MarkUncollectableForCCGeneration(uint32_t aGeneration) {
   }
   if (sInstance->mFocusedElement) {
     sInstance->mFocusedElement->OwnerDoc()->MarkUncollectableForCCGeneration(
+        aGeneration);
+  }
+  if (sInstance->mFirstBlurEvent) {
+    sInstance->mFirstBlurEvent->OwnerDoc()->MarkUncollectableForCCGeneration(
         aGeneration);
   }
 }

@@ -36,9 +36,9 @@ add_task(async function searchBookmarksFromBooksmarksMenu() {
   EventUtils.synthesizeMouseAtCenter(searchBookmarksButton, {});
 
   await new Promise(resolve => {
-    window.gURLBar.controller.addListener({
+    window.gURLBar.controller.addQueryListener({
       onViewOpen() {
-        window.gURLBar.controller.removeListener(this);
+        window.gURLBar.controller.removeQueryListener(this);
         resolve();
       },
     });

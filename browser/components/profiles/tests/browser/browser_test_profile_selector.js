@@ -117,7 +117,7 @@ add_task(async function test_selector_window() {
     "Checkbox should not be checked"
   );
   Assert.ok(
-    !gProfileService.currentProfile.showProfileSelector,
+    !gProfileService.groupProfile.showProfileSelector,
     "Profile selector should be disabled"
   );
 
@@ -134,7 +134,7 @@ add_task(async function test_selector_window() {
   );
 
   // Simulate matching state.
-  gProfileService.currentProfile.showProfileSelector = true;
+  gProfileService.groupProfile.showProfileSelector = true;
 
   profileSelector.checkbox.click();
   await BrowserTestUtils.waitForCondition(
@@ -145,7 +145,7 @@ add_task(async function test_selector_window() {
 
   Assert.ok(profileSelector.checkbox.checked, "Checkbox should not be checked");
   Assert.ok(
-    gProfileService.currentProfile.showProfileSelector,
+    gProfileService.groupProfile.showProfileSelector,
     "Profile selector should be disabled"
   );
 

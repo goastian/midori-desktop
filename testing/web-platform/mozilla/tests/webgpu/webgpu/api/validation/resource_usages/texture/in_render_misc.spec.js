@@ -10,7 +10,7 @@ import * as vtu from '../../validation_test_utils.js';
 import {
 
   kTextureBindingTypes,
-  isReadOnlyTextureBindingType } from
+  IsReadOnlyTextureBindingType } from
 '../texture/in_render_common.spec.js';
 
 function skipIfStorageTexturesUsedAndNotAvailableInFragmentStage(
@@ -168,7 +168,7 @@ fn((t) => {
   renderPassEncoder.end();
 
   const noConflict =
-  isReadOnlyTextureBindingType(view1Binding) && isReadOnlyTextureBindingType(view2Binding) ||
+  IsReadOnlyTextureBindingType(view1Binding) && IsReadOnlyTextureBindingType(view2Binding) ||
   view1Binding === view2Binding;
   t.expectValidationError(() => {
     encoder.finish();
@@ -483,8 +483,8 @@ fn((t) => {
   //   the render pass’s usage scope.
   const success =
   !inRenderPass ||
-  isReadOnlyTextureBindingType(textureUsage0) &&
-  isReadOnlyTextureBindingType(textureUsage1) ||
+  IsReadOnlyTextureBindingType(textureUsage0) &&
+  IsReadOnlyTextureBindingType(textureUsage1) ||
   textureUsage0 === textureUsage1;
   t.expectValidationError(() => {
     encoder.finish();
@@ -540,7 +540,7 @@ fn((t) => {
     })
   });
 
-  const useTextureOnCommandEncoder = (
+  const UseTextureOnCommandEncoder = (
   texture,
   usage,
   encoder) =>
@@ -597,8 +597,8 @@ fn((t) => {
     }
   };
   const encoder = t.device.createCommandEncoder();
-  useTextureOnCommandEncoder(texture, usage0, encoder);
-  useTextureOnCommandEncoder(texture, usage1, encoder);
+  UseTextureOnCommandEncoder(texture, usage0, encoder);
+  UseTextureOnCommandEncoder(texture, usage1, encoder);
   t.expectValidationError(() => {
     encoder.finish();
   }, false);

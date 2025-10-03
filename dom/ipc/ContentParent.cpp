@@ -424,7 +424,7 @@ namespace dom {
 
 LazyLogModule gProcessLog("Process");
 
-MOZ_RUNINIT static std::map<RemoteMediaIn, media::MediaCodecsSupported>
+MOZ_RUNINIT static std::map<RemoteDecodeIn, media::MediaCodecsSupported>
     sCodecsSupported;
 
 /* static */
@@ -951,6 +951,7 @@ UniqueContentParentKeepAlive ContentParent::GetUsedBrowserProcess(
     }
     preallocated->mRemoteTypeIsolationPrincipal =
         CreateRemoteTypeIsolationPrincipal(aRemoteType);
+    preallocated->mActivateTS = TimeStamp::Now();
     preallocated->AddToPool(aContentParents);
 
     // rare, but will happen
@@ -1125,6 +1126,7 @@ RefPtr<ContentParent::LaunchPromise> ContentParent::WaitForLaunchAsync(
                   ("WaitForLaunchAsync: async, now launched, process id=%p, "
                    "childID=%" PRIu64,
                    self.get(), (uint64_t)self->ChildID()));
+          self->mActivateTS = TimeStamp::Now();
           return LaunchPromise::CreateAndResolve(std::move(self), __func__);
         }
 
@@ -1152,6 +1154,7 @@ bool ContentParent::WaitForLaunchSync(ProcessPriority aPriority) {
   bool launchSuccess = mSubprocess->WaitForProcessHandle();
   if (launchSuccess &&
       LaunchSubprocessResolve(/* aIsSync = */ true, aPriority)) {
+    mActivateTS = TimeStamp::Now();
     return true;
   }
   // In case of failure.
@@ -1516,7 +1519,7 @@ void ContentParent::BroadcastThemeUpdate(widget::ThemeChangeKind aKind) {
 
 /*static */
 void ContentParent::BroadcastMediaCodecsSupportedUpdate(
-    RemoteMediaIn aLocation, const media::MediaCodecsSupported& aSupported) {
+    RemoteDecodeIn aLocation, const media::MediaCodecsSupported& aSupported) {
   // Update processes and print the support info from the given location.
   sCodecsSupported[aLocation] = aSupported;
   for (auto* cp : AllProcesses(eAll)) {
@@ -1525,7 +1528,7 @@ void ContentParent::BroadcastMediaCodecsSupportedUpdate(
   nsCString supportString;
   media::MCSInfo::GetMediaCodecsSupportedString(supportString, aSupported);
   LOGPDM("Broadcast support from '%s', support=%s",
-         RemoteMediaInToStr(aLocation), supportString.get());
+         RemoteDecodeInToStr(aLocation), supportString.get());
 
   // Merge incoming support with existing support list from other locations
   media::MCSInfo::AddSupport(aSupported);
@@ -1880,6 +1883,13 @@ void ContentParent::ActorDestroy(ActorDestroyReason why) {
 #ifdef FUZZING_SNAPSHOT
   MOZ_FUZZING_IPC_DROP_PEER("ContentParent::ActorDestroy");
 #endif
+
+  // Gather process lifetime telemetry.
+  if (StringBeginsWith(mRemoteType, WEB_REMOTE_TYPE) ||
+      mRemoteType == FILE_REMOTE_TYPE || mRemoteType == EXTENSION_REMOTE_TYPE) {
+    TimeDuration runtime = TimeStamp::Now() - mActivateTS;
+    glean::process::lifetime.AccumulateRawDuration(runtime);
+  }
 
   if (mSendShutdownTimer) {
     mSendShutdownTimer->Cancel();
@@ -2572,6 +2582,7 @@ ContentParent::ContentParent(const nsACString& aRemoteType)
                                             IsFileContent(aRemoteType))),
       mLaunchTS(TimeStamp::Now()),
       mLaunchYieldTS(mLaunchTS),
+      mActivateTS(mLaunchTS),
       mIsAPreallocBlocker(false),
       mRemoteType(aRemoteType),
       mChildID(mSubprocess->GetChildID()),
@@ -2912,7 +2923,7 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
   Endpoint<PCompositorManagerChild> compositor;
   Endpoint<PImageBridgeChild> imageBridge;
   Endpoint<PVRManagerChild> vrBridge;
-  Endpoint<PRemoteMediaManagerChild> videoManager;
+  Endpoint<PRemoteDecoderManagerChild> videoManager;
   AutoTArray<uint32_t, 3> namespaces;
 
   if (!gpm->CreateContentBridges(OtherEndpointProcInfo(), &compositor,
@@ -3098,7 +3109,7 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
   Endpoint<PCompositorManagerChild> compositor;
   Endpoint<PImageBridgeChild> imageBridge;
   Endpoint<PVRManagerChild> vrBridge;
-  Endpoint<PRemoteMediaManagerChild> videoManager;
+  Endpoint<PRemoteDecoderManagerChild> videoManager;
   AutoTArray<uint32_t, 3> namespaces;
 
   if (!gpm->CreateContentBridges(OtherEndpointProcInfo(), &compositor,
@@ -7513,24 +7524,18 @@ mozilla::ipc::IPCResult ContentParent::RecvNotifyOnHistoryReload(
 
 mozilla::ipc::IPCResult ContentParent::RecvHistoryCommit(
     const MaybeDiscarded<BrowsingContext>& aContext, const uint64_t& aLoadID,
-    const nsID& aChangeID, const uint32_t& aLoadType,
+    const nsID& aChangeID, const uint32_t& aLoadType, const bool& aPersist,
     const bool& aCloneEntryChildren, const bool& aChannelExpired,
-    const uint32_t& aCacheKey, nsIPrincipal* aPartitionedPrincipal) {
-  if (!ValidatePrincipal(aPartitionedPrincipal,
-                         {ValidatePrincipalOptions::AllowNullPtr,
-                          ValidatePrincipalOptions::AllowSystem})) {
-    LogAndAssertFailedPrincipalValidationInfo(aPartitionedPrincipal, __func__);
-  }
-
+    const uint32_t& aCacheKey) {
   if (!aContext.IsDiscarded()) {
     CanonicalBrowsingContext* canonical = aContext.get_canonical();
     if (!canonical) {
       return IPC_FAIL(
           this, "Could not get canonical. aContext.get_canonical() fails.");
     }
-    canonical->SessionHistoryCommit(aLoadID, aChangeID, aLoadType,
+    canonical->SessionHistoryCommit(aLoadID, aChangeID, aLoadType, aPersist,
                                     aCloneEntryChildren, aChannelExpired,
-                                    aCacheKey, aPartitionedPrincipal);
+                                    aCacheKey);
   }
   return IPC_OK();
 }

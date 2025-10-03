@@ -17,7 +17,7 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-nsDocShellEditorData::nsDocShellEditorData(nsIDocShell* aOwningDocShell)
+nsDocShellEditorData::nsDocShellEditorData(nsDocShell* aOwningDocShell)
     : mDocShell(aOwningDocShell),
       mDetachedEditingState(Document::EditingState::eOff),
       mMakeEditable(false),
@@ -121,7 +121,7 @@ nsresult nsDocShellEditorData::DetachFromWindow() {
   return NS_OK;
 }
 
-nsresult nsDocShellEditorData::ReattachToWindow(nsIDocShell* aDocShell) {
+nsresult nsDocShellEditorData::ReattachToWindow(nsDocShell* aDocShell) {
   mDocShell = aDocShell;
 
   nsCOMPtr<nsPIDOMWindowOuter> domWindow =

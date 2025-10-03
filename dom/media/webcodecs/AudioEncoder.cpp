@@ -99,7 +99,7 @@ AudioEncoderConfigInternal::AudioEncoderConfigInternal(
     specific.mPacketLossPerc = aConfig.mOpus.Value().mPacketlossperc;
     specific.mUseDTX = aConfig.mOpus.Value().mUsedtx;
     specific.mUseInBandFEC = aConfig.mOpus.Value().mUseinbandfec;
-    mSpecific = AsVariant(specific);
+    mSpecific.emplace(specific);
   }
   MOZ_ASSERT(AudioEncoderTraits::Validate(aConfig, errorMessage));
 }
@@ -112,7 +112,7 @@ AudioEncoderConfigInternal::AudioEncoderConfigInternal(
 
 void AudioEncoderConfigInternal::SetSpecific(
     const EncoderConfig::CodecSpecific& aSpecific) {
-  mSpecific = aSpecific;
+  mSpecific.emplace(aSpecific);
 }
 
 /*
@@ -215,10 +215,10 @@ EncoderConfig AudioEncoderConfigInternal::ToEncoderConfig() const {
           : mozilla::BitrateMode::Variable;
 
   CodecType type = CodecType::Opus;
-  EncoderConfig::CodecSpecific specific{void_t{}};
+  Maybe<EncoderConfig::CodecSpecific> specific;
   if (mCodec.EqualsLiteral("opus")) {
     type = CodecType::Opus;
-    MOZ_ASSERT(mSpecific.is<void_t>() || mSpecific.is<OpusSpecific>());
+    MOZ_ASSERT(mSpecific.isNothing() || mSpecific->is<OpusSpecific>());
     specific = mSpecific;
   } else if (mCodec.EqualsLiteral("vorbis")) {
     type = CodecType::Vorbis;

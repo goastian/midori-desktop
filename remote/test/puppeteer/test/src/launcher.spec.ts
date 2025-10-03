@@ -3,12 +3,12 @@
  * Copyright 2017 Google Inc.
  * SPDX-License-Identifier: Apache-2.0
  */
-import assert from 'node:assert';
-import fs from 'node:fs';
-import {mkdtemp, readFile, writeFile} from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import type {TLSSocket} from 'node:tls';
+import assert from 'assert';
+import fs from 'fs';
+import {mkdtemp, readFile, writeFile} from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import type {TLSSocket} from 'tls';
 
 import expect from 'expect';
 import {TimeoutError} from 'puppeteer';
@@ -74,10 +74,9 @@ describe('Launcher specs', function () {
             });
           await remote.disconnect();
           const error = await watchdog;
-          expect(error.message).atLeastOneToContain([
-            'Waiting for selector `div` failed: Waiting failed: Frame detached',
-            'Waiting for selector `div` failed: Browsing context already closed: User context was closed: Session already ended.',
-          ]);
+          expect(error.message).toContain(
+            'Waiting for selector `div` failed: waitForFunction failed: frame got detached.',
+          );
         } finally {
           await close();
         }
@@ -133,17 +132,8 @@ describe('Launcher specs', function () {
           for (let i = 0; i < 2; i++) {
             instances.push(launch({}));
           }
-          const launchedPromises = await Promise.allSettled(instances);
-          const launched: Array<Awaited<ReturnType<typeof launch>>> = [];
-          for (const browserPromise of launchedPromises) {
-            if (browserPromise.status === 'rejected') {
-              warning = new Error('Browser failed to launch');
-            } else {
-              launched.push(browserPromise.value);
-            }
-          }
           await Promise.all(
-            launched.map(instance => {
+            (await Promise.all(instances)).map(instance => {
               return instance.close();
             }),
           );

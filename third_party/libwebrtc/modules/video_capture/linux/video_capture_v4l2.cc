@@ -309,12 +309,13 @@ int32_t VideoCaptureModuleV4L2::StartCapture(
   quit_ = false;
   }
 
-  _captureThread = PlatformThread::SpawnJoinable(
+  _captureThread = rtc::PlatformThread::SpawnJoinable(
       [self = scoped_refptr(this)] {
         while (self->CaptureProcess()) {
         }
       },
-      "CaptureThread", ThreadAttributes().SetPriority(ThreadPriority::kHigh));
+      "CaptureThread",
+      rtc::ThreadAttributes().SetPriority(rtc::ThreadPriority::kHigh));
   return 0;
 }
 

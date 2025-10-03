@@ -53,12 +53,10 @@ function getResult() {
   return credentialQueue.shift();
 }
 
-function compareResult(shouldIsolate, a, b, mode) {
-  if (mode == TEST_MODE_NO_ISOLATION) {
-    todo(false, "This used to depend on no http partitioning");
-    return true;
-  }
-  return shouldIsolate ? a !== b : a === b;
+async function doInit() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["privacy.partition.network_state", false]],
+  });
 }
 
-IsolationTestTools.runTests(FILE_URI, getResult, compareResult, null);
+IsolationTestTools.runTests(FILE_URI, getResult, null, doInit);

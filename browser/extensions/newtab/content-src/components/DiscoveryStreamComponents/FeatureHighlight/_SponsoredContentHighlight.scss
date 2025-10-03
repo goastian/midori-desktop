@@ -23,13 +23,13 @@
   .feature-highlight-modal {
     &.inset-inline-start {
       &::after {
-        margin-inline-end: var(--space-medium);
+        margin-inline-end: 11px;
       }
     }
 
     &.inset-inline-end {
       &::after {
-        margin-inline-start: var(--space-small);
+        margin-inline-start: 9px;
       }
     }
   }

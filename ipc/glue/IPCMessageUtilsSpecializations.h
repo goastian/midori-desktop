@@ -37,7 +37,6 @@
 #include "mozilla/dom/UserActivation.h"
 #include "gfxPlatform.h"
 #include "nsCSSPropertyID.h"
-#include "nsContentPermissionHelper.h"
 #include "nsDebug.h"
 #include "nsIContentPolicy.h"
 #include "nsID.h"
@@ -896,12 +895,6 @@ struct ParamTraits<nsILoadInfo::IPAddressSpace>
     : public ContiguousEnumSerializer<nsILoadInfo::IPAddressSpace,
                                       nsILoadInfo::IPAddressSpace::Unknown,
                                       nsILoadInfo::IPAddressSpace::Invalid> {};
-
-using PromptResult = mozilla::dom::ContentPermissionRequestBase::PromptResult;
-template <>
-struct ParamTraits<PromptResult>
-    : public ContiguousEnumSerializerInclusive<
-          PromptResult, PromptResult::Granted, PromptResult::Pending> {};
 
 } /* namespace IPC */
 

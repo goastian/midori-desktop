@@ -2,11 +2,13 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
+includes: [sm/non262.js, sm/non262-shell.js]
+flags:
+  - noStrict
 description: |
   pending
 esid: pending
 ---*/
-
 var await = 1;
 
 async function getClass() {
@@ -19,12 +21,13 @@ getClass().then(cl => {
   assert.sameValue(new cl().x, 1);
 });
 
-assert.throws(SyntaxError, function() {
-  eval("async () => class { [await] = 1 };");
-});
+assert.sameValue(raisesException(SyntaxError)(`
+async () => class { [await] = 1 };
+`), true);
 
-assert.throws(SyntaxError, function() {
-  eval("async () => class { x = await 1 };");
-});
+assert.sameValue(raisesException(SyntaxError)(`
+  async () => class { x = await 1 };
+`), true);
+
 
 reportCompare(0, 0);

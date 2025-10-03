@@ -23,7 +23,6 @@
 #include "mozilla/layers/APZUtils.h"        // for AsyncTransformComponents
 #include "mozilla/layers/CompositorScrollUpdate.h"  // for CompositorScrollUpdate
 #include "mozilla/layers/IAPZCTreeManager.h"        // for IAPZCTreeManager
-#include "mozilla/layers/PWebRenderBridgeParent.h"
 #include "mozilla/layers/ScrollbarData.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/layers/KeyboardMap.h"      // for KeyboardMap
@@ -491,9 +490,6 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    * content controller for the given layers id.
    */
   static void FlushApzRepaints(LayersId aLayersId);
-
-  void EndWheelTransaction(
-      PWebRenderBridgeParent::EndWheelTransactionResolver&& aResolver);
 
   /**
    * Mark |aLayersId| as having been moved from the compositor that owns this

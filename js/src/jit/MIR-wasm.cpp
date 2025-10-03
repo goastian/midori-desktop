@@ -793,7 +793,7 @@ MWasmCallCatchable* MWasmCallCatchable::New(
 MWasmCallCatchable* MWasmCallCatchable::NewBuiltinInstanceMethodCall(
     TempAllocator& alloc, const wasm::CallSiteDesc& desc,
     const wasm::SymbolicAddress builtin, wasm::FailureMode failureMode,
-    wasm::Trap failureTrap, const ABIArg& instanceArg, const Args& args,
+    const ABIArg& instanceArg, const Args& args,
     uint32_t stackArgAreaSizeUnaligned, uint32_t tryNoteIndex,
     MBasicBlock* fallthroughBlock, MBasicBlock* prePadBlock) {
   auto callee = wasm::CalleeDesc::builtinInstanceMethod(builtin);
@@ -807,7 +807,6 @@ MWasmCallCatchable* MWasmCallCatchable::NewBuiltinInstanceMethodCall(
   MOZ_ASSERT(instanceArg != ABIArg());
   call->instanceArg_ = instanceArg;
   call->builtinMethodFailureMode_ = failureMode;
-  call->builtinMethodFailureTrap_ = failureTrap;
   return call;
 }
 
@@ -829,7 +828,7 @@ MWasmCallUncatchable* MWasmCallUncatchable::New(
 MWasmCallUncatchable* MWasmCallUncatchable::NewBuiltinInstanceMethodCall(
     TempAllocator& alloc, const wasm::CallSiteDesc& desc,
     const wasm::SymbolicAddress builtin, wasm::FailureMode failureMode,
-    wasm::Trap failureTrap, const ABIArg& instanceArg, const Args& args,
+    const ABIArg& instanceArg, const Args& args,
     uint32_t stackArgAreaSizeUnaligned) {
   auto callee = wasm::CalleeDesc::builtinInstanceMethod(builtin);
   MWasmCallUncatchable* call = MWasmCallUncatchable::New(
@@ -841,7 +840,6 @@ MWasmCallUncatchable* MWasmCallUncatchable::NewBuiltinInstanceMethodCall(
   MOZ_ASSERT(instanceArg != ABIArg());
   call->instanceArg_ = instanceArg;
   call->builtinMethodFailureMode_ = failureMode;
-  call->builtinMethodFailureTrap_ = failureTrap;
   return call;
 }
 

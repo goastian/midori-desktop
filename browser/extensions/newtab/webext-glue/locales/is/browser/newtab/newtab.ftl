@@ -117,8 +117,7 @@ newtab-menu-delete-pocket = Eyða úr { -pocket-brand-name }
 newtab-menu-archive-pocket = Safna í { -pocket-brand-name }
 newtab-menu-show-privacy-info = Styrktaraðilar okkar og friðhelgi þín
 newtab-menu-about-fakespot = Um { -fakespot-brand-name }
-# Report is a verb (i.e. report issue with the content).
-newtab-menu-report = Tilkynna
+newtab-menu-report-content = Tilkynna þetta efni
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Loka á
@@ -192,8 +191,6 @@ newtab-label-sponsored-by = Styrkt af { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } mín
-# This string is used under fixed size ads to indicate sponsored content
-newtab-label-sponsored-fixed = Kostað
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -530,11 +527,6 @@ newtab-custom-wallpaper-cta = Prófaðu það
 
 ## Strings for download mobile highlight
 
-newtab-download-mobile-highlight-title = Sækja { -brand-product-name } fyrir farsíma
-newtab-download-mobile-highlight-body-variant-b = Taktu upp þráðinn þar sem frá var horfið þegar þú samstillir flipa, lykilorð og fleira.
-newtab-download-mobile-highlight-body-variant-c = Vissir þú að þú getur tekið { -brand-product-name } með þér hvert sem er? Sami vafrinn, í vasanum þínum.
-newtab-download-mobile-highlight-image =
-    .aria-label = QR-kóði til að sækja { -brand-product-name } fyrir farsíma
 
 ## Strings for reporting ads and content
 
@@ -556,16 +548,3 @@ newtab-report-content-spam-misleading =
     .label = Ruslpóstur eða villandi
 newtab-report-cancel = Hætta við
 newtab-report-submit = Senda inn
-newtab-toast-thanks-for-reporting =
-    .message = Takk fyrir að tilkynna þetta.
-
-## Strings for trending searches
-
-# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
-newtab-trending-searches-trending-on-google = Vinsælt á Google
-newtab-trending-searches-show-trending =
-    .title = Sýna vinsælar leitir
-newtab-trending-searches-hide-trending =
-    .title = Fela vinsælar leitir
-newtab-trending-searches-learn-more = Frekari upplýsingar
-newtab-trending-searches-dismiss = Fela vinsælar leitir

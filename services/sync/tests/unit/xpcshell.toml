@@ -1,7 +1,7 @@
 [DEFAULT]
 head = "head_appinfo.js ../../../common/tests/unit/head_helpers.js head_helpers.js head_http_server.js head_errorhandler_common.js"
 firefox-appdir = "browser"
-prefs = ["identity.fxaccounts.enabled=false"]
+prefs = ["identity.fxaccounts.enabled=true"]
 support-files = [
   "addon1-search.json",
   "bootstrap1-search.json",
@@ -133,10 +133,6 @@ run-sequentially = "Frequent timeouts, bug 1395148"
 
 ["test_fxa_service_cluster.js"]
 # Finally, we test each engine.
-
-["test_glean.js"]
-skip-if = ["appname == 'thunderbird'"]
-requesttimeoutfactor = 4
 
 ["test_history_engine.js"]
 skip-if = ["appname == 'thunderbird'"]

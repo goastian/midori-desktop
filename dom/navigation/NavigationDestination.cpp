@@ -86,9 +86,6 @@ bool NavigationDestination::SameDocument() const { return mIsSameDocument; }
 void NavigationDestination::GetState(JSContext* aCx,
                                      JS::MutableHandle<JS::Value> aRetVal,
                                      ErrorResult& aRv) const {
-  if (!mState) {
-    return;
-  }
   nsresult rv = mState->DeserializeToJsval(aCx, aRetVal);
   if (NS_FAILED(rv)) {
     // nsStructuredCloneContainer::DeserializeToJsval suppresses exceptions, so

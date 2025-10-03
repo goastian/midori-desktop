@@ -20,18 +20,24 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
 
 .top-sites-list {
   list-style: none;
-  margin: 0 calc(var(--space-large) * -1);
+  margin: 0 (-$half-base-gutter);
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  row-gap: var(--space-xlarge);
+  display: flex;
+  flex-wrap: wrap;
 
-  @media (min-width: $break-point-layout-variant) {
-    grid-template-columns: repeat(6, 1fr);
-  }
+  .layout-variant-a &,
+  .layout-variant-b & {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    row-gap: var(--space-xlarge);
 
-  @media (min-width: $break-point-widest) {
-    grid-template-columns: repeat(8, 1fr);
+    @media (min-width: $break-point-layout-variant) {
+      grid-template-columns: repeat(6, 1fr);
+    }
+
+    @media (min-width: $break-point-widest) {
+      grid-template-columns: repeat(8, 1fr);
+    }
   }
 
   .shortcuts-refresh & {
@@ -115,7 +121,12 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
 
   @media (min-width: $break-point-medium) {
     .hide-for-narrow {
-      display: none;
+      display: inline-block;
+
+      .layout-variant-a &,
+      .layout-variant-b & {
+        display: none;
+      }
     }
   }
 
@@ -128,23 +139,43 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
   @media (min-width: $break-point-widest) {
     .hide-for-narrow {
       display: inline-block;
+
+      .layout-variant-a &,
+      .layout-variant-b & {
+        display: inline-block;
+      }
     }
   }
 }
 
 // container for drop zone
 .top-site-outer {
-  width: calc(var(--size-item-large) * 3);
+  width: 120px;
   border-radius: var(--border-radius-medium);
   display: inline-block;
-  margin-block-end: var(--space-large);
+  margin-block-end: 16px;
+
+  .layout-variant-a &,
+  .layout-variant-b & {
+    width:  calc(var(--size-item-large) * 3);
+
+    .tile {
+      width: calc(var(--size-item-large) * 2);
+      height: calc(var(--size-item-large) * 2);
+
+      .icon-wrapper {
+        width: var(--size-item-large);
+        height: var(--size-item-large);
+      }
+    }
+  }
 
   // container for context menu
   .top-site-inner {
     position: relative;
 
     > a {
-      padding: var(--space-large) var(--space-large) var(--space-xsmall);
+      padding: 20px $half-base-gutter 4px;
       color: inherit;
       display: block;
       outline: none;
@@ -161,6 +192,10 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
   // Contrast fix for users who have wallpapers set
   &:not(:hover, :active, .active) {
     @include wallpaper-contrast-fix;
+  }
+
+  .tile {
+    color-scheme: initial;
   }
 
   // Necessary for when navigating by a keyboard, having the context
@@ -183,10 +218,10 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     -moz-context-properties: fill;
     height: 20px;
     width: 20px;
-    inset-inline-end: var(--space-xsmall);
+    inset-inline-end: 3px;
     opacity: 0;
     position: absolute;
-    inset-block-start: calc(var(--space-large) * -1);
+    top: -20px;
 
     // Contrast fix for users who have wallpapers set
     @include wallpaper-contrast-fix;
@@ -212,8 +247,8 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     background-color: var(--newtab-background-color-secondary);
     justify-content: center;
     margin: 0 auto;
-    height: calc(var(--size-item-large) * 2);
-    width: calc(var(--size-item-large) * 2);
+    height: $top-sites-size;
+    width: $top-sites-size;
     cursor: pointer;
     position: relative;
 
@@ -226,8 +261,8 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
 
     .icon-wrapper {
       border-radius: var(--border-radius-small);
-      width: var(--size-item-large);
-      height: var(--size-item-large);
+      width: 48px;
+      height: 48px;
       overflow: hidden;
       position: relative;
       display: flex;
@@ -243,7 +278,7 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
         font-size: 64px; // stylelint-disable-line declaration-property-value-disallowed-list
         font-weight: var(--font-weight-bold);
         transform: rotate(-10deg);
-        inset-block-start: var(--space-xsmall);
+        top: 6px;
         position: relative;
         color: $letter-fallback-color;
       }
@@ -263,7 +298,7 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     background-size: cover;
     height: 100%;
     inset-inline-start: 0;
-    inset-block-start: 0;
+    top: 0;
     width: 100%;
   }
 
@@ -296,9 +331,8 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     transition-property: background-size, bottom, inset-inline-end, height, width;
     height: 32px;
     width: 32px;
-    // Bug 1967304 - $variable
-    inset-block-end: -$default-icon-offset; // stylelint-disable-line declaration-property-value-disallowed-list
-    inset-inline-end: -$default-icon-offset; // stylelint-disable-line declaration-property-value-disallowed-list
+    bottom: -$default-icon-offset;
+    inset-inline-end: -$default-icon-offset;
   }
 
   &.placeholder {
@@ -326,13 +360,13 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
 
   .title {
     color: var(--newtab-contextual-text-primary-color);
-    padding-block-start: var(--space-small);
+    padding-top: 8px;
     font: caption;
     text-align: center;
     position: relative;
 
     .icon {
-      margin-inline-end: var(--space-xxsmall);
+      margin-inline-end: 2px;
       fill: currentColor;
     }
 
@@ -375,7 +409,7 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     margin-block-end: 0;
     border-radius: var(--border-radius-large);
 
-    &:hover, &:focus {
+    &:hover {
       .context-menu-button {
         @include wallpaper-contrast-fix;
       }
@@ -383,14 +417,10 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
       .tile {
         background-color: var(--newtab-background-color-secondary);
       }
-
-      .icon-pin-small {
-        opacity: 1;
-      }
     }
 
     .top-site-button {
-      padding: var(--space-large) var(--space-large) var(--space-small);
+      padding: 20px 16px 6px;
 
       &:focus + div .context-menu-button {
         opacity: 1;
@@ -426,7 +456,7 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
 
     .title {
       .search-topsite {
-        margin-inline-end: var(--space-xxsmall);
+        margin-inline-end: 2px;
         fill: currentColor;
         background-size: 12px;
         height: 12px;
@@ -443,7 +473,7 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
 
     .context-menu-button {
       inset-inline-end: 0;
-      inset-block-start: var(--space-medium);
+      inset-block-start: 12px;
       height: 24px;
       width: 24px;
       background-color: unset;
@@ -454,15 +484,23 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     }
 
     .context-menu {
-      // Bug 1967304 - Custom number (40px)
-      inset-block-start: calc(var(--space-large) + var(--space-xlarge));
+      inset-block-start: 40px;
     }
 
     .icon-pin-small {
-      inset-block-start: var(--space-small);
-      inset-inline-start: var(--space-small);
-      opacity: 0;
+      // The icon's colour is based on currentColor, which is a ligh/dark colour.
+      // We don't want it to change on hover based on the wallpaper-contrast-fix mixin,
+      // as it's inside the icon container now which is always the same colour
+      // regardless of wallpaper or hover state.
+      color-scheme: light;
+
+      @include dark-theme-only {
+        color-scheme: dark;
+      }
+
       position: absolute;
+      inset-block-start: 0.188rem;
+      inset-inline-start: 0.188rem;
     }
   }
 }
@@ -492,10 +530,6 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
           box-shadow: 0 2px 8px 0 var(--newtab-section-card-box-shadow-color);
         }
 
-        .icon-pin-small {
-          opacity: 1;
-        }
-
         .lightWallpaper &,
         .darkWallpaper & {
           background: color-mix(in srgb, var(--button-text-color-hover) 14%, transparent);
@@ -516,12 +550,12 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
 
   .modal {
     box-shadow: $shadow-secondary;
-    inset-inline-start: 0;
+    left: 0;
     margin: 0 auto;
     max-height: calc(100% - 40px);
     position: fixed;
-    inset-inline-end: 0;
-    inset-block-start: var(--space-xxlarge);
+    right: 0;
+    top: 40px;
     width: $wrapper-default-width;
 
     @media (min-width: $break-point-medium) {
@@ -540,13 +574,13 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
 
   .section-title {
     font-size: inherit;
-    margin: 0 0 var(--space-large);
+    margin: 0 0 16px;
   }
 
   .form-input-container {
     max-width: $form-width + 3 * $form-spacing + $rich-icon-size;
     margin: 0 auto;
-    padding: var(--space-xxlarge);
+    padding: $form-spacing;
 
     .top-site-outer {
       pointer-events: none;
@@ -556,22 +590,22 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
   .search-shortcuts-container {
     max-width: 700px;
     margin: 0 auto;
-    padding: var(--space-xxlarge);
+    padding: $form-spacing;
 
     > div {
-      margin-inline-end: calc(var(--space-xxlarge) * -1);
+      margin-inline-end: -39px;
     }
 
     .top-site-outer {
       margin-inline-start: 0;
-      margin-inline-end: var(--space-xxlarge);
+      margin-inline-end: 39px;
     }
   }
 
   .top-site-outer {
     padding: 0;
-    margin: var(--space-xlarge) 0 0;
-    margin-inline-start: var(--space-xxlarge);
+    margin: 24px 0 0;
+    margin-inline-start: $form-spacing;
   }
 
   .fields-and-preview {
@@ -591,18 +625,18 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
       .icon-clear-input {
         position: absolute;
         transform: translateY(-50%);
-        inset-block-start: 50%;
-        inset-inline-end: var(--space-small);
+        top: 50%;
+        inset-inline-end: 8px;
       }
     }
 
     .url {
       input:dir(ltr) {
-        padding-inline-end: var(--space-xxlarge);
+        padding-right: 32px;
       }
 
       input:dir(rtl) {
-        padding-inline-start: var(--space-xxlarge);
+        padding-left: 32px;
 
         &:not(:placeholder-shown) {
           direction: ltr;
@@ -614,12 +648,12 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     .enable-custom-image-input {
       display: inline-block;
       font-size: var(--font-size-small);
-      margin-block-start: var(--space-xsmall);
+      margin-top: 4px;
       cursor: pointer;
     }
 
     .custom-image-input-container {
-      margin-block-start: var(--space-xsmall);
+      margin-top: 4px;
 
       .loading-container {
         width: 16px;
@@ -627,8 +661,8 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
         overflow: hidden;
         position: absolute;
         transform: translateY(-50%);
-        inset-block-start: 50%;
-        inset-inline-end: var(--space-small);
+        top: 50%;
+        inset-inline-end: 8px;
       }
 
       // This animation is derived from Firefox's tab loading animation
@@ -659,8 +693,8 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
       &[type='text'] {
         background-color: var(--newtab-background-color-secondary);
         border: $input-border;
-        margin: var(--space-small) 0;
-        padding: 0 var(--space-small);
+        margin: 8px 0;
+        padding: 0 8px;
         height: 32px;
         width: 100%;
         font-size: inherit;
@@ -687,22 +721,22 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
       background: var(--newtab-status-error);
       border-radius: var(--border-radius-small);
       color: $white;
-      inset-inline-start: var(--space-xxsmall);
-      padding: var(--space-xsmall) var(--space-medium);
+      inset-inline-start: 3px;
+      padding: 5px 12px;
       position: absolute;
-      inset-block-start: var(--space-xxlarge);
+      top: 44px;
       z-index: 1;
 
       // tooltip caret
       &::before {
         background: var(--newtab-status-error);
-        inset-block-end: calc(var(--space-small) * -1);
+        bottom: -8px;
         content: '.';
         height: 16px;
-        inset-inline-start: var(--space-medium);
+        inset-inline-start: 12px;
         position: absolute;
         text-indent: -999px;
-        inset-block-start: calc(var(--space-small) * -1);
+        top: -7px;
         transform: rotate(45deg);
         white-space: nowrap;
         width: 16px;
@@ -715,7 +749,7 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     justify-content: flex-end;
 
     button {
-      margin-inline-start: var(--space-small);
+      margin-inline-start: 10px;
       margin-inline-end: 0;
     }
   }
@@ -738,7 +772,7 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
   // CSS styled checkbox
   [type='checkbox']:not(:checked),
   [type='checkbox']:checked {
-    inset-inline-start: -9999px; // stylelint-disable-line declaration-property-value-disallowed-list
+    inset-inline-start: -9999px;
     position: absolute;
   }
 
@@ -749,7 +783,7 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     position: relative;
   }
 
-  $checkbox-offset: calc(var(--space-small) * -1);
+  $checkbox-offset: -8px;
 
   [type='checkbox']:not(:checked) + label::before,
   [type='checkbox']:checked + label::before {
@@ -758,15 +792,15 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     border-radius: var(--border-radius-small);
     content: '';
     height: 21px;
-    inset-inline-start: calc(var(--space-small) * -1);
+    left: $checkbox-offset;
     position: absolute;
-    inset-block-start: calc(var(--space-small) * -1);
+    top: $checkbox-offset;
     width: 21px;
     z-index: 1;
 
     [dir='rtl'] & {
-      inset-inline-start: auto;
-      inset-inline-end: calc(var(--space-small) * -1);
+      left: auto;
+      right: $checkbox-offset;
     }
   }
 
@@ -776,17 +810,17 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
     background: url('chrome://global/skin/icons/check.svg') no-repeat center center;
     content: '';
     height: 21px;
-    inset-inline-start: calc(var(--space-small) * -1);
+    left: $checkbox-offset;
     position: absolute;
-    inset-block-start: calc(var(--space-small) * -1);
+    top: $checkbox-offset;
     width: 21px;
     -moz-context-properties: fill;
     fill: var(--newtab-primary-action-background);
     z-index: 2;
 
     [dir='rtl'] & {
-      inset-inline-start: auto;
-      inset-inline-end: calc(var(--space-small) * -1);
+      left: auto;
+      right: $checkbox-offset;
     }
   }
 
@@ -860,7 +894,7 @@ $calculated-max-width-twice-widest: $break-point-widest + 2 * $card-width;
 // used for TopSites impression wrapper
 .topsite-impression-observer {
   position: absolute;
-  inset-block-start: 0;
+  top: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;

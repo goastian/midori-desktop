@@ -136,11 +136,11 @@ class MockChannelSend : public voe::ChannelSendInterface {
   MOCK_METHOD(
       void,
       ModifyEncoder,
-      (webrtc::FunctionView<void(std::unique_ptr<AudioEncoder>*)> modifier),
+      (rtc::FunctionView<void(std::unique_ptr<AudioEncoder>*)> modifier),
       (override));
   MOCK_METHOD(void,
               CallEncoder,
-              (webrtc::FunctionView<void(AudioEncoder*)> modifier),
+              (rtc::FunctionView<void(AudioEncoder*)> modifier),
               (override));
   MOCK_METHOD(void, SetRTCP_CNAME, (absl::string_view c_name), (override));
   MOCK_METHOD(void,

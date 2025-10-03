@@ -44,6 +44,8 @@ internal object DownloadNotification {
     private const val LEGACY_NOTIFICATION_CHANNEL_ID = "Downloads"
     internal const val PERCENTAGE_MULTIPLIER = 100
 
+    internal const val EXTRA_DOWNLOAD_ID = "downloadId"
+
     @VisibleForTesting
     internal fun createDownloadGroupNotification(
         context: Context,
@@ -87,7 +89,7 @@ internal object DownloadNotification {
         downloadState: DownloadState,
         fileSizeFormatter: FileSizeFormatter,
         notificationAccentColor: Int,
-        downloadEstimator: DownloadEstimator,
+        downloadEstimator: DownloadEstimator?,
     ): Notification {
         val channelId = ensureChannelExists(context)
         val isIndeterminate = downloadState.isIndeterminate()
@@ -101,9 +103,7 @@ internal object DownloadNotification {
                         formatDownloadTimeRemaining(
                             context = context,
                             downloadEstimator = downloadEstimator,
-                            startTime = downloadState.createdTime,
-                            currentBytes = downloadState.currentBytesCopied,
-                            totalBytes = downloadState.contentLength,
+                            curBytes = downloadState.currentBytesCopied,
                         ),
                     ),
             )
@@ -327,7 +327,7 @@ internal object DownloadNotification {
     private fun createPendingIntent(context: Context, action: String, downloadStateId: String): PendingIntent {
         val intent = Intent(action)
         intent.setPackage(context.applicationContext.packageName)
-        intent.putExtra(INTENT_EXTRA_DOWNLOAD_ID, downloadStateId)
+        intent.putExtra(EXTRA_DOWNLOAD_ID, downloadStateId)
 
         // We generate a random requestCode in order to generate a distinct PendingIntent:
         // https://developer.android.com/reference/android/app/PendingIntent.html
@@ -349,10 +349,15 @@ internal fun NotificationCompat.Builder.setCompatGroup(groupKey: String): Notifi
     }
 }
 
-private fun DownloadState.getPercent(): Int? =
-    progress?.let { progress ->
-        (DownloadNotification.PERCENTAGE_MULTIPLIER * progress).toInt()
+private fun DownloadState.getPercent(): Int? {
+    val bytesCopied = currentBytesCopied
+    val contentLength = contentLength
+    return if (contentLength == null || contentLength == 0L) {
+        null
+    } else {
+        (DownloadNotification.PERCENTAGE_MULTIPLIER * bytesCopied / contentLength).toInt()
     }
+}
 
 @VisibleForTesting
 internal fun DownloadState.getProgress(fileSizeFormatter: FileSizeFormatter): String {
@@ -397,16 +402,10 @@ internal fun DownloadState.getStatusDescription(
 
 private fun formatDownloadTimeRemaining(
     context: Context,
-    downloadEstimator: DownloadEstimator,
-    startTime: Long,
-    currentBytes: Long,
-    totalBytes: Long?,
+    downloadEstimator: DownloadEstimator?,
+    curBytes: Long?,
 ): String {
-    val timeRemaining = downloadEstimator.estimatedRemainingTime(
-        startTime = startTime,
-        bytesDownloaded = currentBytes,
-        totalBytes = totalBytes ?: 0,
-    )
+    val timeRemaining = downloadEstimator?.estimatedRemainingTime(curBytes ?: 0)
     if (timeRemaining == null) return ""
     val formattedTimeRemaining = timeRemaining.seconds.toString()
     return context.getString(

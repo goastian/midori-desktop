@@ -854,10 +854,8 @@ bool BigInt::absoluteDivWithBigIntDivisor(
   const unsigned n = divisor->digitLength();
   const unsigned m = dividend->digitLength() - n;
 
-  RootedTuple<BigInt*, BigInt*, BigInt*, BigInt*> roots(cx);
-
   // The quotient to be computed.
-  RootedField<BigInt*, 0> q(roots);
+  RootedBigInt q(cx);
   if (quotient) {
     q = createUninitialized(cx, m + 1, isNegative);
     if (!q) {
@@ -867,8 +865,7 @@ bool BigInt::absoluteDivWithBigIntDivisor(
 
   // In each iteration, `qhatv` holds `divisor` * `current quotient digit`.
   // "v" is the book's name for `divisor`, `qhat` the current quotient digit.
-  RootedField<BigInt*, 1> qhatv(roots,
-                                createUninitialized(cx, n + 1, isNegative));
+  RootedBigInt qhatv(cx, createUninitialized(cx, n + 1, isNegative));
   if (!qhatv) {
     return false;
   }
@@ -881,7 +878,7 @@ bool BigInt::absoluteDivWithBigIntDivisor(
   Digit lastDigit = divisor->digit(n - 1);
   unsigned shift = DigitLeadingZeroes(lastDigit);
 
-  RootedField<BigInt*, 2> shiftedDivisor(roots);
+  RootedBigInt shiftedDivisor(cx);
   if (shift > 0) {
     shiftedDivisor = absoluteLeftShiftAlwaysCopy(cx, divisor, shift,
                                                  LeftShiftMode::SameSizeResult);
@@ -894,9 +891,9 @@ bool BigInt::absoluteDivWithBigIntDivisor(
 
   // Holds the (continuously updated) remaining part of the dividend, which
   // eventually becomes the remainder.
-  RootedField<BigInt*, 3> u(
-      roots, absoluteLeftShiftAlwaysCopy(cx, dividend, shift,
-                                         LeftShiftMode::AlwaysAddOneDigit));
+  RootedBigInt u(cx,
+                 absoluteLeftShiftAlwaysCopy(cx, dividend, shift,
+                                             LeftShiftMode::AlwaysAddOneDigit));
   if (!u) {
     return false;
   }

@@ -8,7 +8,7 @@
 #define SecretDecoderRing_h
 
 #include "nsISecretDecoderRing.h"
-#include "pkcs11t.h"
+#include "nsString.h"
 
 #define NS_SECRETDECODERRING_CONTRACTID "@mozilla.org/security/sdr;1"
 
@@ -26,8 +26,7 @@ class SecretDecoderRing : public nsISecretDecoderRing {
   virtual ~SecretDecoderRing() = default;
 
  private:
-  nsresult Encrypt(CK_MECHANISM_TYPE type, const nsACString& data,
-                   /*out*/ nsACString& result);
+  nsresult Encrypt(const nsACString& data, /*out*/ nsACString& result);
   nsresult Decrypt(const nsACString& data, /*out*/ nsACString& result);
 };
 

@@ -23,9 +23,9 @@ import org.mozilla.fenix.exceptions.viewholders.ExceptionsDeleteButtonViewHolder
 import org.mozilla.fenix.exceptions.viewholders.ExceptionsHeaderViewHolder
 import org.mozilla.fenix.exceptions.viewholders.ExceptionsListItemViewHolder
 import org.mozilla.fenix.ext.components
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class LoginExceptionsAdapterTest {
 
     private lateinit var interactor: LoginExceptionsInteractor

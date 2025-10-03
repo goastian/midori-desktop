@@ -3571,11 +3571,10 @@ MediaTrackGraphImpl* MediaTrackGraphImpl::GetInstance(
   MOZ_ASSERT(aGraphDriverRequested != OFFLINE_THREAD_DRIVER,
              "Use CreateNonRealtimeInstance() for offline graphs");
 
-  GraphHashSet* graphs = Graphs();
-  GraphHashSet::AddPtr addPtr =
-      graphs->lookupForAdd({aWindowID, aSampleRate, aPrimaryOutputDeviceID});
-  if (addPtr) {  // graph already exists
-    return *addPtr;
+  MediaTrackGraphImpl* graph =
+      GetInstanceIfExists(aWindowID, aSampleRate, aPrimaryOutputDeviceID);
+  if (graph) {  // graph already exists
+    return graph;
   }
 
   GraphRunType runType = DIRECT_DRIVER;
@@ -3586,10 +3585,11 @@ MediaTrackGraphImpl* MediaTrackGraphImpl::GetInstance(
   // In a real time graph, the number of output channels is determined by
   // the underlying number of channel of the default audio output device.
   uint32_t channelCount = CubebUtils::MaxNumberOfChannels();
-  MediaTrackGraphImpl* graph = new MediaTrackGraphImpl(
-      aWindowID, aSampleRate, aPrimaryOutputDeviceID, aMainThread);
+  graph = new MediaTrackGraphImpl(aWindowID, aSampleRate,
+                                  aPrimaryOutputDeviceID, aMainThread);
   graph->Init(aGraphDriverRequested, runType, channelCount);
-  MOZ_ALWAYS_TRUE(graphs->add(addPtr, graph));
+  MOZ_ALWAYS_TRUE(Graphs()->putNew(
+      {aWindowID, aSampleRate, aPrimaryOutputDeviceID}, graph));
 
   LOG(LogLevel::Debug, ("Starting up MediaTrackGraph %p for window 0x%" PRIx64,
                         graph, aWindowID));

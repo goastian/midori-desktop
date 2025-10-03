@@ -197,6 +197,3 @@ newtab-custom-settings = Bainistigh tuilleadh socruithe
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

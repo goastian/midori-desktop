@@ -370,11 +370,6 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
     secCheckLoadInfo->SetClientInfo(clientInfo);
   }
 
-  dom::RequestMode requestMode =
-      nsContentSecurityManager::SecurityModeToRequestMode(
-          nsContentSecurityManager::ComputeSecurityMode(securityFlags));
-  secCheckLoadInfo->SetRequestMode(Some(requestMode));
-
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
   nsresult rv = NS_CheckContentLoadPolicy(uri, secCheckLoadInfo, &shouldLoad,
                                           nsContentUtils::GetContentPolicy());

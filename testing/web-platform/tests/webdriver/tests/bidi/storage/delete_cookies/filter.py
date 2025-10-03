@@ -40,14 +40,14 @@ async def test_filter(
     cookie_value_matching_filter = "bar"
 
     cookie1_name = "baz"
-    await add_cookie(new_tab["context"], cookie1_name, cookie_value_matching_filter, secure=True)
+    await add_cookie(new_tab["context"], cookie1_name, cookie_value_matching_filter)
 
     cookie2_name = "foo"
-    await add_cookie(new_tab["context"], cookie2_name, cookie_value_matching_filter, secure=True)
+    await add_cookie(new_tab["context"], cookie2_name, cookie_value_matching_filter)
 
     cookie3_name = "foo_3"
     cookie3_value = "not_bar"
-    await add_cookie(new_tab["context"], cookie3_name, cookie3_value, secure=True)
+    await add_cookie(new_tab["context"], cookie3_name, cookie3_value)
 
     result = await bidi_session.storage.delete_cookies(
         filter=filter,
@@ -64,7 +64,7 @@ async def test_filter(
         name=cookie3_name,
         value={"type": "string", "value": cookie3_value},
         path="/webdriver/tests/support",
-        secure=True,
+        secure=False,
     )
 
 
@@ -86,16 +86,16 @@ async def test_filter_domain(
 
     cookie1_name = "bar"
     cookie1_value = "foo"
-    await add_cookie(top_context["context"], cookie1_name, cookie1_value, secure=True)
+    await add_cookie(top_context["context"], cookie1_name, cookie1_value)
 
     cookie2_name = "foo"
     cookie2_value = "bar"
-    await add_cookie(top_context["context"], cookie2_name, cookie2_value, secure=True)
+    await add_cookie(top_context["context"], cookie2_name, cookie2_value)
 
     cookie3_name = "foo_2"
     cookie3_value = "bar_2"
     cookie3_domain = domain_value(domain="alt")
-    await add_cookie(new_tab["context"], cookie3_name, cookie3_value, secure=True)
+    await add_cookie(new_tab["context"], cookie3_name, cookie3_value)
 
     filter = CookieFilter(domain=domain_value())
     result = await bidi_session.storage.delete_cookies(
@@ -113,7 +113,7 @@ async def test_filter_domain(
         name=cookie3_name,
         value={"type": "string", "value": cookie3_value},
         path="/webdriver/tests/support",
-        secure=True,
+        secure=False,
     )
 
 
@@ -148,7 +148,6 @@ async def test_filter_expiry(
         name=cookie1_name,
         value=cookie1_value,
         expiry=date_string_to_delete,
-        secure=True
     )
 
     cookie2_name = "foo"
@@ -158,7 +157,6 @@ async def test_filter_expiry(
         name=cookie2_name,
         value=cookie2_value,
         expiry=date_string_to_delete,
-        secure=True
     )
 
     cookie3_name = "foo_3"
@@ -170,11 +168,7 @@ async def test_filter_expiry(
         date_string_to_remain = format_expiry_string(expiry_date_to_remain)
 
     await add_cookie(
-        new_tab["context"],
-        cookie3_name,
-        cookie3_value,
-        expiry=date_string_to_remain,
-        secure=True
+        new_tab["context"], cookie3_name, cookie3_value, expiry=date_string_to_remain
     )
 
     filter = CookieFilter(expiry=expiry_to_delete)
@@ -193,7 +187,7 @@ async def test_filter_expiry(
         name=cookie3_name,
         value={"type": "string", "value": cookie3_value},
         path="/webdriver/tests/support",
-        secure=True,
+        secure=False,
     )
 
 
@@ -207,19 +201,19 @@ async def test_filter_name(bidi_session, new_tab, test_page, add_cookie, domain_
     cookie1_value = "bar"
     cookie1_path = "/"
     await add_cookie(
-        new_tab["context"], name_to_delete, cookie1_value, path=cookie1_path, secure=True
+        new_tab["context"], name_to_delete, cookie1_value, path=cookie1_path
     )
 
     cookie2_value = "baz"
     cookie2_path = "/webdriver/"
     await add_cookie(
-        new_tab["context"], name_to_delete, cookie2_value, path=cookie2_path, secure=True
+        new_tab["context"], name_to_delete, cookie2_value, path=cookie2_path
     )
 
     name_to_remain = "foo_2"
     cookie3_value = "bar_2"
     cookie3_path = "/"
-    await add_cookie(new_tab["context"], name_to_remain, cookie3_value, path=cookie3_path, secure=True)
+    await add_cookie(new_tab["context"], name_to_remain, cookie3_value, path=cookie3_path)
 
     filter = CookieFilter(name=name_to_delete)
     result = await bidi_session.storage.delete_cookies(
@@ -237,7 +231,7 @@ async def test_filter_name(bidi_session, new_tab, test_page, add_cookie, domain_
         name=name_to_remain,
         value={"type": "string", "value": cookie3_value},
         path=cookie3_path,
-        secure=True,
+        secure=False,
     )
 
 
@@ -271,7 +265,6 @@ async def test_filter_same_site(
         cookie1_name,
         cookie1_value,
         same_site=same_site_to_delete,
-        secure=True
     )
 
     cookie2_name = "foo"
@@ -281,13 +274,12 @@ async def test_filter_same_site(
         cookie2_name,
         cookie2_value,
         same_site=same_site_to_delete,
-        secure=True
     )
 
     cookie3_name = "foo_3"
     cookie3_value = "bar_3"
     await add_cookie(
-        new_tab["context"], cookie3_name, cookie3_value, same_site=same_site_to_remain, secure=True
+        new_tab["context"], cookie3_name, cookie3_value, same_site=same_site_to_remain
     )
 
     filter = CookieFilter(same_site=same_site_to_delete)
@@ -307,7 +299,7 @@ async def test_filter_same_site(
         value={"type": "string", "value": cookie3_value},
         path="/webdriver/tests/support",
         same_site=same_site_to_remain,
-        secure=True,
+        secure=False,
     )
 
 
@@ -334,7 +326,6 @@ async def test_filter_secure(
         new_tab["context"],
         cookie1_name,
         cookie1_value,
-        same_site="strict",
         secure=secure_to_delete,
     )
 
@@ -344,14 +335,13 @@ async def test_filter_secure(
         new_tab["context"],
         cookie2_name,
         cookie2_value,
-        same_site="strict",
         secure=secure_to_delete,
     )
 
     cookie3_name = "foo_3"
     cookie3_value = "bar_3"
     await add_cookie(
-        new_tab["context"], cookie3_name, cookie3_value, same_site="strict", secure=secure_to_remain
+        new_tab["context"], cookie3_name, cookie3_value, secure=secure_to_remain
     )
 
     filter = CookieFilter(secure=secure_to_delete)
@@ -370,7 +360,6 @@ async def test_filter_secure(
         name=cookie3_name,
         value={"type": "string", "value": cookie3_value},
         path="/webdriver/tests/support",
-        same_site="strict",
         secure=secure_to_remain,
     )
 
@@ -403,7 +392,6 @@ async def test_filter_path(
         cookie1_name,
         cookie1_value,
         path=path_to_delete,
-        secure=True
     )
 
     cookie2_name = "foo"
@@ -413,13 +401,12 @@ async def test_filter_path(
         cookie2_name,
         cookie2_value,
         path=path_to_delete,
-        secure=True
     )
 
     cookie3_name = "foo_3"
     cookie3_value = "bar_3"
     await add_cookie(
-        new_tab["context"], cookie3_name, cookie3_value, path=path_to_remain, secure=True
+        new_tab["context"], cookie3_name, cookie3_value, path=path_to_remain
     )
 
     filter = CookieFilter(path=path_to_delete)
@@ -438,7 +425,7 @@ async def test_filter_path(
         name=cookie3_name,
         value={"type": "string", "value": cookie3_value},
         path="/webdriver/tests/support" if path_to_remain is None else path_to_remain,
-        secure=True,
+        secure=False,
     )
 
 

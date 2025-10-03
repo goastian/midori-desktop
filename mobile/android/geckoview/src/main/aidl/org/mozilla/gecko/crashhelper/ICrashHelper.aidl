@@ -5,5 +5,5 @@
 package org.mozilla.gecko.crashhelper;
 
 interface ICrashHelper {
-    boolean start(in int mainProcessPid, in ParcelFileDescriptor breakpadFd, in String minidumpPath, in ParcelFileDescriptor listenFd, in ParcelFileDescriptor serverFd);
+    boolean start(in ParcelFileDescriptor breakpadFd, in String minidumpPath, in ParcelFileDescriptor serverFd);
 }

@@ -714,8 +714,8 @@ static bool CreateResolvedBindingObject(JSContext* cx,
                                         Handle<ModuleObject*> module,
                                         Handle<JSAtom*> bindingName,
                                         MutableHandle<Value> result) {
-  ResolvedBindingObject* obj =
-      ResolvedBindingObject::create(cx, module, bindingName);
+  Rooted<ResolvedBindingObject*> obj(
+      cx, ResolvedBindingObject::create(cx, module, bindingName));
   if (!obj) {
     return false;
   }
@@ -877,8 +877,8 @@ static bool CyclicModuleResolveExport(JSContext* cx,
           result.set(StringValue(cx->names().ambiguous));
 
           if (errorInfoOut) {
-            ModuleObject* module1 = starResolution->module();
-            ModuleObject* module2 = binding->module();
+            Rooted<ModuleObject*> module1(cx, starResolution->module());
+            Rooted<ModuleObject*> module2(cx, binding->module());
             errorInfoOut->setForAmbiguousImport(cx, module, module1, module2);
           }
           return true;

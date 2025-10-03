@@ -8537,9 +8537,8 @@ var gCSSProperties = {
       "transition-duration",
       "transition-timing-function",
       "transition-delay",
-      "transition-behavior",
     ],
-    initial_values: ["all 0s ease 0s", "all", "0s", "0s 0s", "ease", "normal"],
+    initial_values: ["all 0s ease 0s", "all", "0s", "0s 0s", "ease"],
     other_values: [
       "all 0s cubic-bezier(0.25, 0.1, 0.25, 1.0) 0s",
       "width 1s linear 2s",
@@ -8598,10 +8597,6 @@ var gCSSProperties = {
       "3s --my-color",
       "none",
       "none 2s linear 2s",
-      "allow-discrete",
-      "width allow-discrete",
-      "1s allow-discrete",
-      "linear allow-discrete",
     ],
     invalid_values: [
       "1s width, 2s none",
@@ -8617,15 +8612,6 @@ var gCSSProperties = {
       "bounce 1s steps(rubbish) 2s",
       "2s unset",
     ],
-  },
-  "transition-behavior": {
-    domProp: "transitionBehavior",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    applies_to_marker: true,
-    initial_values: ["normal"],
-    other_values: ["allow-discrete"],
-    invalid_values: ["none", "auto", "discrete"],
   },
   "transition-delay": {
     domProp: "transitionDelay",
@@ -11590,7 +11576,6 @@ var gCSSProperties = {
       "transition-duration",
       "transition-timing-function",
       "transition-delay",
-      "transition-behavior",
     ],
   },
   "-webkit-transition-delay": {
@@ -14276,7 +14261,6 @@ if (IsCSSPropertyPrefEnabled("layout.css.prefixes.transitions")) {
         "transition-duration",
         "transition-timing-function",
         "transition-delay",
-        "transition-behavior",
       ],
     },
     "-moz-transition-delay": {
@@ -14312,6 +14296,36 @@ if (IsCSSPropertyPrefEnabled("layout.css.prefixes.transitions")) {
       subproperties: ["transition-timing-function"],
     },
   });
+}
+
+if (IsCSSPropertyPrefEnabled("layout.css.transition-behavior.enabled")) {
+  Object.assign(gCSSProperties, {
+    "transition-behavior": {
+      domProp: "transitionBehavior",
+      inherited: false,
+      type: CSS_TYPE_LONGHAND,
+      applies_to_marker: true,
+      initial_values: ["normal"],
+      other_values: ["allow-discrete"],
+      invalid_values: ["none", "auto", "discrete"],
+    },
+  });
+
+  gCSSProperties["transition"].subproperties.push("transition-behavior");
+  gCSSProperties["transition"].initial_values.push("normal");
+  gCSSProperties["transition"].other_values.push(
+    "allow-discrete",
+    "width allow-discrete",
+    "1s allow-discrete",
+    "linear allow-discrete"
+  );
+  gCSSProperties["-webkit-transition"].subproperties.push(
+    "transition-behavior"
+  );
+
+  if (IsCSSPropertyPrefEnabled("layout.css.prefixes.transitions")) {
+    gCSSProperties["-moz-transition"].subproperties.push("transition-behavior");
+  }
 }
 
 if (IsCSSPropertyPrefEnabled("layout.css.moz-user-input.enabled")) {

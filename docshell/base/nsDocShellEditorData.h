@@ -12,8 +12,9 @@
 
 #include "mozilla/RefPtr.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/WeakPtr.h"
+#include "nsDocShell.h"
 
-class nsIDocShell;
 class nsEditingSession;
 
 namespace mozilla {
@@ -22,7 +23,7 @@ class HTMLEditor;
 
 class nsDocShellEditorData {
  public:
-  explicit nsDocShellEditorData(nsIDocShell* aOwningDocShell);
+  explicit nsDocShellEditorData(nsDocShell* aOwningDocShell);
   ~nsDocShellEditorData();
 
   MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult MakeEditable(bool aWaitForUriLoad);
@@ -33,14 +34,14 @@ class nsDocShellEditorData {
   SetHTMLEditor(mozilla::HTMLEditor* aHTMLEditor);
   MOZ_CAN_RUN_SCRIPT_BOUNDARY void TearDownEditor();
   nsresult DetachFromWindow();
-  nsresult ReattachToWindow(nsIDocShell* aDocShell);
+  nsresult ReattachToWindow(nsDocShell* aDocShell);
   bool WaitingForLoad() const { return mMakeEditable; }
 
  protected:
   void EnsureEditingSession();
 
   // The doc shell that owns us. Weak ref, since it always outlives us.
-  nsIDocShell* mDocShell;
+  mozilla::WeakPtr<nsDocShell> mDocShell;
 
   // Only present for the content root docShell. Session is owned here.
   RefPtr<nsEditingSession> mEditingSession;

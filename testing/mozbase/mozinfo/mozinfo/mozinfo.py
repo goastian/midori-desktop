@@ -215,7 +215,9 @@ def update(new_info):
     :param new_info: Either a dict containing the new info or a path/url
                      to a json file containing the new info.
     """
-    if isinstance(new_info, str):
+    from six import string_types
+
+    if isinstance(new_info, string_types):
         # lazy import
         import json
 

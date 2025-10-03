@@ -16,9 +16,11 @@ namespace js {
 using JSONParseNode = JSString;
 
 class ParseRecordObject : public NativeObject {
-  enum { ParseNodeSlot, ValueSlot, KeySlot, SlotCount };
+  enum { ParseNodeSlot, ValueSlot, KeySlot, EntriesSlot, SlotCount };
 
  public:
+  using EntryMap = JSObject;
+
   static const JSClass class_;
 
   static ParseRecordObject* create(JSContext* cx, const Value& val);
@@ -48,9 +50,11 @@ class ParseRecordObject : public NativeObject {
   bool hasValue() const { return !getValue().isUndefined(); }
 
   // For objects and arrays, the records for the members and elements
-  // (respectively) are added to the ParseRecordObject.
-  bool addEntries(JSContext* cx, Handle<JS::PropertyKey> key,
-                  Handle<ParseRecordObject*> parseRecord);
+  // (respectively). If there are none, or for JSON primitives, the entries
+  // parameter is unmodified.
+  void getEntries(JSContext* cx, MutableHandle<EntryMap*> entries);
+
+  void setEntries(JSContext* cx, Handle<EntryMap*> entries);
 };
 
 }  // namespace js

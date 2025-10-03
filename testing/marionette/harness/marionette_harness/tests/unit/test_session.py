@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import six
+
 from marionette_driver import errors
 
 from marionette_harness import MarionetteTestCase
@@ -31,11 +33,11 @@ class TestSession(MarionetteTestCase):
         self.marionette.start_session()
 
         self.assertTrue(self.marionette.session_id is not None)
-        self.assertTrue(isinstance(self.marionette.session_id, str))
+        self.assertTrue(isinstance(self.marionette.session_id, six.text_type))
 
     def test_session_already_started(self):
         self.marionette.start_session()
-        self.assertTrue(isinstance(self.marionette.session_id, str))
+        self.assertTrue(isinstance(self.marionette.session_id, six.text_type))
         with self.assertRaises(errors.SessionNotCreatedException):
             self.marionette._send_message("WebDriver:NewSession", {})
 

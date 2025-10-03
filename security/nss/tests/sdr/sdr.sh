@@ -39,11 +39,9 @@ sdr_init()
   VALUE1=$HOSTDIR/tests.v1.$$
   VALUE2=$HOSTDIR/tests.v2.$$
   VALUE3=$HOSTDIR/tests.v3.$$
-  VALUE4=$HOSTDIR/tests.v4.$$
   T1="Test1"
   T2="The quick brown fox jumped over the lazy dog"
   T3="1234567"
-  T4="TestDES3"
 
   SDRDIR=${HOSTDIR}/SDR
   D_SDR="SDR.$version"
@@ -72,9 +70,8 @@ sdr_main()
   ASCII_VALUE1=$HOSTDIR/tests.v1a.$$
   ASCII_VALUE2=$HOSTDIR/tests.v2a.$$
   ASCII_VALUE3=$HOSTDIR/tests.v3a.$$
-  ASCII_VALUE4=$HOSTDIR/tests.v4a.$$
-  ASCII_COMBINED=$HOSTDIR/tests.v5a.$$
-  COMBINED_400=$HOSTDIR/SDR/combined.$$
+  ASCII_COMBINED=$HOSTDIR/tests.v4a.$$
+  COMBINED_300=$HOSTDIR/SDR/combined.$$
   DECODED=$HOSTDIR/SDR/decoded.$$
   LOG=$HOSTDIR/SDR/log.$$
 
@@ -93,11 +90,6 @@ sdr_main()
   ${BINDIR}/sdrtest -d ${PROFILE} -o ${VALUE3} -t "${T3}" -f ${R_PWFILE}
   html_msg $? 0 "Encrypt - Value 3"
 
-  echo "$SCRIPTNAME: Creating an DES3 SDR key/SDR Encrypt - Value 4"
-  echo "sdrtest -d ${PROFILE} -o ${VALUE4} -t \"${T4}\"  -f ${R_PWFILE}"
-  ${BINDIR}/sdrtest -d ${PROFILE} -o ${VALUE4} -t "${T4}" -f ${R_PWFILE} -m des3
-  html_msg $? 0 "Creating an DES3 SDR key/Encrypt - Value 4"
-
   echo "$SCRIPTNAME: SDR Decrypt - Value 1"
   echo "sdrtest -d ${PROFILE} -i ${VALUE1} -t \"${T1}\"  -f ${R_PWFILE}"
   ${BINDIR}/sdrtest -d ${PROFILE} -i ${VALUE1} -t "${T1}" -f ${R_PWFILE}
@@ -113,17 +105,11 @@ sdr_main()
   ${BINDIR}/sdrtest -d ${PROFILE} -i ${VALUE3} -t "${T3}" -f ${R_PWFILE}
   html_msg $? 0 "Decrypt - Value 3"
 
-  echo "$SCRIPTNAME: DES3 SDR Decrypt - Value 4"
-  echo "sdrtest -d ${PROFILE} -i ${VALUE4} -t \"${T4}\"  -f ${R_PWFILE}"
-  ${BINDIR}/sdrtest -d ${PROFILE} -i ${VALUE4} -t "${T4}" -f ${R_PWFILE}
-  html_msg $? 0 "DES3 Decrypt - Value 4"
-
   echo "$SCRIPTNAME: pwdecrypt - 300 Entries"
   # get base64 encoded encrypted versions of our tests
   sdrtest -d ${PROFILE} -o ${ASCII_VALUE1} -a -t "${T1}"  -f ${R_PWFILE}
   sdrtest -d ${PROFILE} -o ${ASCII_VALUE2} -a -t "${T2}"  -f ${R_PWFILE}
   sdrtest -d ${PROFILE} -o ${ASCII_VALUE3} -a -t "${T3}"  -f ${R_PWFILE}
-  sdrtest -d ${PROFILE} -o ${ASCII_VALUE4} -a -t "${T4}"  -f ${R_PWFILE} -m des3
   # make each encoded span exactly one line
   touch ${ASCII_COMBINED}
   cat ${ASCII_VALUE1} | tr -d '\n' >> ${ASCII_COMBINED}
@@ -132,23 +118,21 @@ sdr_main()
   echo >> ${ASCII_COMBINED}
   cat ${ASCII_VALUE3} | tr -d '\n' >> ${ASCII_COMBINED}
   echo >> ${ASCII_COMBINED}
-  cat ${ASCII_VALUE4} | tr -d '\n' >> ${ASCII_COMBINED}
-  echo >> ${ASCII_COMBINED}
-  #concantentate the 4 entries 100 times to produce 400 entries
-  touch ${COMBINED_400}
+  #concantentate the 3 entries 100 times to produce 300 entries
+  touch ${COMBINED_300}
   for ((i=0;i<100;i++)); do
-    cat ${ASCII_COMBINED} >> ${COMBINED_400}
+    cat ${ASCII_COMBINED} >> ${COMBINED_300}
   done
-  echo "time pwdecrypt -i ${COMBINED_400} -o ${DECODED} -l ${LOG} -d ${PROFILE}  -f ${R_PWFILE}"
-  dtime=$(time -p (pwdecrypt -i ${COMBINED_400} -o ${DECODED} -l ${LOG} -d ${PROFILE}  -f ${R_PWFILE}) 2>&1 1>/dev/null)
+  echo "time pwdecrypt -i ${COMBINED_300} -o ${DECODED} -l ${LOG} -d ${PROFILE}  -f ${R_PWFILE}"
+  dtime=$(time -p (pwdecrypt -i ${COMBINED_300} -o ${DECODED} -l ${LOG} -d ${PROFILE}  -f ${R_PWFILE}) 2>&1 1>/dev/null)
   echo "------------- result ----------------------"
   cat ${DECODED}
   wc -c ${DECODED}
   RARRAY=($(wc -c ${DECODED}))
-  CHARCOUNT=12000
+  CHARCOUNT=9800
   if [ "${OS_ARCH}" = "WINNT" ]; then
     # includes include carriage returns as well as line feeds for new line
-    CHARCOUNT=12400
+    CHARCOUNT=10100
   fi
   html_msg ${RARRAY[0]} ${CHARCOUNT} "pwdecrypt success"
   echo "------------- log ----------------------"

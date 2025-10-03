@@ -16,7 +16,6 @@ const { NimbusTestUtils } = ChromeUtils.importESModule(
 );
 
 const client = RemoteSettings("nimbus-desktop-experiments");
-const secureClient = RemoteSettings("nimbus-secure-experiments");
 
 const TEST_MESSAGE_CONTENT = {
   id: "ON_LOAD_TEST_MESSAGE",
@@ -90,7 +89,6 @@ add_task(async function test_messagesLoaded_reach_experiment() {
   await NimbusTestUtils.validateExperiment(recipe);
 
   await client.db.importChanges({}, Date.now(), [recipe], { clear: true });
-  await secureClient.db.importChanges({}, Date.now(), [], { clear: true });
   await SpecialPowers.pushPrefEnv({
     set: [
       ["app.shield.optoutstudies.enabled", true],
@@ -140,7 +138,6 @@ add_task(async function test_messagesLoaded_reach_experiment() {
 
   sandbox.restore();
   await client.db.clear();
-  await secureClient.db.clear();
   await SpecialPowers.popPrefEnv();
   await ASRouter._updateMessageProviders();
 });

@@ -968,7 +968,8 @@ static inline void save_comp_rd_search_stat(
           &xd->global_motion[mbmi->ref_frame[i]];
       rd_stats->is_global[i] = is_global_mv_block(mbmi, wm->wmtype);
     }
-    rd_stats->interinter_comp = mbmi->interinter_comp;
+    memcpy(&rd_stats->interinter_comp, &mbmi->interinter_comp,
+           sizeof(rd_stats->interinter_comp));
     ++x->comp_rd_stats_idx;
   }
 }

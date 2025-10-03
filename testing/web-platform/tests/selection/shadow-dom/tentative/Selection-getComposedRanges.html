@@ -17,9 +17,12 @@ test(() => {
 test(() => {
   container.innerHTML = 'hello, world';
   getSelection().setBaseAndExtent(container.firstChild, 0, container.firstChild, 5);
-  assert_throws_js(TypeError, function() {
+  try {
     getSelection().getComposedRanges({ shadowRoots: [container] });
-  }, "Failed to execute 'getComposedRanges' on arguments which don't implment ShadowRoot interface");
+    assert_unreached('executed without error; want error');
+  } catch (e) {
+    assert_equals(e.message, "Failed to execute 'getComposedRanges' on 'Selection': Failed to read the 'shadowRoots' property from 'GetComposedRangesOptions': Failed to convert value to 'ShadowRoot'.");
+  }
 }, 'getComposedRanges should fail if argument is not a shadow root');
 
 test(() => {

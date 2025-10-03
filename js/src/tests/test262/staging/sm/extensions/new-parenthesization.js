@@ -4,7 +4,7 @@
  */
 
 /*---
-includes: [sm/non262.js, sm/non262-shell.js]
+includes: [sm/non262.js, sm/non262-shell.js, sm/non262-extensions-shell.js]
 flags:
   - noStrict
 description: |
@@ -15,6 +15,8 @@ esid: pending
 var BUGNUMBER = 521456;
 var summary =
   'Incorrect decompilation of new (eval(v)).s and new (f.apply(2)).s';
+printBugNumber(BUGNUMBER);
+printStatus(summary);
 
 function foo(c) { return new (eval(c)).s; }
 function bar(f) { var a = new (f.apply(2).s); return a; }

@@ -832,6 +832,14 @@ describe("Listfeed <DSCard />", () => {
     sandbox.restore();
   });
 
+  it("should not show save to pocket UI", () => {
+    wrapper.setState({ saveToPocketCard: true });
+
+    let stpButton = wrapper.find(".card-stp-button");
+
+    assert.ok(!stpButton.exists());
+  });
+
   it("should not render thumbs up/down UI", () => {
     wrapper.setState({ mayHaveThumbsUpDown: true });
     const thumbs_up_down_buttons_component = wrapper.find(

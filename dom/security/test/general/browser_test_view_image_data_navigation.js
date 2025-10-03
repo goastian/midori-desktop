@@ -2,10 +2,7 @@
 
 add_task(async function test_principal_right_click_open_link_in_new_tab() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      ["security.data_uri.block_toplevel_data_uri_navigations", true],
-    ],
+    set: [["security.data_uri.block_toplevel_data_uri_navigations", true]],
   });
 
   const TEST_PAGE =

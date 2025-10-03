@@ -816,12 +816,19 @@ static void fun_trace(JSTracer* trc, JSObject* obj) {
 }
 
 static JSObject* CreateFunctionConstructor(JSContext* cx, JSProtoKey key) {
-  RootedObject functionProto(cx, &cx->global()->getPrototype(JSProto_Function));
+  Rooted<GlobalObject*> global(cx, cx->global());
+  RootedObject functionProto(cx, &global->getPrototype(JSProto_Function));
 
-  return NewFunctionWithProto(
-      cx, Function, 1, FunctionFlags::NATIVE_CTOR, nullptr,
-      Handle<PropertyName*>(cx->names().Function), functionProto,
-      gc::AllocKind::FUNCTION, TenuredObject);
+  RootedObject functionCtor(
+      cx, NewFunctionWithProto(
+              cx, Function, 1, FunctionFlags::NATIVE_CTOR, nullptr,
+              Handle<PropertyName*>(cx->names().Function), functionProto,
+              gc::AllocKind::FUNCTION, TenuredObject));
+  if (!functionCtor) {
+    return nullptr;
+  }
+
+  return functionCtor;
 }
 
 static bool FunctionPrototype(JSContext* cx, unsigned argc, Value* vp) {
@@ -831,7 +838,9 @@ static bool FunctionPrototype(JSContext* cx, unsigned argc, Value* vp) {
 }
 
 static JSObject* CreateFunctionPrototype(JSContext* cx, JSProtoKey key) {
-  RootedObject objectProto(cx, &cx->global()->getPrototype(JSProto_Object));
+  Rooted<GlobalObject*> self(cx, cx->global());
+
+  RootedObject objectProto(cx, &self->getPrototype(JSProto_Object));
 
   return NewFunctionWithProto(
       cx, FunctionPrototype, 0, FunctionFlags::NATIVE_FUN, nullptr,
@@ -1696,7 +1705,7 @@ static bool NewFunctionEnvironmentIsWellFormed(JSContext* cx,
   // scope proxy. All other cases of polluting global scope behavior are
   // handled by EnvironmentObjects (viz. non-syntactic DynamicWithObject and
   // NonSyntacticVariablesObject).
-  JSObject* terminatingEnv = SkipEnvironmentObjects(env);
+  RootedObject terminatingEnv(cx, SkipEnvironmentObjects(env));
   return !terminatingEnv || terminatingEnv == cx->global() ||
          terminatingEnv->is<DebugEnvironmentProxy>();
 }
@@ -2106,7 +2115,7 @@ JSFunction* js::DefineFunction(
 
 void js::ReportIncompatibleMethod(JSContext* cx, const CallArgs& args,
                                   const JSClass* clasp) {
-  HandleValue thisv = args.thisv();
+  RootedValue thisv(cx, args.thisv());
 
 #ifdef DEBUG
   switch (thisv.type()) {

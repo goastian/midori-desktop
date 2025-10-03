@@ -11,14 +11,7 @@ async function testContentBounds(browser, acc) {
     await getContentBoundsForDOMElm(browser, getAccessibleDOMNodeID(acc));
 
   let contentDPR = await getContentDPR(browser);
-  const [x, y, width, height] = await untilCacheCondition(
-    (testX, testY, testW, testH) =>
-      testX == expectedX &&
-      testY == expectedY &&
-      testW == expectedWidth &&
-      testH >= expectedHeight,
-    () => getBounds(acc, contentDPR)
-  );
+  let [x, y, width, height] = getBounds(acc, contentDPR);
   let prettyAccName = prettyName(acc);
   is(x, expectedX, "Wrong x coordinate of " + prettyAccName);
   is(y, expectedY, "Wrong y coordinate of " + prettyAccName);

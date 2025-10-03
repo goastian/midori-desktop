@@ -22,12 +22,15 @@ test();
 
 function test()
 {
+  printBugNumber(BUGNUMBER);
+  printStatus(summary);
+
   let testAwaitInDefaultExprOfAsyncFunc = (code) => {
-    assert.throws(SyntaxError, () => eval(code), "await expression can't be used in parameter");
+  	assertThrowsInstanceOf(() => eval(code), SyntaxError, "await expression can't be used in parameter");
   };
 
   let testNoException = (code) => {
-    eval(code);
+  	assert.sameValue(completesNormally(code), true);
   };
 
   // https://www.ecma-international.org/ecma-262/9.0/

@@ -7,12 +7,13 @@ use std::{borrow::Cow, ffi, slice};
 use wgc::{
     command::{
         ComputePassDescriptor, PassTimestampWrites, RenderPassColorAttachment,
-        RenderPassDepthStencilAttachment,
+        RenderPassDepthStencilAttachment, RenderPassDescriptor,
     },
     id::CommandEncoderId,
 };
 use wgt::{BufferAddress, BufferSize, Color, DynamicOffset, IndexFormat};
 
+use arrayvec::ArrayVec;
 use serde::{Deserialize, Serialize};
 
 /// A stream of commands for a render pass or compute pass.
@@ -50,31 +51,25 @@ pub struct BasePass<C> {
 #[derive(Deserialize, Serialize)]
 pub struct RecordedRenderPass {
     base: BasePass<RenderCommand>,
-    color_attachments: Vec<Option<RenderPassColorAttachment>>,
+    color_attachments: ArrayVec<Option<RenderPassColorAttachment>, { wgh::MAX_COLOR_ATTACHMENTS }>,
     depth_stencil_attachment: Option<RenderPassDepthStencilAttachment>,
     timestamp_writes: Option<PassTimestampWrites>,
     occlusion_query_set_id: Option<id::QuerySetId>,
 }
 
 impl RecordedRenderPass {
-    pub fn new(
-        label: Option<String>,
-        color_attachments: Vec<Option<RenderPassColorAttachment>>,
-        depth_stencil_attachment: Option<RenderPassDepthStencilAttachment>,
-        timestamp_writes: Option<PassTimestampWrites>,
-        occlusion_query_set_id: Option<id::QuerySetId>,
-    ) -> Self {
+    pub fn new(desc: &RenderPassDescriptor) -> Self {
         Self {
             base: BasePass {
-                label,
+                label: desc.label.as_ref().map(|cow| cow.to_string()),
                 commands: Vec::new(),
                 dynamic_offsets: Vec::new(),
                 string_data: Vec::new(),
             },
-            color_attachments,
-            depth_stencil_attachment,
-            timestamp_writes,
-            occlusion_query_set_id,
+            color_attachments: desc.color_attachments.iter().cloned().collect(),
+            depth_stencil_attachment: desc.depth_stencil_attachment.cloned(),
+            timestamp_writes: desc.timestamp_writes.cloned(),
+            occlusion_query_set_id: desc.occlusion_query_set,
         }
     }
 }

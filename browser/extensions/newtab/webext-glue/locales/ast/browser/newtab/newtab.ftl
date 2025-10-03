@@ -237,6 +237,3 @@ newtab-custom-settings = Xestionar más axustes
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

@@ -58,6 +58,13 @@ class MediaChannelStatistics {
     }
     mAccumulatedBytes += aBytes;
   }
+  double GetRateAtLastStop(bool* aReliable) const {
+    double seconds = mAccumulatedTime.ToSeconds();
+    *aReliable =
+        (seconds >= 1.0) || (mAccumulatedBytes >= RELIABLE_DATA_THRESHOLD);
+    if (seconds <= 0.0) return 0.0;
+    return static_cast<double>(mAccumulatedBytes) / seconds;
+  }
   double GetRate(bool* aReliable) const {
     TimeDuration time = mAccumulatedTime;
     if (mIsStarted) {

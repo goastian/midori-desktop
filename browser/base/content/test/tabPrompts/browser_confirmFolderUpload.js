@@ -155,12 +155,6 @@ async function testUploadPrompt(confirmUpload) {
   });
 }
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 // Tests the confirmation prompt that shows after the user picked a folder.
 
 // Confirm the prompt

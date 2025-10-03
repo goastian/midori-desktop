@@ -57,10 +57,9 @@ var gSearchResultsPane = {
 
     if (!this.searchInput.hidden) {
       this.searchInput.addEventListener("input", this);
+      this.searchInput.addEventListener("command", this);
       window.addEventListener("DOMContentLoaded", () => {
-        this.searchInput.updateComplete.then(() => {
-          this.searchInput.focus();
-        });
+        this.searchInput.focus();
         // Initialize other panes in an idle callback.
         window.requestIdleCallback(() => this.initializeCategories());
       });

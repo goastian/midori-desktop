@@ -8,7 +8,7 @@ let instance = new WebAssembly.Instance(module, {
 let {i8vecmul} = instance.exports;
 
 // Test basic vector pairwise product
-let test = () => {
+{
   // [0, 1, 2, 3] . [0, 2, 4, 6] = [0, 2, 8, 18]
   for (let i = 0; i < 4; i++) {
     bytes[i] = i;
@@ -22,23 +22,7 @@ let test = () => {
   for (let i = 0; i < 4; i++) {
     assertEq(bytes[8 + i], i * i * 2);
   }
-};
-test();
-
-if (WasmHelpers.isSingleStepProfilingEnabled) {
-  const {
-      assertEqImpreciseStacks,
-      startProfiling,
-      endProfiling
-  } = WasmHelpers;
-
-  enableGeckoProfiling();
-  startProfiling();
-  test();
-  assertEqImpreciseStacks(endProfiling(), ["", ">", "0,>", "", "0,>", ">", ""]);
-  disableGeckoProfiling();
 }
-
 
 // Test bounds checking
 {
@@ -46,7 +30,6 @@ if (WasmHelpers.isSingleStepProfilingEnabled) {
   assertErrorMessage(() => i8vecmul(0, PageSizeInBytes - 1, 0, 2), WebAssembly.RuntimeError, /index out of bounds/);
   assertErrorMessage(() => i8vecmul(0, 0, PageSizeInBytes - 1, 2), WebAssembly.RuntimeError, /index out of bounds/);
 }
-
 
 // Test linking of intrinsics
 {

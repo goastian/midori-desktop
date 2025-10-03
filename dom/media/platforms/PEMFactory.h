@@ -7,13 +7,9 @@
 #if !defined(PEMFactory_h_)
 #  define PEMFactory_h_
 
-#  include "MediaCodecsSupport.h"
 #  include "PlatformEncoderModule.h"
 
 namespace mozilla {
-
-class StaticMutex;
-enum class RemoteMediaIn;
 
 using PEMCreateEncoderPromise = PlatformEncoderModule::CreateEncoderPromise;
 
@@ -33,21 +29,10 @@ class PEMFactory final {
   RefPtr<PlatformEncoderModule::CreateEncoderPromise> CreateEncoderAsync(
       const EncoderConfig& aConfig, const RefPtr<TaskQueue>& aTaskQueue);
 
-  media::EncodeSupportSet Supports(const EncoderConfig& aConfig) const;
-  media::EncodeSupportSet SupportsCodec(CodecType aCodec) const;
-
-  static media::MediaCodecsSupported Supported(bool aForceRefresh = false);
-  static media::EncodeSupportSet SupportsCodec(
-      CodecType aCodec, const media::MediaCodecsSupported& aSupported,
-      RemoteMediaIn aLocation);
+  bool Supports(const EncoderConfig& aConfig) const;
+  bool SupportsCodec(CodecType aCodec) const;
 
  private:
-  void InitGpuPEMs();
-  void InitRddPEMs();
-  void InitUtilityPEMs();
-  void InitContentPEMs();
-  void InitDefaultPEMs();
-
   RefPtr<PlatformEncoderModule::CreateEncoderPromise>
   CheckAndMaybeCreateEncoder(const EncoderConfig& aConfig, uint32_t aIndex,
                              const RefPtr<TaskQueue>& aTaskQueue);
@@ -61,8 +46,6 @@ class PEMFactory final {
       const EncoderConfig& aConfig) const;
 
   nsTArray<RefPtr<PlatformEncoderModule>> mCurrentPEMs;
-
-  static StaticMutex sSupportedMutex;
 };
 
 }  // namespace mozilla

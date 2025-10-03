@@ -28,13 +28,10 @@ add_task(
 );
 
 function evaluateTestCode(debuggee) {
-  // debuggee isn't privileged and doesn't have access to 'Cr'
-  debuggee.NS_ERROR_NO_INTERFACE = Cr.NS_ERROR_NO_INTERFACE;
-
   // prettier-ignore
   Cu.evalInSandbox(`                    // 1
     function QueryInterface() {         // 2
-      throw NS_ERROR_NO_INTERFACE;   // 3
+      throw Cr.NS_ERROR_NO_INTERFACE;   // 3
     }                                   // 4
     function stopMe() {                 // 5
       throw 42;                         // 6

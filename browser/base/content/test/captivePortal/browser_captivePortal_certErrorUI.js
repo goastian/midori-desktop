@@ -6,7 +6,6 @@
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       ["captivedetect.canonicalURL", CANONICAL_URL],
       ["captivedetect.canonicalContent", CANONICAL_CONTENT],
     ],
@@ -187,11 +186,9 @@ add_task(async function testCaptivePortalAdvancedPanel() {
       "Exception button should be enabled after waiting"
     );
     const msSinceClick = content.performance.now() - clickTime;
-    Assert.greater(
-      msSinceClick,
-      1000,
-      `Exception button should stay disabled for ${msSinceClick} > 1000 ms`
-    );
+    const expr = `${msSinceClick} > 1000`;
+    /* eslint-disable no-eval */
+    ok(eval(expr), `Exception button should stay disabled for ${expr} ms`);
 
     await EventUtils.synthesizeMouseAtCenter(
       advPanelExceptionButton,

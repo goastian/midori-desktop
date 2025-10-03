@@ -128,6 +128,3 @@ newtab-page-title = Tab Noa
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

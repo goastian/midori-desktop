@@ -1180,7 +1180,7 @@ describe("<TopSiteForm>", () => {
         data: {
           action_position: -1,
           source: "TOP_SITES",
-          event: "TOP_SITES_ADD",
+          event: "TOP_SITES_EDIT",
         },
         meta: { from: "ActivityStream:Content", to: "ActivityStream:Main" },
         type: at.TELEMETRY_USER_EVENT,
@@ -1282,8 +1282,6 @@ describe("<TopSiteForm>", () => {
           action_position: 7,
           source: "TOP_SITES",
           event: "TOP_SITES_EDIT",
-          hasTitleChanged: false,
-          hasURLChanged: false,
         },
         meta: { from: "ActivityStream:Content", to: "ActivityStream:Main" },
         type: at.TELEMETRY_USER_EVENT,
@@ -1520,7 +1518,7 @@ describe("<TopSiteList>", () => {
         {...DEFAULT_PROPS}
         TopSites={{ rows }}
         TopSitesRows={1}
-        App={{ isForStartupCache: { TopSites: true } }}
+        App={{ isForStartupCache: { App: true } }}
       />
     );
     assert.lengthOf(wrapper.find(TopSite), 2, "topSites");

@@ -13,7 +13,7 @@
 #include "nsIObserver.h"
 #include "nsTArray.h"
 
-#include "mozilla/PRemoteMediaManagerChild.h"
+#include "mozilla/PRemoteDecoderManagerChild.h"
 
 namespace mozilla {
 
@@ -45,7 +45,7 @@ class UtilityProcessManager final : public UtilityProcessHost::Listener {
   using SharedLaunchPromise = MozPromise<T, LaunchError, false>;
 
   using StartRemoteDecodingUtilityPromise =
-      LaunchPromise<Endpoint<PRemoteMediaManagerChild>>;
+      LaunchPromise<Endpoint<PRemoteDecoderManagerChild>>;
   using JSOraclePromise = GenericNonExclusivePromise;
 
 #ifdef XP_WIN

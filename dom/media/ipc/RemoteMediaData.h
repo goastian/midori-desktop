@@ -138,21 +138,6 @@ class RemoteArrayOfByteBuffer {
     mIsValid = true;
   }
 
-  template <typename Type>
-  RemoteArrayOfByteBuffer(const AlignedBuffer<Type>& aBuffer,
-                          std::function<ShmemBuffer(size_t)>& aAllocator) {
-    // Determine the total size we will need for this object.
-    size_t bufferSize = aBuffer.Size();
-    if (bufferSize) {
-      if (!AllocateShmem(bufferSize, aAllocator)) {
-        return;
-      }
-      Write(0, aBuffer.Data(), bufferSize);
-      mOffsets.AppendElement(OffsetEntry{0, bufferSize});
-    }
-    mIsValid = true;
-  }
-
   RemoteArrayOfByteBuffer(const nsTArray<RefPtr<MediaByteBuffer>>& aArray,
                           std::function<ShmemBuffer(size_t)>& aAllocator);
   RemoteArrayOfByteBuffer& operator=(RemoteArrayOfByteBuffer&& aOther) noexcept;
@@ -249,7 +234,6 @@ class ArrayOfRemoteMediaRawData {
     bool mEOS;
     // This will be zero for audio.
     int32_t mHeight;
-    Maybe<uint8_t> mTemporalLayerId;
     Maybe<media::TimeInterval> mOriginalPresentationWindow;
     Maybe<CryptoInfo> mCryptoConfig;
   };
@@ -277,8 +261,6 @@ class ArrayOfRemoteAudioData final {
  public:
   // Fill the content, return false if an OOM occurred.
   bool Fill(const nsTArray<RefPtr<AudioData>>& aData,
-            std::function<ShmemBuffer(size_t)>&& aAllocator);
-  bool Fill(const AudioData* aData,
             std::function<ShmemBuffer(size_t)>&& aAllocator);
 
   // Return the aIndexth MediaRawData or nullptr if a memory error occurred.

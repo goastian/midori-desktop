@@ -30,6 +30,11 @@ interface BrowserToolbarInteractor {
     fun onHomeButtonClicked()
 
     /**
+     * Deletes all tabs and navigates to the Home screen. Called when a user taps on the erase button.
+     */
+    fun onEraseButtonClicked()
+
+    /**
      * Opens the translation bottom sheet. Called when the user interacts with the translation
      * action.
      */
@@ -112,6 +117,10 @@ class DefaultBrowserToolbarInteractor(
 
     override fun onHomeButtonClicked() {
         browserToolbarController.handleHomeButtonClick()
+    }
+
+    override fun onEraseButtonClicked() {
+        browserToolbarController.handleEraseButtonClick()
     }
 
     override fun onTranslationsButtonClicked() {

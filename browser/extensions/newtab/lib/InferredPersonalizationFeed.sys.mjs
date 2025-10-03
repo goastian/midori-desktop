@@ -153,14 +153,12 @@ export class InferredPersonalizationFeed {
       });
 
       if (model.modelType === MODEL_TYPE.CTR) {
-        // eslint-disable-next-line no-unused-vars
-        const { model_id, ...clickTotals } = interests.inferredInterests;
-        const inferredInterests = model.computeCTRInterestVectors({
-          clicks: clickTotals,
-          impressions: ivImpressions,
-          model_id: inferredModel.model_id,
-        });
-        return inferredInterests;
+        const inferredInterests = model.computeCTRInterestVectors(
+          interests.inferredInterests,
+          ivImpressions,
+          inferredModel.model_id
+        );
+        return { inferredInterests };
       }
       const res = {
         c: interests.inferredInterests,

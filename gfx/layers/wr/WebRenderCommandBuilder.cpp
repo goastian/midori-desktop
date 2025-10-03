@@ -1635,8 +1635,9 @@ void WebRenderCommandBuilder::DoGroupingForDisplayList(
   RefPtr<WebRenderGroupData> groupData =
       CreateOrRecycleWebRenderUserData<WebRenderGroupData>(aWrappingItem);
 
+  bool snapped;
   nsRect groupBounds =
-      aWrappingItem->GetUntransformedBounds(aDisplayListBuilder);
+      aWrappingItem->GetUntransformedBounds(aDisplayListBuilder, &snapped);
   DIGroup& group = groupData->mSubGroup;
 
   auto scale = aSc.GetInheritedScale();

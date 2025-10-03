@@ -42,7 +42,7 @@ nsSHEntry::nsSHEntry()
       mIsSrcdocEntry(false),
       mScrollRestorationIsManual(false),
       mLoadedInThisProcess(false),
-      mTransient(false),
+      mPersist(true),
       mHasUserInteraction(false),
       mHasUserActivation(false) {}
 
@@ -68,7 +68,7 @@ nsSHEntry::nsSHEntry(const nsSHEntry& aOther)
       mIsSrcdocEntry(aOther.mIsSrcdocEntry),
       mScrollRestorationIsManual(false),
       mLoadedInThisProcess(aOther.mLoadedInThisProcess),
-      mTransient(aOther.mTransient),
+      mPersist(aOther.mPersist),
       mHasUserInteraction(false),
       mHasUserActivation(aOther.mHasUserActivation) {}
 
@@ -882,14 +882,14 @@ nsSHEntry::SetLoadTypeAsHistory() {
 }
 
 NS_IMETHODIMP
-nsSHEntry::IsTransient(bool* aIsTransient) {
-  *aIsTransient = mTransient;
+nsSHEntry::GetPersist(bool* aPersist) {
+  *aPersist = mPersist;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsSHEntry::SetTransient() {
-  mTransient = true;
+nsSHEntry::SetPersist(bool aPersist) {
+  mPersist = aPersist;
   return NS_OK;
 }
 

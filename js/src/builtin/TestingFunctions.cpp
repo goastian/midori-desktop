@@ -55,7 +55,6 @@
 #include "builtin/MapObject.h"
 #include "builtin/Promise.h"
 #include "builtin/TestingUtility.h"  // js::ParseCompileOptions, js::ParseDebugMetadata
-#include "builtin/WeakMapObject.h"
 #include "ds/IdValuePair.h"          // js::IdValuePair
 #include "frontend/CompilationStencil.h"  // frontend::CompilationStencil
 #include "frontend/FrontendContext.h"     // AutoReportFrontendContext
@@ -163,7 +162,6 @@ using namespace js;
 using mozilla::AssertedCast;
 using mozilla::AsWritableChars;
 using mozilla::Maybe;
-using mozilla::Some;
 using mozilla::Span;
 
 using JS::AutoStableStringChars;
@@ -996,9 +994,15 @@ static bool WasmMaxMemoryPages(JSContext* cx, unsigned argc, Value* vp) {
     return true;
   }
   if (StringEqualsLiteral(ls, "i64")) {
-    args.rval().setInt32(
-        int32_t(wasm::MaxMemoryPages(wasm::AddressType::I64).value()));
-    return true;
+#ifdef ENABLE_WASM_MEMORY64
+    if (wasm::Memory64Available(cx)) {
+      args.rval().setInt32(
+          int32_t(wasm::MaxMemoryPages(wasm::AddressType::I64).value()));
+      return true;
+    }
+#endif
+    JS_ReportErrorASCII(cx, "memory64 not enabled");
+    return false;
   }
   JS_ReportErrorASCII(cx, "bad address type");
   return false;
@@ -2398,7 +2402,7 @@ static bool WasmBuiltinI8VecMul(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
   Rooted<WasmModuleObject*> module(cx);
-  if (!wasm::CompileBuiltinModule(cx, wasm::BuiltinModuleId::SelfTest, nullptr,
+  if (!wasm::CompileBuiltinModule(cx, wasm::BuiltinModuleId::SelfTest,
                                   &module)) {
     return false;
   }
@@ -3199,88 +3203,34 @@ static bool FullCompartmentChecks(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-static bool IsAtomMarked(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-
-  RootedObject callee(cx, &args.callee());
-  if (args.length() != 2) {
-    ReportUsageErrorASCII(cx, callee, "Expected two arguments");
-    return false;
-  }
-
-  if (!args[0].isObject()) {
-    ReportUsageErrorASCII(cx, callee,
-                          "Expected an object as the first argument");
-    return false;
-  }
-  Zone* zone = UncheckedUnwrap(&args[0].toObject())->zone();
-
-  Maybe<bool> result;
-  gc::GCRuntime* gc = &cx->runtime()->gc;
-  if (args[1].isSymbol()) {
-    result = Some(gc->atomMarking.atomIsMarked(zone, args[1].toSymbol()));
-  } else if (args[1].isString()) {
-    JSString* str = args[1].toString();
-    if (str->isAtom()) {
-      result = Some(gc->atomMarking.atomIsMarked(zone, &str->asAtom()));
-    }
-  }
-
-  if (result.isNothing()) {
-    ReportUsageErrorASCII(cx, callee,
-                          "Expected an atom as the second argument");
-    return false;
-  }
-
-  args.rval().setBoolean(result.value());
-  return true;
-}
-
-static WeakMapObject* MaybeWeakMapObject(const Value& value) {
-  if (!value.isObject()) {
-    return nullptr;
-  }
-
-  JSObject* obj = UncheckedUnwrap(&value.toObject());
-  if (!obj->is<WeakMapObject>()) {
-    return nullptr;
-  }
-
-  return &obj->as<WeakMapObject>();
-}
-
-static bool NondeterministicGetWeakMapSize(JSContext* cx, unsigned argc,
-                                           Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-
-  WeakMapObject* weakmap = MaybeWeakMapObject(args.get(0));
-  if (args.length() != 1 || !weakmap) {
-    RootedObject callee(cx, &args.callee());
-    ReportUsageErrorASCII(cx, callee, "Expected a single WeakMap argument ");
-    return false;
-  }
-
-  args.rval().setNumber(weakmap->nondeterministicGetSize());
-  return true;
-}
-
 static bool NondeterministicGetWeakMapKeys(JSContext* cx, unsigned argc,
                                            Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
-  Rooted<WeakMapObject*> weakmap(cx, MaybeWeakMapObject(args.get(0)));
-  if (args.length() != 1 || !weakmap) {
+  if (args.length() != 1) {
     RootedObject callee(cx, &args.callee());
-    ReportUsageErrorASCII(cx, callee, "Expected a single WeakMap argument ");
+    ReportUsageErrorASCII(cx, callee, "Wrong number of arguments");
     return false;
   }
-
+  if (!args[0].isObject()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_NOT_EXPECTED_TYPE,
+                              "nondeterministicGetWeakMapKeys", "WeakMap",
+                              InformalValueTypeName(args[0]));
+    return false;
+  }
   RootedObject arr(cx);
-  if (!JS_NondeterministicGetWeakMapKeys(cx, weakmap, &arr)) {
+  RootedObject mapObj(cx, &args[0].toObject());
+  if (!JS_NondeterministicGetWeakMapKeys(cx, mapObj, &arr)) {
     return false;
   }
-
-  MOZ_ASSERT(arr);
+  if (!arr) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_NOT_EXPECTED_TYPE,
+                              "nondeterministicGetWeakMapKeys", "WeakMap",
+                              args[0].toObject().getClass()->name);
+    return false;
+  }
   args.rval().setObject(*arr);
   return true;
 }
@@ -6814,40 +6764,6 @@ static bool ObjectAddress(JSContext* cx, unsigned argc, Value* vp) {
   return ReturnStringCopy(cx, args, buffer);
 }
 
-static bool ScriptAddressForFunction(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-
-  if (js::SupportDifferentialTesting()) {
-    RootedObject callee(cx, &args.callee());
-    ReportUsageErrorASCII(cx, callee,
-                          "Function unavailable in differential testing mode.");
-    return false;
-  }
-
-  if (args.length() != 1) {
-    RootedObject callee(cx, &args.callee());
-    ReportUsageErrorASCII(cx, callee, "Wrong number of arguments");
-    return false;
-  }
-  if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
-    RootedObject callee(cx, &args.callee());
-    ReportUsageErrorASCII(cx, callee, "Expected function");
-    return false;
-  }
-
-  RootedFunction function(cx, &args[0].toObject().as<JSFunction>());
-  if (!function->hasBytecode()) {
-    RootedObject callee(cx, &args.callee());
-    ReportUsageErrorASCII(cx, callee, "Expected non-lazy scripted function");
-    return false;
-  }
-
-  void* ptr = function->nonLazyScript();
-  args.rval().setPrivate(ptr);
-
-  return true;
-}
-
 static bool SharedAddress(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -10187,10 +10103,6 @@ gc::ZealModeHelpText),
 "abortgc()",
 "  Abort the current incremental GC."),
 
-    JS_FN_HELP("isAtomMarked", IsAtomMarked, 2, 0,
-"isAtomMarked(obj, atom)",
-"  Return whether |atom| is marked relative to the zone containing |obj|."),
-
     JS_FN_HELP("setMallocMaxDirtyPageModifier", SetMallocMaxDirtyPageModifier, 1, 0,
 "setMallocMaxDirtyPageModifier(value)",
 "  Change the maximum size of jemalloc's page cache. The value should be between\n"
@@ -10199,10 +10111,6 @@ gc::ZealModeHelpText),
     JS_FN_HELP("fullcompartmentchecks", FullCompartmentChecks, 1, 0,
 "fullcompartmentchecks(true|false)",
 "  If true, check for compartment mismatches before every GC."),
-
-    JS_FN_HELP("nondeterministicGetWeakMapSize", NondeterministicGetWeakMapSize, 1, 0,
-"nondeterministicGetWeakMapSize(weakmap)",
-"  Returns the number of entries in the given WeakMap."),
 
     JS_FN_HELP("nondeterministicGetWeakMapKeys", NondeterministicGetWeakMapKeys, 1, 0,
 "nondeterministicGetWeakMapKeys(weakmap)",
@@ -10606,10 +10514,6 @@ JS_FOR_WASM_FEATURES(WASM_FEATURE)
 "objectAddress(obj)",
 "  Return the current address of the object. For debugging only--this\n"
 "  address may change during a moving GC."),
-
-    JS_FN_HELP("scriptAddressForFunction", ScriptAddressForFunction, 1, 0,
-"scriptAddressForFunction(fun)",
-"  Return the current address of a function's script."),
 
     JS_FN_HELP("sharedAddress", SharedAddress, 1, 0,
 "sharedAddress(obj)",

@@ -3162,8 +3162,8 @@ RefPtr<MediaManager::StreamPromise> MediaManager::GetUserMedia(
           GetCurrentSerialEventTarget(), __func__,
           [self, windowID, c, windowListener, placeholderListener, hasAudio,
            hasVideo, askPermission, prefs, isSecure, isHandlingUserInput,
-           callID, principalInfo, aCallerType, resistFingerprinting,
-           audioType](RefPtr<LocalMediaDeviceSetRefCnt> aDevices) mutable {
+           callID, principalInfo, aCallerType, resistFingerprinting, audioType,
+           forceFakes](RefPtr<LocalMediaDeviceSetRefCnt> aDevices) mutable {
             LOG("GetUserMedia: starting post enumeration promise2 success "
                 "callback!");
 
@@ -3226,6 +3226,10 @@ RefPtr<MediaManager::StreamPromise> MediaManager::GetUserMedia(
             // It is time to ask for user permission, prime voice processing
             // now. Use a local lambda to enable a guard pattern.
             [&] {
+              if (forceFakes) {
+                return;
+              }
+
               if (audioType != MediaSourceEnum::Microphone) {
                 return;
               }
@@ -3568,9 +3572,7 @@ void MediaManager::OnCameraMute(bool aMute) {
   mCamerasMuted = aMute;
   // This is safe since we're on main-thread, and the windowlist can only
   // be added to from the main-thread
-  for (const auto& window :
-       ToTArray<AutoTArray<RefPtr<GetUserMediaWindowListener>, 2>>(
-           mActiveWindows.Values())) {
+  for (const auto& window : mActiveWindows.Values()) {
     window->MuteOrUnmuteCameras(aMute);
   }
 }
@@ -3581,9 +3583,7 @@ void MediaManager::OnMicrophoneMute(bool aMute) {
   mMicrophonesMuted = aMute;
   // This is safe since we're on main-thread, and the windowlist can only
   // be added to from the main-thread
-  for (const auto& window :
-       ToTArray<AutoTArray<RefPtr<GetUserMediaWindowListener>, 2>>(
-           mActiveWindows.Values())) {
+  for (const auto& window : mActiveWindows.Values()) {
     window->MuteOrUnmuteMicrophones(aMute);
   }
 }
@@ -4747,8 +4747,7 @@ void GetUserMediaWindowListener::StopSharing() {
     MediaSourceEnum source = l->GetDevice()->GetMediaSource();
     if (source == MediaSourceEnum::Screen ||
         source == MediaSourceEnum::Window ||
-        source == MediaSourceEnum::AudioCapture ||
-        source == MediaSourceEnum::Browser) {
+        source == MediaSourceEnum::AudioCapture) {
       l->Stop();
     }
   }
@@ -4772,7 +4771,7 @@ void GetUserMediaWindowListener::MuteOrUnmuteCameras(bool aMute) {
   }
   mCamerasAreMuted = aMute;
 
-  for (auto& l : mActiveListeners.Clone()) {
+  for (auto& l : mActiveListeners) {
     if (l->GetDevice()->Kind() == MediaDeviceKind::Videoinput) {
       l->MuteOrUnmuteCamera(aMute);
     }
@@ -4787,7 +4786,7 @@ void GetUserMediaWindowListener::MuteOrUnmuteMicrophones(bool aMute) {
   }
   mMicrophonesAreMuted = aMute;
 
-  for (auto& l : mActiveListeners.Clone()) {
+  for (auto& l : mActiveListeners) {
     if (l->GetDevice()->Kind() == MediaDeviceKind::Audioinput) {
       l->MuteOrUnmuteMicrophone(aMute);
     }

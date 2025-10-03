@@ -111,7 +111,8 @@ function customBDDInterface(suite: Mocha.Suite) {
         });
       };
 
-      // @ts-expect-error override the method to support custom functionality
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error
       context['describe'] = describe;
 
       function it(title: string, fn: Mocha.TestFunction, itOnly = false) {
@@ -121,7 +122,8 @@ function customBDDInterface(suite: Mocha.Suite) {
         test.parent = suite;
 
         const describeOnly = Boolean(
-          // @ts-expect-error pokes at internal methods
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
           suite.parent?._onlySuites.find(child => {
             return child === suite;
           }),
@@ -178,7 +180,8 @@ function customBDDInterface(suite: Mocha.Suite) {
       it.deflake = wrapDeflake(it);
       it.deflakeOnly = wrapDeflake(it.only);
 
-      // @ts-expect-error override the method to support custom functionality
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error
       context.it = it;
     },
   );

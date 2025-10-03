@@ -237,12 +237,9 @@ class LoadInfo final : public nsILoadInfo {
       const Maybe<mozilla::dom::ServiceWorkerDescriptor>& aController,
       nsSecurityFlags aSecurityFlags, uint32_t aSandboxFlags,
       uint32_t aTriggeringSandboxFlags, uint64_t aTriggeringWindowId,
-      bool aTriggeringStorageAccess,
-      uint32_t aTriggeringFirstPartyClassificationFlags,
-      uint32_t aTriggeringThirdPartyClassificationFlags,
-      nsContentPolicyType aContentPolicyType, LoadTainting aTainting,
-      bool aBlockAllMixedContent, bool aUpgradeInsecureRequests,
-      bool aBrowserUpgradeInsecureRequests,
+      bool aTriggeringStorageAccess, nsContentPolicyType aContentPolicyType,
+      LoadTainting aTainting, bool aBlockAllMixedContent,
+      bool aUpgradeInsecureRequests, bool aBrowserUpgradeInsecureRequests,
       bool aBrowserDidUpgradeInsecureRequests,
       bool aBrowserWouldUpgradeInsecureRequests, bool aForceAllowDataURI,
       bool aAllowInsecureRedirectToDataURI,
@@ -267,7 +264,6 @@ class LoadInfo final : public nsILoadInfo {
       bool aHasValidUserGestureActivation, bool aTextDirectiveUserActivation,
       bool aIsSameDocumentNavigation, bool aAllowDeprecatedSystemRequests,
       bool aIsInDevToolsContext, bool aParserCreatedScript,
-      Maybe<dom::RequestMode> aRequestMode,
       nsILoadInfo::StoragePermissionState aStoragePermission,
       nsILoadInfo::IPAddressSpace aParentIPAddressSpace,
       nsILoadInfo::IPAddressSpace aIPAddressSpace,
@@ -351,8 +347,6 @@ class LoadInfo final : public nsILoadInfo {
   uint32_t mTriggeringSandboxFlags = 0;
   uint64_t mTriggeringWindowId = 0;
   bool mTriggeringStorageAccess = false;
-  uint32_t mTriggeringFirstPartyClassificationFlags = 0;
-  uint32_t mTriggeringThirdPartyClassificationFlags = 0;
   nsContentPolicyType mInternalContentPolicyType;
   LoadTainting mTainting = LoadTainting::Basic;
   bool mBlockAllMixedContent = false;
@@ -403,7 +397,6 @@ class LoadInfo final : public nsILoadInfo {
   bool mIsUserTriggeredSave = false;
   bool mIsInDevToolsContext = false;
   bool mParserCreatedScript = false;
-  Maybe<dom::RequestMode> mRequestMode;
   nsILoadInfo::StoragePermissionState mStoragePermission =
       nsILoadInfo::NoStoragePermission;
   // IP Address space of the parent browsing context.

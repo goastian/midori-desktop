@@ -11,8 +11,6 @@
 #ifndef MODULES_REMOTE_BITRATE_ESTIMATOR_REMOTE_BITRATE_ESTIMATOR_UNITTEST_HELPER_H_
 #define MODULES_REMOTE_BITRATE_ESTIMATOR_REMOTE_BITRATE_ESTIMATOR_UNITTEST_HELPER_H_
 
-#include <cstddef>
-#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>

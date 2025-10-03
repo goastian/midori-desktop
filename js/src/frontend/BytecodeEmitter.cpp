@@ -1859,6 +1859,10 @@ bool BytecodeEmitter::emitCallIncDec(UnaryNode* incDec) {
     //              [stack] CALLRESULT
     return false;
   }
+  if (!emit1(JSOp::ToNumeric)) {
+    //              [stack] N
+    return false;
+  }
 
   // The increment/decrement has no side effects, so proceed to throw for
   // invalid assignment target.
@@ -2162,9 +2166,6 @@ bool BytecodeEmitter::emitYieldOp(JSOp op) {
     return false;
   }
 
-  // InitialYield is always the first yield node.
-  MOZ_ASSERT_IF(op == JSOp::InitialYield, bytecodeSection().numYields() == 0);
-
   if (op == JSOp::InitialYield || op == JSOp::Yield) {
     bytecodeSection().addNumYields();
   }
@@ -2173,11 +2174,6 @@ bool BytecodeEmitter::emitYieldOp(JSOp op) {
   if (!allocateResumeIndex(bytecodeSection().offset(), &resumeIndex)) {
     return false;
   }
-
-  // InitialYield is the first resumable instruction.
-  MOZ_ASSERT_IF(
-      op == JSOp::InitialYield,
-      resumeIndex == AbstractGeneratorObject::RESUME_INDEX_INITIAL_YIELD);
 
   SET_RESUMEINDEX(bytecodeSection().code(off), resumeIndex);
 
@@ -8720,8 +8716,8 @@ bool BytecodeEmitter::emitRightAssociative(ListNode* node) {
   return true;
 }
 
-Maybe<ConstantCompareOperand>
-BytecodeEmitter::parseNodeToConstantCompareOperand(ParseNode* constant) {
+Maybe<ConstantCompareOperand> ParseNodeToConstantCompareOperand(
+    ParseNode* constant) {
   switch (constant->getKind()) {
     case ParseNodeKind::NumberExpr: {
       double d = constant->as<NumericLiteral>().value();
@@ -8743,24 +8739,6 @@ BytecodeEmitter::parseNodeToConstantCompareOperand(ParseNode* constant) {
     case ParseNodeKind::RawUndefinedExpr:
       return Some(ConstantCompareOperand(
           ConstantCompareOperand::EncodedType::Undefined));
-    case ParseNodeKind::Name: {
-      MOZ_ASSERT(constant->as<NameNode>().name() ==
-                 TaggedParserAtomIndex::WellKnown::undefined());
-      NameLocation loc = lookupName(constant->as<NameNode>().name());
-      switch (loc.kind()) {
-        case NameLocation::Kind::Global:
-          if (!sc->hasNonSyntacticScope()) {
-            return Some(ConstantCompareOperand(
-                ConstantCompareOperand::EncodedType::Undefined));
-          }
-          return Nothing();
-        case NameLocation::Kind::Intrinsic:
-          return Some(ConstantCompareOperand(
-              ConstantCompareOperand::EncodedType::Undefined));
-        default:
-          return Nothing();
-      }
-    }
     default:
       return Nothing();
   }
@@ -8793,10 +8771,10 @@ bool BytecodeEmitter::tryEmitConstantEq(ListNode* node, JSOp op,
 
   ParseNode* expressionNode;
   ParseNode* constantNode;
-  if (left->isConstant() || left->isUndefinedLiteral()) {
+  if (left->isConstant()) {
     expressionNode = right;
     constantNode = left;
-  } else if (right->isConstant() || right->isUndefinedLiteral()) {
+  } else if (right->isConstant()) {
     expressionNode = left;
     constantNode = right;
   } else {
@@ -8805,7 +8783,7 @@ bool BytecodeEmitter::tryEmitConstantEq(ListNode* node, JSOp op,
   }
 
   Maybe<ConstantCompareOperand> operand =
-      parseNodeToConstantCompareOperand(constantNode);
+      ParseNodeToConstantCompareOperand(constantNode);
   if (operand.isNothing()) {
     *emitted = false;
     return true;

@@ -94,12 +94,6 @@ function testTableConsistency(table, expectedRowCount, expectedColumnCount) {
   }
 }
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 /**
  * Test table, columns, rows
  */

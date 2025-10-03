@@ -115,9 +115,9 @@ class TargetDelayTest : public ::testing::Test {
       }
 
       if (!clean) {
-        for (int o = 0; o < 10; ++o) {  // Long enough to trigger delay change.
+        for (int m = 0; m < 10; ++m) {  // Long enough to trigger delay change.
           Push();
-          for (int p = 0; p < kInterarrivalJitterPacket; ++p)
+          for (int n = 0; n < kInterarrivalJitterPacket; ++n)
             Pull();
         }
       }

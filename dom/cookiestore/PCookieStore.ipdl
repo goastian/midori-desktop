@@ -33,7 +33,7 @@ protocol PCookieStore
   manager PBackground;
 
 parent:
-  async GetRequest(nsIURI cookieURI,
+  async GetRequest(nullable nsIURI cookieURI,
                    OriginAttributes attrs,
                    OriginAttributes? partitionedAttrs,
                    bool thirdPartyContext,
@@ -45,7 +45,7 @@ parent:
                    nsCString path,
                    bool onlyFirstMatch) returns (CookieStruct[] data);
 
-  async SetRequest(nsIURI cookieURI,
+  async SetRequest(nullable nsIURI cookieURI,
                    OriginAttributes attrs,
                    bool thirdPartyContext,
                    bool partitionForeign,
@@ -61,7 +61,7 @@ parent:
                    bool partitioned,
                    nsID operationId) returns (bool waitForNotification);
 
-  async DeleteRequest(nsIURI cookieURI,
+  async DeleteRequest(nullable nsIURI cookieURI,
                       OriginAttributes attrs,
                       bool thirdPartyContext,
                       bool partitionForeign,

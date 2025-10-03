@@ -3,7 +3,7 @@
  * Copyright 2024 Google Inc.
  * SPDX-License-Identifier: Apache-2.0
  */
-import type {IncomingMessage} from 'node:http';
+import type {IncomingMessage} from 'http';
 
 import expect from 'expect';
 

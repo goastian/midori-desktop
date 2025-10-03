@@ -74,9 +74,16 @@ void ReadElement(S& aStream, T& aElement) {
 template <class S, class T>
 void ReadElementConstrained(S& aStream, T& aElement, const T& aMinValue,
                             const T& aMaxValue) {
-  ElementStreamFormat<S, T>::Read(aStream, aElement);
-  if (aElement < aMinValue || aElement > aMaxValue) {
+  std::underlying_type_t<T> value = 0;
+  ReadElement(aStream, value);
+
+  auto minInt = static_cast<std::underlying_type_t<T>>(aMinValue);
+  auto maxInt = static_cast<std::underlying_type_t<T>>(aMaxValue);
+
+  if (value < minInt || value > maxInt) {
     aStream.SetIsBad();
+  } else {
+    aElement = static_cast<T>(value);
   }
 }
 template <class S, class T>

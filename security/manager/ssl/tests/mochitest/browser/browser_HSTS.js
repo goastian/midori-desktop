@@ -7,11 +7,7 @@
 
 // Register a cleanup function to clear all accumulated HSTS state when this
 // test is done.
-add_setup(async function register_cleanup() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-
+add_task(async function register_cleanup() {
   registerCleanupFunction(() => {
     let sss = Cc["@mozilla.org/ssservice;1"].getService(
       Ci.nsISiteSecurityService

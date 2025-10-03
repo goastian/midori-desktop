@@ -103,7 +103,6 @@ class _OpenSearchManager {
       uri: engine.href,
       title: engine.title,
       get icon() {
-        // @ts-expect-error - Bug 1957641
         return browser.mIconURL;
       },
     });

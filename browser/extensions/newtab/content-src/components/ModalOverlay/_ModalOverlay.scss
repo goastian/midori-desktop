@@ -11,8 +11,8 @@ $modal-scrollbar-z-index: 1100;
   background: var(--newtab-overlay-color);
   height: 100%;
   position: fixed;
-  inset-block-start: 0;
-  inset-inline-start: 0;
+  top: 0;
+  left: 0;
   width: 100%;
   display: none;
   z-index: $modal-scrollbar-z-index;
@@ -38,8 +38,8 @@ $modal-scrollbar-z-index: 1100;
   // modal takes over entire screen
   @media(width <= 960px) {
     height: 100%;
-    inset-block-start: 0;
-    inset-inline-start: 0;
+    top: 0;
+    left: 0;
     box-shadow: none;
     border-radius: 0;
   }
@@ -51,16 +51,15 @@ $modal-scrollbar-z-index: 1100;
   h2 {
     color: var(--newtab-text-primary-color);
     text-align: center;
-    margin-block-start: var(--space-xxlarge);;
+    margin-top: 30px;
     font-size: var(--font-size-xxlarge);
 
     @media(width <= 960px) {
-      // Bug 1967304 - Large number (96px)
-      margin-block-start: calc(var(--space-xlarge) * 4);
+      margin-top: 100px;
     }
 
     @media(width <= 850px) {
-      margin-block-start: var(--space-xxlarge);
+      margin-top: 30px;
     }
   }
 
@@ -70,7 +69,7 @@ $modal-scrollbar-z-index: 1100;
     height: 70px;
     width: 100%;
     position: absolute;
-    inset-block-end: 0;
+    bottom: 0;
     text-align: center;
     background-color: $white;
 
@@ -85,10 +84,10 @@ $modal-scrollbar-z-index: 1100;
     }
 
     .modalButton {
-      margin-block-start: var(--space-large);
+      margin-top: 20px;
       min-width: 150px;
       height: 30px;
-      padding: var(--space-xsmall) var(--space-xxlarge);
+      padding: 4px 30px 6px;
       font-size: inherit;
 
       &:focus,

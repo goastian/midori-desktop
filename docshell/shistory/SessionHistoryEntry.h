@@ -141,7 +141,6 @@ class SessionHistoryInfo {
   nsIPrincipal* GetPrincipalToInherit() const;
 
   nsIPrincipal* GetPartitionedPrincipalToInherit() const;
-  void SetPartitionedPrincipalToInherit(nsIPrincipal* aPrincipal);
 
   nsIContentSecurityPolicy* GetCsp() const;
 
@@ -160,8 +159,7 @@ class SessionHistoryInfo {
 
   void SetSaveLayoutStateFlag(bool aSaveLayoutStateFlag);
 
-  bool IsTransient() { return mTransient; }
-  void SetTransient() { mTransient = true; }
+  bool GetPersist() const { return mPersist; }
 
   nsID& NavigationKey() { return mNavigationKey; }
   const nsID& NavigationKey() const { return mNavigationKey; }
@@ -197,7 +195,7 @@ class SessionHistoryInfo {
   bool mLoadReplace = false;
   bool mURIWasModified = false;
   bool mScrollRestorationIsManual = false;
-  bool mTransient = false;
+  bool mPersist = true;
   bool mHasUserInteraction = false;
   bool mHasUserActivation = false;
 

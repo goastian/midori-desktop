@@ -82,12 +82,6 @@ void APZThreadUtils::RunOnControllerThread(RefPtr<Runnable>&& aTask,
 }
 
 /*static*/
-already_AddRefed<nsISerialEventTarget> APZThreadUtils::GetControllerThread() {
-  StaticMutexAutoLock lock(sControllerThreadMutex);
-  return do_AddRef(sControllerThread);
-}
-
-/*static*/
 bool APZThreadUtils::IsControllerThread() {
   StaticMutexAutoLock lock(sControllerThreadMutex);
   return sControllerThread && sControllerThread->IsOnCurrentThread();

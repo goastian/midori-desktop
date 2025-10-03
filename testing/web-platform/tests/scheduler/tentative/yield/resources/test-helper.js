@@ -38,11 +38,9 @@ function runFocusChangeTest(t, crossOrigin) {
     } else {
       assert_equals(e.data.status, 'done');
       // If the default priority task runs before the background priority
-      // continuation, then the scheduling state was used for the continuation,
-      // which should not be the case for either cross- or same-origin frames.
-      assert_false(
-          e.data.didRun,
-          'Did not expect the continuation to use inherited signals');
+      // continuation, then the scheduling state was used for the continuation.
+      const expectedToRun = !crossOrigin;
+      assert_equals(expectedToRun, e.data.didRun);
       if (count == 1) {
         test_driver.send_keys(document.body, "\ue004");
       } else {

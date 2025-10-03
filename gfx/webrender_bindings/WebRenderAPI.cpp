@@ -40,8 +40,7 @@ class NewRenderer : public RendererEvent {
               layers::CompositorBridgeParent* aBridge,
               WebRenderBackend* aBackend, WebRenderCompositor* aCompositor,
               int32_t* aMaxTextureSize, bool* aUseANGLE, bool* aUseDComp,
-              bool* aUseLayerCompositor, bool* aUseTripleBuffering,
-              bool* aSupportsExternalBufferTextures,
+              bool* aUseTripleBuffering, bool* aSupportsExternalBufferTextures,
               RefPtr<widget::CompositorWidget>&& aWidget,
               layers::SynchronousTask* aTask, LayoutDeviceIntSize aSize,
               layers::WindowKind aWindowKind, layers::SyncHandle* aHandle,
@@ -52,7 +51,6 @@ class NewRenderer : public RendererEvent {
         mMaxTextureSize(aMaxTextureSize),
         mUseANGLE(aUseANGLE),
         mUseDComp(aUseDComp),
-        mUseLayerCompositor(aUseLayerCompositor),
         mUseTripleBuffering(aUseTripleBuffering),
         mSupportsExternalBufferTextures(aSupportsExternalBufferTextures),
         mBridge(aBridge),
@@ -85,7 +83,6 @@ class NewRenderer : public RendererEvent {
     *mCompositor = compositor->CompositorType();
     *mUseANGLE = compositor->UseANGLE();
     *mUseDComp = compositor->UseDComp();
-    *mUseLayerCompositor = compositor->ShouldUseLayerCompositor();
     *mUseTripleBuffering = compositor->UseTripleBuffering();
     *mSupportsExternalBufferTextures =
         compositor->SupportsExternalBufferTextures();
@@ -192,7 +189,6 @@ class NewRenderer : public RendererEvent {
   int32_t* mMaxTextureSize;
   bool* mUseANGLE;
   bool* mUseDComp;
-  bool* mUseLayerCompositor;
   bool* mUseTripleBuffering;
   bool* mSupportsExternalBufferTextures;
   layers::CompositorBridgeParent* mBridge;
@@ -315,10 +311,6 @@ void TransactionBuilder::SetDocumentView(
   wr_transaction_set_document_view(mTxn, &wrDocRect);
 }
 
-void TransactionBuilder::RenderOffscreen(wr::WrPipelineId aPipelineId) {
-  wr_transaction_render_offscreen(mTxn, aPipelineId);
-}
-
 TransactionWrapper::TransactionWrapper(Transaction* aTxn) : mTxn(aTxn) {}
 
 void TransactionWrapper::AppendDynamicProperties(
@@ -375,7 +367,6 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::Create(
   int32_t maxTextureSize = 0;
   bool useANGLE = false;
   bool useDComp = false;
-  bool useLayerCompositor = false;
   bool useTripleBuffering = false;
   bool supportsExternalBufferTextures = false;
   layers::SyncHandle syncHandle = {};
@@ -386,9 +377,8 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::Create(
   layers::SynchronousTask task("Create Renderer");
   auto event = MakeUnique<NewRenderer>(
       &docHandle, aBridge, &backend, &compositor, &maxTextureSize, &useANGLE,
-      &useDComp, &useLayerCompositor, &useTripleBuffering,
-      &supportsExternalBufferTextures, std::move(aWidget), &task, aSize,
-      aWindowKind, &syncHandle, &aError);
+      &useDComp, &useTripleBuffering, &supportsExternalBufferTextures,
+      std::move(aWidget), &task, aSize, aWindowKind, &syncHandle, &aError);
   RenderThread::Get()->PostEvent(aWindowId, std::move(event));
 
   task.Wait();
@@ -400,7 +390,7 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::Create(
   return RefPtr<WebRenderAPI>(
              new WebRenderAPI(docHandle, aWindowId, backend, compositor,
                               maxTextureSize, useANGLE, useDComp,
-                              useLayerCompositor, useTripleBuffering,
+                              useTripleBuffering,
                               supportsExternalBufferTextures, syncHandle))
       .forget();
 }
@@ -411,8 +401,8 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::Clone() {
 
   RefPtr<WebRenderAPI> renderApi = new WebRenderAPI(
       docHandle, mId, mBackend, mCompositor, mMaxTextureSize, mUseANGLE,
-      mUseDComp, mUseLayerCompositor, mUseTripleBuffering,
-      mSupportsExternalBufferTextures, mSyncHandle, this, this);
+      mUseDComp, mUseTripleBuffering, mSupportsExternalBufferTextures,
+      mSyncHandle, this, this);
 
   return renderApi.forget();
 }
@@ -424,7 +414,7 @@ wr::WrIdNamespace WebRenderAPI::GetNamespace() {
 WebRenderAPI::WebRenderAPI(
     wr::DocumentHandle* aHandle, wr::WindowId aId, WebRenderBackend aBackend,
     WebRenderCompositor aCompositor, uint32_t aMaxTextureSize, bool aUseANGLE,
-    bool aUseDComp, bool aUseLayerCompositor, bool aUseTripleBuffering,
+    bool aUseDComp, bool aUseTripleBuffering,
     bool aSupportsExternalBufferTextures, layers::SyncHandle aSyncHandle,
     wr::WebRenderAPI* aRootApi, wr::WebRenderAPI* aRootDocumentApi)
     : mDocHandle(aHandle),
@@ -434,7 +424,6 @@ WebRenderAPI::WebRenderAPI(
       mMaxTextureSize(aMaxTextureSize),
       mUseANGLE(aUseANGLE),
       mUseDComp(aUseDComp),
-      mUseLayerCompositor(aUseLayerCompositor),
       mUseTripleBuffering(aUseTripleBuffering),
       mSupportsExternalBufferTextures(aSupportsExternalBufferTextures),
       mCaptureSequence(false),

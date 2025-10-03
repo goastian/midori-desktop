@@ -1845,7 +1845,7 @@ SavedFrame* SavedStacks::getOrCreateSavedFrame(
     return *p;
   }
 
-  SavedFrame* frame = createFrameFromLookup(cx, lookup);
+  Rooted<SavedFrame*> frame(cx, createFrameFromLookup(cx, lookup));
   if (!frame) {
     return nullptr;
   }

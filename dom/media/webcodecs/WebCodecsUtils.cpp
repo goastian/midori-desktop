@@ -15,7 +15,6 @@
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/dom/BufferSourceBinding.h"
 #include "mozilla/dom/ImageBitmapBinding.h"
-#include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/VideoColorSpaceBinding.h"
 #include "mozilla/dom/VideoFrameBinding.h"
 #include "mozilla/gfx/Types.h"
@@ -183,7 +182,7 @@ bool CopyExtradataToDescription(JSContext* aCx, Span<const uint8_t>& aSrc,
   UniquePtr<uint8_t[], JS::FreePolicy> extradata(
       js_pod_arena_malloc<uint8_t>(js::ArrayBufferContentsArena, lengthBytes));
 
-  if (!extradata) {
+  if (!extradata)  {
     return false;
   }
 

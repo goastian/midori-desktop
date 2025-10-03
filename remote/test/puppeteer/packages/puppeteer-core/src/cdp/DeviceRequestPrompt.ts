@@ -215,7 +215,7 @@ export class DeviceRequestPrompt {
 export class DeviceRequestPromptManager {
   #client: CDPSession | null;
   #timeoutSettings: TimeoutSettings;
-  #deviceRequestPromptDeferreds = new Set<Deferred<DeviceRequestPrompt>>();
+  #deviceRequestPrompDeferreds = new Set<Deferred<DeviceRequestPrompt>>();
 
   /**
    * @internal
@@ -243,7 +243,7 @@ export class DeviceRequestPromptManager {
       this.#client !== null,
       'Cannot wait for device prompt through detached session!',
     );
-    const needsEnable = this.#deviceRequestPromptDeferreds.size === 0;
+    const needsEnable = this.#deviceRequestPrompDeferreds.size === 0;
     let enablePromise: Promise<void> | undefined;
     if (needsEnable) {
       enablePromise = this.#client.send('DeviceAccess.enable');
@@ -264,7 +264,7 @@ export class DeviceRequestPromptManager {
       );
     }
 
-    this.#deviceRequestPromptDeferreds.add(deferred);
+    this.#deviceRequestPrompDeferreds.add(deferred);
 
     try {
       const [result] = await Promise.all([
@@ -273,7 +273,7 @@ export class DeviceRequestPromptManager {
       ]);
       return result;
     } finally {
-      this.#deviceRequestPromptDeferreds.delete(deferred);
+      this.#deviceRequestPrompDeferreds.delete(deferred);
     }
   }
 
@@ -283,7 +283,7 @@ export class DeviceRequestPromptManager {
   #onDeviceRequestPrompted(
     event: Protocol.DeviceAccess.DeviceRequestPromptedEvent,
   ) {
-    if (!this.#deviceRequestPromptDeferreds.size) {
+    if (!this.#deviceRequestPrompDeferreds.size) {
       return;
     }
 
@@ -293,9 +293,9 @@ export class DeviceRequestPromptManager {
       this.#timeoutSettings,
       event,
     );
-    for (const promise of this.#deviceRequestPromptDeferreds) {
+    for (const promise of this.#deviceRequestPrompDeferreds) {
       promise.resolve(devicePrompt);
     }
-    this.#deviceRequestPromptDeferreds.clear();
+    this.#deviceRequestPrompDeferreds.clear();
   }
 }

@@ -69,15 +69,9 @@ enum class PromiseHandler : uint32_t {
   // AsyncFromSyncIteratorContinuation ( result, promiseCapability )
   // https://tc39.es/ecma262/#sec-asyncfromsynciteratorcontinuation
   //
-  // Step 9. unwrap Abstract Closure.
+  // Steps 7. unwrap Abstract Closure.
   AsyncFromSyncIteratorValueUnwrapDone,
   AsyncFromSyncIteratorValueUnwrapNotDone,
-
-  // AsyncFromSyncIteratorContinuation ( result, promiseCapability )
-  // https://tc39.es/ecma262/#sec-asyncfromsynciteratorcontinuation
-  //
-  // Step 13.a. closeIterator Abstract Closure.
-  AsyncFromSyncIteratorClose,
 
 #ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
   // Explicit Resource Management Proposal

@@ -10,9 +10,6 @@
 
 #include "modules/congestion_controller/pcc/rtt_tracker.h"
 
-#include "api/transport/network_types.h"
-#include "api/units/time_delta.h"
-#include "api/units/timestamp.h"
 #include "test/gtest.h"
 
 namespace webrtc {

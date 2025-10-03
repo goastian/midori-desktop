@@ -465,7 +465,14 @@ nsresult nsHttpChannel::PrepareToConnect() {
   // notify "http-on-modify-request-before-cookies" observers
   gHttpHandler->OnModifyRequestBeforeCookies(this);
 
-  AddCookiesToRequest();
+  if (mStaleRevalidation) {
+    // This is a revalidating channel.
+    // The cookies (user set cookies + cookies from the cookeservice) are
+    // already copied to the request headers when opening this channel in
+    // PerformBackgroundCacheRevalidationNow().
+  } else {
+    AddCookiesToRequest();
+  }
 
 #if defined(XP_WIN) || defined(XP_MACOSX)
 
@@ -1851,35 +1858,12 @@ nsresult nsHttpChannel::InitTransaction() {
     };
   }
   mTransaction->SetIsForWebTransport(!!mWebTransportSessionEventListener);
-
-  struct LNAPerms perms{};
-  // If this is a third party tracker, it shoudn't make ANY LNA requests
-  // So we pretend that the permission for these has already been denied
-  // in order to avoid prompting.
-  uint32_t flags = 0;
-  if (StaticPrefs::network_lna_block_trackers() &&
-      NS_SUCCEEDED(
-          mLoadInfo->GetTriggeringThirdPartyClassificationFlags(&flags)) &&
-      flags != 0) {
-    perms.mLocalHostPermission = LNAPermission::Denied;
-    perms.mLocalNetworkPermission = LNAPermission::Denied;
-
-    if (nsContentUtils::IsExactSitePermAllow(mLoadInfo->GetLoadingPrincipal(),
-                                             "localhost"_ns)) {
-      perms.mLocalHostPermission = LNAPermission::Granted;
-    }
-    if (nsContentUtils::IsExactSitePermAllow(mLoadInfo->GetLoadingPrincipal(),
-                                             "local-network"_ns)) {
-      perms.mLocalNetworkPermission = LNAPermission::Granted;
-    }
-  }
-
   rv = mTransaction->Init(
       mCaps, mConnectionInfo, &mRequestHead, mUploadStream, mReqContentLength,
       LoadUploadStreamHasHeaders(), GetCurrentSerialEventTarget(), callbacks,
       this, mBrowserId, category, mRequestContext, mClassOfService,
       mInitialRwin, LoadResponseTimeoutEnabled(), mChannelId,
-      std::move(observer), mLoadInfo->GetParentIpAddressSpace(), perms);
+      std::move(observer));
   if (NS_FAILED(rv)) {
     mTransaction = nullptr;
     return rv;
@@ -6772,6 +6756,8 @@ nsHttpChannel::AsyncOpen(nsIStreamListener* aListener) {
   // Remember the cookie header that was set, if any
   nsAutoCString cookieHeader;
   if (NS_SUCCEEDED(mRequestHead.GetHeader(nsHttp::Cookie, cookieHeader))) {
+    // if this is a cache revalidaing channel (mIsStaleRevalidation), then this
+    // represents both user cookies and cookies from cookieService
     mUserSetCookieHeader = cookieHeader;
   }
 
@@ -10477,9 +10463,13 @@ void nsHttpChannel::SetOriginHeader() {
 void nsHttpChannel::SetDoNotTrack() {
   /**
    * 'DoNotTrack' header should be added if 'privacy.donottrackheader.enabled'
-   * is true.
+   * is true or tracking protection is enabled. See bug 1258033.
    */
-  if (StaticPrefs::privacy_donottrackheader_enabled()) {
+  nsCOMPtr<nsILoadContext> loadContext;
+  NS_QueryNotificationCallbacks(this, loadContext);
+
+  if ((loadContext && loadContext->UseTrackingProtection()) ||
+      StaticPrefs::privacy_donottrackheader_enabled()) {
     DebugOnly<nsresult> rv =
         mRequestHead.SetHeader(nsHttp::DoNotTrack, "1"_ns, false);
     MOZ_ASSERT(NS_SUCCEEDED(rv));

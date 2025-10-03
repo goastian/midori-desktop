@@ -3,18 +3,13 @@
 .outer-wrapper {
   .ds-top-sites {
     .collapsible-section {
-      margin-block-end: var(--space-large);
+      margin-bottom: var(--space-large);
     }
 
     .top-sites {
       .top-site-outer {
-        .top-site-inner > a:is(.active, :focus) {
-          .tile {
-            @include ds-focus;
-          }
-          .icon-pin-small {
-            opacity: 1;
-          }
+        .top-site-inner > a:is(.active, :focus) .tile {
+          @include ds-focus;
         }
 
         .top-site-inner > a:is(:hover) .top-site-inner {
@@ -23,8 +18,13 @@
       }
 
       .top-sites-list {
-        width: fit-content;
-        margin: 0 auto;
+        margin: 0 -12px;
+
+        .layout-variant-a &,
+        .layout-variant-b & {
+          width: fit-content;
+          margin: 0 auto;
+        }
       }
     }
   }
@@ -37,11 +37,11 @@
 .ds-column-8 {
   .ds-top-sites {
     .top-site-outer {
-      padding: 0 var(--space-small);
+      padding: 0 10px;
     }
 
     .top-sites-list {
-      margin: 0 calc(var(--space-small) * -1);
+      margin: 0 -10px;
     }
 
     .top-site-inner {
@@ -66,11 +66,11 @@
 .ds-column-4 {
   .ds-top-sites {
     .top-site-outer {
-      padding: 0 var(--space-small);
+      padding: 0 8px;
     }
 
     .top-sites-list {
-      margin: 0 calc(var(--space-small) * -1);
+      margin: 0 -8px;
     }
 
     .top-site-inner {

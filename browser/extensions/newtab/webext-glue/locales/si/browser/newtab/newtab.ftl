@@ -347,6 +347,3 @@ newtab-section-mangage-topics-blocked-topics = අවහිරයි
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

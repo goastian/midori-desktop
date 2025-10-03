@@ -621,10 +621,7 @@ bool nsContentSecurityUtils::IsEvalAllowed(JSContext* cx,
       // The profiler's symbolication code uses a wasm module to extract symbols
       // from the binary files result of local builds.
       // See bug 1777479
-      "resource://devtools/shared/performance-new/symbolication.sys.mjs"_ns,
-
-      // The devtools use a WASM module to optimize source-map mapping.
-      "resource://devtools/client/shared/vendor/source-map/lib/wasm.js"_ns,
+      "resource://devtools/client/performance-new/shared/symbolication.sys.mjs"_ns,
 
       // The Browser Toolbox/Console
       "debugger"_ns,
@@ -674,7 +671,6 @@ bool nsContentSecurityUtils::IsEvalAllowed(JSContext* cx,
     return true;
   }
 
-#ifndef NIGHTLY_BUILD
   DetectJsHacks();
   if (MOZ_UNLIKELY(sJSHacksPresent)) {
     MOZ_LOG(
@@ -684,7 +680,6 @@ bool nsContentSecurityUtils::IsEvalAllowed(JSContext* cx,
          (aIsSystemPrincipal ? "with System Principal" : "in parent process")));
     return true;
   }
-#endif
 
   if (XRE_IsE10sParentProcess() &&
       !StaticPrefs::extensions_webextensions_remote()) {
@@ -1322,19 +1317,15 @@ static nsLiteralCString sStyleSrcUnsafeInlineAllowList[] = {
 static nsLiteralCString sImgSrcDataBlobAllowList[] = {
     "about:addons"_ns,
     "about:debugging"_ns,
-    "about:deleteprofile"_ns,
     "about:devtools-toolbox"_ns,
-    "about:editprofile"_ns,
     "about:firefoxview"_ns,
     "about:home"_ns,
     "about:inference"_ns,
     "about:logins"_ns,
-    "about:newprofile"_ns,
     "about:newtab"_ns,
     "about:preferences"_ns,
     "about:privatebrowsing"_ns,
     "about:processes"_ns,
-    "about:profilemanager"_ns,
     "about:protections"_ns,
     "about:reader"_ns,
     "about:sessionrestore"_ns,
@@ -1413,6 +1404,8 @@ static nsLiteralCString sImgSrcWildcardAllowList[] = {
 //  Any https host source.
 static nsLiteralCString sImgSrcHttpsHostAllowList[] = {
     "about:logins"_ns,
+    "about:pocket-home"_ns,
+    "about:pocket-saved"_ns,
     "chrome://browser/content/aboutlogins/aboutLogins.html"_ns,
     "chrome://browser/content/spotlight.html"_ns,
 };
@@ -2213,17 +2206,11 @@ void nsContentSecurityUtils::LogMessageToConsole(nsIHttpChannel* aChannel,
 }
 
 /* static */
-long nsContentSecurityUtils::ClassifyDownload(nsIChannel* aChannel) {
+long nsContentSecurityUtils::ClassifyDownload(
+    nsIChannel* aChannel, const nsAutoCString& aMimeTypeGuess) {
   MOZ_ASSERT(aChannel, "IsDownloadAllowed without channel?");
 
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
-  if ((loadInfo->GetTriggeringSandboxFlags() & SANDBOXED_DOWNLOADS) ||
-      (loadInfo->GetSandboxFlags() & SANDBOXED_DOWNLOADS)) {
-    if (nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel)) {
-      LogMessageToConsole(httpChannel, "IframeSandboxBlockedDownload");
-    }
-    return nsITransfer::DOWNLOAD_FORBIDDEN;
-  }
 
   nsCOMPtr<nsIURI> contentLocation;
   aChannel->GetURI(getter_AddRefs(contentLocation));
@@ -2256,11 +2243,27 @@ long nsContentSecurityUtils::ClassifyDownload(nsIChannel* aChannel) {
 
   if (StaticPrefs::dom_block_download_insecure() &&
       decission != nsIContentPolicy::ACCEPT) {
-    if (nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel)) {
+    nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel);
+    if (httpChannel) {
       LogMessageToConsole(httpChannel, "MixedContentBlockedDownload");
     }
     return nsITransfer::DOWNLOAD_POTENTIALLY_UNSAFE;
   }
 
+  if (loadInfo->TriggeringPrincipal()->IsSystemPrincipal()) {
+    return nsITransfer::DOWNLOAD_ACCEPTABLE;
+  }
+
+  uint32_t triggeringFlags = loadInfo->GetTriggeringSandboxFlags();
+  uint32_t currentflags = loadInfo->GetSandboxFlags();
+
+  if ((triggeringFlags & SANDBOXED_ALLOW_DOWNLOADS) ||
+      (currentflags & SANDBOXED_ALLOW_DOWNLOADS)) {
+    nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel);
+    if (httpChannel) {
+      LogMessageToConsole(httpChannel, "IframeSandboxBlockedDownload");
+    }
+    return nsITransfer::DOWNLOAD_FORBIDDEN;
+  }
   return nsITransfer::DOWNLOAD_ACCEPTABLE;
 }

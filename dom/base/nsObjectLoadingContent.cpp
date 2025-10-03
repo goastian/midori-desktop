@@ -73,6 +73,7 @@
 #include "mozilla/PresShell.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/StaticPrefs_browser.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "nsChannelClassifier.h"
 #include "nsFocusManager.h"
 #include "ReferrerInfo.h"
@@ -700,7 +701,6 @@ nsObjectLoadingContent::UpdateObjectParameters() {
 
   nsresult rv;
   nsAutoCString newMime;
-  nsAutoString typeAttr;
   nsCOMPtr<nsIURI> newURI;
   nsCOMPtr<nsIURI> newBaseURI;
   ObjectType newType;
@@ -728,7 +728,6 @@ nsObjectLoadingContent::UpdateObjectParameters() {
       el->HasNonEmptyAttr(nsGkAtoms::classid)) {
     // We don't support class ID plugin references, so we should always treat
     // having class Ids as attributes as invalid, and fallback accordingly.
-    newMime.Truncate();
     stateInvalid = true;
   }
 
@@ -736,11 +735,12 @@ nsObjectLoadingContent::UpdateObjectParameters() {
   /// Codebase
   ///
 
-  nsAutoString codebaseStr;
   nsIURI* docBaseURI = el->GetBaseURI();
-  el->GetAttr(nsGkAtoms::codebase, codebaseStr);
 
-  if (!codebaseStr.IsEmpty()) {
+  nsAutoString codebaseStr;
+  el->GetAttr(nsGkAtoms::codebase, codebaseStr);
+  if (StaticPrefs::dom_object_embed_codebase_enabled() &&
+      !codebaseStr.IsEmpty()) {
     rv = nsContentUtils::NewURIWithDocumentCharset(
         getter_AddRefs(newBaseURI), codebaseStr, el->OwnerDoc(), docBaseURI);
     if (NS_FAILED(rv)) {
@@ -755,16 +755,6 @@ nsObjectLoadingContent::UpdateObjectParameters() {
   // If we failed to build a valid URI, use the document's base URI
   if (!newBaseURI) {
     newBaseURI = docBaseURI;
-  }
-
-  nsAutoString rawTypeAttr;
-  el->GetAttr(nsGkAtoms::type, rawTypeAttr);
-  if (!rawTypeAttr.IsEmpty()) {
-    typeAttr = rawTypeAttr;
-    nsAutoString params;
-    nsAutoString mime;
-    nsContentUtils::SplitMimeType(rawTypeAttr, mime, params);
-    CopyUTF16toUTF8(mime, newMime);
   }
 
   ///
@@ -798,6 +788,41 @@ nsObjectLoadingContent::UpdateObjectParameters() {
 
     if (NS_FAILED(rv)) {
       stateInvalid = true;
+    }
+  }
+
+  ///
+  /// type
+  ///
+  nsAutoString rawTypeAttr;
+  el->GetAttr(nsGkAtoms::type, rawTypeAttr);
+  // YouTube embeds might be using type="application/x-shockwave-flash"
+  // which needs to be allowed, but must not override the text/html MIME set
+  // above.
+  if (!mRewrittenYoutubeEmbed && !rawTypeAttr.IsEmpty()) {
+    nsAutoString params;
+    nsAutoString mime;
+    nsContentUtils::SplitMimeType(rawTypeAttr, mime, params);
+
+    if (!StaticPrefs::dom_object_embed_type_hint_enabled()) {
+      NS_ConvertUTF16toUTF8 mimeUTF8(mime);
+      if (imgLoader::SupportImageWithMimeType(mimeUTF8)) {
+        // Normally the type attribute should not be used as a hint, but for
+        // images it does seem to happen in Chrome and Safari. Images generally
+        // don't lead to code execution and we don't use
+        // AcceptedMimeTypes::IMAGES_AND_DOCUMENTS above.
+        newMime = mimeUTF8;
+      } else if (GetTypeOfContent(mimeUTF8) != ObjectType::Document) {
+        LOG(
+            ("OBJLC [%p]: MIME '%s' from type attribute is not supported, "
+             "forcing fallback.",
+             this, mimeUTF8.get()));
+        stateInvalid = true;
+      }
+
+      // Don't use the type attribute as a Content-Type hint in other cases.
+    } else {
+      CopyUTF16toUTF8(mime, newMime);
     }
   }
 

@@ -17,9 +17,9 @@ import org.junit.runner.RunWith
 import org.mozilla.fenix.GleanMetrics.Metrics
 import org.mozilla.fenix.GleanMetrics.TabsTray
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class) // for gleanTestRule
+@RunWith(FenixRobolectricTestRunner::class) // for gleanTestRule
 class TabsTrayTelemetryMiddlewareTest {
 
     private lateinit var store: TabsTrayStore

@@ -10,16 +10,10 @@ const BLOCKED_TEST_URL = "https://example.com/browser";
 
 ChromeUtils.defineESModuleGetters(this, {
   FilterAdult: "resource:///modules/FilterAdult.sys.mjs",
-  InteractionsBlocklist:
-    "moz-src:///browser/components/places/InteractionsBlocklist.sys.mjs",
-  sinon: "resource://testing-common/Sinon.sys.mjs",
+  InteractionsBlocklist: "resource:///modules/InteractionsBlocklist.sys.mjs",
 });
 
 add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-
   let oldBlocklistValue = Services.prefs.getStringPref(
     "places.interactions.customBlocklist",
     "[]"
@@ -105,14 +99,7 @@ add_task(async function test_regexp() {
 });
 
 add_task(async function test_adult() {
-  let sandbox = sinon.createSandbox();
-  sandbox
-    .stub(FilterAdult, "isAdultUrl")
-    .returns(false)
-    .withArgs(BLOCKED_TEST_URL)
-    .returns(true);
-
+  FilterAdult.addDomainToList("https://example.com/browser");
   await loadBlockedUrl(false);
-
-  sandbox.restore();
+  FilterAdult.removeDomainFromList("https://example.com/browser");
 });

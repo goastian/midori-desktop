@@ -58,10 +58,6 @@ class CanvasRenderingContextHelper {
                                nsAString& outParams,
                                bool* const outCustomParseOptions);
 
-  void ToBlob(JSContext* aCx, nsIGlobalObject* global, BlobCallback& aCallback,
-              const nsAString& aType, JS::Handle<JS::Value> aParams,
-              bool aUsePlaceholder, ErrorResult& aRv);
-
   void ToBlob(JSContext* aCx, EncodeCompleteCallback* aCallback,
               const nsAString& aType, JS::Handle<JS::Value> aParams,
               bool aUsePlaceholder, ErrorResult& aRv);
@@ -93,8 +89,9 @@ class CanvasRenderingContextHelper {
   nsCOMPtr<nsICanvasRenderingContextInternal> mCurrentContext;
 };
 
-Maybe<layers::SurfaceDescriptor> ValidSurfaceDescriptorForRemoteCanvas2d(
-    const layers::SurfaceDescriptor&);
+bool ValidSurfaceDescriptorForRemoteCanvas2d(
+    const layers::SurfaceDescriptor& aSd,
+    Maybe<layers::SurfaceDescriptor>* aResultSd = nullptr);
 
 }  // namespace dom
 namespace CanvasUtils {

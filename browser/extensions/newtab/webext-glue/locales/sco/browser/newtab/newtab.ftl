@@ -312,6 +312,3 @@ newtab-custom-settings = Manage mair settins
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

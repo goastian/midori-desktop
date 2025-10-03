@@ -8,7 +8,7 @@ import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { assert, range } from '../../../../common/util/util.js';
 import {
   getDefaultLimits,
-  IsDualSourceBlendingFactor as isDualSourceBlendingFactor,
+  IsDualSourceBlendingFactor,
   kBlendFactors,
   kBlendOperations,
 } from '../../../capability_info.js';
@@ -295,7 +295,7 @@ g.test('targets_blend')
   )
   .fn(t => {
     const { isAsync, component, srcFactor, dstFactor, operation } = t.params;
-    if (isDualSourceBlendingFactor(srcFactor) || isDualSourceBlendingFactor(dstFactor)) {
+    if (IsDualSourceBlendingFactor(srcFactor) || IsDualSourceBlendingFactor(dstFactor)) {
       t.skipIfDeviceDoesNotHaveFeature('dual-source-blending');
     }
 
@@ -311,7 +311,7 @@ g.test('targets_blend')
     };
     const format = 'rgba8unorm';
     const useDualSourceBlending =
-      isDualSourceBlendingFactor(srcFactor) || isDualSourceBlendingFactor(dstFactor);
+      IsDualSourceBlendingFactor(srcFactor) || IsDualSourceBlendingFactor(dstFactor);
     const fragmentShaderCode = getFragmentShaderCodeWithOutput(
       [{ values, plainType: 'f32', componentCount: 4 }],
       null,
@@ -447,10 +447,10 @@ g.test('pipeline_output_targets,blend')
     t.skipIfTextureFormatNotSupported(format);
 
     const useDualSourceBlending =
-      isDualSourceBlendingFactor(colorSrcFactor) ||
-      isDualSourceBlendingFactor(colorDstFactor) ||
-      isDualSourceBlendingFactor(alphaSrcFactor) ||
-      isDualSourceBlendingFactor(alphaDstFactor);
+      IsDualSourceBlendingFactor(colorSrcFactor) ||
+      IsDualSourceBlendingFactor(colorDstFactor) ||
+      IsDualSourceBlendingFactor(alphaSrcFactor) ||
+      IsDualSourceBlendingFactor(alphaDstFactor);
     if (useDualSourceBlending) {
       t.skipIfDeviceDoesNotHaveFeature('dual-source-blending');
     }
@@ -605,7 +605,7 @@ g.test('dual_source_blending,use_blend_src')
       ),
     });
 
-    const _success = !isDualSourceBlendingFactor(blendFactor) || useBlendSrc1;
+    const _success = !IsDualSourceBlendingFactor(blendFactor) || useBlendSrc1;
     const isAsync = false;
     vtu.doCreateRenderPipelineTest(t, isAsync, _success, descriptor);
   });

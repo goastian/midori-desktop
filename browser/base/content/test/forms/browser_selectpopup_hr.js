@@ -1,9 +1,6 @@
 add_task(async function test_hr() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      ["dom.forms.select.customstyling", true],
-    ],
+    set: [["dom.forms.select.customstyling", true]],
   });
 
   const PAGE_CONTENT = `

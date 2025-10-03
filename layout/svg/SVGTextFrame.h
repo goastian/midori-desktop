@@ -25,7 +25,6 @@ namespace mozilla {
 
 class CharIterator;
 class DisplaySVGText;
-class SVGContextPaint;
 class SVGTextFrame;
 class TextFrameIterator;
 class TextNodeCorrespondenceRecorder;
@@ -518,12 +517,10 @@ class SVGTextFrame final : public SVGDisplayContainerFrame {
    * nsTextFrame::DrawPathCallbacks rather than directly painting
    * the text frames.
    *
-   * @param aContextPaint Used by context-fill and context-stroke.
    * @param aShouldPaintSVGGlyphs (out) Whether SVG glyphs in the text
    *   should be painted.
    */
-  bool ShouldRenderAsPath(nsTextFrame* aFrame, SVGContextPaint* aContextPaint,
-                          bool& aShouldPaintSVGGlyphs);
+  bool ShouldRenderAsPath(nsTextFrame* aFrame, bool& aShouldPaintSVGGlyphs);
 
   // Methods to get information for a <textPath> frame.
   already_AddRefed<Path> GetTextPath(nsIFrame* aTextPathFrame);

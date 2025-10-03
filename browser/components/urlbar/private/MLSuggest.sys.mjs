@@ -13,10 +13,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
 });
 
-/**
- * @typedef {Awaited<ReturnType<import("chrome://global/content/ml/EngineProcess.sys.mjs").createEngine>>} MLEngine
- */
-
 // List of prepositions used in subject cleaning.
 const PREPOSITIONS = ["in", "at", "on", "for", "to", "near"];
 
@@ -30,10 +26,7 @@ const NAME_PUNCTUATION_EXCEPT_DOT = NAME_PUNCTUATION.filter(p => p !== ".");
  * @class
  */
 class _MLSuggest {
-  /**
-   * @type {Map<string, MLEngine>}
-   */
-  #modelEngines = new Map();
+  #modelEngines = {};
 
   INTENT_OPTIONS = {
     taskName: "text-classification",
@@ -49,11 +42,7 @@ class _MLSuggest {
     numThreads: 2,
   };
 
-  /**
-   * Helper to wrap createEngine for testing purposes.
-   *
-   * @returns {MLEngine}
-   */
+  // Helper to wrap createEngine for testing purpose
   createEngine(args) {
     return lazy.createEngine(args);
   }
@@ -119,12 +108,12 @@ class _MLSuggest {
       return null;
     }
 
-    const locationResVal = this.#combineLocations(
+    const locationResVal = await this.#combineLocations(
       nerResult,
       lazy.UrlbarPrefs.get("nerThreshold")
     );
 
-    const intentLabel = this.#applyIntentThreshold(
+    const intentLabel = await this.#applyIntentThreshold(
       intentRes,
       lazy.UrlbarPrefs.get("intentThreshold")
     );
@@ -141,12 +130,12 @@ class _MLSuggest {
    * Shuts down all initialized engines.
    */
   async shutdown() {
-    for (const [key, engine] of this.#modelEngines.entries()) {
+    for (const [key, engine] of Object.entries(this.#modelEngines)) {
       try {
         await engine.terminate?.();
       } finally {
         // Remove each engine after termination
-        this.#modelEngines.delete(key);
+        delete this.#modelEngines[key];
       }
     }
   }
@@ -155,14 +144,13 @@ class _MLSuggest {
     const featureId = options.featureId;
 
     // uses cache if engine was used
-    let engine = this.#modelEngines.get(featureId);
-    if (engine) {
-      return engine;
+    if (this.#modelEngines[featureId]) {
+      return this.#modelEngines[featureId];
     }
 
-    engine = await this.createEngine(options);
+    const engine = await this.createEngine(options);
     // Cache the engine
-    this.#modelEngines.set(featureId, engine);
+    this.#modelEngines[featureId] = engine;
     return engine;
   }
 
@@ -178,9 +166,8 @@ class _MLSuggest {
    *   The intent results or null if the model is not initialized.
    */
   async _findIntent(query, options = {}) {
-    const engineIntentClassifier = this.#modelEngines.get(
-      this.INTENT_OPTIONS.featureId
-    );
+    const engineIntentClassifier =
+      this.#modelEngines[this.INTENT_OPTIONS.featureId];
     if (!engineIntentClassifier) {
       return null;
     }
@@ -194,7 +181,7 @@ class _MLSuggest {
     } catch (error) {
       // engine could timeout or fail, so remove that from cache
       // and reinitialize
-      this.#modelEngines.delete(this.INTENT_OPTIONS.featureId);
+      this.#modelEngines[this.INTENT_OPTIONS.featureId] = null;
       this.#initializeModelEngine(this.INTENT_OPTIONS);
       return null;
     }
@@ -213,13 +200,13 @@ class _MLSuggest {
    *   The NER results or null if the model is not initialized.
    */
   async _findNER(query, options = {}) {
-    const engineNER = this.#modelEngines.get(this.NER_OPTIONS.featureId);
+    const engineNER = this.#modelEngines[this.NER_OPTIONS.featureId];
     try {
       return engineNER?.run({ args: [query], options });
     } catch (error) {
       // engine could timeout or fail, so remove that from cache
       // and reinitialize
-      this.#modelEngines.delete(this.NER_OPTIONS.featureId);
+      this.#modelEngines[this.NER_OPTIONS.featureId] = null;
       this.#initializeModelEngine(this.NER_OPTIONS);
       return null;
     }
@@ -239,7 +226,7 @@ class _MLSuggest {
    * @returns {string}
    *   The determined intent label or 'unknown' if the threshold is not met.
    */
-  #applyIntentThreshold(intentResult, intentThreshold) {
+  async #applyIntentThreshold(intentResult, intentThreshold) {
     return intentResult[0]?.score > intentThreshold
       ? intentResult[0].label
       : "";
@@ -261,8 +248,12 @@ class _MLSuggest {
    * @param {number} nerThreshold
    *   The confidence threshold for including entities. Tokens with a confidence
    *   score below this threshold will be ignored.
+   * @returns {object}
+   *   An object with `city` and `state` fields:
+   *   - {string|null} city: The detected city, or `null` if no city is found.
+   *   - {string|null} state: The detected state, or `null` if no state is found.
    */
-  #combineLocations(nerResult, nerThreshold) {
+  async #combineLocations(nerResult, nerThreshold) {
     let cityResult = [];
     let stateResult = [];
     let cityStateResult = [];
@@ -325,7 +316,7 @@ class _MLSuggest {
    *   The confidence threshold for including tokens. Tokens with a score below
    *   this threshold will be ignored.
    */
-  #processNERToken(res, resultArray, nerThreshold) {
+  async #processNERToken(res, resultArray, nerThreshold) {
     // Skip low-confidence tokens
     if (res.score <= nerThreshold) {
       return;
@@ -362,7 +353,7 @@ class _MLSuggest {
    *   An array of strings representing detected entities (e.g., cities or states).
    *   The array is modified in place if the last element ends with punctuation.
    */
-  #removePunctFromEndIfPresent(resultArray) {
+  async #removePunctFromEndIfPresent(resultArray) {
     const lastTokenIndex = resultArray.length - 1;
     if (
       resultArray.length &&

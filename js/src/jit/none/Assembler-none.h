@@ -208,10 +208,11 @@ class Operand {
 
 class ABIArgGenerator {
  public:
-  explicit ABIArgGenerator(ABIKind) { MOZ_CRASH(); }
+  ABIArgGenerator() { MOZ_CRASH(); }
   ABIArg next(MIRType) { MOZ_CRASH(); }
   ABIArg& current() { MOZ_CRASH(); }
   uint32_t stackBytesConsumedSoFar() const { MOZ_CRASH(); }
+  void increaseStackOffset(uint32_t) { MOZ_CRASH(); }
 };
 
 }  // namespace jit

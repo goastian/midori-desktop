@@ -83,19 +83,19 @@ export const CATEGORIZATION_SETTINGS = {
  * @typedef {object} CategorizationResult
  * @property {string} organic_category
  *  The category for the organic result.
- * @property {string} organic_num_domains
+ * @property {number} organic_num_domains
  *  The number of domains examined to determine the organic category result.
- * @property {string} organic_num_inconclusive
+ * @property {number} organic_num_inconclusive
  *  The number of inconclusive domains when determining the organic result.
- * @property {string} organic_num_unknown
+ * @property {number} organic_num_unknown
  *  The number of unknown domains when determining the organic result.
  * @property {string} sponsored_category
  *  The category for the organic result.
- * @property {string} sponsored_num_domains
+ * @property {number} sponsored_num_domains
  *  The number of domains examined to determine the sponsored category.
- * @property {string} sponsored_num_inconclusive
+ * @property {number} sponsored_num_inconclusive
  *  The number of inconclusive domains when determining the sponsored category.
- * @property {string} sponsored_num_unknown
+ * @property {number} sponsored_num_unknown
  *  The category for the sponsored result.
  * @property {string} mappings_version
  *  The category mapping version used to determine the categories.
@@ -103,13 +103,13 @@ export const CATEGORIZATION_SETTINGS = {
 
 /**
  * @typedef {object} CategorizationExtraParams
- * @property {string} num_ads_clicked
+ * @property {number} num_ads_clicked
  *  The total number of ads clicked on a SERP.
- * @property {string} num_ads_hidden
+ * @property {number} num_ads_hidden
  *  The total number of ads hidden from the user when categorization occured.
- * @property {string} num_ads_loaded
+ * @property {number} num_ads_loaded
  *  The total number of ads loaded when categorization occured.
- * @property {string} num_ads_visible
+ * @property {number} num_ads_visible
  *  The total number of ads visible to the user when categorization occured.
  */
 
@@ -178,8 +178,7 @@ class Categorizer {
     resultsToReport.sponsored_num_unknown = results.num_unknown;
     resultsToReport.sponsored_num_inconclusive = results.num_inconclusive;
 
-    resultsToReport.mappings_version =
-      SERPDomainToCategoriesMap.version.toString();
+    resultsToReport.mappings_version = SERPDomainToCategoriesMap.version;
 
     return resultsToReport;
   }
@@ -248,10 +247,10 @@ class Categorizer {
     }
 
     return {
-      category: finalCategory.toString(),
-      num_domains: domainsCount.toString(),
-      num_unknown: unknownsCount.toString(),
-      num_inconclusive: inconclusivesCount.toString(),
+      category: finalCategory,
+      num_domains: domainsCount,
+      num_unknown: unknownsCount,
+      num_inconclusive: inconclusivesCount,
     };
   }
 

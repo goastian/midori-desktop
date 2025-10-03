@@ -25,6 +25,7 @@ Step 4:
 import pathlib
 import sys
 import xml.etree.ElementTree
+from typing import List  # mypy!
 
 # -
 
@@ -145,7 +146,7 @@ db.load_xml(XML_DIR / "egl.xml")
 
 # -
 
-lines: list[str] = []
+lines: List[str] = []  # noqa: E999 (bug 1573737)
 
 keys = sorted(db.consts.keys())
 
@@ -165,7 +166,7 @@ for lib in db.LIBS:
 
 # -
 
-b_lines: list[bytes] = [HEADER] + [x.encode() for x in lines] + [FOOTER]
+b_lines: List[bytes] = [HEADER] + [x.encode() for x in lines] + [FOOTER]
 b_data: bytes = b"\n".join(b_lines)
 
 dest = pathlib.Path("GLConsts.h")

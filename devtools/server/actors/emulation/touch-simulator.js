@@ -54,7 +54,6 @@ class TouchSimulator {
     this.windowTarget = windowTarget;
     this.simulatorTarget = windowTarget.chromeEventHandler;
     this._currentPickerMap = new Map();
-    this.previousScreenY = 0;
   }
 
   enabled = false;
@@ -212,12 +211,11 @@ class TouchSimulator {
 
         this.startX = evt.pageX;
         this.startY = evt.pageY;
-        this.previousScreenY = this.startY;
 
         type = "touchstart";
         break;
 
-      case "mousemove": {
+      case "mousemove":
         if (!eventTarget) {
           // Don't propagate mousemove event when touchstart event isn't fired
           evt.stopPropagation();
@@ -225,11 +223,7 @@ class TouchSimulator {
         }
 
         type = "touchmove";
-        const deltaY = evt.screenY - this.previousScreenY;
-        this.previousScreenY = evt.screenY;
-        this.windowTarget.emit("contentScrolled", deltaY);
         break;
-      }
 
       case "mouseup":
         if (!eventTarget) {

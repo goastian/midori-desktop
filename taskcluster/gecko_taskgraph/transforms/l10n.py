@@ -5,9 +5,11 @@
 Do transforms specific to l10n kind
 """
 
+
+import json
+
 from mozbuild.chunkify import chunkify
 from taskgraph.transforms.base import TransformSequence
-from taskgraph.util import json
 from taskgraph.util.copy import deepcopy
 from taskgraph.util.dependencies import get_dependencies, get_primary_dependency
 from taskgraph.util.schema import (

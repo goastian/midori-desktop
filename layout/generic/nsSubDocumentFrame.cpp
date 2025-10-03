@@ -489,7 +489,7 @@ void nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
 
   nsDisplayList childItems(aBuilder);
 
-  if (subdocRootFrame) {
+  {
     DisplayListClipState::AutoSaveRestore nestedClipState(aBuilder);
     if (needsOwnLayer) {
       // Clear current clip. There's no point in propagating it down, since
@@ -499,32 +499,42 @@ void nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
       nestedClipState.Clear();
     }
 
-    nsDisplayListBuilder::AutoBuildingDisplayList building(
-        aBuilder, subdocRootFrame, visible, dirty);
-    if (aBuilder->BuildCompositorHitTestInfo()) {
-      bool hasDocumentLevelListenersForApzAwareEvents =
-          gfxPlatform::AsyncPanZoomEnabled() &&
-          nsLayoutUtils::HasDocumentLevelListenersForApzAwareEvents(presShell);
+    // Invoke AutoBuildingDisplayList to ensure that the correct dirty rect
+    // is used to compute the visible rect if AddCanvasBackgroundColorItem
+    // creates a display item.
+    nsIFrame* frame = subdocRootFrame ? subdocRootFrame : this;
+    nsDisplayListBuilder::AutoBuildingDisplayList building(aBuilder, frame,
+                                                           visible, dirty);
 
-      aBuilder->SetAncestorHasApzAwareEventHandler(
-          hasDocumentLevelListenersForApzAwareEvents);
-    }
-    subdocRootFrame->BuildDisplayListForStackingContext(aBuilder, &childItems);
-    if (!aBuilder->IsForEventDelivery()) {
-      // If we are going to use a displayzoom below then any items we put
-      // under it need to have underlying frames from the subdocument. So we
-      // need to calculate the bounds based on which frame will be the
-      // underlying frame for the canvas background color item.
-      nsRect bounds =
-          GetContentRectRelativeToSelf() + aBuilder->ToReferenceFrame(this);
-      bounds = bounds.ScaleToOtherAppUnitsRoundOut(parentAPD, subdocAPD);
+    if (subdocRootFrame) {
+      if (aBuilder->BuildCompositorHitTestInfo()) {
+        bool hasDocumentLevelListenersForApzAwareEvents =
+            gfxPlatform::AsyncPanZoomEnabled() &&
+            nsLayoutUtils::HasDocumentLevelListenersForApzAwareEvents(
+                presShell);
 
-      // Add the canvas background color to the bottom of the list. This
-      // happens after we've built the list so that
-      // AddCanvasBackgroundColorItem can monkey with the contents if
-      // necessary.
-      presShell->AddCanvasBackgroundColorItem(
-          aBuilder, &childItems, subdocRootFrame, bounds, NS_RGBA(0, 0, 0, 0));
+        aBuilder->SetAncestorHasApzAwareEventHandler(
+            hasDocumentLevelListenersForApzAwareEvents);
+      }
+
+      subdocRootFrame->BuildDisplayListForStackingContext(aBuilder,
+                                                          &childItems);
+      if (!aBuilder->IsForEventDelivery()) {
+        // If we are going to use a displayzoom below then any items we put
+        // under it need to have underlying frames from the subdocument. So we
+        // need to calculate the bounds based on which frame will be the
+        // underlying frame for the canvas background color item.
+        nsRect bounds =
+            GetContentRectRelativeToSelf() + aBuilder->ToReferenceFrame(this);
+        bounds = bounds.ScaleToOtherAppUnitsRoundOut(parentAPD, subdocAPD);
+
+        // Add the canvas background color to the bottom of the list. This
+        // happens after we've built the list so that
+        // AddCanvasBackgroundColorItem can monkey with the contents if
+        // necessary.
+        presShell->AddCanvasBackgroundColorItem(aBuilder, &childItems, frame,
+                                                bounds, NS_RGBA(0, 0, 0, 0));
+      }
     }
   }
 
@@ -1283,10 +1293,10 @@ nsPoint nsSubDocumentFrame::GetExtraOffset() const {
 
 void nsSubDocumentFrame::SubdocumentIntrinsicSizeOrRatioChanged() {
   const nsStylePosition* pos = StylePosition();
-  const auto anchorResolutionParams = AnchorPosResolutionParams::From(this);
+  const auto positionProperty = StyleDisplay()->mPosition;
   bool dependsOnIntrinsics =
-      !pos->GetWidth(anchorResolutionParams.mPosition)->ConvertsToLength() ||
-      !pos->GetHeight(anchorResolutionParams.mPosition)->ConvertsToLength();
+      !pos->GetWidth(positionProperty)->ConvertsToLength() ||
+      !pos->GetHeight(positionProperty)->ConvertsToLength();
 
   if (dependsOnIntrinsics || pos->mObjectFit != StyleObjectFit::Fill) {
     auto dirtyHint = dependsOnIntrinsics

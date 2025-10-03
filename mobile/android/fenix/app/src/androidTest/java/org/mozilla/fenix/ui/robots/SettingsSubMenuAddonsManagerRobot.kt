@@ -13,7 +13,6 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.NoMatchingViewException
@@ -79,13 +78,12 @@ class SettingsSubMenuAddonsManagerRobot {
 
     fun verifyAddonPermissionPrompt(addonName: String) {
         waitForAddonsDownloadOverlayToBeGone()
-        mDevice.waitNotNull(Until.findObject(By.text("Add $addonName")), waitingTime)
+        mDevice.waitNotNull(Until.findObject(By.text("Add $addonName?")), waitingTime)
         Log.i(TAG, "verifyAddonPermissionPrompt: Trying to verify that the add-ons permission prompt items are displayed")
         onView(
             allOf(
-                withText("Add $addonName"),
-                hasSibling(withText(containsString("Required permissions:"))),
-                hasSibling(withText("Allow extension to run in private browsing")),
+                withText("Add $addonName?"),
+                hasSibling(withText(containsString("It requires your permission to:"))),
             ),
         )
             .inRoot(isDialog())
@@ -96,6 +94,7 @@ class SettingsSubMenuAddonsManagerRobot {
                 withText("Add"),
                 hasSibling(withText("Cancel")),
                 hasSibling(withText("Learn more")),
+                hasSibling(withText("Allow in private browsing")),
             ),
         )
             .inRoot(isDialog())
@@ -241,7 +240,7 @@ class SettingsSubMenuAddonsManagerRobot {
     }
 
     fun selectAllowInPrivateBrowsing() {
-        assertUIObjectExists(itemWithText("Allow extension to run in private browsing"), waitingTime = waitingTimeLong)
+        assertUIObjectExists(itemWithText("Allow in private browsing"), waitingTime = waitingTimeLong)
         Log.i(TAG, "selectAllowInPrivateBrowsing: Trying to click the \"Allow in private browsing\" check box")
         onView(withId(R.id.allow_in_private_browsing)).click()
         Log.i(TAG, "selectAllowInPrivateBrowsing: Clicked the \"Allow in private browsing\" check box")
@@ -273,10 +272,15 @@ class SettingsSubMenuAddonsManagerRobot {
     }
 
     fun verifyRecommendedAddonsViewFromRedesignedMainMenu(composeTestRule: ComposeTestRule) {
+        Log.i(TAG, "verifyRecommendedAddonsViewFromRedesignedMainMenu: Trying to verify that that the \"Recommended\" heading is displayed")
+        composeTestRule.onNode(
+            hasText(getStringResource(R.string.mozac_feature_addons_recommended_section)),
+        ).assertIsDisplayed()
+        Log.i(TAG, "verifyRecommendedAddonsViewFromRedesignedMainMenu: Verified that that the \"Recommended\" heading is displayed")
         verifyTheRecommendedAddons(composeTestRule)
         Log.i(TAG, "verifyRecommendedAddonsViewFromRedesignedMainMenu: Trying to verify that that the \"Discover more extensions\" button is displayed")
         composeTestRule.onNode(
-            hasText(getStringResource(R.string.browser_menu_discover_more_extensions)), useUnmergedTree = true,
+            hasText(getStringResource(R.string.browser_menu_discover_more_extensions)),
         ).assertIsDisplayed()
         Log.i(TAG, "verifyRecommendedAddonsViewFromRedesignedMainMenu: Verified that that the \"Discover more extensions\" button is displayed")
     }
@@ -299,12 +303,12 @@ class SettingsSubMenuAddonsManagerRobot {
         Log.i(TAG, "verifyNoInstalledExtensionsPromotionBanner: Verified that that the \"Learn more\" link is displayed")
     }
 
-    fun verifyExtensionsEnabledButton(composeTestRule: ComposeTestRule) {
-        Log.i(TAG, "verifyExtensionsEnabledButton: Trying to verify that the \"You have extensions installed, but not enabled\" heading is displayed")
+    fun verifyDisabledExtensionsPromotionBanner(composeTestRule: ComposeTestRule) {
+        Log.i(TAG, "verifyDisabledExtensionsPromotionBanner: Trying to verify that the \"You have extensions installed, but not enabled\" heading is displayed")
         composeTestRule.onNode(
             hasText(getStringResource(R.string.browser_menu_disabled_extensions_banner_onboarding_header)),
         ).assertIsDisplayed()
-        Log.i(TAG, "verifyExtensionsEnabledButton: Verified that the \"You have extensions installed, but not enabled\" heading is displayed")
+        Log.i(TAG, "verifyDisabledExtensionsPromotionBanner: Verified that the \"You have extensions installed, but not enabled\" heading is displayed")
         Log.i(TAG, "verifyDisabledExtensionsPromotionBanner: Trying to verify that that the \"To use extensions, enable them in settings or by selecting “Manage extensions” below.\" message is displayed")
         composeTestRule.onNode(
             hasText("To use extensions, enable them in settings or by selecting “Manage extensions” below."),
@@ -324,7 +328,7 @@ class SettingsSubMenuAddonsManagerRobot {
             Log.i(TAG, "verifyTheRecommendedAddons: Started try #$i")
             try {
                 recommendedAddons.forEach { addon ->
-                    if (verifiedCount == 3) return
+                    if (verifiedCount == 4) return
                     try {
                         waitForAppWindowToBeUpdated()
                         Log.i(TAG, "verifyTheRecommendedAddons: Trying to verify that addon: $addon is recommended and displayed")
@@ -342,8 +346,8 @@ class SettingsSubMenuAddonsManagerRobot {
                         Log.i(TAG, "verifyTheRecommendedAddons: Addon: $addon is not displayed, moving to the next one")
                     }
                 }
-                if (verifiedCount < 3) {
-                    throw AssertionError("$TAG, verifyTheRecommendedAddons: Less than 3 addons were verified. Only $verifiedCount addons were verified.")
+                if (verifiedCount < 4) {
+                    throw AssertionError("$TAG, verifyTheRecommendedAddons: Less than 4 addons were verified. Only $verifiedCount addons were verified.")
                 }
 
                 break
@@ -364,7 +368,7 @@ class SettingsSubMenuAddonsManagerRobot {
     }
 
     fun clickManageExtensionsButtonFromRedesignedMainMenu(composeTestRule: ComposeTestRule) =
-        composeTestRule.onNodeWithText(getStringResource(R.string.browser_menu_manage_extensions), useUnmergedTree = true).performClick()
+        composeTestRule.onNodeWithContentDescription(getStringResource(R.string.browser_menu_manage_extensions)).performClick()
 
     class Transition {
         fun goBack(interact: HomeScreenRobot.() -> Unit): HomeScreenRobot.Transition {
@@ -414,7 +418,7 @@ class SettingsSubMenuAddonsManagerRobot {
 
         fun clickDiscoverMoreExtensionsButton(composeTestRule: ComposeTestRule, interact: BrowserRobot.() -> Unit): BrowserRobot.Transition {
             Log.i(TAG, "clickDiscoverMoreExtensionsButton: Trying to click the \"Discover more extensions\" link")
-            composeTestRule.onNode(hasText(getStringResource(R.string.browser_menu_discover_more_extensions)), useUnmergedTree = true).performClick()
+            composeTestRule.onNode(hasText(getStringResource(R.string.browser_menu_discover_more_extensions))).performClick()
             Log.i(TAG, "clickDiscoverMoreExtensionsButton: Clicked the \"Discover more extensions\" link")
 
             BrowserRobot().interact()

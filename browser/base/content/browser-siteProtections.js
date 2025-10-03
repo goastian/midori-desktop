@@ -1383,32 +1383,24 @@ var gProtectionsHandler = {
    */
   smartblockEmbedInfo: [
     {
-      matchPatterns: ["https://itisatracker.org/*"],
+      sites: ["https://itisatracker.org"],
       shimId: "EmbedTestShim",
       displayName: "Test",
     },
     {
-      matchPatterns: [
-        "https://www.instagram.com/*",
-        "https://platform.instagram.com/*",
-      ],
+      sites: ["https://www.instagram.com", "https://platform.instagram.com"],
       shimId: "InstagramEmbed",
       displayName: "Instagram",
     },
     {
-      matchPatterns: ["https://www.tiktok.com/*"],
+      sites: ["https://www.tiktok.com"],
       shimId: "TiktokEmbed",
       displayName: "Tiktok",
     },
     {
-      matchPatterns: ["https://platform.twitter.com/*"],
+      sites: ["https://platform.twitter.com"],
       shimId: "TwitterEmbed",
       displayName: "X",
-    },
-    {
-      matchPatterns: ["https://*.disqus.com/*"],
-      shimId: "DisqusEmbed",
-      displayName: "Disqus",
     },
   ],
 
@@ -1635,6 +1627,13 @@ var gProtectionsHandler = {
   },
 
   init() {
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "_fontVisibilityTrackingProtection",
+      "layout.css.font-visibility.trackingprotection",
+      3000
+    );
+
     XPCOMUtils.defineLazyPreferenceGetter(
       this,
       "_protectionsPopupToastTimeout",
@@ -2496,10 +2495,9 @@ var gProtectionsHandler = {
         continue;
       }
 
-      let shimInfo = this.smartblockEmbedInfo.find(element => {
-        let matchPatternSet = new MatchPatternSet(element.matchPatterns);
-        return matchPatternSet.matches(origin);
-      });
+      let shimInfo = this.smartblockEmbedInfo.find(element =>
+        element.sites.includes(origin)
+      );
       if (!shimInfo) {
         // origin not relevant to smartblock
         continue;

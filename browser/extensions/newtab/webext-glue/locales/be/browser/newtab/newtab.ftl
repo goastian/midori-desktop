@@ -117,8 +117,7 @@ newtab-menu-delete-pocket = Выдаліць з { -pocket-brand-name }
 newtab-menu-archive-pocket = Архіваваць у { -pocket-brand-name }
 newtab-menu-show-privacy-info = Нашы спонсары і ваша прыватнасць
 newtab-menu-about-fakespot = Пра { -fakespot-brand-name }
-# Report is a verb (i.e. report issue with the content).
-newtab-menu-report = Паведаміць
+newtab-menu-report-content = Паскардзіцца на гэта змесціва
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Блакаваць
@@ -192,8 +191,6 @@ newtab-label-sponsored-by = Ад спонсара { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } хв
-# This string is used under fixed size ads to indicate sponsored content
-newtab-label-sponsored-fixed = Спонсарскі
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -316,9 +313,6 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Надвор'е
     .description = Кароткі прагноз на сёння
-newtab-custom-trending-search-toggle =
-    .label = Папулярныя пошукавыя запыты
-    .description = Папулярныя і часта запытаныя тэмы
 newtab-custom-close-button = Закрыць
 newtab-custom-settings = Кіраваць дадатковымі наладамі
 
@@ -566,14 +560,3 @@ newtab-report-cancel = Скасаваць
 newtab-report-submit = Даслаць
 newtab-toast-thanks-for-reporting =
     .message = Дзякуй, што паведамілі пра гэта.
-
-## Strings for trending searches
-
-# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
-newtab-trending-searches-trending-on-google = Папулярнае ў Google
-newtab-trending-searches-show-trending =
-    .title = Паказаць папулярныя пошукавыя запыты
-newtab-trending-searches-hide-trending =
-    .title = Схаваць папулярныя пошукавыя запыты
-newtab-trending-searches-learn-more = Падрабязней
-newtab-trending-searches-dismiss = Схаваць папулярныя пошукавыя запыты

@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {access, constants, rm, watch} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import {basename, dirname} from 'node:path';
+import {access, constants, rm, watch} from 'fs/promises';
+import {tmpdir} from 'os';
+import {basename, dirname} from 'path';
 
 import expect from 'expect';
 import type {Frame} from 'puppeteer-core/internal/api/Frame.js';
@@ -164,18 +164,12 @@ export interface FilePlaceholder {
   [Symbol.dispose](): void;
 }
 
-export function getUniqueVideoFilePlaceholder(
-  debugging = false,
-): FilePlaceholder {
-  const name = debugging
-    ? './debugging'
-    : `${tmpdir()}/test-video-${Math.round(Math.random() * 10000)}`;
+export function getUniqueVideoFilePlaceholder(): FilePlaceholder {
   return {
-    filename: `${name}.webm`,
+    filename: `${tmpdir()}/test-video-${Math.round(
+      Math.random() * 10000,
+    )}.webm`,
     [Symbol.dispose]() {
-      if (debugging) {
-        return;
-      }
       void rmIfExists(this.filename);
     },
   };

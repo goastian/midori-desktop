@@ -52,7 +52,6 @@ function handleEventLocal(aEvent) {
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       ["privacy.userContext.enabled", true],
       // don't preload tabs so we don't have extra XULFrameLoaderCreated events
       // firing

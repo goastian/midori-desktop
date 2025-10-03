@@ -16,7 +16,7 @@ async function testFinish({ threadFront, devToolsClient }) {
 
 async function invokeAndPause({ global, threadFront }, expression) {
   return executeOnNextTickAndWaitForPause(
-    () => global.eval(expression),
+    () => Cu.evalInSandbox(expression, global),
     threadFront
   );
 }

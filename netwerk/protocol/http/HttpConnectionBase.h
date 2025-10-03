@@ -170,7 +170,6 @@ class HttpConnectionBase : public nsSupportsWeakReference {
   }
 
   void RecordConnectionCloseTelemetry(nsresult aReason);
-  void RecordConnectionAddressType();
 
  protected:
   // The capabailities associated with the most recent transaction
@@ -199,8 +198,6 @@ class HttpConnectionBase : public nsSupportsWeakReference {
       ConnectionExperienceState::Not_Experienced;
 
   ConnectionCloseReason mCloseReason = ConnectionCloseReason::UNSET;
-
-  bool mAddressTypeReported{false};
 };
 
 #define NS_DECL_HTTPCONNECTIONBASE                                             \

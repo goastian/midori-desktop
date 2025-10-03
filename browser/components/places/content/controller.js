@@ -5,7 +5,7 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.sys.mjs",
-  PlacesUIUtils: "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs",
+  PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
 });
 
@@ -1438,7 +1438,8 @@ PlacesController.prototype = {
     } else if (documentUrl.includes("sidebar")) {
       // We're in the sidebar - clear the search box first
       let searchBox = document.getElementById("search-box");
-      searchBox.clear();
+      searchBox.value = "";
+      searchBox.doCommand();
 
       // And go to the node
       this._view.selectItems([aBookmarkGuid], true);

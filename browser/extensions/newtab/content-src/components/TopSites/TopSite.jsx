@@ -333,8 +333,6 @@ export class TopSiteLink extends React.PureComponent {
           tile={{
             position: this.props.index,
             source: NEWTAB_SOURCE,
-            isPinned: this.props.link.isPinned,
-            guid: this.props.link.guid,
           }}
           // For testing.
           IntersectionObserver={this.props.IntersectionObserver}
@@ -368,9 +366,6 @@ export class TopSiteLink extends React.PureComponent {
             title={title}
             onFocus={this.props.onFocus}
           >
-            {shortcutsRefresh && link.isPinned && (
-              <div className="icon icon-pin-small" />
-            )}
             <div className="tile" aria-hidden={true}>
               <div
                 className={
@@ -390,6 +385,9 @@ export class TopSiteLink extends React.PureComponent {
                   />
                 )}
               </div>
+              {shortcutsRefresh && link.isPinned && (
+                <div className="icon icon-pin-small" />
+              )}
               {!shortcutsRefresh && link.searchTopSite && (
                 <div className="top-site-icon search-topsite" />
               )}
@@ -564,8 +562,6 @@ export class TopSite extends React.PureComponent {
               type: "click",
               position: this.props.index,
               source: NEWTAB_SOURCE,
-              isPinned: this.props.link.isPinned,
-              guid: this.props.link.guid,
             },
           })
         );
@@ -956,7 +952,7 @@ export class _TopSiteList extends React.PureComponent {
       // tile for the about:home startup cache.
       if (
         !link ||
-        (props.App.isForStartupCache.TopSites && isSponsored(link)) ||
+        (props.App.isForStartupCache.App && isSponsored(link)) ||
         topSites[i]?.isAddButton
       ) {
         if (link) {

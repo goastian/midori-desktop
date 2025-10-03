@@ -31,9 +31,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.GleanMetrics.Collections
 import org.mozilla.fenix.components.TabCollectionStorage
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class) // For gleanTestRule
+@RunWith(FenixRobolectricTestRunner::class) // For gleanTestRule
 class DefaultCollectionCreationControllerTest {
 
     @get:Rule

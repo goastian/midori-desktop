@@ -10,6 +10,7 @@
 #ifndef CALL_TEST_MOCK_BITRATE_ALLOCATOR_H_
 #define CALL_TEST_MOCK_BITRATE_ALLOCATOR_H_
 
+#include <string>
 
 #include "call/bitrate_allocator.h"
 #include "test/gmock.h"

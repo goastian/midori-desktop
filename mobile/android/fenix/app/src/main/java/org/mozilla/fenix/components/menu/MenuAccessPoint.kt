@@ -32,6 +32,9 @@ enum class MenuAccessPoint {
 enum class Route {
     MainMenu,
     CustomTabMenu,
+    ToolsMenu,
+    SaveMenu,
+    ExtensionsMenu,
 }
 
 /**

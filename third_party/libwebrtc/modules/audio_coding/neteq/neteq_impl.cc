@@ -185,7 +185,7 @@ NetEqImpl::~NetEqImpl() = default;
 int NetEqImpl::InsertPacket(const RTPHeader& rtp_header,
                             rtc::ArrayView<const uint8_t> payload,
                             const RtpPacketInfo& packet_info) {
-  MsanCheckInitialized(payload);
+  rtc::MsanCheckInitialized(payload);
   TRACE_EVENT0("webrtc", "NetEqImpl::InsertPacket");
   MutexLock lock(&mutex_);
   if (InsertPacketInternal(rtp_header, payload, packet_info) != 0) {

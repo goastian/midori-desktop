@@ -18,6 +18,7 @@ div.progress-element.vertical {
 }
 
 div.progress-bar {
+  -moz-appearance: progresschunk;
   height: 100%;
   /*
    * We can't apply the following style to the reference because it will have

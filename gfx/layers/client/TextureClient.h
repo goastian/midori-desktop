@@ -253,6 +253,8 @@ class TextureData {
     return nullptr;
   }
 
+  virtual void ReturnDrawTarget(already_AddRefed<gfx::DrawTarget> aDT);
+
   /**
    * When the TextureData is not being Unlocked, this can be used to inform a
    * TextureData that drawing has finished until the next BorrowDrawTarget.

@@ -141,7 +141,7 @@ data class CollectionColors(
             var buttonColor = FirefoxTheme.colors.actionPrimary
             var buttonTextColor = FirefoxTheme.colors.textActionPrimary
 
-            wallpaperState.ComposeRunIfWallpaperCardColorsAreAvailable { _, _ ->
+            wallpaperState.composeRunIfWallpaperCardColorsAreAvailable { _, _ ->
                 buttonColor = FirefoxTheme.colors.layer1
 
                 if (!isSystemInDarkTheme()) {

@@ -22,7 +22,6 @@ async function setPrefsAndResetFog(
 
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       ["dom.security.https_only_mode", aHTTPSOnlyPref],
       ["dom.security.https_first", aHTTPSFirstPref],
       ["dom.security.https_first_schemeless", aSchemeLessPref],

@@ -8,7 +8,6 @@
 #define mozilla_net_CookieJarSettings_h
 
 #include "mozilla/Maybe.h"
-#include "mozilla/net/NeckoChannelParams.h"
 
 #include "nsICookieJarSettings.h"
 #include "nsIPermission.h"
@@ -23,8 +22,6 @@ namespace mozilla {
 namespace net {
 
 class CookieJarSettingsArgs;
-
-using CookiePermissionsArgsData = nsTArray<net::CookiePermissionData>;
 
 /**
  * CookieJarSettings
@@ -155,9 +152,6 @@ class CookieJarSettings final : public nsICookieJarSettings {
   static void Deserialize(const CookieJarSettingsArgs& aData,
                           nsICookieJarSettings** aCookieJarSettings);
 
-  static CookiePermissionList DeserializeCookiePermissions(
-      const CookiePermissionsArgsData& aPermissionData);
-
   // Merge the current CookieJarSettings with the new CookieJarSettingsArgs. It
   // returns a new merged CookieJarSettings.
   already_AddRefed<nsICookieJarSettings> Merge(
@@ -233,18 +227,15 @@ class CookieJarSettings final : public nsICookieJarSettings {
     mTopLevelWindowContextId = aOther.mTopLevelWindowContextId;
   }
 
-  CookiePermissionList& GetCookiePermissionsListRef();
-
-  virtual ~CookieJarSettings();
+  ~CookieJarSettings();
 
   uint32_t mCookieBehavior;
   bool mIsFirstPartyIsolated;
   CookiePermissionList mCookiePermissions;
-  CookiePermissionsArgsData mIPCCookiePermissions;
-
   bool mIsOnContentBlockingAllowList;
   bool mIsOnContentBlockingAllowListUpdated;
   nsString mPartitionKey;
+
   State mState;
 
   bool mToBeMerged;

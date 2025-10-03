@@ -3,13 +3,12 @@
  * Copyright 2023 Google Inc.
  * SPDX-License-Identifier: Apache-2.0
  */
-import path from 'node:path';
+import path from 'path';
 
 import {BrowserPlatform} from './types.js';
 
 function folder(platform: BrowserPlatform): string {
   switch (platform) {
-    case BrowserPlatform.LINUX_ARM:
     case BrowserPlatform.LINUX:
       return 'linux64';
     case BrowserPlatform.MAC_ARM:
@@ -53,7 +52,6 @@ export function relativeExecutablePath(
         'chrome-headless-shell-' + folder(platform),
         'chrome-headless-shell',
       );
-    case BrowserPlatform.LINUX_ARM:
     case BrowserPlatform.LINUX:
       return path.join(
         'chrome-headless-shell-linux64',

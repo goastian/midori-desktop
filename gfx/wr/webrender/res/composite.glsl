@@ -245,7 +245,6 @@ void main(void) {
     write_output(color);
 }
 
-#ifdef WR_FEATURE_FAST_PATH
 #ifdef SWGL_DRAW_SPAN
 void swgl_drawSpanRGBA8() {
 #ifdef WR_FEATURE_YUV
@@ -281,6 +280,26 @@ void swgl_drawSpanRGBA8() {
     vec4 uvBounds = vUVBounds;
 #endif
 
+// TODO(gw): Do we need to support this on ESSL1?
+#ifndef WR_FEATURE_TEXTURE_EXTERNAL_ESSL1
+#ifndef WR_FEATURE_FAST_PATH
+    // Apply compositor clip
+    float aa_range = compute_aa_range(vNormalizedWorldPos);
+
+    float dist = sd_round_box(
+        vNormalizedWorldPos,
+        vRoundedClipParams,
+        vRoundedClipRadii
+    );
+
+    // Compute AA for the given dist and range.
+    float clip_alpha =  distance_aa(aa_range, dist);
+
+    // Apply clip alpha
+    color *= clip_alpha;
+#endif
+#endif
+
     if (color != vec4(1.0)) {
         swgl_commitTextureColorRGBA8(sColor0, vUv, uvBounds, color);
     } else {
@@ -288,7 +307,6 @@ void swgl_drawSpanRGBA8() {
     }
 #endif
 }
-#endif      // SWGL_DRAW_SPAN
-#endif      // WR_FEATURE_FAST_PATH
+#endif
 
 #endif

@@ -13,8 +13,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <vector>
-
 #include "absl/algorithm/container.h"
 #include "rtc_base/checks.h"
 #include "test/gtest.h"

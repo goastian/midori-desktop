@@ -54,7 +54,7 @@ class RtcpPacket {
   // max_length bytes, it will be fragmented and multiple calls to this
   // callback will be made.
   using PacketReadyCallback =
-      FunctionView<void(rtc::ArrayView<const uint8_t> packet)>;
+      rtc::FunctionView<void(rtc::ArrayView<const uint8_t> packet)>;
 
   virtual ~RtcpPacket() = default;
 

@@ -265,11 +265,9 @@ class CookiesStorageActor extends BaseStorageActor {
         return COOKIE_SAMESITE.LAX;
       case cookie.SAMESITE_STRICT:
         return COOKIE_SAMESITE.STRICT;
-      case cookie.SAMESITE_NONE:
-        return COOKIE_SAMESITE.NONE;
     }
-    // cookie.SAMESITE_UNSET
-    return "";
+    // cookie.SAMESITE_NONE
+    return COOKIE_SAMESITE.NONE;
   }
 
   /**
@@ -377,25 +375,15 @@ class CookiesStorageActor extends BaseStorageActor {
    *
    * @param {Object} data
    *        See editCookie() for format details.
-   * @returns {Object} An object with an "errorString" property.
    */
   async editItem(data) {
-    const potentialErrorMessage = this.editCookie(data);
-    return { errorString: potentialErrorMessage };
+    this.editCookie(data);
   }
 
-  /**
-   * Add a cookie on given host
-   *
-   * @param {String} guid
-   * @param {String} host
-   * @returns {Object} An object with an "errorString" property.
-   */
   async addItem(guid, host) {
     const window = this.storageActor.getWindowFromHost(host);
     const principal = window.document.effectiveStoragePrincipal;
-    const potentialErrorMessage = this.addCookie(guid, principal);
-    return { errorString: potentialErrorMessage };
+    this.addCookie(guid, principal);
   }
 
   async removeItem(host, uniqueKey) {
@@ -413,14 +401,6 @@ class CookiesStorageActor extends BaseStorageActor {
     this._removeCookies(host, { domain, session: true });
   }
 
-  /**
-   * Add a cookie on given principal
-   *
-   * @param {String} guid
-   * @param {Principal} principal
-   * @returns {String|null} If the cookie couldn't be added (e.g. it's invalid),
-   *          an error string will be returned.
-   */
   addCookie(guid, principal) {
     // Set expiry time for cookie 1 day into the future
     // NOTE: Services.cookies.add expects the time in seconds.
@@ -434,7 +414,7 @@ class CookiesStorageActor extends BaseStorageActor {
     // value of "" when the host is not available.
     const domain = principal.asciiHost ? principal.host : principal.baseDomain;
 
-    const cv = Services.cookies.add(
+    Services.cookies.add(
       domain,
       "/",
       guid, // name
@@ -449,12 +429,6 @@ class CookiesStorageActor extends BaseStorageActor {
         ? Ci.nsICookie.SCHEME_HTTPS
         : Ci.nsICookie.SCHEME_HTTP
     );
-
-    if (cv.result != Ci.nsICookieValidation.eOK) {
-      return cv.errorString;
-    }
-
-    return null;
   }
 
   /**
@@ -481,8 +455,6 @@ class CookiesStorageActor extends BaseStorageActor {
    *            isHttpOnly: "false"
    *          }
    *        }
-   * @returns {(String|null)} If cookie couldn't be updated (e.g. it's invalid), an error string
-   *          will be returned.
    */
   // eslint-disable-next-line complexity
   editCookie(data) {
@@ -517,7 +489,6 @@ class CookiesStorageActor extends BaseStorageActor {
           isSession: nsiCookie.isSession,
           expires: nsiCookie.expires,
           originAttributes: nsiCookie.originAttributes,
-          sameSite: nsiCookie.sameSite,
           schemeMap: nsiCookie.schemeMap,
           isPartitioned: nsiCookie.isPartitioned,
         };
@@ -526,7 +497,7 @@ class CookiesStorageActor extends BaseStorageActor {
     }
 
     if (!cookie) {
-      return null;
+      return;
     }
 
     // If the date is expired set it for 10 seconds in the future.
@@ -536,8 +507,6 @@ class CookiesStorageActor extends BaseStorageActor {
 
       cookie.expires = tenSecondsFromNow;
     }
-
-    let origCookieRemoved = false;
 
     switch (field) {
       case "isSecure":
@@ -564,7 +533,6 @@ class CookiesStorageActor extends BaseStorageActor {
           origPath,
           cookie.originAttributes
         );
-        origCookieRemoved = true;
         break;
     }
 
@@ -576,7 +544,7 @@ class CookiesStorageActor extends BaseStorageActor {
     cookie.isSession = !cookie.expires;
 
     // Add the edited cookie.
-    const cv = Services.cookies.add(
+    Services.cookies.add(
       cookie.host,
       cookie.path,
       cookie.name,
@@ -590,30 +558,6 @@ class CookiesStorageActor extends BaseStorageActor {
       cookie.schemeMap,
       cookie.isPartitioned
     );
-
-    if (cv.result != Ci.nsICookieValidation.eOK) {
-      if (origCookieRemoved) {
-        // Re-add the cookie with the original values if it was removed.
-        Services.cookies.add(
-          origHost,
-          origPath,
-          origName,
-          cookie.value,
-          cookie.isSecure,
-          cookie.isHttpOnly,
-          cookie.isSession,
-          cookie.isSession ? MAX_COOKIE_EXPIRY : cookie.expires,
-          cookie.originAttributes,
-          cookie.sameSite,
-          cookie.schemeMap,
-          cookie.isPartitioned
-        );
-      }
-
-      return cv.errorString;
-    }
-
-    return null;
   }
 
   _removeCookies(host, opts = {}) {

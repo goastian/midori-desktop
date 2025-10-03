@@ -4,9 +4,12 @@
 
 from abc import ABCMeta, abstractmethod
 
+import six
+
 
 # abstract class for all playback tools
-class Playback(metaclass=ABCMeta):
+@six.add_metaclass(ABCMeta)
+class Playback:
     def __init__(self, config):
         self.config = config
         self.host = None

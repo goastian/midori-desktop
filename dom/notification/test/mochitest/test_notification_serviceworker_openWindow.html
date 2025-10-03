@@ -31,7 +31,7 @@ add_task(async function setup() {
 
 add_task(async function test() {
   info("Registering service worker.");
-  let swr = await navigator.serviceWorker.register("notification_openWindow.serviceworker.js");
+  let swr = await navigator.serviceWorker.register("notification_openWindow_worker.js");
   await waitForState(swr.installing, "activated");
 
   SimpleTest.registerCleanupFunction(async () => {
@@ -64,16 +64,19 @@ add_task(async function test() {
     await swr.showNotification("notification");
 
     info("Waiting for \"DONE\" from worker.");
-    const result = await new Promise(resolve => {
-      navigator.serviceWorker.addEventListener("message", (event) => {
-        if (event.data?.type !== "DONE") {
+    await new Promise(resolve => {
+      navigator.serviceWorker.onmessage = event => {
+        if (event.data !== "DONE") {
           ok(false, `Unexpected message from service worker: ${JSON.stringify(event.data)}`);
         }
-        resolve(event.data);
-      }, { once: true });
+        resolve();
+      }
     });
 
-    is(result.referrer, "", "The referrer should be empty");
+    // If we make it here, then we didn't crash.
+    ok(true, "Didn't crash!");
+
+    navigator.serviceWorker.onmessage = null;
   }
 });
 

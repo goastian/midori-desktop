@@ -222,6 +222,3 @@ newtab-error-fallback-refresh-link = Освежете ја страницата 
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

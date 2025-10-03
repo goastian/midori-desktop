@@ -336,8 +336,7 @@ class alignas(uintptr_t) BaselineScript final
 
   uint8_t* nativeCodeForOSREntry(uint32_t pcOffset);
 
-  static bool OSREntryForFrame(JSContext* cx, BaselineFrame* frame,
-                               uint8_t** entry);
+  static uint8_t* OSREntryForFrame(BaselineFrame* frame);
 
   void copyRetAddrEntries(const RetAddrEntry* entries);
   void copyOSREntries(const OSREntry* entries);

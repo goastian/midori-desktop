@@ -207,5 +207,4 @@ class SimpleperfProfiler(Layer):
         The run step of the simpleperf layer is a no-op since the expectation is that
         the start/stop controls are manually called through the ProfilerMediator.
         """
-        metadata.add_extra_options(["simpleperf"])
         return metadata

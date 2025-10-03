@@ -4,6 +4,7 @@
 
 import configparser
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -14,7 +15,6 @@ from textwrap import dedent
 import requests
 from mozbuild.base import BuildEnvironmentNotFoundException, MozbuildObject
 from mozbuild.telemetry import filter_args
-from mozfile import json
 from mozversioncontrol import InvalidRepoPath, get_repository_object
 
 from mach.config import ConfigSettings

@@ -52,7 +52,7 @@ DevToolsServer.removeTestGlobal = function (global) {
 
 DevToolsServer.getTestGlobal = function (name) {
   for (const g of gTestGlobals) {
-    if (g.title == name) {
+    if (g.__name == name) {
       return g;
     }
   }
@@ -188,9 +188,7 @@ class TestTargetActor extends BaseTargetActor {
 
     this.sessionContext = createContentProcessSessionContext();
     this._global = global;
-    try {
-      this._global.wrappedJSObject = Cu.unwaiveXrays(global);
-    } catch (e) {}
+    this._global.wrappedJSObject = global;
     this.threadActor = new ThreadActor(this, this._global);
     this.conn.addActor(this.threadActor);
     this._extraActors = {};
@@ -215,13 +213,13 @@ class TestTargetActor extends BaseTargetActor {
     return this._global;
   }
 
-  // Both title and url point to this._global.title
+  // Both title and url point to this._global.__name
   get title() {
-    return this._global.document.title;
+    return this._global.__name;
   }
 
   get url() {
-    return this._global.title;
+    return this._global.__name;
   }
 
   get sourcesManager() {

@@ -300,7 +300,7 @@ class F extends AllFeaturesMaxLimitsGPUTest {
     });
   }
 
-  getTargetTexture(
+  GetTargetTexture(
     sampleCount: number,
     rasterizationMask: number,
     pipeline: GPURenderPipeline,
@@ -432,7 +432,7 @@ class F extends AllFeaturesMaxLimitsGPUTest {
     };
   }
 
-  checkColorAttachmentResult(
+  CheckColorAttachmentResult(
     texture: GPUTexture,
     sampleCount: number,
     rasterizationMask: number,
@@ -455,7 +455,7 @@ class F extends AllFeaturesMaxLimitsGPUTest {
     this.expectGPUBufferValuesEqual(buffer, expected);
   }
 
-  checkDepthStencilResult(
+  CheckDepthStencilResult(
     aspect: 'depth-only' | 'stencil-only',
     depthStencilTexture: GPUTexture,
     sampleCount: number,
@@ -574,14 +574,14 @@ textureLoad each sample index from the texture and write to a storage buffer to 
       },
     });
 
-    const { color, depthStencil } = t.getTargetTexture(
+    const { color, depthStencil } = t.GetTargetTexture(
       sampleCount,
       rasterizationMask,
       pipeline,
       fragmentMaskUniformBuffer
     );
 
-    t.checkColorAttachmentResult(
+    t.CheckColorAttachmentResult(
       color,
       sampleCount,
       rasterizationMask,
@@ -589,7 +589,7 @@ textureLoad each sample index from the texture and write to a storage buffer to 
       fragmentShaderOutputMask
     );
 
-    t.checkDepthStencilResult(
+    t.CheckDepthStencilResult(
       'depth-only',
       depthStencil,
       sampleCount,
@@ -598,7 +598,7 @@ textureLoad each sample index from the texture and write to a storage buffer to 
       fragmentShaderOutputMask
     );
 
-    t.checkDepthStencilResult(
+    t.CheckDepthStencilResult(
       'stencil-only',
       depthStencil,
       sampleCount,
@@ -696,7 +696,7 @@ color' <= color.
       alphaValues[1] = alpha1;
       t.device.queue.writeBuffer(alphaValueUniformBuffer, 0, alphaValues);
 
-      const { color, depthStencil } = t.getTargetTexture(
+      const { color, depthStencil } = t.GetTargetTexture(
         sampleCount,
         rasterizationMask,
         pipeline,

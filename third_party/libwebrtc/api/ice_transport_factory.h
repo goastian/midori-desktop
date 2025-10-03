@@ -13,8 +13,11 @@
 
 #include "api/ice_transport_interface.h"
 #include "api/scoped_refptr.h"
-#include "p2p/base/port_allocator.h"
 #include "rtc_base/system/rtc_export.h"
+
+namespace cricket {
+class PortAllocator;  // IWYU pragma: keep
+}  // namespace cricket
 
 namespace webrtc {
 
@@ -26,7 +29,7 @@ namespace webrtc {
 // TODO(steveanton): Remove in favor of the overload that takes
 // IceTransportInit.
 RTC_EXPORT rtc::scoped_refptr<IceTransportInterface> CreateIceTransport(
-    PortAllocator* port_allocator);
+    cricket::PortAllocator* port_allocator);
 
 // Static factory for an IceTransport object that can be created
 // without using a webrtc::PeerConnection.

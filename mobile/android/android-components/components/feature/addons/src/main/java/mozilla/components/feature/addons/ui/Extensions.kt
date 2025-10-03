@@ -7,7 +7,6 @@ package mozilla.components.feature.addons.ui
 import android.content.Context
 import android.widget.ImageView
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
 import mozilla.components.feature.addons.Addon
@@ -154,7 +153,7 @@ fun ImageView.setDefaultAddonIcon() {
     val att = safeContext.theme.resolveAttribute(android.R.attr.textColorPrimary)
     setColorFilter(ContextCompat.getColor(safeContext, att))
     setImageDrawable(
-        AppCompatResources.getDrawable(
+        ContextCompat.getDrawable(
             safeContext,
             mozilla.components.ui.icons.R.drawable.mozac_ic_extension_24,
         ),

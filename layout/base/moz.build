@@ -103,7 +103,6 @@ UNIFIED_SOURCES += [
     "AccessibleCaret.cpp",
     "AccessibleCaretEventHub.cpp",
     "AccessibleCaretManager.cpp",
-    "AnchorPositioningUtils.cpp",
     "Baseline.cpp",
     "CaretAssociationHint.cpp",
     "ContainStyleScopeManager.cpp",

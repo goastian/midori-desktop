@@ -76,17 +76,9 @@ interface HTMLElement : Element {
   [Throws]
   ElementInternals attachInternals();
 
-  [Throws] undefined showPopover(optional ShowPopoverOptions options = {});
+  [Throws] undefined showPopover();
   [Throws] undefined hidePopover();
-  [Throws] boolean togglePopover(optional (TogglePopoverOptions or boolean) options = {});
-};
-
-dictionary ShowPopoverOptions {
-  HTMLElement source;
-};
-
-dictionary TogglePopoverOptions : ShowPopoverOptions {
-  boolean force;
+  [Throws] boolean togglePopover(optional boolean force);
 };
 
 // http://dev.w3.org/csswg/cssom-view/#extensions-to-the-htmlelement-interface

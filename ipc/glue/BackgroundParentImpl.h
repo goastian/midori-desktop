@@ -336,7 +336,7 @@ class BackgroundParentImpl : public PBackgroundParent {
       EnsureRDDProcessAndCreateBridgeResolver&& aResolver) override;
 
   mozilla::ipc::IPCResult RecvEnsureUtilityProcessAndCreateBridge(
-      const RemoteMediaIn& aLocation,
+      const RemoteDecodeIn& aLocation,
       EnsureUtilityProcessAndCreateBridgeResolver&& aResolver) override;
 
   mozilla::ipc::IPCResult RecvRequestCameraAccess(

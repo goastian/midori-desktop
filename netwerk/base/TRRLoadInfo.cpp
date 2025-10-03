@@ -151,26 +151,6 @@ TRRLoadInfo::SetTriggeringStorageAccess(bool aResult) {
 }
 
 NS_IMETHODIMP
-TRRLoadInfo::GetTriggeringFirstPartyClassificationFlags(uint32_t* aResult) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-TRRLoadInfo::SetTriggeringFirstPartyClassificationFlags(uint32_t aResult) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-TRRLoadInfo::GetTriggeringThirdPartyClassificationFlags(uint32_t* aResult) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-TRRLoadInfo::SetTriggeringThirdPartyClassificationFlags(uint32_t aResult) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
 TRRLoadInfo::GetSecurityMode(uint32_t* aFlags) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -899,16 +879,6 @@ TRRLoadInfo::GetParserCreatedScript(bool* aParserCreatedScript) {
 
 NS_IMETHODIMP
 TRRLoadInfo::SetParserCreatedScript(bool aParserCreatedScript) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-TRRLoadInfo::GetRequestMode(Maybe<RequestMode>* aRequestMode) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-TRRLoadInfo::SetRequestMode(Maybe<RequestMode> aRequestMode) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 

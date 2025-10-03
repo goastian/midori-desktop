@@ -25,6 +25,9 @@ test();
 
 function test()
 {
+  printBugNumber(BUGNUMBER);
+  printStatus (summary);
+
   try {
     new (this.prototype = this);
   } catch (e) {

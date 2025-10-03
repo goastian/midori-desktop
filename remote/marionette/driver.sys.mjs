@@ -62,6 +62,16 @@ ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.MARIONETTE)
 );
 
+ChromeUtils.defineLazyGetter(lazy, "hasSystemAccess", () => {
+  // Bug 1955007: Remove temporary preference in Firefox 141
+  const skipCheck = !Services.prefs.getBoolPref(
+    "remote.system-access-check.enabled",
+    true
+  );
+
+  return skipCheck || lazy.RemoteAgent.allowSystemAccess;
+});
+
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 ChromeUtils.defineLazyGetter(
@@ -343,10 +353,7 @@ Object.defineProperty(GeckoDriver.prototype, "context", {
   },
 
   set(context) {
-    if (
-      context === lazy.Context.Chrome &&
-      !lazy.RemoteAgent.allowSystemAccess
-    ) {
+    if (context === lazy.Context.Chrome && !lazy.hasSystemAccess) {
       throw new lazy.error.UnsupportedOperationError(
         `System access is required to switch to ${lazy.Context.Chrome} scope. ` +
           `Start ${lazy.AppInfo.name} with "-remote-allow-system-access" to enable it.`
@@ -2458,7 +2465,7 @@ GeckoDriver.prototype.getCookies = async function () {
   await this._handleUserPrompts();
 
   let { hostname, pathname } = this._getCurrentURL({ top: false });
-  return [...lazy.cookie.iter(hostname, this.getBrowsingContext(), pathname)];
+  return [...lazy.cookie.iter(hostname, pathname)];
 };
 
 /**
@@ -2477,11 +2484,7 @@ GeckoDriver.prototype.deleteAllCookies = async function () {
   await this._handleUserPrompts();
 
   let { hostname, pathname } = this._getCurrentURL({ top: false });
-  for (let toDelete of lazy.cookie.iter(
-    hostname,
-    this.getBrowsingContext(),
-    pathname
-  )) {
+  for (let toDelete of lazy.cookie.iter(hostname, pathname)) {
     lazy.cookie.remove(toDelete);
   }
 };
@@ -2506,11 +2509,7 @@ GeckoDriver.prototype.deleteCookie = async function (cmd) {
     cmd.parameters.name,
     lazy.pprint`Expected "name" to be a string, got ${cmd.parameters.name}`
   );
-  for (let c of lazy.cookie.iter(
-    hostname,
-    this.getBrowsingContext(),
-    pathname
-  )) {
+  for (let c of lazy.cookie.iter(hostname, pathname)) {
     if (c.name === name) {
       lazy.cookie.remove(c);
     }
@@ -2576,42 +2575,22 @@ GeckoDriver.prototype.newWindow = async function (cmd) {
     !["tab", "window"].includes(type) ||
     lazy.AppInfo.isAndroid
   ) {
-    if (lazy.TabManager.supportsTabs()) {
-      type = "tab";
-    } else if (lazy.windowManager.supportsWindows()) {
-      type = "window";
-    } else {
-      throw new lazy.error.UnsupportedOperationError(
-        `Not supported in ${lazy.AppInfo.name}`
-      );
-    }
+    type = "tab";
   }
 
   let contentBrowser;
 
   switch (type) {
     case "window": {
-      if (lazy.windowManager.supportsWindows()) {
-        let win = await this.curBrowser.openBrowserWindow(focus, isPrivate);
-        contentBrowser = lazy.TabManager.getTabBrowser(win).selectedBrowser;
-      } else {
-        throw new lazy.error.UnsupportedOperationError(
-          `Not supported in ${lazy.AppInfo.name}`
-        );
-      }
+      let win = await this.curBrowser.openBrowserWindow(focus, isPrivate);
+      contentBrowser = lazy.TabManager.getTabBrowser(win).selectedBrowser;
       break;
     }
     default: {
       // To not fail if a new type gets added in the future, make opening
       // a new tab the default action.
-      if (lazy.TabManager.supportsTabs()) {
-        let tab = await this.curBrowser.openTab(focus);
-        contentBrowser = lazy.TabManager.getBrowserForTab(tab);
-      } else {
-        throw new lazy.error.UnsupportedOperationError(
-          `Not supported in ${lazy.AppInfo.name}`
-        );
-      }
+      let tab = await this.curBrowser.openTab(focus);
+      contentBrowser = lazy.TabManager.getBrowserForTab(tab);
     }
   }
 

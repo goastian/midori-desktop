@@ -56,7 +56,9 @@ macro_rules! try_parse_one {
                 try_parse_one!(context, input, duration, transition_duration);
                 try_parse_one!(context, input, timing_function, transition_timing_function);
                 try_parse_one!(context, input, delay, transition_delay);
-                try_parse_one!(context, input, behavior, transition_behavior);
+                if static_prefs::pref!("layout.css.transition-behavior.enabled") {
+                    try_parse_one!(context, input, behavior, transition_behavior);
+                }
                 // Must check 'transition-property' after 'transition-timing-function' since
                 // 'transition-property' accepts any keyword.
                 if property.is_none() {
@@ -135,8 +137,10 @@ macro_rules! try_parse_one {
                     }
                 % endfor
 
-                if self.transition_behavior.0.len() != 1 {
-                    return Ok(());
+                if let Some(behavior) = self.transition_behavior {
+                    if behavior.0.len() != 1 {
+                        return Ok(());
+                    }
                 }
             } else {
                 % for name in "duration delay timing_function".split():
@@ -145,8 +149,10 @@ macro_rules! try_parse_one {
                     }
                 % endfor
 
-                if self.transition_behavior.0.len() != property_len {
-                    return Ok(());
+                if let Some(behavior) = self.transition_behavior {
+                    if behavior.0.len() != property_len {
+                        return Ok(());
+                    }
                 }
             }
 
@@ -161,7 +167,10 @@ macro_rules! try_parse_one {
                 let has_duration = !self.transition_duration.0[i].is_zero();
                 let has_timing = !self.transition_timing_function.0[i].is_ease();
                 let has_delay = !self.transition_delay.0[i].is_zero();
-                let has_behavior = !self.transition_behavior.0[i].is_normal();
+                let has_behavior = match self.transition_behavior {
+                    Some(behavior) => !behavior.0[i].is_normal(),
+                    _ => false,
+                };
                 let has_any = has_duration || has_timing || has_delay || has_behavior;
 
                 let mut writer = SequenceWriter::new(dest, " ");
@@ -186,7 +195,7 @@ macro_rules! try_parse_one {
                 }
 
                 if has_behavior {
-                    writer.item(&self.transition_behavior.0[i])?;
+                    writer.item(&self.transition_behavior.unwrap().0[i])?;
                 }
             }
             Ok(())

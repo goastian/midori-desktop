@@ -188,6 +188,7 @@ ${helpers.predefined_type(
     vector=True,
     need_index=True,
     animation_type="none",
+    gecko_pref="layout.css.transition-behavior.enabled",
     spec="https://drafts.csswg.org/css-transitions-2/#transition-behavior-property",
     affects="",
 )}

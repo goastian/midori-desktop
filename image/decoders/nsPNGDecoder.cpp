@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "EXIF.h"
 #include "gfxColor.h"
 #include "gfxPlatform.h"
 #include "imgFrame.h"
@@ -130,17 +129,12 @@ nsPNGDecoder::~nsPNGDecoder() {
 }
 
 nsPNGDecoder::TransparencyType nsPNGDecoder::GetTransparencyType(
-    const UnorientedIntRect& aFrameRect) {
-  MOZ_ASSERT(GetOrientation().IsIdentity() || !HasAnimation(),
-             "can't be oriented and have animation");
-
+    const OrientedIntRect& aFrameRect) {
   // Check if the image has a transparent color in its palette.
   if (HasAlphaChannel()) {
     return TransparencyType::eAlpha;
   }
-  if (!aFrameRect.IsEqualEdges(
-          UnorientedIntRect(IntPointTyped<mozilla::UnorientedPixel>(0, 0),
-                            GetOrientation().ToUnoriented(Size())))) {
+  if (!aFrameRect.IsEqualEdges(FullFrame())) {
     MOZ_ASSERT(HasAnimation());
     return TransparencyType::eFrameRect;
   }
@@ -189,8 +183,7 @@ nsresult nsPNGDecoder::CreateFrame(const FrameInfo& aFrameInfo) {
 
   Maybe<AnimationParams> animParams;
 #ifdef PNG_APNG_SUPPORTED
-  const bool isAnimated = png_get_valid(mPNG, mInfo, PNG_INFO_acTL);
-  if (!IsFirstFrameDecode() && isAnimated) {
+  if (!IsFirstFrameDecode() && png_get_valid(mPNG, mInfo, PNG_INFO_acTL)) {
     mAnimInfo = AnimFrameInfo(mPNG, mInfo);
 
     if (mAnimInfo.mDispose == DisposalMethod::CLEAR) {
@@ -206,44 +199,15 @@ nsresult nsPNGDecoder::CreateFrame(const FrameInfo& aFrameInfo) {
   }
 #endif
 
-  MOZ_ASSERT(GetOrientation().IsIdentity() || !animParams.isSome(),
-             "can't be oriented and have animation");
-  MOZ_ASSERT(GetOrientation().IsIdentity() || !aFrameInfo.mIsInterlaced,
-             "can't be oriented and be doing interlacing");
+  // If this image is interlaced, we can display better quality intermediate
+  // results to the user by post processing them with ADAM7InterpolatingFilter.
+  SurfacePipeFlags pipeFlags = aFrameInfo.mIsInterlaced
+                                   ? SurfacePipeFlags::ADAM7_INTERPOLATE
+                                   : SurfacePipeFlags();
 
-  const bool wantToReorient = !GetOrientation().IsIdentity();
-
-#ifdef DEBUG
-  const bool isFullFrame = aFrameInfo.mFrameRect.IsEqualEdges(
-      UnorientedIntRect(IntPointTyped<mozilla::UnorientedPixel>(0, 0),
-                        GetOrientation().ToUnoriented(Size())));
-#  ifdef PNG_APNG_SUPPORTED
-  MOZ_ASSERT(isAnimated || isFullFrame,
-             "can only have partial frames if animated");
-#  endif
-  MOZ_ASSERT(!wantToReorient || isFullFrame,
-             "can only have partial frames if not re-orienting");
-#endif
-
-  SurfacePipeFlags pipeFlags = SurfacePipeFlags();
-
-  // We disable progressive display if we are reoriented because we don't
-  // support that yet in the reorienting pipeline. And the Adam7 flag doesn't do
-  // anything unless the progressive display flag is passed, so we've already
-  // disabled interlacing by the time we get here if we are reorienting (but we
-  // check again for symmetry).
-  if (!wantToReorient) {
-    if (mNumFrames == 0) {
-      // The first frame may be displayed progressively.
-      pipeFlags |= SurfacePipeFlags::PROGRESSIVE_DISPLAY;
-    }
-
-    if (aFrameInfo.mIsInterlaced) {
-      // If this image is interlaced, we can display better quality intermediate
-      // results to the user by post processing them with
-      // ADAM7InterpolatingFilter.
-      pipeFlags |= SurfacePipeFlags::ADAM7_INTERPOLATE;
-    }
+  if (mNumFrames == 0) {
+    // The first frame may be displayed progressively.
+    pipeFlags |= SurfacePipeFlags::PROGRESSIVE_DISPLAY;
   }
 
   SurfaceFormat inFormat;
@@ -266,19 +230,9 @@ nsresult nsPNGDecoder::CreateFrame(const FrameInfo& aFrameInfo) {
   }
 
   qcms_transform* pipeTransform = mUsePipeTransform ? mTransform : nullptr;
-  Maybe<SurfacePipe> pipe;
-  if (!wantToReorient) {
-    // If we get here then the orientation is the identity, so it is valid to
-    // convert mFrameRect directly from Unoriented to Oriented.
-    pipe = SurfacePipeFactory::CreateSurfacePipe(
-        this, Size(), OutputSize(),
-        OrientedIntRect::FromUnknownRect(aFrameInfo.mFrameRect.ToUnknownRect()),
-        inFormat, mFormat, animParams, pipeTransform, pipeFlags);
-  } else {
-    pipe = SurfacePipeFactory::CreateReorientSurfacePipe(
-        this, Size(), OutputSize(), inFormat, mFormat, pipeTransform,
-        GetOrientation(), pipeFlags);
-  }
+  Maybe<SurfacePipe> pipe = SurfacePipeFactory::CreateSurfacePipe(
+      this, Size(), OutputSize(), aFrameInfo.mFrameRect, inFormat, mFormat,
+      animParams, pipeTransform, pipeFlags);
 
   if (!pipe) {
     mPipe = SurfacePipe();
@@ -321,6 +275,7 @@ nsresult nsPNGDecoder::InitInternal() {
   static png_byte color_chunks[] = {99,  72, 82, 77, '\0',     // cHRM
                                     105, 67, 67, 80, '\0'};    // iCCP
   static png_byte unused_chunks[] = {98,  75, 71, 68,  '\0',   // bKGD
+                                     101, 88, 73, 102, '\0',   // eXIf
                                      104, 73, 83, 84,  '\0',   // hIST
                                      105, 84, 88, 116, '\0',   // iTXt
                                      111, 70, 70, 115, '\0',   // oFFs
@@ -600,29 +555,10 @@ void nsPNGDecoder::info_callback(png_structp png_ptr, png_infop info_ptr) {
   png_get_IHDR(png_ptr, info_ptr, &width, &height, &bit_depth, &color_type,
                &interlace_type, &compression_type, &filter_type);
 
-#ifdef PNG_APNG_SUPPORTED
-  const bool isAnimated = png_get_valid(png_ptr, info_ptr, PNG_INFO_acTL);
-#endif
+  const OrientedIntRect frameRect(0, 0, width, height);
 
-  // We only support exif orientation for non-animated images.
-  png_uint_32 num_exif_bytes = 0;
-  png_bytep exifdata = nullptr;
-  if (
-#ifdef PNG_APNG_SUPPORTED
-      !isAnimated &&
-#endif
-      png_get_eXIf_1(png_ptr, info_ptr, &num_exif_bytes, &exifdata) &&
-      num_exif_bytes > 0 && exifdata) {
-
-    EXIFData exif = EXIFParser::Parse(/* aExpectExifIdCode = */ false, exifdata,
-                                      static_cast<uint32_t>(num_exif_bytes),
-                                      gfx::IntSize(width, height));
-    decoder->PostSize(width, height, exif.orientation, exif.resolution);
-  } else {
-    decoder->PostSize(width, height);
-  }
-
-  const UnorientedIntRect frameRect(0, 0, width, height);
+  // Post our size to the superclass
+  decoder->PostSize(frameRect.Width(), frameRect.Height());
 
   if (width > SurfaceCache::MaximumCapacity() / (bit_depth > 8 ? 16 : 8)) {
     // libpng needs space to allocate two row buffers
@@ -681,9 +617,7 @@ void nsPNGDecoder::info_callback(png_structp png_ptr, png_infop info_ptr) {
   }
 
   // Let libpng expand interlaced images.
-  // We only support interlacing for images that aren't rotated with exif data.
-  const bool isInterlaced = (interlace_type == PNG_INTERLACE_ADAM7) &&
-                            decoder->GetOrientation().IsIdentity();
+  const bool isInterlaced = interlace_type == PNG_INTERLACE_ADAM7;
   if (isInterlaced) {
     png_set_interlace_handling(png_ptr);
   }
@@ -702,6 +636,7 @@ void nsPNGDecoder::info_callback(png_structp png_ptr, png_infop info_ptr) {
   }
 
 #ifdef PNG_APNG_SUPPORTED
+  bool isAnimated = png_get_valid(png_ptr, info_ptr, PNG_INFO_acTL);
   if (isAnimated) {
     int32_t rawTimeout = GetNextFrameDelay(png_ptr, info_ptr);
     decoder->PostIsAnimated(FrameTimeout::FromRawMilliseconds(rawTimeout));
@@ -807,7 +742,7 @@ void nsPNGDecoder::info_callback(png_structp png_ptr, png_infop info_ptr) {
     }
   }
 
-  if (isInterlaced) {
+  if (interlace_type == PNG_INTERLACE_ADAM7) {
     if (frameRect.Height() <
         INT32_MAX / (frameRect.Width() * int32_t(channels))) {
       const size_t bufferSize =
@@ -1018,7 +953,7 @@ void nsPNGDecoder::frame_info_callback(png_structp png_ptr,
 
   // Save the information necessary to create the frame; we'll actually create
   // it when we return from the yield.
-  const UnorientedIntRect frameRect(
+  const OrientedIntRect frameRect(
       png_get_next_frame_x_offset(png_ptr, decoder->mInfo),
       png_get_next_frame_y_offset(png_ptr, decoder->mInfo),
       png_get_next_frame_width(png_ptr, decoder->mInfo),

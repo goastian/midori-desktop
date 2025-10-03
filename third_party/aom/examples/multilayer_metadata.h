@@ -61,7 +61,7 @@ struct DepthInformation {
   std::pair<DepthRepresentationElement, bool> z_far;
   std::pair<DepthRepresentationElement, bool> d_min;
   std::pair<DepthRepresentationElement, bool> d_max;
-  uint8_t depth_representation_type;  // [0, 2]. Values 3 to 15 are reserved.
+  uint8_t depth_representation_type;  // [0, 15]
   // Only relevant if d_min or d_max are present.
   uint8_t disparity_ref_view_id;  // [0, 3]
 };
@@ -110,14 +110,6 @@ enum MultilayerViewType {
   // 4 to 7 are reserved.
 };
 
-struct FrameLocalMetadata {
-  long frame_idx;
-  // Relevant for MULTILAYER_LAYER_TYPE_ALPHA with scope != SCOPE_GLOBAL.
-  AlphaInformation alpha;
-  // Relevant for MULTILAYER_LAYER_TYPE_DEPTH with scope != SCOPE_GLOBAL.
-  DepthInformation depth;
-};
-
 struct LayerMetadata {
   LayerType layer_type;  // [0, 31]
   bool luma_plane_only_flag;
@@ -129,12 +121,9 @@ struct LayerMetadata {
   std::pair<ColorProperties, bool> layer_color_description;
 
   // Relevant for MULTILAYER_LAYER_TYPE_ALPHA with scope >= SCOPE_GLOBAL.
-  AlphaInformation alpha;
+  AlphaInformation global_alpha_info;
   // Relevant for MULTILAYER_LAYER_TYPE_DEPTH with scope >= SCOPE_GLOBAL.
-  DepthInformation depth;
-
-  // Relevant when scope != SCOPE_GLOBAL.
-  std::vector<FrameLocalMetadata> local_metadata;
+  DepthInformation global_depth_info;
 };
 
 struct MultilayerMetadata {

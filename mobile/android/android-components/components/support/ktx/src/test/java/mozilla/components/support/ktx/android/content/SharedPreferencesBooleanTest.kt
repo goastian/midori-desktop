@@ -91,32 +91,6 @@ class SharedPreferencesBooleanTest {
     }
 
     @Test
-    fun `GIVEN booleanPreference THEN SharedPreferences is initialized without access`() {
-        var initialized = false
-
-        class MockPreferencesHolder : PreferencesHolder {
-            override val preferences = testPreferences
-            var boolean by booleanPreference(
-                "boolean",
-                default = {
-                    initialized = true
-                    true
-                },
-                persistDefaultIfNotExists = false,
-            )
-        }
-
-        val holder = MockPreferencesHolder()
-
-        // default is not accessed
-        assertEquals(false, initialized)
-
-        val result = holder.boolean
-        assertEquals(true, initialized)
-        assertEquals(true, result)
-    }
-
-    @Test
     fun `GIVEN a value does not exist WHEN asked to persist a new value THEN persist the requested value`() {
         preferencesHolder = BooleanTestPreferenceHolder()
 
@@ -130,6 +104,6 @@ class SharedPreferencesBooleanTest {
     ) : PreferencesHolder {
         override val preferences = testPreferences
 
-        var boolean by booleanPreference(key, { defaultValue }, persistDefaultIfNotExists)
+        var boolean by booleanPreference(key, defaultValue, persistDefaultIfNotExists)
     }
 }

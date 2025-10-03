@@ -65,7 +65,7 @@ async function runTest(src, withClose, expectation) {
 
 add_setup(async function setup() {
   await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
+    set: [["media.utility-process.enabled", true]],
   });
 });
 

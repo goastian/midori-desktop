@@ -46,7 +46,6 @@ const onboardingLabelShown = win =>
 add_setup(async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       ["browser.urlbar.quickactions.enabled", true],
       ["browser.urlbar.scotchBonnet.enableOverride", true],
     ],

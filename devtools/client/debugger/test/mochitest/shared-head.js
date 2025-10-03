@@ -1923,9 +1923,9 @@ const selectors = {
   threadsPaneItemPause: i => `${selectors.threadsPaneItem(i)}.paused`,
   CodeMirrorLines: ".cm-content",
   CodeMirrorCode: ".cm-content",
-  visibleInlinePreviews: ".inline-preview .inline-preview-outer",
-  inlinePreviewsOnLine: i =>
-    `.cm-content > div.cm-line:nth-child(${i}) .inline-preview .inline-preview-outer`,
+  inlinePreview: ".cm-content .inline-preview",
+  inlinePreviewLabels: ".inline-preview .inline-preview-label",
+  inlinePreviewValues: ".inline-preview .inline-preview-value",
   inlinePreviewOpenInspector: ".inline-preview-value button.open-inspector",
   watchpointsSubmenu: "#node-menu-watchpoints",
   addGetWatchpoint: "#node-menu-add-get-watchpoint",
@@ -3271,36 +3271,23 @@ async function clickOnSourceMapMenuItem(dbg, className) {
   menuItem.click();
 }
 
-async function setLogPoint(dbg, index, value, showStacktrace = false) {
+async function setLogPoint(dbg, index, value) {
   // Wait a bit for CM6 to complete any updates so the log panel
   // does not lose focus after the it has been opened
   await waitForDocumentLoadComplete(dbg);
   rightClickElement(dbg, "gutterElement", index);
   await waitForContextMenu(dbg);
-
   selectDebuggerContextMenuItem(
     dbg,
     `${selectors.addLogItem},${selectors.editLogItem}`
   );
   await waitForConditionalPanelFocus(dbg);
-
-  const { document } = dbg.win;
-
-  if (showStacktrace) {
-    const checkbox = document.querySelector("#showStacktrace");
-    checkbox.click();
-    ok(checkbox.checked, "Stacktrace checkbox is checked");
-  }
-
   if (value) {
     const onBreakpointSet = waitForDispatch(dbg.store, "SET_BREAKPOINT");
     await typeInPanel(dbg, value, true);
-    info("Wait for breakpoint set");
     await onBreakpointSet;
-    ok(true, "breakpoint set");
   }
 }
-
 /**
  * Opens the project search panel
  *
@@ -3482,51 +3469,4 @@ async function toggleJsTracerMenuItem(dbg, selector) {
   const onHidden = BrowserTestUtils.waitForEvent(popup, "popuphidden");
   selectDebuggerContextMenuItem(dbg, selector);
   await onHidden;
-}
-
-/**
- * Asserts that the contents of the inline previews and the lines
- * that they are displayed on are accurate
- *
- * @param {Object} dbg
- * @param {Array} expectedInlinePreviews
- * @param {String} fnName
- */
-async function assertInlinePreviews(dbg, expectedInlinePreviews, fnName) {
-  await waitForAllElements(
-    dbg,
-    "visibleInlinePreviews",
-    expectedInlinePreviews.length
-  );
-
-  for (const expectedInlinePreview of expectedInlinePreviews) {
-    const { previews, line } = expectedInlinePreview;
-
-    const inlinePreviewElsOnLine = findAllElements(
-      dbg,
-      "inlinePreviewsOnLine",
-      line
-    );
-    previews.forEach(({ identifier, value }, index) => {
-      const inlinePreviewEl = inlinePreviewElsOnLine[index];
-
-      const actualIdentifier = inlinePreviewEl.querySelector(
-        ".inline-preview-label"
-      ).innerText;
-      is(
-        inlinePreviewEl.querySelector(".inline-preview-label").innerText,
-        identifier,
-        `${identifier} in "${fnName}" has correct inline preview label "${actualIdentifier}" on line "${line}"`
-      );
-
-      const actualValue = inlinePreviewEl.querySelector(
-        ".inline-preview-value"
-      ).innerText;
-      is(
-        inlinePreviewEl.querySelector(".inline-preview-value").innerText,
-        value,
-        `${identifier} in "${fnName}" has correct inline preview value "${actualValue}" on line "${line}"`
-      );
-    });
-  }
 }

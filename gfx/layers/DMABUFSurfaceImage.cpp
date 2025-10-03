@@ -56,14 +56,7 @@ already_AddRefed<gfx::SourceSurface> DMABUFSurfaceImage::GetAsSourceSurface() {
 nsresult DMABUFSurfaceImage::BuildSurfaceDescriptorBuffer(
     SurfaceDescriptorBuffer& aSdBuffer, BuildSdbFlags aFlags,
     const std::function<MemoryOrShmem(uint32_t)>& aAllocate) {
-  nsresult rv =
-      mSurface->BuildSurfaceDescriptorBuffer(aSdBuffer, aFlags, aAllocate);
-  if (rv != NS_ERROR_NOT_IMPLEMENTED) {
-    // TODO(aosmond): Add support for the RGBA case.
-    return rv;
-  }
-
-  return Image::BuildSurfaceDescriptorBuffer(aSdBuffer, aFlags, aAllocate);
+  return mSurface->BuildSurfaceDescriptorBuffer(aSdBuffer, aFlags, aAllocate);
 }
 
 TextureClient* DMABUFSurfaceImage::GetTextureClient(

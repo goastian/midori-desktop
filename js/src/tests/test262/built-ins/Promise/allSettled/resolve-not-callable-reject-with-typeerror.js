@@ -3,7 +3,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-promise.allsettled
+esid: sec-promise.allSettled
 description: >
   If the constructor's `resolve` method is not callable, reject with a TypeError.
 info: |

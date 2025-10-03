@@ -13,11 +13,11 @@
 @keyframes toastSlideInSlideOut {
   0%, 100% {
     opacity: 0;
-    inset-block-start: 50%;
+    top: 50%;
   }
 
   15%, 85% {
     opacity: 1;
-    inset-block-start: 0;
+    top: 0;
   }
 }

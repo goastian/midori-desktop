@@ -1666,8 +1666,9 @@ static bool PlainDate_toString(JSContext* cx, unsigned argc, Value* vp) {
  */
 static bool PlainDate_toLocaleString(JSContext* cx, const CallArgs& args) {
   // Steps 3-4.
-  return intl::TemporalObjectToLocaleString(cx, args,
-                                            intl::DateTimeFormatKind::Date);
+  Handle<PropertyName*> required = cx->names().date;
+  Handle<PropertyName*> defaults = cx->names().date;
+  return TemporalObjectToLocaleString(cx, args, required, defaults);
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   install,
   Browser,
   resolveBuildId,
+  makeProgressCallback,
   detectBrowserPlatform,
 } from '@puppeteer/browsers';
 import type {
@@ -45,7 +46,7 @@ async function downloadBrowser({
       cacheDir,
       platform,
       buildId,
-      downloadProgressCallback: 'default',
+      downloadProgressCallback: makeProgressCallback(browser, buildId),
       baseUrl,
       buildIdAlias:
         buildId !== unresolvedBuildId ? unresolvedBuildId : undefined,

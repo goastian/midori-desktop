@@ -21,9 +21,9 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.addons.AddonsManagementFragmentDirections.Companion.actionAddonsManagementFragmentToAddonDetailsFragment
 import org.mozilla.fenix.addons.AddonsManagementFragmentDirections.Companion.actionAddonsManagementFragmentToInstalledAddonDetails
 import org.mozilla.fenix.ext.directionsEq
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class AddonsManagementViewTest {
 
     @RelaxedMockK private lateinit var navController: NavController

@@ -10,10 +10,12 @@
 
 #include "media/base/sdp_video_format_utils.h"
 
-#include <map>
-#include <optional>
+#include <string.h>
 
-#include "api/rtp_parameters.h"
+#include <map>
+#include <utility>
+
+#include "rtc_base/string_to_number.h"
 #include "test/gtest.h"
 
 namespace webrtc {

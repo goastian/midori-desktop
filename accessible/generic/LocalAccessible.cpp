@@ -127,10 +127,10 @@ ENameValueFlag LocalAccessible::Name(nsString& aName) const {
 
   if (!HasOwnContent()) return eNameOK;
 
-  ENameValueFlag nameFlag = ARIAName(aName);
-  if (!aName.IsEmpty()) return nameFlag;
+  ARIAName(aName);
+  if (!aName.IsEmpty()) return eNameOK;
 
-  nameFlag = NativeName(aName);
+  ENameValueFlag nameFlag = NativeName(aName);
   if (!aName.IsEmpty()) return nameFlag;
 
   // In the end get the name from tooltip.
@@ -1602,14 +1602,26 @@ void LocalAccessible::ARIAGroupPosition(int32_t* aLevel, int32_t* aSetSize,
   }
 }
 
-uint64_t LocalAccessible::ExplicitState() const {
+uint64_t LocalAccessible::State() {
   if (IsDefunct()) return states::DEFUNCT;
 
   uint64_t state = NativeState();
   // Apply ARIA states to be sure accessible states will be overridden.
   ApplyARIAState(&state);
 
+  const uint32_t kExpandCollapseStates = states::COLLAPSED | states::EXPANDED;
+  if ((state & kExpandCollapseStates) == kExpandCollapseStates) {
+    // Cannot be both expanded and collapsed -- this happens in ARIA expanded
+    // combobox because of limitation of ARIAMap.
+    // XXX: Perhaps we will be able to make this less hacky if we support
+    // extended states in ARIAMap, e.g. derive COLLAPSED from
+    // EXPANDABLE && !EXPANDED.
+    state &= ~states::COLLAPSED;
+  }
+
   if (!(state & states::UNAVAILABLE)) {
+    state |= states::ENABLED | states::SENSITIVE;
+
     // If the object is a current item of container widget then mark it as
     // ACTIVE. This allows screen reader virtual buffer modes to know which
     // descendant is the current one that would get focus if the user navigates
@@ -1618,11 +1630,9 @@ uint64_t LocalAccessible::ExplicitState() const {
     if (widget && widget->CurrentItem() == this) state |= states::ACTIVE;
   }
 
-  return state;
-}
-
-uint64_t LocalAccessible::State() {
-  uint64_t state = ExplicitState();
+  if ((state & states::COLLAPSED) || (state & states::EXPANDED)) {
+    state |= states::EXPANDABLE;
+  }
 
   ApplyImplicitState(state);
   return state;
@@ -1665,7 +1675,18 @@ void LocalAccessible::ApplyARIAState(uint64_t* aState) const {
     }
   }
 
-  if (!(*aState & states::FOCUSABLE)) {
+  if (*aState & states::FOCUSABLE) {
+    // Propogate aria-disabled from ancestors down to any focusable descendant.
+    const LocalAccessible* ancestor = this;
+    while ((ancestor = ancestor->LocalParent()) && !ancestor->IsDoc()) {
+      dom::Element* el = ancestor->Elm();
+      if (el && nsAccUtils::ARIAAttrValueIs(el, nsGkAtoms::aria_disabled,
+                                            nsGkAtoms::_true, eCaseMatters)) {
+        *aState |= states::UNAVAILABLE;
+        break;
+      }
+    }
+  } else {
     // Sometimes, we use aria-activedescendant targeting something which isn't
     // actually a descendant. This is technically a spec violation, but it's a
     // useful hack which makes certain things much easier. For example, we use
@@ -2069,10 +2090,10 @@ void LocalAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName) {
       return;
 
     case eOpenCloseAction:
-      if (State() & states::EXPANDED) {
-        aName.AssignLiteral("close");
-      } else {
+      if (State() & states::COLLAPSED) {
         aName.AssignLiteral("open");
+      } else {
+        aName.AssignLiteral("close");
       }
       return;
 
@@ -2089,10 +2110,10 @@ void LocalAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName) {
       return;
 
     case eExpandAction:
-      if (State() & states::EXPANDED) {
-        aName.AssignLiteral("collapse");
-      } else {
+      if (State() & states::COLLAPSED) {
         aName.AssignLiteral("expand");
+      } else {
+        aName.AssignLiteral("collapse");
       }
       return;
   }
@@ -2628,10 +2649,10 @@ void LocalAccessible::Shutdown() {
 }
 
 // LocalAccessible protected
-ENameValueFlag LocalAccessible::ARIAName(nsString& aName) const {
+void LocalAccessible::ARIAName(nsString& aName) const {
   // 'slot' elements should ignore aria-label and aria-labelledby.
   if (mContent->IsHTMLElement(nsGkAtoms::slot)) {
-    return eNameOK;
+    return;
   }
   // aria-labelledby now takes precedence over aria-label
   nsresult rv = nsTextEquivUtils::GetTextEquivFromIDRefs(
@@ -2640,17 +2661,11 @@ ENameValueFlag LocalAccessible::ARIAName(nsString& aName) const {
     aName.CompressWhitespace();
   }
 
-  if (!aName.IsEmpty()) {
-    return eNameFromRelations;
-  }
-
-  if (mContent->IsElement() &&
+  if (aName.IsEmpty() && mContent->IsElement() &&
       nsAccUtils::GetARIAAttr(mContent->AsElement(), nsGkAtoms::aria_label,
                               aName)) {
     aName.CompressWhitespace();
   }
-
-  return eNameOK;
 }
 
 // LocalAccessible protected
@@ -2680,9 +2695,7 @@ ENameValueFlag LocalAccessible::NativeName(nsString& aName) const {
       aName.CompressWhitespace();
     }
 
-    if (!aName.IsEmpty()) {
-      return eNameFromRelations;
-    }
+    if (!aName.IsEmpty()) return eNameOK;
 
     NameFromAssociatedXULLabel(mDoc, mContent, aName);
     if (!aName.IsEmpty()) {
@@ -3925,7 +3938,7 @@ already_AddRefed<AccAttributes> LocalAccessible::BundleFieldsForCache(
     if (IsInitialPush(CacheDomain::State)) {
       // Most states are updated using state change events, so we only send
       // these for the initial cache push.
-      uint64_t state = ExplicitState();
+      uint64_t state = State();
       // Exclude states which must be calculated by RemoteAccessible.
       state &= ~kRemoteCalculatedStates;
       fields->SetAttribute(CacheKey::State, state);

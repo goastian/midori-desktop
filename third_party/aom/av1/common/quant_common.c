@@ -311,7 +311,9 @@ void av1_qm_init(CommonQuantParams *quant_params, int num_planes) {
    and each TX size. Matrices for different TX sizes are in fact
    sub-sampled from the 32x32 and 16x16 sizes, but explicitly
    defined here for convenience. Intra and inter matrix sets are the
-   same.
+   same but changing DEFAULT_QM_INTER_OFFSET from zero allows
+   for different matrices for inter and intra blocks in the same
+   frame.
    Matrices for different QM levels have been rescaled in the
    frequency domain according to different nominal viewing
    distances. Matrices for QM level 15 are omitted because they are

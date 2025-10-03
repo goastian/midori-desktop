@@ -19,8 +19,6 @@ export class TopSiteForm extends React.PureComponent {
       validationError: false,
       customScreenshotUrl: site ? site.customScreenshotURL : "",
       showCustomScreenshotForm: site ? site.customScreenshotURL : false,
-      hasURLChanged: false,
-      hasTitleChanged: false,
     };
     this.onClearScreenshotInput = this.onClearScreenshotInput.bind(this);
     this.onLabelChange = this.onLabelChange.bind(this);
@@ -36,17 +34,13 @@ export class TopSiteForm extends React.PureComponent {
   }
 
   onLabelChange(event) {
-    this.setState({
-      label: event.target.value,
-      hasTitleChanged: true,
-    });
+    this.setState({ label: event.target.value });
   }
 
   onUrlChange(event) {
     this.setState({
       url: event.target.value,
       validationError: false,
-      hasURLChanged: true,
     });
   }
 
@@ -88,8 +82,6 @@ export class TopSiteForm extends React.PureComponent {
     if (this.validateForm()) {
       const site = { url: this.cleanUrl(this.state.url) };
       const { index } = this.props;
-      const isEdit = !!this.props.site;
-
       if (this.state.label !== "") {
         site.label = this.state.label;
       }
@@ -102,33 +94,19 @@ export class TopSiteForm extends React.PureComponent {
         // Used to flag that previously cached screenshot should be removed
         site.customScreenshotURL = null;
       }
-
       this.props.dispatch(
         ac.AlsoToMain({
           type: at.TOP_SITES_PIN,
           data: { site, index },
         })
       );
-
-      if (isEdit) {
-        this.props.dispatch(
-          ac.UserEvent({
-            source: TOP_SITES_SOURCE,
-            event: "TOP_SITES_EDIT",
-            action_position: index,
-            hasTitleChanged: this.state.hasTitleChanged,
-            hasURLChanged: this.state.hasURLChanged,
-          })
-        );
-      } else if (!isEdit) {
-        this.props.dispatch(
-          ac.UserEvent({
-            source: TOP_SITES_SOURCE,
-            event: "TOP_SITES_ADD",
-            action_position: index,
-          })
-        );
-      }
+      this.props.dispatch(
+        ac.UserEvent({
+          source: TOP_SITES_SOURCE,
+          event: "TOP_SITES_EDIT",
+          action_position: index,
+        })
+      );
 
       this.props.onClose();
     }

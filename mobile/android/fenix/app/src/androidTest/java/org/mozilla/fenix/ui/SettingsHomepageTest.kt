@@ -56,6 +56,7 @@ class SettingsHomepageTest : TestSetup() {
     fun verifyShortcutOptionTest() {
         // en-US defaults
         val defaultTopSites = arrayOf(
+            "Top Articles",
             "Wikipedia",
             "Google",
         )

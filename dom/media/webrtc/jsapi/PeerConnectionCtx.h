@@ -116,6 +116,8 @@ class PeerConnectionCtx {
   void queueJSEPOperation(nsIRunnable* aJSEPOperation);
   void onGMPReady();
 
+  bool gmpHasH264();
+
   static void UpdateNetworkState(bool online);
 
   RefPtr<MediaTransportHandler> GetTransportHandler() const {

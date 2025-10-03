@@ -56,7 +56,7 @@ export interface CookiePartitionKey {
  *
  * @public
  */
-export interface Cookie extends CookieData {
+export interface Cookie {
   /**
    * Cookie name.
    */
@@ -113,8 +113,8 @@ export interface Cookie extends CookieData {
   /**
    * Cookie partition key. In Chrome, it is the top-level site the
    * partitioned cookie is available in. In Firefox, it matches the
-   * source origin in the
-   * {@link https://w3c.github.io/webdriver-bidi/#type-storage-PartitionKey | PartitionKey }.
+   * source origin
+   * (https://w3c.github.io/webdriver-bidi/#type-storage-PartitionKey).
    */
   partitionKey?: CookiePartitionKey | string;
   /**
@@ -182,8 +182,8 @@ export interface CookieParam {
   /**
    * Cookie partition key. In Chrome, it matches the top-level site the
    * partitioned cookie is available in. In Firefox, it matches the
-   * source origin in the
-   * {@link https://w3c.github.io/webdriver-bidi/#type-storage-PartitionKey | PartitionKey }.
+   * source origin
+   * (https://w3c.github.io/webdriver-bidi/#type-storage-PartitionKey).
    */
   partitionKey?: CookiePartitionKey | string;
 }
@@ -242,8 +242,8 @@ export interface CookieData {
   /**
    * Cookie partition key. In Chrome, it matches the top-level site the
    * partitioned cookie is available in. In Firefox, it matches the
-   * source origin in the
-   * {@link https://w3c.github.io/webdriver-bidi/#type-storage-PartitionKey | PartitionKey }.
+   * source origin
+   * (https://w3c.github.io/webdriver-bidi/#type-storage-PartitionKey).
    */
   partitionKey?: CookiePartitionKey | string;
 }
@@ -272,9 +272,8 @@ export interface DeleteCookiesRequest {
   /**
    * If specified, deletes cookies in the given partition key. In
    * Chrome, partitionKey matches the top-level site the partitioned
-   * cookie is available in.
-   * In Firefox, it matches the source origin in the
-   * {@link https://w3c.github.io/webdriver-bidi/#type-storage-PartitionKey | PartitionKey }.
+   * cookie is available in. In Firefox, it matches the source origin
+   * (https://w3c.github.io/webdriver-bidi/#type-storage-PartitionKey).
    */
   partitionKey?: CookiePartitionKey | string;
 }

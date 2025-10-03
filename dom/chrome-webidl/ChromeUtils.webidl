@@ -277,12 +277,6 @@ namespace ChromeUtils {
   undefined clearResourceCache(optional ClearResourceCacheOptions options = {});
 
   /**
-   * Clears the bfcache (backward-forward cache)
-   */
-  [Throws]
-  undefined clearBfcacheByPrincipal(Principal principal);
-
-  /**
    * Clears the Messaging Layer Security state by schemeless site.
    * This includes associated state-partitioned cache.
    */
@@ -678,8 +672,8 @@ partial namespace ChromeUtils {
    * For webdriver consistency purposes, we need to be able to end a wheel
    * transaction from the browser chrome.
    */
-  [ChromeOnly, Throws]
-  Promise<undefined> endWheelTransaction(WindowProxy window);
+  [ChromeOnly]
+  undefined endWheelTransaction();
 
   /**
    * Register a new toplevel window global actor. This method may only be

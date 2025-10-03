@@ -15,7 +15,6 @@ import org.mockito.ArgumentMatchers.anyInt
 import org.mockito.ArgumentMatchers.anyLong
 import org.mockito.Mock
 import org.mockito.Mockito.anyString
-import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.mockito.MockitoAnnotations.openMocks
@@ -142,7 +141,7 @@ class SharedPreferencesTest {
         `when`(sharedPrefs.getStringSet(eq("string_set"), any())).thenReturn(setOf("foo"))
 
         assertEquals(setOf("foo"), holder.stringSet)
-        verify(sharedPrefs).getStringSet("string_set", null)
+        verify(sharedPrefs).getStringSet("string_set", emptySet())
     }
 
     @Test
@@ -155,181 +154,18 @@ class SharedPreferencesTest {
     }
 
     @Test
-    fun `GIVEN default string set WHEN key is missing THEN default is used`() {
+    fun `getter uses default string set value`() {
         val holderDefault = MockPreferencesHolder()
         // Call the getter for the test
-        var result = holderDefault.stringSet
+        holderDefault.stringSet
 
-        verify(sharedPrefs).getStringSet("string_set", null)
-        assertEquals(emptySet<String>(), result)
+        verify(sharedPrefs).getStringSet("string_set", emptySet())
 
-        `when`(sharedPrefs.getStringSet("string_set", null)).thenReturn(setOf("hello", "world"))
         val holderOther = MockPreferencesHolder(defaultSet = setOf("hello", "world"))
         // Call the getter for the test
-        result = holderOther.stringSet
+        holderOther.stringSet
 
-        verify(sharedPrefs, times(2)).getStringSet("string_set", null)
-        assertEquals(setOf("hello", "world"), result)
-    }
-
-    @Test
-    fun `GIVEN key exists in SharedPreferences WHEN stringPreference is accessed THEN stored value is returned`() {
-        `when`(sharedPrefs.contains("string")).thenReturn(true)
-        `when`(sharedPrefs.getString("string", null)).thenReturn("hello")
-
-        val holder = MockPreferencesHolder()
-        assertEquals("hello", holder.string)
-
-        verify(sharedPrefs).getString("string", null)
-    }
-
-    @Test
-    fun `GIVEN stringPreference is set WHEN value is assigned THEN value is persisted in SharedPreferences`() {
-        val holder = MockPreferencesHolder()
-        holder.string = "hello world"
-
-        verify(editor).putString("string", "hello world")
-        verify(editor).apply()
-    }
-
-    @Test
-    fun `GIVEN default string value WHEN key is missing THEN default is used`() {
-        `when`(sharedPrefs.contains("string")).thenReturn(false)
-
-        val holder = MockPreferencesHolder(defaultString = "default")
-        assertEquals("default", holder.string)
-    }
-
-    @Test
-    fun `GIVEN key does not exist AND persistDefaultIfNotExists is true WHEN stringPreference is accessed THEN default value is persisted`() {
-        `when`(sharedPrefs.contains("persist_string")).thenReturn(false)
-
-        val holder = MockPreferencesHolder(defaultString = "persist_me")
-        assertEquals("persist_me", holder.persistString)
-
-        verify(editor).putString("persist_string", "persist_me")
-        verify(editor).apply()
-    }
-
-    @Test
-    fun `GIVEN intPreference THEN default is not initialized until access`() {
-        var initialized = false
-
-        class MockPreferencesHolder : PreferencesHolder {
-            override val preferences = sharedPrefs
-            var int by intPreference(
-                "int",
-                default = {
-                    initialized = true
-                     0
-                },
-            )
-        }
-
-        val holder = MockPreferencesHolder()
-
-        // default is not accessed
-        assertEquals(false, initialized)
-
-        holder.int
-        assertEquals(true, initialized)
-    }
-
-    @Test
-    fun `GIVEN floatPreference THEN default is not initialized until access`() {
-        var initialized = false
-
-        class MockPreferencesHolder : PreferencesHolder {
-            override val preferences = sharedPrefs
-            var float by floatPreference(
-                "float",
-                default = {
-                    initialized = true
-                    0f
-                },
-            )
-        }
-
-        val holder = MockPreferencesHolder()
-
-        // default is not accessed
-        assertEquals(false, initialized)
-
-        holder.float
-        assertEquals(true, initialized)
-    }
-
-    @Test
-    fun `GIVEN longPreference THEN default is not initialized until access`() {
-        var initialized = false
-
-        class MockPreferencesHolder : PreferencesHolder {
-            override val preferences = sharedPrefs
-            var long by longPreference(
-                "long",
-                default = {
-                    initialized = true
-                    0L
-                },
-            )
-        }
-
-        val holder = MockPreferencesHolder()
-
-        // default is not accessed
-        assertEquals(false, initialized)
-
-        holder.long
-        assertEquals(true, initialized)
-    }
-
-    @Test
-    fun `GIVEN stringPreference THEN default is not initialized until access`() {
-        var initialized = false
-
-        class MockPreferencesHolder : PreferencesHolder {
-            override val preferences = sharedPrefs
-            var string by stringPreference(
-                "string",
-                default = {
-                    initialized = true
-                    ""
-                },
-            )
-        }
-
-        val holder = MockPreferencesHolder()
-
-        // default is not accessed
-        assertEquals(false, initialized)
-
-        holder.string
-        assertEquals(true, initialized)
-    }
-
-    @Test
-    fun `GIVEN stringSetPreference THEN default is not initialized until access`() {
-        var initialized = false
-        `when`(sharedPrefs.getStringSet(eq("string_set"), any())).thenReturn(null)
-
-        class MockPreferencesHolder : PreferencesHolder {
-            override val preferences = sharedPrefs
-            var stringSet by stringSetPreference(
-                "string_set",
-                default = {
-                    initialized = true
-                    emptySet()
-                },
-            )
-        }
-
-        val holder = MockPreferencesHolder()
-
-        // default is not accessed
-        assertEquals(false, initialized)
-
-        holder.stringSet
-        assertEquals(true, initialized)
+        verify(sharedPrefs).getStringSet("string_set", setOf("hello", "world"))
     }
 
     private inner class MockPreferencesHolder(
@@ -348,8 +184,6 @@ class SharedPreferencesTest {
         var long by longPreference("long", default = defaultLong)
 
         var string by stringPreference("string", default = defaultString)
-
-        var persistString by stringPreference("persist_string", default = defaultString, persistDefaultIfNotExists = true)
 
         var stringSet by stringSetPreference("string_set", default = defaultSet)
     }

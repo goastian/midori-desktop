@@ -519,6 +519,3 @@ newtab-section-mangage-topics-blocked-topics-empty-state = Aún no has bloqueado
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

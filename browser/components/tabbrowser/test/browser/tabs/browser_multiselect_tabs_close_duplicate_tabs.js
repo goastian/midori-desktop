@@ -5,7 +5,6 @@ const PREF_SHOWN_DUPE_DIALOG =
 add_setup(async function setPref() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       [PREF_WARN_ON_CLOSE, false],
       [PREF_SHOWN_DUPE_DIALOG, true],
     ],

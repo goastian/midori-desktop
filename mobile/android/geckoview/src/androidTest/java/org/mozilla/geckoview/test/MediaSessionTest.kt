@@ -307,9 +307,9 @@ class MediaSessionTest : BaseSessionTest() {
                 )
 
                 assertThat(
-                    "Playback rate should exist",
+                    "Playback rate should match",
                     state.playbackRate,
-                    notNullValue(),
+                    closeTo(1.0, 0.01),
                 )
 
                 assertThat(
@@ -613,9 +613,9 @@ class MediaSessionTest : BaseSessionTest() {
                 )
 
                 assertThat(
-                    "Playback rate should exist",
+                    "Playback rate should match",
                     state.playbackRate,
-                    notNullValue(),
+                    closeTo(1.0, 0.01),
                 )
 
                 assertThat(

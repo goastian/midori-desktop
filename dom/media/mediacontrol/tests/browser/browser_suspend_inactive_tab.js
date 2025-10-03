@@ -5,7 +5,6 @@ const VIDEO_ID = "video";
 add_task(async function setupTestingPref() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       ["media.mediacontrol.testingevents.enabled", true],
       ["dom.suspend_inactive.enabled", true],
       ["dom.audiocontext.testing", true],

@@ -703,9 +703,9 @@ partial interface Window {
   [Func="IsChromeOrUAWidget"]
   readonly attribute boolean isChromeWindow;
 
-  [Func="GleanWebidlEnabled"]
+  [Func="nsGlobalWindowInner::IsGleanNeeded"]
   readonly attribute GleanImpl Glean;
-  [Func="GleanWebidlEnabled"]
+  [Func="nsGlobalWindowInner::IsGleanNeeded"]
   readonly attribute GleanPingsImpl GleanPings;
 };
 

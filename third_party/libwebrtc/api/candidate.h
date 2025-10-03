@@ -23,9 +23,11 @@
 #include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
-
 enum class IceCandidateType : int { kHost, kSrflx, kPrflx, kRelay };
 RTC_EXPORT absl::string_view IceCandidateTypeToString(IceCandidateType);
+}  // namespace webrtc
+
+namespace cricket {
 
 // TODO(tommi): Remove. No usage in WebRTC now, remove once downstream projects
 // don't have reliance.
@@ -48,11 +50,11 @@ class RTC_EXPORT Candidate {
   Candidate();
   Candidate(int component,
             absl::string_view protocol,
-            const SocketAddress& address,
+            const rtc::SocketAddress& address,
             uint32_t priority,
             absl::string_view username,
             absl::string_view password,
-            IceCandidateType type,
+            webrtc::IceCandidateType type,
             uint32_t generation,
             absl::string_view foundation,
             uint16_t network_id = 0,
@@ -85,8 +87,8 @@ class RTC_EXPORT Candidate {
     Assign(relay_protocol_, protocol);
   }
 
-  const SocketAddress& address() const { return address_; }
-  void set_address(const SocketAddress& address) { address_ = address; }
+  const rtc::SocketAddress& address() const { return address_; }
+  void set_address(const rtc::SocketAddress& address) { address_ = address; }
 
   uint32_t priority() const { return priority_; }
   void set_priority(const uint32_t priority) { priority_ = priority; }
@@ -98,7 +100,7 @@ class RTC_EXPORT Candidate {
   const std::string& password() const { return password_; }
   void set_password(absl::string_view password) { Assign(password_, password); }
 
-  IceCandidateType type() const { return type_; }
+  webrtc::IceCandidateType type() const { return type_; }
 
   // Returns the name of the candidate type as specified in
   // https://datatracker.ietf.org/doc/html/rfc5245#section-15.1
@@ -108,7 +110,7 @@ class RTC_EXPORT Candidate {
   // cricket::LOCAL_PORT_TYPE). The type should really be an enum rather than a
   // string, but until we make that change the lifetime attribute helps us lock
   // things down. See also the `Port` class.
-  void set_type(IceCandidateType type) { type_ = type; }
+  void set_type(webrtc::IceCandidateType type) { type_ = type; }
 
   // Simple checkers for checking the candidate type without dependency on the
   // IceCandidateType enum. The `is_local()` and `is_stun()` names are legacy
@@ -141,15 +143,15 @@ class RTC_EXPORT Candidate {
     Assign(network_name_, network_name);
   }
 
-  AdapterType network_type() const { return network_type_; }
-  void set_network_type(AdapterType network_type) {
+  rtc::AdapterType network_type() const { return network_type_; }
+  void set_network_type(rtc::AdapterType network_type) {
     network_type_ = network_type;
   }
 
-  AdapterType underlying_type_for_vpn() const {
+  rtc::AdapterType underlying_type_for_vpn() const {
     return underlying_type_for_vpn_;
   }
-  void set_underlying_type_for_vpn(AdapterType network_type) {
+  void set_underlying_type_for_vpn(rtc::AdapterType network_type) {
     underlying_type_for_vpn_ = network_type;
   }
 
@@ -161,7 +163,7 @@ class RTC_EXPORT Candidate {
   // cost of 0 indicates this candidate can be used freely. A value of
   // rtc::kNetworkCostMax indicates it should be used only as the last resort.
   void set_network_cost(uint16_t network_cost) {
-    RTC_DCHECK_LE(network_cost, webrtc::kNetworkCostMax);
+    RTC_DCHECK_LE(network_cost, rtc::kNetworkCostMax);
     network_cost_ = network_cost;
   }
   uint16_t network_cost() const { return network_cost_; }
@@ -183,8 +185,8 @@ class RTC_EXPORT Candidate {
     Assign(foundation_, foundation);
   }
 
-  const SocketAddress& related_address() const { return related_address_; }
-  void set_related_address(const SocketAddress& related_address) {
+  const rtc::SocketAddress& related_address() const { return related_address_; }
+  void set_related_address(const rtc::SocketAddress& related_address) {
     related_address_ = related_address;
   }
   const std::string& tcptype() const { return tcptype_; }
@@ -227,16 +229,8 @@ class RTC_EXPORT Candidate {
   // to the wildcard address (i.e. 0.0.0.0 for IPv4 and :: for IPv6). Note that
   // setting both booleans to false returns an identical copy to the original
   // candidate.
-  // The username fragment may be filtered, e.g. for prflx candidates before
-  // any remote ice parameters have been set.
-  [[deprecated("Use variant with filter_ufrag")]] Candidate ToSanitizedCopy(
-      bool use_hostname_address,
-      bool filter_related_address) const {
-    return ToSanitizedCopy(use_hostname_address, filter_related_address, false);
-  }
   Candidate ToSanitizedCopy(bool use_hostname_address,
-                            bool filter_related_address,
-                            bool filter_ufrag) const;
+                            bool filter_related_address) const;
 
   // Computes and populates the `foundation()` field.
   // Foundation:  An arbitrary string that is the same for two candidates
@@ -247,7 +241,7 @@ class RTC_EXPORT Candidate {
   //   characteristics. Foundations are used in the frozen algorithm.
   // A session wide (peerconnection) tie-breaker is applied to the foundation,
   // adds additional randomness and must be the same for all candidates.
-  void ComputeFoundation(const SocketAddress& base_address,
+  void ComputeFoundation(const rtc::SocketAddress& base_address,
                          uint64_t tie_breaker);
 
   // https://www.rfc-editor.org/rfc/rfc5245#section-7.2.1.3
@@ -268,17 +262,17 @@ class RTC_EXPORT Candidate {
   int component_;
   std::string protocol_;
   std::string relay_protocol_;
-  SocketAddress address_;
+  rtc::SocketAddress address_;
   uint32_t priority_;
   std::string username_;
   std::string password_;
-  IceCandidateType type_ = IceCandidateType::kHost;
+  webrtc::IceCandidateType type_ = webrtc::IceCandidateType::kHost;
   std::string network_name_;
-  AdapterType network_type_;
-  AdapterType underlying_type_for_vpn_;
+  rtc::AdapterType network_type_;
+  rtc::AdapterType underlying_type_for_vpn_;
   uint32_t generation_;
   std::string foundation_;
-  SocketAddress related_address_;
+  rtc::SocketAddress related_address_;
   std::string tcptype_;
   std::string transport_name_;
   uint16_t network_id_;
@@ -286,17 +280,6 @@ class RTC_EXPORT Candidate {
   std::string url_;
 };
 
-}  //  namespace webrtc
-
-// Re-export symbols from the webrtc namespace for backwards compatibility.
-// TODO(bugs.webrtc.org/4222596): Remove once all references are updated.
-namespace cricket {
-using ::webrtc::Candidate;
-using ::webrtc::kMaxTurnServers;
-using ::webrtc::LOCAL_PORT_TYPE;
-using ::webrtc::PRFLX_PORT_TYPE;
-using ::webrtc::RELAY_PORT_TYPE;
-using ::webrtc::STUN_PORT_TYPE;
 }  // namespace cricket
 
 #endif  // API_CANDIDATE_H_

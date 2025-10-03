@@ -316,6 +316,3 @@ newtab-custom-settings = Tinuk'samajïx ch'aqa' runuk'ulem
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

@@ -14,6 +14,9 @@ esid: pending
 var BUGNUMBER = 533254;
 var summary = 'init-method late in table-big initialiser screwup';
 
+printBugNumber(BUGNUMBER);
+printStatus(summary);
+
 function f() {
     var proto = {p8:8};
     var obj = {
@@ -29,5 +32,7 @@ var expect = f(),
 expect += '';
 actual += '';
 assert.sameValue(expect, actual, summary);
+
+printStatus("All tests passed!");
 
 reportCompare(0, 0);

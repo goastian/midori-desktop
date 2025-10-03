@@ -21,6 +21,7 @@ const { SpecialMessageActions } = ChromeUtils.importESModule(
 );
 
 const sandbox = sinon.createSandbox();
+let originalLocale = Services.locale;
 
 const buttonMessage = {
   id: "FINISH_SETUP_BUTTON",
@@ -29,7 +30,7 @@ const buttonMessage = {
   skip_in_tests: "fails unrelated tests",
   content: {
     label: {
-      string_id: "onboarding-aw-finish-setup-button",
+      raw: "Finish setup",
     },
     logo: {
       imageURL: "chrome://branding/content/about-logo.png",
@@ -49,8 +50,27 @@ const buttonMessage = {
     id: "defaultBrowserCheck",
   },
   targeting:
-    "source == 'startup' && ((currentDate|date - profileAgeCreated|date) / 86400000 <= 7)",
+    "((currentDate|date - profileAgeCreated|date) / 86400000 <= 7) && localeLanguageCode == 'en'",
 };
+
+function restoreOriginalLocale() {
+  Services.locale = originalLocale;
+}
+
+function setNewLocale(locale) {
+  Services.locale = new Proxy(originalLocale, {
+    get(target, prop) {
+      if (prop === "appLocaleAsBCP47") {
+        return locale;
+      }
+
+      if (prop === "appLocaleAsLangTag") {
+        return locale;
+      }
+      return target[prop];
+    },
+  });
+}
 
 async function getSetupButton(win) {
   await TestUtils.waitForCondition(
@@ -62,6 +82,7 @@ async function getSetupButton(win) {
 }
 
 function cleanup() {
+  restoreOriginalLocale();
   Services.prefs.clearUserPref("messaging-system-action.easyChecklist.open");
   Services.prefs.clearUserPref("browser.toolbars.bookmarks.visibility");
   sandbox.restore();
@@ -69,6 +90,7 @@ function cleanup() {
 
 // Tests that the button is added to the bookmarks toolbar, and that clicking it triggers its action
 add_task(async function test_finish_setup_button() {
+  setNewLocale("en-US");
   const setPrefStub = sandbox.stub(SpecialMessageActions, "handleAction");
   const tab = await BrowserTestUtils.openNewForegroundTab(
     gBrowser.ownerGlobal,
@@ -89,13 +111,13 @@ add_task(async function test_finish_setup_button() {
   const image = button.querySelector("image");
   Assert.ok(image, "Image exists on button");
 
-  const label = button.querySelector("label");
+  const label = button.querySelector("image");
   Assert.ok(label, "Label exists on button");
 
   Assert.equal(
-    button.getAttribute("data-l10n-id"),
-    "onboarding-aw-finish-setup-button",
-    "Button should have correct l10nid attribute"
+    button.getAttribute("label"),
+    "Finish setup",
+    "Button should have correct label attribute"
   );
 
   button.click();
@@ -121,6 +143,7 @@ add_task(async function test_finish_setup_button() {
 
 // Tests that the feature callout opens when the pref is changed to true
 add_task(async function test_feature_callout_open_on_pref() {
+  setNewLocale("en-US");
   const impressionSpy = sandbox.spy(ASRouter, "addImpression");
   const messageId = "FINISH_SETUP_CHECKLIST";
 

@@ -9,8 +9,10 @@ import sys
 import traceback
 from abc import ABCMeta, abstractproperty
 
+import six
 from mozlog import get_default_logger
 from mozprocess import ProcessHandler
+from six import ensure_str, string_types
 
 try:
     import mozcrash
@@ -21,7 +23,8 @@ from ..application import DefaultContext
 from ..errors import RunnerNotStartedError
 
 
-class BaseRunner(metaclass=ABCMeta):
+@six.add_metaclass(ABCMeta)
+class BaseRunner:
     """
     The base runner class for all mozrunner objects, both local and remote.
     """
@@ -46,7 +49,7 @@ class BaseRunner(metaclass=ABCMeta):
     ):
         self.app_ctx = app_ctx or DefaultContext()
 
-        if isinstance(profile, str):
+        if isinstance(profile, string_types):
             self.profile = self.app_ctx.profile_class(profile=profile, addons=addons)
         else:
             self.profile = profile or self.app_ctx.profile_class(
@@ -126,7 +129,7 @@ class BaseRunner(metaclass=ABCMeta):
         str_env = {}
         for k in self.env:
             v = self.env[k]
-            str_env[k] = v
+            str_env[ensure_str(k)] = ensure_str(v)
 
         if interactive:
             self.process_handler = subprocess.Popen(cmd, env=str_env)

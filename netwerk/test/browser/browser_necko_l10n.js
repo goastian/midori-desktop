@@ -50,10 +50,7 @@ function waitForStatusChange(browser, expectedMessage) {
 
 add_task(async function test_domain_change() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      [HTTPS_FIRST, false],
-    ],
+    set: [[HTTPS_FIRST, false]],
   });
 
   gOverride.addIPOverride(DOMAIN_NAME, "127.0.0.1");

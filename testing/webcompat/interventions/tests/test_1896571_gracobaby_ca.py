@@ -20,14 +20,12 @@ async def check_can_scroll(client):
     return old_pos != client.execute_script("return window.scrollY")
 
 
-@pytest.mark.actual_platform_required
 @pytest.mark.asyncio
 @pytest.mark.with_interventions
 async def test_enabled(client):
     assert await check_can_scroll(client)
 
 
-@pytest.mark.actual_platform_required
 @pytest.mark.asyncio
 @pytest.mark.without_interventions
 async def test_disabled(client):

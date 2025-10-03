@@ -4,6 +4,7 @@
 
 import argparse
 import atexit
+import json
 import logging
 import os
 import shutil
@@ -12,7 +13,7 @@ import sys
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 import appdirs
 import yaml
@@ -232,7 +233,7 @@ def show_taskgraph(options):
     overrides = {
         "target-kinds": options.get("target_kinds"),
     }
-    parameters: list[Any[str, Parameters]] = options.pop("parameters")
+    parameters: List[Any[str, Parameters]] = options.pop("parameters")
     if not parameters:
         parameters = [
             parameters_loader(None, strict=False, overrides=overrides)
@@ -527,8 +528,6 @@ def decision(options):
     help="root of the taskgraph definition relative to topsrcdir",
 )
 def action_callback(options):
-    from taskgraph.util import json
-
     from gecko_taskgraph.actions import trigger_action_callback
     from gecko_taskgraph.actions.util import get_parameters
 
@@ -579,7 +578,7 @@ def action_callback(options):
 def test_action_callback(options):
     import taskgraph.parameters
     from taskgraph.config import load_graph_config
-    from taskgraph.util import json, yaml
+    from taskgraph.util import yaml
 
     import gecko_taskgraph.actions
 

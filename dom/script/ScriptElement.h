@@ -42,9 +42,9 @@ class ScriptElement : public nsIScriptElement, public nsStubMutationObserver {
   // Internal methods
 
   /**
-   * Check if this element contains any linked script.
+   * Check if this element contains any script, linked or inline
    */
-  virtual bool HasExternalScriptContent() = 0;
+  virtual bool HasScriptContent() = 0;
 
   virtual bool MaybeProcessScript() override;
 };

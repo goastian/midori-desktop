@@ -8,7 +8,7 @@
   align-items: center;
 }
 
-moz-input-search {
+fxview-search-textbox {
   flex: 1;
 }
 

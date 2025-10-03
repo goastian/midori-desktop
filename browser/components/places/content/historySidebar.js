@@ -10,7 +10,7 @@ var { XPCOMUtils } = ChromeUtils.importESModule(
 
 ChromeUtils.defineESModuleGetters(this, {
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.sys.mjs",
-  PlacesUIUtils: "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs",
+  PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
@@ -54,9 +54,7 @@ window.addEventListener("load", () => {
   );
 
   gSearchBox = document.getElementById("search-box");
-  gSearchBox.addEventListener("MozInputSearch:search", () =>
-    searchHistory(gSearchBox.value)
-  );
+  gSearchBox.addEventListener("command", () => searchHistory(gSearchBox.value));
 
   let viewButton = document.getElementById("viewButton");
   gHistoryGrouping = viewButton.getAttribute("selectedsort");

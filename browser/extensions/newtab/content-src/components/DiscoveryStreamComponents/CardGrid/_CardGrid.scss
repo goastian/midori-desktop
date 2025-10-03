@@ -22,19 +22,18 @@
 }
 
 .ds-onboarding-container {
-  padding-inline: var(--space-large);
+  padding-inline-start: 16px;
+  padding-inline-end: 16px;
 
   @media (min-width: $break-point-medium) {
-    // Bug 1967304 - Large number (48px)
-    padding-inline-end: calc(var(--space-xlarge) * 2);
+    padding-inline-end: 48px;
   }
 
   @media (min-width: $break-point-large) {
-    // Bug 1967304 - Large number (56px)
-    padding-inline-end: calc(var(--space-xlarge) + var(--space-xxlarge));
+    padding-inline-end: 56px;
   }
 
-  margin-block-end: var(--space-xlarge);
+  margin-bottom: 24px;
   // This is to position the dismiss button to the right most of this element.
   position: relative;
 
@@ -43,8 +42,8 @@
     display: flex;
 
     .ds-dismiss-button {
-      inset-inline-end: var(--space-small);
-      inset-block-start: var(--space-small);
+      inset-inline-end: 8px;
+      top: 8px;
     }
   }
 
@@ -54,10 +53,10 @@
     }
 
     display: flex;
-    margin: var(--space-xxlarge) 0 var(--space-small);
+    margin: 32px 0 8px;
 
     @media (min-width: $break-point-medium) {
-      margin: var(--space-large) 0 var(--space-small);
+      margin: 16px 0 8px;
       display: block;
       height: 24px;
     }
@@ -68,7 +67,7 @@
   }
 
   p {
-    margin: var(--space-small) 0 var(--space-large);
+    margin: 8px 0 16px;
     font-size: var(--font-size-small);
   }
 
@@ -86,16 +85,16 @@
     }
 
     fill: $pocket-icon-fill;
-    margin-block-start: var(--space-xxsmall);;
-    margin-inline-end: var(--space-small);
+    margin-top: 3px;
+    margin-inline-end: 8px;
     height: 22px;
     width: 22px;
-    background-image: url('chrome://global/skin/icons/help.svg');
+    background-image: url('chrome://global/skin/icons/pocket.svg');
 
     @media (min-width: $break-point-medium) {
-      margin-block-start: calc(var(--space-small) * -1);
-      margin-inline-start: calc(var(--space-xxsmall) * -1);
-      margin-inline-end: var(--space-large);
+      margin-top: -5px;
+      margin-inline-start: -2px;
+      margin-inline-end: 15px;
       height: 30px;
       width: 30px;
     }
@@ -111,10 +110,9 @@
     background-position: center;
     height: 120px;
     width: 200px;
-    margin-block-start: var(--space-large);
-    margin-block-end: var(--space-large);
-    // Bug 1967304 - Large Token (56px)
-    margin-inline-start: calc(var(--space-xlarge) + var(--space-xxlarge));
+    margin-top: 16px;
+    margin-bottom: 16px;
+    margin-inline-start: 54px;
     flex-shrink: 0;
     display: none;
 
@@ -126,17 +124,17 @@
 
 .ds-card-grid {
   display: grid;
-  grid-gap: var(--space-xlarge);
+  grid-gap: 24px;
   position: relative;
 
   &.ds-card-grid-compact {
-    grid-gap: var(--space-large);
+    grid-gap: 20px;
   }
 
   &.ad-sizing-variant-a,
   &.ad-sizing-variant-b {
-    row-gap: var(--space-xlarge);
-    column-gap: var(--space-large);
+    row-gap: 24px;
+    column-gap: 18px;
   }
 
   &.ds-card-grid-recent-saves {
@@ -201,7 +199,7 @@
 
       .meta {
         .story-footer {
-          margin-block-start: var(--space-small);
+          margin-top: 8px;
         }
 
         .source,
@@ -221,8 +219,8 @@
         }
 
         .story-badge-icon {
-          margin-inline-end: var(--space-xxsmall);
-          margin-block-end: var(--space-xxsmall);
+          margin-inline-end: 2px;
+          margin-bottom: 2px;
           height: 14px;
           width: 14px;
           background-size: 14px;
@@ -317,14 +315,14 @@
     }
 
     .meta {
-      padding: var(--space-medium) 0 0;
+      padding: 12px 0 0;
     }
   }
 }
 
 .ds-layout {
   .ds-sub-header {
-    margin-block-start: var(--space-xlarge);
+    margin-top: 24px;
 
     .section-title-container {
       flex-direction: row;

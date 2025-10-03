@@ -4,12 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import assert from 'node:assert';
-import {spawnSync} from 'node:child_process';
-import {cpSync, readdirSync} from 'node:fs';
-import {readdir} from 'node:fs/promises';
-import {platform} from 'node:os';
-import {join} from 'node:path';
+import assert from 'assert';
+import {spawnSync} from 'child_process';
+import {readdirSync} from 'fs';
+import fs from 'fs';
+import {readdir} from 'fs/promises';
+import {platform} from 'os';
+import {join} from 'path';
 
 import {TestServer} from '@pptr/testserver';
 
@@ -44,9 +45,13 @@ describe('`puppeteer`', () => {
 
   it('runs in the browser', async function () {
     const puppeteerInBrowserPath = join(this.sandbox, 'puppeteer-in-browser');
-    cpSync(join(EXAMPLES_DIR, 'puppeteer-in-browser'), puppeteerInBrowserPath, {
-      recursive: true,
-    });
+    fs.cpSync(
+      join(EXAMPLES_DIR, 'puppeteer-in-browser'),
+      puppeteerInBrowserPath,
+      {
+        recursive: true,
+      },
+    );
     spawnSync('npm', ['ci'], {
       cwd: puppeteerInBrowserPath,
       shell: true,
@@ -70,7 +75,7 @@ describe('`puppeteer`', () => {
     'runs in the extension',
     async function () {
       const examplePath = join(this.sandbox, 'puppeteer-in-extension');
-      cpSync(join(EXAMPLES_DIR, 'puppeteer-in-extension'), examplePath, {
+      fs.cpSync(join(EXAMPLES_DIR, 'puppeteer-in-extension'), examplePath, {
         recursive: true,
       });
       spawnSync('npm', ['ci'], {

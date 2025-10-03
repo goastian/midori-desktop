@@ -46,13 +46,9 @@ RefPtr<OriginOperationBase> CreateFinalizeOriginEvictionOp(
     MovingNotNull<RefPtr<QuotaManager>> aQuotaManager,
     nsTArray<RefPtr<OriginDirectoryLock>>&& aLocks);
 
-RefPtr<UniversalDirectoryLock> CreateSaveOriginAccessTimeLock(
-    QuotaManager& aQuotaManager, const OriginMetadata& aOriginMetadata);
-
 RefPtr<ResolvableNormalOriginOp<bool>> CreateSaveOriginAccessTimeOp(
     MovingNotNull<RefPtr<QuotaManager>> aQuotaManager,
-    const OriginMetadata& aOriginMetadata,
-    RefPtr<UniversalDirectoryLock> aDirectoryLock);
+    const OriginMetadata& aOriginMetadata, int64_t aTimestamp);
 
 RefPtr<ResolvableNormalOriginOp<bool>> CreateClearPrivateRepositoryOp(
     MovingNotNull<RefPtr<QuotaManager>> aQuotaManager);
@@ -148,7 +144,7 @@ RefPtr<ResolvableNormalOriginOp<OriginMetadataArray, true>> CreateClearOriginOp(
     const Maybe<PersistenceType>& aPersistenceType,
     const mozilla::ipc::PrincipalInfo& aPrincipalInfo);
 
-RefPtr<ResolvableNormalOriginOp<ClientMetadataArray, true>> CreateClearClientOp(
+RefPtr<ResolvableNormalOriginOp<bool>> CreateClearClientOp(
     MovingNotNull<RefPtr<QuotaManager>> aQuotaManager,
     Maybe<PersistenceType> aPersistenceType,
     const mozilla::ipc::PrincipalInfo& aPrincipalInfo,
@@ -169,11 +165,11 @@ CreateShutdownOriginOp(MovingNotNull<RefPtr<QuotaManager>> aQuotaManager,
                        Maybe<PersistenceType> aPersistenceType,
                        const mozilla::ipc::PrincipalInfo& aPrincipalInfo);
 
-RefPtr<ResolvableNormalOriginOp<ClientMetadataArray, true>>
-CreateShutdownClientOp(MovingNotNull<RefPtr<QuotaManager>> aQuotaManager,
-                       Maybe<PersistenceType> aPersistenceType,
-                       const mozilla::ipc::PrincipalInfo& aPrincipalInfo,
-                       Client::Type aClientType);
+RefPtr<ResolvableNormalOriginOp<bool>> CreateShutdownClientOp(
+    MovingNotNull<RefPtr<QuotaManager>> aQuotaManager,
+    Maybe<PersistenceType> aPersistenceType,
+    const mozilla::ipc::PrincipalInfo& aPrincipalInfo,
+    Client::Type aClientType);
 
 RefPtr<QuotaRequestBase> CreatePersistedOp(
     MovingNotNull<RefPtr<QuotaManager>> aQuotaManager,

@@ -672,12 +672,6 @@ RefPtr<OMTASampler> CompositorBridgeParent::GetOMTASampler() const {
   return mOMTASampler;
 }
 
-mozilla::ipc::IPCResult CompositorBridgeParent::RecvDynamicToolbarOffsetChanged(
-    const int32_t& aOffset) {
-  SetFixedLayerMargins(0, aOffset);
-  return IPC_OK();
-}
-
 CompositorBridgeParent*
 CompositorBridgeParent::GetCompositorBridgeParentFromLayersId(
     const LayersId& aLayersId) {
@@ -835,14 +829,6 @@ void CompositorBridgeParent::SetFixedLayerMargins(ScreenIntCoord aTop,
   }
 
   ScheduleComposition(wr::RenderReasons::RESIZE);
-}
-
-void CompositorBridgeParent::EndWheelTransaction(
-    const LayersId& aLayersId,
-    PWebRenderBridgeParent::EndWheelTransactionResolver&& aResolve) {
-  if (mApzcTreeManager) {
-    mApzcTreeManager->EndWheelTransaction(std::move(aResolve));
-  }
 }
 
 void CompositorBridgeParent::NotifyVsync(const VsyncEvent& aVsync,

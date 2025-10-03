@@ -32,23 +32,19 @@ enum class ResolutionUnit : uint8_t {
 
 class EXIFParser {
  public:
-  // aExpectExifIdCode Determines whether to expect the leading "Exif\0\0". True
-  // for exif in jpeg, false for exif in png.
-  static EXIFData Parse(bool aExpectExifIdCode, const uint8_t* aData,
-                        const uint32_t aLength,
+  static EXIFData Parse(const uint8_t* aData, const uint32_t aLength,
                         const gfx::IntSize& aRealImageSize) {
-    EXIFParser parser(aExpectExifIdCode);
+    EXIFParser parser;
     return parser.ParseEXIF(aData, aLength, aRealImageSize);
   }
 
  private:
-  explicit EXIFParser(bool aExpectExifIdCode)
+  EXIFParser()
       : mStart(nullptr),
         mCurrent(nullptr),
         mLength(0),
         mRemainingLength(0),
-        mByteOrder(ByteOrder::Unknown),
-        mExpectExifIdCode(aExpectExifIdCode) {}
+        mByteOrder(ByteOrder::Unknown) {}
 
   EXIFData ParseEXIF(const uint8_t* aData, const uint32_t aLength,
                      const gfx::IntSize& aRealImageSize);
@@ -67,8 +63,6 @@ class EXIFParser {
   void JumpTo(const uint32_t aOffset);
 
   uint32_t CurrentOffset() const { return mCurrent - mStart; }
-
-  uint32_t TIFFHeaderStart() const;
 
   class ScopedJump {
     EXIFParser& mParser;
@@ -94,7 +88,6 @@ class EXIFParser {
   uint32_t mLength;
   uint32_t mRemainingLength;
   ByteOrder mByteOrder;
-  bool mExpectExifIdCode;
 };
 
 }  // namespace mozilla::image

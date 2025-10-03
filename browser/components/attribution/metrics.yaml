@@ -59,9 +59,6 @@ glean.attribution:
           type: boolean
         dlsource:
           type: string
-    send_in_pings:
-      - metrics
-      - update
 
 glean.distribution:
   ext:
@@ -103,6 +100,3 @@ glean.distribution:
           type: array
           items:
             type: string
-    send_in_pings:
-      - metrics
-      - update

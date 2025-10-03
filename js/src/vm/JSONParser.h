@@ -347,7 +347,8 @@ class MOZ_STACK_CLASS JSONReviveHandler : public JSONFullParseHandler<CharT> {
 
   JSONReviveHandler(JSONReviveHandler&& other) noexcept
       : Base(std::move(other)),
-        parseRecordStack(std::move(other.parseRecordStack)) {}
+        parseRecordStack(std::move(other.parseRecordStack)),
+        parseRecord(std::move(other.parseRecord)) {}
 
   JSONReviveHandler(const JSONReviveHandler& other) = delete;
   void operator=(const JSONReviveHandler& other) = delete;
@@ -406,14 +407,18 @@ class MOZ_STACK_CLASS JSONReviveHandler : public JSONFullParseHandler<CharT> {
 
   void trace(JSTracer* trc);
 
-  inline ParseRecordObject* getParseRecordObject() {
-    return parseRecordStack.back();
-  };
-
  private:
+  inline bool finishMemberParseRecord(
+      Handle<JS::PropertyKey> key,
+      Handle<ParseRecordObject::EntryMap*> parseEntry);
+  inline bool finishCompoundParseRecord(
+      const Value& value, Handle<ParseRecordObject::EntryMap*> parseEntry);
   inline bool finishPrimitiveParseRecord(const Value& value, SourceT source);
 
-  GCVector<ParseRecordObject*, 10> parseRecordStack;
+  GCVector<ParseRecordObject::EntryMap*, 10> parseRecordStack;
+
+ public:
+  ParseRecordObject* parseRecord = nullptr;
 };
 
 template <typename CharT>

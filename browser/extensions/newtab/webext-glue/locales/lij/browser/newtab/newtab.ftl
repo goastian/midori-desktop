@@ -248,6 +248,3 @@ newtab-custom-pocket-title = Consegiou da { -pocket-brand-name }
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

@@ -41,7 +41,12 @@ static inline SkColorType GfxFormatToSkiaColorType(SurfaceFormat format) {
       return kRGBA_8888_SkColorType;
     default:
       MOZ_DIAGNOSTIC_CRASH("Unknown surface format");
-      return kRGBA_8888_SkColorType;
+      switch (BytesPerPixel(format)) {
+        case 4:
+          return kRGBA_8888_SkColorType;
+        default:
+          return kAlpha_8_SkColorType;
+      }
   }
 }
 

@@ -108,8 +108,7 @@ class nsComboboxControlFrame final : public nsHTMLButtonControlFrame,
   };
   DropDownPositionState AbsolutelyPositionDropDown();
 
-  enum class Type { Longest, Current };
-  nscoord GetOptionISize(gfxContext*, Type) const;
+  nscoord GetLongestOptionISize(gfxContext*) const;
 
   class RedisplayTextEvent : public mozilla::Runnable {
    public:

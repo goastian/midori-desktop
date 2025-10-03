@@ -386,9 +386,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
         name, innermostEmitterScope());
   }
 
-  mozilla::Maybe<ConstantCompareOperand> parseNodeToConstantCompareOperand(
-      ParseNode* constant);
-
   void setVarEmitterScope(EmitterScope* emitterScope) {
     MOZ_ASSERT(emitterScope);
     MOZ_ASSERT(!varEmitterScope);

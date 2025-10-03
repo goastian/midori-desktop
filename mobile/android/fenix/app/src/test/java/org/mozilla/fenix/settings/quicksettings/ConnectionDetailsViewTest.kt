@@ -20,9 +20,9 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.databinding.ConnectionDetailsWebsiteInfoBinding
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class ConnectionDetailsViewTest {
 
     private lateinit var view: ConnectionDetailsView

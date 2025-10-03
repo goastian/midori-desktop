@@ -133,7 +133,7 @@ RefPtr<UtilityAudioDecoderChild> UtilityAudioDecoderChild::GetSingleton(
 
 mozilla::ipc::IPCResult
 UtilityAudioDecoderChild::RecvUpdateMediaCodecsSupported(
-    const RemoteMediaIn& aLocation,
+    const RemoteDecodeIn& aLocation,
     const media::MediaCodecsSupported& aSupported) {
   dom::ContentParent::BroadcastMediaCodecsSupportedUpdate(aLocation,
                                                           aSupported);

@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import fs from 'node:fs';
-import type {ServerResponse} from 'node:http';
-import path from 'node:path';
+import fs from 'fs';
+import type {ServerResponse} from 'http';
+import path from 'path';
 
 import expect from 'expect';
 import type {HTTPRequest} from 'puppeteer-core/internal/api/HTTPRequest.js';
@@ -974,16 +974,12 @@ describe('network', function () {
       const {page, server} = await getTestState();
 
       const cssRequests: HTTPRequest[] = [];
-      const promise = new Promise<void>(resolve => {
-        page.on('request', request => {
-          if (request.url().endsWith('css')) {
-            cssRequests.push(request);
-            resolve();
-          }
-        });
+      page.on('request', request => {
+        if (request.url().endsWith('css')) {
+          cssRequests.push(request);
+        }
       });
       await page.goto(server.PREFIX + '/one-style.html');
-      await promise;
       expect(cssRequests).toHaveLength(1);
       const request = cssRequests[0]!;
       expect(request.url()).toContain('one-style.css');

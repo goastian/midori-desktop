@@ -52,7 +52,7 @@ std::vector<float> PreprocessWeights(rtc::ArrayView<const int8_t> weights,
   return w;
 }
 
-FunctionView<float(float)> GetActivationFunction(
+rtc::FunctionView<float(float)> GetActivationFunction(
     ActivationFunction activation_function) {
   switch (activation_function) {
     case ActivationFunction::kTansigApproximated:

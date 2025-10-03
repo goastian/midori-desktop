@@ -1284,9 +1284,3 @@ SECMOD_PolicyStringToOpt;
 ;+    local:
 ;+       *;
 ;+};
-;+NSS_3.113 { 	# NSS 3.113 release
-;+    global:
-PK11SDR_EncryptWithMechanism;
-;+    local:
-;+       *;
-;+};

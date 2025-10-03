@@ -27,13 +27,10 @@ android {
 }
 
 dependencies {
-    implementation project(':components:support-base')
+    implementation project(':support-base')
 
-    testImplementation project(':components:support-test')
-    testImplementation platform(libs.junit.bom)
-    testImplementation libs.junit4
-    testRuntimeOnly libs.junit.vintage
-    testRuntimeOnly libs.junit.platform.launcher
+    testImplementation project(':support-test')
+    testImplementation libs.junit.vintage
 }
 
 apply from: '../../../android-lint.gradle'

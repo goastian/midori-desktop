@@ -33,7 +33,7 @@ function initExceptionDialog() {
     .addEventListener("input", () => handleTextChange());
   document
     .getElementById("viewCertButton")
-    .addEventListener("click", () => viewCertButtonClick());
+    .addEventListener("command", () => viewCertButtonClick());
 
   var args = window.arguments;
   if (args && args[0]) {
@@ -250,7 +250,7 @@ function updateCertStatus() {
     document.getElementById("viewCertButton").disabled = false;
 
     // Notify observers about the availability of the certificate
-    Services.obs.notifyObservers(null, "cert-exception-ui-ready");
+    Services.obs.notifyObservers(window, "cert-exception-ui-ready");
   } else if (gChecking) {
     shortDesc = "add-exception-checking-short";
     longDesc = "add-exception-checking-long";
@@ -325,7 +325,9 @@ function addException() {
  * @returns {boolean} Whether this dialog is in private browsing mode.
  */
 function inPrivateBrowsingMode() {
-  return PrivateBrowsingUtils.isWindowPrivate(window);
+  return window.isChromeWindow
+    ? PrivateBrowsingUtils.isWindowPrivate(window)
+    : PrivateBrowsingUtils.isContentWindowPrivate(window);
 }
 
 window.addEventListener("load", () => initExceptionDialog());

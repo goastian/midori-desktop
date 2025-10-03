@@ -44,12 +44,7 @@ add_task(async function test_places() {
     { uri: "https://history.mozilla.org/", title: "Test history" },
     { uri: "https://tab.mozilla.org/", title: "Test tab" },
   ]);
-  UrlbarProviderOpenTabs.registerOpenTab(
-    "https://tab.mozilla.org/",
-    0,
-    null,
-    false
-  );
+  UrlbarProviderOpenTabs.registerOpenTab("https://tab.mozilla.org/", 0, false);
   await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
 
   await controller.startQuery(context);
@@ -101,7 +96,6 @@ add_task(async function test_places() {
   UrlbarProviderOpenTabs.unregisterOpenTab(
     "https://tab.mozilla.org/",
     0,
-    null,
     false
   );
 });

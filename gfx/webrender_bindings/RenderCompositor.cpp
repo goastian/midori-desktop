@@ -108,18 +108,15 @@ void wr_compositor_destroy_tile(void* aCompositor, wr::NativeSurfaceId aId,
   compositor->DestroyTile(aId, aX, aY);
 }
 
-void wr_compositor_bind_swapchain(void* aCompositor, wr::NativeSurfaceId aId,
-                                  const wr::DeviceIntRect* aDirtyRects,
-                                  size_t aNumDirtyRects) {
+void wr_compositor_bind_swapchain(void* aCompositor, wr::NativeSurfaceId aId) {
   RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
-  compositor->BindSwapChain(aId, aDirtyRects, aNumDirtyRects);
+  compositor->BindSwapChain(aId);
 }
 
-void wr_compositor_present_swapchain(void* aCompositor, wr::NativeSurfaceId aId,
-                                     const wr::DeviceIntRect* aDirtyRects,
-                                     size_t aNumDirtyRects) {
+void wr_compositor_present_swapchain(void* aCompositor,
+                                     wr::NativeSurfaceId aId) {
   RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
-  compositor->PresentSwapChain(aId, aDirtyRects, aNumDirtyRects);
+  compositor->PresentSwapChain(aId);
 }
 
 void wr_compositor_destroy_surface(void* aCompositor, NativeSurfaceId aId) {

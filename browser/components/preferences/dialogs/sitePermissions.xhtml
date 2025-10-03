@@ -57,11 +57,14 @@
       </hbox>
       <description id="permissionsText" control="url" />
       <separator class="thin" />
-      <html:moz-input-search
-        id="searchBox"
-        data-l10n-id="permissions-searchbox"
-        data-l10n-attrs="placeholder"
-      />
+      <hbox align="start">
+        <search-textbox
+          id="searchBox"
+          flex="1"
+          data-l10n-id="permissions-searchbox"
+          data-l10n-attrs="placeholder"
+        />
+      </hbox>
       <separator class="thin" />
       <listheader>
         <treecol id="siteCol" data-l10n-id="permissions-site-name" />

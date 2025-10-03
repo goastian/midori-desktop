@@ -282,8 +282,8 @@ EngineSynchronizer.prototype = {
       return;
     }
 
-    // If we're the only client and the server has no data for us
-    // (neither enabled *nor* declined engines), just keep our local state.
+    // If we're the only client, and no engines are marked as enabled,
+    // thumb our noses at the server data: it can't be right.
     // Belt-and-suspenders approach to Bug 615926.
     let hasEnabledEngines = false;
     for (let e in meta.payload.engines) {
@@ -293,13 +293,9 @@ EngineSynchronizer.prototype = {
       }
     }
 
-    let hasDeclinedEngines =
-      Array.isArray(meta.payload.declined) && meta.payload.declined.length;
-
-    if (numClients <= 1 && !hasEnabledEngines && !hasDeclinedEngines) {
+    if (numClients <= 1 && !hasEnabledEngines) {
       this._log.info(
-        "One client and neither enabled nor declined engines on server: " +
-          "not touching local engine status."
+        "One client and no enabled engines: not touching local engine status."
       );
       return;
     }

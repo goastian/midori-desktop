@@ -17,7 +17,6 @@ import type {
   GeolocationOptions,
   MediaFeature,
   PageEvents,
-  WaitTimeoutOptions,
 } from '../api/Page.js';
 import {
   Page,
@@ -41,7 +40,6 @@ import type {
 } from '../common/Cookie.js';
 import {UnsupportedOperation} from '../common/Errors.js';
 import {EventEmitter} from '../common/EventEmitter.js';
-import {FileChooser} from '../common/FileChooser.js';
 import type {PDFOptions} from '../common/PDFOptions.js';
 import type {Awaitable} from '../common/types.js';
 import {
@@ -53,7 +51,6 @@ import {
 import type {Viewport} from '../common/Viewport.js';
 import {assert} from '../util/assert.js';
 import {bubble} from '../util/decorators.js';
-import {Deferred} from '../util/Deferred.js';
 import {stringToTypedArray} from '../util/encoding.js';
 import {isErrorLike} from '../util/ErrorLike.js';
 
@@ -61,7 +58,6 @@ import type {BidiBrowser} from './Browser.js';
 import type {BidiBrowserContext} from './BrowserContext.js';
 import type {BidiCdpSession} from './CDPSession.js';
 import type {BrowsingContext} from './core/BrowsingContext.js';
-import {BidiElementHandle} from './ElementHandle.js';
 import {BidiFrame} from './Frame.js';
 import type {BidiHTTPResponse} from './HTTPResponse.js';
 import {BidiKeyboard, BidiMouse, BidiTouchscreen} from './Input.js';
@@ -100,7 +96,6 @@ export class BidiPage extends Page {
   readonly #cdpEmulationManager: EmulationManager;
 
   #emulatedNetworkConditions?: InternalNetworkConditions;
-  #fileChooserDeferreds = new Set<Deferred<FileChooser>>();
 
   _client(): BidiCdpSession {
     return this.#frame.client;
@@ -176,7 +171,6 @@ export class BidiPage extends Page {
     const changeUserAgent = (userAgent: string) => {
       Object.defineProperty(navigator, 'userAgent', {
         value: userAgent,
-        configurable: true,
       });
     };
 
@@ -196,7 +190,7 @@ export class BidiPage extends Page {
         : undefined,
       // When we disable the UserAgent we want to
       // evaluate the original value in all Browsing Contexts
-      ...frames.map(frame => {
+      frames.map(frame => {
         return frame.evaluate(changeUserAgent, userAgent);
       }),
     ]);
@@ -319,29 +313,7 @@ export class BidiPage extends Page {
   }
 
   override async setGeolocation(options: GeolocationOptions): Promise<void> {
-    const {longitude, latitude, accuracy = 0} = options;
-    if (longitude < -180 || longitude > 180) {
-      throw new Error(
-        `Invalid longitude "${longitude}": precondition -180 <= LONGITUDE <= 180 failed.`,
-      );
-    }
-    if (latitude < -90 || latitude > 90) {
-      throw new Error(
-        `Invalid latitude "${latitude}": precondition -90 <= LATITUDE <= 90 failed.`,
-      );
-    }
-    if (accuracy < 0) {
-      throw new Error(
-        `Invalid accuracy "${accuracy}": precondition 0 <= ACCURACY failed.`,
-      );
-    }
-    return await this.#frame.browsingContext.setGeolocationOverride({
-      coordinates: {
-        latitude: options.latitude,
-        longitude: options.longitude,
-        accuracy: options.accuracy,
-      },
-    });
+    return await this.#cdpEmulationManager.setGeolocation(options);
   }
 
   override async setJavaScriptEnabled(enabled: boolean): Promise<void> {
@@ -609,54 +581,8 @@ export class BidiPage extends Page {
     throw new UnsupportedOperation();
   }
 
-  override async waitForFileChooser(
-    options: WaitTimeoutOptions = {},
-  ): Promise<FileChooser> {
-    const {timeout = this._timeoutSettings.timeout()} = options;
-    const deferred = Deferred.create<FileChooser>({
-      message: `Waiting for \`FileChooser\` failed: ${timeout}ms exceeded`,
-      timeout,
-    });
-
-    this.#fileChooserDeferreds.add(deferred);
-
-    if (options.signal) {
-      options.signal.addEventListener(
-        'abort',
-        () => {
-          deferred.reject(options.signal?.reason);
-        },
-        {once: true},
-      );
-    }
-
-    this.#frame.browsingContext.once('filedialogopened', info => {
-      if (!info.element) {
-        return;
-      }
-      const chooser = new FileChooser(
-        BidiElementHandle.from<HTMLInputElement>(
-          {
-            sharedId: info.element.sharedId,
-            handle: info.element.handle,
-            type: 'node',
-          },
-          this.#frame.mainRealm(),
-        ),
-        info.multiple,
-      );
-      for (const deferred of this.#fileChooserDeferreds) {
-        deferred.resolve(chooser);
-        this.#fileChooserDeferreds.delete(deferred);
-      }
-    });
-
-    try {
-      return await deferred.valueOrThrow();
-    } catch (error) {
-      this.#fileChooserDeferreds.delete(deferred);
-      throw error;
-    }
+  override waitForFileChooser(): never {
+    throw new UnsupportedOperation();
   }
 
   override workers(): BidiWebWorker[] {

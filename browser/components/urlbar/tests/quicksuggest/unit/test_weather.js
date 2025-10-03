@@ -13,7 +13,6 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   MerinoClient: "resource:///modules/MerinoClient.sys.mjs",
-  Region: "resource://gre/modules/Region.sys.mjs",
   UrlbarProviderPlaces: "resource:///modules/UrlbarProviderPlaces.sys.mjs",
 });
 
@@ -34,10 +33,6 @@ const EXPECTED_MERINO_PARAMS_WATERLOO_AL = {
 let gWeather;
 
 add_setup(async () => {
-  // Weather suggestion titles depend on the current home region, and this test
-  // assumes it's the US.
-  Region._setHomeRegion("US", true);
-
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
     prefs: [
       ["suggest.quicksuggest.sponsored", true],
@@ -115,35 +110,6 @@ add_task(async function noSuggestion() {
   await check_results({
     context,
     matches: [],
-  });
-
-  MerinoTestUtils.server.response.body.suggestions = suggestions;
-});
-
-// When the Merino response doesn't include a `region_code` for the geolocated
-// version of the suggestion, the suggestion title should only contain a city.
-add_task(async function geolocationSuggestionNoRegion() {
-  let { suggestions } = MerinoTestUtils.server.response.body;
-  let s = { ...MerinoTestUtils.WEATHER_SUGGESTION };
-  delete s.region_code;
-  MerinoTestUtils.server.response.body.suggestions = [s];
-
-  let context = createContext("weather", {
-    providers: [UrlbarProviderQuickSuggest.name],
-    isPrivate: false,
-  });
-  await check_results({
-    context,
-    matches: [
-      QuickSuggestTestUtils.weatherResult({
-        titleL10n: {
-          id: "urlbar-result-weather-title-city-only",
-          args: {
-            city: s.city_name,
-          },
-        },
-      }),
-    ],
   });
 
   MerinoTestUtils.server.response.body.suggestions = suggestions;
@@ -300,14 +266,36 @@ async function doLocaleTest({ shouldRunTask, osUnit, unitsByLocale }) {
     await QuickSuggestTestUtils.withLocales({
       locales: [locale],
       callback: async () => {
+        let expectedResult = QuickSuggestTestUtils.weatherResult({
+          temperatureUnit,
+        });
+        if (locale == "de") {
+          delete expectedResult.payload.titleL10n;
+          delete expectedResult.payload.bottomTextL10n;
+          let temperatureStr = temperatureUnit == "c" ? "15.5°C" : "60°F";
+          expectedResult.payload.titleHtml = `<strong>${temperatureStr}</strong> · San Francisco, CA`;
+          expectedResult.payload.bottomText = "AccuWeather® · Gesponsert";
+        }
+
         info("Checking locale: " + locale);
         await check_results({
           context: createContext("weather", {
             providers: [UrlbarProviderQuickSuggest.name],
             isPrivate: false,
           }),
-          matches: [QuickSuggestTestUtils.weatherResult({ temperatureUnit })],
+          matches: [expectedResult],
         });
+
+        expectedResult = QuickSuggestTestUtils.weatherResult({
+          temperatureUnit: osUnit,
+        });
+        if (locale == "de") {
+          delete expectedResult.payload.titleL10n;
+          delete expectedResult.payload.bottomTextL10n;
+          let temperatureStr = osUnit == "c" ? "15.5°C" : "60°F";
+          expectedResult.payload.titleHtml = `<strong>${temperatureStr}</strong> · San Francisco, CA`;
+          expectedResult.payload.bottomText = "AccuWeather® · Gesponsert";
+        }
 
         info(
           "Checking locale with intl.regional_prefs.use_os_locales: " + locale
@@ -318,9 +306,7 @@ async function doLocaleTest({ shouldRunTask, osUnit, unitsByLocale }) {
             providers: [UrlbarProviderQuickSuggest.name],
             isPrivate: false,
           }),
-          matches: [
-            QuickSuggestTestUtils.weatherResult({ temperatureUnit: osUnit }),
-          ],
+          matches: [expectedResult],
         });
         Services.prefs.clearUserPref("intl.regional_prefs.use_os_locales");
       },
@@ -328,139 +314,59 @@ async function doLocaleTest({ shouldRunTask, osUnit, unitsByLocale }) {
   }
 }
 
-// Query for country in North America (US), client in same country
-//
-// Suggestion title should be: "{city}, {region}"
-add_task(async function queryForNorthAmerica_clientInSameCountry() {
-  await doRegionTest({
-    homeRegion: "US",
-    locale: "en-US",
-    query: "waterloo ia",
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title",
-      args: {
-        city: "Waterloo",
-        region: "IA",
-      },
-    },
-  });
-});
-
-// Query for country in North America (US), client in different North American
-// country (CA)
-//
-// Suggestion title should be: "{city}, {region}, {country}"
-add_task(async function queryForNorthAmerica_clientInNorthAmerica() {
-  await doRegionTest({
-    homeRegion: "CA",
-    locale: "en-CA",
-    query: "waterloo ia",
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title-with-country",
-      args: {
-        city: "Waterloo",
-        region: "IA",
-        country: "United States",
-      },
-    },
-  });
-});
-
-// Query for country in North America (US), client in different country outside
-// North America (GB)
-//
-// Suggestion title should be: "{city}, {region}, {country}"
-add_task(async function queryForNorthAmerica_clientOutsideNorthAmerica() {
-  await doRegionTest({
-    homeRegion: "GB",
-    locale: "en-GB",
-    query: "waterloo ia",
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title-with-country",
-      args: {
-        city: "Waterloo",
-        region: "IA",
-        country: "United States",
-      },
-    },
-  });
-});
-
-// Query for country outside North America (GB), client in same country
-//
-// Suggestion title should be: "{city}"
-add_task(async function queryOutsideNorthAmerica_clientInSameCountry() {
-  await doRegionTest({
-    homeRegion: "GB",
-    locale: "en-GB",
-    query: "liverpool uk",
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title-city-only",
-      args: {
-        city: "Liverpool",
-      },
-    },
-  });
-});
-
-// Query for country outside North America (GB), client in North American
-// country (US)
-//
-// Suggestion title should be: "{city}, {region}"
-// * `region` should be the country name (GB)
-add_task(async function queryOutsideNorthAmerica_clientInNorthAmerica() {
-  await doRegionTest({
-    homeRegion: "US",
-    locale: "en-US",
-    query: "liverpool uk",
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title",
-      args: {
-        city: "Liverpool",
-        region: "United Kingdom",
-      },
-    },
-  });
-});
-
-// Query for country outside North America (GB), client different country
-// outside North America (DE)
-//
-// Suggestion title should be: "{city}, {region}"
-// * `region` should be the country name (GB)
-add_task(async function queryOutsideNorthAmerica_clientOutsideNorthAmerica() {
-  await doRegionTest({
-    homeRegion: "DE",
+add_task(async function locale140_de() {
+  await do140LocaleTest({
     locale: "de",
-    query: "liverpool uk",
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title",
-      args: {
-        city: "Liverpool",
-        region: "United Kingdom",
-      },
-    },
+    expectedBottomText: "AccuWeather® · Gesponsert",
   });
 });
 
-async function doRegionTest({ homeRegion, locale, query, expectedTitleL10n }) {
+add_task(async function locale140_fr() {
+  await do140LocaleTest({
+    locale: "fr",
+    expectedBottomText: "AccuWeather® · Sponsorisé",
+  });
+});
+
+add_task(async function locale140_it() {
+  await do140LocaleTest({
+    locale: "it",
+    expectedBottomText: "AccuWeather® · Sponsorizzato",
+  });
+});
+
+add_task(async function locale140_pl() {
+  await do140LocaleTest({
+    locale: "pl",
+    expectedBottomText: "AccuWeather® · sponsorowane",
+  });
+});
+
+async function do140LocaleTest({ locale, expectedBottomText }) {
   await QuickSuggestTestUtils.withLocales({
-    homeRegion,
     locales: [locale],
     callback: async () => {
-      info(
-        "Doing region test: " + JSON.stringify({ homeRegion, locale, query })
+      Assert.equal(
+        Services.locale.appLocaleAsBCP47,
+        locale,
+        "Sanity check: App locale should be as expected"
       );
+
+      let expectedResult = QuickSuggestTestUtils.weatherResult({
+        temperatureUnit: "C",
+      });
+      delete expectedResult.payload.titleL10n;
+      delete expectedResult.payload.bottomTextL10n;
+      expectedResult.payload.titleHtml =
+        "<strong>15.5°C</strong> · San Francisco, CA";
+      expectedResult.payload.bottomText = expectedBottomText;
+
       await check_results({
-        context: createContext(query, {
+        context: createContext("weather", {
           providers: [UrlbarProviderQuickSuggest.name],
           isPrivate: false,
         }),
-        matches: [
-          QuickSuggestTestUtils.weatherResult({
-            titleL10n: expectedTitleL10n,
-          }),
-        ],
+        matches: [expectedResult],
       });
     },
   });
@@ -533,13 +439,7 @@ add_task(async function cityQueries_noGeo() {
     expected: {
       geolocationCalled: true,
       weatherParams: EXPECTED_MERINO_PARAMS_WATERLOO_IA,
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "Waterloo",
-          region: "IA",
-        },
-      },
+      suggestionCity: "Waterloo",
     },
   });
 });
@@ -559,13 +459,7 @@ add_task(async function cityQueries_geoCoords() {
     expected: {
       geolocationCalled: true,
       weatherParams: EXPECTED_MERINO_PARAMS_WATERLOO_IA,
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "Waterloo",
-          region: "IA",
-        },
-      },
+      suggestionCity: "Waterloo",
     },
   });
 
@@ -581,13 +475,7 @@ add_task(async function cityQueries_geoCoords() {
     expected: {
       geolocationCalled: true,
       weatherParams: EXPECTED_MERINO_PARAMS_WATERLOO_AL,
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "Waterloo",
-          region: "AL",
-        },
-      },
+      suggestionCity: "Waterloo",
     },
   });
 
@@ -611,12 +499,7 @@ add_task(async function cityQueries_geoCoords() {
         region: "GA",
         country: "US",
       },
-      titleL10n: {
-        id: "urlbar-result-weather-title-city-only",
-        args: {
-          city: "Twin City B",
-        },
-      },
+      suggestionCity: "Twin City B",
     },
   });
 });
@@ -634,13 +517,7 @@ add_task(async function cityQueries_geoRegion() {
     expected: {
       geolocationCalled: true,
       weatherParams: EXPECTED_MERINO_PARAMS_WATERLOO_IA,
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "Waterloo",
-          region: "IA",
-        },
-      },
+      suggestionCity: "Waterloo",
     },
   });
 
@@ -654,13 +531,7 @@ add_task(async function cityQueries_geoRegion() {
     expected: {
       geolocationCalled: true,
       weatherParams: EXPECTED_MERINO_PARAMS_WATERLOO_AL,
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "Waterloo",
-          region: "AL",
-        },
-      },
+      suggestionCity: "Waterloo",
     },
   });
 
@@ -674,13 +545,7 @@ add_task(async function cityQueries_geoRegion() {
     expected: {
       geolocationCalled: true,
       weatherParams: EXPECTED_MERINO_PARAMS_WATERLOO_IA,
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "Waterloo",
-          region: "IA",
-        },
-      },
+      suggestionCity: "Waterloo",
     },
   });
 
@@ -694,13 +559,7 @@ add_task(async function cityQueries_geoRegion() {
     expected: {
       geolocationCalled: true,
       weatherParams: EXPECTED_MERINO_PARAMS_WATERLOO_IA,
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "Waterloo",
-          region: "IA",
-        },
-      },
+      suggestionCity: "Waterloo",
     },
   });
 
@@ -718,13 +577,7 @@ add_task(async function cityQueries_geoRegion() {
         region: "IA",
         country: "US",
       },
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "US CA City",
-          region: "IA",
-        },
-      },
+      suggestionCity: "US CA City",
     },
   });
 
@@ -742,14 +595,7 @@ add_task(async function cityQueries_geoRegion() {
         region: "08",
         country: "CA",
       },
-      // There isn't a geoname in the data for the region of the CA version of
-      // this city, so the city-only title should be used.
-      titleL10n: {
-        id: "urlbar-result-weather-title-city-only",
-        args: {
-          city: "US CA City",
-        },
-      },
+      suggestionCity: "US CA City",
     },
   });
 });
@@ -763,13 +609,7 @@ add_task(async function cityRegionQueries() {
     expected: {
       geolocationCalled: false,
       weatherParams: EXPECTED_MERINO_PARAMS_WATERLOO_IA,
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "Waterloo",
-          region: "IA",
-        },
-      },
+      suggestionCity: "Waterloo",
     },
   });
 
@@ -780,13 +620,7 @@ add_task(async function cityRegionQueries() {
     expected: {
       geolocationCalled: false,
       weatherParams: EXPECTED_MERINO_PARAMS_WATERLOO_AL,
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: "Waterloo",
-          region: "AL",
-        },
-      },
+      suggestionCity: "Waterloo",
     },
   });
 
@@ -807,24 +641,12 @@ add_task(async function noCityQuery() {
     expected: {
       geolocationCalled: false,
       weatherParams: {},
-      titleL10n: {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: MerinoTestUtils.WEATHER_SUGGESTION.city_name,
-          region: MerinoTestUtils.WEATHER_SUGGESTION.region_code,
-        },
-      },
+      suggestionCity: WEATHER_SUGGESTION.city_name,
     },
   });
 });
 
-async function doCityTest({
-  desc,
-  query,
-  geolocation,
-  expected,
-  merinoSuggestion = null,
-}) {
+async function doCityTest({ desc, query, geolocation, expected }) {
   info("Doing city test: " + JSON.stringify({ desc, query }));
 
   if (expected) {
@@ -834,8 +656,7 @@ async function doCityTest({
   let callsByProvider = await doSearch({
     query,
     geolocation,
-    merinoSuggestion,
-    expectedTitleL10n: expected?.titleL10n,
+    suggestionCity: expected?.suggestionCity,
   });
 
   // Check the Merino calls.
@@ -888,13 +709,7 @@ add_task(async function merinoCache() {
   let callsByProvider = await doSearch({
     query,
     geolocation,
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title",
-      args: {
-        city: "Waterloo",
-        region: "IA",
-      },
-    },
+    suggestionCity: "Waterloo",
   });
   info("search 1 callsByProvider: " + JSON.stringify(callsByProvider));
   Assert.equal(
@@ -917,13 +732,7 @@ add_task(async function merinoCache() {
   info("Doing search 2");
   callsByProvider = await doSearch({
     query,
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title",
-      args: {
-        city: "Waterloo",
-        region: "IA",
-      },
-    },
+    suggestionCity: "Waterloo",
   });
   info("search 2 callsByProvider: " + JSON.stringify(callsByProvider));
   Assert.ok(
@@ -944,13 +753,7 @@ add_task(async function merinoCache() {
   info("Doing search 3");
   callsByProvider = await doSearch({
     query,
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title",
-      args: {
-        city: "Waterloo",
-        region: "IA",
-      },
-    },
+    suggestionCity: "Waterloo",
   });
   info("search 3 callsByProvider: " + JSON.stringify(callsByProvider));
   Assert.ok(
@@ -970,13 +773,7 @@ add_task(async function merinoCache() {
   info("Doing search 4");
   callsByProvider = await doSearch({
     query,
-    expectedTitleL10n: {
-      id: "urlbar-result-weather-title",
-      args: {
-        city: "Waterloo",
-        region: "IA",
-      },
-    },
+    suggestionCity: "Waterloo",
   });
   info("search 4 callsByProvider: " + JSON.stringify(callsByProvider));
   Assert.equal(
@@ -994,12 +791,7 @@ add_task(async function merinoCache() {
   MerinoTestUtils.enableClientCache(false);
 });
 
-async function doSearch({
-  query,
-  geolocation,
-  merinoSuggestion,
-  expectedTitleL10n,
-}) {
+async function doSearch({ query, geolocation, suggestionCity }) {
   let callsByProvider = {};
 
   // Set up the Merino request handler.
@@ -1031,10 +823,14 @@ async function doSearch({
       "accuweather",
       "Sanity check: If the request isn't geolocation, it should be accuweather"
     );
-    let suggestion = {
-      ...WEATHER_SUGGESTION,
-      ...(merinoSuggestion ?? {}),
-    };
+    let suggestion = { ...WEATHER_SUGGESTION };
+    if (suggestionCity) {
+      suggestion = {
+        ...suggestion,
+        title: "Weather for " + suggestionCity,
+        city_name: suggestionCity,
+      };
+    }
     return {
       body: {
         request_id: "request_id",
@@ -1049,11 +845,11 @@ async function doSearch({
       providers: [UrlbarProviderQuickSuggest.name],
       isPrivate: false,
     }),
-    matches: !expectedTitleL10n
+    matches: !suggestionCity
       ? []
       : [
           QuickSuggestTestUtils.weatherResult({
-            titleL10n: expectedTitleL10n,
+            city: suggestionCity,
           }),
         ],
   });

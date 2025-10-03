@@ -7,7 +7,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Union
+from typing import (
+    Optional,
+    Union,
+)
 
 from packaging.version import Version
 
@@ -18,35 +21,23 @@ from mozversioncontrol.errors import (
     MissingVCSTool,
 )
 from mozversioncontrol.repo.git import GitRepository
-from mozversioncontrol.repo.jj import (
-    MINIMUM_SUPPORTED_JJ_VERSION,
-    USING_JJ_DETECTED,
-    USING_JJ_WARNING,
-    JjVersionError,
-    JujutsuRepository,
-)
+from mozversioncontrol.repo.jj import JujutsuRepository
 from mozversioncontrol.repo.mercurial import HgRepository
 from mozversioncontrol.repo.source import SrcRepository
 
-VCS_CLASSES: dict[str, type] = {
-    "hg": HgRepository,
-    "git": GitRepository,
-    "jj": JujutsuRepository,
-    "src": SrcRepository,
-}
+MINIMUM_SUPPORTED_JJ_VERSION = Version("0.28")
+USING_JJ_DETECTED = 'Using JujutsuRepository because a ".jj/" directory was detected!'
+USING_JJ_WARNING = """\
+
+Warning: jj support is currently experimental, and may be disabled by setting the
+environment variable MOZ_AVOID_JJ_VCS=1. (This warning may be suppressed by
+setting MOZ_AVOID_JJ_VCS=0.)"""
 
 
-def get_specific_repository_object(path: Optional[Union[str, Path]], vcs: str):
-    """Return a repository object for the given VCS and path."""
-    resolved_path = Path(path).resolve()
+class UnsupportedJujutsuVersionError(Exception):
+    """Raised when the detected jj version is below the required minimum."""
 
-    try:
-        vcs_cls = VCS_CLASSES[vcs]
-    except KeyError:
-        raise ValueError(
-            f"Unsupported VCS: '{vcs}'; expected one of {tuple(VCS_CLASSES)}"
-        )
-    return vcs_cls(resolved_path)
+    pass
 
 
 def get_repository_object(path: Optional[Union[str, Path]]):
@@ -81,7 +72,7 @@ def get_repository_object(path: Optional[Union[str, Path]]):
                 current_jj_version = Version(match.group(1))
 
                 if current_jj_version < MINIMUM_SUPPORTED_JJ_VERSION:
-                    raise JjVersionError(
+                    raise UnsupportedJujutsuVersionError(
                         f"Detected jj version {current_jj_version}, "
                         f"but version {MINIMUM_SUPPORTED_JJ_VERSION} or newer is required.\n"
                         f'Full "jj --version" output was: "{raw_jj_version}"'

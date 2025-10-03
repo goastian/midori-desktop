@@ -104,9 +104,11 @@ var gProfiles = {
       "label",
       SelectableProfileService.currentProfile.name
     );
-    let avatarURL =
-      await SelectableProfileService.currentProfile.getAvatarURL(16);
-    profilesButton.setAttribute("image", `${avatarURL}`);
+    let avatar = SelectableProfileService.currentProfile.avatar;
+    profilesButton.setAttribute(
+      "image",
+      `chrome://browser/content/profiles/assets/16_${avatar}.svg`
+    );
   },
 
   /**
@@ -129,7 +131,7 @@ var gProfiles = {
       menuitem.setAttribute("label", profile.name);
       menuitem.style.setProperty("--menu-profiles-theme-bg", themeBg);
       menuitem.style.setProperty("--menu-profiles-theme-fg", themeFg);
-      menuitem.style.listStyleImage = `url(${await profile.getAvatarURL(48)})`;
+      menuitem.style.listStyleImage = `url(chrome://browser/content/profiles/assets/48_${profile.avatar}.svg)`;
       menuitem.classList.add("menuitem-iconic", "menuitem-iconic-profile");
 
       if (profile.id === currentProfile.id) {
@@ -143,9 +145,10 @@ var gProfiles = {
 
     let newProfile = document.createXULElement("menuitem");
     newProfile.id = "menu_newProfile";
-    newProfile.className = "menuitem-iconic";
     newProfile.setAttribute("command", "Profiles:CreateProfile");
     newProfile.setAttribute("data-l10n-id", "menu-profiles-new-profile");
+    newProfile.style.listStyleImage =
+      "url(chrome://global/skin/icons/plus.svg)";
     menuPopup.appendChild(newProfile);
 
     let separator = document.createXULElement("menuseparator");
@@ -323,7 +326,8 @@ var gProfiles = {
         themeFg
       );
 
-      profileIconEl.style.listStyleImage = `url(${await currentProfile.getAvatarURL(80)})`;
+      let avatar = currentProfile.avatar;
+      profileIconEl.style.listStyleImage = `url("chrome://browser/content/profiles/assets/80_${avatar}.svg")`;
     }
 
     let subtitle = PanelMultiView.getViewNode(document, "profiles-subtitle");
@@ -345,7 +349,10 @@ var gProfiles = {
       let { themeFg, themeBg } = profile.theme;
       button.style.setProperty("--appmenu-profiles-theme-bg", themeBg);
       button.style.setProperty("--appmenu-profiles-theme-fg", themeFg);
-      button.setAttribute("image", `${await profile.getAvatarURL(16)}`);
+      button.setAttribute(
+        "image",
+        `chrome://browser/content/profiles/assets/16_${profile.avatar}.svg`
+      );
 
       profilesList.appendChild(button);
     }

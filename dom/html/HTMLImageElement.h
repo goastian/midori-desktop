@@ -42,7 +42,7 @@ class HTMLImageElement final : public nsGenericHTMLElement,
 
   bool Draggable() const override;
 
-  ResponsiveImageSelector* GetResponsiveImageSelector() const {
+  ResponsiveImageSelector* GetResponsiveImageSelector() {
     return mResponsiveSelector.get();
   }
 

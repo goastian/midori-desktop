@@ -131,12 +131,18 @@ bool SourceSurfaceSkia::InitFromImage(const sk_sp<SkImage>& aImage,
         aFormat != SurfaceFormat::UNKNOWN
             ? aFormat
             : SkiaColorTypeToGfxFormat(pixmap.colorType(), pixmap.alphaType());
+    if (pixmap.info().bytesPerPixel() != BytesPerPixel(mFormat)) {
+      return false;
+    }
     mStride = pixmap.rowBytes();
   } else if (aFormat != SurfaceFormat::UNKNOWN) {
     mFormat = aFormat;
-    SkImageInfo info = MakeSkiaImageInfo(mSize, mFormat);
+    const SkImageInfo& info = aImage->imageInfo();
+    if (info.bytesPerPixel() != BytesPerPixel(mFormat)) {
+      return false;
+    }
     mStride = GetAlignedStride<4>(info.width(), info.bytesPerPixel());
-    if (!mStride) {
+    if (mStride <= 0 || size_t(mStride) < info.minRowBytes64()) {
       return false;
     }
   } else {

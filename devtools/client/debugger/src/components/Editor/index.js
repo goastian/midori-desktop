@@ -57,7 +57,7 @@ import {
   onMouseOver,
 } from "../../utils/editor/index";
 
-import { updateEditorSizeCssVariables } from "../../utils/ui";
+import { resizeToggleButton } from "../../utils/ui";
 
 const { debounce } = require("resource://devtools/shared/debounce.js");
 const classnames = require("resource://devtools/client/shared/classnames.js");
@@ -169,7 +169,9 @@ class Editor extends PureComponent {
 
   onEditorUpdated = viewUpdate => {
     if (viewUpdate.docChanged || viewUpdate.geometryChanged) {
-      updateEditorSizeCssVariables(viewUpdate.view.dom);
+      resizeToggleButton(
+        viewUpdate.view.dom.querySelector(".cm-gutters").clientWidth
+      );
       this.props.updateViewport();
     } else if (viewUpdate.selectionSet) {
       this.onCursorChange();

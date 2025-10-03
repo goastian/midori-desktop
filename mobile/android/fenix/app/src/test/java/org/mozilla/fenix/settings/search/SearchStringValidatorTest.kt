@@ -13,11 +13,11 @@ import mozilla.components.concept.fetch.Response
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import java.io.ByteArrayInputStream
 import java.io.IOException
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class SearchStringValidatorTest {
 
     private val client: Client = mockk()

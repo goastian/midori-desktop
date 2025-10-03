@@ -9,7 +9,7 @@
  * changelog file.
  */
 
-import {readFileSync, writeFileSync} from 'node:fs';
+import {readFileSync, writeFileSync} from 'fs';
 
 interface Version {
   version: string;

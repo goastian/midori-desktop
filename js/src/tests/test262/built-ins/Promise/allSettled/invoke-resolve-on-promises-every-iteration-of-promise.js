@@ -5,7 +5,7 @@
 /*---
 description: >
   Invocation of the constructor's `resolve` method for iterable with promise values
-esid: sec-promise.allsettled
+esid: sec-promise.allSettled
 info: |
   7. Let result be PerformPromiseAllSettled(iteratorRecord, C, promiseCapability).
 

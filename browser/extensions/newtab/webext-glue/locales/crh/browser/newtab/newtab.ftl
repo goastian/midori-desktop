@@ -197,6 +197,3 @@ newtab-pocket-read-more = Popülâr Mevzular:
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

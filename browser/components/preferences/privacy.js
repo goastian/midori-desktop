@@ -77,7 +77,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
 );
 
 ChromeUtils.defineESModuleGetters(this, {
-  DoHConfigController: "moz-src:///toolkit/components/doh/DoHConfig.sys.mjs",
+  DoHConfigController: "resource://gre/modules/DoHConfig.sys.mjs",
   Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
   SelectableProfileService:
     "resource:///modules/profiles/SelectableProfileService.sys.mjs",
@@ -433,6 +433,21 @@ var gPrivacyPane = {
         PREF_SETTING_TYPE,
         TRACKING_PROTECTION_KEY
       ).then(setInputsDisabledState);
+    }
+  },
+
+  /**
+   * Hide the "Change Block List" link for trackers/tracking content in the
+   * custom Content Blocking/ETP panel. By default, it will not be visible.
+   */
+  _showCustomBlockList() {
+    let prefValue = Services.prefs.getBoolPref(
+      "browser.contentblocking.customBlockList.preferences.ui.enabled"
+    );
+    if (!prefValue) {
+      document.getElementById("changeBlockListLink").style.display = "none";
+    } else {
+      setEventListener("changeBlockListLink", "click", this.showBlockLists);
     }
   },
 
@@ -922,6 +937,7 @@ var gPrivacyPane = {
     /* Initialize Content Blocking */
     this.initContentBlocking();
 
+    this._showCustomBlockList();
     this.trackingProtectionReadPrefs();
     this.fingerprintingProtectionReadPrefs();
     this.networkCookieBehaviorReadPrefs();
@@ -1458,8 +1474,8 @@ var gPrivacyPane = {
           defaults.getBoolPref(
             "privacy.trackingprotection.cryptomining.enabled"
           )
-            ? "cm"
-            : "-cm"
+            ? "cryptoTP"
+            : "-cryptoTP"
         );
         rulesArray.push(
           defaults.getBoolPref(
@@ -1533,11 +1549,11 @@ var gPrivacyPane = {
               selector + " .fingerprinters-option"
             ).hidden = true;
             break;
-          case "cm":
+          case "cryptoTP":
             document.querySelector(selector + " .cryptominers-option").hidden =
               false;
             break;
-          case "-cm":
+          case "-cryptoTP":
             document.querySelector(selector + " .cryptominers-option").hidden =
               true;
             break;
@@ -1701,7 +1717,8 @@ var gPrivacyPane = {
       fppMenu.value = "never";
       fppCheckbox.checked = false;
     }
-    fppMenu.disabled = !fppCheckbox.checked;
+    fppMenu.disabled = !fppCheckbox.checked || enabledPref.locked;
+    fppCheckbox.disabled = enabledPref.locked;
   },
 
   /**
@@ -2324,6 +2341,15 @@ var gPrivacyPane = {
       "chrome://browser/content/preferences/dialogs/permissions.xhtml",
       undefined,
       params
+    );
+  },
+
+  /**
+   * Displays the available block lists for tracking protection.
+   */
+  showBlockLists() {
+    gSubDialog.open(
+      "chrome://browser/content/preferences/dialogs/blocklists.xhtml"
     );
   },
 

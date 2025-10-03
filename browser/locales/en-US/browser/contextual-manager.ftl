@@ -15,7 +15,6 @@ contextual-manager-more-options-popup =
 
 ## Passwords
 
-contextual-manager-passwords-title = Passwords
 contextual-manager-passwords-command-create = Add password
 contextual-manager-passwords-command-import-from-browser = Import from another browser…
 contextual-manager-passwords-command-import = Import from a file…
@@ -181,9 +180,6 @@ contextual-manager-passwords-update-password-success-heading =
   .heading = Password saved
 contextual-manager-passwords-update-password-success-button = Done
 
-contextual-manager-passwords-update-username-success-heading =
-  .heading = Username saved
-
 # Message to confirm successful removal of a password/passwords.
 #   $total (number) - Total number of passwords
 contextual-manager-passwords-delete-password-success-heading =
@@ -278,34 +274,34 @@ contextual-manager-origin-login-line-with-alert =
 # Variables
 #   $username (string) - The username associated with the login
 contextual-manager-username-login-line =
-  .aria-label = Copy username { $username }
-  .title = Copy username { $username }
+  .aria-label = Copy Username { $username }
+  .title = Copy Username { $username }
 # "(Warning)" indicates that a login's username field has an alert icon.
 # Variables
 #   $username (string) - The username associated with the login
 contextual-manager-username-login-line-with-alert =
-  .aria-label = Copy username { $username } (Warning)
-  .title = Copy username { $username } (Warning)
+  .aria-label = Copy Username { $username } (Warning)
+  .title = Copy Username { $username } (Warning)
 contextual-manager-password-login-line =
-  .aria-label = Copy password
-  .title = Copy password
+  .aria-label = Copy Password
+  .title = Copy Password
 # "(Warning)" indicates that a login's password field has an alert icon.
 contextual-manager-password-login-line-with-alert =
-  .aria-label = Copy password (Warning)
-  .title = Copy password (Warning)
+  .aria-label = Copy Password (Warning)
+  .title = Copy Password (Warning)
 contextual-manager-edit-login-button = Edit
-  .tooltiptext = Edit password
+  .tooltiptext = Edit Password
 contextual-manager-view-alert-heading =
   .heading = View alert
 contextual-manager-view-alert-button =
   .tooltiptext = Review alert
 
 contextual-manager-show-password-button =
-  .aria-label = Show password
-  .title = Show password
+  .aria-label = Show Password
+  .title = Show Password
 contextual-manager-hide-password-button =
-  .aria-label = Hide password
-  .title = Hide password
+  .aria-label = Hide Password
+  .title = Hide Password
 
 # The message displayed when the search text does not match any of the user's saved logins.
 contextual-manager-passwords-no-passwords-found-header =

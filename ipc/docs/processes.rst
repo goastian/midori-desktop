@@ -77,7 +77,7 @@ This diagram shows the primary process types in Firefox.
 .. mermaid::
 
     graph TD
-        RDD -->|PRemoteMediaManager| Content
+        RDD -->|PRemoteDecoderManager| Content
         RDD(Data Decoder) ==>|PRDD| Main
 
         Launcher --> Main

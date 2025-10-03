@@ -254,7 +254,7 @@ JitCode* BaselineCacheIRCompiler::compile() {
   }
 
   Linker linker(masm);
-  JitCode* newStubCode = linker.newCode(cx_, CodeKind::Baseline);
+  Rooted<JitCode*> newStubCode(cx_, linker.newCode(cx_, CodeKind::Baseline));
   if (!newStubCode) {
     cx_->recoverFromOutOfMemory();
     return nullptr;
@@ -544,17 +544,19 @@ bool BaselineCacheIRCompiler::emitLoadDynamicSlotResult(ObjOperandId objId,
 }
 
 bool BaselineCacheIRCompiler::emitCallScriptedGetterShared(
-    ValOperandId receiverId, ObjOperandId calleeId, bool sameRealm,
+    ValOperandId receiverId, uint32_t getterOffset, bool sameRealm,
     uint32_t nargsAndFlagsOffset, Maybe<uint32_t> icScriptOffset) {
   ValueOperand receiver = allocator.useValueRegister(masm, receiverId);
-  Register callee = allocator.useRegister(masm, calleeId);
+  Address getterAddr(stubAddress(getterOffset));
 
   AutoScratchRegister code(allocator, masm);
+  AutoScratchRegister callee(allocator, masm);
   AutoScratchRegister scratch(allocator, masm);
 
   bool isInlined = icScriptOffset.isSome();
 
   // First, retrieve raw jitcode for getter.
+  masm.loadPtr(getterAddr, callee);
   if (isInlined) {
     FailurePath* failure;
     if (!addFailurePath(&failure)) {
@@ -619,19 +621,19 @@ bool BaselineCacheIRCompiler::emitCallScriptedGetterShared(
 }
 
 bool BaselineCacheIRCompiler::emitCallScriptedGetterResult(
-    ValOperandId receiverId, ObjOperandId calleeId, bool sameRealm,
+    ValOperandId receiverId, uint32_t getterOffset, bool sameRealm,
     uint32_t nargsAndFlagsOffset) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
   Maybe<uint32_t> icScriptOffset = mozilla::Nothing();
-  return emitCallScriptedGetterShared(receiverId, calleeId, sameRealm,
+  return emitCallScriptedGetterShared(receiverId, getterOffset, sameRealm,
                                       nargsAndFlagsOffset, icScriptOffset);
 }
 
 bool BaselineCacheIRCompiler::emitCallInlinedGetterResult(
-    ValOperandId receiverId, ObjOperandId calleeId, uint32_t icScriptOffset,
+    ValOperandId receiverId, uint32_t getterOffset, uint32_t icScriptOffset,
     bool sameRealm, uint32_t nargsAndFlagsOffset) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
-  return emitCallScriptedGetterShared(receiverId, calleeId, sameRealm,
+  return emitCallScriptedGetterShared(receiverId, getterOffset, sameRealm,
                                       nargsAndFlagsOffset,
                                       mozilla::Some(icScriptOffset));
 }
@@ -838,7 +840,7 @@ bool BaselineCacheIRCompiler::emitSameValueResult(ValOperandId lhsId,
     masm.pushValue(lhs);
     masm.pushValue(rhs);
 
-    using Fn = bool (*)(JSContext*, const Value&, const Value&, bool*);
+    using Fn = bool (*)(JSContext*, HandleValue, HandleValue, bool*);
     callVM<Fn, SameValue>(masm);
 
     stubFrame.leave(masm);
@@ -1649,9 +1651,10 @@ bool BaselineCacheIRCompiler::emitCallNativeSetter(
 }
 
 bool BaselineCacheIRCompiler::emitCallScriptedSetterShared(
-    ObjOperandId receiverId, ObjOperandId calleeId, ValOperandId rhsId,
+    ObjOperandId receiverId, uint32_t setterOffset, ValOperandId rhsId,
     bool sameRealm, uint32_t nargsAndFlagsOffset,
     Maybe<uint32_t> icScriptOffset) {
+  AutoScratchRegister callee(allocator, masm);
   AutoScratchRegister scratch(allocator, masm);
 #if defined(JS_CODEGEN_X86)
   Register code = scratch;
@@ -1660,10 +1663,13 @@ bool BaselineCacheIRCompiler::emitCallScriptedSetterShared(
 #endif
 
   Register receiver = allocator.useRegister(masm, receiverId);
-  Register callee = allocator.useRegister(masm, calleeId);
+  Address setterAddr(stubAddress(setterOffset));
   ValueOperand val = allocator.useValueRegister(masm, rhsId);
 
   bool isInlined = icScriptOffset.isSome();
+
+  // First, load the callee.
+  masm.loadPtr(setterAddr, callee);
 
   if (isInlined) {
     // If we are calling a trial-inlined setter, guard that the
@@ -1746,20 +1752,21 @@ bool BaselineCacheIRCompiler::emitCallScriptedSetterShared(
 }
 
 bool BaselineCacheIRCompiler::emitCallScriptedSetter(
-    ObjOperandId receiverId, ObjOperandId calleeId, ValOperandId rhsId,
+    ObjOperandId receiverId, uint32_t setterOffset, ValOperandId rhsId,
     bool sameRealm, uint32_t nargsAndFlagsOffset) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
   Maybe<uint32_t> icScriptOffset = mozilla::Nothing();
-  return emitCallScriptedSetterShared(receiverId, calleeId, rhsId, sameRealm,
-                                      nargsAndFlagsOffset, icScriptOffset);
+  return emitCallScriptedSetterShared(receiverId, setterOffset, rhsId,
+                                      sameRealm, nargsAndFlagsOffset,
+                                      icScriptOffset);
 }
 
 bool BaselineCacheIRCompiler::emitCallInlinedSetter(
-    ObjOperandId receiverId, ObjOperandId calleeId, ValOperandId rhsId,
+    ObjOperandId receiverId, uint32_t setterOffset, ValOperandId rhsId,
     uint32_t icScriptOffset, bool sameRealm, uint32_t nargsAndFlagsOffset) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
-  return emitCallScriptedSetterShared(receiverId, calleeId, rhsId, sameRealm,
-                                      nargsAndFlagsOffset,
+  return emitCallScriptedSetterShared(receiverId, setterOffset, rhsId,
+                                      sameRealm, nargsAndFlagsOffset,
                                       mozilla::Some(icScriptOffset));
 }
 
@@ -2279,6 +2286,7 @@ bool js::jit::TryFoldingStubs(JSContext* cx, ICFallbackStub* fallback,
 
   uint32_t numActive = 0;
   Maybe<uint32_t> foldableFieldOffset;
+  RootedValue shape(cx);
   RootedValueVector shapeList(cx);
 
   // Try to add a shape to the list. Can fail on OOM or for cross-realm shapes.
@@ -4626,11 +4634,8 @@ bool BaselineCacheIRCompiler::emitRegExpBuiltinExecTestResult(
 
   SetRegExpStubInputRegisters(masm, &regexp, RegExpExecTestRegExpReg, &input,
                               RegExpExecTestStringReg, nullptr, InvalidReg);
-
   // Ensure `scratch` doesn't conflict with the stub's input registers.
   scratch = ReturnReg;
-
-  masm.reserveStack(RegExpReservedStack);
 
   Label done, vmCall;
   CallRegExpStub(masm, JitZone::offsetOfRegExpExecTestStub(), scratch, &vmCall);

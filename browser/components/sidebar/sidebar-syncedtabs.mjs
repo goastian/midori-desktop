@@ -24,7 +24,7 @@ class SyncedTabsInSidebar extends SidebarPage {
 
   static queries = {
     cards: { all: "moz-card" },
-    searchTextbox: "moz-input-search",
+    searchTextbox: "fxview-search-textbox",
   };
 
   constructor() {
@@ -298,11 +298,12 @@ class SyncedTabsInSidebar extends SidebarPage {
           view="viewTabsSidebar"
         >
         </sidebar-panel-header>
-        <moz-input-search
+        <fxview-search-textbox
           data-l10n-id="firefoxview-search-text-box-tabs"
           data-l10n-attrs="placeholder"
-          @MozInputSearch:search=${this.onSearchQuery}
-        ></moz-input-search>
+          @fxview-search-textbox-query=${this.onSearchQuery}
+          size="15"
+        ></fxview-search-textbox>
         ${when(
           messageCard,
           () => this.messageCardTemplate(messageCard),

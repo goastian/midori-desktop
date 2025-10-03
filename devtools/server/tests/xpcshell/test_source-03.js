@@ -13,9 +13,9 @@ add_task(
       // Create a two globals in the default junk sandbox compartment so that
       // both globals are part of the same compartment.
       server.allowNewThreadGlobals();
-      const debuggee1 = Cu.Sandbox("http://example.com");
+      const debuggee1 = Cu.Sandbox(systemPrincipal);
       debuggee1.__name = "debuggee2.js";
-      const debuggee2 = Cu.Sandbox("http://example.com");
+      const debuggee2 = Cu.Sandbox(systemPrincipal);
       debuggee2.__name = "debuggee2.js";
       server.disallowNewThreadGlobals();
 

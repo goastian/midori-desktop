@@ -11,6 +11,7 @@ from collections import defaultdict
 from urllib.parse import urlsplit
 
 import mozpack.path as mozpath
+import six
 from manifestparser import TestManifest, combine_fields
 from mozbuild.base import MozbuildObject
 from mozbuild.testing import REFTEST_FLAVORS, TEST_MANIFESTS
@@ -463,7 +464,7 @@ _test_flavors = {
 _test_subsuites = {
     ("browser-chrome", "a11y"): "mochitest-browser-a11y",
     ("browser-chrome", "devtools"): "mochitest-devtools-chrome",
-    ("browser-chrome", "media-bc"): "mochitest-browser-media",
+    ("browser-chrome", "media"): "mochitest-browser-media",
     ("browser-chrome", "remote"): "mochitest-remote",
     ("browser-chrome", "screenshots"): "mochitest-browser-screenshots",
     ("browser-chrome", "translations"): "mochitest-browser-translations",
@@ -524,7 +525,8 @@ def rewrite_test_base(test, new_base):
     return test
 
 
-class TestLoader(MozbuildObject, metaclass=ABCMeta):
+@six.add_metaclass(ABCMeta)
+class TestLoader(MozbuildObject):
     @abstractmethod
     def __call__(self):
         """Generate test metadata."""

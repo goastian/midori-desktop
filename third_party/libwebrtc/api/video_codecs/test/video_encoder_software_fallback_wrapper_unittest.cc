@@ -555,7 +555,7 @@ class ForcedFallbackTest : public VideoEncoderSoftwareFallbackWrapperTestBase {
     CheckLastEncoderName(expected_name);
   }
 
-  ScopedFakeClock clock_;
+  rtc::ScopedFakeClock clock_;
 };
 
 class ForcedFallbackTestEnabled : public ForcedFallbackTest {

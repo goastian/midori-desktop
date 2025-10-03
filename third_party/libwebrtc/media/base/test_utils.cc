@@ -10,14 +10,12 @@
 
 #include "media/base/test_utils.h"
 
-#include <cstddef>
 #include <cstdint>
-#include <string>
-#include <vector>
 
-#include "media/base/stream_params.h"
+#include "api/video/video_frame.h"
+#include "api/video/video_source_interface.h"
 
-namespace webrtc {
+namespace cricket {
 
 cricket::StreamParams CreateSimStreamParams(
     const std::string& cname,
@@ -54,4 +52,4 @@ cricket::StreamParams CreatePrimaryWithFecFrStreamParams(
   return sp;
 }
 
-}  // namespace webrtc
+}  // namespace cricket

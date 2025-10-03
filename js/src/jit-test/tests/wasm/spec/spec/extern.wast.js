@@ -21,9 +21,6 @@ let $0 = instantiate(`(module
   (type $$st (struct))
   (type $$at (array i8))
 
-  (global externref (extern.convert_any (ref.null any)))
-  (global anyref (any.convert_extern (ref.null extern)))
-
   (table 10 anyref)
 
   (elem declare func $$f)
@@ -52,53 +49,53 @@ let $0 = instantiate(`(module
   )
 )`);
 
-// ./test/core/gc/extern.wast:37
+// ./test/core/gc/extern.wast:34
 invoke($0, `init`, [externref(0)]);
 
-// ./test/core/gc/extern.wast:39
+// ./test/core/gc/extern.wast:36
 assert_return(() => invoke($0, `internalize`, [externref(1)]), [new HostRefResult(1)]);
 
-// ./test/core/gc/extern.wast:40
+// ./test/core/gc/extern.wast:37
 assert_return(() => invoke($0, `internalize`, [null]), [value('anyref', null)]);
 
-// ./test/core/gc/extern.wast:42
+// ./test/core/gc/extern.wast:39
 assert_return(() => invoke($0, `externalize`, [hostref(2)]), [new ExternRefResult(2)]);
 
-// ./test/core/gc/extern.wast:43
+// ./test/core/gc/extern.wast:40
 assert_return(() => invoke($0, `externalize`, [null]), [value('externref', null)]);
 
-// ./test/core/gc/extern.wast:45
+// ./test/core/gc/extern.wast:42
 assert_return(() => invoke($0, `externalize-i`, [0]), [value('externref', null)]);
 
-// ./test/core/gc/extern.wast:46
+// ./test/core/gc/extern.wast:43
 assert_return(() => invoke($0, `externalize-i`, [1]), [new RefWithType('externref')]);
 
-// ./test/core/gc/extern.wast:47
+// ./test/core/gc/extern.wast:44
 assert_return(() => invoke($0, `externalize-i`, [2]), [new RefWithType('externref')]);
 
-// ./test/core/gc/extern.wast:48
+// ./test/core/gc/extern.wast:45
 assert_return(() => invoke($0, `externalize-i`, [3]), [new RefWithType('externref')]);
 
-// ./test/core/gc/extern.wast:49
+// ./test/core/gc/extern.wast:46
 assert_return(() => invoke($0, `externalize-i`, [4]), [new RefWithType('externref')]);
 
-// ./test/core/gc/extern.wast:50
+// ./test/core/gc/extern.wast:47
 assert_return(() => invoke($0, `externalize-i`, [5]), [value('externref', null)]);
 
-// ./test/core/gc/extern.wast:52
+// ./test/core/gc/extern.wast:49
 assert_return(() => invoke($0, `externalize-ii`, [0]), [value('anyref', null)]);
 
-// ./test/core/gc/extern.wast:53
+// ./test/core/gc/extern.wast:50
 assert_return(() => invoke($0, `externalize-ii`, [1]), [new RefWithType('i31ref')]);
 
-// ./test/core/gc/extern.wast:54
+// ./test/core/gc/extern.wast:51
 assert_return(() => invoke($0, `externalize-ii`, [2]), [new RefWithType('structref')]);
 
-// ./test/core/gc/extern.wast:55
+// ./test/core/gc/extern.wast:52
 assert_return(() => invoke($0, `externalize-ii`, [3]), [new RefWithType('arrayref')]);
 
-// ./test/core/gc/extern.wast:56
+// ./test/core/gc/extern.wast:53
 assert_return(() => invoke($0, `externalize-ii`, [4]), [new HostRefResult(0)]);
 
-// ./test/core/gc/extern.wast:57
+// ./test/core/gc/extern.wast:54
 assert_return(() => invoke($0, `externalize-ii`, [5]), [value('anyref', null)]);

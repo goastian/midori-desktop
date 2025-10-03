@@ -10,8 +10,6 @@
 
 #include "modules/remote_bitrate_estimator/inter_arrival.h"
 
-#include <cstddef>
-#include <cstdint>
 #include <memory>
 
 #include "test/gtest.h"

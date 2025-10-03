@@ -15,7 +15,6 @@ import androidx.annotation.IdRes
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
-import androidx.navigation.NavController
 import androidx.navigation.NavDirections
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
@@ -25,8 +24,6 @@ import org.mozilla.fenix.NavHostActivity
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.Components
 import org.mozilla.fenix.components.toolbar.ToolbarContainerView
-import org.mozilla.fenix.navigation.DefaultNavControllerProvider
-import org.mozilla.fenix.navigation.NavControllerProvider
 import org.mozilla.fenix.utils.isLargeScreenSize
 
 /**
@@ -35,25 +32,8 @@ import org.mozilla.fenix.utils.isLargeScreenSize
 val Fragment.requireComponents: Components
     get() = requireContext().components
 
-/**
- * Navigates from the given [Fragment] to a specified destination using the provided [NavDirections].
- *
- * @param id The ID of the current destination.
- * @param directions The [NavDirections] that define the navigation action and arguments.
- * @param options Optional [NavOptions] to customize the navigation behavior (e.g., animations, pop behavior).
- * @param navControllerProvider The [NavControllerProvider] used to retrieve the [NavController].
- * Defaults to [.DefaultNavControllerProvider].
- *
- * @throws IllegalStateException if the [NavController] cannot be found for the current [Fragment].
- */
-fun Fragment.nav(
-    @IdRes id: Int?,
-    directions: NavDirections,
-    options: NavOptions? = null,
-    navControllerProvider: NavControllerProvider = DefaultNavControllerProvider(),
-) {
-    val navController = navControllerProvider.getNavController(this)
-    navController.nav(id, directions, options)
+fun Fragment.nav(@IdRes id: Int?, directions: NavDirections, options: NavOptions? = null) {
+    findNavController().nav(id, directions, options)
 }
 
 fun Fragment.getPreferenceKey(@StringRes resourceId: Int): String = getString(resourceId)

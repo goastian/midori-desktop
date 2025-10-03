@@ -71,7 +71,6 @@
 #include "nsHashKeys.h"
 #include "nsIChannel.h"
 #include "nsIChannelEventSink.h"
-#include "nsIClassifiedChannel.h"
 #include "nsID.h"
 #include "nsIDocumentViewer.h"
 #include "nsIInterfaceRequestor.h"
@@ -259,7 +258,6 @@ class HTMLSharedElement;
 class HTMLVideoElement;
 class HTMLImageElement;
 class ImageTracker;
-class IntegrityPolicy;
 enum class InteractiveWidget : uint8_t;
 struct LifecycleCallbackArgs;
 class Link;
@@ -752,6 +750,13 @@ class Document : public nsINode,
   nsIURI* GetOriginalURI() const { return mOriginalURI; }
 
   /**
+   * Return the base domain of the document.  This has been computed using
+   * mozIThirdPartyUtil::GetBaseDomain() and can be used for third-party
+   * checks.  When the URI of the document changes, this value is recomputed.
+   */
+  nsCString GetBaseDomain() const { return mBaseDomain; }
+
+  /**
    * Set the URI for the document.  This also sets the document's original URI,
    * if it's null.
    */
@@ -791,8 +796,6 @@ class Document : public nsINode,
    * Set referrer policy and upgrade-insecure-requests flags
    */
   void ApplySettingsFromCSP(bool aSpeculative);
-
-  IntegrityPolicy* GetIntegrityPolicy() const { return mIntegrityPolicy; }
 
   already_AddRefed<nsIParser> CreatorParserOrNull() {
     nsCOMPtr<nsIParser> parser = mParser;
@@ -1531,7 +1534,6 @@ class Document : public nsINode,
   friend class nsUnblockOnloadEvent;
 
   nsresult InitCSP(nsIChannel* aChannel);
-  nsresult InitIntegrityPolicy(nsIChannel* aChannel);
   nsresult InitCOEP(nsIChannel* aChannel);
   nsresult InitDocPolicy(nsIChannel* aChannel);
 
@@ -3889,23 +3891,10 @@ class Document : public nsINode,
   // The URLs passed to this function should match what
   // JS::DescribeScriptedCaller() returns, since this API is used to
   // determine whether some code is being called from a tracking script.
-  void NoteScriptTrackingStatus(const nsACString& aURL,
-                                net::ClassificationFlags& aFlags);
+  void NoteScriptTrackingStatus(const nsACString& aURL, bool isTracking);
   // The JSContext passed to this method represents the context that we want to
   // determine if it belongs to a tracker.
   bool IsScriptTracking(JSContext* aCx) const;
-
-  // Acquires the script tracking flags for the currently executing script. If
-  // the currently executing script is not a tracker, it will return the
-  // classification flags of the document.
-  net::ClassificationFlags GetScriptTrackingFlags() const;
-
-  net::ClassificationFlags GetClassificationFlags() {
-    return mClassificationFlags;
-  }
-  void SetClassificationFlags(net::ClassificationFlags aFlags) {
-    mClassificationFlags = aFlags;
-  }
 
   // ResizeObserver usage.
   void AddResizeObserver(ResizeObserver& aObserver) {
@@ -4664,6 +4653,9 @@ class Document : public nsINode,
   nsCOMPtr<nsIURI> mDocumentBaseURI;
   nsCOMPtr<nsIURI> mChromeXHRDocBaseURI;
 
+  // The base domain of the document for third-party checks.
+  nsCString mBaseDomain;
+
   // A lazily-constructed URL data for style system to resolve URL values.
   RefPtr<URLExtraData> mCachedURLData;
   nsCOMPtr<nsIReferrerInfo> mCachedReferrerInfoForInternalCSSAndSVGResources;
@@ -5175,7 +5167,6 @@ class Document : public nsINode,
   // CSP so we do not have to deserialize the CSP from the Client all the time.
   nsCOMPtr<nsIContentSecurityPolicy> mCSP;
   nsCOMPtr<nsIContentSecurityPolicy> mPreloadCSP;
-  RefPtr<IntegrityPolicy> mIntegrityPolicy;
 
  private:
   nsCString mContentType;
@@ -5313,10 +5304,10 @@ class Document : public nsINode,
 
   RefPtr<nsCommandManager> mMidasCommandManager;
 
-  // The hashmap of all the tracking script URLs.  URLs are added to this map by
+  // The set of all the tracking script URLs.  URLs are added to this set by
   // calling NoteScriptTrackingStatus().  Currently we assume that a URL not
-  // existing in the map means the corresponding script isn't a tracking script.
-  nsTHashMap<nsCStringHashKey, net::ClassificationFlags> mTrackingScripts;
+  // existing in the set means the corresponding script isn't a tracking script.
+  nsTHashSet<nsCString> mTrackingScripts;
 
   // Pointer to our parser if we're currently in the process of being
   // parsed into.
@@ -5545,8 +5536,6 @@ class Document : public nsINode,
   nsCOMPtr<nsICookieJarSettings> mCookieJarSettings;
 
   bool mHasStoragePermission;
-
-  net::ClassificationFlags mClassificationFlags;
 
   // Document generation. Gets incremented everytime it changes.
   int32_t mGeneration;

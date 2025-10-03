@@ -175,23 +175,20 @@ ScreenCapturerFuchsia::GetBufferConstraints() {
                                        fuchsia::sysmem2::CPU_USAGE_WRITE);
   constraints.set_min_buffer_count(kMinBufferCount);
 
-  auto& memory_constraints = *constraints.mutable_buffer_memory_constraints();
-  memory_constraints.set_ram_domain_supported(true);
-  memory_constraints.set_cpu_domain_supported(true);
+  auto& bmc = *constraints.mutable_buffer_memory_constraints();
+  bmc.set_ram_domain_supported(true);
+  bmc.set_cpu_domain_supported(true);
 
-  fuchsia::sysmem2::ImageFormatConstraints& image_constraints =
+  fuchsia::sysmem2::ImageFormatConstraints& ifc =
       constraints.mutable_image_format_constraints()->emplace_back();
-  image_constraints.mutable_color_spaces()->emplace_back(kSRGBColorSpace);
-  image_constraints.set_pixel_format(kBGRA32PixelFormatType);
-  image_constraints.set_pixel_format_modifier(
-      fuchsia::images2::PixelFormatModifier::LINEAR);
+  ifc.mutable_color_spaces()->emplace_back(kSRGBColorSpace);
+  ifc.set_pixel_format(kBGRA32PixelFormatType);
+  ifc.set_pixel_format_modifier(fuchsia::images2::PixelFormatModifier::LINEAR);
 
-  image_constraints.set_required_min_size(
-      fuchsia::math::SizeU{width_, height_});
-  image_constraints.set_required_max_size(
-      fuchsia::math::SizeU{width_, height_});
+  ifc.set_required_min_size(fuchsia::math::SizeU{width_, height_});
+  ifc.set_required_max_size(fuchsia::math::SizeU{width_, height_});
 
-  image_constraints.set_bytes_per_row_divisor(kFuchsiaBytesPerPixel);
+  ifc.set_bytes_per_row_divisor(kFuchsiaBytesPerPixel);
 
   return constraints;
 }

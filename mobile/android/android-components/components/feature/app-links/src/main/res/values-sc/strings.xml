@@ -15,6 +15,4 @@
   <string name="mozac_feature_applinks_confirm_dialog_confirm">Aberi</string>
   <!-- Cancels the prompt -->
   <string name="mozac_feature_applinks_confirm_dialog_deny">Annulla</string>
-  <!-- The label of the checkbox that, depending of user's choice, can change the Open links in apps setting -->
-  <string name="mozac_feature_applinks_confirm_dialog_checkbox_label">Aberi semper is ligòngios in is aplicatziones</string>
 </resources>

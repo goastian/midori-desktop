@@ -35,7 +35,11 @@ from mozbuild.base import (
     MozbuildObject,
 )
 from mozbuild.base import MachCommandConditions as conditions
-from mozbuild.util import MOZBUILD_METRICS_PATH, ForwardingArgumentParser
+from mozbuild.util import (
+    MOZBUILD_METRICS_PATH,
+    ForwardingArgumentParser,
+    ensure_l10n_central,
+)
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -55,18 +59,6 @@ and tell us about your machine and build configuration so we can adjust the
 warning heuristic.
 ===================
 """
-
-
-class MissingL10nError(Exception):
-    """Raised when the l10n repositories haven’t been checked out."""
-
-    pass
-
-
-class NotAGitRepositoryError(Exception):
-    """Raised when the directory isn’t a git repository."""
-
-    pass
 
 
 class StoreDebugParamsAndWarnAction(argparse.Action):
@@ -2181,6 +2173,7 @@ def _run_desktop(
         prefs = {
             "browser.aboutConfig.showWarning": False,
             "browser.shell.checkDefaultBrowser": False,
+            "general.warnOnAboutConfig": False,
         }
         prefs.update(command_context._mach_context.settings.runprefs)
         prefs.update([p.split("=", 1) for p in setpref])
@@ -3490,46 +3483,6 @@ def repackage_desktop_file(
         desktop_file.write(desktop)
 
 
-def _ensure_l10n_central(command_context):
-    # For nightly builds, we automatically check out missing localizations
-    # from firefox-l10n.  We never automatically check out in automation:
-    # automation builds check out revisions that have been signed-off by
-    # l10n drivers prior to use.
-    l10n_base_dir = Path(command_context.substs["L10NBASEDIR"])
-    moz_automation = os.environ.get("MOZ_AUTOMATION")
-    if moz_automation:
-        if not l10n_base_dir.exists():
-            raise MissingL10nError(
-                f"Automation requires l10n repositories to be checked out: {l10n_base_dir}"
-            )
-
-    nightly_build = command_context.substs.get("NIGHTLY_BUILD")
-    if nightly_build:
-        git = os.environ.get("GIT", "git")
-        if not l10n_base_dir.exists():
-            l10n_base_dir.mkdir(parents=True)
-            subprocess.run(
-                [
-                    git,
-                    "clone",
-                    "https://github.com/mozilla-l10n/firefox-l10n.git",
-                    str(l10n_base_dir),
-                    "--depth",
-                    "1",
-                ],
-                check=True,
-            )
-        if not moz_automation:
-            if (l10n_base_dir / ".git").exists():
-                subprocess.run(
-                    [git, "-C", str(l10n_base_dir), "pull", "--quiet"], check=True
-                )
-            else:
-                raise NotAGitRepositoryError(
-                    f"Directory is not a git repository: {l10n_base_dir}"
-                )
-
-
 @Command(
     "package-multi-locale",
     category="post-build",
@@ -3566,7 +3519,7 @@ def package_l10n(command_context, verbose=False, locales=[]):
         "MOZ_CHROME_MULTILOCALE": " ".join(locales),
     }
 
-    _ensure_l10n_central(command_context)
+    ensure_l10n_central(command_context)
 
     command_context.log(
         logging.INFO,
@@ -3643,159 +3596,6 @@ def package_l10n(command_context, verbose=False, locales=[]):
             )
             + "mach android install-geckoview_example` "
             + "to install the multi-locale geckoview_example and test APKs."
-        )
-
-    return 0
-
-
-def run_mach(command_context, cmd, **kwargs):
-    return command_context._mach_context.commands.dispatch(
-        cmd, command_context._mach_context, **kwargs
-    )
-
-
-@Command(
-    "repackage-single-locales",
-    category="post-build",
-    description="Repackage single-locale versions of the built product "
-    "for distribution as APKs, DMGs, etc.",
-)
-@CommandArgument(
-    "--locales",
-    metavar="LOCALES",
-    nargs="+",
-    required=True,
-    help="List of locales to repackage",
-)
-@CommandArgument(
-    "--verbose", action="store_true", help="Log informative status messages."
-)
-@CommandArgument(
-    "--dest",
-    default=None,
-    help="Destination directory to populate with localized artifacts; "
-    + "default: UPLOAD_PATH environment variable if set; '$topobjdir/dist/repackage-single-locales' if not set",
-)
-def repackage_single_locales(command_context, verbose=False, locales=[], dest=None):
-    if "RecursiveMake" not in command_context.substs["BUILD_BACKENDS"]:
-        print(
-            "Artifact builds do not support localization. "
-            "If you know what you are doing, you can use:\n"
-            "ac_add_options --disable-compile-environment\n"
-            "export BUILD_BACKENDS=FasterMake,RecursiveMake\n"
-            "in your mozconfig."
-        )
-        return 1
-
-    if not dest:
-        dest = os.environ.get(
-            "UPLOAD_PATH",
-            mozpath.join(command_context.topobjdir, "dist", "repackage-single-locales"),
-        )
-    dest = os.path.abspath(dest)
-
-    locales = sorted(locale for locale in locales if locale != "en-US")
-
-    append_env = {
-        # Simple as possible, please!
-        "MOZ_SIMPLE_PACKAGE_NAME": "target",
-    }
-    if not command_context.substs.get("MOZ_AUTOMATION") and sys.platform == "darwin":
-        # On macOS DMG packaging is slow to work with.
-        append_env["MOZ_PKG_FORMAT"] = "TAR"
-
-    _ensure_l10n_central(command_context)
-
-    command_context.log(
-        logging.INFO,
-        "repackage-single-locales",
-        {"locales": locales},
-        "Processing chrome Gecko resources for locales {locales}",
-    )
-
-    def line_handler(line):
-        command_context.log(
-            logging.INFO,
-            "repackage-single-locales",
-            {"line": line},
-            "export> {line}",
-        )
-
-    command_context.run_process(
-        [
-            sys.executable,
-            mozpath.join(command_context.topsrcdir, "mach"),
-            "--log-no-times",
-            "build",
-            "export",
-        ]
-        + (["-v"] if verbose else []),
-        append_env=append_env,
-        pass_thru=False,
-        ensure_exit_code=True,
-        line_handler=line_handler,
-    )
-
-    for locale in locales:
-        command_context.log(
-            logging.INFO,
-            "repackage-single-locales",
-            {"locale": locale},
-            "Repackaging locale {locale}",
-        )
-
-        def line_handler(line):
-            command_context.log(
-                logging.INFO,
-                "repackage-single-locales",
-                {"locale": locale, "line": line},
-                "{locale}> {line}",
-            )
-
-        command_context.run_process(
-            [
-                sys.executable,
-                mozpath.join(command_context.topsrcdir, "mach"),
-                "--log-no-times",
-                "configure",
-                f"--enable-ui-locale={locale}",
-            ],
-            append_env=append_env,
-            pass_thru=False,
-            ensure_exit_code=True,
-            line_handler=line_handler,
-        )
-
-        command_context.run_process(
-            [
-                sys.executable,
-                mozpath.join(command_context.topsrcdir, "mach"),
-                "--log-no-times",
-                "build",
-            ]
-            + (["-v"] if verbose else [])
-            + [
-                f"installers-{locale}",
-            ],
-            append_env=append_env,
-            pass_thru=False,
-            ensure_exit_code=True,
-            line_handler=line_handler,
-        )
-
-        append_env["UPLOAD_PATH"] = mozpath.join(dest, locale)
-
-        command_context._run_make(
-            directory=os.path.join(command_context.topobjdir),
-            target=["upload", f"AB_CD={locale}"],
-            append_env=append_env,
-            pass_thru=False,
-            print_directory=False,
-            ensure_exit_code=True,
-            silent=not verbose,
-            # We do our own logging.
-            log=False,
-            line_handler=line_handler,
         )
 
     return 0

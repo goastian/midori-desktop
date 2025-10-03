@@ -19,7 +19,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.annotation.VisibleForTesting
-import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
 import androidx.fragment.app.FragmentManager
@@ -159,7 +158,7 @@ class AddonInstallationDialogFragment : AddonDialogFragment() {
 
         if (confirmButtonBackgroundColor != DEFAULT_VALUE) {
             val backgroundTintList =
-                AppCompatResources.getColorStateList(requireContext(), confirmButtonBackgroundColor)
+                ContextCompat.getColorStateList(requireContext(), confirmButtonBackgroundColor)
             confirmButton.backgroundTintList = backgroundTintList
         }
 

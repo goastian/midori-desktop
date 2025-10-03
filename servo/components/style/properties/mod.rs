@@ -554,12 +554,6 @@ impl LonghandId {
         !LonghandIdSet::reset().contains(self)
     }
 
-    /// Returns whether the longhand property is zoom-dependent.
-    #[inline]
-    pub fn zoom_dependent(self) -> bool {
-        LonghandIdSet::zoom_dependent().contains(self)
-    }
-
     /// Returns true if the property is one that is ignored when document
     /// colors are disabled.
     #[inline]
@@ -1190,9 +1184,8 @@ impl LonghandIdSet {
     /// Iterate over the current longhand id set.
     pub fn iter(&self) -> LonghandIdSetIterator {
         LonghandIdSetIterator {
-            chunks: &self.storage,
-            cur_chunk: 0,
-            cur_bit: 0,
+            longhands: self,
+            cur: 0,
         }
     }
 
@@ -1269,9 +1262,8 @@ impl LonghandIdSet {
 
 /// An iterator over a set of longhand ids.
 pub struct LonghandIdSetIterator<'a> {
-    chunks: &'a [u32],
-    cur_chunk: u32,
-    cur_bit: u32, // [0..31], note that zero means the end-most bit
+    longhands: &'a LonghandIdSet,
+    cur: usize,
 }
 
 impl<'a> Iterator for LonghandIdSetIterator<'a> {
@@ -1279,27 +1271,16 @@ impl<'a> Iterator for LonghandIdSetIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            debug_assert!(self.cur_bit < 32);
-            let cur_chunk = self.cur_chunk;
-            let cur_bit = self.cur_bit;
-            let chunk = *self.chunks.get(cur_chunk as usize)?;
-            let next_bit = (chunk >> cur_bit).trailing_zeros();
-            if next_bit == 32 {
-                // Totally empty chunk, skip it.
-                self.cur_bit = 0;
-                self.cur_chunk += 1;
-                continue;
+            if self.cur >= property_counts::LONGHANDS {
+                return None;
             }
-            debug_assert!(cur_bit + next_bit < 32);
-            let longhand_id = cur_chunk * 32 + cur_bit + next_bit;
-            debug_assert!(longhand_id as usize <= property_counts::LONGHANDS);
-            let id: LonghandId = unsafe { mem::transmute(longhand_id as u16) };
-            self.cur_bit += next_bit + 1;
-            if self.cur_bit == 32 {
-                self.cur_bit = 0;
-                self.cur_chunk += 1;
+
+            let id: LonghandId = unsafe { mem::transmute(self.cur as u16) };
+            self.cur += 1;
+
+            if self.longhands.contains(id) {
+                return Some(id);
             }
-            return Some(id);
         }
     }
 }

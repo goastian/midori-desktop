@@ -338,9 +338,6 @@ hb_ft_headers = files('hb-ft.h')
 hb_fontations_sources = files()
 hb_fontations_headers = files('hb-fontations.h')
 
-hb_harfruzz_sources = files('hb-harfruzz.cc')
-hb_harfruzz_headers = files()
-
 hb_glib_sources = files('hb-glib.cc')
 hb_glib_headers = files('hb-glib.h')
 
@@ -532,19 +529,13 @@ if conf.get('HAVE_CORETEXT', 0) == 1
   harfbuzz_deps += coretext_deps
 endif
 
-if conf.get('HAVE_FONTATIONS', 0) == 1 or conf.get('HAVE_HARFRUZZ', 0) == 1
-  subdir('rust')
-  harfbuzz_deps += [harfbuzz_rust_dep]
-endif
-
 if conf.get('HAVE_FONTATIONS', 0) == 1
+
+  subdir('fontations')
+
   hb_sources += hb_fontations_sources
   hb_headers += hb_fontations_headers
-endif
-
-if conf.get('HAVE_HARFRUZZ', 0) == 1
-  hb_sources += hb_harfruzz_sources
-  hb_headers += hb_harfruzz_headers
+  harfbuzz_deps += [harfbuzz_fontations_dep]
 endif
 
 have_icu = conf.get('HAVE_ICU', 0) == 1
@@ -1047,6 +1038,10 @@ if get_option('tests').enabled()
   ]
 
   env = environment()
+  env.set('srcdir', meson.current_source_dir())
+  env.set('base_srcdir', meson.project_source_root())
+  env.set('builddir', meson.current_build_dir())
+  env.set('libs', meson.current_build_dir()) # TODO: Merge this with builddir after autotools removal
   HBSOURCES = []
   foreach f : hb_sources
     if meson.version().version_compare('>=1.4.0')
@@ -1074,11 +1069,6 @@ if get_option('tests').enabled()
   foreach name : dist_check_script
     test(name, find_program(name + '.py'),
       env: env,
-      args: [
-        meson.current_source_dir(),
-        meson.project_source_root(),
-        meson.current_build_dir(),
-      ],
       depends: name == 'check-symbols' ? defs_list : [],
       suite: ['src'],
     )

@@ -15,6 +15,7 @@
 #  include "MediaMetadataManager.h"
 #  include "MediaPromiseDefs.h"
 #  include "MediaResource.h"
+#  include "MediaStatistics.h"
 #  include "SeekTarget.h"
 #  include "TelemetryProbesReporter.h"
 #  include "TimeUnits.h"
@@ -488,7 +489,7 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
     DurationChanged();
   }
 
-  virtual void OnPlaybackEvent(const MediaPlaybackEvent& aEvent);
+  virtual void OnPlaybackEvent(MediaPlaybackEvent&& aEvent);
 
   // Called when the metadata from the media file has been loaded by the
   // state machine. Call on the main thread only.

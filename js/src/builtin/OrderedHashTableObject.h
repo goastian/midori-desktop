@@ -316,9 +316,7 @@ class MOZ_STACK_CLASS OrderedHashTableImpl {
   using HashCodeScrambler = mozilla::HashCodeScrambler;
   static constexpr size_t SlotCount = OrderedHashTableObject::SlotCount;
 
-  // Note: use alignas(8) to simplify JIT code generation because
-  // alignof(JS::Value) can be either 4 or 8 on 32-bit platforms.
-  struct alignas(8) Data {
+  struct Data {
     T element;
     Data* chain;
 

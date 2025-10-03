@@ -14,23 +14,12 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 ChromeUtils.defineLazyGetter(lazy, "console", () => lazy.Utils.log);
 
-class EmptyDatabaseError extends Error {
-  constructor(cid) {
-    super(`"${cid}" has not been synced yet`);
-    this.name = "EmptyDatabaseError";
-  }
-}
-
 /**
  * Database is a tiny wrapper with the objective
  * of providing major kinto-offline-client collection API.
  * (with the objective of getting rid of kinto-offline-client)
  */
 export class Database {
-  static get EmptyDatabaseError() {
-    return EmptyDatabaseError;
-  }
-
   static destroy() {
     return destroyIDB();
   }
@@ -43,30 +32,20 @@ export class Database {
   async list(options = {}) {
     const { filters = {}, order = "" } = options;
     let results = [];
-    let timestamp = null;
     try {
       await executeIDB(
-        ["timestamps", "records"],
-        (stores, rejectTransaction) => {
-          const [storeTimestamps, storeRecords] = stores;
-          // Since we cannot distinguish an empty collection from
-          // a collection that has not been synced yet, we also
-          // retrieve the timestamp for the collection.
-          storeTimestamps.get(this.identifier).onsuccess = evt =>
-            (timestamp = evt.target.result);
-
+        "records",
+        (store, rejectTransaction) => {
           // Fast-path the (very common) no-filters case
           if (lazy.ObjectUtils.isEmpty(filters)) {
             const range = IDBKeyRange.only(this.identifier);
-            const request = storeRecords.index("cid").getAll(range);
+            const request = store.index("cid").getAll(range);
             request.onsuccess = e => {
               results = e.target.result;
             };
             return;
           }
-          // If we have filters, we need to iterate over the records
-          // and apply the filters to each record using a cursor.
-          const request = storeRecords
+          const request = store
             .index("cid")
             .openCursor(IDBKeyRange.only(this.identifier));
           const objFilters = transformSubObjectFilters(filters);
@@ -89,11 +68,6 @@ export class Database {
       );
     } catch (e) {
       throw new lazy.IDBHelpers.IndexedDBError(e, "list()", this.identifier);
-    }
-    // Throw an error if consumer tries to list records of a collection
-    // that has not been synced yet.
-    if (results.length === 0 && !timestamp) {
-      throw new EmptyDatabaseError(this.identifier);
     }
     // Remove IDB key field from results.
     for (const result of results) {

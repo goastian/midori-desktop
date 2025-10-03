@@ -170,14 +170,14 @@ class ContentChild final : public PContentChild,
       Endpoint<PCompositorManagerChild>&& aCompositor,
       Endpoint<PImageBridgeChild>&& aImageBridge,
       Endpoint<PVRManagerChild>&& aVRBridge,
-      Endpoint<PRemoteMediaManagerChild>&& aVideoManager,
+      Endpoint<PRemoteDecoderManagerChild>&& aVideoManager,
       nsTArray<uint32_t>&& namespaces);
 
   mozilla::ipc::IPCResult RecvReinitRendering(
       Endpoint<PCompositorManagerChild>&& aCompositor,
       Endpoint<PImageBridgeChild>&& aImageBridge,
       Endpoint<PVRManagerChild>&& aVRBridge,
-      Endpoint<PRemoteMediaManagerChild>&& aVideoManager,
+      Endpoint<PRemoteDecoderManagerChild>&& aVideoManager,
       nsTArray<uint32_t>&& namespaces);
 
   mozilla::ipc::IPCResult RecvReinitRenderingForDeviceReset();
@@ -815,7 +815,7 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvFlushFOGData(FlushFOGDataResolver&& aResolver);
 
   mozilla::ipc::IPCResult RecvUpdateMediaCodecsSupported(
-      RemoteMediaIn aLocation, const media::MediaCodecsSupported& aSupported);
+      RemoteDecodeIn aLocation, const media::MediaCodecsSupported& aSupported);
 
 #ifdef MOZ_WMF_CDM
   mozilla::ipc::IPCResult RecvUpdateMFCDMOriginEntries(

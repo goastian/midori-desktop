@@ -228,10 +228,7 @@ dependencies {
         implementation project(":exoplayer2")
     }
 
-    testImplementation platform(libs.junit.bom)
-    testImplementation libs.junit4
-    testRuntimeOnly libs.junit.vintage
-    testRuntimeOnly libs.junit.platform.launcher
+    testImplementation libs.junit.vintage
     testImplementation libs.testing.robolectric
 
     androidTestImplementation libs.testing.coroutines

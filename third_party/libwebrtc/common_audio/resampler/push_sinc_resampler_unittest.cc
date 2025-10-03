@@ -86,16 +86,17 @@ void PushSincResamplerTest::ResampleBenchmarkTest(bool int_format) {
   const double io_ratio = input_rate_ / static_cast<double>(output_rate_);
   SincResampler sinc_resampler(io_ratio, SincResampler::kDefaultRequestSize,
                                &resampler_source);
-  int64_t start = TimeNanos();
+  int64_t start = rtc::TimeNanos();
   for (int i = 0; i < kResampleIterations; ++i) {
     sinc_resampler.Resample(output_samples, resampled_destination.get());
   }
-  double total_time_sinc_us = (TimeNanos() - start) / kNumNanosecsPerMicrosec;
+  double total_time_sinc_us =
+      (rtc::TimeNanos() - start) / rtc::kNumNanosecsPerMicrosec;
   printf("SincResampler took %.2f us per frame.\n",
          total_time_sinc_us / kResampleIterations);
 
   PushSincResampler resampler(input_samples, output_samples);
-  start = TimeNanos();
+  start = rtc::TimeNanos();
   if (int_format) {
     for (int i = 0; i < kResampleIterations; ++i) {
       EXPECT_EQ(output_samples,
@@ -109,7 +110,8 @@ void PushSincResamplerTest::ResampleBenchmarkTest(bool int_format) {
                                                    output_samples));
     }
   }
-  double total_time_us = (TimeNanos() - start) / kNumNanosecsPerMicrosec;
+  double total_time_us =
+      (rtc::TimeNanos() - start) / rtc::kNumNanosecsPerMicrosec;
   printf(
       "PushSincResampler took %.2f us per frame; which is a %.1f%% overhead "
       "on SincResampler.\n\n",

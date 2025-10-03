@@ -264,11 +264,11 @@ mozilla::ipc::IPCResult DocAccessibleChild::RecvDoActionAsync(
 mozilla::ipc::IPCResult DocAccessibleChild::RecvSetTextSelection(
     const uint64_t& aStartID, const int32_t& aStartOffset,
     const uint64_t& aEndID, const int32_t& aEndOffset,
-    const int32_t& aSelectionNum, const bool& aSetFocus) {
+    const int32_t& aSelectionNum) {
   TextLeafRange range(TextLeafPoint(IdToAccessible(aStartID), aStartOffset),
                       TextLeafPoint(IdToAccessible(aEndID), aEndOffset));
   if (range) {
-    range.SetSelection(aSelectionNum, aSetFocus);
+    range.SetSelection(aSelectionNum);
   }
 
   return IPC_OK();

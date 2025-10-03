@@ -16,6 +16,9 @@ var summary = 'lambda constructor "method" vs. instanceof';
 var actual;
 var expect;
 
+printBugNumber(BUGNUMBER);
+printStatus(summary);
+
 var Y = {widget: {}};
 
 Y.widget.DataSource = function () {};
@@ -28,5 +31,7 @@ actual = J instanceof Y.widget.DataSource;
 expect = true;
 
 assert.sameValue(expect, actual, summary);
+
+printStatus("All tests passed!");
 
 reportCompare(0, 0);

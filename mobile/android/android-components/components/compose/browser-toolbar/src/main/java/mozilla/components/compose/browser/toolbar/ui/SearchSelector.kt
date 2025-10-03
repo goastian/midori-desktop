@@ -16,9 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
+import androidx.compose.material.Card
+import androidx.compose.material.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,12 +73,8 @@ fun SearchSelector(
                 showMenu = true
             },
         shape = RoundedCornerShape(4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = AcornTheme.colors.layer2,
-        ),
-        elevation = CardDefaults.elevatedCardElevation(
-            defaultElevation = 0.dp,
-        ),
+        backgroundColor = AcornTheme.colors.layer2,
+        elevation = 0.dp,
     ) {
         Row(
             modifier = Modifier.padding(

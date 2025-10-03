@@ -1852,9 +1852,7 @@ Inspector.prototype = {
   },
 
   stopEyeDropperListeners() {
-    this.toolbox
-      .tellRDMAboutPickerState(false, PICKER_TYPES.EYEDROPPER)
-      .catch(console.error);
+    this.toolbox.tellRDMAboutPickerState(false, PICKER_TYPES.EYEDROPPER);
     this.inspectorFront.off("color-pick-canceled", this.onEyeDropperDone);
     this.inspectorFront.off("color-picked", this.onEyeDropperDone);
     this.off("new-root", this.onEyeDropperDone);

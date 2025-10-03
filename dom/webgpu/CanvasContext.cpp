@@ -18,7 +18,6 @@
 #include "mozilla/layers/LayersSurfaces.h"
 #include "mozilla/layers/RenderRootStateManager.h"
 #include "mozilla/layers/WebRenderCanvasRenderer.h"
-#include "mozilla/gfx/Logging.h"
 #include "mozilla/StaticPrefs_privacy.h"
 #include "mozilla/SVGObserverUtils.h"
 #include "ipc/WebGPUChild.h"
@@ -135,20 +134,10 @@ void CanvasContext::Configure(const dom::GPUCanvasConfiguration& aConfig,
   mConfiguration.reset(new dom::GPUCanvasConfiguration(aConfig));
   mRemoteTextureOwnerId = Some(layers::RemoteTextureOwnerId::GetNext());
   mUseExternalTextureInSwapChain =
-      aConfig.mDevice->mSupportExternalTextureInSwapChain;
-  if (mUseExternalTextureInSwapChain) {
-    bool client_can_use = wgpu_client_use_external_texture_in_swapChain(
-        ConvertTextureFormat(aConfig.mFormat));
-    if (!client_can_use) {
-      gfxCriticalNote << "WebGPU: disabling ExternalTexture swapchain: \n"
-                         "canvas configuration format not supported";
-      mUseExternalTextureInSwapChain = false;
-    }
-  }
+      aConfig.mDevice->mSupportExternalTextureInSwapChain &&
+      wgpu_client_use_external_texture_in_swapChain(
+          ConvertTextureFormat(aConfig.mFormat));
   if (!gfx::gfxVars::AllowWebGPUPresentWithoutReadback()) {
-    gfxCriticalNote
-        << "WebGPU: disabling ExternalTexture swapchain: \n"
-           "`dom.webgpu.allow-present-without-readback` pref is false";
     mUseExternalTextureInSwapChain = false;
   }
 #ifdef XP_WIN
@@ -156,29 +145,17 @@ void CanvasContext::Configure(const dom::GPUCanvasConfiguration& aConfig,
   // in swap chain. Since compositor device might not exist.
   if (gfx::gfxVars::UseSoftwareWebRender() &&
       !gfx::gfxVars::AllowSoftwareWebRenderD3D11()) {
-    gfxCriticalNote << "WebGPU: disabling ExternalTexture swapchain: \n"
-                       "WebRender is not using hardware acceleration";
     mUseExternalTextureInSwapChain = false;
   }
 #elif defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
   // When DMABufDevice is not enabled, disable external texture in swap chain.
   const auto& modifiers = gfx::gfxVars::DMABufModifiersARGB();
   if (modifiers.IsEmpty()) {
-    gfxCriticalNote << "WebGPU: disabling ExternalTexture swapchain: \n"
-                       "missing GBM_FORMAT_ARGB8888 dmabuf format";
     mUseExternalTextureInSwapChain = false;
   }
 #endif
-
-  // buffer count doesn't matter much, will be created on demand
-  const size_t maxBufferCount = 10;
-  for (size_t i = 0; i < maxBufferCount; ++i) {
-    mBufferIds.AppendElement(ffi::wgpu_client_make_buffer_id(
-        aConfig.mDevice->GetBridge()->GetClient()));
-  }
-
   mCurrentTexture = aConfig.mDevice->InitSwapChain(
-      mConfiguration.get(), mRemoteTextureOwnerId.ref(), mBufferIds,
+      mConfiguration.get(), mRemoteTextureOwnerId.ref(),
       mUseExternalTextureInSwapChain, mGfxFormat, mCanvasSize);
   if (!mCurrentTexture) {
     Unconfigure();
@@ -200,11 +177,7 @@ void CanvasContext::Unconfigure() {
         *mRemoteTextureOwnerId,
         layers::ToRemoteTextureTxnType(mFwdTransactionTracker),
         layers::ToRemoteTextureTxnId(mFwdTransactionTracker));
-    for (auto& id : mBufferIds) {
-      ffi::wgpu_client_free_buffer_id(mBridge->GetClient(), id);
-    }
   }
-  mBufferIds.Clear();
   mRemoteTextureOwnerId = Nothing();
   mFwdTransactionTracker = nullptr;
   mBridge = nullptr;

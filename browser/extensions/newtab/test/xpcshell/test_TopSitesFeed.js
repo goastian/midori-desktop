@@ -517,7 +517,7 @@ add_task(
     gGetTopSitesStub.resetHistory();
 
     await feed.getLinksWithDefaults();
-    feed.store.state.Prefs.values.topSitesRows *= 100;
+    feed.store.state.Prefs.values.topSitesRows *= 3;
     await feed.getLinksWithDefaults();
 
     Assert.ok(

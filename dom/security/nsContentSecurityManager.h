@@ -69,11 +69,6 @@ class nsContentSecurityManager : public nsIContentSecurityManager,
   static nsSecurityFlags ComputeSecurityFlags(
       mozilla::CORSMode aCORSMode, CORSSecurityMapping aCORSSecurityMapping);
 
-  static nsSecurityFlags ComputeSecurityMode(nsSecurityFlags aSecurityFlags);
-
-  static mozilla::dom::RequestMode SecurityModeToRequestMode(
-      uint32_t aSecurityMode);
-
   static void GetSerializedOrigin(nsIPrincipal* aOrigin,
                                   nsIPrincipal* aResourceOrigin,
                                   nsACString& aResult, nsILoadInfo* aLoadInfo);

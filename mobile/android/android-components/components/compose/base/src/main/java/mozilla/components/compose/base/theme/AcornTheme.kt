@@ -7,8 +7,7 @@
 package mozilla.components.compose.base.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -25,14 +24,12 @@ import mozilla.components.compose.base.theme.layout.AcornWindowSize
 @Composable
 fun AcornTheme(
     colors: AcornColors = getAcornColors(),
-    colorScheme: ColorScheme = getAcornColorScheme(),
     content: @Composable () -> Unit,
 ) {
     ProvideAcornTokens(
         colors = colors,
     ) {
         MaterialTheme(
-            colorScheme = colorScheme,
             content = content,
         )
     }
@@ -43,13 +40,6 @@ private fun getAcornColors() = if (isSystemInDarkTheme()) {
     darkColorPalette
 } else {
     lightColorPalette
-}
-
-@Composable
-private fun getAcornColorScheme(): ColorScheme = if (isSystemInDarkTheme()) {
-    acornDarkColorScheme()
-} else {
-    acornLightColorScheme()
 }
 
 /**

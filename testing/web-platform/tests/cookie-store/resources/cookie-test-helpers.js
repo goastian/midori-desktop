@@ -210,12 +210,9 @@ async function cookie_test(func, description) {
 
   // Wipe cookies used by tests before and after the test.
   async function deleteAllCookies() {
-    const cookies = await cookieStore.getAll();
-    await Promise.all(cookies.flatMap(
-        ({name}) =>
-            [cookieStore.delete(name),
-             cookieStore.delete({name, partitioned: true}),
-    ]));
+    (await cookieStore.getAll()).forEach(({name, value}) => {
+      cookieStore.delete(name);
+    });
   }
 
   return promise_test(async t => {

@@ -310,10 +310,10 @@ Section "-InstallStartCleanup"
   ${EndIf}
 
   ; setup the application model id registration value
-  ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
+  ${InitHashAppModelId} "$INSTDIR" "Software\Astian\${AppName}\TaskBarIDs"
 
   ; Clean up old maintenance service logs
-  ${CleanMaintenanceServiceLogs} "Mozilla\Firefox"
+  ${CleanMaintenanceServiceLogs} "Astian\Midori"
 
   ${RemoveDeprecatedFiles}
   ${RemovePrecompleteEntries} "false"

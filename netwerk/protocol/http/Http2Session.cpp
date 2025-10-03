@@ -2056,7 +2056,8 @@ nsresult Http2Session::RecvWindowUpdate(Http2Session* self) {
     nsresult rv = self->SetInputFrameDataStream(self->mInputFrameID);
     if (NS_FAILED(rv)) return rv;
 
-    if (!self->mInputFrameDataStream) {
+    RefPtr<Http2StreamBase> stream = self->mInputFrameDataStream.get();
+    if (!stream) {
       LOG3(("Http2Session::RecvWindowUpdate %p lookup streamID 0x%X failed.\n",
             self, self->mInputFrameID));
       // only reset the session if the ID is one we haven't ever opened
@@ -2070,24 +2071,21 @@ nsresult Http2Session::RecvWindowUpdate(Http2Session* self) {
     if (delta == 0) {
       LOG3(("Http2Session::RecvWindowUpdate %p received 0 stream window update",
             self));
-      self->CleanupStream(self->mInputFrameDataStream, NS_ERROR_ILLEGAL_VALUE,
-                          PROTOCOL_ERROR);
+      self->CleanupStream(stream, NS_ERROR_ILLEGAL_VALUE, PROTOCOL_ERROR);
       self->ResetDownstreamState();
       return NS_OK;
     }
 
-    int64_t oldRemoteWindow =
-        self->mInputFrameDataStream->ServerReceiveWindow();
-    self->mInputFrameDataStream->UpdateServerReceiveWindow(delta);
-    if (self->mInputFrameDataStream->ServerReceiveWindow() >= 0x80000000) {
+    int64_t oldRemoteWindow = stream->ServerReceiveWindow();
+    stream->UpdateServerReceiveWindow(delta);
+    if (stream->ServerReceiveWindow() >= 0x80000000) {
       // a window cannot reach 2^31 and be in compliance. Our calculations
       // are 64 bit safe though.
       LOG3(
           ("Http2Session::RecvWindowUpdate %p stream window "
            "exceeds 2^31 - 1\n",
            self));
-      self->CleanupStream(self->mInputFrameDataStream, NS_ERROR_ILLEGAL_VALUE,
-                          FLOW_CONTROL_ERROR);
+      self->CleanupStream(stream, NS_ERROR_ILLEGAL_VALUE, FLOW_CONTROL_ERROR);
       self->ResetDownstreamState();
       return NS_OK;
     }

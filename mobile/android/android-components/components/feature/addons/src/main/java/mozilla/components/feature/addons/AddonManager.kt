@@ -269,12 +269,11 @@ class AddonManager(
     }
 
     /**
-     * Add the provided [permissions], [origins] and/or [dataCollectionPermissions] to [Addon].
+     * Add the provided [permissions] and [origins] to [Addon].
      *
      * @param addon the [Addon] to add the provided [permissions] and [origins].
-     * @param permissions the permissions to add, pass an empty array for opt-out.
-     * @param origins the origins to add, pass an empty array for opt-out.
-     * @param dataCollectionPermissions the data collection permissions to add, pass an empty array for opt-out.
+     * @param permissions the permissions to added, pass an empty array for opt-out.
+     * @param origins the origins to added, pass an empty array for opt-out.
      * @param onSuccess (optional) callback invoked with the added permissions and origins.
      * @param onError (optional) callback invoked if there was an error adding.
      */
@@ -282,16 +281,11 @@ class AddonManager(
         addon: Addon,
         permissions: List<String> = emptyList(),
         origins: List<String> = emptyList(),
-        dataCollectionPermissions: List<String> = emptyList(),
         onSuccess: ((Addon) -> Unit) = { },
         onError: ((Throwable) -> Unit) = { },
     ) {
-        if (permissions.isEmpty() && origins.isEmpty() && dataCollectionPermissions.isEmpty()) {
-            onError(
-                IllegalStateException(
-                    "At least one of permissions, origins or dataCollectionPermissions must not be empty",
-                ),
-            )
+        if (permissions.isEmpty() && origins.isEmpty()) {
+            onError(IllegalStateException("Either permissions or origins must not be empty"))
             return
         }
         val extension = addon.installedState?.let { installedExtensions[it.id] }
@@ -305,7 +299,6 @@ class AddonManager(
             extension.id,
             permissions = permissions,
             origins = origins,
-            dataCollectionPermissions = dataCollectionPermissions,
             onSuccess = { ext ->
                 val updatedAddon = Addon.newFromWebExtension(ext, toInstalledState(ext))
                 completePendingAddonAction(pendingAction)
@@ -319,12 +312,11 @@ class AddonManager(
     }
 
     /**
-     * Remove the provided [permissions], [origins] and/or [dataCollectionPermissions] from [Addon].
+     * Remove the provided [permissions] and [origins] from [Addon].
      *
      * @param addon the [Addon] to remove the provided [permissions] and [origins].
-     * @param permissions the permissions to remove, pass an empty array for opt-out.
-     * @param origins the origins to remove, pass an empty array for opt-out.
-     * @param dataCollectionPermissions the data collection permissions to remove, pass an empty array for opt-out.
+     * @param permissions the permissions to be removed, pass an empty array for opt-out.
+     * @param origins the origins to be removed, pass an empty array for opt-out.
      * @param onSuccess (optional) callback invoked with the removed permissions and origins.
      * @param onError (optional) callback invoked if there was an error removed.
      */
@@ -332,16 +324,11 @@ class AddonManager(
         addon: Addon,
         permissions: List<String> = emptyList(),
         origins: List<String> = emptyList(),
-        dataCollectionPermissions: List<String> = emptyList(),
         onSuccess: ((Addon) -> Unit) = { },
         onError: ((Throwable) -> Unit) = { },
     ) {
-        if (permissions.isEmpty() && origins.isEmpty() && dataCollectionPermissions.isEmpty()) {
-            onError(
-                IllegalStateException(
-                    "At least one of permissions, origins or dataCollectionPermissions must not be empty",
-                ),
-            )
+        if (permissions.isEmpty() && origins.isEmpty()) {
+            onError(IllegalStateException("Either permissions or origins must not be empty"))
             return
         }
 
@@ -356,7 +343,6 @@ class AddonManager(
             extension.id,
             permissions = permissions,
             origins = origins,
-            dataCollectionPermissions = dataCollectionPermissions,
             onSuccess = { ext ->
                 val updatedAddon = Addon.newFromWebExtension(ext, toInstalledState(ext))
                 completePendingAddonAction(pendingAction)

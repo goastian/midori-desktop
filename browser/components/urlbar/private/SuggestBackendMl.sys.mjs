@@ -9,8 +9,6 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   MLSuggest: "resource:///modules/urlbar/private/MLSuggest.sys.mjs",
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
-  SkippableTimer: "resource:///modules/UrlbarUtils.sys.mjs",
-  UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
 });
 
 /**
@@ -23,11 +21,15 @@ export class SuggestBackendMl extends SuggestBackend {
     return ["quickSuggestMlEnabled", "browser.ml.enable"];
   }
 
-  enable(enabled) {
+  async enable(enabled) {
     if (enabled) {
-      this.#init();
+      this.logger.debug("Initializing MLSuggest...");
+      await lazy.MLSuggest.initialize();
+      this.logger.debug("MLSuggest is now initialized");
     } else {
-      this.#uninit();
+      this.logger.debug("Shutting down MLSuggest...");
+      await lazy.MLSuggest.shutdown();
+      this.logger.debug("MLSuggest is now shut down");
     }
   }
 
@@ -40,7 +42,7 @@ export class SuggestBackendMl extends SuggestBackend {
    *   Options object.
    * @param {UrlbarQueryContext} options.queryContext
    *   The query context.
-   * @returns {Promise<Array>}
+   * @returns {Array}
    *   An array of matching suggestions. `MLSuggest` returns at most one
    *   suggestion.
    */
@@ -80,32 +82,4 @@ export class SuggestBackendMl extends SuggestBackend {
 
     return [];
   }
-
-  #init() {
-    if (this.#initTimer) {
-      return;
-    }
-
-    // Like all Suggest features, when this feature is enabled it's typically
-    // enabled at startup. Initializing `MLSuggest` loads MB's worth of data,
-    // which may slow down the system, so do it on a timer with a configurable
-    // timeout.
-    this.#initTimer = new lazy.SkippableTimer({
-      name: `${this.name} init timer`,
-      time: 1000 * lazy.UrlbarPrefs.get("quickSuggestMlInitDelaySeconds"),
-      logger: this.logger,
-      callback: async () => {
-        this.logger.info("Init delay timer fired, initializing MLSuggest");
-        await lazy.MLSuggest.initialize();
-      },
-    });
-  }
-
-  async #uninit() {
-    this.#initTimer?.cancel();
-    this.#initTimer = null;
-    await lazy.MLSuggest.shutdown();
-  }
-
-  #initTimer;
 }

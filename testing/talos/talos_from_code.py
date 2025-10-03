@@ -13,8 +13,9 @@ import json
 import os
 import re
 import sys
-import urllib.parse
 from optparse import OptionParser
+
+import six
 
 
 def main():
@@ -97,7 +98,7 @@ def get_filename_from_url(url):
     """
     This returns the filename of the file we're trying to download
     """
-    parsed = urllib.parse.urlsplit(url.rstrip("/"))
+    parsed = six.moves.urllib.parse.urlsplit(url.rstrip("/"))
     if parsed.path != "":
         return parsed.path.rsplit("/", 1)[-1]
     else:
@@ -112,8 +113,8 @@ def download_file(url, path="", saveAs=None):
     """
     It downloads a file from URL to the indicated path
     """
-    req = urllib.request.Request(url)
-    f = urllib.request.urlopen(req)
+    req = six.moves.urllib.request.Request(url)
+    f = six.moves.urllib.request.urlopen(req)
     if path != "" and not os.path.isdir(path):
         try:
             os.makedirs(path)

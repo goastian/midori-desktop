@@ -24,10 +24,10 @@ add_task(async function () {
   let receivedResults = false;
   let firstSelectedElement;
   let delayResultsPromise = new Promise(resolve => {
-    gURLBar.controller.addListener({
+    gURLBar.controller.addQueryListener({
       async onQueryResults() {
         Assert.ok(!receivedResults, "Should execute only once");
-        gURLBar.controller.removeListener(this);
+        gURLBar.controller.removeQueryListener(this);
         receivedResults = true;
         // Store the corrent selection.
         firstSelectedElement = view.selectedElement;

@@ -21,7 +21,6 @@ import android.widget.LinearLayout.LayoutParams
 import android.widget.TextView
 import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AppCompatDialogFragment
-import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
 import mozilla.components.support.base.log.logger.Logger
@@ -184,10 +183,7 @@ internal open class SitePermissionsDialogFragment : AppCompatDialogFragment() {
         }
 
         if (positiveButtonBackgroundColor != DEFAULT_VALUE) {
-            val backgroundTintList = AppCompatResources.getColorStateList(
-                requireContext(),
-                positiveButtonBackgroundColor,
-            )
+            val backgroundTintList = ContextCompat.getColorStateList(requireContext(), positiveButtonBackgroundColor)
             positiveButton.backgroundTintList = backgroundTintList
         }
 

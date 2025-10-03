@@ -16,11 +16,10 @@
 #include "js/Class.h"        // JSClassOps, JSClass, JSCLASS_*
 #include "js/ErrorReport.h"  // JS_ReportErrorASCII
 #include "js/experimental/JSStencil.h"  // JS::Stencil, JS::StencilAddRef, JS::StencilRelease
-#include "js/Utility.h"                 // js_free
-#include "vm/JSContext.h"               // JSContext
-#include "vm/JSObject.h"                // JSObject
-
-#include "vm/JSObject-inl.h"  // NewBuiltinClassInstance
+#include "js/RootingAPI.h"  // JS::Rooted
+#include "js/Utility.h"     // js_free
+#include "vm/JSContext.h"   // JSContext
+#include "vm/JSObject.h"    // JSObject
 
 using namespace js;
 
@@ -57,14 +56,15 @@ JS::Stencil* StencilObject::stencil() const {
 
 /* static */ StencilObject* StencilObject::create(JSContext* cx,
                                                   RefPtr<JS::Stencil> stencil) {
-  auto* obj = NewBuiltinClassInstance<StencilObject>(cx);
+  JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, &class_));
   if (!obj) {
     return nullptr;
   }
 
-  obj->setReservedSlot(StencilSlot, PrivateValue(stencil.forget().take()));
+  obj->as<StencilObject>().setReservedSlot(
+      StencilSlot, PrivateValue(stencil.forget().take()));
 
-  return obj;
+  return &obj->as<StencilObject>();
 }
 
 /* static */ void StencilObject::finalize(JS::GCContext* gcx, JSObject* obj) {
@@ -121,7 +121,7 @@ size_t StencilXDRBufferObject::bufferLength() const {
     return nullptr;
   }
 
-  auto* obj = NewBuiltinClassInstance<StencilXDRBufferObject>(cx);
+  JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, &class_));
   if (!obj) {
     return nullptr;
   }
@@ -133,10 +133,12 @@ size_t StencilXDRBufferObject::bufferLength() const {
 
   mozilla::PodCopy(ownedBuffer.get(), buffer, length);
 
-  obj->setReservedSlot(BufferSlot, PrivateValue(ownedBuffer.release()));
-  obj->setReservedSlot(LengthSlot, Int32Value(length));
+  obj->as<StencilXDRBufferObject>().setReservedSlot(
+      BufferSlot, PrivateValue(ownedBuffer.release()));
+  obj->as<StencilXDRBufferObject>().setReservedSlot(LengthSlot,
+                                                    Int32Value(length));
 
-  return obj;
+  return &obj->as<StencilXDRBufferObject>();
 }
 
 /* static */ void StencilXDRBufferObject::finalize(JS::GCContext* gcx,

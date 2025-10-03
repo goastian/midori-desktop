@@ -32,10 +32,10 @@ import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getIntentSource
 import org.mozilla.fenix.ext.getNavDirections
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.utils.Settings
-import org.robolectric.RobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class ExternalAppBrowserActivityTest {
 
     @Test
@@ -76,7 +76,7 @@ class ExternalAppBrowserActivityTest {
         val activity = spyk(ExternalAppBrowserActivity())
         val navHostController: NavController = mockk()
 
-        activity.navigateToHome(navHostController, false)
+        activity.navigateToHome(navHostController)
         verify { navHostController wasNot Called }
     }
 

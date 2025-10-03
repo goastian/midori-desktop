@@ -40,10 +40,6 @@ async function checkHeader(engine) {
 }
 
 add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-
   searchbar = await gCUITestUtils.addSearchBar();
   textbox = searchbar.textbox;
 

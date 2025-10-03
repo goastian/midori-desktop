@@ -737,7 +737,7 @@ class ImageCopyTest extends AllFeaturesMaxLimitsGPUTest {
     }
   }
 
-  doUploadToStencilTest(
+  DoUploadToStencilTest(
   format,
   textureSize,
   uploadMethod,
@@ -832,7 +832,7 @@ class ImageCopyTest extends AllFeaturesMaxLimitsGPUTest {
     this.expectGPUBufferValuesEqual(outputBuffer, expectedData);
   }
 
-  doCopyFromStencilTest(
+  DoCopyFromStencilTest(
   format,
   textureSize,
   bytesPerRow,
@@ -1046,7 +1046,7 @@ class ImageCopyTest extends AllFeaturesMaxLimitsGPUTest {
     };
   }
 
-  doCopyTextureToBufferWithDepthAspectTest(
+  DoCopyTextureToBufferWithDepthAspectTest(
   format,
   copySize,
   bytesPerRowPadding,
@@ -1765,7 +1765,7 @@ fn((t) => {
   });
 });
 
-function copyMethodSupportedWithDepthStencilFormat(
+function CopyMethodSupportedWithDepthStencilFormat(
 aspect,
 format,
 copyMethod)
@@ -1800,7 +1800,7 @@ u.
 combine('format', kDepthStencilFormats).
 combine('copyMethod', ['WriteTexture', 'CopyB2T', 'CopyT2B']).
 combine('aspect', ['depth-only', 'stencil-only']).
-filter((t) => copyMethodSupportedWithDepthStencilFormat(t.aspect, t.format, t.copyMethod)).
+filter((t) => CopyMethodSupportedWithDepthStencilFormat(t.aspect, t.format, t.copyMethod)).
 beginSubcases().
 combineWithParams(kRowsPerImageAndBytesPerRowParams.paddings).
 combineWithParams(kRowsPerImageAndBytesPerRowParams.copySizes).
@@ -1838,7 +1838,7 @@ fn((t) => {
 
   if (copyMethod === 'CopyT2B') {
     if (aspect === 'depth-only') {
-      t.doCopyTextureToBufferWithDepthAspectTest(
+      t.DoCopyTextureToBufferWithDepthAspectTest(
         format,
         copySize,
         bytesPerRowPadding,
@@ -1848,7 +1848,7 @@ fn((t) => {
         mipLevel
       );
     } else {
-      t.doCopyFromStencilTest(format, textureSize, bytesPerRow, rowsPerImage, 0, mipLevel);
+      t.DoCopyFromStencilTest(format, textureSize, bytesPerRow, rowsPerImage, 0, mipLevel);
     }
   } else {
     assert(
@@ -1861,7 +1861,7 @@ fn((t) => {
       method: copyMethod
     });
 
-    t.doUploadToStencilTest(
+    t.DoUploadToStencilTest(
       format,
       textureSize,
       copyMethod,
@@ -1890,7 +1890,7 @@ u.
 combine('format', kDepthStencilFormats).
 combine('copyMethod', ['WriteTexture', 'CopyB2T', 'CopyT2B']).
 combine('aspect', ['depth-only', 'stencil-only']).
-filter((t) => copyMethodSupportedWithDepthStencilFormat(t.aspect, t.format, t.copyMethod)).
+filter((t) => CopyMethodSupportedWithDepthStencilFormat(t.aspect, t.format, t.copyMethod)).
 beginSubcases().
 combineWithParams(kOffsetsAndSizesParams.offsetsAndPaddings).
 filter((t) => t.offsetInBlocks % 4 === 0).
@@ -1910,9 +1910,9 @@ fn((t) => {
   const textureSize = [copySize[0] << mipLevel, copySize[1] << mipLevel, copyDepth];
   if (copyMethod === 'CopyT2B') {
     if (aspect === 'depth-only') {
-      t.doCopyTextureToBufferWithDepthAspectTest(format, copySize, 0, 0, 0, 0, mipLevel);
+      t.DoCopyTextureToBufferWithDepthAspectTest(format, copySize, 0, 0, 0, 0, mipLevel);
     } else {
-      t.doCopyFromStencilTest(
+      t.DoCopyFromStencilTest(
         format,
         textureSize,
         bytesPerRow,
@@ -1932,7 +1932,7 @@ fn((t) => {
       method: copyMethod
     });
     const initialDataSize = minDataSize + dataPaddingInBytes;
-    t.doUploadToStencilTest(
+    t.DoUploadToStencilTest(
       format,
       textureSize,
       copyMethod,

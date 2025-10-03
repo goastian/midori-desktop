@@ -59,30 +59,21 @@ WebGPUChild::~WebGPUChild() = default;
 RefPtr<AdapterPromise> WebGPUChild::InstanceRequestAdapter(
     const dom::GPURequestAdapterOptions& aOptions) {
   RawId id = ffi::wgpu_client_make_adapter_id(mClient.get());
-  auto* client = mClient.get();
 
   return SendInstanceRequestAdapter(aOptions, id)
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
-          [client, id](ipc::ByteBuf&& aInfoBuf) {
+          [](ipc::ByteBuf&& aInfoBuf) {
             // Ideally, we'd just send an empty ByteBuf, but the IPC code
             // complains if the capacity is zero...
             // So for the case where an adapter wasn't found, we just
             // transfer a single 0u64 in this buffer.
-            if (aInfoBuf.mLen > sizeof(uint64_t)) {
-              return AdapterPromise::CreateAndResolve(std::move(aInfoBuf),
-                                                      __func__);
-            } else {
-              if (client) {
-                ffi::wgpu_client_free_adapter_id(client, id);
-              }
-              return AdapterPromise::CreateAndReject(Nothing(), __func__);
-            }
+            return aInfoBuf.mLen > sizeof(uint64_t)
+                       ? AdapterPromise::CreateAndResolve(std::move(aInfoBuf),
+                                                          __func__)
+                       : AdapterPromise::CreateAndReject(Nothing(), __func__);
           },
-          [client, id](const ipc::ResponseRejectReason& aReason) {
-            if (client) {
-              ffi::wgpu_client_free_adapter_id(client, id);
-            }
+          [](const ipc::ResponseRejectReason& aReason) {
             return AdapterPromise::CreateAndReject(Some(aReason), __func__);
           });
 }
@@ -162,6 +153,12 @@ ipc::IPCResult WebGPUChild::RecvUncapturedError(const Maybe<RawId> aDeviceId,
   return IPC_OK();
 }
 
+ipc::IPCResult WebGPUChild::RecvDropAction(const ipc::ByteBuf& aByteBuf) {
+  const auto* byteBuf = ToFFI(&aByteBuf);
+  ffi::wgpu_client_drop_action(mClient.get(), byteBuf);
+  return IPC_OK();
+}
+
 bool WebGPUChild::ResolveLostForDeviceId(RawId aDeviceId,
                                          Maybe<uint8_t> aReason,
                                          const nsAString& aMessage) {
@@ -195,6 +192,19 @@ ipc::IPCResult WebGPUChild::RecvDeviceLost(RawId aDeviceId,
   auto message = NS_ConvertUTF8toUTF16(aMessage);
   ResolveLostForDeviceId(aDeviceId, aReason, message);
   return IPC_OK();
+}
+
+void WebGPUChild::DeviceCreateSwapChain(
+    RawId aSelfId, const RGBDescriptor& aRgbDesc, size_t maxBufferCount,
+    const layers::RemoteTextureOwnerId& aOwnerId,
+    bool aUseExternalTextureInSwapChain) {
+  RawId queueId = aSelfId;  // TODO: multiple queues
+  nsTArray<RawId> bufferIds(maxBufferCount);
+  for (size_t i = 0; i < maxBufferCount; ++i) {
+    bufferIds.AppendElement(ffi::wgpu_client_make_buffer_id(mClient.get()));
+  }
+  SendDeviceCreateSwapChain(aSelfId, queueId, aRgbDesc, bufferIds, aOwnerId,
+                            aUseExternalTextureInSwapChain);
 }
 
 void WebGPUChild::QueueOnSubmittedWorkDone(

@@ -51,7 +51,7 @@ class AudioEncoderConfigInternal {
   Maybe<uint32_t> mNumberOfChannels;
   Maybe<uint32_t> mBitrate;
   BitrateMode mBitrateMode;
-  EncoderConfig::CodecSpecific mSpecific{void_t{}};
+  Maybe<EncoderConfig::CodecSpecific> mSpecific;
 
  private:
   AudioEncoderConfigInternal(const nsAString& aCodec,

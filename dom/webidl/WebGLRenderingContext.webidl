@@ -722,7 +722,8 @@ interface WebGLRenderingContext {
     undefined bufferData(GLenum target, [AllowShared] ArrayBuffer? data, GLenum usage);
     undefined bufferData(GLenum target, [AllowShared] ArrayBufferView data, GLenum usage);
     // bufferSubData has WebGL2 overloads.
-    undefined bufferSubData(GLenum target, GLintptr offset, AllowSharedBufferSource data);
+    undefined bufferSubData(GLenum target, GLintptr offset, [AllowShared] ArrayBuffer data);
+    undefined bufferSubData(GLenum target, GLintptr offset, [AllowShared] ArrayBufferView data);
 
     // compressedTexImage2D has WebGL2 overloads.
     undefined compressedTexImage2D(GLenum target, GLint level, GLenum internalformat,

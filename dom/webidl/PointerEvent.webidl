@@ -26,7 +26,6 @@ interface PointerEvent : MouseEvent
 
   readonly attribute DOMString pointerType;
   readonly attribute boolean isPrimary;
-  readonly attribute long persistentDeviceId;
 
   [Func="mozilla::dom::PointerEvent::EnableGetCoalescedEvents"]
   sequence<PointerEvent> getCoalescedEvents();
@@ -47,7 +46,6 @@ dictionary PointerEventInit : MouseEventInit
   double azimuthAngle;
   DOMString pointerType = "";
   boolean isPrimary = false;
-  long persistentDeviceId = 0;
   sequence<PointerEvent> coalescedEvents = [];
   sequence<PointerEvent> predictedEvents = [];
 };

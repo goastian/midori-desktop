@@ -27,18 +27,17 @@
 
     async function CHECK_TIMESTAMP_ALIGNMENT(test, ok_or_todo, header_text) {
       const video = test.pcRemote.remoteMediaElements[0];
-      const maxFrames = 60;
+      const maxFrames = 10;
       const maxRecvDelta = 250;
       const maxCaptDelta = 250;
-      const minCaptCount = 5;
       let frameCount = 0;
-      let captCount = 0;
 
       // macOS fixes for high jitter on try
       const recvOffset = AppConstants.platform == "macosx" ? -200 : 0;
       const captOffset = AppConstants.platform == "macosx" ? -200 : 0;
 
       // captureTime may not be present for several frames
+      const maxMissedCaptCount = 8;
       let missedCaptCount = 0;
 
       info(`***** RUNNING ${header_text} ALIGNMENT TEST`);
@@ -70,17 +69,20 @@
           if (dt > captOffset) {
             ok(dt <= maxCaptDelta, `captureTime delta (${dt.toFixed(2)} ms) <= ${maxCaptDelta} ms`);
           }
-          if (++captCount >= minCaptCount) {
-            info(`Received ${minCaptCount} captureTime, exiting test`);
-            break;
-          }
         } else {
-          ok(++missedCaptCount == frameCount,
+          info(`!!!!! Missing captureTime!`);
+          // Skip additional asserts if captureTime isn't expected to avoid
+          // overcomplicating the logic that allows for a limited number of misses.
+          if (ok_or_todo == todo) {
+            todo(captureTime, `captureTime is present`);
+            continue;
+          }
+          ok(++missedCaptCount <= maxMissedCaptCount,
+             `Miss #${missedCaptCount} <= allowed misses (${maxMissedCaptCount})`);
+          ok(missedCaptCount == frameCount,
              "missing captureTime occurred sequentially from test start.");
         }
       }
-      ok_or_todo(captCount >= minCaptCount,
-                 `Captured at least ${captCount} captureTime`)
     }
 
     function arg_wrapper(fn, argsArr) {

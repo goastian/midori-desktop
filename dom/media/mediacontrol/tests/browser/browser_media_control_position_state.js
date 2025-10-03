@@ -130,18 +130,19 @@ async function testGuessedPositionState(withMetadata) {
     playbackRate: 2.0,
   });
 
+  let positionChangedNum = 0;
+  const controller = tab.linkedBrowser.browsingContext.mediaController;
+  controller.onpositionstatechange = () => positionChangedNum++;
+
   info(`pause media`);
-  await emitsPositionState(() => pauseMedia(tab, testVideoId), tab, {
-    duration: videoDuration,
-    position: null,
-    playbackRate: 0.0,
-  });
+  // shouldn't generate an event
+  await pauseMedia(tab, testVideoId);
 
   info(`seek to 2s`);
   await emitsPositionState(() => setCurrentTime(tab, testVideoId, 2.0), tab, {
     duration: videoDuration,
     position: 2.0,
-    playbackRate: 0.0,
+    playbackRate: 2.0,
   });
 
   info(`start media`);
@@ -151,16 +152,22 @@ async function testGuessedPositionState(withMetadata) {
     playbackRate: 2.0,
   });
 
+  is(
+    positionChangedNum,
+    2,
+    `We should only receive two of position changes, because pausing is effectless`
+  );
+
   info(`remove tab`);
   await tab.close();
 }
 
 add_task(async function testGuessedPositionStateWithMetadata() {
-  await testGuessedPositionState(true);
+  testGuessedPositionState(true);
 });
 
 add_task(async function testGuessedPositionStateWithoutMetadata() {
-  await testGuessedPositionState(false);
+  testGuessedPositionState(false);
 });
 
 /**

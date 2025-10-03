@@ -9,8 +9,8 @@
 #include "RDDProcessHost.h"
 #include "mozilla/MemoryReportingProcess.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/RemoteMediaManagerChild.h"
-#include "mozilla/RemoteMediaManagerParent.h"
+#include "mozilla/RemoteDecoderManagerChild.h"
+#include "mozilla/RemoteDecoderManagerParent.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/SyncRunnable.h"  // for LaunchRDDProcess
 #include "mozilla/dom/ContentParent.h"
@@ -204,7 +204,7 @@ auto RDDProcessManager::EnsureRDDProcessAndCreateBridge(
                 return EnsureRDDPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE,
                                                          __func__);
               }
-              ipc::Endpoint<PRemoteMediaManagerChild> endpoint;
+              ipc::Endpoint<PRemoteDecoderManagerChild> endpoint;
               if (!CreateContentBridge(aOtherProcess, aParentId, &endpoint)) {
                 return EnsureRDDPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE,
                                                          __func__);
@@ -277,7 +277,7 @@ void RDDProcessManager::DestroyProcess() {
 
 bool RDDProcessManager::CreateContentBridge(
     ipc::EndpointProcInfo aOtherProcess, dom::ContentParentId aParentId,
-    ipc::Endpoint<PRemoteMediaManagerChild>* aOutRemoteMediaManager) {
+    ipc::Endpoint<PRemoteDecoderManagerChild>* aOutRemoteDecoderManager) {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (IsRDDProcessDestroyed()) {
@@ -286,10 +286,10 @@ bool RDDProcessManager::CreateContentBridge(
     return false;
   }
 
-  ipc::Endpoint<PRemoteMediaManagerParent> parentPipe;
-  ipc::Endpoint<PRemoteMediaManagerChild> childPipe;
+  ipc::Endpoint<PRemoteDecoderManagerParent> parentPipe;
+  ipc::Endpoint<PRemoteDecoderManagerChild> childPipe;
 
-  nsresult rv = PRemoteMediaManager::CreateEndpoints(
+  nsresult rv = PRemoteDecoderManager::CreateEndpoints(
       mRDDChild->OtherEndpointProcInfo(), aOtherProcess, &parentPipe,
       &childPipe);
   if (NS_FAILED(rv)) {
@@ -298,9 +298,10 @@ bool RDDProcessManager::CreateContentBridge(
     return false;
   }
 
-  mRDDChild->SendNewContentRemoteMediaManager(std::move(parentPipe), aParentId);
+  mRDDChild->SendNewContentRemoteDecoderManager(std::move(parentPipe),
+                                                aParentId);
 
-  *aOutRemoteMediaManager = std::move(childPipe);
+  *aOutRemoteDecoderManager = std::move(childPipe);
   return true;
 }
 

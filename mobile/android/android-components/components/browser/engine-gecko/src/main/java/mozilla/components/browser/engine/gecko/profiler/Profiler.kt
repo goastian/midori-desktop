@@ -6,69 +6,71 @@ package mozilla.components.browser.engine.gecko.profiler
 
 import mozilla.components.concept.base.profiler.Profiler
 import org.mozilla.geckoview.GeckoResult
-import org.mozilla.geckoview.ProfilerController
+import org.mozilla.geckoview.GeckoRuntime
 
 /**
  * Gecko-based implementation of [Profiler], wrapping the
  * ProfilerController object provided by GeckoView.
  */
-class Profiler : Profiler {
+class Profiler(
+    private val runtime: GeckoRuntime,
+) : Profiler {
 
     /**
      * See [Profiler.isProfilerActive].
      */
     override fun isProfilerActive(): Boolean {
-        return ProfilerController.isProfilerActive()
+        return runtime.profilerController.isProfilerActive
     }
 
     /**
      * See [Profiler.getProfilerTime].
      */
     override fun getProfilerTime(): Double? {
-        return ProfilerController.getProfilerTime()
+        return runtime.profilerController.profilerTime
     }
 
     /**
      * See [Profiler.addMarker].
      */
     override fun addMarker(markerName: String, startTime: Double?, endTime: Double?, text: String?) {
-        ProfilerController.addMarker(markerName, startTime, endTime, text)
+        runtime.profilerController.addMarker(markerName, startTime, endTime, text)
     }
 
     /**
      * See [Profiler.addMarker].
      */
     override fun addMarker(markerName: String, startTime: Double?, text: String?) {
-        ProfilerController.addMarker(markerName, startTime, text)
+        runtime.profilerController.addMarker(markerName, startTime, text)
     }
 
     /**
      * See [Profiler.addMarker].
      */
     override fun addMarker(markerName: String, startTime: Double?) {
-        ProfilerController.addMarker(markerName, startTime)
+        runtime.profilerController.addMarker(markerName, startTime)
     }
 
     /**
      * See [Profiler.addMarker].
      */
     override fun addMarker(markerName: String, text: String?) {
-        ProfilerController.addMarker(markerName, text)
+        runtime.profilerController.addMarker(markerName, text)
     }
 
     /**
      * See [Profiler.addMarker].
      */
     override fun addMarker(markerName: String) {
-        ProfilerController.addMarker(markerName)
+        runtime.profilerController.addMarker(markerName)
     }
 
     override fun startProfiler(filters: Array<String>, features: Array<String>) {
-        ProfilerController.startProfiler(filters, features)
+        runtime.profilerController.startProfiler(filters, features)
     }
 
     override fun stopProfiler(onSuccess: (ByteArray?) -> Unit, onError: (Throwable) -> Unit) {
-        ProfilerController.stopProfiler().then(
+        runtime.profilerController.stopProfiler().then(
             { profileResult ->
                 onSuccess(profileResult)
                 GeckoResult<Void>()

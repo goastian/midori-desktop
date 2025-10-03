@@ -10,6 +10,7 @@
 // needed for HeadersGuardEnum.
 #include "mozilla/dom/HeadersBinding.h"
 #include "mozilla/dom/RequestBinding.h"
+#include "mozilla/dom/UnionTypes.h"
 
 #include "nsClassHashtable.h"
 #include "nsWrapperCache.h"

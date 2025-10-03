@@ -120,7 +120,11 @@ internal object ContentRecommendationsReducer {
 
                 updatedStoriesState.copyWithRecommendationsState {
                     it.copy(
-                        pocketStories = updatedStoriesState.getStories(),
+                        pocketStories = if (action.showContentRecommendations) {
+                            updatedStoriesState.getStories()
+                        } else {
+                            updatedStoriesState.getFilteredStories()
+                        },
                     )
                 }
             }
@@ -134,9 +138,13 @@ internal object ContentRecommendationsReducer {
 
                 updatedSponsoredContentsState.copyWithRecommendationsState {
                     it.copy(
-                        pocketStories = updatedSponsoredContentsState.getStories(
-                            useSponsoredStoriesState = false,
-                        ),
+                        pocketStories = if (action.showContentRecommendations) {
+                            updatedSponsoredContentsState.getStories(useSponsoredStoriesState = false)
+                        } else {
+                            updatedSponsoredContentsState.getFilteredStories(
+                                useSponsoredStoriesState = false,
+                            )
+                        },
                     )
                 }
             }

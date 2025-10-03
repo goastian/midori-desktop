@@ -12,6 +12,12 @@
 
 SimpleTest.waitForExplicitFinish();
 SimpleTest.waitForFocus(async () => {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["layout.reflow.synthMouseMove", true],
+    ]
+  });
+
   const source = document.getElementById("source");
   const target = document.getElementById("target");
 

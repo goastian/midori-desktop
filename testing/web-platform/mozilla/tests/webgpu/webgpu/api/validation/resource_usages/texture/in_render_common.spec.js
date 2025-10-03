@@ -17,7 +17,7 @@ export const kTextureBindingTypes = [
 'readonly-storage-texture',
 'readwrite-storage-texture'];
 
-export function isReadOnlyTextureBindingType(t) {
+export function IsReadOnlyTextureBindingType(t) {
   return t === 'sampled-texture' || t === 'readonly-storage-texture';
 }
 
@@ -533,7 +533,7 @@ fn((t) => {
   }
 
   const bothReadOnly =
-  isReadOnlyTextureBindingType(bgUsage0) && isReadOnlyTextureBindingType(bgUsage1);
+  IsReadOnlyTextureBindingType(bgUsage0) && IsReadOnlyTextureBindingType(bgUsage1);
   const isMipLevelNotOverlapped = t.isRangeNotOverlapped(
     bg0Levels.base,
     bg0Levels.base + bg0Levels.count - 1,

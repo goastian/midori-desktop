@@ -14,11 +14,10 @@ import kotlinx.coroutines.withContext
 import mozilla.components.browser.state.state.SessionState
 import mozilla.components.concept.engine.cookiehandling.CookieBannersStorage
 import mozilla.components.concept.engine.permission.SitePermissions
-import mozilla.components.support.ktx.kotlin.isContentUrl
+import mozilla.components.support.utils.ext.isContentUrl
 import org.mozilla.fenix.browser.BrowserFragmentDirections
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
-import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.settings.quicksettings.protections.cookiebanners.getCookieBannerUIMode
 
 /**
@@ -54,9 +53,8 @@ class DefaultConnectionDetailsController(
             context.components.useCases.trackingProtectionUseCases.containsException(tab.id) { contains ->
                 ioScope.launch {
                     val cookieBannerUIMode = cookieBannersStorage.getCookieBannerUIMode(
-                        tab = tab,
-                        isFeatureEnabledInPrivateMode = context.settings().shouldUseCookieBannerPrivateMode,
-                        publicSuffixList = context.components.publicSuffixList,
+                        context,
+                        tab,
                     )
                     withContext(Dispatchers.Main) {
                         fragment.runIfFragmentIsAttached {

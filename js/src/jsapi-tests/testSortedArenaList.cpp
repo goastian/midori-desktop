@@ -113,10 +113,10 @@ bool ConvertToArenaListOnce(SortedArenaList& sortedList,
   ArenaList list = sortedList.convertToArenaList(bucketLast);
   CHECK(list.isEmpty() == (expectedBucketCount == 0));
   if (expectedFirst) {
-    CHECK(list.getFirst() == expectedFirst);
+    CHECK(list.first() == expectedFirst);
   }
   if (expectedLast) {
-    CHECK(list.getLast() == expectedLast);
+    CHECK(list.last() == expectedLast);
   }
 
   size_t count = 0;

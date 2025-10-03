@@ -19,10 +19,10 @@ namespace mozilla::dom {
 
 class OwningTrustedScriptOrNullIsEmptyString;
 class OwningTrustedScriptOrString;
-class OwningTrustedScriptURLOrUSVString;
+class OwningTrustedScriptURLOrString;
 class TrustedScriptOrNullIsEmptyString;
 class TrustedScriptOrString;
-class TrustedScriptURLOrUSVString;
+class TrustedScriptURLOrString;
 
 class HTMLScriptElement final : public nsGenericHTMLElement,
                                 public ScriptElement {
@@ -111,9 +111,9 @@ class HTMLScriptElement final : public nsGenericHTMLElement,
   }
 
   // @param aSrc will always be of type `String`.
-  void GetSrc(OwningTrustedScriptURLOrUSVString& aSrc);
+  void GetSrc(OwningTrustedScriptURLOrString& aSrc);
 
-  MOZ_CAN_RUN_SCRIPT void SetSrc(const TrustedScriptURLOrUSVString& aSrc,
+  MOZ_CAN_RUN_SCRIPT void SetSrc(const TrustedScriptURLOrString& aSrc,
                                  nsIPrincipal* aSubjectPrincipal,
                                  ErrorResult& aRv);
 
@@ -191,7 +191,7 @@ class HTMLScriptElement final : public nsGenericHTMLElement,
   nsIContent* GetAsContent() override { return this; }
 
   // ScriptElement
-  virtual bool HasExternalScriptContent() override;
+  virtual bool HasScriptContent() override;
 
   RefPtr<nsDOMTokenList> mBlocking;
 };

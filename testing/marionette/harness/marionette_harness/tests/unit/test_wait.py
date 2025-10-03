@@ -5,6 +5,8 @@
 import sys
 import time
 
+import six
+
 from marionette_driver import errors, wait
 from marionette_driver.wait import Wait
 
@@ -171,7 +173,7 @@ class FormalWaitTest(MarionetteTestCase):
 class PredicatesTest(MarionetteTestCase):
     def test_until(self):
         c = wait.SystemClock()
-        self.assertFalse(wait.until_pred(c, sys.maxsize))
+        self.assertFalse(wait.until_pred(c, six.MAXSIZE))
         self.assertTrue(wait.until_pred(c, 0))
 
 

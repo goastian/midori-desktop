@@ -4439,7 +4439,9 @@ static bool SearchElementDense(JSContext* cx, HandleValue val, Iter iterator,
   MOZ_ASSERT(val.isBigInt());
 
   // Generic implementation for the remaining types.
-  auto cmp = [val](JSContext* cx, const Value& element, bool* equal) {
+  RootedValue elementRoot(cx);
+  auto cmp = [val, &elementRoot](JSContext* cx, const Value& element,
+                                 bool* equal) {
     if (MOZ_UNLIKELY(element.isMagic(JS_ELEMENTS_HOLE))) {
       // |includes| treats holes as |undefined|, but |undefined| is already
       // handled above. For |indexOf| we have to ignore holes.
@@ -4450,7 +4452,8 @@ static bool SearchElementDense(JSContext* cx, HandleValue val, Iter iterator,
     // calls StrictlyEqual. Since we already handled NaN above, we can call
     // StrictlyEqual directly.
     MOZ_ASSERT(!val.isNumber());
-    return StrictlyEqual(cx, val, element, equal);
+    elementRoot = element;
+    return StrictlyEqual(cx, val, elementRoot, equal);
   };
   return iterator(cx, cmp, rval);
 }

@@ -438,8 +438,22 @@ struct QueueParamTraits<webgl::TexUnpackBlobDesc> {
           !view.ReadParam(&stride)) {
         return false;
       }
-      const size_t dataSize = stride * surfSize.height;
-      const auto range = view.template ReadRange<uint8_t>(dataSize);
+      if (!CheckedInt32(stride).isValid() || surfSize.IsEmpty()) {
+        return false;
+      }
+      int32_t bpp = BytesPerPixel(format);
+      CheckedInt<size_t> minStride(bpp);
+      minStride *= surfSize.width;
+      if (!minStride.isValid() || minStride.value() <= 0 ||
+          stride < minStride.value()) {
+        return false;
+      }
+      CheckedInt<size_t> dataSize(stride);
+      dataSize *= surfSize.height;
+      if (!dataSize.isValid()) {
+        return false;
+      }
+      const auto range = view.template ReadRange<uint8_t>(dataSize.value());
       if (!range) return false;
 
       // DataSourceSurface demands pointer-to-mutable.

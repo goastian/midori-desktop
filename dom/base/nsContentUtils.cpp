@@ -189,7 +189,6 @@
 #include "mozilla/dom/MessageBroadcaster.h"
 #include "mozilla/dom/MessageListenerManager.h"
 #include "mozilla/dom/MessagePort.h"
-#include "mozilla/dom/MimeType.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/NameSpaceConstants.h"
 #include "mozilla/dom/NodeBinding.h"
@@ -4787,9 +4786,7 @@ static const char* gPropertiesFiles[nsContentUtils::PropertiesFile_COUNT] = {
     "chrome://global/locale/security/security.properties",
     "chrome://necko/locale/necko.properties",
     "resource://gre/res/locale/layout/HtmlForm.properties",
-    "resource://gre/res/locale/dom/dom.properties",
-    "resource://gre/res/locale/necko/necko.properties",
-};
+    "resource://gre/res/locale/dom/dom.properties"};
 
 /* static */
 nsresult nsContentUtils::EnsureStringBundle(PropertiesFile aFile) {
@@ -8631,7 +8628,6 @@ bool nsContentUtils::IsJavascriptMIMEType(const nsACString& aMIMEType) {
   return false;
 }
 
-// https://mimesniff.spec.whatwg.org/#json-mime-type
 bool nsContentUtils::IsJsonMimeType(const nsAString& aMimeType) {
   // Table ordered from most to least likely JSON MIME types.
   static constexpr std::string_view jsonTypes[] = {"application/json",
@@ -8643,15 +8639,7 @@ bool nsContentUtils::IsJsonMimeType(const nsAString& aMimeType) {
     }
   }
 
-  // Below checks if the 'subtype' ends in "+json".
-  RefPtr<MimeType> parsed = MimeType::Parse(aMimeType);
-  if (!parsed) {
-    return false;
-  }
-
-  nsAutoString subtype;
-  parsed->GetSubtype(subtype);
-  return StringEndsWith(subtype, u"+json"_ns);
+  return StringEndsWith(aMimeType, u"+json"_ns);
 }
 
 bool nsContentUtils::PrefetchPreloadEnabled(nsIDocShell* aDocShell) {
@@ -8692,16 +8680,6 @@ uint64_t nsContentUtils::GetInnerWindowID(nsIRequest* aRequest) {
   // can't do anything if there's no nsIRequest!
   if (!aRequest) {
     return 0;
-  }
-
-  if (nsCOMPtr<nsIChannel> channel = do_QueryInterface(aRequest)) {
-    nsCOMPtr loadInfo = channel->LoadInfo();
-    if (auto id = loadInfo->GetInnerWindowID()) {
-      return id;
-    }
-    if (auto id = loadInfo->GetTriggeringWindowId()) {
-      return id;
-    }
   }
 
   nsCOMPtr<nsILoadGroup> loadGroup;

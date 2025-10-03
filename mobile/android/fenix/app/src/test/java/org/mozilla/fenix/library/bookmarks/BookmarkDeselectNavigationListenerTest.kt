@@ -15,9 +15,9 @@ import mozilla.components.concept.storage.BookmarkNodeType
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.R
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class BookmarkDeselectNavigationListenerTest {
 
     private val basicNode = BookmarkNode(

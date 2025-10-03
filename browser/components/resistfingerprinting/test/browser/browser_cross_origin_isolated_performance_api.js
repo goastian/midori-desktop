@@ -118,17 +118,7 @@ let runWorkerTest = async function (data) {
   });
 };
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 add_task(async function runTestsForWorker() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["security.allow_eval_with_system_principal", true]],
-  });
-
   // RFP
   await setupAndRunCrossOriginIsolatedTest(
     {

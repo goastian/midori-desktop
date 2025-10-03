@@ -58,11 +58,8 @@ class HttpTransactionChild final : public PHttpTransactionChild,
       const bool& aResponseTimeoutEnabled, const uint64_t& aChannelId,
       const bool& aHasTransactionObserver,
       const mozilla::Maybe<PInputChannelThrottleQueueChild*>& aThrottleQueue,
-      const bool& aIsDocumentLoad,
-      const nsILoadInfo::IPAddressSpace& aParentIPAddressSpace,
-      const LNAPerms& aLnaPermissionStatus, const TimeStamp& aRedirectStart,
+      const bool& aIsDocumentLoad, const TimeStamp& aRedirectStart,
       const TimeStamp& aRedirectEnd);
-
   mozilla::ipc::IPCResult RecvCancelPump(const nsresult& aStatus);
   mozilla::ipc::IPCResult RecvSuspendPump();
   mozilla::ipc::IPCResult RecvResumePump();
@@ -90,9 +87,7 @@ class HttpTransactionChild final : public PHttpTransactionChild,
       uint64_t topLevelOuterContentWindowId, uint8_t httpTrafficCategory,
       uint64_t requestContextID, ClassOfService classOfService,
       uint32_t initialRwin, bool responseTimeoutEnabled, uint64_t channelId,
-      bool aHasTransactionObserver,
-      const nsILoadInfo::IPAddressSpace& aParentIPAddressSpace,
-      const LNAPerms& aLnaPermissionStatus);
+      bool aHasTransactionObserver);
 
   void CancelInternal(nsresult aStatus);
 

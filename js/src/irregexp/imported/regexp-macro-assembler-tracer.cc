@@ -41,10 +41,12 @@ void RegExpMacroAssemblerTracer::AdvanceCurrentPosition(int by) {
   assembler_->AdvanceCurrentPosition(by);
 }
 
-void RegExpMacroAssemblerTracer::CheckFixedLengthLoop(Label* label) {
-  PrintF(" CheckFixedLengthLoop(label[%08x]);\n\n", LabelToInt(label));
-  assembler_->CheckFixedLengthLoop(label);
+
+void RegExpMacroAssemblerTracer::CheckGreedyLoop(Label* label) {
+  PrintF(" CheckGreedyLoop(label[%08x]);\n\n", LabelToInt(label));
+  assembler_->CheckGreedyLoop(label);
 }
+
 
 void RegExpMacroAssemblerTracer::PopCurrentPosition() {
   PrintF(" PopCurrentPosition();\n");

@@ -58,7 +58,7 @@ import {AsyncDisposableStack} from '../util/disposable.js';
 import {isErrorLike} from '../util/ErrorLike.js';
 
 import {Binding} from './Binding.js';
-import {CdpCDPSession} from './CdpSession.js';
+import {CdpCDPSession} from './CDPSession.js';
 import {isTargetClosedError} from './Connection.js';
 import {Coverage} from './Coverage.js';
 import type {DeviceRequestPrompt} from './DeviceRequestPrompt.js';
@@ -97,7 +97,7 @@ function convertConsoleMessageLevel(method: string): ConsoleMessageType {
  */
 export class CdpPage extends Page {
   static async _create(
-    client: CdpCDPSession,
+    client: CDPSession,
     target: CdpTarget,
     defaultViewport: Viewport | null,
   ): Promise<CdpPage> {
@@ -120,7 +120,7 @@ export class CdpPage extends Page {
   #closed = false;
   readonly #targetManager: TargetManager;
 
-  #primaryTargetClient: CdpCDPSession;
+  #primaryTargetClient: CDPSession;
   #primaryTarget: CdpTarget;
   #tabTargetClient: CDPSession;
   #tabTarget: CdpTarget;
@@ -140,12 +140,12 @@ export class CdpPage extends Page {
   #serviceWorkerBypassed = false;
   #userDragInterceptionEnabled = false;
 
-  constructor(client: CdpCDPSession, target: CdpTarget) {
+  constructor(client: CDPSession, target: CdpTarget) {
     super();
     this.#primaryTargetClient = client;
     this.#tabTargetClient = client.parentSession()!;
     assert(this.#tabTargetClient, 'Tab target session is not defined.');
-    this.#tabTarget = (this.#tabTargetClient as CdpCDPSession).target();
+    this.#tabTarget = (this.#tabTargetClient as CdpCDPSession)._target();
     assert(this.#tabTarget, 'Tab target is not defined.');
     this.#primaryTarget = target;
     this.#targetManager = target._targetManager();
@@ -257,13 +257,12 @@ export class CdpPage extends Page {
   }
 
   async #onActivation(newSession: CDPSession): Promise<void> {
-    // TODO: Remove assert once we have separate Event type for CdpCDPSession.
-    assert(
-      newSession instanceof CdpCDPSession,
-      'CDPSession is not instance of CdpCDPSession',
-    );
     this.#primaryTargetClient = newSession;
-    this.#primaryTarget = newSession.target();
+    assert(
+      this.#primaryTargetClient instanceof CdpCDPSession,
+      'CDPSession is not instance of CDPSessionImpl',
+    );
+    this.#primaryTarget = this.#primaryTargetClient._target();
     assert(this.#primaryTarget, 'Missing target on swap');
     this.#keyboard.updateClient(newSession);
     this.#mouse.updateClient(newSession);
@@ -277,7 +276,7 @@ export class CdpPage extends Page {
 
   async #onSecondaryTarget(session: CDPSession): Promise<void> {
     assert(session instanceof CdpCDPSession);
-    if (session.target()._subtype() !== 'prerender') {
+    if (session._target()._subtype() !== 'prerender') {
       return;
     }
     this.#frameManager.registerSpeculativeSession(session).catch(debugError);
@@ -328,16 +327,15 @@ export class CdpPage extends Page {
 
   #onAttachedToTarget = (session: CDPSession) => {
     assert(session instanceof CdpCDPSession);
-    this.#frameManager.onAttachedToTarget(session.target());
-    if (session.target()._getTargetInfo().type === 'worker') {
+    this.#frameManager.onAttachedToTarget(session._target());
+    if (session._target()._getTargetInfo().type === 'worker') {
       const worker = new CdpWebWorker(
         session,
-        session.target().url(),
-        session.target()._targetId,
-        session.target().type(),
+        session._target().url(),
+        session._target()._targetId,
+        session._target().type(),
         this.#addConsoleMessage.bind(this),
         this.#handleException.bind(this),
-        this.#frameManager.networkManager,
       );
       this.#workers.set(session.id(), worker);
       this.emit(PageEvent.WorkerCreated, worker);
@@ -376,10 +374,7 @@ export class CdpPage extends Page {
       event.backendNodeId,
     )) as ElementHandle<HTMLInputElement>;
 
-    const fileChooser = new FileChooser(
-      handle.move(),
-      event.mode !== 'selectSingle',
-    );
+    const fileChooser = new FileChooser(handle.move(), event);
     for (const promise of this.#fileChooserDeferreds) {
       promise.resolve(fileChooser);
     }

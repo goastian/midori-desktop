@@ -33,6 +33,7 @@ class DeepLinkTest : TestSetup() {
     val activityTestRule =
         AndroidComposeTestRule(
             HomeActivityIntentTestRule(
+                isHomeOnboardingDialogEnabled = false,
                 isMenuRedesignEnabled = false,
                 isMenuRedesignCFREnabled = false,
             ),

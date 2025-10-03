@@ -2,11 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import six
+
 from marionette_driver import geckoinstance
 from marionette_driver.errors import JavascriptException
 
 from marionette_harness import (
     MarionetteTestCase,
+    run_if_manage_instance,
 )
 
 
@@ -26,7 +29,7 @@ class TestPreferences(MarionetteTestCase):
     def test_gecko_instance_preferences(self):
         required_prefs = geckoinstance.GeckoInstance.required_prefs
 
-        for key, value in required_prefs.items():
+        for key, value in six.iteritems(required_prefs):
             self.assertEqual(
                 self.marionette.get_pref(key),
                 value,
@@ -36,7 +39,7 @@ class TestPreferences(MarionetteTestCase):
     def test_desktop_instance_preferences(self):
         required_prefs = geckoinstance.DesktopInstance.desktop_prefs
 
-        for key, value in required_prefs.items():
+        for key, value in six.iteritems(required_prefs):
             self.assertEqual(
                 self.marionette.get_pref(key),
                 value,
@@ -74,7 +77,7 @@ class TestPreferences(MarionetteTestCase):
         self.marionette.set_pref(self.prefs["string"], "abc")
         value = self.marionette.get_pref(self.prefs["string"])
         self.assertEqual(value, "abc")
-        self.assertTrue(isinstance(value, str))
+        self.assertTrue(isinstance(value, six.string_types))
 
         # Test reset value
         self.marionette.set_pref(self.prefs["string"], None)

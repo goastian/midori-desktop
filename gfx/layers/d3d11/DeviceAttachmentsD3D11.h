@@ -32,24 +32,17 @@ class DeviceAttachmentsD3D11 final {
     return mInitFailureId;
   }
 
-  typedef EnumeratedArray<ClipType, RefPtr<ID3D11VertexShader>,
-                          size_t(ClipType::NumClipTypes)>
-      VertexShaderArray;
-  typedef EnumeratedArray<ClipType, RefPtr<ID3D11PixelShader>,
-                          size_t(ClipType::NumClipTypes)>
-      PixelShaderArray;
-
   RefPtr<ID3D11InputLayout> mInputLayout;
 
   RefPtr<ID3D11Buffer> mVertexBuffer;
 
-  VertexShaderArray mVSQuadShader;
+  RefPtr<ID3D11VertexShader> mVSQuadShader;
 
   RefPtr<ID3D11PixelShader> mSolidColorShader;
-  PixelShaderArray mRGBAShader;
-  PixelShaderArray mRGBShader;
-  PixelShaderArray mYCbCrShader;
-  PixelShaderArray mNV12Shader;
+  RefPtr<ID3D11PixelShader> mRGBAShader;
+  RefPtr<ID3D11PixelShader> mRGBShader;
+  RefPtr<ID3D11PixelShader> mYCbCrShader;
+  RefPtr<ID3D11PixelShader> mNV12Shader;
   RefPtr<ID3D11Buffer> mPSConstantBuffer;
   RefPtr<ID3D11Buffer> mVSConstantBuffer;
   RefPtr<ID3D11RasterizerState> mRasterizerState;
@@ -74,13 +67,13 @@ class DeviceAttachmentsD3D11 final {
   bool CreateShaders();
   bool InitSyncObject();
 
-  void InitVertexShader(const ShaderBytes& aShader, VertexShaderArray& aArray,
-                        ClipType aClipType) {
-    InitVertexShader(aShader, getter_AddRefs(aArray[aClipType]));
+  void InitVertexShader(const ShaderBytes& aShader,
+                        RefPtr<ID3D11VertexShader>& aDest) {
+    InitVertexShader(aShader, getter_AddRefs(aDest));
   }
-  void InitPixelShader(const ShaderBytes& aShader, PixelShaderArray& aArray,
-                       ClipType aClipType) {
-    InitPixelShader(aShader, getter_AddRefs(aArray[aClipType]));
+  void InitPixelShader(const ShaderBytes& aShader,
+                       RefPtr<ID3D11PixelShader>& aDest) {
+    InitPixelShader(aShader, getter_AddRefs(aDest));
   }
 
   void InitVertexShader(const ShaderBytes& aShader, ID3D11VertexShader** aOut);

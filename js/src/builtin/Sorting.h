@@ -42,7 +42,7 @@ enum class ArraySortKind {
 // call we call |freeMallocData| exactly once. C++ code calls |freeMallocData|
 // when it's done sorting and the JIT exception handler calls it when unwinding
 // the trampoline frame.
-class alignas(8) ArraySortData {
+class ArraySortData {
  public:
   enum class ComparatorKind : uint8_t {
     Unoptimized,
@@ -104,7 +104,7 @@ class alignas(8) ArraySortData {
   // Optional padding to ensure proper alignment of the comparator JIT frame.
 #if !defined(JS_64BIT) && !defined(DEBUG)
  protected:  // Silence Clang warning about unused private field.
-  uint32_t padding[2];
+  size_t padding;
 #endif
 
  private:

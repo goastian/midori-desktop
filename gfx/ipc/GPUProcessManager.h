@@ -26,7 +26,7 @@ enum class DeviceResetReason;
 
 namespace mozilla {
 class MemoryReportingProcess;
-class PRemoteMediaManagerChild;
+class PRemoteDecoderManagerChild;
 namespace layers {
 class IAPZCTreeManager;
 class CompositorOptions;
@@ -110,7 +110,7 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
       mozilla::ipc::Endpoint<PCompositorManagerChild>* aOutCompositor,
       mozilla::ipc::Endpoint<PImageBridgeChild>* aOutImageBridge,
       mozilla::ipc::Endpoint<PVRManagerChild>* aOutVRBridge,
-      mozilla::ipc::Endpoint<PRemoteMediaManagerChild>* aOutVideoManager,
+      mozilla::ipc::Endpoint<PRemoteDecoderManagerChild>* aOutVideoManager,
       dom::ContentParentId aChildId, nsTArray<uint32_t>* aNamespaces);
 
   // Initialize GPU process with consuming end of PVideoBridge.
@@ -239,10 +239,10 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
       mozilla::ipc::EndpointProcInfo aOtherProcess,
       dom::ContentParentId aChildId,
       mozilla::ipc::Endpoint<PVRManagerChild>* aOutEndpoint);
-  void CreateContentRemoteMediaManager(
+  void CreateContentRemoteDecoderManager(
       mozilla::ipc::EndpointProcInfo aOtherProcess,
       dom::ContentParentId aChildId,
-      mozilla::ipc::Endpoint<PRemoteMediaManagerChild>* aOutEndPoint);
+      mozilla::ipc::Endpoint<PRemoteDecoderManagerChild>* aOutEndPoint);
 
   // Called from RemoteCompositorSession. We track remote sessions so we can
   // notify their owning widgets that the session must be restarted.

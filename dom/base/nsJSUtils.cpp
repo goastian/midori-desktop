@@ -15,13 +15,11 @@
 
 #include <utility>
 #include "MainThreadUtils.h"
-#include "js/ArrayBuffer.h"
 #include "js/ComparisonOperators.h"
 #include "js/CompilationAndEvaluation.h"
 #include "js/CompileOptions.h"
 #include "js/Date.h"
 #include "js/EnvironmentChain.h"
-#include "js/experimental/TypedData.h"
 #include "js/GCVector.h"
 #include "js/HeapAPI.h"
 #include "js/Modules.h"

@@ -77,10 +77,7 @@ export default [
       // complex functions from being introduced. However, because Mozilla's eslintrc has
       // some other value defined, we need to override it here. See bug 1553449 for more
       // information on complex DevTools functions that are currently excluded.
-      // Note: this was increased to 25 in May 2025, to account for the ESLint v9 upgrade
-      // which changed the rule to take into account optional chaining and default values
-      // in destructuring patterns and parameters
-      complexity: ["error", 24],
+      complexity: ["error", 20],
       // componentDidUnmount is not a real lifecycle method, use componentWillUnmount.
       "id-denylist": ["error", "componentDidUnmount"],
       // Maximum depth callbacks can be nested.
@@ -106,10 +103,7 @@ export default [
       "no-return-assign": "error",
       // Disallow global and local variables that aren't used. Allow unused
       // function arguments prefixed with `_`.
-      "no-unused-vars": [
-        "error",
-        { argsIgnorePattern: "^_", caughtErrors: "none", vars: "all" },
-      ],
+      "no-unused-vars": ["error", { argsIgnorePattern: "^_", vars: "all" }],
       // Enforce using `let` only when variables are reassigned.
       "prefer-const": ["error", { destructuring: "all" }],
       // Require use of the second argument for parseInt().
@@ -198,10 +192,7 @@ export default [
     // For all head*.js files, turn off no-unused-vars at a global level
     files: ["**/head*.js"],
     rules: {
-      "no-unused-vars": [
-        "error",
-        { argsIgnorePattern: "^_", caughtErrors: "none", vars: "local" },
-      ],
+      "no-unused-vars": ["error", { argsIgnorePattern: "^_", vars: "local" }],
     },
   },
   {

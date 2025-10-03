@@ -67,21 +67,16 @@ template bool IsStructurallyValidRegionTag(Span<const char> aRegion);
 template bool IsStructurallyValidRegionTag(Span<const Latin1Char> aRegion);
 template bool IsStructurallyValidRegionTag(Span<const char16_t> aRegion);
 
-template <typename CharT>
-bool IsStructurallyValidVariantTag(Span<const CharT> aVariant) {
+#ifdef DEBUG
+bool IsStructurallyValidVariantTag(Span<const char> aVariant) {
   // unicode_variant_subtag = (alphanum{5,8} | digit alphanum{3}) ;
   size_t length = aVariant.size();
-  const CharT* str = aVariant.data();
+  const char* str = aVariant.data();
   return ((5 <= length && length <= 8) ||
           (length == 4 && IsAsciiDigit(str[0]))) &&
-         std::all_of(str, str + length, IsAsciiAlphanumeric<CharT>);
+         std::all_of(str, str + length, IsAsciiAlphanumeric<char>);
 }
 
-template bool IsStructurallyValidVariantTag(Span<const char> aVariant);
-template bool IsStructurallyValidVariantTag(Span<const Latin1Char> aVariant);
-template bool IsStructurallyValidVariantTag(Span<const char16_t> aVariant);
-
-#ifdef DEBUG
 bool IsStructurallyValidUnicodeExtensionTag(Span<const char> aExtension) {
   return LocaleParser::CanParseUnicodeExtension(aExtension).isOk();
 }
@@ -196,29 +191,6 @@ void Locale::ClearUnicodeExtension() {
 }
 
 template <size_t InitialCapacity>
-static void SortAlphabetically(
-    Vector<VariantSubtag, InitialCapacity>& aVariants) {
-  size_t length = aVariants.length();
-
-  // Zero or one element lists are already sorted.
-  if (length < 2) {
-    return;
-  }
-
-  // Handle two element lists inline.
-  if (length == 2) {
-    if (aVariants[0].Span() > aVariants[1].Span()) {
-      std::swap(aVariants[0], aVariants[1]);
-    }
-    return;
-  }
-
-  std::stable_sort(
-      aVariants.begin(), aVariants.end(),
-      [](const auto& a, const auto& b) { return a.Span() < b.Span(); });
-}
-
-template <size_t InitialCapacity>
 static bool SortAlphabetically(Vector<UniqueChars, InitialCapacity>& aSubtags) {
   size_t length = aSubtags.length();
 
@@ -274,9 +246,12 @@ Result<Ok, Locale::CanonicalizationError> Locale::CanonicalizeBaseName() {
              IsStructurallyValidRegionTag(Region().Span()));
 
   // The canonical case for variant subtags is lowercase.
-  for (auto& variant : mVariants) {
-    variant.ToLowerCase();
-    MOZ_ASSERT(IsStructurallyValidVariantTag(variant.Span()));
+  for (UniqueChars& variant : mVariants) {
+    char* variantChars = variant.get();
+    size_t variantLength = strlen(variantChars);
+    AsciiToLowerCase(variantChars, variantLength, variantChars);
+
+    MOZ_ASSERT(IsStructurallyValidVariantTag({variantChars, variantLength}));
   }
 
   // Extensions and privateuse subtags are case normalized in the
@@ -286,13 +261,16 @@ Result<Ok, Locale::CanonicalizationError> Locale::CanonicalizeBaseName() {
 
   if (mVariants.length() > 1) {
     // 1. Any variants are in alphabetical order.
-    SortAlphabetically(mVariants);
+    if (!SortAlphabetically(mVariants)) {
+      return Err(CanonicalizationError::OutOfMemory);
+    }
 
     // Reject the Locale identifier if a duplicate variant was found, e.g.
     // "en-variant-Variant".
-    const auto* duplicate = std::adjacent_find(
-        mVariants.begin(), mVariants.end(),
-        [](const auto& a, const auto& b) { return a.Span() == b.Span(); });
+    const UniqueChars* duplicate = std::adjacent_find(
+        mVariants.begin(), mVariants.end(), [](const auto& a, const auto& b) {
+          return strcmp(a.get(), b.get()) == 0;
+        });
     if (duplicate != mVariants.end()) {
       return Err(CanonicalizationError::DuplicateVariant);
     }
@@ -978,14 +956,6 @@ size_t Locale::ToStringCapacity() const {
     return length;
   };
 
-  auto lengthSubtags = [&lengthSubtag](const auto& subtags) {
-    size_t length = 0;
-    for (const auto& subtag : subtags) {
-      length += lengthSubtag(subtag) + 1;
-    }
-    return length;
-  };
-
   auto lengthSubtagsZ = [&lengthSubtagZ](const auto& subtags) {
     size_t length = 0;
     for (const auto& subtag : subtags) {
@@ -1007,7 +977,7 @@ size_t Locale::ToStringCapacity() const {
     capacity += lengthSubtag(mRegion) + 1;
   }
 
-  capacity += lengthSubtags(mVariants);
+  capacity += lengthSubtagsZ(mVariants);
 
   capacity += lengthSubtagsZ(mExtensions);
 
@@ -1039,13 +1009,6 @@ size_t Locale::ToStringAppend(char* aBuffer) const {
     offset += length;
   };
 
-  auto appendSubtags = [&appendHyphen, &appendSubtag](const auto& subtags) {
-    for (const auto& subtag : subtags) {
-      appendHyphen();
-      appendSubtag(subtag);
-    }
-  };
-
   auto appendSubtagsZ = [&appendHyphen, &appendSubtagZ](const auto& subtags) {
     for (const auto& subtag : subtags) {
       appendHyphen();
@@ -1069,7 +1032,7 @@ size_t Locale::ToStringAppend(char* aBuffer) const {
   }
 
   // Append the variant subtags if present.
-  appendSubtags(mVariants);
+  appendSubtagsZ(mVariants);
 
   // Append the extensions subtags if present.
   appendSubtagsZ(mExtensions);
@@ -1166,9 +1129,8 @@ Result<Ok, LocaleParser::ParserError> LocaleParser::InternalParseBaseName(
   auto& variants = aTag.mVariants;
   MOZ_ASSERT(variants.length() == 0);
   while (aLocaleParser.IsVariant(aTok)) {
-    VariantSubtag variant{};
-    aLocaleParser.CopyChars(aTok, variant);
-    if (!variants.append(variant)) {
+    auto variant = aLocaleParser.Chars(aTok);
+    if (!variants.append(std::move(variant))) {
       return Err(ParserError::OutOfMemory);
     }
 

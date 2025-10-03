@@ -24,7 +24,7 @@ class MFContentProtectionManager;
 class MFMediaEngineExtension;
 class MFMediaEngineStreamWrapper;
 class MFMediaSource;
-class RemoteMediaManagerParent;
+class RemoteDecoderManagerParent;
 
 /**
  * MFMediaEngineParent is a wrapper class for a MediaEngine in the MF-CDM
@@ -37,7 +37,7 @@ class RemoteMediaManagerParent;
 class MFMediaEngineParent final : public PMFMediaEngineParent {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MFMediaEngineParent);
-  MFMediaEngineParent(RemoteMediaManagerParent* aManager,
+  MFMediaEngineParent(RemoteDecoderManagerParent* aManager,
                       nsISerialEventTarget* aManagerThread);
 
   using TrackType = TrackInfo::TrackType;
@@ -101,7 +101,7 @@ class MFMediaEngineParent final : public PMFMediaEngineParent {
   // destroy.
   RefPtr<MFMediaEngineParent> mIPDLSelfRef;
 
-  const RefPtr<RemoteMediaManagerParent> mManager;
+  const RefPtr<RemoteDecoderManagerParent> mManager;
   const RefPtr<nsISerialEventTarget> mManagerThread;
 
   // Required classes for working with the media engine.

@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-array.prototype.tospliced
+esid: sec-array.prototype.toSpliced
 description: Array.prototype.toSpliced does not Get the discarded elements in the original array
 info: |
   22.1.3.25 Array.prototype.toSpliced (start, deleteCount , ...items )

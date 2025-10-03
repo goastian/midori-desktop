@@ -11,7 +11,6 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.customannotations.SmokeTest
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.helpers.AppAndSystemHelper.registerAndCleanupIdlingResources
-import org.mozilla.fenix.helpers.DataGenerationHelper.getStringResource
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.RecyclerViewIdlingResource
 import org.mozilla.fenix.helpers.TestAssetHelper.getEnhancedTrackingProtectionAsset
@@ -59,7 +58,7 @@ class SettingsAddonsTest : TestSetup() {
     // Installs an add-on from the Add-ons menu and verifies the prompts
     @Test
     fun installAddonFromMainMenuTest() {
-        val addonName = "AdGuard AdBlocker"
+        val addonName = "uBlock Origin"
 
         homeScreen {}
             .openThreeDotMenu {}
@@ -129,10 +128,7 @@ class SettingsAddonsTest : TestSetup() {
         }.enterURLAndEnterToBrowser(trackingProtectionPage.url) {
             verifyUrl(trackingProtectionPage.url.toString())
         }.goToHomescreen(activityTestRule) {
-        }.openTopSiteTabWithTitle(
-            activityTestRule,
-            getStringResource(R.string.default_top_site_wikipedia),
-        ) {
+        }.openTopSiteTabWithTitle(activityTestRule, "Top Articles") {
         }.openThreeDotMenu {
         }.openSettings {
             verifySettingsView()
@@ -150,12 +146,9 @@ class SettingsAddonsTest : TestSetup() {
             installAddonInPrivateMode(addonName, activityTestRule.activityRule)
             closeAddonInstallCompletePrompt()
         }.goBack {
-        }.openContextMenuOnTopSitesWithTitle(
-            activityTestRule,
-            getStringResource(R.string.default_top_site_google),
-        ) {
+        }.openContextMenuOnTopSitesWithTitle(activityTestRule, "Top Articles") {
         }.openTopSiteInPrivateTab(activityTestRule) {
-            verifyUrl("google.com")
+            verifyPocketPageContent()
         }.openThreeDotMenu {
             openAddonsSubList()
             verifyAddonAvailableInMainMenu(addonName)
@@ -172,11 +165,8 @@ class SettingsAddonsTest : TestSetup() {
             installAddon(addonName, activityTestRule.activityRule)
             closeAddonInstallCompletePrompt()
         }.goBack {
-        }.openTopSiteTabWithTitle(
-            activityTestRule,
-            getStringResource(R.string.default_top_site_google),
-        ) {
-            verifyUrl("google.com")
+        }.openTopSiteTabWithTitle(activityTestRule, "Top Articles") {
+            verifyUrl("getpocket.com/explore")
         }.openThreeDotMenu {
             openAddonsSubList()
             verifyTrackersBlockedByUblock()

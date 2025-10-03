@@ -21,9 +21,6 @@ export const INITIAL_STATE = {
     locale: "",
     isForStartupCache: {
       App: false,
-      TopSites: false,
-      DiscoveryStream: false,
-      Weather: false,
       Wallpaper: false,
     },
     customizeMenuVisible: false,
@@ -31,9 +28,7 @@ export const INITIAL_STATE = {
   Ads: {
     initialized: false,
     lastUpdated: null,
-    tiles: {},
-    spocs: {},
-    spocPlacements: {},
+    topsites: {},
   },
   TopSites: {
     // Have we received real data from history yet?
@@ -174,10 +169,6 @@ export const INITIAL_STATE = {
     locationSearchString: "",
     suggestedLocations: [],
   },
-  TrendingSearch: {
-    suggestions: [],
-    collapsed: false,
-  },
 };
 
 function App(prevState = INITIAL_STATE.App, action) {
@@ -187,28 +178,18 @@ function App(prevState = INITIAL_STATE.App, action) {
         initialized: true,
       });
     case at.TOP_SITES_UPDATED:
-      // Toggle `isForStartupCache.TopSites` when receiving the `TOP_SITES_UPDATE` action
+      // Toggle `isForStartupCache` when receiving the `TOP_SITES_UPDATE` action
       // so that sponsored tiles can be rendered as usual. See Bug 1826360.
       return {
         ...prevState,
-        isForStartupCache: { ...prevState.isForStartupCache, TopSites: false },
+        isForStartupCache: { ...prevState.isForStartupCache, App: false },
       };
     case at.DISCOVERY_STREAM_SPOCS_UPDATE:
-      // Toggle `isForStartupCache.DiscoveryStream` when receiving the `DISCOVERY_STREAM_SPOCS_UPDATE` action
+      // Toggle `isForStartupCache` when receiving the `DISCOVERY_STREAM_SPOCS_UPDATE_STARTUPCACHE` action
       // so that spoc cards can be rendered as usual.
       return {
         ...prevState,
-        isForStartupCache: {
-          ...prevState.isForStartupCache,
-          DiscoveryStream: false,
-        },
-      };
-    case at.WEATHER_UPDATE:
-      // Toggle `isForStartupCache.Weather` when receiving the `WEATHER_UPDATE` action
-      // so that weather can be rendered as usual.
-      return {
-        ...prevState,
-        isForStartupCache: { ...prevState.isForStartupCache, Weather: false },
+        isForStartupCache: { ...prevState.isForStartupCache, App: false },
       };
     case at.WALLPAPERS_CUSTOM_SET:
       // Toggle `isForStartupCache.Wallpaper` when receiving the `WALLPAPERS_CUSTOM_SET` action
@@ -511,6 +492,25 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
           }),
         })
       );
+    case at.PLACES_SAVED_TO_POCKET:
+      if (!action.data) {
+        return prevState;
+      }
+      return prevState.map(section =>
+        Object.assign({}, section, {
+          rows: section.rows.map(item => {
+            if (item.url === action.data.url) {
+              return Object.assign({}, item, {
+                open_url: action.data.open_url,
+                pocket_id: action.data.pocket_id,
+                title: action.data.title,
+                type: "pocket",
+              });
+            }
+            return item;
+          }),
+        })
+      );
     case at.PLACES_BOOKMARKS_REMOVED:
       if (!action.data) {
         return prevState;
@@ -551,6 +551,15 @@ function Sections(prevState = INITIAL_STATE.Sections, action) {
       return prevState.map(section =>
         Object.assign({}, section, {
           rows: section.rows.filter(site => site.url !== action.data.url),
+        })
+      );
+    case at.DELETE_FROM_POCKET:
+    case at.ARCHIVE_FROM_POCKET:
+      return prevState.map(section =>
+        Object.assign({}, section, {
+          rows: section.rows.filter(
+            site => site.pocket_id !== action.data.pocket_id
+          ),
         })
       );
     default:
@@ -847,6 +856,29 @@ function DiscoveryStream(prevState = INITIAL_STATE.DiscoveryStream, action) {
             items.filter(item => item.url !== action.data.url)
           );
 
+    case at.PLACES_SAVED_TO_POCKET: {
+      const addPocketInfo = item => {
+        if (item.url === action.data.url) {
+          return Object.assign({}, item, {
+            open_url: action.data.open_url,
+            pocket_id: action.data.pocket_id,
+            context_type: "pocket",
+          });
+        }
+        return item;
+      };
+      return isNotReady()
+        ? prevState
+        : nextState(items => items.map(addPocketInfo));
+    }
+    case at.DELETE_FROM_POCKET:
+    case at.ARCHIVE_FROM_POCKET:
+      return isNotReady()
+        ? prevState
+        : nextState(items =>
+            items.filter(item => item.pocket_id !== action.data.pocket_id)
+          );
+
     case at.PLACES_BOOKMARK_ADDED: {
       const updateBookmarkInfo = item => {
         if (item.url === action.data.url) {
@@ -1047,30 +1079,11 @@ function Ads(prevState = INITIAL_STATE.Ads, action) {
         ...prevState,
         initialized: true,
       };
-    case at.ADS_UPDATE_TILES:
+    case at.ADS_UPDATE_DATA:
       return {
         ...prevState,
-        tiles: action.data.tiles,
+        topsites: action.data,
       };
-    case at.ADS_UPDATE_SPOCS:
-      return {
-        ...prevState,
-        spocs: action.data.spocs,
-        spocPlacements: action.data.spocPlacements,
-      };
-    case at.ADS_RESET:
-      return { ...INITIAL_STATE.Ads };
-    default:
-      return prevState;
-  }
-}
-
-function TrendingSearch(prevState = INITIAL_STATE.TrendingSearch, action) {
-  switch (action.type) {
-    case at.TRENDING_SEARCH_UPDATE:
-      return { ...prevState, suggestions: action.data };
-    case at.TRENDING_SEARCH_TOGGLE_COLLAPSE:
-      return { ...prevState, collapsed: action.data.collapsed };
     default:
       return prevState;
   }
@@ -1090,7 +1103,6 @@ export const reducers = {
   InferredPersonalization,
   DiscoveryStream,
   Search,
-  TrendingSearch,
   Wallpapers,
   Weather,
 };

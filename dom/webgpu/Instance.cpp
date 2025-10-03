@@ -22,7 +22,9 @@
 #include "nsString.h"
 #include "nsStringFwd.h"
 
-#include "mozilla/dom/WorkerPrivate.h"
+#ifndef EARLY_BETA_OR_EARLIER
+#  include "mozilla/dom/WorkerPrivate.h"
+#endif
 
 #include <optional>
 #include <string_view>
@@ -46,12 +48,7 @@ static inline nsDependentCString ToCString(const std::string_view s) {
     return true;
   }
 
-  dom::WorkerPrivate* wp = dom::GetCurrentThreadWorkerPrivate();
-  if (wp && wp->IsServiceWorker()) {
-    return StaticPrefs::dom_webgpu_service_workers_enabled();
-  }
-
-  return true;
+  return StaticPrefs::dom_webgpu_workers_enabled();
 }
 
 /*static*/
@@ -117,11 +114,7 @@ already_AddRefed<dom::Promise> Instance::RequestAdapter(
   };
 
 #ifndef EARLY_BETA_OR_EARLIER
-#  ifndef XP_WIN
-  rejectIf(true,
-           "WebGPU is only available on Windows, and in Nightly and Early Beta "
-           "builds on other platforms.");
-#  endif
+  rejectIf(true, "WebGPU is not yet available in Release or late Beta builds.");
 
   // NOTE: Deliberately left after the above check so that we only enter
   // here if it's removed. Above is a more informative diagnostic, while the
@@ -140,14 +133,6 @@ already_AddRefed<dom::Promise> Instance::RequestAdapter(
   rejectIf(!StaticPrefs::dom_webgpu_enabled(),
            "WebGPU is disabled because the `dom.webgpu.enabled` pref. is set "
            "to `false`.");
-#ifdef WIN32
-#  ifndef MOZ_DXCOMPILER
-  rejectIf(true,
-           "WebGPU is disabled because dxcompiler is unavailable with this "
-           "build configuration");
-#  endif
-#endif
-
   if (rejectionMessage) {
     promise->MaybeRejectWithNotSupportedError(ToCString(*rejectionMessage));
     return promise.forget();

@@ -144,6 +144,7 @@ static FILE* MaybeOpenFileFromEnv(const char* env,
 
 struct PhaseKindInfo {
   Phase firstPhase;
+  uint8_t telemetryBucket;
   const char* name;
 };
 
@@ -878,6 +879,10 @@ bool Statistics::initialize() {
   }
   for (auto i : AllPhaseKinds()) {
     MOZ_ASSERT(phases[phaseKinds[i].firstPhase].phaseKind == i);
+    for (auto j : AllPhaseKinds()) {
+      MOZ_ASSERT_IF(i != j, phaseKinds[i].telemetryBucket !=
+                                phaseKinds[j].telemetryBucket);
+    }
   }
 #endif
 
@@ -1179,13 +1184,6 @@ void Statistics::sendGCTelemetry() {
 void Statistics::beginNurseryCollection() {
   count(COUNT_MINOR_GC);
   startingMinorGCNumber = gc->minorGCCount();
-  TimeStamp currentTime = TimeStamp::Now();
-  JSRuntime* runtime = gc->rt;
-
-  if (gc->nursery().lastCollectionEndTime()) {
-    runtime->metrics().GC_TIME_BETWEEN_MINOR_MS(
-        TimeBetween(gc->nursery().lastCollectionEndTime(), currentTime));
-  }
 }
 
 void Statistics::endNurseryCollection() { tenuredAllocsSinceMinorGC = 0; }
@@ -1356,18 +1354,28 @@ void Statistics::sendSliceTelemetry(const SliceData& slice) {
       // Record the longest phase in any long slice.
       if (wasLongSlice) {
         PhaseKind longest = LongestPhaseSelfTimeInMajorGC(slice.phaseTimes);
-        reportLongestPhaseInMajorGC(longest, [runtime](auto sample) {
-          runtime->metrics().GC_SLOW_PHASE(sample);
-        });
+        reportLongestPhaseInMajorGC(
+            longest,
+            [runtime](auto sample) {
+              runtime->metrics().GC_SLOW_PHASE(sample);
+            },
+            [runtime](auto sample) {
+              runtime->metrics().GC_GLEAN_SLOW_PHASE(sample);
+            });
 
         // If the longest phase was waiting for parallel tasks then record the
         // longest task.
         if (longest == PhaseKind::JOIN_PARALLEL_TASKS) {
           PhaseKind longestParallel =
               FindLongestPhaseKind(slice.maxParallelTimes);
-          reportLongestPhaseInMajorGC(longestParallel, [runtime](auto sample) {
-            runtime->metrics().GC_SLOW_TASK(sample);
-          });
+          reportLongestPhaseInMajorGC(
+              longestParallel,
+              [runtime](auto sample) {
+                runtime->metrics().GC_SLOW_TASK(sample);
+              },
+              [runtime](auto sample) {
+                runtime->metrics().GC_GLEAN_SLOW_TASK(sample);
+              });
         }
       }
     }
@@ -1377,10 +1385,13 @@ void Statistics::sendSliceTelemetry(const SliceData& slice) {
   }
 }
 
-template <typename GleanFn>
+template <typename LegacyFn, typename GleanFn>
 void Statistics::reportLongestPhaseInMajorGC(PhaseKind longest,
+                                             LegacyFn legacyReportFn,
                                              GleanFn gleanReportFn) {
   if (longest != PhaseKind::NONE) {
+    uint8_t bucket = phaseKinds[longest].telemetryBucket;
+    legacyReportFn(bucket);
     gleanReportFn(static_cast<uint32_t>(longest));
   }
 }
@@ -1561,7 +1572,7 @@ void Statistics::recordParallelPhase(PhaseKind phaseKind,
                                      TimeDuration duration) {
   MOZ_ASSERT(CurrentThreadCanAccessRuntime(gc->rt));
 
-  if (aborted) {
+  if (slices_.empty()) {
     return;
   }
 

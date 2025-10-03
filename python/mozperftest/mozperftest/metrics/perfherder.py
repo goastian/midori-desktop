@@ -124,8 +124,7 @@ class Perfherder(Layer):
             perfherder_data = self._build_blob(
                 subtests,
                 name=name,
-                extra_options=settings.get("extraOptions", [])
-                + metadata.get_extra_options(),
+                extra_options=settings.get("extraOptions"),
                 should_alert=strtobool(settings.get("shouldAlert", False)),
                 application=app_info,
                 alert_threshold=float(settings.get("alertThreshold", 2.0)),

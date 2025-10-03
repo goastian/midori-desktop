@@ -21,7 +21,7 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 
 [policy.allocator-api2]
 audit-as-crates-io = true
-notes = "This is the upstream code without the Box implementation which may have a soundness issue."
+notes = "This is the upstream code with a fix for rust 1.89."
 
 [policy.any_all_workaround]
 audit-as-crates-io = true
@@ -42,6 +42,10 @@ notes = "This is a crate Henri wrote which is also published. We should probably
 [policy.chardetng_c]
 audit-as-crates-io = true
 notes = "This is a crate Henri wrote which is also published. We should probably update Firefox to tip and certify that."
+
+[policy.coremidi]
+audit-as-crates-io = true
+notes = "This is a pinned version of the upstream code, presumably to get a fix that hadn't been released yet. We should consider switching to the latest official release."
 
 [policy.cose]
 audit-as-crates-io = true
@@ -333,6 +337,10 @@ criteria = "safe-to-run"
 version = "0.2.10"
 criteria = "safe-to-deploy"
 
+[[exemptions.coremidi]]
+version = "0.6.0@git:fc68464b5445caf111e41f643a2e69ccce0b4f83"
+criteria = "safe-to-deploy"
+
 [[exemptions.coremidi-sys]]
 version = "3.1.0"
 criteria = "safe-to-deploy"
@@ -384,6 +392,11 @@ criteria = "safe-to-deploy"
 [[exemptions.dbus]]
 version = "0.6.5"
 criteria = "safe-to-deploy"
+
+[[exemptions.derive_more-impl]]
+version = "1.0.0-beta.2"
+criteria = "safe-to-deploy"
+notes = "The crate is new to version 1.0.x, and derived from older versions of derive_more. The differences against 0.99.17 have been audited, but cargo-vet cannot record this information."
 
 [[exemptions.devd-rs]]
 version = "0.3.4"
@@ -535,8 +548,18 @@ notes = "The in-gecko feature that we enable makes only pre-built bindings used,
 version = "0.2.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.lmdb-rkv-sys]]
+version = "0.11.2"
+criteria = "safe-to-deploy"
+suggest = false
+notes = "This crate is forked from another crate and not developed in-house. Given that LMDB-backed RKV is going away, we will probably never bother auditing this"
+
 [[exemptions.mach]]
 version = "0.3.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.memalloc]]
+version = "0.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.memmap2]]

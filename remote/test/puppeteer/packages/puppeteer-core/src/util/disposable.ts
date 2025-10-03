@@ -50,40 +50,45 @@ export class DisposableStack {
   #stack: Disposable[] = [];
 
   /**
-   * Returns a value indicating whether the stack has been disposed.
+   * Returns a value indicating whether this stack has been disposed.
    */
   get disposed(): boolean {
     return this.#disposed;
   }
 
   /**
-   * Alias for `[Symbol.dispose]()`.
+   * Disposes each resource in the stack in the reverse order that they were added.
    */
   dispose(): void {
-    this[disposeSymbol]();
+    if (this.#disposed) {
+      return;
+    }
+    this.#disposed = true;
+    for (const resource of this.#stack.reverse()) {
+      resource[disposeSymbol]();
+    }
   }
 
   /**
-   * Adds a disposable resource to the top of stack, returning the resource.
-   * Has no effect if provided `null` or `undefined`.
+   * Adds a disposable resource to the stack, returning the resource.
    *
-   * @param value - A `Disposable` object, `null`, or `undefined`.
-   * `null` and `undefined` will not be added, but will be returned.
+   * @param value - The resource to add. `null` and `undefined` will not be added,
+   * but will be returned.
    * @returns The provided `value`.
    */
   use<T extends Disposable | null | undefined>(value: T): T {
-    if (value && typeof value[disposeSymbol] === 'function') {
+    if (value) {
       this.#stack.push(value);
     }
     return value;
   }
 
   /**
-   * Adds a non-disposable resource and a disposal callback to the top of the stack.
+   * Adds a value and associated disposal callback as a resource to the stack.
    *
-   * @param value - A resource to be disposed.
-   * @param onDispose - A callback invoked to dispose the provided value.
-   * Will be invoked with `value` as the first parameter.
+   * @param value - The value to add.
+   * @param onDispose - The callback to use in place of a `[disposeSymbol]()`
+   * method. Will be invoked with `value` as the first parameter.
    * @returns The provided `value`.
    */
   adopt<T>(value: T, onDispose: (value: T) => void): T {
@@ -96,8 +101,7 @@ export class DisposableStack {
   }
 
   /**
-   * Add a disposal callback to the top of the stack to be invoked when stack is disposed.
-   * @param onDispose - A callback to invoke when this object is disposed.
+   * Adds a callback to be invoked when the stack is disposed.
    */
   defer(onDispose: () => void): void {
     this.#stack.push({
@@ -110,7 +114,6 @@ export class DisposableStack {
   /**
    * Move all resources out of this stack and into a new `DisposableStack`, and
    * marks this stack as disposed.
-   * @returns The new `DisposableStack`.
    *
    * @example
    *
@@ -142,45 +145,15 @@ export class DisposableStack {
    */
   move(): DisposableStack {
     if (this.#disposed) {
-      throw new ReferenceError('A disposed stack can not use anything new');
+      throw new ReferenceError('a disposed stack can not use anything new'); // step 3
     }
-    const stack = new DisposableStack();
+    const stack = new DisposableStack(); // step 4-5
     stack.#stack = this.#stack;
-    this.#stack = [];
     this.#disposed = true;
     return stack;
   }
 
-  /**
-   * Disposes each resource in the stack in last-in-first-out (LIFO) manner.
-   */
-  [disposeSymbol](): void {
-    if (this.#disposed) {
-      return;
-    }
-    this.#disposed = true;
-    const errors: unknown[] = [];
-    for (const resource of this.#stack.reverse()) {
-      try {
-        resource[disposeSymbol]();
-      } catch (e) {
-        errors.push(e);
-      }
-    }
-    if (errors.length === 1) {
-      throw errors[0];
-    } else if (errors.length > 1) {
-      let suppressed = null;
-      for (const error of errors.reverse()) {
-        if (suppressed === null) {
-          suppressed = error;
-        } else {
-          suppressed = new SuppressedError(error, suppressed);
-        }
-      }
-      throw suppressed;
-    }
-  }
+  [disposeSymbol] = this.dispose;
 
   readonly [Symbol.toStringTag] = 'DisposableStack';
 }
@@ -193,52 +166,45 @@ export class AsyncDisposableStack {
   #stack: AsyncDisposable[] = [];
 
   /**
-   * Returns a value indicating whether the stack has been disposed.
+   * Returns a value indicating whether this stack has been disposed.
    */
   get disposed(): boolean {
     return this.#disposed;
   }
 
   /**
-   * Alias for `[Symbol.asyncDispose]()`.
+   * Disposes each resource in the stack in the reverse order that they were added.
    */
   async dispose(): Promise<void> {
-    await this[asyncDisposeSymbol]();
+    if (this.#disposed) {
+      return;
+    }
+    this.#disposed = true;
+    for (const resource of this.#stack.reverse()) {
+      await resource[asyncDisposeSymbol]();
+    }
   }
 
   /**
-   * Adds a AsyncDisposable resource to the top of stack, returning the resource.
-   * Has no effect if provided `null` or `undefined`.
+   * Adds a disposable resource to the stack, returning the resource.
    *
-   * @param value - A `AsyncDisposable` object, `null`, or `undefined`.
-   * `null` and `undefined` will not be added, but will be returned.
+   * @param value - The resource to add. `null` and `undefined` will not be added,
+   * but will be returned.
    * @returns The provided `value`.
    */
-  use<T extends AsyncDisposable | Disposable | null | undefined>(value: T): T {
+  use<T extends AsyncDisposable | null | undefined>(value: T): T {
     if (value) {
-      const asyncDispose = (value as AsyncDisposable)[asyncDisposeSymbol];
-      const dispose = (value as Disposable)[disposeSymbol];
-
-      if (typeof asyncDispose === 'function') {
-        this.#stack.push(value as AsyncDisposable);
-      } else if (typeof dispose === 'function') {
-        this.#stack.push({
-          [asyncDisposeSymbol]: async () => {
-            (value as Disposable)[disposeSymbol]();
-          },
-        });
-      }
+      this.#stack.push(value);
     }
-
     return value;
   }
 
   /**
-   * Adds a non-disposable resource and a disposal callback to the top of the stack.
+   * Adds a value and associated disposal callback as a resource to the stack.
    *
-   * @param value - A resource to be disposed.
-   * @param onDispose - A callback invoked to dispose the provided value.
-   * Will be invoked with `value` as the first parameter.
+   * @param value - The value to add.
+   * @param onDispose - The callback to use in place of a `[disposeSymbol]()`
+   * method. Will be invoked with `value` as the first parameter.
    * @returns The provided `value`.
    */
   adopt<T>(value: T, onDispose: (value: T) => Promise<void>): T {
@@ -251,8 +217,7 @@ export class AsyncDisposableStack {
   }
 
   /**
-   * Add a disposal callback to the top of the stack to be invoked when stack is disposed.
-   * @param onDispose - A callback to invoke when this object is disposed.
+   * Adds a callback to be invoked when the stack is disposed.
    */
   defer(onDispose: () => Promise<void>): void {
     this.#stack.push({
@@ -265,7 +230,6 @@ export class AsyncDisposableStack {
   /**
    * Move all resources out of this stack and into a new `DisposableStack`, and
    * marks this stack as disposed.
-   * @returns The new `AsyncDisposableStack`.
    *
    * @example
    *
@@ -297,82 +261,15 @@ export class AsyncDisposableStack {
    */
   move(): AsyncDisposableStack {
     if (this.#disposed) {
-      throw new ReferenceError('A disposed stack can not use anything new');
+      throw new ReferenceError('a disposed stack can not use anything new'); // step 3
     }
-    const stack = new AsyncDisposableStack();
+    const stack = new AsyncDisposableStack(); // step 4-5
     stack.#stack = this.#stack;
-    this.#stack = [];
     this.#disposed = true;
     return stack;
   }
 
-  /**
-   * Disposes each resource in the stack in last-in-first-out (LIFO) manner.
-   */
-  async [asyncDisposeSymbol](): Promise<void> {
-    if (this.#disposed) {
-      return;
-    }
-    this.#disposed = true;
-    const errors: unknown[] = [];
-    for (const resource of this.#stack.reverse()) {
-      try {
-        await resource[asyncDisposeSymbol]();
-      } catch (e) {
-        errors.push(e);
-      }
-    }
-    if (errors.length === 1) {
-      throw errors[0];
-    } else if (errors.length > 1) {
-      let suppressed = null;
-      for (const error of errors.reverse()) {
-        if (suppressed === null) {
-          suppressed = error;
-        } else {
-          suppressed = new SuppressedError(error, suppressed);
-        }
-      }
-      throw suppressed;
-    }
-  }
+  [asyncDisposeSymbol] = this.dispose;
 
   readonly [Symbol.toStringTag] = 'AsyncDisposableStack';
-}
-
-/**
- * @internal
- * Represents an error that occurs when multiple errors are thrown during
- * the disposal of resources. This class encapsulates the primary error and
- * any suppressed errors that occurred subsequently.
- */
-export class SuppressedError extends Error {
-  #error: unknown;
-  #suppressed: unknown;
-
-  constructor(
-    error: unknown,
-    suppressed: unknown,
-    message = 'An error was suppressed during disposal',
-  ) {
-    super(message);
-    this.name = 'SuppressedError';
-    this.#error = error;
-    this.#suppressed = suppressed;
-  }
-
-  /**
-   * The primary error that occurred during disposal.
-   */
-  get error(): unknown {
-    return this.#error;
-  }
-
-  /**
-   * The suppressed error i.e. the error that was suppressed
-   * because it occurred later in the flow after the original error.
-   */
-  get suppressed(): unknown {
-    return this.#suppressed;
-  }
 }

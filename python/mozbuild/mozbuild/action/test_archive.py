@@ -52,7 +52,7 @@ TEST_HARNESS_BINS = [
     "plugin-container",
 ]
 
-TEST_HARNESS_DLLS = ["crashinjectdll", "mozglue", "xul", "nss3", "gkcodecs", "lgpllibs"]
+TEST_HARNESS_DLLS = ["crashinjectdll", "mozglue"]
 
 GMP_TEST_PLUGIN_DIRS = ["gmp-fake/**", "gmp-fakeopenh264/**"]
 
@@ -294,12 +294,6 @@ ARCHIVE_FILES = {
             "source": buildconfig.topobjdir,
             "base": "accessible/interfaces/ia2",
             "pattern": "IA2Typelib.tlb",
-            "dest": "mochitest",
-        },
-        {
-            "source": buildconfig.topobjdir,
-            "base": "dist/bin",
-            "pattern": "IA2Marshal.dll",
             "dest": "mochitest",
         },
     ],

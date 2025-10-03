@@ -21,7 +21,6 @@ export const editableFieldTemplate = ({
   onBlur,
   labelL10nId,
   noteL10nId,
-  inputL10nId,
 }) => html`
   <label
     for="input"
@@ -33,7 +32,6 @@ export const editableFieldTemplate = ({
   <input
     id="input"
     class="input-field"
-    data-l10n-id=${ifDefined(inputL10nId)}
     type=${type}
     value=${value}
     aria-describedby="explainer"

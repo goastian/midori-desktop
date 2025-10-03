@@ -55,7 +55,7 @@ const COMMAND_LINE_ACTIVATE = "profiles-activate";
 
 const gSupportsBadging = "nsIMacDockSupport" in Ci || "nsIWinTaskbar" in Ci;
 
-function loadBuiltInAvatarImage(uri, channel) {
+function loadImage(url) {
   return new Promise((resolve, reject) => {
     let imageTools = Cc["@mozilla.org/image/tools;1"].getService(Ci.imgITools);
     let imageContainer;
@@ -67,8 +67,15 @@ function loadBuiltInAvatarImage(uri, channel) {
     });
 
     imageTools.decodeImageFromChannelAsync(
-      uri,
-      channel,
+      url,
+      Services.io.newChannelFromURI(
+        url,
+        null,
+        Services.scriptSecurityManager.getSystemPrincipal(),
+        null, // aTriggeringPrincipal
+        Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL,
+        Ci.nsIContentPolicy.TYPE_IMAGE
+      ),
       (image, status) => {
         if (!Components.isSuccessCode(status)) {
           reject(new Components.Exception("Image loading failed", status));
@@ -81,62 +88,6 @@ function loadBuiltInAvatarImage(uri, channel) {
   });
 }
 
-async function getCustomAvatarImageType(blob, channel) {
-  let octets = await new Promise((resolve, reject) => {
-    let reader = new FileReader();
-    reader.addEventListener("load", () => {
-      resolve(Array.from(reader.result).map(c => c.charCodeAt(0)));
-    });
-    reader.addEventListener("error", reject);
-    reader.readAsBinaryString(blob);
-  });
-
-  let sniffer = Cc["@mozilla.org/image/loader;1"].createInstance(
-    Ci.nsIContentSniffer
-  );
-  let type = sniffer.getMIMETypeFromContent(channel, octets, octets.length);
-
-  return type;
-}
-
-async function loadCustomAvatarImage(profile, channel) {
-  let blob = await profile.getAvatarFile();
-
-  const imageTools = Cc["@mozilla.org/image/tools;1"].getService(Ci.imgITools);
-  let type = await getCustomAvatarImageType(blob, channel);
-
-  let buffer = await blob.arrayBuffer();
-  const image = imageTools.decodeImageFromArrayBuffer(buffer, type);
-
-  return image;
-}
-
-async function loadImage(profile) {
-  let uri;
-
-  if (profile.hasCustomAvatar) {
-    const file = await IOUtils.getFile(profile.getAvatarPath(48));
-    uri = Services.io.newFileURI(file);
-  } else {
-    uri = Services.io.newURI(profile.getAvatarPath(48));
-  }
-
-  const channel = Services.io.newChannelFromURI(
-    uri,
-    null,
-    Services.scriptSecurityManager.getSystemPrincipal(),
-    null,
-    Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL,
-    Ci.nsIContentPolicy.TYPE_IMAGE
-  );
-
-  if (profile.hasCustomAvatar) {
-    return loadCustomAvatarImage(profile, channel);
-  }
-
-  return loadBuiltInAvatarImage(uri, channel);
-}
-
 /**
  * The service that manages selectable profiles
  */
@@ -144,6 +95,7 @@ class SelectableProfileServiceClass extends EventEmitter {
   #profileService = null;
   #connection = null;
   #initialized = false;
+  #groupToolkitProfile = null;
   #storeID = null;
   #currentProfile = null;
   #everyWindowCallbackId = "SelectableProfileService";
@@ -197,7 +149,6 @@ class SelectableProfileServiceClass extends EventEmitter {
 
     this.#observedPrefs = new Set();
 
-    this.#profileService = ProfilesDatastoreService.toolkitProfileService;
     this.#isEnabled = this.#getEnabledState();
 
     // We have to check the state again after the policy service may have disabled us.
@@ -230,7 +181,7 @@ class SelectableProfileServiceClass extends EventEmitter {
       return true;
     }
 
-    return lazy.PROFILES_ENABLED && !!this.groupToolkitProfile;
+    return lazy.PROFILES_ENABLED && !!this.#groupToolkitProfile;
   }
 
   updateEnabledState() {
@@ -250,7 +201,7 @@ class SelectableProfileServiceClass extends EventEmitter {
       await this.#profileService.asyncFlush();
     } catch (e) {
       try {
-        await this.#profileService.asyncFlushCurrentProfile();
+        await this.#profileService.asyncFlushGroupProfile();
       } catch (ex) {
         console.error(
           `Failed to flush changes to the profiles database: ${ex}`
@@ -264,7 +215,7 @@ class SelectableProfileServiceClass extends EventEmitter {
   }
 
   get groupToolkitProfile() {
-    return this.#profileService.currentProfile;
+    return this.#groupToolkitProfile;
   }
 
   get currentProfile() {
@@ -280,15 +231,15 @@ class SelectableProfileServiceClass extends EventEmitter {
       return;
     }
 
-    if (!this.groupToolkitProfile) {
-      throw new Error("Cannot create a store without a toolkit profile.");
+    if (!this.#groupToolkitProfile) {
+      throw new Error("Cannot create a store without a group profile.");
     }
 
     Services.prefs.setBoolPref(PROFILES_CREATED_PREF_NAME, true);
 
     let storeID = await ProfilesDatastoreService.storeID;
 
-    this.groupToolkitProfile.storeID = storeID;
+    this.#groupToolkitProfile.storeID = storeID;
     this.#storeID = storeID;
     await this.#attemptFlushProfileService();
   }
@@ -326,6 +277,8 @@ class SelectableProfileServiceClass extends EventEmitter {
 
     this.#profileService = ProfilesDatastoreService.toolkitProfileService;
 
+    this.#groupToolkitProfile =
+      this.#profileService.currentProfile ?? this.#profileService.groupProfile;
     this.#storeID = await ProfilesDatastoreService.storeID;
 
     this.updateEnabledState();
@@ -365,7 +318,7 @@ class SelectableProfileServiceClass extends EventEmitter {
         );
       } else {
         // No other profiles. Reset our state.
-        this.groupToolkitProfile.storeID = null;
+        this.#groupToolkitProfile.storeID = null;
         await this.#attemptFlushProfileService();
         Services.prefs.setBoolPref(PROFILES_CREATED_PREF_NAME, false);
 
@@ -378,10 +331,10 @@ class SelectableProfileServiceClass extends EventEmitter {
 
     // This can happen if profiles.ini has been reset by a version of Firefox
     // prior to 67 and the current profile is not the current default for the
-    // group. We can recover by overwriting this.groupToolkitProfile.storeID
+    // group. We can recover by overwriting this.#groupToolkitProfile.storeID
     // with the current storeID.
-    if (this.groupToolkitProfile.storeID != this.storeID) {
-      this.groupToolkitProfile.storeID = this.storeID;
+    if (this.#groupToolkitProfile.storeID != this.storeID) {
+      this.#groupToolkitProfile.storeID = this.storeID;
       await this.#attemptFlushProfileService();
     }
 
@@ -435,6 +388,7 @@ class SelectableProfileServiceClass extends EventEmitter {
     lazy.NimbusFeatures.selectableProfiles.offUpdate(this.onNimbusUpdate);
 
     this.#currentProfile = null;
+    this.#groupToolkitProfile = null;
     this.#badge = null;
     this.#connection = null;
 
@@ -528,7 +482,7 @@ class SelectableProfileServiceClass extends EventEmitter {
     }
 
     Services.prefs.setBoolPref(PROFILES_CREATED_PREF_NAME, false);
-    this.groupToolkitProfile.storeID = null;
+    this.#groupToolkitProfile.storeID = null;
     await this.#attemptFlushProfileService();
   }
 
@@ -638,7 +592,13 @@ class SelectableProfileServiceClass extends EventEmitter {
 
       if (count > 1 && !this.#badge) {
         this.#badge = {
-          image: await loadImage(this.#currentProfile),
+          image: await loadImage(
+            Services.io.newURI(
+              `chrome://browser/content/profiles/assets/48_${
+                this.#currentProfile.avatar
+              }.svg`
+            )
+          ),
           iconPaintContext: this.#currentProfile.iconPaintContext,
           description: this.#currentProfile.name,
         };
@@ -654,18 +614,11 @@ class SelectableProfileServiceClass extends EventEmitter {
               .getOverlayIconController(win.docShell);
             TASKBAR_ICON_CONTROLLERS.set(win, iconController);
 
-            if (this.#currentProfile.hasCustomAvatar) {
-              iconController.setOverlayIcon(
-                this.#badge.image,
-                this.#badge.description
-              );
-            } else {
-              iconController.setOverlayIcon(
-                this.#badge.image,
-                this.#badge.description,
-                this.#badge.iconPaintContext
-              );
-            }
+            iconController.setOverlayIcon(
+              this.#badge.image,
+              this.#badge.description,
+              this.#badge.iconPaintContext
+            );
           }
         }
       } else if (count <= 1 && this.#badge) {
@@ -930,7 +883,7 @@ class SelectableProfileServiceClass extends EventEmitter {
     if (!aProfile) {
       return;
     }
-    this.groupToolkitProfile.rootDir = await aProfile.rootDir;
+    this.#groupToolkitProfile.rootDir = await aProfile.rootDir;
     Glean.profilesDefault.updated.record();
     await this.#attemptFlushProfileService();
   }
@@ -1141,7 +1094,7 @@ class SelectableProfileServiceClass extends EventEmitter {
     // If this is the first time the user has created a selectable profile,
     // add the current toolkit profile to the datastore.
     if (!this.#currentProfile) {
-      let path = this.groupToolkitProfile.rootDir;
+      let path = this.#profileService.currentProfile.rootDir;
       this.#currentProfile = await this.#createProfile(path);
 
       // And also set the profile selector window to show at startup (bug 1933911).
@@ -1166,7 +1119,7 @@ class SelectableProfileServiceClass extends EventEmitter {
         lazy.setTimeout(() => {
           // To avoid displeasing the linter, assign to a temporary variable.
           let avatar = SelectableProfileService.currentProfile.avatar;
-          SelectableProfileService.currentProfile.setAvatar(avatar);
+          SelectableProfileService.currentProfile.avatar = avatar;
         }, 1000);
       }
     }
@@ -1289,7 +1242,8 @@ class SelectableProfileServiceClass extends EventEmitter {
    * @param {SelectableProfile} aSelectableProfile The SelectableProfile to be updated
    */
   async updateProfile(aSelectableProfile) {
-    let profileObj = await aSelectableProfile.toDbObject();
+    let profileObj = aSelectableProfile.toObject();
+    delete profileObj.avatarL10nId;
 
     await this.#connection.execute(
       `UPDATE Profiles

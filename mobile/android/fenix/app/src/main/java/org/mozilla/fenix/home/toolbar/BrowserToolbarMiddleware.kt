@@ -267,7 +267,7 @@ class BrowserToolbarMiddleware(
             this.lifecycleScope.launch {
                 repeatOnLifecycle(RESUMED) {
                     browserStore.flow()
-                        .distinctUntilChangedBy { it.tabs.size }
+                        .distinctUntilChangedBy { it.tabs }
                         .collect {
                             updateEndBrowserActions()
                         }

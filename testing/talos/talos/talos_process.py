@@ -11,6 +11,7 @@ from threading import Timer
 
 import mozcrash
 import psutil
+import six
 from mozlog import get_proxy_logger
 from mozscreenshot import dump_screen
 
@@ -78,7 +79,7 @@ class Reader:
         self.proc = None
 
     def __call__(self, line):
-        line = line.decode() if isinstance(line, bytes) else line
+        line = six.ensure_str(line)
         line = line.strip("\r\n")
         if line.find("__endTimestamp") != -1:
             self.got_end_timestamp = True

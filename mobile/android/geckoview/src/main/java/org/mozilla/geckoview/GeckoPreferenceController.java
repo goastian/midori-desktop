@@ -14,8 +14,6 @@ import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.util.GeckoBundle;
@@ -33,61 +31,18 @@ public class GeckoPreferenceController {
    * Retrieves the value of a given Gecko preference.
    *
    * @param prefName The preference to find the value of. e.g., some.pref.value.
-   * @return The typed Gecko preference that corresponds to this value. Will return exceptionally if
-   *     a deserialization issue occurs.
+   * @return The typed Gecko preference that corresponds to this value.
    */
   @AnyThread
   public static @NonNull GeckoResult<GeckoPreference<?>> getGeckoPref(
       @NonNull final String prefName) {
     final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putStringArray("prefs", List.of(prefName));
+    bundle.putString("pref", prefName);
     return EventDispatcher.getInstance()
         .queryBundle(GET_PREF, bundle)
         .map(
-            result -> {
-              if (result == null) {
-                throw new Exception("Received a null preference message.");
-              }
-              final GeckoBundle[] prefsBundle = result.getBundleArray("prefs");
-              if (prefsBundle != null && prefsBundle.length == 1) {
-                final var deserialized = GeckoPreference.fromBundle(prefsBundle[0]);
-                if (deserialized == null) {
-                  throw new Exception("Could not deserialize the preference.");
-                }
-                return deserialized;
-              }
-              throw new Exception("Could not deserialize the preference.");
-            },
+            GeckoPreference::fromBundle,
             exception -> new Exception("Could not retrieve the preference."));
-  }
-
-  /**
-   * Takes a list of given Gecko preferences and retrieves their corresponding values.
-   *
-   * @param prefNames The list of preferences to find the value of. e.g., [some.pref.value,
-   *     other.pref].
-   * @return A list of retrieved typed Gecko preferences. Will return exceptionally if a
-   *     deserialization issue occurs.
-   */
-  @AnyThread
-  public static @NonNull GeckoResult<List<GeckoPreference<?>>> getGeckoPrefs(
-      @NonNull final List<String> prefNames) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putStringArray("prefs", prefNames);
-    return EventDispatcher.getInstance()
-        .queryBundle(GET_PREF, bundle)
-        .map(
-            result -> {
-              if (result == null) {
-                throw new Exception("Received a null preference message.");
-              }
-              final var deserialized = GeckoPreference.fromBundleArray(result);
-              if (deserialized == null) {
-                throw new Exception("Could not deserialize the preference.");
-              }
-              return deserialized;
-            },
-            exception -> new Exception("Could not retrieve the preferences."));
   }
 
   /**
@@ -185,62 +140,34 @@ public class GeckoPreferenceController {
     private static final String UNREGISTER_PREF = "GeckoView:Preferences:UnregisterObserver";
 
     /**
-     * This will register a preference for observation.
+     * This will register preferences for observation.
      *
      * @param preferenceName The Gecko preference that should be placed under observation. e.g.,
      *     "some.pref.item".
      * @return The GeckoResult will complete with the current preference value when observation is
-     *     set.
+     *     set or else return an error.
      */
     @AnyThread
     public static @NonNull GeckoResult<Void> registerPreference(
         @NonNull final String preferenceName) {
-      return registerPreferences(List.of(preferenceName));
-    }
-
-    /**
-     * This will register preferences for observation.
-     *
-     * @param preferenceNames A list of Gecko preference that should be placed under observation.
-     *     e.g., "some.pref.item", "some.pref.item.other".
-     * @return The GeckoResult will complete with the current preference value when observation is
-     *     set.
-     */
-    @AnyThread
-    public static @NonNull GeckoResult<Void> registerPreferences(
-        @NonNull final List<String> preferenceNames) {
       final GeckoBundle bundle = new GeckoBundle();
-      bundle.putStringArray("prefs", preferenceNames);
+      bundle.putString("pref", preferenceName);
       return EventDispatcher.getInstance().queryVoid(REGISTER_PREF, bundle);
-    }
-
-    /**
-     * This will deregister a preference for observation.
-     *
-     * @param preferenceName The Gecko preference that should be removed from observation. e.g.,
-     *     "some.pref.item".
-     * @return The GeckoResult will complete when the observer is removed. If the item requested is
-     *     not under observation, the function will still return.
-     */
-    @UiThread
-    public static @NonNull GeckoResult<Void> unregisterPreference(
-        @NonNull final String preferenceName) {
-      return unregisterPreferences(List.of(preferenceName));
     }
 
     /**
      * This will deregister preferences for observation.
      *
-     * @param preferenceNames The Gecko preferences that should be removed from observation. e.g.,
-     *     "some.pref.item", "some.pref.item.other".
-     * @return The GeckoResult will complete when the observer is removed. If the item requested is
-     *     not under observation, the function will still return.
+     * @param preferenceName The Gecko preference that should be removed from observation. e.g.,
+     *     "some.pref.item".
+     * @return The GeckoResult will complete when the observer is removed or else return an error.
+     *     If the item requested is not under observation, the function will still return.
      */
     @UiThread
-    public static @NonNull GeckoResult<Void> unregisterPreferences(
-        @NonNull final List<String> preferenceNames) {
+    public static @NonNull GeckoResult<Void> unregisterPreference(
+        @NonNull final String preferenceName) {
       final GeckoBundle bundle = new GeckoBundle();
-      bundle.putStringArray("prefs", preferenceNames);
+      bundle.putString("pref", preferenceName);
       return EventDispatcher.getInstance().queryVoid(UNREGISTER_PREF, bundle);
     }
 
@@ -423,47 +350,11 @@ public class GeckoPreferenceController {
     }
 
     /**
-     * Convenience method to deserialize an array of preference information into a list of {@link
-     * GeckoPreference}.
-     *
-     * @param bundle The bundle containing the preference array information. Should be of the form
-     *     of bundle array "prefs" composed of pref, type, branch, status, and value for each
-     *     element.
-     * @return A list of typed preference objects. Will return null if a deserialization issue
-     *     occurs on any item.
-     */
-    /* package */
-    static @Nullable List<GeckoPreference<?>> fromBundleArray(@Nullable final GeckoBundle bundle) {
-      if (bundle != null) {
-        try {
-          final GeckoBundle[] prefsBundle = bundle.getBundleArray("prefs");
-          if (prefsBundle != null) {
-            final List<GeckoPreference<?>> list = new ArrayList<>(prefsBundle.length);
-            for (final var prefBundle : prefsBundle) {
-              final GeckoPreference<?> pref = GeckoPreference.fromBundle(prefBundle);
-              if (pref == null) {
-                Log.w(LOGTAG, "An issue occurred when deserializing one of the GeckoPreferences.");
-                return null;
-              }
-              list.add(pref);
-            }
-            return list;
-          }
-        } catch (final Exception e) {
-          Log.w(LOGTAG, "An issue occurred when deserializing a map of GeckoPreferences: " + e);
-          return null;
-        }
-      }
-      Log.w(LOGTAG, "The bundle was null when deserializing a map of GeckoPreferences.");
-      return null;
-    }
-
-    /**
      * Convenience method to deserialize preference information into a {@link GeckoPreference}.
      *
      * @param bundle The bundle containing the preference information. Should contain pref, type,
      *     branch, status, and value.
-     * @return A typed preference object. Will return null if a deserialization issue occurs.
+     * @return A typed preference object.
      */
     /* package */
     static @Nullable GeckoPreference<?> fromBundle(@Nullable final GeckoBundle bundle) {

@@ -41,10 +41,6 @@ data class DownloadUIState(
     val selectedContentTypeFilter: FileItem.ContentTypeFilter
         get() {
             val selectedTypeContainsItems = itemsNotPendingDeletion
-                .filter {
-                    userSelectedContentTypeFilter == FileItem.ContentTypeFilter.All ||
-                    it.status == FileItem.Status.Completed
-                }
                 .any { download -> userSelectedContentTypeFilter.predicate(download.contentType) }
 
             return if (selectedTypeContainsItems) {
@@ -60,10 +56,6 @@ data class DownloadUIState(
      * that match the selected content type filter and the search query.
      */
     val itemsMatchingFilters = itemsNotPendingDeletion
-        .filter {
-            selectedContentTypeFilter == FileItem.ContentTypeFilter.All ||
-            it.status == FileItem.Status.Completed
-        }
         .filter { selectedContentTypeFilter.predicate(it.contentType) }
         .filter { it.stringToMatchForSearchQuery.contains(searchQuery, ignoreCase = true) }
 
@@ -71,7 +63,7 @@ data class DownloadUIState(
      * The list of items to display grouped by the created time of the item.
      */
     private val itemsToDisplay: List<DownloadListItem> = itemsMatchingFilters
-        .groupBy { it.timeCategory }
+        .groupBy { it.createdTime }
         .toSortedMap()
         .flatMap { (createdTime, fileItems) ->
             listOf(HeaderItem(createdTime)) + fileItems
@@ -82,7 +74,6 @@ data class DownloadUIState(
      */
     private val matchingFilters: List<FileItem.ContentTypeFilter> =
         itemsNotPendingDeletion
-            .filter { it.status == FileItem.Status.Completed }
             .map { it.matchingContentTypeFilter }
             .distinct()
             .sorted()

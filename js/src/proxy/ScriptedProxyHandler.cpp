@@ -117,8 +117,9 @@ static bool IsCompatiblePropertyDescriptor(
 
       // Step 7.a.ii.
       if (desc.hasValue()) {
+        RootedValue value(cx, current->value());
         bool same;
-        if (!SameValue(cx, desc.value(), current->value(), &same)) {
+        if (!SameValue(cx, desc.value(), value, &same)) {
           return false;
         }
         if (!same) {
@@ -1196,8 +1197,9 @@ ScriptedProxyHandler::checkGetTrapResult(JSContext* cx, HandleObject target,
     // Step 10a.
     if (desc->isDataDescriptor() && !desc->configurable() &&
         !desc->writable()) {
+      RootedValue value(cx, desc->value());
       bool same;
-      if (!SameValue(cx, trapResult, desc->value(), &same)) {
+      if (!SameValue(cx, trapResult, value, &same)) {
         return GetTrapValidationResult::Exception;
       }
 
@@ -1281,8 +1283,9 @@ bool ScriptedProxyHandler::set(JSContext* cx, HandleObject proxy, HandleId id,
     // Step 11a.
     if (desc->isDataDescriptor() && !desc->configurable() &&
         !desc->writable()) {
+      RootedValue value(cx, desc->value());
       bool same;
-      if (!SameValue(cx, v, desc->value(), &same)) {
+      if (!SameValue(cx, v, value, &same)) {
         return false;
       }
       if (!same) {
@@ -1522,7 +1525,7 @@ static bool ProxyCreate(JSContext* cx, CallArgs& args, const char* callerName) {
   }
 
   // Step 7 (reordered).
-  ProxyObject* proxy = &proxy_->as<ProxyObject>();
+  Rooted<ProxyObject*> proxy(cx, &proxy_->as<ProxyObject>());
   proxy->setReservedSlot(ScriptedProxyHandler::HANDLER_EXTRA,
                          ObjectValue(*handler));
 

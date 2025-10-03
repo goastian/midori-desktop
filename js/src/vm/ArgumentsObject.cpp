@@ -690,7 +690,7 @@ static bool ResolveArgumentsProperty(JSContext* cx,
 /* static */
 bool MappedArgumentsObject::obj_resolve(JSContext* cx, HandleObject obj,
                                         HandleId id, bool* resolvedp) {
-  auto argsobj = obj.as<MappedArgumentsObject>();
+  Rooted<MappedArgumentsObject*> argsobj(cx, &obj->as<MappedArgumentsObject>());
 
   if (id.isWellKnownSymbol(JS::SymbolCode::iterator)) {
     if (argsobj->hasOverriddenIterator()) {
@@ -732,7 +732,7 @@ bool MappedArgumentsObject::obj_resolve(JSContext* cx, HandleObject obj,
 
 /* static */
 bool MappedArgumentsObject::obj_enumerate(JSContext* cx, HandleObject obj) {
-  auto argsobj = obj.as<MappedArgumentsObject>();
+  Rooted<MappedArgumentsObject*> argsobj(cx, &obj->as<MappedArgumentsObject>());
 
   RootedId id(cx);
   bool found;
@@ -837,7 +837,7 @@ bool MappedArgumentsObject::obj_defineProperty(JSContext* cx, HandleObject obj,
                                                Handle<PropertyDescriptor> desc,
                                                ObjectOpResult& result) {
   // Step 1.
-  auto argsobj = obj.as<MappedArgumentsObject>();
+  Rooted<MappedArgumentsObject*> argsobj(cx, &obj->as<MappedArgumentsObject>());
 
   // Steps 2-3.
   bool isMapped = false;
@@ -963,7 +963,8 @@ bool js::UnmappedArgSetter(JSContext* cx, HandleObject obj, HandleId id,
 /* static */
 bool UnmappedArgumentsObject::obj_resolve(JSContext* cx, HandleObject obj,
                                           HandleId id, bool* resolvedp) {
-  auto argsobj = obj.as<UnmappedArgumentsObject>();
+  Rooted<UnmappedArgumentsObject*> argsobj(cx,
+                                           &obj->as<UnmappedArgumentsObject>());
 
   if (id.isWellKnownSymbol(JS::SymbolCode::iterator)) {
     if (argsobj->hasOverriddenIterator()) {
@@ -1016,7 +1017,8 @@ bool UnmappedArgumentsObject::obj_resolve(JSContext* cx, HandleObject obj,
 
 /* static */
 bool UnmappedArgumentsObject::obj_enumerate(JSContext* cx, HandleObject obj) {
-  auto argsobj = obj.as<UnmappedArgumentsObject>();
+  Rooted<UnmappedArgumentsObject*> argsobj(cx,
+                                           &obj->as<UnmappedArgumentsObject>());
 
   RootedId id(cx);
   bool found;

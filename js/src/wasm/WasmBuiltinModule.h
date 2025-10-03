@@ -33,9 +33,6 @@
 namespace js {
 namespace wasm {
 
-struct ImportValues;
-struct Import;
-
 struct MOZ_STACK_CLASS BuiltinModuleInstances {
   explicit BuiltinModuleInstances(JSContext* cx)
       : selfTest(cx), intGemm(cx), jsString(cx) {}
@@ -126,27 +123,22 @@ class BuiltinModuleFuncs {
 };
 
 mozilla::Maybe<BuiltinModuleId> ImportMatchesBuiltinModule(
-    mozilla::Span<const char> importName,
-    const BuiltinModuleIds& enabledBuiltins);
+    mozilla::Span<const char> importName, BuiltinModuleIds enabledBuiltins);
 bool ImportMatchesBuiltinModuleFunc(mozilla::Span<const char> importName,
                                     BuiltinModuleId module,
                                     const BuiltinModuleFunc** matchedFunc,
                                     BuiltinModuleFuncId* matchedFuncId);
 
 // Compile and return the builtin module for a particular
-// builtin module. The `moduleMemoryImport` can be used if the builtin module
-// requires memory to set the import name that it will need when it is
-// instantiated, otherwise ("" "memory") is used instead.
+// builtin module.
 [[nodiscard]] bool CompileBuiltinModule(
-    JSContext* cx, BuiltinModuleId module, const Import* moduleMemoryImport,
+    JSContext* cx, BuiltinModuleId module,
     MutableHandle<WasmModuleObject*> result);
 
 // Compile, instantiate and return the builtin module instance for a particular
 // builtin module.
 [[nodiscard]] bool InstantiateBuiltinModule(JSContext* cx,
                                             BuiltinModuleId module,
-                                            const Import* moduleMemoryImport,
-                                            Handle<JSObject*> importObj,
                                             MutableHandle<JSObject*> result);
 
 }  // namespace wasm

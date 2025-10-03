@@ -15,7 +15,7 @@
 #include "mozilla/ipc/UtilityProcessManager.h"
 #include "mozilla/ipc/UtilityProcessSandboxing.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/RemoteMediaManagerParent.h"
+#include "mozilla/RemoteDecoderManagerParent.h"
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
 #  include "mozilla/Sandbox.h"
@@ -388,7 +388,7 @@ void UtilityProcessChild::ActorDestroy(ActorDestroyReason aWhy) {
   mWindowsUtilsInstance = nullptr;
 #  endif
 
-  // Wait until all RemoteMediaManagerParent have closed.
+  // Wait until all RemoteDecoderManagerParent have closed.
   // It is still possible some may not have clean up yet, and we might hit
   // timeout. Our xpcom-shutdown listener should take care of cleaning the
   // reference of our singleton.

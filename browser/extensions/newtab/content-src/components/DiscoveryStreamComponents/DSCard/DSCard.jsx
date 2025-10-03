@@ -696,40 +696,20 @@ export class _DSCard extends React.PureComponent {
       format,
       alt_text,
     } = this.props;
-
-    const refinedCardsLayout =
-      Prefs.values["discoverystream.refinedCardsLayout.enabled"];
-    const refinedCardsClassName = refinedCardsLayout ? `refined-cards` : ``;
-
     if (this.props.placeholder || !this.state.isSeen) {
       // placeholder-seen is used to ensure the loading animation is only used if the card is visible.
       const placeholderClassName = this.state.isSeen ? `placeholder-seen` : ``;
-      let placeholderElements = (
-        <>
-          <div className="placeholder-image placeholder-fill" />
-          <div className="placeholder-label placeholder-fill" />
-          <div className="placeholder-header placeholder-fill" />
-          <div className="placeholder-description placeholder-fill" />
-        </>
-      );
-
-      if (refinedCardsLayout) {
-        placeholderElements = (
-          <>
-            <div className="placeholder-image placeholder-fill" />
-            <div className="placeholder-description placeholder-fill" />
-            <div className="placeholder-header placeholder-fill" />
-          </>
-        );
-      }
       return (
         <div
           className={`ds-card placeholder ${placeholderClassName} ${
             isListCard ? "list-card-placeholder" : ""
-          } ${refinedCardsClassName}`}
+          }`}
           ref={this.setPlaceholderRef}
         >
-          {placeholderElements}
+          <div className="placeholder-image placeholder-fill" />
+          <div className="placeholder-label placeholder-fill" />
+          <div className="placeholder-header placeholder-fill" />
+          <div className="placeholder-description placeholder-fill" />
         </div>
       );
     }
@@ -742,6 +722,7 @@ export class _DSCard extends React.PureComponent {
     }
 
     const {
+      pocketButtonEnabled,
       hideDescriptions,
       compactImages,
       imageGradient,
@@ -751,7 +732,12 @@ export class _DSCard extends React.PureComponent {
       readTime: displayReadTime,
     } = DiscoveryStream;
 
+    const layoutsVariantAEnabled = Prefs.values["newtabLayouts.variant-a"];
+    const layoutsVariantBEnabled = Prefs.values["newtabLayouts.variant-b"];
     const sectionsEnabled = Prefs.values["discoverystream.sections.enabled"];
+    const refinedCardsLayout =
+      Prefs.values["discoverystream.refinedCardsLayout.enabled"];
+    const layoutsVariantAorB = layoutsVariantAEnabled || layoutsVariantBEnabled;
 
     const smartCrop = Prefs.values["images.smart"];
     const faviconEnabled =
@@ -794,6 +780,7 @@ export class _DSCard extends React.PureComponent {
     const descLinesClassName = `ds-card-desc-lines-${descLines}`;
     const isMediumRectangle = format === "rectangle";
     const spocFormatClassName = isMediumRectangle ? `ds-spoc-rectangle` : ``;
+    const refinedCardsClassName = refinedCardsLayout ? `refined-cards` : ``;
 
     let sizes = [];
     if (!isMediumRectangle) {
@@ -805,7 +792,7 @@ export class _DSCard extends React.PureComponent {
           this.getSectionImageSize("2", sectionsCardsImageSizes["2"]),
           this.getSectionImageSize("1", sectionsCardsImageSizes["1"]),
         ];
-      } else {
+      } else if (layoutsVariantAorB) {
         sizes = this.standardCardImageSizes;
       }
       if (isListCard) {
@@ -956,6 +943,8 @@ export class _DSCard extends React.PureComponent {
                 showPrivacyInfo={!!this.props.flightId}
                 onMenuUpdate={this.onMenuUpdate}
                 onMenuShow={this.onMenuShow}
+                saveToPocketCard={saveToPocketCard}
+                pocket_button_enabled={pocketButtonEnabled}
                 isRecentSave={isRecentSave}
                 recommendation_id={this.props.recommendation_id}
                 tile_id={this.props.id}

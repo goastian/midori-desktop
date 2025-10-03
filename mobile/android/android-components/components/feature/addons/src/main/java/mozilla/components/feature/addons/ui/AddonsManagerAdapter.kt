@@ -21,7 +21,6 @@ import androidx.annotation.DimenRes
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.annotation.VisibleForTesting
-import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.isInvisible
@@ -470,7 +469,7 @@ class AddonsManagerAdapter(
 
         internal fun maybeSetPrivateBrowsingLabelDrawable(imageView: ImageView) {
             addonAllowPrivateBrowsingLabelDrawableRes?.let {
-                imageView.setImageDrawable(AppCompatResources.getDrawable(imageView.context, it))
+                imageView.setImageDrawable(ContextCompat.getDrawable(imageView.context, it))
             }
         }
 

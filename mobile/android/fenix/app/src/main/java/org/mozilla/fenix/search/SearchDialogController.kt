@@ -30,6 +30,7 @@ import org.mozilla.fenix.components.search.BOOKMARKS_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.search.HISTORY_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.search.TABS_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
+import org.mozilla.fenix.crashes.CrashListActivity
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.navigateSafe
 import org.mozilla.fenix.ext.telemetryName
@@ -87,8 +88,8 @@ class SearchDialogController(
                 // The list of past crashes can be accessed via "settings > about", but desktop and
                 // fennec users may be used to navigating to "about:crashes". So we intercept this here
                 // and open the crash list activity instead.
-                val directions = SearchDialogFragmentDirections.actionCrashListFragment()
-                navController.navigate(directions)
+                activity.startActivity(Intent(activity, CrashListActivity::class.java))
+                store.dispatch(AwesomeBarAction.EngagementFinished(abandoned = false))
             }
             "about:addons" -> {
                 val directions =
@@ -165,15 +166,22 @@ class SearchDialogController(
     override fun handleTextChanged(text: String) {
         fragmentStore.dispatch(SearchFragmentAction.UpdateQuery(text))
 
-        fragmentStore.dispatch(
-            SearchFragmentAction.AllowSearchSuggestionsInPrivateModePrompt(
-                text.isNotEmpty() &&
-                    activity.browsingModeManager.mode.isPrivate &&
-                    settings.shouldShowSearchSuggestions &&
-                    !settings.shouldShowSearchSuggestionsInPrivate &&
-                    !settings.showSearchSuggestionsInPrivateOnboardingFinished,
-            ),
-        )
+        // For felt private browsing mode we're no longer going to prompt the user to enable search
+        // suggestions while using private browsing mode. The preference to enable them will still
+        // remain in settings.
+        val isFeltPrivacyEnabled = settings.feltPrivateBrowsingEnabled
+
+        if (!isFeltPrivacyEnabled) {
+            fragmentStore.dispatch(
+                SearchFragmentAction.AllowSearchSuggestionsInPrivateModePrompt(
+                    text.isNotEmpty() &&
+                        activity.browsingModeManager.mode.isPrivate &&
+                        settings.shouldShowSearchSuggestions &&
+                        !settings.shouldShowSearchSuggestionsInPrivate &&
+                        !settings.showSearchSuggestionsInPrivateOnboardingFinished,
+                ),
+            )
+        }
     }
 
     override fun handleUrlTapped(url: String, flags: LoadUrlFlags) {

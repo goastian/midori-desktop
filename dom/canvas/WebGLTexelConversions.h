@@ -1345,6 +1345,11 @@ template <typename SrcType, typename DstType>
 MOZ_ALWAYS_INLINE void convertType(const SrcType* __restrict src,
                                    DstType* __restrict dst) {
   MOZ_ASSERT(false, "Unimplemented texture format conversion");
+  // Default construct dst values, ensuring they are *some* value.
+  dst[0] = DstType();
+  dst[1] = DstType();
+  dst[2] = DstType();
+  dst[3] = DstType();
 }
 
 template <>

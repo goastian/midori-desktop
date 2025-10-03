@@ -277,13 +277,8 @@ add_task(async function () {
   let doc = gBrowser.selectedBrowser.contentDocument;
   let frameDoc = win.gSubDialog._topDialog._frame.contentDocument;
   let searchBox = frameDoc.getElementById("searchBox");
-  await new Promise(resolve => {
-    searchBox.addEventListener("MozInputSearch:search", resolve, {
-      once: true,
-    });
-    searchBox.select();
-    EventUtils.sendString("xyz");
-  });
+  searchBox.value = "xyz";
+  searchBox.doCommand();
   assertSitesListed(
     doc,
     hosts.filter(host => host.includes("xyz"))
@@ -402,13 +397,8 @@ add_task(async function () {
   let doc = gBrowser.selectedBrowser.contentDocument;
   let frameDoc = win.gSubDialog._topDialog._frame.contentDocument;
   let searchBox = frameDoc.getElementById("searchBox");
-  await new Promise(resolve => {
-    searchBox.addEventListener("MozInputSearch:search", resolve, {
-      once: true,
-    });
-    searchBox.select();
-    EventUtils.sendString("xyz");
-  });
+  searchBox.value = "xyz";
+  searchBox.doCommand();
   assertSitesListed(
     doc,
     hosts.filter(host => host.includes("xyz"))

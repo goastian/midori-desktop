@@ -227,16 +227,11 @@ class BaseCalculator {
     return this.numberSystems.some(sys => sys.isNumericToken(char));
   }
 
-  /**
-   * Parses a string into a float accounting for different localisations.
-   *
-   * @param {string} num
-   */
   parsel10nFloat(num) {
     for (const system of this.numberSystems) {
       num = system.transformNumber(num);
     }
-    return parseFloat(num);
+    return parseFloat(num, 10);
   }
 
   precedence(val) {
@@ -269,13 +264,13 @@ class BaseCalculator {
   // Currently functions are unimplemented
   infix2postfix(infix) {
     let parser = new Parser(infix, this);
-    let tokens = parser.parse();
+    let tokens = parser.parse(infix);
     let output = [];
     let stack = [];
 
     tokens.forEach(token => {
       if (token.number) {
-        output.push(this.parsel10nFloat(token.value));
+        output.push(this.parsel10nFloat(token.value, 10));
       }
 
       if (this.isOperator(token.value)) {
@@ -515,13 +510,9 @@ export let Calculator = new BaseCalculator();
 Calculator.addNumberSystem({
   isOperator: char => ["÷", "×", "-", "+", "*", "/", "^"].includes(char),
   isNumericToken: char => /^[0-9\.,]/.test(char),
-  /**
-   * parseFloat will only handle numbers that use periods as decimal
-   * separators, various countries use commas. This function attempts
-   * to fixup the number so parseFloat will accept it.
-   *
-   * @param {string} num
-   */
+  // parseFloat will only handle numbers that use periods as decimal
+  // seperators, various countries use commas. This function attempts
+  // to fixup the number so parseFloat will accept it.
   transformNumber: num => {
     let firstComma = num.indexOf(",");
     let firstPeriod = num.indexOf(".");

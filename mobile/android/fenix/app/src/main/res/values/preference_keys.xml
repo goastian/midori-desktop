@@ -160,7 +160,6 @@
     <string name="pref_key_toolbar_bottom" translatable="false">pref_key_toolbar_bottom</string>
     <string name="pref_key_toolbar_tab_swipe_cfr">pref_key_should_show_tab_swipe_cfr</string>
     <string name="pref_key_toolbar_has_shown_tab_swipe_cfr">pref_key_has_shown_tab_swipe_cfr</string>
-    <string name="pref_key_toolbar_expanded" translatable="false">pref_key_toolbar_expanded</string>
 
     <!-- Menu -->
     <string name="pref_key_menu_cfr" translatable="false">pref_key_menu_cfr</string>
@@ -257,9 +256,7 @@
     <string name="pref_key_open_links_in_apps_never" translatable="false">pref_key_open_links_in_apps_never</string>
     <string name="pref_key_external_download_manager" translatable="false">pref_key_external_download_manager</string>
     <string name="pref_key_allow_screenshots_in_private_mode" translatable="false">pref_key_allow_screenshots_in_private_mode</string>
-    <!-- This preference controls behaviour that corresponds to the private browsing mode lock feature being enabled. -->
     <string name="pref_key_private_browsing_locked_enabled" translatable="false">pref_key_private_browsing_locked_enabled</string>
-    <string name="pref_key_private_browsing_locked" translatable="false">pref_key_private_browsing_locked</string>
     <string name="pref_key_private_browsing_lock_device_feature_enabled" translatable="false">pref_key_private_browsing_lock_device_feature_enabled</string>
     <string name="pref_key_privacy_enable_global_privacy_control" translatable="false">pref_key_privacy_enable_global_privacy_control</string>
     <string name="pref_key_pbm_lock_category_divider" translatable="false">pref_key_pbm_lock_category_divider</string>
@@ -321,6 +318,12 @@
     <string name="pref_key_has_inactive_tabs_auto_close_dialog_dismissed" translatable="false">pref_key_has_inactive_tabs_auto_close_dialog_dismissed</string>
     <!-- A value  of `true` means the onboarding sync CFR have not been shown yet -->
     <string name="pref_key_should_show_sync_cfr" translatable="false">pref_key_should_show_sync_cfr</string>
+    <!-- A value  of `true` means the home onboarding dialog have not been shown yet -->
+    <string name="pref_key_should_show_home_onboarding_dialog" translatable="false">pref_key_should_show_home_onboarding_dialog</string>
+    <!-- A value  of `true` means the erase action popup has not been shown yet -->
+    <string name="pref_key_should_show_erase_action_popup" translatable="false">pref_key_should_show_erase_action_popup</string>
+    <!-- A value  of `true` means that we will enable felt privacy features -->
+    <string name="pref_key_should_enable_felt_privacy" translatable="false">pref_key_should_enable_felt_privacy</string>
     <!-- A value  of `true` means the cookie banners handling action popup has not been shown yet -->
     <string name="pref_key_should_show_cookie_banners_action_popup" translatable="false">pref_key_should_show_cookie_banners_action_popup</string>
 
@@ -378,13 +381,13 @@
     <string name="pref_key_inactive_tabs" translatable="false">pref_key_inactive_tabs</string>
 
     <string name="pref_key_return_to_browser" translatable="false">pref_key_return_to_browser</string>
-    <string name="pref_key_show_menu_banner" translatable="false">pref_key_show_menu_banner</string>
 
     <!-- Pocket -->
     <string name="pref_key_pocket_homescreen_recommendations" translatable="false">pref_key_pocket_homescreen_recommendations</string>
     <string name="pref_key_pocket_sponsored_stories" translatable="false">pref_key_pocket_sponsored_stories</string>
     <string name="pref_key_pocket_sponsored_stories_profile" translatable="false">pref_key_pocket_sponsored_stories_profile</string>
     <string name="pref_key_pocket_sponsored_stories_profile_migrated" translatable="false">pref_key_pocket_sponsored_stories_profile_migrated</string>
+    <string name="pref_key_pocket_content_recommendations" translatable="false">pref_key_pocket_content_recommendations</string>
 
     <!-- Secret Info Setting Keys -->
     <string name="pref_key_secret_debug_info" translatable="false">pref_key_secret_debug_info</string>
@@ -411,7 +414,6 @@
     <string name="pref_key_enable_recent_searches" translatable="false">pref_key_enable_recent_searches</string>
     <string name="pref_key_enable_shortcuts_suggestions" translatable="false">pref_key_enable_shortcuts_suggestions</string>
     <string name="pref_key_enable_composable_toolbar" translatable="false">pref_key_enable_composable_toolbar</string>"
-    <string name="pref_key_enable_toolbar_redesign" translatable="false">pref_key_enable_toolbar_redesign</string>"
 
     <!-- Logins -->
     <string name="pref_key_enable_compose_logins" translatable="false">pref_key_enable_compose_logins</string>
@@ -467,6 +469,4 @@
     <string name="pref_key_setup_step_toolbar" translatable="false">pref_key_setup_step_toolbar</string>
     <string name="pref_key_setup_step_theme" translatable="false">pref_key_setup_step_theme</string>
     <string name="pref_key_setup_step_extensions" translatable="false">pref_key_setup_step_extensions</string>
-
-    <string name="pref_key_distribution_id" translatable="false">pref_key_distribution_id</string>
 </resources>

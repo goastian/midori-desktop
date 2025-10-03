@@ -109,6 +109,9 @@
       <menuitem id="context-savelink"
                 data-l10n-id="main-context-menu-save-link"
                 />
+      <menuitem id="context-savelinktopocket"
+                data-l10n-id="main-context-menu-save-link-to-pocket"
+                />
       <menuitem id="context-copyemail"
                 data-l10n-id="main-context-menu-copy-email"
                 />
@@ -260,6 +263,9 @@
       <menuitem id="context-savepage"
                 data-l10n-id="main-context-menu-page-save"
                 />
+      <menuitem id="context-pocket"
+                data-l10n-id="main-context-menu-save-to-pocket"
+                />
       <menu id="context-sendpagetodevice"
             class="sync-ui-item"
             data-l10n-id="main-context-menu-send-to-device"
@@ -282,6 +288,16 @@
                 hidden="true"
                 />
       <menuseparator id="passwordmgr-items-separator"/>
+      <menuitem id="context-copy-link-to-highlight"
+                data-l10n-id="text-action-copy-link-to-highlight"
+                />
+      <menuitem id="context-copy-clean-link-to-highlight"
+                data-l10n-id="text-action-copy-clean-link-to-highlight"
+                />
+      <menuitem id="context-remove-all-highlights"
+                data-l10n-id="text-action-remove-all-highlights"
+                />
+      <menuseparator id="context-sep-highlights"/>
       <menuitem id="context-undo"
                 data-l10n-id="text-action-undo"
                 command="cmd_undo"/>
@@ -315,16 +331,6 @@
       <menuitem id="context-print-selection"
                 data-l10n-id="main-context-menu-print-selection-2"/>
       <menuseparator id="context-sep-selectall"/>
-      <menuitem id="context-copy-link-to-highlight"
-                data-l10n-id="text-action-copy-link-to-highlight"
-                />
-      <menuitem id="context-copy-clean-link-to-highlight"
-                data-l10n-id="text-action-copy-clean-link-to-highlight"
-                />
-      <menuitem id="context-remove-all-highlights"
-                data-l10n-id="text-action-remove-all-highlights"
-                />
-      <menuseparator id="context-sep-highlights"/>
 
       <menuitem id="context-pdfjs-undo"
                 data-l10n-id="text-action-undo"/>
@@ -384,6 +390,10 @@
                     data-l10n-id="main-context-menu-frame-print"
                     />
           <menuseparator/>
+          <menuitem id="context-take-frame-screenshot"
+                    data-l10n-id="main-context-menu-take-frame-screenshot"
+                    />
+          <menuseparator id="context-sep-frame-screenshot"/>
           <menuitem id="context-viewframesource"
                     data-l10n-id="main-context-menu-frame-view-source"
                     />

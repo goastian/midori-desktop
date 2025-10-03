@@ -114,7 +114,7 @@ using namespace mozilla::a11y;
 @implementation mozListboxAccessible
 
 - (BOOL)moxIgnoreChild:(mozAccessible*)child {
-  if (!child || [[child moxRole] isEqualToString:@"AXGroup"]) {
+  if (!child || child->mRole == roles::GROUPING) {
     return YES;
   }
 
@@ -240,6 +240,10 @@ using namespace mozilla::a11y;
 @end
 
 @implementation mozMenuItemAccessible
+
+- (NSString*)moxLabel {
+  return @"";
+}
 
 - (BOOL)moxIgnoreWithParent:(mozAccessible*)parent {
   // This helps us generate the correct moxChildren array for

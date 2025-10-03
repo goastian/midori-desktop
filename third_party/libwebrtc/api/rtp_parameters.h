@@ -137,7 +137,7 @@ struct RTC_EXPORT RtpCodec {
   std::string name;
 
   // The media type of this codec. Equivalent to MIME top-level type.
-  webrtc::MediaType kind = webrtc::MediaType::AUDIO;
+  cricket::MediaType kind = cricket::MEDIA_TYPE_AUDIO;
 
   // If unset, the implementation default is used.
   std::optional<int> clock_rate;
@@ -192,16 +192,6 @@ struct RTC_EXPORT RtpCodecCapability : public RtpCodec {
            scalability_modes == o.scalability_modes;
   }
   bool operator!=(const RtpCodecCapability& o) const { return !(*this == o); }
-
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, const RtpCodecCapability& cap) {
-    if (cap.kind == webrtc::MediaType::AUDIO) {
-      absl::Format(&sink, "[audio/%s/%d/%d]", cap.name,
-                   cap.clock_rate.value_or(0), cap.num_channels.value_or(1));
-    } else {
-      absl::Format(&sink, "[video/%s]", cap.name);
-    }
-  }
 };
 
 // Used in RtpCapabilities and RtpTransceiverInterface's header extensions query
@@ -213,9 +203,8 @@ struct RTC_EXPORT RtpCodecCapability : public RtpCodec {
 // RtpHeaderExtensionParameters.
 //
 // Note that ORTC includes a "kind" field, but we omit this because it's
-// redundant; if you call
-// "RtpReceiver::GetCapabilities(webrtc::MediaType::AUDIO)", you know you're
-// getting audio capabilities.
+// redundant; if you call "RtpReceiver::GetCapabilities(MEDIA_TYPE_AUDIO)",
+// you know you're getting audio capabilities.
 struct RTC_EXPORT RtpHeaderExtensionCapability {
   // URI of this extension, as defined in RFC8285.
   std::string uri;

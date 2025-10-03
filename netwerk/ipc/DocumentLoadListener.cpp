@@ -49,7 +49,6 @@
 #include "nsExternalHelperAppService.h"
 #include "nsHttpChannel.h"
 #include "nsIBrowser.h"
-#include "nsIClassifiedChannel.h"
 #include "nsIHttpChannelInternal.h"
 #include "nsIStreamConverterService.h"
 #include "nsIViewSourceChannel.h"
@@ -174,12 +173,6 @@ static auto CreateDocumentLoadInfo(CanonicalBrowsingContext* aBrowsingContext,
   loadInfo->SetTriggeringSandboxFlags(aLoadState->TriggeringSandboxFlags());
   loadInfo->SetTriggeringWindowId(aLoadState->TriggeringWindowId());
   loadInfo->SetTriggeringStorageAccess(aLoadState->TriggeringStorageAccess());
-  ClassificationFlags classificationFlags =
-      aLoadState->TriggeringClassificationFlags();
-  loadInfo->SetTriggeringFirstPartyClassificationFlags(
-      classificationFlags.firstPartyFlags);
-  loadInfo->SetTriggeringThirdPartyClassificationFlags(
-      classificationFlags.thirdPartyFlags);
   loadInfo->SetHasValidUserGestureActivation(
       aLoadState->HasValidUserGestureActivation());
   loadInfo->SetTextDirectiveUserActivation(
@@ -213,12 +206,6 @@ static auto CreateObjectLoadInfo(nsDocShellLoadState* aLoadState,
   loadInfo->SetTriggeringSandboxFlags(aLoadState->TriggeringSandboxFlags());
   loadInfo->SetTriggeringWindowId(aLoadState->TriggeringWindowId());
   loadInfo->SetTriggeringStorageAccess(aLoadState->TriggeringStorageAccess());
-  net::ClassificationFlags classificationFlags =
-      aLoadState->TriggeringClassificationFlags();
-  loadInfo->SetTriggeringFirstPartyClassificationFlags(
-      classificationFlags.firstPartyFlags);
-  loadInfo->SetTriggeringThirdPartyClassificationFlags(
-      classificationFlags.thirdPartyFlags);
   loadInfo->SetIsMetaRefresh(aLoadState->IsMetaRefresh());
 
   return loadInfo.forget();
@@ -675,8 +662,7 @@ static Result<SessionHistoryEntry*, const char*> ValidateHistoryLoad(
                    aLoadState->PrincipalToInherit())) {
     return Err("PrincipalToInherit");
   }
-  if (snapshot->GetPartitionedPrincipalToInherit() &&
-      !principalEq(snapshot->GetPartitionedPrincipalToInherit(),
+  if (!principalEq(snapshot->GetPartitionedPrincipalToInherit(),
                    aLoadState->PartitionedPrincipalToInherit())) {
     return Err("PartitionedPrincipalToInherit");
   }
@@ -2288,9 +2274,8 @@ void DocumentLoadListener::TriggerRedirectToRealChannel(
       ("DocumentLoadListener::TriggerRedirectToRealChannel [this=%p] "
        "aDestinationBrowsingContext=%" PRIx64 " aDestinationProcess=%" PRId64,
        this, aDestinationBrowsingContext->Id(),
-       aDestinationProcess.valueOr(nullptr)
-           ? int64_t((*aDestinationProcess)->ChildID())
-           : int64_t(-1)));
+       aDestinationProcess ? int64_t((*aDestinationProcess)->ChildID())
+                           : int64_t(-1)));
   MOZ_ASSERT(aDestinationBrowsingContext);
 
   // This initiates replacing the current DocumentChannel with a

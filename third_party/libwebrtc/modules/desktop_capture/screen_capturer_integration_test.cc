@@ -215,7 +215,7 @@ class ScreenCapturerIntegrationTest : public ::testing::Test {
         // been resolved.
         else if (i == wait_capture_round - 1) {
           std::string result;
-          Base64::EncodeFromArray(
+          rtc::Base64::EncodeFromArray(
               frame->data(), frame->size().height() * frame->stride(), &result);
           std::cout << frame->size().width() << " x " << frame->size().height()
                     << std::endl;

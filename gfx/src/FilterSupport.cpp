@@ -156,12 +156,6 @@ static already_AddRefed<FilterNode> SRGBToLinearRGB(DrawTarget* aDT,
   return nullptr;
 }
 
-static sRGBColor SRGBToLinearRGB(const sRGBColor& color) {
-  return sRGBColor(gsRGBToLinearRGBMap[uint8_t(color.r * 255)],
-                   gsRGBToLinearRGBMap[uint8_t(color.g * 255)],
-                   gsRGBToLinearRGBMap[uint8_t(color.b * 255)], color.a);
-}
-
 static already_AddRefed<FilterNode> Crop(DrawTarget* aDT,
                                          FilterNode* aInputFilter,
                                          const IntRect& aRect) {
@@ -785,11 +779,12 @@ static already_AddRefed<FilterNode> FilterNodeFromPrimitiveDescription(
     }
 
     already_AddRefed<FilterNode> operator()(const FloodAttributes& aFlood) {
+      DeviceColor color = ToDeviceColor(aFlood.mColor);
       RefPtr<FilterNode> filter = mDT->CreateFilter(FilterType::FLOOD);
       if (!filter) {
         return nullptr;
       }
-      filter->SetAttribute(ATT_FLOOD_COLOR, ToDeviceColor(aFlood.mColor));
+      filter->SetAttribute(ATT_FLOOD_COLOR, color);
       return filter.forget();
     }
 
@@ -1009,9 +1004,9 @@ static already_AddRefed<FilterNode> FilterNodeFromPrimitiveDescription(
       }
       sRGBColor color = aDropShadow.mColor;
       if (mDescription.InputColorSpace(0) == ColorSpace::LinearRGB) {
-        // We use the colour space we will need as input to the next
-        // filter rather than convert the whole region after the flood.
-        color = FilterWrappers::SRGBToLinearRGB(color);
+        color = sRGBColor(gsRGBToLinearRGBMap[uint8_t(color.r * 255)],
+                          gsRGBToLinearRGBMap[uint8_t(color.g * 255)],
+                          gsRGBToLinearRGBMap[uint8_t(color.b * 255)], color.a);
       }
       flood->SetAttribute(ATT_FLOOD_COLOR, ToDeviceColor(color));
 

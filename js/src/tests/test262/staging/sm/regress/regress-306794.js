@@ -17,6 +17,9 @@ var summary = 'Do not assert: parsing foo getter';
 var actual = 'No Assertion';
 var expect = 'No Assertion';
 
+printBugNumber(BUGNUMBER);
+printStatus (summary);
+ 
 try
 {
   eval('getter\n');

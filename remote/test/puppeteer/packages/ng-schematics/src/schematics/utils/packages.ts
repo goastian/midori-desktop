@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {get} from 'node:https';
+import {get} from 'https';
 
 import type {Tree} from '@angular-devkit/schematics';
 

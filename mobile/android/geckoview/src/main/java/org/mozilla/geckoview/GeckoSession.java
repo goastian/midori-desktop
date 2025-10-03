@@ -1510,10 +1510,11 @@ public class GeckoSession {
         final @Nullable String triggeringUri,
         final boolean hasUserGesture,
         final boolean isTopLevel) {
-      final Double onLoadRequestProfilerStartTime = ProfilerController.getProfilerTime();
+      final ProfilerController profilerController = runtime.getProfilerController();
+      final Double onLoadRequestProfilerStartTime = profilerController.getProfilerTime();
       final Runnable addMarker =
           () ->
-              ProfilerController.addMarker(
+              profilerController.addMarker(
                   "GeckoSession.onLoadRequest", onLoadRequestProfilerStartTime);
 
       final GeckoSession session = mOwner.get();
@@ -5452,7 +5453,7 @@ public class GeckoSession {
           disabled = choice.getBoolean("disabled");
           icon = choice.getString("icon");
           id = choice.getString("id");
-          label = choice.getString("label", "");
+          label = choice.getString("label");
           selected = choice.getBoolean("selected");
           separator = choice.getBoolean("separator");
 

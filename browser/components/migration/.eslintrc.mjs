@@ -11,10 +11,7 @@ export default [
       "no-extend-native": "error",
       "no-multi-str": "error",
       "no-return-assign": "error",
-      "no-unused-vars": [
-        "error",
-        { argsIgnorePattern: "^_", caughtErrors: "none", vars: "all" },
-      ],
+      "no-unused-vars": ["error", { argsIgnorePattern: "^_", vars: "all" }],
       strict: ["error", "global"],
       yoda: "error",
     },
@@ -26,7 +23,6 @@ export default [
         "error",
         {
           argsIgnorePattern: "^_",
-          caughtErrors: "none",
           vars: "local",
         },
       ],

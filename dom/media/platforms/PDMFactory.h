@@ -29,7 +29,7 @@ class StaticMutex;
 struct CreateDecoderParams;
 struct CreateDecoderParamsForAsync;
 struct SupportDecoderParams;
-enum class RemoteMediaIn;
+enum class RemoteDecodeIn;
 
 using PDMCreateDecoderPromise = PlatformDecoderModule::CreateDecoderPromise;
 
@@ -64,7 +64,7 @@ class PDMFactory final {
   static media::MediaCodecsSupported Supported(bool aForceRefresh = false);
   static media::DecodeSupportSet SupportsMimeType(
       const nsACString& aMimeType,
-      const media::MediaCodecsSupported& aSupported, RemoteMediaIn aLocation);
+      const media::MediaCodecsSupported& aSupported, RemoteDecodeIn aLocation);
 
   static bool AllDecodersAreRemote();
 
@@ -105,8 +105,6 @@ class PDMFactory final {
   RefPtr<PlatformDecoderModule> mNullPDM;
 
   DecoderDoctorDiagnostics::FlagsSet mFailureFlags;
-
-  static StaticMutex sSupportedMutex;
 
   friend class RemoteVideoDecoderParent;
   static void EnsureInit();

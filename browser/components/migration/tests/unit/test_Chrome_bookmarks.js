@@ -5,7 +5,7 @@ const { CustomizableUI } = ChromeUtils.importESModule(
 );
 
 const { PlacesUIUtils } = ChromeUtils.importESModule(
-  "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs"
+  "resource:///modules/PlacesUIUtils.sys.mjs"
 );
 
 let rootDir = do_get_file("chromefiles/", true);

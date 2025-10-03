@@ -34,8 +34,8 @@ add_task(async function () {
     "PreferencesSearchCompleted",
     evt => evt.detail == ""
   );
-  searchInput.select();
-  EventUtils.synthesizeKey("VK_BACK_SPACE");
+  searchInput.value = "";
+  searchInput.doCommand();
   await searchCompletedPromise;
 
   // Checks if back to normal

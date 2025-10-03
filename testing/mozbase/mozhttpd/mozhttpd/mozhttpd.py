@@ -20,6 +20,7 @@ from socketserver import ThreadingMixIn
 from urllib.parse import unquote, urlsplit
 
 import moznetwork
+from six import ensure_binary
 
 
 class EasyServer(ThreadingMixIn, HTTPServer):
@@ -94,9 +95,7 @@ class RequestHandler(SimpleHTTPRequestHandler):
                 for keyword, value in headerdict.items():
                     self.send_header(keyword, value)
                 self.end_headers()
-                if isinstance(data, str):
-                    data = data.encode()
-                self.wfile.write(data)
+                self.wfile.write(ensure_binary(data))
 
                 return True
 

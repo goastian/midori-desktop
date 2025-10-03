@@ -213,7 +213,7 @@ export var webrtcUI = {
 
   _streams: [],
   // The boolean parameters indicate which streams should be included in the result.
-  getActiveStreams(aCamera, aMicrophone, aScreen, aTab, aWindow = false) {
+  getActiveStreams(aCamera, aMicrophone, aScreen, aWindow = false) {
     return webrtcUI._streams
       .filter(aStream => {
         let state = aStream.state;
@@ -221,7 +221,6 @@ export var webrtcUI = {
           (aCamera && state.camera) ||
           (aMicrophone && state.microphone) ||
           (aScreen && state.screen) ||
-          (aTab && state.browser) ||
           (aWindow && state.window)
         );
       })
@@ -966,17 +965,11 @@ export function showStreamSharingMenu(win, event, inclWindow = false) {
   let type = menu.getAttribute("type");
   let activeStreams;
   if (type == "Camera") {
-    activeStreams = webrtcUI.getActiveStreams(true, false, false, false);
+    activeStreams = webrtcUI.getActiveStreams(true, false, false);
   } else if (type == "Microphone") {
-    activeStreams = webrtcUI.getActiveStreams(false, true, false, false);
+    activeStreams = webrtcUI.getActiveStreams(false, true, false);
   } else if (type == "Screen") {
-    activeStreams = webrtcUI.getActiveStreams(
-      false,
-      false,
-      true,
-      inclWindow,
-      inclWindow
-    );
+    activeStreams = webrtcUI.getActiveStreams(false, false, true, inclWindow);
     type = webrtcUI.showScreenSharingIndicator;
   }
 

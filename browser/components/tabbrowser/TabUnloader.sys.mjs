@@ -332,7 +332,6 @@ export var TabUnloader = {
       }
 
       const remoteType = tabInfo.tab?.linkedBrowser?.remoteType;
-      await tabInfo.gBrowser.prepareDiscardBrowser(tabInfo.tab);
       if (tabInfo.gBrowser.discardBrowser(tabInfo.tab)) {
         Services.console.logStringMessage(
           `TabUnloader discarded <${remoteType}>`

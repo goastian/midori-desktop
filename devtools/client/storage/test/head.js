@@ -4,7 +4,7 @@
 
 "use strict";
 
-/* eslint no-unused-vars: [2, {"vars": "local", caughtErrors: "none"}] */
+/* eslint no-unused-vars: [2, {"vars": "local"}] */
 /* import-globals-from ../../shared/test/shared-head.js */
 
 // Sometimes HTML pages have a `clear` function that cleans up the storage they
@@ -595,21 +595,6 @@ function getRowValues(id, includeHidden = false) {
 }
 
 /**
- * Get the row element for a given id
- *
- * @param  {String}  id
- *         The uniqueId of the given row.
- * @returns {Element|null}
- */
-function getRowItem(id) {
-  const doc = gPanelWindow.document;
-  const table = gUI.table;
-  return doc.querySelector(
-    `.table-widget-column#${table.uniqueId} .table-widget-cell[value='${id}']`
-  );
-}
-
-/**
  * Get cells for a row.
  *
  * @param  {String}  id
@@ -621,8 +606,15 @@ function getRowItem(id) {
  *         An object of column names to cells for the given row.
  */
 function getRowCells(id, includeHidden = false) {
+  const doc = gPanelWindow.document;
   const table = gUI.table;
-  const item = getRowItem(id);
+  const item = doc.querySelector(
+    ".table-widget-column#" +
+      table.uniqueId +
+      " .table-widget-cell[value='" +
+      id +
+      "']"
+  );
 
   if (!item) {
     ok(

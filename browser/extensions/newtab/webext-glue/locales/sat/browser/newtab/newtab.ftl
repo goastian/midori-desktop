@@ -472,6 +472,3 @@ newtab-topic-selection-button-pick-interests = ᱟᱢᱟᱜ ᱠᱩᱥᱤ ᱠᱚ 
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

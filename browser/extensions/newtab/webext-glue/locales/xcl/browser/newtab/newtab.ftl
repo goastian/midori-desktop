@@ -130,6 +130,3 @@ newtab-personalize-icon-label =
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

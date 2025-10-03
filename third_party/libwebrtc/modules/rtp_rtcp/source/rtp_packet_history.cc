@@ -151,7 +151,7 @@ std::unique_ptr<RtpPacketToSend> RtpPacketHistory::GetPacketAndMarkAsPending(
 
 std::unique_ptr<RtpPacketToSend> RtpPacketHistory::GetPacketAndMarkAsPending(
     uint16_t sequence_number,
-    FunctionView<std::unique_ptr<RtpPacketToSend>(const RtpPacketToSend&)>
+    rtc::FunctionView<std::unique_ptr<RtpPacketToSend>(const RtpPacketToSend&)>
         encapsulate) {
   MutexLock lock(&lock_);
   if (mode_ == StorageMode::kDisabled) {
@@ -245,7 +245,7 @@ std::unique_ptr<RtpPacketToSend> RtpPacketHistory::GetPayloadPaddingPacket() {
 }
 
 std::unique_ptr<RtpPacketToSend> RtpPacketHistory::GetPayloadPaddingPacket(
-    FunctionView<std::unique_ptr<RtpPacketToSend>(const RtpPacketToSend&)>
+    rtc::FunctionView<std::unique_ptr<RtpPacketToSend>(const RtpPacketToSend&)>
         encapsulate) {
   MutexLock lock(&lock_);
   if (mode_ == StorageMode::kDisabled) {

@@ -223,8 +223,7 @@ void gfxPlatformGtk::InitDmabufConfig() {
   gfxVars::SetDrmRenderDevice(drmRenderDevice);
 
   if (feature.IsEnabled()) {
-    DMABufDeviceLock device;
-    if (!device.GetDMABufDevice()->IsEnabled(failureId)) {
+    if (!GetDMABufDevice()->IsEnabled(failureId)) {
       feature.ForceDisable(FeatureStatus::Failed, "Failed to configure",
                            failureId);
     }
@@ -334,10 +333,6 @@ void gfxPlatformGtk::InitWebRenderConfig() {
       feature.ForceDisable(FeatureStatus::Unavailable,
                            "Requires wp_viewporter protocol support",
                            "FEATURE_FAILURE_REQUIRES_WPVIEWPORTER"_ns);
-    } else if (!GetGlobalDMABufFormats()->SupportsHDRComposition()) {
-      feature.ForceDisable(FeatureStatus::Unavailable,
-                           "Requires HDR format direct composition",
-                           "FEATURE_FAILURE_REQUIRES_FORMAT_COMPOSITION"_ns);
     }
   }
 #else  // MOZ_WAYLAND

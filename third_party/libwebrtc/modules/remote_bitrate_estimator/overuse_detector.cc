@@ -14,9 +14,9 @@
 #include <stdio.h>
 
 #include <algorithm>
-#include <cstdint>
+#include <string>
 
-#include "api/transport/bandwidth_usage.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/numerics/safe_minmax.h"
 
 namespace webrtc {

@@ -9,7 +9,7 @@
 
   .personalized-card-dismiss {
     text-align: end;
-    margin-block-end: var(--space-small);
+    margin-bottom: var(--space-small);
     margin-inline-end: calc(var(--space-medium) * -1);
   }
 
@@ -28,7 +28,7 @@
     }
 
     h2, p {
-      margin-block-start: 0;
+      margin-top: 0;
     }
 
     h2 {
@@ -44,22 +44,22 @@
     // 1-column layout
     @media (max-width: $break-point-layout-variant) {
       grid-template-columns: 1fr;
-      gap: var(--space-small);
+      gap: 10px;
 
       img {
         justify-self: initial;
       }
 
       .personalized-card-link {
-        margin-block-start: var(--space-small);
-        margin-block-end: var(--space-large);
+        margin-top: 8px;
+        margin-bottom: 15px;
       }
     }
 
     // 2-column layout
     @media (min-width: $break-point-layout-variant){
       grid-template-columns: 0.2fr 1fr 1fr;
-      gap: var(--space-large);
+      gap: 20px;
 
       h2 {
         width: 200px;
@@ -72,13 +72,12 @@
       .personalized-card-cta {
         grid-column: 2 / span 2;
         grid-row: span 2;
-        margin-block-start: calc(var(--space-xxlarge) * -1);
+        margin-top: -30px;
         width: 195px;
       }
 
       .personalized-card-link {
-        // Bug 1967304 - Large number (-64px)
-        margin-block-start: calc(var(--space-xxlarge) * -2);
+        margin-top: -60px;
         grid-column: 3;
       }
     }
@@ -86,7 +85,7 @@
     // 3 and 4-column layout
     @media (min-width: $break-point-widest) {
       grid-template-columns: 0.2fr 1fr 1fr 1fr;
-      gap: var(--space-small);
+      gap: 10px;
 
       img {
         width: 100px;
@@ -103,14 +102,13 @@
 
       .personalized-card-cta {
         grid-column:  4;
-        margin-block-start: initial;
+        margin-top: initial;
         width: 220px;
       }
 
       .personalized-card-link {
         grid-column:  4;
-        // Bug 1967304 - Large number (-48px)
-        margin-block-start: calc(var(--space-xlarge) * -2);
+        margin-top: -50px;
       }
     }
 
@@ -124,14 +122,12 @@
       }
 
       .personalized-card-cta {
-        // Bug 1967304 - Large number (40px)
-        margin-inline-end: calc(var(--space-large) + var(--space-xlarge));
+        margin-inline-end: 40px;
       }
 
       .personalized-card-link {
         width: 290px;
-        // Bug 1967304 - Large number (-64px)
-        margin-block-start: calc(var(--space-xxlarge) * -2);
+        margin-top: -60px;
       }
     }
   }

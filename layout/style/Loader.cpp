@@ -42,7 +42,6 @@
 #include "nsContentPolicyUtils.h"
 #include "nsIHttpChannel.h"
 #include "nsIHttpChannelInternal.h"
-#include "nsIClassifiedChannel.h"
 #include "nsIClassOfService.h"
 #include "nsIScriptError.h"
 #include "nsMimeTypes.h"
@@ -864,25 +863,6 @@ nsresult Loader::CheckContentPolicy(nsIPrincipal* aLoadingPrincipal,
   return NS_OK;
 }
 
-static void RecordUseCountersIfNeeded(Document* aDoc,
-                                      const StyleSheet& aSheet) {
-  if (!aDoc) {
-    return;
-  }
-  const StyleUseCounters* docCounters = aDoc->GetStyleUseCounters();
-  if (!docCounters) {
-    return;
-  }
-  if (aSheet.URLData()->ChromeRulesEnabled()) {
-    return;
-  }
-  const auto* sheetCounters = aSheet.GetStyleUseCounters();
-  if (!sheetCounters) {
-    return;
-  }
-  Servo_UseCounters_Merge(docCounters, sheetCounters);
-}
-
 bool Loader::MaybePutIntoLoadsPerformed(SheetLoadData& aLoadData) {
   if (!aLoadData.mURI) {
     // Inline style sheet is not tracked.
@@ -1070,7 +1050,6 @@ nsresult Loader::NewStyleSheetChannel(SheetLoadData& aLoadData,
                                       nsIChannel** aOutChannel) {
   nsCOMPtr<nsILoadGroup> loadGroup;
   nsCOMPtr<nsICookieJarSettings> cookieJarSettings;
-  net::ClassificationFlags triggeringClassificationFlags;
   if (aUseLoadGroup == UseLoadGroup::Yes && mDocument) {
     loadGroup = mDocument->GetDocumentLoadGroup();
     // load for a document with no loadgrup indicates that something is
@@ -1081,11 +1060,6 @@ nsresult Loader::NewStyleSheetChannel(SheetLoadData& aLoadData,
     }
 
     cookieJarSettings = mDocument->CookieJarSettings();
-
-    // If the script context is tracking, we use the flags from the script
-    // tracking flags. Otherwise, we fallback to use the flags from the
-    // document.
-    triggeringClassificationFlags = mDocument->GetScriptTrackingFlags();
   }
 
   nsSecurityFlags securityFlags =
@@ -1128,17 +1102,9 @@ nsresult Loader::NewStyleSheetChannel(SheetLoadData& aLoadData,
     }
   }
 
-  MOZ_TRY(NS_NewChannel(aOutChannel, aLoadData.mURI, triggeringPrincipal,
-                        securityFlags, contentPolicyType, cookieJarSettings,
-                        /* aPerformanceStorage = */ nullptr, loadGroup));
-
-  nsCOMPtr<nsILoadInfo> loadInfo = (*aOutChannel)->LoadInfo();
-  loadInfo->SetTriggeringFirstPartyClassificationFlags(
-      triggeringClassificationFlags.firstPartyFlags);
-  loadInfo->SetTriggeringThirdPartyClassificationFlags(
-      triggeringClassificationFlags.thirdPartyFlags);
-
-  return NS_OK;
+  return NS_NewChannel(aOutChannel, aLoadData.mURI, triggeringPrincipal,
+                       securityFlags, contentPolicyType, cookieJarSettings,
+                       /* aPerformanceStorage = */ nullptr, loadGroup);
 }
 
 nsresult Loader::LoadSheetSyncInternal(SheetLoadData& aLoadData,
@@ -1589,7 +1555,7 @@ void Loader::AddPerformanceEntryForCachedSheet(SheetLoadData& aLoadData) {
 }
 
 void Loader::NotifyObservers(SheetLoadData& aData, nsresult aStatus) {
-  RecordUseCountersIfNeeded(mDocument, *aData.mSheet);
+  aData.mSheet->PropagateUseCountersTo(mDocument);
   if (MaybePutIntoLoadsPerformed(aData) &&
       aData.mShouldEmulateNotificationsForCachedLoad) {
     NotifyObserversForCachedSheet(aData);
@@ -1682,21 +1648,70 @@ void Loader::MarkLoadTreeFailed(SheetLoadData& aLoadData,
   } while (data);
 }
 
+static bool URIsEqual(nsIURI* aA, nsIURI* aB) {
+  if (aA == aB) {
+    return true;
+  }
+  if (!aA || !aB) {
+    return false;
+  }
+  bool equal = false;
+  return NS_SUCCEEDED(aA->Equals(aB, &equal)) && equal;
+}
+
+// The intention is that this would return true for inputs like
+//   (https://example.com/a, https://example.com/b)
+// but not for:
+//   (https://example.com/a, https://example.com/b/c)
+// where "regular" relative URIs would resolve differently.
+static bool BaseURIsArePathCompatible(nsIURI* aA, nsIURI* aB) {
+  if (!aA || !aB) {
+    return false;
+  }
+  constexpr auto kDummyPath = "foo.css"_ns;
+  nsAutoCString resultA;
+  nsAutoCString resultB;
+  aA->Resolve(kDummyPath, resultA);
+  aB->Resolve(kDummyPath, resultB);
+  return resultA == resultB;
+}
+
+static bool CanReuseInlineSheet(StyleSheet* aSheet, nsIURI* aNewBaseURI) {
+  nsIURI* oldBase = aSheet->GetBaseURI();
+  if (URIsEqual(oldBase, aNewBaseURI)) {
+    return true;
+  }
+  switch (aSheet->OriginalContentsBaseUriDependency()) {
+    case StyleLikelyBaseUriDependency::No:
+      break;
+    case StyleLikelyBaseUriDependency::Path:
+      if (BaseURIsArePathCompatible(oldBase, aNewBaseURI)) {
+        break;
+      }
+      [[fallthrough]];
+    case StyleLikelyBaseUriDependency::Full:
+      LOG(("  Can't reuse due to base URI dependency"));
+      return false;
+  }
+  return true;
+}
+
 RefPtr<StyleSheet> Loader::LookupInlineSheetInCache(
-    const nsAString& aBuffer, nsIPrincipal* aSheetPrincipal) {
+    const nsAString& aBuffer, nsIPrincipal* aSheetPrincipal, nsIURI* aBaseURI) {
   MOZ_ASSERT(mSheets, "Document associated loader should have sheet cache");
   auto result = mSheets->LookupInline(LoaderPrincipal(), aBuffer);
   if (!result) {
     return nullptr;
   }
-
   StyleSheet* sheet = result.Data();
   MOZ_ASSERT(!sheet->HasModifiedRules(),
              "How did we end up with a dirty sheet?");
-
   if (NS_WARN_IF(!sheet->Principal()->Equals(aSheetPrincipal))) {
     // If the sheet is going to have different access rights, don't return it
     // from the cache. XXX can this happen now that we eagerly clone?
+    return nullptr;
+  }
+  if (!CanReuseInlineSheet(sheet, aBaseURI)) {
     return nullptr;
   }
   return sheet->Clone(nullptr, nullptr);
@@ -1766,7 +1781,8 @@ Result<Loader::LoadSheetResult, nsresult> Loader::LoadInlineStyle(
     return LoaderPrincipal();
   }();
 
-  RefPtr<StyleSheet> sheet = LookupInlineSheetInCache(aBuffer, sheetPrincipal);
+  RefPtr<StyleSheet> sheet =
+      LookupInlineSheetInCache(aBuffer, sheetPrincipal, baseURI);
   const bool isSheetFromCache = !!sheet;
   if (!isSheetFromCache) {
     sheet = MakeRefPtr<StyleSheet>(eAuthorSheetFeatures, aInfo.mCORSMode,
@@ -2080,7 +2096,7 @@ nsresult Loader::LoadChildSheet(StyleSheet& aParentSheet,
     if (!isReusableSheet) {
       // Child sheets are not handled by NotifyObservers, and these need to be
       // performed here if the sheet comes from the SharedStyleSheetCache.
-      RecordUseCountersIfNeeded(mDocument, *data->mSheet);
+      data->mSheet->PropagateUseCountersTo(mDocument);
       if (MaybePutIntoLoadsPerformed(*data)) {
         NotifyObserversForCachedSheet(*data);
         AddPerformanceEntryForCachedSheet(*data);
@@ -2313,7 +2329,10 @@ nsIPrincipal* Loader::LoaderPrincipal() const {
 }
 
 nsIPrincipal* Loader::PartitionedPrincipal() const {
-  return mDocument ? mDocument->PartitionedPrincipal() : LoaderPrincipal();
+  if (mDocument && StaticPrefs::privacy_partition_network_state()) {
+    return mDocument->PartitionedPrincipal();
+  }
+  return LoaderPrincipal();
 }
 
 bool Loader::ShouldBypassCache() const {

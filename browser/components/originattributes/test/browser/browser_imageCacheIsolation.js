@@ -54,6 +54,10 @@ function fileHandler(metadata, response) {
 }
 
 async function doBefore() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["privacy.partition.network_state", false]],
+  });
+
   // reset hit counter
   info("XXX resetting gHits");
   gHits = 0;
@@ -73,19 +77,13 @@ function doTest() {
 }
 
 // the check function
-function doCheck(shouldIsolate, a, b, mode) {
+function doCheck(shouldIsolate) {
   // if we're doing first party isolation and the image cache isolation is
   // working, then gHits should be 2 because the image would have been loaded
   // one per first party domain.  if first party isolation is disabled, then
   // gHits should be 1 since there would be one image load from the server and
   // one load from the image cache.
-  info(
-    `XXX check (${mode}: gHits == ${gHits}, shouldIsolate == ${shouldIsolate}`
-  );
-  if (mode == TEST_MODE_NO_ISOLATION) {
-    todo(false, "This test depended on no network partitioning");
-    return true;
-  }
+  info(`XXX check: gHits == ${gHits}, shouldIsolate == ${shouldIsolate}`);
   return shouldIsolate
     ? gHits == NUM_ISOLATION_LOADS
     : gHits == NUM_CACHED_LOADS;

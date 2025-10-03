@@ -34,6 +34,7 @@ import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.isSystemInDarkTheme
 import org.mozilla.fenix.ext.loadIntoView
 import org.mozilla.fenix.home.sessioncontrol.TopSiteInteractor
+import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.utils.view.ViewHolder
 
 @SuppressLint("ClickableViewAccessibility")
@@ -149,7 +150,14 @@ class TopSiteItemViewHolder(
                 }
             }
         } else {
-            itemView.context.components.core.icons.loadIntoView(binding.faviconImage, topSite.url)
+            when (topSite.url) {
+                SupportUtils.POCKET_TRENDING_URL -> {
+                    binding.faviconImage.setImageDrawable(getDrawable(itemView.context, R.drawable.ic_pocket))
+                }
+                else -> {
+                    itemView.context.components.core.icons.loadIntoView(binding.faviconImage, topSite.url)
+                }
+            }
         }
 
         this.topSite = topSite

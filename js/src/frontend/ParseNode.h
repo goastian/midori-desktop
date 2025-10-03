@@ -819,8 +819,6 @@ class ParseNode {
 
   inline bool isConstant();
 
-  inline bool isUndefinedLiteral();
-
   template <class NodeType>
   inline bool is() const {
     return NodeType::test(*this);
@@ -2611,18 +2609,6 @@ inline bool ParseNode::isConstant() {
       return !as<ListNode>().hasNonConstInitializer();
     default:
       return false;
-  }
-}
-
-inline bool ParseNode::isUndefinedLiteral() {
-  switch (pn_type) {
-    case ParseNodeKind::Name: {
-      return as<NameNode>().name() ==
-             TaggedParserAtomIndex::WellKnown::undefined();
-    }
-    default: {
-      return false;
-    }
   }
 }
 

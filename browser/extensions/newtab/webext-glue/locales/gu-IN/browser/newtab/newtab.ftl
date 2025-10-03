@@ -228,6 +228,3 @@ newtab-error-fallback-refresh-link = ફરી પ્રયાસ કરવા �
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

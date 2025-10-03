@@ -11,6 +11,10 @@ info: |
 includes: [propertyHelper.js]
 ---*/
 
-verifyPrimordialCallableProperty(this, "parseInt", "parseInt", 2);
+verifyPrimordialCallableProperty(this, "parseInt", "parseInt", 2, {
+  writable: true,
+  enumerable: false,
+  configurable: true
+});
 
 reportCompare(0, 0);

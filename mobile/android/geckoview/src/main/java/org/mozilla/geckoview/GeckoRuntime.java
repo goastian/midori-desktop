@@ -459,8 +459,7 @@ public final class GeckoRuntime implements Parcelable {
       final File minidumps = new File(context.getFilesDir(), "minidumps");
       context.bindService(
           i,
-          CrashHelper.createConnection(
-              pipes.mBreakpadServer, minidumps.getPath(), pipes.mListener, pipes.mServer),
+          CrashHelper.createConnection(pipes.mBreakpadServer, minidumps.getPath(), pipes.mServer),
           Context.BIND_AUTO_CREATE);
     } catch (final ClassNotFoundException e) {
       Log.w(LOGTAG, "Couldn't find the crash helper class");
@@ -597,8 +596,8 @@ public final class GeckoRuntime implements Parcelable {
       mScreenChangeListener.enable();
     }
 
-    ProfilerController.addMarker(
-        "GeckoView Initialization START", ProfilerController.getProfilerTime());
+    mProfilerController.addMarker(
+        "GeckoView Initialization START", mProfilerController.getProfilerTime());
     return true;
   }
 
@@ -660,8 +659,6 @@ public final class GeckoRuntime implements Parcelable {
    * @return an instance of {@link ProfilerController}.
    */
   @UiThread
-  @Deprecated
-  @DeprecationSchedule(id = "GeckoRuntime-getProfilerController", version = 142)
   public @NonNull ProfilerController getProfilerController() {
     return mProfilerController;
   }
@@ -1129,17 +1126,6 @@ public final class GeckoRuntime implements Parcelable {
     }
 
     return mPushController;
-  }
-
-  /**
-   * Notifies Gecko observers of a telemetry preference change.
-   *
-   * @param isEnabled Whether telemetry is enabled or disabled.
-   */
-  @AnyThread
-  public void notifyTelemetryPrefChanged(final boolean isEnabled) {
-    GeckoAppShell.notifyObservers(
-        "mobile-telemetry-pref-changed", isEnabled ? "enabled" : "disabled");
   }
 
   /**

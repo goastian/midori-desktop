@@ -673,7 +673,7 @@ TEST_F(PacketRouterTest, DuplicateRemovalOfSendModuleIgnored) {
 }
 
 TEST(PacketRouterRembTest, ChangeSendRtpModuleChangeRembSender) {
-  ScopedFakeClock clock;
+  rtc::ScopedFakeClock clock;
   NiceMock<MockRtpRtcpInterface> rtp_send;
   NiceMock<MockRtpRtcpInterface> rtp_recv;
   PacketRouter packet_router;
@@ -698,7 +698,7 @@ TEST(PacketRouterRembTest, ChangeSendRtpModuleChangeRembSender) {
 // Only register receiving modules and make sure we fallback to trigger a REMB
 // packet on this one.
 TEST(PacketRouterRembTest, NoSendingRtpModule) {
-  ScopedFakeClock clock;
+  rtc::ScopedFakeClock clock;
   NiceMock<MockRtpRtcpInterface> rtp;
   PacketRouter packet_router;
 
@@ -719,7 +719,7 @@ TEST(PacketRouterRembTest, NoSendingRtpModule) {
 }
 
 TEST(PacketRouterRembTest, NonCandidateSendRtpModuleNotUsedForRemb) {
-  ScopedFakeClock clock;
+  rtc::ScopedFakeClock clock;
   PacketRouter packet_router;
   NiceMock<MockRtpRtcpInterface> module;
 
@@ -737,7 +737,7 @@ TEST(PacketRouterRembTest, NonCandidateSendRtpModuleNotUsedForRemb) {
 }
 
 TEST(PacketRouterRembTest, CandidateSendRtpModuleUsedForRemb) {
-  ScopedFakeClock clock;
+  rtc::ScopedFakeClock clock;
   PacketRouter packet_router;
   NiceMock<MockRtpRtcpInterface> module;
 
@@ -755,7 +755,7 @@ TEST(PacketRouterRembTest, CandidateSendRtpModuleUsedForRemb) {
 }
 
 TEST(PacketRouterRembTest, NonCandidateReceiveRtpModuleNotUsedForRemb) {
-  ScopedFakeClock clock;
+  rtc::ScopedFakeClock clock;
   PacketRouter packet_router;
   NiceMock<MockRtpRtcpInterface> module;
 
@@ -773,7 +773,7 @@ TEST(PacketRouterRembTest, NonCandidateReceiveRtpModuleNotUsedForRemb) {
 }
 
 TEST(PacketRouterRembTest, CandidateReceiveRtpModuleUsedForRemb) {
-  ScopedFakeClock clock;
+  rtc::ScopedFakeClock clock;
   PacketRouter packet_router;
   NiceMock<MockRtpRtcpInterface> module;
 
@@ -792,7 +792,7 @@ TEST(PacketRouterRembTest, CandidateReceiveRtpModuleUsedForRemb) {
 
 TEST(PacketRouterRembTest,
      SendCandidatePreferredOverReceiveCandidate_SendModuleAddedFirst) {
-  ScopedFakeClock clock;
+  rtc::ScopedFakeClock clock;
   PacketRouter packet_router;
   NiceMock<MockRtpRtcpInterface> send_module;
   NiceMock<MockRtpRtcpInterface> receive_module;
@@ -819,7 +819,7 @@ TEST(PacketRouterRembTest,
 
 TEST(PacketRouterRembTest,
      SendCandidatePreferredOverReceiveCandidate_ReceiveModuleAddedFirst) {
-  ScopedFakeClock clock;
+  rtc::ScopedFakeClock clock;
   PacketRouter packet_router;
   NiceMock<MockRtpRtcpInterface> send_module;
   NiceMock<MockRtpRtcpInterface> receive_module;
@@ -846,7 +846,7 @@ TEST(PacketRouterRembTest,
 }
 
 TEST(PacketRouterRembTest, ReceiveModuleTakesOverWhenLastSendModuleRemoved) {
-  ScopedFakeClock clock;
+  rtc::ScopedFakeClock clock;
   PacketRouter packet_router;
   NiceMock<MockRtpRtcpInterface> send_module;
   NiceMock<MockRtpRtcpInterface> receive_module;

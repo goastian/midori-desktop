@@ -16,11 +16,7 @@ add_task(async function check_history_not_persisted() {
   // Retrieve the tab state.
   await TabStateFlusher.flush(browser);
   let state = JSON.parse(ss.getTabState(tab));
-  is(
-    state.entries[0].transient,
-    true,
-    "Should have collected the transient state"
-  );
+  ok(!state.entries[0].persist, "Should have collected the persistence state");
   BrowserTestUtils.removeTab(tab);
   browser = null;
 
@@ -68,7 +64,7 @@ add_task(async function check_history_default_persisted() {
   // Retrieve the tab state.
   await TabStateFlusher.flush(browser);
   let state = JSON.parse(ss.getTabState(tab));
-  delete state.entries[0].transient;
+  delete state.entries[0].persist;
   BrowserTestUtils.removeTab(tab);
   browser = null;
 

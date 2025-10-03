@@ -15,7 +15,6 @@ export default [
         "error",
         {
           args: "none",
-          caughtErrors: "none",
           vars: "local",
           varsIgnorePattern: "(debug|warn)",
         },

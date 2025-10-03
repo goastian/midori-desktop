@@ -12,9 +12,6 @@
 
 #include <stdio.h>
 
-#include <cstdint>
-#include <ios>
-#include <memory>
 #include <set>
 #include <sstream>
 #include <string>
@@ -22,7 +19,6 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "modules/rtp_rtcp/include/rtp_header_extension_map.h"
-#include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "test/rtp_file_reader.h"
 
 ABSL_FLAG(std::string,

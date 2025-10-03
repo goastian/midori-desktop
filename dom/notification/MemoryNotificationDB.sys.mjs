@@ -4,7 +4,7 @@
 
 import { NotificationDB } from "./NotificationDB.sys.mjs";
 
-export class MemoryNotificationDB extends NotificationDB {
+class MemoryNotificationDB extends NotificationDB {
   storageQualifier() {
     return "MemoryNotification";
   }

@@ -16,6 +16,7 @@ from copy import deepcopy
 
 import mozcrash
 import mozprocess
+import six
 from benchmark import Benchmark
 from cmdline import CHROME_ANDROID_APPS, DESKTOP_APPS, FIREFOX_ANDROID_APPS
 from logger.logger import RaptorLogger
@@ -33,7 +34,8 @@ BROWSERTIME_BENCHMARK_OUTPUT_TIMEOUT = (
 )
 
 
-class Browsertime(Perftest, metaclass=ABCMeta):
+@six.add_metaclass(ABCMeta)
+class Browsertime(Perftest):
     """Abstract base class for Browsertime"""
 
     @property
@@ -674,7 +676,7 @@ class Browsertime(Perftest, metaclass=ABCMeta):
             (
                 "gecko_profile_entries",
                 "--firefox.geckoProfilerParams.bufferSize",
-                str(128 * 1024 * 1024),  # 1GiB
+                str(13_107_200 * 5),  # ~500mb
             ),
         ):
             # 0 is a valid value. The setting may be present but set to None.
@@ -967,7 +969,7 @@ class Browsertime(Perftest, metaclass=ABCMeta):
         if self.debug_mode:
             output_timeout = 2147483647
 
-        LOG.info(f"timeout (ms): {timeout}")
+        LOG.info(f"timeout (s): {timeout}")
         LOG.info(f"browsertime cwd: {os.getcwd()}")
         LOG.info("browsertime cmd: {}".format(" ".join([str(c) for c in cmd])))
         if self.browsertime_video:

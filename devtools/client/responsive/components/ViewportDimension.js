@@ -18,13 +18,6 @@ const {
 } = require("resource://devtools/client/responsive/constants.js");
 const Types = require("resource://devtools/client/responsive/types.js");
 
-loader.lazyRequireGetter(
-  this,
-  "KeyCodes",
-  "resource://devtools/client/shared/keycodes.js",
-  true
-);
-
 class ViewportDimension extends PureComponent {
   static get propTypes() {
     return {
@@ -140,33 +133,13 @@ class ViewportDimension extends PureComponent {
 
   onInputKeyUp({ target, keyCode }) {
     // On Enter, submit the input
-    if (keyCode == KeyCodes.DOM_VK_RETURN) {
+    if (keyCode == 13) {
       this.onInputSubmit();
     }
 
-    // On Esc, revert the value and blur the target
-    if (keyCode == KeyCodes.DOM_VK_ESCAPE) {
-      if (this.widthInput == target) {
-        const width = this.props.viewport.width;
-        this.setState(
-          {
-            width,
-            isWidthValid: this.isInputValid(width),
-          },
-          () => target.blur()
-        );
-      }
-
-      if (this.heightInput == target) {
-        const height = this.props.viewport.height;
-        this.setState(
-          {
-            height,
-            isHeightValid: this.isInputValid(height),
-          },
-          () => target.blur()
-        );
-      }
+    // On Esc, blur the target
+    if (keyCode == 27) {
+      target.blur();
     }
   }
 

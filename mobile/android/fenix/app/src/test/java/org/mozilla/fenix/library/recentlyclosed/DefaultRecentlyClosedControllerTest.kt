@@ -31,7 +31,6 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.fenix.BrowserDirection
 import org.mozilla.fenix.GleanMetrics.RecentlyClosedTabs
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
@@ -39,9 +38,9 @@ import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.ext.directionsEq
 import org.mozilla.fenix.ext.optionsEq
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class DefaultRecentlyClosedControllerTest {
     private val navController: NavController = mockk(relaxed = true)
     private val activity: HomeActivity = mockk(relaxed = true)
@@ -248,8 +247,6 @@ class DefaultRecentlyClosedControllerTest {
     @Test
     fun handleRestore() = runTest {
         val item: TabState = mockk(relaxed = true)
-        every { activity.browsingModeManager.mode } returns BrowsingMode.Normal
-
         assertNull(RecentlyClosedTabs.openTab.testGetValue())
 
         createController(scope = this).handleRestore(item)
@@ -259,43 +256,6 @@ class DefaultRecentlyClosedControllerTest {
         assertNotNull(RecentlyClosedTabs.openTab.testGetValue())
         assertEquals(1, RecentlyClosedTabs.openTab.testGetValue()!!.size)
         assertNull(RecentlyClosedTabs.openTab.testGetValue()!!.single().extra)
-    }
-
-    @Test
-    fun `GIVEN normal browsing mode WHEN handleRestore is called THEN openToBrowser is invoked`() = runTest {
-        val item: TabState = mockk(relaxed = true)
-       val controller = createController(scope = this)
-
-        assertNull(RecentlyClosedTabs.openTab.testGetValue())
-
-        every { activity.browsingModeManager.mode } returns BrowsingMode.Normal
-
-        controller.handleRestore(item)
-
-        runCurrent()
-
-        coVerify { tabsUseCases.restore.invoke(eq(item), any(), true) }
-
-        verify {
-            browserStore.dispatch(RecentlyClosedAction.RemoveClosedTabAction(item))
-        }
-        verify { activity.openToBrowser(from = eq(BrowserDirection.FromRecentlyClosed)) }
-    }
-
-    @Test
-    fun `GIVEN private browsing mode WHEN handleRestore is called THEN handleOpen is invoked with private mode`() = runTest {
-        val item: TabState = mockk(relaxed = true)
-        val controller = createController(scope = this)
-
-        assertNull(RecentlyClosedTabs.openTab.testGetValue())
-
-        every { activity.browsingModeManager.mode } returns BrowsingMode.Private
-
-        controller.handleRestore(item)
-
-        runCurrent()
-
-        verify { controller.handleOpen(item, BrowsingMode.Private) }
     }
 
     @Test

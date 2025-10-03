@@ -42,7 +42,7 @@ BaseLocalIter::BaseLocalIter(const ValTypeVector& locals,
                              const ArgTypeVector& args, bool debugEnabled)
     : locals_(locals),
       args_(args),
-      argsIter_(args_, ABIKind::Wasm),
+      argsIter_(args_),
       index_(0),
       frameSize_(0),
       nextFrameSize_(debugEnabled ? DebugFrame::offsetOfFrame() : 0),

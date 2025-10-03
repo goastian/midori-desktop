@@ -10,10 +10,7 @@
 add_setup(async () => {
   CustomizableUI.addWidgetToArea("home-button", "nav-bar");
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      ["browser.tabs.searchclipboardfor.middleclick", false],
-    ],
+    set: [["browser.tabs.searchclipboardfor.middleclick", false]],
   });
 
   registerCleanupFunction(() => {

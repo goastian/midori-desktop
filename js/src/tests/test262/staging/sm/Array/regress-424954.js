@@ -24,6 +24,9 @@ test();
 
 function test()
 {
+  printBugNumber(BUGNUMBER);
+  printStatus (summary);
+ 
   [].concat(null);
 
   assert.sameValue(expect, actual, summary);

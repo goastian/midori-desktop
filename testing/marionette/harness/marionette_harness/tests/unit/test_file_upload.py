@@ -2,13 +2,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import contextlib
+
 from tempfile import NamedTemporaryFile as tempfile
 
-from urllib.parse import quote
+import six
+from six.moves.urllib.parse import quote
 
 from marionette_driver import By, errors, expected
 from marionette_driver.wait import Wait
-from marionette_harness import MarionetteTestCase
+from marionette_harness import MarionetteTestCase, skip
 
 
 single = "data:text/html,{}".format(quote("<input type=file>"))
@@ -101,7 +104,7 @@ class TestFileUpload(MarionetteTestCase):
         url = self.marionette.get_url()
 
         with tempfile() as f:
-            f.write("camembert".encode())
+            f.write(six.ensure_binary("camembert"))
             f.flush()
             self.input.send_keys(f.name)
             self.submit.click()

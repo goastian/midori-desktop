@@ -158,14 +158,15 @@ class SVGElement : public SVGElementBase  // nsIContent
   void SetLength(nsAtom* aName, const SVGAnimatedLength& aLength);
 
   enum class ValToUse { Base, Anim };
-  static bool UpdateDeclarationBlockFromLength(
-      const StyleLockedDeclarationBlock&, nsCSSPropertyID,
-      const SVGAnimatedLength&, ValToUse);
-  static bool UpdateDeclarationBlockFromPath(const StyleLockedDeclarationBlock&,
+  static bool UpdateDeclarationBlockFromLength(StyleLockedDeclarationBlock&,
+                                               nsCSSPropertyID,
+                                               const SVGAnimatedLength&,
+                                               ValToUse);
+  static bool UpdateDeclarationBlockFromPath(StyleLockedDeclarationBlock&,
                                              const SVGAnimatedPathSegList&,
                                              ValToUse);
   static bool UpdateDeclarationBlockFromTransform(
-      const StyleLockedDeclarationBlock&, const SVGAnimatedTransformList*,
+      StyleLockedDeclarationBlock&, const SVGAnimatedTransformList*,
       const gfx::Matrix* aAnimateMotionTransform, ValToUse);
 
   nsAttrValue WillChangeLength(uint8_t aAttrEnum,

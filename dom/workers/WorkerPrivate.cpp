@@ -2497,6 +2497,12 @@ void WorkerPrivate::OfflineStatusChangeEventInternal(bool aIsOffline) {
     return;
   }
 
+  if (ShouldResistFingerprinting(RFPTarget::NetworkConnection)) {
+    // We always report the worker as online if resistFingerprinting is
+    // enabled, regardless of the actual network status.
+    return;
+  }
+
   for (uint32_t index = 0; index < data->mChildWorkers.Length(); ++index) {
     data->mChildWorkers[index]->OfflineStatusChangeEvent(aIsOffline);
   }
@@ -5921,7 +5927,11 @@ void WorkerPrivate::ReportError(JSContext* aCx,
   }
 
   JS::ExceptionStack exnStack(aCx);
-  if (JS_IsExceptionPending(aCx)) {
+  // NOTE: This function is used both for errors and warnings, and warnings
+  //       can be reported while there's a pending exception.
+  //       Warnings are always reported with non-null JSErrorReport.
+  if (!aReport || !aReport->isWarning()) {
+    MOZ_ASSERT(JS_IsExceptionPending(aCx));
     if (!JS::StealPendingExceptionStack(aCx, &exnStack)) {
       JS_ClearPendingException(aCx);
       return;
@@ -5935,10 +5945,6 @@ void WorkerPrivate::ReportError(JSContext* aCx,
       JSAutoRealm ar(aCx, stackGlobal);
       report->SerializeWorkerStack(aCx, this, stack);
     }
-  } else {
-    // ReportError is also used for reporting warnings,
-    // so there won't be a pending exception.
-    MOZ_ASSERT(aReport && aReport->isWarning());
   }
 
   if (report->mMessage.IsEmpty() && aToStringResult) {

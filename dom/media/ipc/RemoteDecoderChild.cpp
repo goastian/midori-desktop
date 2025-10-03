@@ -5,23 +5,64 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "RemoteDecoderChild.h"
 
-#include "RemoteMediaManagerChild.h"
+#include "RemoteDecoderManagerChild.h"
 
 #include "mozilla/RemoteDecodeUtils.h"
 
 namespace mozilla {
 
-RemoteDecoderChild::RemoteDecoderChild(RemoteMediaIn aLocation)
+RemoteDecoderChild::RemoteDecoderChild(RemoteDecodeIn aLocation)
     : ShmemRecycleAllocator(this),
       mLocation(aLocation),
       mThread(GetCurrentSerialEventTarget()) {
   MOZ_DIAGNOSTIC_ASSERT(
-      RemoteMediaManagerChild::GetManagerThread() &&
-          RemoteMediaManagerChild::GetManagerThread()->IsOnCurrentThread(),
+      RemoteDecoderManagerChild::GetManagerThread() &&
+          RemoteDecoderManagerChild::GetManagerThread()->IsOnCurrentThread(),
       "Must be created on the manager thread");
 }
 
 RemoteDecoderChild::~RemoteDecoderChild() = default;
+
+void RemoteDecoderChild::HandleRejectionError(
+    const ipc::ResponseRejectReason& aReason,
+    std::function<void(const MediaResult&)>&& aCallback) {
+  // If the channel goes down and CanSend() returns false, the IPDL promise will
+  // be rejected with SendError rather than ActorDestroyed. Both means the same
+  // thing and we can consider that the parent has crashed. The child can no
+  // longer be used.
+  //
+
+  // The GPU/RDD process crashed.
+  if (mLocation == RemoteDecodeIn::GpuProcess) {
+    // The GPU process will get automatically restarted by the parent process.
+    // Once it has been restarted the ContentChild will receive the message and
+    // will call GetManager()->InitForGPUProcess.
+    // We defer reporting an error until we've recreated the RemoteDecoder
+    // manager so that it'll be safe for MediaFormatReader to recreate decoders
+    RefPtr<RemoteDecoderChild> self = this;
+    GetManager()->RunWhenGPUProcessRecreated(NS_NewRunnableFunction(
+        "RemoteDecoderChild::HandleRejectionError",
+        [self, callback = std::move(aCallback)]() {
+          MediaResult error(
+              NS_ERROR_DOM_MEDIA_REMOTE_DECODER_CRASHED_RDD_OR_GPU_ERR,
+              __func__);
+          callback(error);
+        }));
+    return;
+  }
+
+  nsresult err = NS_ERROR_DOM_MEDIA_REMOTE_DECODER_CRASHED_UTILITY_ERR;
+  if (mLocation == RemoteDecodeIn::GpuProcess ||
+      mLocation == RemoteDecodeIn::RddProcess) {
+    err = NS_ERROR_DOM_MEDIA_REMOTE_DECODER_CRASHED_RDD_OR_GPU_ERR;
+  } else if (mLocation == RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM) {
+    err = NS_ERROR_DOM_MEDIA_REMOTE_DECODER_CRASHED_MF_CDM_ERR;
+  }
+  // The RDD process is restarted on demand and asynchronously, we can
+  // immediately inform the caller that a new decoder is needed. The RDD will
+  // then be restarted during the new decoder creation by
+  aCallback(MediaResult(err, __func__));
+}
 
 // ActorDestroy is called if the channel goes down while waiting for a response.
 void RemoteDecoderChild::ActorDestroy(ActorDestroyReason aWhy) {
@@ -65,7 +106,7 @@ RefPtr<MediaDataDecoder::InitPromise> RemoteDecoderChild::Init() {
             const auto& initResponse = aResponse.get_InitCompletionIPDL();
             mDescription = initResponse.decoderDescription();
             mDescription.Append(" (");
-            mDescription.Append(RemoteMediaInToStr(GetManager()->Location()));
+            mDescription.Append(RemoteDecodeInToStr(GetManager()->Location()));
             mDescription.Append(" remote)");
 
             mProcessName = initResponse.decoderProcessName();
@@ -82,9 +123,8 @@ RefPtr<MediaDataDecoder::InitPromise> RemoteDecoderChild::Init() {
           },
           [self](const mozilla::ipc::ResponseRejectReason& aReason) {
             self->mInitPromiseRequest.Complete();
-            RemoteMediaManagerChild::HandleRejectionError(
-                self->GetManager(), self->mLocation, aReason,
-                [self](const MediaResult& aError) {
+            self->HandleRejectionError(
+                aReason, [self](const MediaResult& aError) {
                   self->mInitPromise.RejectIfExists(aError, __func__);
                 });
           })
@@ -98,12 +138,12 @@ RefPtr<MediaDataDecoder::DecodePromise> RemoteDecoderChild::Decode(
   AssertOnManagerThread();
 
   if (mRemoteDecoderCrashed) {
-    nsresult err = NS_ERROR_DOM_MEDIA_REMOTE_CRASHED_UTILITY_ERR;
-    if (mLocation == RemoteMediaIn::GpuProcess ||
-        mLocation == RemoteMediaIn::RddProcess) {
-      err = NS_ERROR_DOM_MEDIA_REMOTE_CRASHED_RDD_OR_GPU_ERR;
-    } else if (mLocation == RemoteMediaIn::UtilityProcess_MFMediaEngineCDM) {
-      err = NS_ERROR_DOM_MEDIA_REMOTE_CRASHED_MF_CDM_ERR;
+    nsresult err = NS_ERROR_DOM_MEDIA_REMOTE_DECODER_CRASHED_UTILITY_ERR;
+    if (mLocation == RemoteDecodeIn::GpuProcess ||
+        mLocation == RemoteDecodeIn::RddProcess) {
+      err = NS_ERROR_DOM_MEDIA_REMOTE_DECODER_CRASHED_RDD_OR_GPU_ERR;
+    } else if (mLocation == RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM) {
+      err = NS_ERROR_DOM_MEDIA_REMOTE_DECODER_CRASHED_MF_CDM_ERR;
     }
     return MediaDataDecoder::DecodePromise::CreateAndReject(err, __func__);
   }
@@ -126,9 +166,8 @@ RefPtr<MediaDataDecoder::DecodePromise> RemoteDecoderChild::Decode(
         ReleaseAllBuffers();
 
         if (aValue.IsReject()) {
-          RemoteMediaManagerChild::HandleRejectionError(
-              self->GetManager(), self->mLocation, aValue.RejectValue(),
-              [self](const MediaResult& aError) {
+          HandleRejectionError(
+              aValue.RejectValue(), [self](const MediaResult& aError) {
                 self->mDecodePromise.RejectIfExists(aError, __func__);
               });
           return;
@@ -172,11 +211,9 @@ RefPtr<MediaDataDecoder::FlushPromise> RemoteDecoderChild::Flush() {
         }
       },
       [self](const mozilla::ipc::ResponseRejectReason& aReason) {
-        RemoteMediaManagerChild::HandleRejectionError(
-            self->GetManager(), self->mLocation, aReason,
-            [self](const MediaResult& aError) {
-              self->mFlushPromise.RejectIfExists(aError, __func__);
-            });
+        self->HandleRejectionError(aReason, [self](const MediaResult& aError) {
+          self->mFlushPromise.RejectIfExists(aError, __func__);
+        });
       });
   return mFlushPromise.Ensure(__func__);
 }
@@ -207,11 +244,9 @@ RefPtr<MediaDataDecoder::DecodePromise> RemoteDecoderChild::Drain() {
         mDecodedData = MediaDataDecoder::DecodedData();
       },
       [self](const mozilla::ipc::ResponseRejectReason& aReason) {
-        RemoteMediaManagerChild::HandleRejectionError(
-            self->GetManager(), self->mLocation, aReason,
-            [self](const MediaResult& aError) {
-              self->mDrainPromise.RejectIfExists(aError, __func__);
-            });
+        self->HandleRejectionError(aReason, [self](const MediaResult& aError) {
+          self->mDrainPromise.RejectIfExists(aError, __func__);
+        });
       });
   return mDrainPromise.Ensure(__func__);
 }
@@ -277,11 +312,11 @@ void RemoteDecoderChild::AssertOnManagerThread() const {
   MOZ_ASSERT(mThread->IsOnCurrentThread());
 }
 
-RemoteMediaManagerChild* RemoteDecoderChild::GetManager() {
+RemoteDecoderManagerChild* RemoteDecoderChild::GetManager() {
   if (!CanSend()) {
     return nullptr;
   }
-  return static_cast<RemoteMediaManagerChild*>(Manager());
+  return static_cast<RemoteDecoderManagerChild*>(Manager());
 }
 
 }  // namespace mozilla

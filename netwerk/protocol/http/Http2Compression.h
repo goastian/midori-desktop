@@ -161,8 +161,7 @@ class Http2Compressor final : public Http2BaseCompressor {
   [[nodiscard]] nsresult EncodeHeaderBlock(
       const nsCString& nvInput, const nsACString& method,
       const nsACString& path, const nsACString& host, const nsACString& scheme,
-      const nsACString& protocol, bool simpleConnectForm, nsACString& output,
-      bool addTEHeader);
+      const nsACString& protocol, bool simpleConnectForm, nsACString& output);
 
   int64_t GetParsedContentLength() {
     return mParsedContentLength;

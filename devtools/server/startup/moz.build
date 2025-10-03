@@ -9,6 +9,5 @@ DevToolsModules(
     "content-process.js",
     "content-process.sys.mjs",
     "frame.js",
-    "shared-worker-initializer.js",
-    "worker.sys.mjs",
+    "worker.js",
 )

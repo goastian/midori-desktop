@@ -98,6 +98,7 @@ nsresult SRICheck::IntegrityMetadata(const nsAString& aMetadataList,
                                      nsIConsoleReportCollector* aReporter,
                                      SRIMetadata* outMetadata) {
   NS_ENSURE_ARG_POINTER(outMetadata);
+  NS_ENSURE_ARG_POINTER(aReporter);
   MOZ_ASSERT(outMetadata->IsEmpty());  // caller must pass empty metadata
 
   NS_ConvertUTF16toUTF8 metadataList(aMetadataList);
@@ -112,12 +113,12 @@ nsresult SRICheck::IntegrityMetadata(const nsAString& aMetadataList,
     token = tokenizer.nextToken();
 
     SRIMetadata metadata(token);
-    if (aReporter && metadata.IsMalformed()) {
+    if (metadata.IsMalformed()) {
       aReporter->AddConsoleReport(
           nsIScriptError::warningFlag, "Sub-resource Integrity"_ns,
           nsContentUtils::eSECURITY_PROPERTIES, aSourceFileURI, 0, 0,
           "MalformedIntegrityHash"_ns, {NS_ConvertUTF8toUTF16(token)});
-    } else if (aReporter && !metadata.IsAlgorithmSupported()) {
+    } else if (!metadata.IsAlgorithmSupported()) {
       nsAutoCString alg;
       metadata.GetAlgorithm(&alg);
       aReporter->AddConsoleReport(

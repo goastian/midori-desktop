@@ -14,6 +14,7 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Iterable
 from pathlib import Path
 
+import six
 from logger.logger import RaptorLogger
 from output import BrowsertimeOutput, RaptorOutput
 from utils import flatten
@@ -33,7 +34,8 @@ NON_FIREFOX_BROWSERS = ("chrome", "custom-car", "safari", "safari-tp")
 NON_FIREFOX_BROWSERS_MOBILE = ("chrome-m", "cstm-car-m")
 
 
-class PerftestResultsHandler(metaclass=ABCMeta):
+@six.add_metaclass(ABCMeta)
+class PerftestResultsHandler:
     """Abstract base class to handle perftest results"""
 
     def __init__(

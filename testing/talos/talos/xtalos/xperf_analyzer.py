@@ -12,6 +12,8 @@ from abc import ABCMeta, abstractmethod
 from collections import deque
 from uuid import UUID
 
+import six
+
 # This constant must match the event declared in
 # toolkit/components/startup/mozprofilerprobe.mof
 EVENT_ID_FIREFOX_WINDOW_RESTORED = "{917B96B1-ECAD-4DAB-A760-8D49027748AE}"
@@ -57,7 +59,7 @@ class XPerfSession:
             e.do_match(row)
 
 
-class XPerfAttribute(metaclass=ABCMeta):
+class XPerfAttribute(six.with_metaclass(ABCMeta, object)):
     """Base class for all attributes. Each attribute has one or more events
     that are associated with it. When those events fire, the attribute
     accumulates statistics for those events.
@@ -416,7 +418,7 @@ class XPerfEvent:
         return self.timestamp
 
 
-class EventExpression(metaclass=ABCMeta):
+class EventExpression(six.with_metaclass(ABCMeta, object)):
     """EventExpression is an optional layer that sits between attributes and
     events, and allow the user to compose multiple events into a more complex
     event. To achieve this, EventExpression implementations must implement both

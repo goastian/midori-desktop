@@ -21,10 +21,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.R
 import org.mozilla.fenix.databinding.LocaleSettingsItemBinding
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import java.util.Locale
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class LocaleViewHoldersTest {
 
     private val selectedLocale = Locale.Builder().setLanguage("en").setRegion("US").build()

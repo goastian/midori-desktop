@@ -46,7 +46,6 @@ async function testWindowOpenExistingWindow(funToOpenExitingWindow, iframeID) {
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["test.wait300msAfterTabSwitch", true],
       ["dom.disable_open_during_load", false], // Allow window.open calls without user interaction
       ["browser.link.open_newwindow.disabled_in_fullscreen", false],
     ],

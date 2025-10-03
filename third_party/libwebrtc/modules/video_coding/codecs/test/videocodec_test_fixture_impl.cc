@@ -202,7 +202,7 @@ SdpVideoFormat CreateSdpVideoFormat(
 VideoCodecTestFixtureImpl::Config::Config() = default;
 
 void VideoCodecTestFixtureImpl::Config::SetCodecSettings(
-    std::string codec_name_to_set,
+    std::string codec_name,
     size_t num_simulcast_streams,
     size_t num_spatial_layers,
     size_t num_temporal_layers,
@@ -211,7 +211,7 @@ void VideoCodecTestFixtureImpl::Config::SetCodecSettings(
     bool spatial_resize_on,
     size_t width,
     size_t height) {
-  codec_name = codec_name_to_set;
+  this->codec_name = codec_name;
   VideoCodecType codec_type = PayloadStringToCodecType(codec_name);
   webrtc::test::CodecSettings(codec_type, &codec_settings);
 
@@ -520,7 +520,7 @@ void VideoCodecTestFixtureImpl::ProcessAllFrames(
     if (RunEncodeInRealTime(config_)) {
       // Roughly pace the frames.
       const int frame_duration_ms =
-          std::ceil(kNumMillisecsPerSec / rate_profile->input_fps);
+          std::ceil(rtc::kNumMillisecsPerSec / rate_profile->input_fps);
       SleepMs(frame_duration_ms);
     }
   }
@@ -532,7 +532,7 @@ void VideoCodecTestFixtureImpl::ProcessAllFrames(
 
   // Give the VideoProcessor pipeline some time to process the last frame,
   // and then release the codecs.
-  SleepMs(1 * kNumMillisecsPerSec);
+  SleepMs(1 * rtc::kNumMillisecsPerSec);
   cpu_process_time_->Stop();
 }
 

@@ -87,7 +87,7 @@ user_pref("security.webauth.webauthn_enable_softtoken", true);
 // Disable hardware WebAuthn authenticators.
 user_pref("security.webauth.webauthn_enable_usbtoken", false);
 // Disable the WebAuthn direct attestation consent prompt.
-user_pref("security.webauth.webauthn_testing_allow_direct_attestation", true);
+user_pref("security.webauthn.always_allow_direct_attestation", true);
 // Enable WebAuthn conditional mediation.
 user_pref("security.webauthn.enable_conditional_mediation", true);
 // Disable captive portal service
@@ -102,11 +102,3 @@ user_pref("geo.provider.network.url", "https://web-platform.test:8444/_mozilla/g
 // geolocation permission, and we can open it and wait for the user to give
 // permission, then don't do that.
 user_pref("geo.prompt.open_system_prefs", false);
-
-// prefs to force font, specifically from ubuntu 18.04
-user_pref("font.name.serif.x-western", "DejaVu Serif");
-user_pref("font.name.sans-serif.x-western", "DejaVu Sans");
-user_pref("font.name.monospace.x-western", "DejaVu Sans Mono");
-user_pref("font.name.serif.x-unicode", "DejaVu Serif");
-user_pref("font.name.sans-serif.x-unicode", "DejaVu Sans");
-user_pref("font.name.monospace.x-unicode", "DejaVu Sans Mono");

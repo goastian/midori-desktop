@@ -204,12 +204,6 @@ function testLinkWithMatrix(aLinkSelector, aMatrix) {
   );
 }
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 add_task(async function test_window_open_with_defaults() {
   await testLinkWithMatrix("#winOpenDefault", kWinOpenDefault);
 });

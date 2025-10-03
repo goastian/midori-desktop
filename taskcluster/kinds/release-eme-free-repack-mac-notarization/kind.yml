@@ -25,4 +25,5 @@ tasks:
             copy-attributes: true
         shipping-product: firefox
         shipping-phase: promote
+        max-run-time: 1800
         copy-repack-ids: true

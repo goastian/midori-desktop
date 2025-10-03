@@ -117,8 +117,7 @@ newtab-menu-delete-pocket = { -pocket-brand-name } ਤੋਂ ਹਟਾਓ
 newtab-menu-archive-pocket = { -pocket-brand-name } ਵਿੱਚ ਪੁਰਾਲੇਖਬੱਧ ਕਰੋ
 newtab-menu-show-privacy-info = ਸਾਡੇ ਸਪਾਂਸਰ ਅਤੇ ਤੁਹਾਡੀ ਪਰਦੇਦਾਰੀ
 newtab-menu-about-fakespot = { -fakespot-brand-name } ਬਾਰੇ
-# Report is a verb (i.e. report issue with the content).
-newtab-menu-report = ਰਿਪੋਰਟ
+newtab-menu-report-content = ਇਸ ਸਮੱਗਰੀ ਬਾਰੇ ਰਿਪੋਰਟ ਕਰੋ
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = ਪਾਬੰਦੀ
@@ -191,8 +190,6 @@ newtab-label-sponsored-by = { $sponsor } ਵਲੋਂ ਸਪਾਂਸਰ ਕੀ�
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } ਮਿੰਟ
-# This string is used under fixed size ads to indicate sponsored content
-newtab-label-sponsored-fixed = ਸਪੌਂਸਰ ਕੀਤੇ
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -314,9 +311,6 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = ਮੌਸਮ
     .description = ਅੱਜ ਦੇ ਮੌਸਮ ਬਾਰੇ ਝਾਤ
-newtab-custom-trending-search-toggle =
-    .label = ਰੁਝਾਨ ਵਿੱਚ ਖੋਜਾਂ
-    .description = ਹਰਮਨਪਿਆਰੇ ਅਤੇ ਅਕਸਰ ਖੋਜੇ ਗਏ ਵਿਸ਼ੇ
 newtab-custom-close-button = ਬੰਦ ਕਰੋ
 newtab-custom-settings = ਹੋਰ ਸੈਟਿੰਗਾਂ ਦਾ ਇੰਤਜ਼ਾਮ ਕਰੋ
 
@@ -535,12 +529,6 @@ newtab-custom-wallpaper-cta = ਅਜ਼ਮਾਓ
 ## Strings for download mobile highlight
 
 newtab-download-mobile-highlight-title = ਮੋਬਾਈਲ ਲਈ { -brand-product-name } ਨੂੰ ਡਾਊਨਲੋਡ ਕਰੋ
-# "Scan the code" refers to scanning the QR code that appears above the body text that leads to Firefox for mobile download.
-newtab-download-mobile-highlight-body-variant-a = ਰਾਹ ਵਿੱਚ ਸੁਰੱਖਿਅਤ ਢੰਗ ਨਾਲ ਬਰਾਊਜ਼ ਕਰਨ ਵਾਸਤੇ ਕੋਡ ਨੂੰ ਸਕੈਨ ਕਰੋ।
-newtab-download-mobile-highlight-body-variant-b = ਜਦੋਂ ਤੁਸੀਂ ਆਪਣੀਆਂ ਟੈਬਾਂ, ਪਾਸਵਰਡਾਂ ਅਤੇ ਹੋਰ ਚੀਜ਼ਾਂ ਨੂੰ ਸਿੰਕ ਕਰਦੇ ਹੋ ਤਾਂ ਜਿੱਥੇ ਛੱਡਿਆ, ਉਥੋਂ ਹੀ ਵਰਤਣਾ ਜਾਰੀ ਰੱਖ ਸਕਦੇ ਹੋ।
-newtab-download-mobile-highlight-body-variant-c = ਕੀ ਤੁਹਾਨੂੰ ਪਤਾ ਸੀ ਕਿ ਤੁਸੀਂ ਰਾਹ ਵਿੱਚ { -brand-product-name } ਨੂੰ ਵਰਤ ਸਕਦੇ ਹੋ? ਉਹੀ ਬਰਾਊਜ਼ਰ। ਤੁਹਾਡੀ ਜੇਬ ਵਿੱਚ।
-newtab-download-mobile-highlight-image =
-    .aria-label = ਮੋਬਾਈਲ ਵਾਸਤੇ { -brand-product-name } ਡਾਊਨਲੋਡ ਕਰਨ ਲਈ QR ਕੋਡ
 
 ## Strings for reporting ads and content
 
@@ -564,14 +552,3 @@ newtab-report-cancel = ਰੱਦ ਕਰੋ
 newtab-report-submit = ਭੇਜੋ
 newtab-toast-thanks-for-reporting =
     .message = ਇਸ ਬਾਰੇ ਜਾਣਕਾਰੀ ਦੇਣ ਲਈ ਤੁਹਾਡਾ ਧੰਨਵਾਦ!
-
-## Strings for trending searches
-
-# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
-newtab-trending-searches-trending-on-google = Google ਉੱਤੇ ਰੁਝਾਨ
-newtab-trending-searches-show-trending =
-    .title = ਰੁਝਾਨ ਵਿੱਚ ਖੋਜਾਂ ਨੂੰ ਵੇਖਾਓ
-newtab-trending-searches-hide-trending =
-    .title = ਰੁਝਾਨ ਵਿੱਚ ਖੋਜਾਂ ਨੂੰ ਲੁਕਾਓ
-newtab-trending-searches-learn-more = ਹੋਰ ਜਾਣੋ
-newtab-trending-searches-dismiss = ਰੁਝਾਨ ਵਿੱਚ ਖੋਜਾਂ ਨੂੰ ਲੁਕਾਓ

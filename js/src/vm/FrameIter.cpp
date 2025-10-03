@@ -19,6 +19,7 @@
 #include "js/ColumnNumber.h"  // JS::LimitedColumnNumberOneOrigin, JS::TaggedColumnNumberOneOrigin
 #include "js/GCAPI.h"              // JS::AutoSuppressGCAnalysis
 #include "js/Principals.h"         // JSSubsumesOp
+#include "js/RootingAPI.h"         // JS::Rooted
 #include "vm/Activation.h"         // js::Activation{,Iterator}
 #include "vm/EnvironmentObject.h"  // js::CallObject
 #include "vm/JitActivation.h"      // js::jit::JitActivation
@@ -42,6 +43,7 @@ class ArgumentsObject;
 }  // namespace js
 
 using JS::Realm;
+using JS::Rooted;
 using JS::Value;
 
 using js::AbstractFramePtr;
@@ -826,7 +828,7 @@ bool FrameIter::matchCallee(JSContext* cx, JS::Handle<JSFunction*> fun) const {
   // Use the calleeTemplate to rule out a match without needing to invalidate to
   // find the actual callee. The real callee my be a clone of the template which
   // should *not* be considered a match.
-  JSFunction* currentCallee = calleeTemplate();
+  Rooted<JSFunction*> currentCallee(cx, calleeTemplate());
 
   if (currentCallee->nargs() != fun->nargs()) {
     return false;

@@ -337,7 +337,7 @@ async function getOutputDirectory() {
     return _outputDirectory;
   }
 
-  _outputDirectory = await lazy.Downloads.getPreferredScreenshotsDirectory();
+  _outputDirectory = await lazy.Downloads.getPreferredDownloadsDirectory();
   return _outputDirectory;
 }
 

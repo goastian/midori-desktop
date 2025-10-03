@@ -7,12 +7,10 @@
 #define GPU_CommandEncoder_H_
 
 #include "mozilla/dom/TypedArray.h"
-#include "mozilla/RefPtr.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/webgpu/ffi/wgpu.h"
 #include "mozilla/webgpu/WebGPUTypes.h"
 #include "nsWrapperCache.h"
-#include "CanvasContext.h"
 #include "ObjectModel.h"
 #include "QuerySet.h"
 
@@ -42,9 +40,6 @@ class CommandBuffer;
 class ComputePassEncoder;
 class Device;
 class RenderPassEncoder;
-class WebGPUChild;
-
-enum class CommandEncoderState { Open, Locked, Ended };
 
 class CommandEncoder final : public ObjectBase, public ChildOf<Device> {
  public:
@@ -66,32 +61,21 @@ class CommandEncoder final : public ObjectBase, public ChildOf<Device> {
   ~CommandEncoder();
   void Cleanup();
 
-  CommandEncoderState mState;
-
   RefPtr<WebGPUChild> mBridge;
-  CanvasContextArray mPresentationContexts;
+  nsTArray<WeakPtr<CanvasContext>> mPresentationContexts;
 
-  void TrackPresentationContext(WeakPtr<CanvasContext> aTargetContext);
+  void TrackPresentationContext(CanvasContext* aTargetContext);
 
  public:
   const auto& GetDevice() const { return mParent; };
-  RefPtr<WebGPUChild> GetBridge();
 
-  CommandEncoderState GetState() const { return mState; };
+  void EndComputePass(ffi::WGPURecordedComputePass& aPass);
+  void EndRenderPass(ffi::WGPURecordedRenderPass& aPass);
 
-  void EndComputePass(ffi::WGPURecordedComputePass& aPass,
-                      CanvasContextArray& aCanvasContexts);
-  void EndRenderPass(ffi::WGPURecordedRenderPass& aPass,
-                     CanvasContextArray& aCanvasContexts);
-
-  void CopyBufferToBuffer(const Buffer& aSource, const Buffer& aDestination,
-                          const dom::Optional<BufferAddress>& aSize) {
-    this->CopyBufferToBuffer(aSource, 0, aDestination, 0, aSize);
-  }
   void CopyBufferToBuffer(const Buffer& aSource, BufferAddress aSourceOffset,
                           const Buffer& aDestination,
                           BufferAddress aDestinationOffset,
-                          const dom::Optional<BufferAddress>& aSize);
+                          BufferAddress aSize);
   void CopyBufferToTexture(const dom::GPUTexelCopyBufferInfo& aSource,
                            const dom::GPUTexelCopyTextureInfo& aDestination,
                            const dom::GPUExtent3D& aCopySize);

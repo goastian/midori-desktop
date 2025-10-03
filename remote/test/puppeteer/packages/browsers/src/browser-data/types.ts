@@ -25,7 +25,6 @@ export enum Browser {
  */
 export enum BrowserPlatform {
   LINUX = 'linux',
-  LINUX_ARM = 'linux_arm',
   MAC = 'mac',
   MAC_ARM = 'mac_arm',
   WIN32 = 'win32',
@@ -33,11 +32,6 @@ export enum BrowserPlatform {
 }
 
 /**
- * Enum describing a release channel for a browser.
- *
- * You can use this in combination with {@link resolveBuildId} to resolve
- * a build ID based on a release channel.
- *
  * @public
  */
 export enum BrowserTag {

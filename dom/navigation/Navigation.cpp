@@ -62,44 +62,6 @@ struct NavigationAPIMethodTracker final : public nsISupports {
     mozilla::HoldJSObjects(this);
   }
 
-  // https://html.spec.whatwg.org/#navigation-api-method-tracker-clean-up
-  void CleanUp() { Navigation::CleanUp(this); }
-
-  // https://html.spec.whatwg.org/#notify-about-the-committed-to-entry
-  void NotifyAboutCommittedToEntry(NavigationHistoryEntry* aNHE) {
-    // Step 1
-    mCommittedToEntry = aNHE;
-    if (mSerializedState) {
-      // Step 2
-      aNHE->SetState(
-          static_cast<nsStructuredCloneContainer*>(mSerializedState.get()));
-      // At this point, apiMethodTracker's serialized state is no longer needed.
-      // We drop it do now for efficiency.
-      mSerializedState = nullptr;
-    }
-    mCommittedPromise->MaybeResolve(aNHE);
-  }
-
-  // https://html.spec.whatwg.org/#resolve-the-finished-promise
-  void ResolveFinishedPromise() {
-    // Step 1
-    MOZ_DIAGNOSTIC_ASSERT(mCommittedToEntry);
-    // Step 2
-    mFinishedPromise->MaybeResolve(mCommittedToEntry);
-    // Step 3
-    CleanUp();
-  }
-
-  // https://html.spec.whatwg.org/#reject-the-finished-promise
-  void RejectFinishedPromise(JS::Handle<JS::Value> aException) {
-    // Step 1
-    mCommittedPromise->MaybeReject(aException);
-    // Step 2
-    mFinishedPromise->MaybeReject(aException);
-    // Step 3
-    CleanUp();
-  }
-
   RefPtr<Navigation> mNavigationObject;
   Maybe<nsID> mKey;
   JS::Heap<JS::Value> mInfo;
@@ -296,11 +258,7 @@ void Navigation::UpdateEntriesForSameDocumentNavigation(
       break;
   }
 
-  // Step 8.
-  if (mOngoingAPIMethodTracker) {
-    RefPtr<NavigationHistoryEntry> currentEntry = GetCurrentEntry();
-    mOngoingAPIMethodTracker->NotifyAboutCommittedToEntry(currentEntry);
-  }
+  // TODO: Step 8.
 
   // Steps 9-12.
   {
@@ -489,8 +447,8 @@ void Navigation::Reload(JSContext* aCx, const NavigationReloadOptions& aOptions,
   //    serializedState.
   RefPtr docShell = nsDocShell::Cast(document->GetDocShell());
   MOZ_ASSERT(docShell);
-  docShell->ReloadNavigable(Some(WrapNotNullUnchecked(aCx)),
-                            nsIWebNavigation::LOAD_FLAGS_NONE, serializedState);
+  docShell->ReloadNavigable(aCx, nsIWebNavigation::LOAD_FLAGS_NONE,
+                            serializedState);
 
   // 10. Return a navigation API method tracker-derived result for
   //     apiMethodTracker.
@@ -700,33 +658,6 @@ nsresult Navigation::FireErrorEvent(const nsAString& aName,
   return rv.StealNSResult();
 }
 
-struct NavigationWaitForAllScope final : public nsISupports,
-                                         public SupportsWeakPtr {
-  NavigationWaitForAllScope(Navigation* aNavigation,
-                            NavigationAPIMethodTracker* aApiMethodTracker,
-                            NavigateEvent* aEvent)
-      : mNavigation(aNavigation),
-        mAPIMethodTracker(aApiMethodTracker),
-        mEvent(aEvent) {}
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_CLASS(NavigationWaitForAllScope)
-  RefPtr<Navigation> mNavigation;
-  RefPtr<NavigationAPIMethodTracker> mAPIMethodTracker;
-  RefPtr<NavigateEvent> mEvent;
-
- private:
-  ~NavigationWaitForAllScope() {}
-};
-
-NS_IMPL_CYCLE_COLLECTION_WEAK_PTR(NavigationWaitForAllScope, mNavigation,
-                                  mAPIMethodTracker, mEvent)
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(NavigationWaitForAllScope)
-  NS_INTERFACE_MAP_ENTRY(nsISupports)
-NS_INTERFACE_MAP_END
-
-NS_IMPL_CYCLE_COLLECTING_ADDREF(NavigationWaitForAllScope)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(NavigationWaitForAllScope)
-
 // https://html.spec.whatwg.org/#inner-navigate-event-firing-algorithm
 bool Navigation::InnerFireNavigateEvent(
     JSContext* aCx, NavigationType aNavigationType,
@@ -783,15 +714,11 @@ bool Navigation::InnerFireNavigateEvent(
                        (aDestination->SameDocument() ||
                         aNavigationType != NavigationType::Traverse);
 
-  // Step 10
-  bool traverseCanBeCanceled =
+  // Step 10 and step 11
+  init.mCancelable =
       navigable->IsTop() && aDestination->SameDocument() &&
       (aUserInvolvement != UserNavigationInvolvement::BrowserUI ||
        HasHistoryActionActivation(ToMaybeRef(GetOwnerWindow())));
-
-  // Step 11
-  init.mCancelable =
-      aNavigationType != NavigationType::Traverse || traverseCanBeCanceled;
 
   // Step 13
   init.mNavigationType = aNavigationType;
@@ -803,9 +730,7 @@ bool Navigation::InnerFireNavigateEvent(
   init.mDownloadRequest = aDownloadRequestFilename;
 
   // Step 16
-  if (apiMethodTracker) {
-    init.mInfo = apiMethodTracker->mInfo;
-  }
+  // init.mInfo = std::move(apiMethodTracker->mInfo);
 
   // Step 17
   init.mHasUAVisualTransition =
@@ -843,7 +768,7 @@ bool Navigation::InnerFireNavigateEvent(
   // step 2 of #fire-a-traverse-navigate-event,
   // #fire-a-push/replace/reload-navigate-event, or
   // #fire-a-download-request-navigate-event, but there's no reason to not
-  // delay it until here. This also performs step 12.
+  // delay it until here.
   RefPtr<NavigateEvent> event = NavigateEvent::Constructor(
       this, u"navigate"_ns, init, aClassicHistoryAPIState, abortController);
   // Here we're running #concept-event-create from https://dom.spec.whatwg.org/
@@ -948,25 +873,11 @@ bool Navigation::InnerFireNavigateEvent(
 
     // Step 34.4
     nsCOMPtr<nsIGlobalObject> globalObject = GetOwnerGlobal();
-    // We capture the scope which we wish to keep alive in the lambdas passed to
-    // Promise::WaitForAll. We pass it as the cycle collected argument to
-    // Promise::WaitForAll, which makes it stay alive until all promises
-    // resolved, or we've become cycle collected. This means that we can pass
-    // the scope as a weak reference.
-    RefPtr scope =
-        MakeRefPtr<NavigationWaitForAllScope>(this, apiMethodTracker, event);
     Promise::WaitForAll(
         globalObject, promiseList,
-        [weakScope = WeakPtr(scope)](const Span<JS::Heap<JS::Value>>&)
+        [self = RefPtr(this), event,
+         apiMethodTracker](const Span<JS::Heap<JS::Value>>&)
             MOZ_CAN_RUN_SCRIPT_BOUNDARY_LAMBDA {
-              // If weakScope is null we've been cycle collected
-              if (!weakScope) {
-                return;
-              }
-
-              RefPtr event = weakScope->mEvent;
-              RefPtr self = weakScope->mNavigation;
-              RefPtr apiMethodTracker = weakScope->mAPIMethodTracker;
               // Success steps
               // Step 1
               if (RefPtr document = event->GetDocument();
@@ -993,7 +904,7 @@ bool Navigation::InnerFireNavigateEvent(
 
               // Step 7
               if (apiMethodTracker) {
-                apiMethodTracker->ResolveFinishedPromise();
+                apiMethodTracker->mFinishedPromise->MaybeResolveWithUndefined();
               }
 
               // Step 8
@@ -1004,17 +915,9 @@ bool Navigation::InnerFireNavigateEvent(
               // Step 9
               self->mTransition = nullptr;
             },
-        [weakScope = WeakPtr(scope)](JS::Handle<JS::Value> aRejectionReason)
+        [self = RefPtr(this), event,
+         apiMethodTracker](JS::Handle<JS::Value> aRejectionReason)
             MOZ_CAN_RUN_SCRIPT_BOUNDARY_LAMBDA {
-              // If weakScope is null we've been cycle collected
-              if (!weakScope) {
-                return;
-              }
-
-              RefPtr event = weakScope->mEvent;
-              RefPtr self = weakScope->mNavigation;
-              RefPtr apiMethodTracker = weakScope->mAPIMethodTracker;
-
               // Failure steps
               // Step 1
               if (RefPtr document = event->GetDocument();
@@ -1059,13 +962,12 @@ bool Navigation::InnerFireNavigateEvent(
 
               // Step 10
               self->mTransition = nullptr;
-            },
-        scope);
+            });
   }
 
   // Step 35
   if (apiMethodTracker) {
-    apiMethodTracker->CleanUp();
+    CleanUp(apiMethodTracker);
   }
 
   // Step 37 and step 38
@@ -1173,7 +1075,7 @@ void Navigation::AbortOngoingNavigation(JSContext* aCx,
 
   // Step 11
   if (mOngoingAPIMethodTracker) {
-    mOngoingAPIMethodTracker->RejectFinishedPromise(error);
+    mOngoingAPIMethodTracker->mFinishedPromise->MaybeReject(error);
   }
 
   // Step 12

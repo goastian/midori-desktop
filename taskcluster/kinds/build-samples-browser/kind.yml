@@ -35,6 +35,7 @@ task-defaults:
         pre-gradlew:
             - ["cd", "mobile/android/android-components"]
         using: gradlew
+        use-caches: false
     treeherder:
         kind: build
         platform: AC-android-all/opt
@@ -52,12 +53,12 @@ tasks:
     gecko:
         run:
             gradlew:
-                - ':components:samples-browser:assembleGecko'
-                - ':components:samples-browser:testGeckoDebugUnitTest'
-                - ':components:samples-browser:lintGeckoDebug'
+                - ':samples-browser:assembleGecko'
+                - ':samples-browser:testGeckoDebugUnitTest'
+                - ':samples-browser:lintGeckoDebug'
 
     system:
         run:
-            gradlew: [':components:samples-browser:assembleSystem']
+            gradlew: [':samples-browser:assembleSystem']
         treeherder:
             symbol: 'samples-browser-system(B)'

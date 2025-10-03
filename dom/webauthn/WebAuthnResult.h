@@ -38,7 +38,8 @@ class WebAuthnRegisterResult final : public nsIWebAuthnRegisterResult {
                          const Maybe<bool>& aPrfSupported,
                          const Maybe<nsTArray<uint8_t>>& aPrfFirst,
                          const Maybe<nsTArray<uint8_t>>& aPrfSecond)
-      : mClientDataJSON(aClientDataJSON),
+      : mAttestationConsentPromptShown(false),
+        mClientDataJSON(aClientDataJSON),
         mCredPropsRk(Nothing()),
         mAuthenticatorAttachment(aAuthenticatorAttachment),
         mLargeBlobSupported(aLargeBlobSupported),
@@ -63,6 +64,7 @@ class WebAuthnRegisterResult final : public nsIWebAuthnRegisterResult {
         reinterpret_cast<uint8_t*>(
             aResponse->AttestationObject()->GetElements().Elements()),
         aResponse->AttestationObject()->Length());
+    mAttestationConsentPromptShown = false;
     if (aResponse->ClientDataJson()) {
       mClientDataJSON = Some(nsAutoCString(
           reinterpret_cast<const char*>(
@@ -92,6 +94,7 @@ class WebAuthnRegisterResult final : public nsIWebAuthnRegisterResult {
 
     mAttestationObject.AppendElements(aResponse->pbAttestationObject,
                                       aResponse->cbAttestationObject);
+    mAttestationConsentPromptShown = true;
 
     nsTArray<WebAuthnExtensionResult> extensions;
     if (aResponse->dwVersion >= WEBAUTHN_CREDENTIAL_ATTESTATION_VERSION_2) {
@@ -166,6 +169,7 @@ class WebAuthnRegisterResult final : public nsIWebAuthnRegisterResult {
   ~WebAuthnRegisterResult() = default;
 
   nsTArray<uint8_t> mAttestationObject;
+  bool mAttestationConsentPromptShown;
   nsTArray<uint8_t> mCredentialId;
   nsTArray<nsString> mTransports;
   Maybe<nsCString> mClientDataJSON;

@@ -4,24 +4,26 @@
 
 package org.mozilla.fenix.downloads.listscreen.store
 
+import mozilla.components.browser.state.state.content.DownloadState
+
 fun fileItem(
     id: String = "1",
     url: String = "https://www.mozilla.org/file1",
     fileName: String? = "file1",
     filePath: String = "path1",
-    description: String = "1 MB • mozilla.org",
+    formattedSize: String = "1MB",
     displayedShortUrl: String = "mozilla.org",
     contentType: String? = "image/png",
-    status: FileItem.Status = FileItem.Status.Completed,
-    timeCategory: TimeCategory = TimeCategory.LAST_30_DAYS,
+    status: DownloadState.Status = DownloadState.Status.COMPLETED,
+    createdTime: CreatedTime = CreatedTime.LAST_30_DAYS,
 ) = FileItem(
     id = id,
     url = url,
     fileName = fileName,
     filePath = filePath,
-    description = description,
+    formattedSize = formattedSize,
     displayedShortUrl = displayedShortUrl,
     contentType = contentType,
     status = status,
-    timeCategory = timeCategory,
+    createdTime = createdTime,
 )

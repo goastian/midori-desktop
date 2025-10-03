@@ -153,7 +153,7 @@ function testDataArgumentOnGeneratedCommand(data) {
 }
 
 function testDataEscapeOnGeneratedCommand(data) {
-  const paramsWin = `--data-raw ^"{\\"param1\\":\\"value1\\",\\"param2\\":\\"value2\\"}^"`;
+  const paramsWin = `--data-raw ^"^{^\\^"param1^\\^":^\\^"value1^\\^",^\\^"param2^\\^":^\\^"value2^\\^"^}^`;
   const paramsPosix = `--data-raw '{"param1":"value1","param2":"value2"}'`;
 
   let curlCommand = Curl.generateCommand(data, "WINNT");
@@ -209,13 +209,13 @@ function testRemoveBinaryDataFromMultipartText(data) {
     '^"',
     boundary,
     "^\u000A\u000A",
-    'Content-Disposition: form-data; name=\\"param1\\"',
+    'Content-Disposition: form-data; name=^\\^"param1^\\^"',
     "^\u000A\u000A^\u000A\u000A",
     "value1",
     "^\u000A\u000A",
     boundary,
     "^\u000A\u000A",
-    'Content-Disposition: form-data; name=\\"file\\"; filename=\\"filename.png\\"',
+    'Content-Disposition: form-data; name=^\\^"file^\\^"; filename=^\\^"filename.png^\\^"',
     "^\u000A\u000A",
     "Content-Type: image/png",
     "^\u000A\u000A^\u000A\u000A",
@@ -269,7 +269,14 @@ function testEscapeStringPosix() {
   const escapeChar = "'!ls:q:gs|ls|;ping 8.8.8.8;|";
   is(
     CurlUtils.escapeStringPosix(escapeChar),
-    "$'\\'\\041ls:q:gs^|ls^|;ping 8.8.8.8;^|'",
+    "$'\\'\\041ls:q:gs|ls|;ping 8.8.8.8;|'",
+    "'!' should be escaped."
+  );
+
+  const escapeBangOnlyChar = "!";
+  is(
+    CurlUtils.escapeStringPosix(escapeBangOnlyChar),
+    "$'\\041'",
     "'!' should be escaped."
   );
 
@@ -295,49 +302,34 @@ function testEscapeStringPosix() {
     "$'\\xc3\\xa6 \\xc3\\xb8 \\xc3\\xbc \\xc3\\x9f \\xc3\\xb6 \\xc3\\xa9'",
     "Character codes outside of the decimal range 32 - 126 should be escaped."
   );
-
-  // Assert that ampersands are correctly escaped in case its tried to run on Windows
-  const evilCommand = `query=evil\n\ncmd & calc.exe\n\n`;
-  is(
-    CurlUtils.escapeStringPosix(evilCommand),
-    "$'query=evil\\n\\ncmd ^& calc.exe\\n\\n'",
-    "The evil command is escaped properly"
-  );
-
-  const str = "EvilHeader: &calc.exe&";
-  is(
-    CurlUtils.escapeStringPosix(str),
-    "'EvilHeader: ^&calc.exe^&'",
-    "The evil command is escaped properly"
-  );
 }
 
 function testEscapeStringWin() {
   const surroundedWithDoubleQuotes = "A simple string";
   is(
     CurlUtils.escapeStringWin(surroundedWithDoubleQuotes),
-    '^"A simple string^"',
+    '^\"A simple string^\"',
     "The string should be surrounded with double quotes."
   );
 
   const doubleQuotes = 'Quote: "Time is an illusion. Lunchtime doubly so."';
   is(
     CurlUtils.escapeStringWin(doubleQuotes),
-    '^"Quote: \\"Time is an illusion. Lunchtime doubly so.\\"^"',
+    '^\"Quote: ^\\^\"Time is an illusion. Lunchtime doubly so.^\\^\"^\"',
     "Double quotes should be escaped."
   );
 
   const percentSigns = "%TEMP% %@foo% %2XX% %_XX% %?XX%";
   is(
     CurlUtils.escapeStringWin(percentSigns),
-    '^"^%^TEMP^% ^%^@foo^% ^%^2XX^% ^%^_XX^% ^%?XX^%^"',
+    '^\"^%^TEMP^% ^%^@foo^% ^%^2XX^% ^%^_XX^% ^%?XX^%^\"',
     "Percent signs should be escaped."
   );
 
   const backslashes = "\\A simple string\\";
   is(
     CurlUtils.escapeStringWin(backslashes),
-    '^"\\\\A simple string\\\\^"',
+    '^\"^\\A simple string^\\^\"',
     "Backslashes should be escaped."
   );
 
@@ -351,21 +343,21 @@ function testEscapeStringWin() {
   const dollarSignCommand = "$(calc.exe)";
   is(
     CurlUtils.escapeStringWin(dollarSignCommand),
-    '^"\\$(calc.exe)^"',
+    '^\"^$(calc.exe)^\"',
     "Dollar sign should be escaped."
   );
 
   const tickSignCommand = "`$(calc.exe)";
   is(
     CurlUtils.escapeStringWin(tickSignCommand),
-    '^"\\`\\$(calc.exe)^"',
+    '^\"`^$(calc.exe)^\"',
     "Both the tick and dollar signs should be escaped."
   );
 
   const evilCommand = `query=evil\r\rcmd" /c timeout /t 3 & calc.exe\r\r`;
   is(
     CurlUtils.escapeStringWin(evilCommand),
-    '^\"query=evil^\n\n^\n\ncmd\\\" /c timeout /t 3 & calc.exe^\n\n^\n\n^\"',
+    '^\"query=evil^\n\n^\n\ncmd^\\^\" /c timeout /t 3 ^& calc.exe^\n\n^\n\n^\"',
     "The evil command is escaped properly"
   );
 }

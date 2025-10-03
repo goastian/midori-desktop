@@ -99,7 +99,7 @@ class TestDataTypes(unittest.TestCase):
         d1 = t({"default": ["bar"]})  # doesn't raise
         d2 = t(["bar"])  # doesn't raise
 
-        self.assertLessEqual(d1.items(), d2.items())
+        self.assertDictContainsSubset(d1, d2)
 
 
 if __name__ == "__main__":

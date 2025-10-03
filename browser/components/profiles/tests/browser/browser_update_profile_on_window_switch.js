@@ -50,13 +50,13 @@ add_task(async function test_updateDefaultProfileOnWindowSwitch() {
     throw new Error("Failed");
   };
 
-  let asyncFlushCurrentProfileResolver = Promise.withResolvers();
-  gProfileService.asyncFlushCurrentProfile = () =>
-    asyncFlushCurrentProfileResolver.resolve();
+  let asyncFlushGroupProfileResolver = Promise.withResolvers();
+  gProfileService.asyncFlushGroupProfile = () =>
+    asyncFlushGroupProfileResolver.resolve();
 
   await SimpleTest.promiseFocus(window);
 
-  await asyncFlushCurrentProfileResolver.promise;
+  await asyncFlushGroupProfileResolver.promise;
 
   is(
     gProfileService.currentProfile.rootDir.path,

@@ -35,8 +35,7 @@ class DeclarationBlock final {
   }
 
  public:
-  explicit DeclarationBlock(
-      already_AddRefed<const StyleLockedDeclarationBlock> aRaw)
+  explicit DeclarationBlock(already_AddRefed<StyleLockedDeclarationBlock> aRaw)
       : mRaw(aRaw), mImmutable(false), mIsDirty(false) {
     mContainer.mRaw = 0;
   }
@@ -163,7 +162,7 @@ class DeclarationBlock final {
     return FromCssText(value, aExtraData, aMode, aLoader, aRuleType);
   }
 
-  const StyleLockedDeclarationBlock* Raw() const { return mRaw; }
+  StyleLockedDeclarationBlock* Raw() const { return mRaw; }
 
   void ToString(nsACString& aResult) const {
     Servo_DeclarationBlock_GetCssText(mRaw, &aResult);
@@ -222,7 +221,7 @@ class DeclarationBlock final {
     AttributeStyles* mAttributeStyles;
   } mContainer;
 
-  RefPtr<const StyleLockedDeclarationBlock> mRaw;
+  RefPtr<StyleLockedDeclarationBlock> mRaw;
 
   // set when declaration put in the rule tree;
   bool mImmutable;

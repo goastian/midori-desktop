@@ -11,7 +11,6 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
@@ -146,7 +145,7 @@ class ToolbarActivity : AppCompatActivity() {
         // Use the iconic gradient background
         // //////////////////////////////////////////////////////////////////////////////////////////
 
-        val background = AppCompatResources.getDrawable(this, R.drawable.focus_background)
+        val background = ContextCompat.getDrawable(this, R.drawable.focus_background)
         binding.toolbar.background = background
 
         // //////////////////////////////////////////////////////////////////////////////////////////
@@ -256,7 +255,7 @@ class ToolbarActivity : AppCompatActivity() {
         // Use the iconic gradient background
         // //////////////////////////////////////////////////////////////////////////////////////////
 
-        val background = AppCompatResources.getDrawable(this, R.drawable.focus_background)
+        val background = ContextCompat.getDrawable(this, R.drawable.focus_background)
         binding.toolbar.background = background
 
         // //////////////////////////////////////////////////////////////////////////////////////////
@@ -368,7 +367,7 @@ class ToolbarActivity : AppCompatActivity() {
         }
 
         binding.toolbar.display.setUrlBackground(
-            AppCompatResources.getDrawable(this, R.drawable.fenix_url_background),
+            ContextCompat.getDrawable(this, R.drawable.fenix_url_background),
         )
         binding.toolbar.display.hint = "Search or enter address"
         binding.toolbar.display.setOnUrlLongClickListener {
@@ -409,10 +408,10 @@ class ToolbarActivity : AppCompatActivity() {
         )
 
         binding.toolbar.edit.setUrlBackground(
-            AppCompatResources.getDrawable(this, R.drawable.fenix_url_background),
+            ContextCompat.getDrawable(this, R.drawable.fenix_url_background),
         )
         binding.toolbar.edit.setIcon(
-            AppCompatResources.getDrawable(this, iconsR.drawable.mozac_ic_search_24)!!,
+            ContextCompat.getDrawable(this, iconsR.drawable.mozac_ic_search_24)!!,
             "Search",
         )
 
@@ -462,7 +461,7 @@ class ToolbarActivity : AppCompatActivity() {
 
         binding.toolbar.url = "https://www.mozilla.org/en-US/firefox/mobile/"
 
-        val drawableIcon = AppCompatResources.getDrawable(this, iconsR.drawable.mozac_ic_cross_24)
+        val drawableIcon = ContextCompat.getDrawable(this, iconsR.drawable.mozac_ic_cross_24)
 
         drawableIcon?.apply {
             setTint(0xFF20123a.toInt())
@@ -476,7 +475,7 @@ class ToolbarActivity : AppCompatActivity() {
             binding.toolbar.addNavigationAction(button)
         }
 
-        val drawable = AppCompatResources.getDrawable(this, iconsR.drawable.mozac_ic_share_android_24)?.apply {
+        val drawable = ContextCompat.getDrawable(this, iconsR.drawable.mozac_ic_share_android_24)?.apply {
             setTint(0xFF20123a.toInt())
         }
 

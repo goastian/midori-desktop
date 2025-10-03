@@ -55,6 +55,13 @@ WebAuthnRegisterResult::GetAttestationObject(
 }
 
 NS_IMETHODIMP
+WebAuthnRegisterResult::GetAttestationConsentPromptShown(
+    bool* aAttestationConsentPromptShown) {
+  *aAttestationConsentPromptShown = mAttestationConsentPromptShown;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 WebAuthnRegisterResult::GetCredentialId(nsTArray<uint8_t>& aCredentialId) {
   aCredentialId.Assign(mCredentialId);
   return NS_OK;

@@ -143,12 +143,7 @@ add_task(async function test_categorization_simple() {
 
   Assert.deepEqual(
     resultsToReport,
-    {
-      category: "2",
-      num_domains: "10",
-      num_inconclusive: "0",
-      num_unknown: "0",
-    },
+    { category: "2", num_domains: 10, num_inconclusive: 0, num_unknown: 0 },
     "Should report the correct values for categorizing the SERP."
   );
 });
@@ -178,9 +173,9 @@ add_task(async function test_categorization_inconclusive() {
     resultsToReport,
     {
       category: CATEGORIZATION_SETTINGS.INCONCLUSIVE,
-      num_domains: "10",
-      num_inconclusive: "10",
-      num_unknown: "0",
+      num_domains: 10,
+      num_inconclusive: 10,
+      num_unknown: 0,
     },
     "Should report the correct values for categorizing the SERP."
   );
@@ -213,9 +208,9 @@ add_task(async function test_categorization_unknown() {
     resultsToReport,
     {
       category: CATEGORIZATION_SETTINGS.INCONCLUSIVE,
-      num_domains: "10",
-      num_inconclusive: "0",
-      num_unknown: "10",
+      num_domains: 10,
+      num_inconclusive: 0,
+      num_unknown: 10,
     },
     "Should report the correct values for categorizing the SERP."
   );
@@ -246,9 +241,9 @@ add_task(async function test_categorization_unknown_and_inconclusive() {
     resultsToReport,
     {
       category: CATEGORIZATION_SETTINGS.INCONCLUSIVE,
-      num_domains: "10",
-      num_inconclusive: "5",
-      num_unknown: "5",
+      num_domains: 10,
+      num_inconclusive: 5,
+      num_unknown: 5,
     },
     "Should report the correct values for categorizing the SERP."
   );
@@ -282,9 +277,9 @@ add_task(async function test_categorization_all_types() {
     resultsToReport,
     {
       category: "3",
-      num_domains: "10",
-      num_inconclusive: "2",
-      num_unknown: "3",
+      num_domains: 10,
+      num_inconclusive: 2,
+      num_unknown: 3,
     },
     "Should report the correct values for categorizing the SERP."
   );
@@ -312,7 +307,7 @@ add_task(async function test_categorization_tie() {
     await SERPCategorization.applyCategorizationLogic(domains);
 
   Assert.equal(
-    ["1", "2"].includes(resultsToReport.category),
+    [1, 2].includes(resultsToReport.category),
     true,
     "Category should be one of the 2 categories with the max score."
   );
@@ -320,9 +315,9 @@ add_task(async function test_categorization_tie() {
   Assert.deepEqual(
     resultsToReport,
     {
-      num_domains: "10",
-      num_inconclusive: "0",
-      num_unknown: "0",
+      num_domains: 10,
+      num_inconclusive: 0,
+      num_unknown: 0,
     },
     "Should report the correct counts for the various domain types."
   );
@@ -351,12 +346,7 @@ add_task(async function test_rank_penalization_equal_scores() {
 
   Assert.deepEqual(
     resultsToReport,
-    {
-      category: "1",
-      num_domains: "10",
-      num_inconclusive: "0",
-      num_unknown: "0",
-    },
+    { category: "1", num_domains: 10, num_inconclusive: 0, num_unknown: 0 },
     "Should report the correct values for categorizing the SERP."
   );
 });
@@ -373,12 +363,7 @@ add_task(async function test_rank_penalization_highest_score_lower_on_page() {
 
   Assert.deepEqual(
     resultsToReport,
-    {
-      category: "2",
-      num_domains: "2",
-      num_inconclusive: "0",
-      num_unknown: "0",
-    },
+    { category: "2", num_domains: 2, num_inconclusive: 0, num_unknown: 0 },
     "Should report the correct values for categorizing the SERP."
   );
 });

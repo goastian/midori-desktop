@@ -441,10 +441,7 @@ void nsDisplayListBuilder::AutoCurrentActiveScrolledRootSetter::
   // finiteBoundsASR is the leafmost ASR that all items created during
   // object's lifetime have finite bounds with respect to.
   const ActiveScrolledRoot* finiteBoundsASR =
-      mBuilder->IsInViewTransitionCapture()
-          ? aActiveScrolledRoot
-          : ActiveScrolledRoot::PickDescendant(mContentClipASR,
-                                               aActiveScrolledRoot);
+      ActiveScrolledRoot::PickDescendant(mContentClipASR, aActiveScrolledRoot);
 
   // mCurrentContainerASR is adjusted so that it's still an ancestor of
   // finiteBoundsASR.
@@ -1364,8 +1361,8 @@ void nsDisplayListBuilder::MarkFramesForDisplayList(
     const ActiveScrolledRoot* asr = mCurrentActiveScrolledRoot;
 
     OutOfFlowDisplayData* data = new OutOfFlowDisplayData(
-        clipChain, combinedClipChain, asr, mCurrentScrollParentId, visibleRect,
-        dirtyRect, mInViewTransitionCapture);
+        clipChain, combinedClipChain, asr, this->mCurrentScrollParentId,
+        visibleRect, dirtyRect);
     aDirtyFrame->SetProperty(
         nsDisplayListBuilder::OutOfFlowDisplayDataProperty(), data);
     mFramesWithOOFData.AppendElement(aDirtyFrame);
@@ -1387,8 +1384,8 @@ void nsDisplayListBuilder::MarkFramesForDisplayList(
         mClipState.GetCurrentCombinedClipChain(this);
     const ActiveScrolledRoot* asr = mCurrentActiveScrolledRoot;
     CurrentPresShellState()->mFixedBackgroundDisplayData.emplace(
-        clipChain, combinedClipChain, asr, mCurrentScrollParentId,
-        GetVisibleRect(), GetDirtyRect(), mInViewTransitionCapture);
+        clipChain, combinedClipChain, asr, this->mCurrentScrollParentId,
+        GetVisibleRect(), GetDirtyRect());
   }
 }
 
@@ -2381,7 +2378,7 @@ void nsDisplayList::HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
                             nsTArray<nsIFrame*>* aOutFrames) const {
   nsDisplayItem* item;
 
-  if (aState->mGatheringPreserves3DLeaves) {
+  if (aState->mInPreserves3D) {
     // Collect leaves of the current 3D rendering context.
     for (nsDisplayItem* item : *this) {
       auto itemType = item->GetType();
@@ -2427,102 +2424,89 @@ void nsDisplayList::HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
       // Start gathering leaves of the 3D rendering context, and
       // append leaves at the end of mItemBuffer.  Leaves are
       // processed at following iterations.
-      aState->mGatheringPreserves3DLeaves = true;
+      aState->mInPreserves3D = true;
       item->HitTest(aBuilder, aRect, aState, &neverUsed);
-      aState->mGatheringPreserves3DLeaves = false;
+      aState->mInPreserves3D = false;
       i = aState->mItemBuffer.Length();
       continue;
     }
+    if (same3DContext || item->GetClip().MayIntersect(r)) {
+      AutoTArray<nsIFrame*, 16> outFrames;
+      item->HitTest(aBuilder, aRect, aState, &outFrames);
 
-    if (!same3DContext && !item->GetClip().MayIntersect(r)) {
-      continue;
-    }
-
-    const bool savedTransformHasBackfaceVisible =
-        aState->mTransformHasBackfaceVisible;
-    if (aState->mTransformHasBackfaceVisible &&
-        !item->Combines3DTransformWithAncestors()) {
-      // exiting a preserve 3d context, the transform is no longer applied to
-      // this item, so reset the tracking var
-      aState->mTransformHasBackfaceVisible = false;
-    }
-    AutoTArray<nsIFrame*, 16> outFrames;
-    item->HitTest(aBuilder, aRect, aState, &outFrames);
-    MOZ_ASSERT(!aState->mTransformHasBackfaceVisible ||
-               !item->In3DContextAndBackfaceIsHidden() ||
-               !outFrames.Contains(item->Frame()));
-    aState->mTransformHasBackfaceVisible = savedTransformHasBackfaceVisible;
-
-    // For 3d transforms with preserve-3d we add hit frames into the temp list
-    // so we can sort them later, otherwise we add them directly to the output
-    // list.
-    nsTArray<nsIFrame*>* writeFrames = aOutFrames;
-    if (item->GetType() == DisplayItemType::TYPE_TRANSFORM &&
-        static_cast<nsDisplayTransform*>(item)->IsLeafOf3DContext()) {
-      if (outFrames.Length()) {
-        nsDisplayTransform* transform = static_cast<nsDisplayTransform*>(item);
-        nsPoint point = aRect.TopLeft();
-        // A 1x1 rect means a point, otherwise use the center of the rect
-        if (aRect.width != 1 || aRect.height != 1) {
-          point = aRect.Center();
-        }
-        temp.AppendElement(
-            FramesWithDepth(transform->GetHitDepthAtPoint(aBuilder, point)));
-        writeFrames = &temp[temp.Length() - 1].mFrames;
-      }
-    } else {
-      // We may have just finished a run of consecutive preserve-3d
-      // transforms, so flush these into the destination array before
-      // processing our frame list.
-      FlushFramesArray(temp, aOutFrames);
-    }
-
-    for (uint32_t j = 0; j < outFrames.Length(); j++) {
-      nsIFrame* f = outFrames.ElementAt(j);
-      // Filter out some frames depending on the type of hittest
-      // we are doing. For visibility tests, pass through all frames.
-      // For pointer tests, only pass through frames that are styled
-      // to receive pointer events.
-      if (aBuilder->HitTestIsForVisibility() ||
-          IsFrameReceivingPointerEvents(f)) {
-        writeFrames->AppendElement(f);
-      }
-    }
-
-    if (aBuilder->HitTestIsForVisibility()) {
-      aState->mHitOccludingItem = [&] {
-        if (aState->mHitOccludingItem) {
-          // We already hit something before.
-          return true;
-        }
-        if (aState->mCurrentOpacity == 1.0f &&
-            item->GetOpaqueRegion(aBuilder, &snap).Contains(aRect)) {
-          // An opaque item always occludes everything. Note that we need to
-          // check wrapping opacity and such as well.
-          return true;
-        }
-        float threshold = aBuilder->VisibilityThreshold();
-        if (threshold == 1.0f) {
-          return false;
-        }
-        float itemOpacity = [&] {
-          switch (item->GetType()) {
-            case DisplayItemType::TYPE_OPACITY:
-              return static_cast<nsDisplayOpacity*>(item)->GetOpacity();
-            case DisplayItemType::TYPE_BACKGROUND_COLOR:
-              return static_cast<nsDisplayBackgroundColor*>(item)->GetOpacity();
-            default:
-              // Be conservative and assume it won't occlude other items.
-              return 0.0f;
+      // For 3d transforms with preserve-3d we add hit frames into the temp list
+      // so we can sort them later, otherwise we add them directly to the output
+      // list.
+      nsTArray<nsIFrame*>* writeFrames = aOutFrames;
+      if (item->GetType() == DisplayItemType::TYPE_TRANSFORM &&
+          static_cast<nsDisplayTransform*>(item)->IsLeafOf3DContext()) {
+        if (outFrames.Length()) {
+          nsDisplayTransform* transform =
+              static_cast<nsDisplayTransform*>(item);
+          nsPoint point = aRect.TopLeft();
+          // A 1x1 rect means a point, otherwise use the center of the rect
+          if (aRect.width != 1 || aRect.height != 1) {
+            point = aRect.Center();
           }
-        }();
-        return itemOpacity * aState->mCurrentOpacity >= threshold;
-      }();
+          temp.AppendElement(
+              FramesWithDepth(transform->GetHitDepthAtPoint(aBuilder, point)));
+          writeFrames = &temp[temp.Length() - 1].mFrames;
+        }
+      } else {
+        // We may have just finished a run of consecutive preserve-3d
+        // transforms, so flush these into the destination array before
+        // processing our frame list.
+        FlushFramesArray(temp, aOutFrames);
+      }
 
-      if (aState->mHitOccludingItem) {
-        // We're exiting early, so pop the remaining items off the buffer.
-        aState->mItemBuffer.TruncateLength(itemBufferStart);
-        break;
+      for (uint32_t j = 0; j < outFrames.Length(); j++) {
+        nsIFrame* f = outFrames.ElementAt(j);
+        // Filter out some frames depending on the type of hittest
+        // we are doing. For visibility tests, pass through all frames.
+        // For pointer tests, only pass through frames that are styled
+        // to receive pointer events.
+        if (aBuilder->HitTestIsForVisibility() ||
+            IsFrameReceivingPointerEvents(f)) {
+          writeFrames->AppendElement(f);
+        }
+      }
+
+      if (aBuilder->HitTestIsForVisibility()) {
+        aState->mHitOccludingItem = [&] {
+          if (aState->mHitOccludingItem) {
+            // We already hit something before.
+            return true;
+          }
+          if (aState->mCurrentOpacity == 1.0f &&
+              item->GetOpaqueRegion(aBuilder, &snap).Contains(aRect)) {
+            // An opaque item always occludes everything. Note that we need to
+            // check wrapping opacity and such as well.
+            return true;
+          }
+          float threshold = aBuilder->VisibilityThreshold();
+          if (threshold == 1.0f) {
+            return false;
+          }
+          float itemOpacity = [&] {
+            switch (item->GetType()) {
+              case DisplayItemType::TYPE_OPACITY:
+                return static_cast<nsDisplayOpacity*>(item)->GetOpacity();
+              case DisplayItemType::TYPE_BACKGROUND_COLOR:
+                return static_cast<nsDisplayBackgroundColor*>(item)
+                    ->GetOpacity();
+              default:
+                // Be conservative and assume it won't occlude other items.
+                return 0.0f;
+            }
+          }();
+          return itemOpacity * aState->mCurrentOpacity >= threshold;
+        }();
+
+        if (aState->mHitOccludingItem) {
+          // We're exiting early, so pop the remaining items off the buffer.
+          aState->mItemBuffer.TruncateLength(itemBufferStart);
+          break;
+        }
       }
     }
   }
@@ -2658,10 +2642,9 @@ Maybe<nsRect> nsDisplayItem::GetClipWithRespectToASR(
           DisplayItemClipChain::ClipForASR(GetClipChain(), aASR)) {
     return Some(clip->GetClipRect());
   }
-  // View transitions don't get clipped and thus might hit this assertion if its
-  // container passes a non-null aASR.
-  NS_ASSERTION(GetType() == DisplayItemType::TYPE_VT_CAPTURE,
-               "item should have finite clip with respect to aASR");
+#ifdef DEBUG
+  NS_ASSERTION(false, "item should have finite clip with respect to aASR");
+#endif
   return Nothing();
 }
 
@@ -3080,10 +3063,6 @@ static nsDisplayBackgroundColor* CreateBackgroundColor(
 
 static void DealWithWindowsAppearanceHacks(nsIFrame* aFrame,
                                            nsDisplayListBuilder* aBuilder) {
-  if (!XRE_IsParentProcess()) {
-    return;
-  }
-
   const auto& disp = *aFrame->StyleDisplay();
 
   // We use default appearance rather than effective appearance because we want
@@ -3450,10 +3429,6 @@ void nsDisplayBackgroundImage::HitTest(nsDisplayListBuilder* aBuilder,
                                        const nsRect& aRect,
                                        HitTestState* aState,
                                        nsTArray<nsIFrame*>* aOutFrames) {
-  if (ShouldIgnoreForBackfaceHidden(aState)) {
-    return;
-  }
-
   if (RoundedBorderIntersectsRect(mFrame, ToReferenceFrame(), aRect)) {
     aOutFrames->AppendElement(mFrame);
   }
@@ -3705,10 +3680,6 @@ void nsDisplayThemedBackground::HitTest(nsDisplayListBuilder* aBuilder,
                                         const nsRect& aRect,
                                         HitTestState* aState,
                                         nsTArray<nsIFrame*>* aOutFrames) {
-  if (ShouldIgnoreForBackfaceHidden(aState)) {
-    return;
-  }
-
   // Assume that any point in our background rect is a hit.
   if (mBackgroundRect.Intersects(aRect)) {
     aOutFrames->AppendElement(mFrame);
@@ -4009,10 +3980,6 @@ void nsDisplayBackgroundColor::HitTest(nsDisplayListBuilder* aBuilder,
                                        const nsRect& aRect,
                                        HitTestState* aState,
                                        nsTArray<nsIFrame*>* aOutFrames) {
-  if (ShouldIgnoreForBackfaceHidden(aState)) {
-    return;
-  }
-
   if (!RoundedBorderIntersectsRect(mFrame, ToReferenceFrame(), aRect)) {
     // aRect doesn't intersect our border-radius curve.
     return;
@@ -4118,10 +4085,6 @@ bool nsDisplayOutline::IsInvisibleInRect(const nsRect& aRect) const {
 void nsDisplayEventReceiver::HitTest(nsDisplayListBuilder* aBuilder,
                                      const nsRect& aRect, HitTestState* aState,
                                      nsTArray<nsIFrame*>* aOutFrames) {
-  if (ShouldIgnoreForBackfaceHidden(aState)) {
-    return;
-  }
-
   if (!RoundedBorderIntersectsRect(mFrame, ToReferenceFrame(), aRect)) {
     // aRect doesn't intersect our border-radius curve.
     return;
@@ -7031,7 +6994,8 @@ bool nsDisplayTransform::MayBeAnimated(nsDisplayListBuilder* aBuilder) const {
 
 nsRect nsDisplayTransform::TransformUntransformedBounds(
     nsDisplayListBuilder* aBuilder, const Matrix4x4Flagged& aMatrix) const {
-  const nsRect untransformedBounds = GetUntransformedBounds(aBuilder);
+  bool snap;
+  const nsRect untransformedBounds = GetUntransformedBounds(aBuilder, &snap);
   // GetTransform always operates in dev pixels.
   const float factor = mFrame->PresContext()->AppUnitsPerDevPixel();
   return nsLayoutUtils::MatrixTransformRect(untransformedBounds, aMatrix,
@@ -7147,7 +7111,7 @@ void nsDisplayTransform::UpdateUntransformedBounds(
 void nsDisplayTransform::HitTest(nsDisplayListBuilder* aBuilder,
                                  const nsRect& aRect, HitTestState* aState,
                                  nsTArray<nsIFrame*>* aOutFrames) {
-  if (aState->mGatheringPreserves3DLeaves) {
+  if (aState->mInPreserves3D) {
     GetChildren()->HitTest(aBuilder, aRect, aState, aOutFrames);
     return;
   }
@@ -7224,15 +7188,7 @@ void nsDisplayTransform::HitTest(nsDisplayListBuilder* aBuilder,
   uint32_t originalFrameCount = aOutFrames.Length();
 #endif
 
-  const bool savedTransformHasBackfaceVisible =
-      aState->mTransformHasBackfaceVisible;
-  if (IsLeafOf3DContext()) {
-    aState->mTransformHasBackfaceVisible = matrix.IsBackfaceVisible();
-  }
   GetChildren()->HitTest(aBuilder, resultingRect, aState, aOutFrames);
-  if (IsLeafOf3DContext()) {
-    aState->mTransformHasBackfaceVisible = savedTransformHasBackfaceVisible;
-  }
 
   if (aState->mHitOccludingItem && !testingPoint && !mBounds.Contains(aRect)) {
     MOZ_ASSERT(aBuilder->HitTestIsForVisibility());
@@ -7314,12 +7270,12 @@ nsRegion nsDisplayTransform::GetOpaqueRegion(nsDisplayListBuilder* aBuilder,
 
   nsRegion result;
 
-  const nsRect bounds = GetUntransformedBounds(aBuilder);
+  bool tmpSnap;
+  const nsRect bounds = GetUntransformedBounds(aBuilder, &tmpSnap);
   const nsRegion opaque =
       ::mozilla::GetOpaqueRegion(aBuilder, GetChildren(), bounds);
 
   if (opaque.Contains(untransformedVisible)) {
-    bool tmpSnap;
     result = GetBuildingRect().Intersect(GetBounds(aBuilder, &tmpSnap));
   }
   return result;
@@ -7418,7 +7374,8 @@ bool nsDisplayTransform::UntransformRect(nsDisplayListBuilder* aBuilder,
                     NSAppUnitsToFloatPixels(aRect.width, factor),
                     NSAppUnitsToFloatPixels(aRect.height, factor));
 
-  nsRect childBounds = GetUntransformedBounds(aBuilder);
+  bool snap;
+  nsRect childBounds = GetUntransformedBounds(aBuilder, &snap);
   RectDouble childGfxBounds(
       NSAppUnitsToFloatPixels(childBounds.x, factor),
       NSAppUnitsToFloatPixels(childBounds.y, factor),

@@ -88,14 +88,6 @@ class Settings(
             }
         }
 
-    /**
-     * Indicates whether or not to use remote server search configuration.
-     */
-    var useRemoteSearchConfiguration by booleanPreference(
-        key = getPreferenceKey(R.string.pref_key_use_remote_search_configuration),
-        default = FocusNimbus.features.remoteSearchConfiguration.value().enabled,
-    )
-
     fun shouldEnableRemoteDebugging(): Boolean =
         preferences.getBoolean(
             getPreferenceKey(R.string.pref_key_remote_debugging),

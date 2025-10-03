@@ -987,8 +987,7 @@ const equalTests = [
 if (navigator.ml) {
   equalTests.forEach((test) => {
     webnn_conformance_test(
-        buildAndExecuteGraph, getEqualPrecisionTolerance, test,
-        /*cast_to_supported_type=*/true);
+        buildAndExecuteGraph, getEqualPrecisionTolerance, test);
   });
 } else {
   test(() => assert_implements(navigator.ml, 'missing navigator.ml'));

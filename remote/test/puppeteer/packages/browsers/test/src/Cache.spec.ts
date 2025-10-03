@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import assert from 'node:assert';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import assert from 'assert';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 import {Browser, Cache} from '../../lib/cjs/main.js';
 

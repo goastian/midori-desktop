@@ -42,7 +42,9 @@ import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.BrowserDirection
 import org.mozilla.fenix.GleanMetrics.Collections
 import org.mozilla.fenix.GleanMetrics.HomeBookmarks
+import org.mozilla.fenix.GleanMetrics.HomeScreen
 import org.mozilla.fenix.GleanMetrics.Pings
+import org.mozilla.fenix.GleanMetrics.Pocket
 import org.mozilla.fenix.GleanMetrics.RecentTabs
 import org.mozilla.fenix.GleanMetrics.TopSites
 import org.mozilla.fenix.HomeActivity
@@ -175,6 +177,11 @@ interface SessionControlController {
      * @see [MessageCardInteractor.onMessageClosedClicked]
      */
     fun handleMessageClosed(message: Message)
+
+    /**
+     * @see [CustomizeHomeIteractor.openCustomizeHomePage]
+     */
+    fun handleCustomizeHomeTapped()
 
     /**
      * @see [WallpaperInteractor.showWallpapersOnboardingDialog]
@@ -391,8 +398,8 @@ class DefaultSessionControlController(
 
     override fun handleRemoveTopSiteClicked(topSite: TopSite) {
         TopSites.remove.record(NoExtras())
-
         when (topSite.url) {
+            SupportUtils.POCKET_TRENDING_URL -> Pocket.pocketTopSiteRemoved.record(NoExtras())
             SupportUtils.GOOGLE_URL -> TopSites.googleTopSiteRemoved.record(NoExtras())
         }
 
@@ -431,6 +438,7 @@ class DefaultSessionControlController(
 
         when (topSite.url) {
             SupportUtils.GOOGLE_URL -> TopSites.openGoogleSearchAttribution.record(NoExtras())
+            SupportUtils.POCKET_TRENDING_URL -> Pocket.pocketTopSiteClicked.record(NoExtras())
         }
 
         val availableEngines: List<SearchEngine> = getAvailableSearchEngines()
@@ -566,6 +574,12 @@ class DefaultSessionControlController(
         }
 
         return url
+    }
+
+    override fun handleCustomizeHomeTapped() {
+        val directions = HomeFragmentDirections.actionGlobalHomeSettingsFragment()
+        navController.nav(navController.currentDestination?.id, directions)
+        HomeScreen.customizeHomeClicked.record(NoExtras())
     }
 
     override fun handleShowWallpapersOnboardingDialog(state: WallpaperState): Boolean {

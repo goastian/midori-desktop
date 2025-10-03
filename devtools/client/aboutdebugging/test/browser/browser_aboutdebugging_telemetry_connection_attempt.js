@@ -41,7 +41,6 @@ add_task(async function testSuccessfulConnectionAttempt() {
         method: "connection_attempt",
         extras: getEventExtras("success", runtimeId),
       },
-      { method: "select_page", extras: { page_type: "runtime" } },
     ],
     sessionId
   ).filter(({ method }) => method === "connection_attempt");
@@ -148,7 +147,6 @@ add_task(async function testPendingConnectionAttempt() {
         method: "connection_attempt",
         extras: getEventExtras("success", runtimeId),
       },
-      { method: "select_page", extras: { page_type: "runtime" } },
     ],
     sessionId
   ).filter(({ method }) => method === "connection_attempt");

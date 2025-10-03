@@ -117,6 +117,7 @@ newtab-menu-delete-pocket = Hapus dari { -pocket-brand-name }
 newtab-menu-archive-pocket = Arsip di { -pocket-brand-name }
 newtab-menu-show-privacy-info = Sponsor kami & privasi Anda
 newtab-menu-about-fakespot = Tentang { -fakespot-brand-name }
+newtab-menu-report-content = Laporkan konten ini
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Blokir
@@ -534,6 +535,3 @@ newtab-report-ads-reason-inappropriate =
     .label = Tidak pantas
 newtab-report-cancel = Batal
 newtab-report-submit = Kirim
-
-## Strings for trending searches
-

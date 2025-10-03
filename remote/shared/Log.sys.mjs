@@ -18,6 +18,7 @@ ChromeUtils.defineLazyGetter(lazy, "logLevel", () =>
 /** E10s compatible wrapper for the standard logger from Log.sys.mjs. */
 export class Log {
   static TYPES = {
+    CDP: "CDP",
     MARIONETTE: "Marionette",
     REMOTE_AGENT: "RemoteAgent",
     WEBDRIVER_BIDI: "WebDriver BiDi",

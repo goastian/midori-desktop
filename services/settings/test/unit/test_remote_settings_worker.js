@@ -24,8 +24,8 @@ add_task(async function test_import_json_dump_into_idb() {
     return;
   }
   const client = new RemoteSettingsClient("language-dictionaries");
-  const before = await client.db.getLastModified();
-  Assert.equal(before, null);
+  const before = await client.get({ syncIfEmpty: false });
+  Assert.equal(before.length, 0);
 
   await RemoteSettingsWorker.importJSONDump("main", "language-dictionaries");
 

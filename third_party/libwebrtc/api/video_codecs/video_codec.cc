@@ -12,6 +12,7 @@
 
 #include <string.h>
 
+#include <optional>
 #include <string>
 
 #include "absl/strings/match.h"
@@ -85,16 +86,23 @@ std::string VideoCodec::ToString() const {
      << (mode == VideoCodecMode::kRealtimeVideo ? "RealtimeVideo"
                                                 : "Screensharing");
   if (IsSinglecast()) {
-    ss << ", Singlecast: {" << width << "x" << height << " "
-       << ScalabilityModeToString(GetScalabilityMode())
-       << (active ? ", active" : ", inactive") << "}";
+    std::optional<ScalabilityMode> scalability_mode = GetScalabilityMode();
+    if (scalability_mode.has_value()) {
+      ss << ", Singlecast: {" << width << "x" << height << " "
+         << ScalabilityModeToString(*scalability_mode)
+         << (active ? ", active" : ", inactive") << "}";
+    }
   } else {
     ss << ", Simulcast: {";
     for (size_t i = 0; i < numberOfSimulcastStreams; ++i) {
       const SimulcastStream stream = simulcastStream[i];
-      ss << "[" << stream.width << "x" << stream.height << " "
-         << ScalabilityModeToString(stream.GetScalabilityMode())
-         << (stream.active ? ", active" : ", inactive") << "]";
+      std::optional<ScalabilityMode> scalability_mode =
+          stream.GetScalabilityMode();
+      if (scalability_mode.has_value()) {
+        ss << "[" << stream.width << "x" << stream.height << " "
+           << ScalabilityModeToString(*scalability_mode)
+           << (stream.active ? ", active" : ", inactive") << "]";
+      }
     }
     ss << "}";
   }

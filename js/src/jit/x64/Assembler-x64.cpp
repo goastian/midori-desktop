@@ -8,23 +8,21 @@
 
 #include "gc/Tracer.h"
 #include "util/Memory.h"
-#include "wasm/WasmFrame.h"
 
 using namespace js;
 using namespace js::jit;
 
-ABIArgGenerator::ABIArgGenerator(ABIKind kind)
-    : ABIArgGeneratorShared(kind),
+ABIArgGenerator::ABIArgGenerator()
+    :
 #if defined(XP_WIN)
-      regIndex_(0)
+      regIndex_(0),
+      stackOffset_(ShadowStackSpace)
 #else
       intRegIndex_(0),
-      floatRegIndex_(0)
+      floatRegIndex_(0),
+      stackOffset_(0)
 #endif
 {
-#if defined(XP_WIN)
-  stackOffset_ += ShadowStackSpace;
-#endif
 }
 
 ABIArg ABIArgGenerator::next(MIRType type) {
@@ -36,7 +34,6 @@ ABIArg ABIArgGenerator::next(MIRType type) {
       // doesn't allow passing SIMD values to JS, so the only way to reach this
       // is wasm to wasm calls.  Ergo we can break the native ABI here and use
       // the Wasm ABI instead.
-      MOZ_ASSERT(kind_ == ABIKind::Wasm);
       stackOffset_ = AlignBytes(stackOffset_, SimdMemoryAlignment);
       current_ = ABIArg(stackOffset_);
       stackOffset_ += Simd128DataSize;
@@ -62,7 +59,6 @@ ABIArg ABIArgGenerator::next(MIRType type) {
       current_ = ABIArg(FloatArgRegs[regIndex_++]);
       break;
     case MIRType::Simd128:
-      MOZ_ASSERT(kind_ == ABIKind::Wasm);
       // On Win64, >64 bit args need to be passed by reference, but wasm
       // doesn't allow passing SIMD values to FFIs. The only way to reach
       // here is asm to asm calls, so we can break the ABI here.

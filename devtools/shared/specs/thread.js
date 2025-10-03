@@ -28,7 +28,6 @@ types.addDictType("thread.frames", {
 types.addDictType("thread.breakpoint-options", {
   condition: "nullable:string",
   logValue: "nullable:string",
-  showStacktrace: "nullable:boolean",
 });
 
 types.addDictType("paused-reason", {

@@ -15,7 +15,7 @@
 #include "rtc_base/socket_server.h"
 #include "rtc_base/thread.h"
 
-using ::webrtc::StunServer;
+using cricket::StunServer;
 
 int main(int argc, char* argv[]) {
   if (argc != 2) {
@@ -23,18 +23,17 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  webrtc::SocketAddress server_addr;
+  rtc::SocketAddress server_addr;
   if (!server_addr.FromString(argv[1])) {
     std::cerr << "Unable to parse IP address: " << argv[1];
     return 1;
   }
 
-  webrtc::Thread* pthMain =
-      webrtc::ThreadManager::Instance()->WrapCurrentThread();
+  rtc::Thread* pthMain = rtc::ThreadManager::Instance()->WrapCurrentThread();
   RTC_DCHECK(pthMain);
 
-  webrtc::AsyncUDPSocket* server_socket =
-      webrtc::AsyncUDPSocket::Create(pthMain->socketserver(), server_addr);
+  rtc::AsyncUDPSocket* server_socket =
+      rtc::AsyncUDPSocket::Create(pthMain->socketserver(), server_addr);
   if (!server_socket) {
     std::cerr << "Failed to create a UDP socket" << std::endl;
     return 1;

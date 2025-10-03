@@ -32,6 +32,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import mozilla.components.support.utils.ext.isLandscape
@@ -43,7 +44,6 @@ import org.mozilla.focus.ui.theme.gradientBackground
 
 private const val TOP_SPACER_WEIGHT = 1f
 private const val MIDDLE_SPACER_WEIGHT = 0.7f
-private const val URL_TAG = "URL_TAG"
 
 @Composable
 @Preview
@@ -95,19 +95,19 @@ fun OnBoardingFirstScreenCompose(
 
         LinkText(
             text = stringResource(
-                R.string.onboarding_first_screen_terms_of_use_text_2,
-                stringResource(R.string.onboarding_first_screen_terms_of_use_link_2),
+                R.string.onboarding_first_screen_terms_of_use_text,
+                stringResource(R.string.onboarding_first_screen_terms_of_use_link),
             ),
-            linkText = stringResource(R.string.onboarding_first_screen_terms_of_use_link_2),
+            linkText = stringResource(R.string.onboarding_first_screen_terms_of_use_link),
             onClick = termsOfServiceOnClick,
         )
 
         LinkText(
             text = stringResource(
-                R.string.onboarding_first_screen_privacy_notice_text_2,
-                stringResource(R.string.onboarding_first_screen_privacy_notice_link_2),
+                R.string.onboarding_first_screen_privacy_notice_text,
+                stringResource(R.string.onboarding_first_screen_privacy_notice_link),
             ),
-            linkText = stringResource(R.string.onboarding_first_screen_privacy_notice_link_2),
+            linkText = stringResource(R.string.onboarding_first_screen_privacy_notice_link),
             onClick = privacyNoticeOnClick,
         )
 
@@ -140,20 +140,15 @@ private fun TitleContent() {
 @Composable
 private fun LinkText(text: String, linkText: String, onClick: () -> Unit) {
     val textWithClickableLink = buildAnnotatedString {
-        append(text)
-
-        val textWithLink = LinkAnnotation.Clickable(
-            tag = URL_TAG,
-            styles = TextLinkStyles(SpanStyle(color = colorResource(R.color.preference_learn_more_link))),
-            linkInteractionListener = {
-                onClick()
-            },
-        )
-
-        text.indexOf(linkText).takeIf { it >= 0 }?.let { startIndex ->
-            val endIndex = startIndex + linkText.length
-            addLink(textWithLink, startIndex, endIndex)
-        }
+        val textWithoutLink =
+            text.replace(oldValue = linkText, newValue = "", ignoreCase = true)
+        append(textWithoutLink)
+        val link =
+            LinkAnnotation.Url(
+                "",
+                TextLinkStyles(SpanStyle(color = colorResource(R.color.preference_learn_more_link))),
+            ) { onClick() }
+        withLink(link) { append(linkText) }
     }
 
     val linkAvailableText = stringResource(id = R.string.a11y_link_available)

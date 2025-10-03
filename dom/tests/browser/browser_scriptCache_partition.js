@@ -1,5 +1,3 @@
-requestLongerTimeout(2);
-
 const TEST_SCRIPT_URL_0 =
   "https://example.com/browser/dom/tests/browser/page_scriptCache_partition.html";
 
@@ -15,9 +13,16 @@ const TEST_MODULE_URL_1 =
 const TEST_SJS_URL =
   "https://example.net/browser/dom/tests/browser/counter_server.sjs";
 
-async function testScriptCacheAndPartition({ enableCache, type }) {
+async function testScriptCacheAndPartition({
+  enableCache,
+  enablePartition,
+  type,
+}) {
   await SpecialPowers.pushPrefEnv({
-    set: [["dom.script_loader.navigation_cache", enableCache]],
+    set: [
+      ["dom.script_loader.navigation_cache", enableCache],
+      ["privacy.partition.network_state", enablePartition],
+    ],
   });
   registerCleanupFunction(() => SpecialPowers.popPrefEnv());
 
@@ -74,21 +79,38 @@ async function testScriptCacheAndPartition({ enableCache, type }) {
   is(await getCounter(), "0");
 
   await load(url1);
-  is(await getCounter(), "1");
+  is(await getCounter(), enablePartition ? "1" : "0");
 
   // Reloading the page should use the cached script, for each partition.
   await load(url0);
   is(await getCounter(), "0");
 
   await load(url1);
-  is(await getCounter(), "1");
+  is(await getCounter(), enablePartition ? "1" : "0");
 
   BrowserTestUtils.removeTab(tab);
 }
 
+add_task(async function testScriptNoCacheNoPartition() {
+  await testScriptCacheAndPartition({
+    enableCache: false,
+    enablePartition: false,
+    type: "script",
+  });
+});
+
 add_task(async function testScriptNoCachePartition() {
   await testScriptCacheAndPartition({
     enableCache: false,
+    enablePartition: true,
+    type: "script",
+  });
+});
+
+add_task(async function testScriptCacheNoPartition() {
+  await testScriptCacheAndPartition({
+    enableCache: true,
+    enablePartition: false,
     type: "script",
   });
 });
@@ -96,13 +118,31 @@ add_task(async function testScriptNoCachePartition() {
 add_task(async function testScriptCachePartition() {
   await testScriptCacheAndPartition({
     enableCache: true,
+    enablePartition: true,
     type: "script",
+  });
+});
+
+add_task(async function testModuleNoCacheNoPartition() {
+  await testScriptCacheAndPartition({
+    enableCache: false,
+    enablePartition: false,
+    type: "module",
   });
 });
 
 add_task(async function testModuleNoCachePartition() {
   await testScriptCacheAndPartition({
     enableCache: false,
+    enablePartition: true,
+    type: "module",
+  });
+});
+
+add_task(async function testModuleCacheNoPartition() {
+  await testScriptCacheAndPartition({
+    enableCache: true,
+    enablePartition: false,
     type: "module",
   });
 });
@@ -110,6 +150,7 @@ add_task(async function testModuleNoCachePartition() {
 add_task(async function testModuleCachePartition() {
   await testScriptCacheAndPartition({
     enableCache: true,
+    enablePartition: true,
     type: "module",
   });
 });

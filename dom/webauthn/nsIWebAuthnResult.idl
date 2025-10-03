@@ -15,6 +15,8 @@ interface nsIWebAuthnRegisterResult : nsISupports {
     // the authenticator data.
     readonly attribute Array<octet> attestationObject;
 
+    readonly attribute boolean attestationConsentPromptShown;
+
     // The Credential ID field of the Attestation Object's Attested
     // Credential Data. This is used to construct the rawID field of a
     // WebAuthn PublicKeyCredential without having to parse the

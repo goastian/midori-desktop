@@ -52,6 +52,10 @@ fn(async (t) => {
     t.skipIfDeviceDoesNotHaveFeature('depth-clip-control');
   }
 
+  const hasStorageBuffers = t.isCompatibility ?
+  t.device.limits.maxStorageBuffersInFragmentStage > 0 :
+  true;
+
   /** Number of depth values to test for both vertex output and frag_depth output. */
   const kNumDepthValues = 8;
   /** Test every combination of vertex output and frag_depth output. */
@@ -108,7 +112,13 @@ fn(async (t) => {
       @group(0) @binding(0) var <storage, read_write> output: Output;
 
       fn checkZ(vf: VFTest) {
-        output.fragInputZDiff[vf.vertexIndex] = vf.pos.z - expectedFragPosZ(vf.vertexIndex);
+        ${
+  hasStorageBuffers ?
+  `
+          output.fragInputZDiff[vf.vertexIndex] = vf.pos.z - expectedFragPosZ(vf.vertexIndex);
+        ` :
+  ''
+  }
       }
 
       @fragment
@@ -139,14 +149,9 @@ fn(async (t) => {
       }
 
       struct FCheck {
+        @builtin(frag_depth) depth: f32,
         @location(0) color: f32,
       };
-
-      ${
-  multisampled ?
-  '@group(0) @binding(0) var depthTex: texture_multisampled_2d<f32>;' :
-  '@group(0) @binding(0) var depthTex: texture_2d<f32>;'
-  }
 
       @fragment
       fn fcheck(vf: VFCheck) -> FCheck {
@@ -164,13 +169,9 @@ fn(async (t) => {
           expectedDepthBufferValue = 0.5;
         }
 
-        let actualDepthBufferValue = textureLoad(depthTex, vec2u(vf.vertexIndex, 0), 0).r;
-        let actualVsExpectedDiff = abs(expectedDepthBufferValue - actualDepthBufferValue);
         var f: FCheck;
+        f.depth = expectedDepthBufferValue;
         f.color = 1.0; // Color written if the resulting depth is unexpected.
-        if (actualVsExpectedDiff < 1e-5) {
-          f.color = 0.0;
-        }
         return f;
       }
     `;
@@ -179,7 +180,6 @@ fn(async (t) => {
   // Draw points at different vertex depths and fragment depths into the depth attachment,
   // with a viewport of [0.25,0.75].
   const testPipeline = t.device.createRenderPipeline({
-    label: 'testPipeline',
     layout: 'auto',
     vertex: { module, entryPoint: 'vtest' },
     primitive: {
@@ -195,29 +195,18 @@ fn(async (t) => {
     }
   });
 
-  const checkBindGroupLayout = t.device.createBindGroupLayout({
-    entries: [
-    {
-      binding: 0,
-      visibility: GPUShaderStage.FRAGMENT,
-      texture: {
-        sampleType: 'unfilterable-float',
-        multisampled
-      }
-    }]
-
-  });
-
-  const checkPipelineLayout = t.device.createPipelineLayout({
-    bindGroupLayouts: [checkBindGroupLayout]
-  });
-
-  // Read the depth values and output 0 if they match expected, 1 if they don't
+  // Use depth comparison to check that the depth attachment now has the expected values.
   const checkPipeline = t.device.createRenderPipeline({
-    label: 'checkPipeline',
-    layout: checkPipelineLayout,
+    layout: 'auto',
     vertex: { module, entryPoint: 'vcheck' },
     primitive: { topology: 'point-list' },
+    depthStencil: {
+      format,
+      // NOTE: This check is probably very susceptible to floating point error. If it fails, maybe
+      // replace it with two checks (less + greater) with an epsilon applied in the check shader?
+      depthCompare: 'not-equal', // Expect every depth value to be exactly equal.
+      depthWriteEnabled: true // If the check failed, overwrite with the expected result.
+    },
     multisample: multisampled ? { count: 4 } : undefined,
     fragment: { module, entryPoint: 'fcheck', targets: [{ format: 'r8unorm' }] }
   });
@@ -225,10 +214,7 @@ fn(async (t) => {
   const dsTexture = t.createTextureTracked({
     format,
     size: [kNumTestPoints],
-    usage:
-    GPUTextureUsage.RENDER_ATTACHMENT |
-    GPUTextureUsage.TEXTURE_BINDING |
-    GPUTextureUsage.COPY_SRC,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     sampleCount: multisampled ? 4 : 1
   });
   const dsTextureView = dsTexture.createView();
@@ -268,10 +254,12 @@ fn(async (t) => {
     size: 4 * kNumTestPoints,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
   });
-  const testBindGroup = t.device.createBindGroup({
+  const testBindGroup = hasStorageBuffers ?
+  t.device.createBindGroup({
     layout: testPipeline.getBindGroupLayout(0),
     entries: [{ binding: 0, resource: { buffer: fragInputZFailedBuffer } }]
-  });
+  }) :
+  undefined;
 
   const enc = t.device.createCommandEncoder();
   {
@@ -290,7 +278,9 @@ fn(async (t) => {
       }
     });
     pass.setPipeline(testPipeline);
-    pass.setBindGroup(0, testBindGroup);
+    if (hasStorageBuffers) {
+      pass.setBindGroup(0, testBindGroup);
+    }
     pass.setViewport(0, 0, kNumTestPoints, 1, kViewportMinDepth, kViewportMaxDepth);
     pass.draw(kNumTestPoints);
     pass.end();
@@ -301,11 +291,7 @@ fn(async (t) => {
     );
   }
   {
-    const checkBindGroup = t.device.createBindGroup({
-      layout: checkBindGroupLayout,
-      entries: [{ binding: 0, resource: dsTexture.createView({ aspect: 'depth-only' }) }]
-    });
-    const clearValue = [0.5, 0.5, 0.5, 0.5]; // We should only see 0.0 or 1.0
+    const clearValue = [0, 0, 0, 0]; // Will see this color if the check passed.
     const pass = enc.beginRenderPass({
       colorAttachments: [
       checkTextureMSView ?
@@ -316,11 +302,20 @@ fn(async (t) => {
         loadOp: 'clear',
         storeOp: 'discard'
       } :
-      { view: checkTextureView, clearValue, loadOp: 'clear', storeOp: 'store' }]
+      { view: checkTextureView, clearValue, loadOp: 'clear', storeOp: 'store' }],
 
+      depthStencilAttachment: {
+        view: dsTextureView,
+        depthLoadOp: 'load',
+        depthStoreOp: 'store',
+        ...(isStencilTextureFormat(format) && {
+          stencilClearValue: 0,
+          stencilLoadOp: 'clear',
+          stencilStoreOp: 'discard'
+        })
+      }
     });
     pass.setPipeline(checkPipeline);
-    pass.setBindGroup(0, checkBindGroup);
     pass.setViewport(0, 0, kNumTestPoints, 1, 0.0, 1.0);
     pass.draw(kNumTestPoints);
     pass.end();
@@ -335,11 +330,13 @@ fn(async (t) => {
   }
   t.device.queue.submit([enc.finish()]);
 
-  t.expectGPUBufferValuesPassCheck(
-    fragInputZFailedBuffer,
-    (a) => checkElementsBetween(a, [() => -1e-5, () => 1e-5]),
-    { type: Float32Array, typedLength: kNumTestPoints }
-  );
+  if (hasStorageBuffers) {
+    t.expectGPUBufferValuesPassCheck(
+      fragInputZFailedBuffer,
+      (a) => checkElementsBetween(a, [() => -1e-5, () => 1e-5]),
+      { type: Float32Array, typedLength: kNumTestPoints }
+    );
+  }
 
   const kCheckPassedValue = 0;
   const predicatePrinter = [

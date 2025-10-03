@@ -8,9 +8,8 @@
     width: var(--size-item-small);
     position: absolute;
     margin: 0;
-    // Bug 1967304 - Alignment for caret arrow
-    inset-block-start: calc(var(--space-medium) + 2px); // stylelint-disable-line declaration-property-value-disallowed-list
-    inset-inline-end: calc(var(--space-medium) + 2px); // stylelint-disable-line declaration-property-value-disallowed-list
+    inset-block-start: calc(var(--space-medium) + 2px);
+    inset-inline-end: calc(var(--space-medium) + 2px);
 
     @media (prefers-color-scheme: dark) {
       // override color so that it is visible on white image background
@@ -46,24 +45,22 @@
     }
 
     &.inset-block-end {
-      margin-block-start: var(--space-xxlarge);
+      margin-top: var(--space-xxlarge);
     }
 
-    // Bug 1967304 - Alignment for caret arrow
     &.inset-inline-end {
-      inset-inline-start: calc(var(--arrow-size) * -2); // stylelint-disable-line declaration-property-value-disallowed-list
+      inset-inline-start: calc(var(--arrow-size) * -2);
 
       &::after {
-        inset-inline-start: calc(var(--space-xxlarge) - 14px); // stylelint-disable-line declaration-property-value-disallowed-list
+        inset-inline-start: calc(var(--space-xxlarge) - 14px);
       }
     }
 
-    // Bug 1967304 - Alignment for caret arrow
     &.inset-inline-start {
-      inset-inline-end: calc(calc(calc(var(--arrow-size) / 2) * -1) - 6px); // stylelint-disable-line declaration-property-value-disallowed-list
+      inset-inline-end: calc(calc(calc(var(--arrow-size) / 2) * -1) - 6px);
 
       &::after {
-        inset-inline-end: calc(var(--space-xxlarge) - 12px); // stylelint-disable-line declaration-property-value-disallowed-list
+        inset-inline-end: calc(var(--space-xxlarge) - 12px);
       }
     }
 

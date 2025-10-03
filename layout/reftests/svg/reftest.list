@@ -509,8 +509,8 @@ fuzzy(0-16,0-11) fuzzy-if(Android,0-16,0-1500) == text-stroke-scaling-02b.html t
 == text-stroke-scaling-02a.html text-stroke-scaling-02b.html
 == textPath-01.svg textPath-01-ref.svg
 == textPath-02.svg pass.svg
-fuzzy(0-1,0-610) fuzzy-if(gtkWidget,0-18,0-3) == textPath-03.svg pass.svg
-fuzzy-if(gtkWidget,0-18,0-7) == textPath-04.svg pass.svg
+fuzzy(0-1,0-610) == textPath-03.svg pass.svg
+== textPath-04.svg pass.svg
 == textPath-05.html pass.svg
 == textPath-06.svg pass.svg
 == textPath-line-01.svg textPath-line-01-ref.svg
@@ -622,6 +622,7 @@ fails-if(Android) != mask-resource.html about:blank # The image the test uses is
 
 != bug-1562091.html bug-1562091-ref.html
 == 1570363-1.html 1570363-1-ref.html
+== 1976116.html 1976116-ref.html
 
 fuzzy(0-1,0-150) == mask-opacity-invalidation-1.html mask-opacity-invalidation-1-ref.html # clip-path mask/opacity optimization
 skip-if(Android) skip-if(cocoaWidget) skip-if(winWidget) == transform-animation-on-path.html transform-animation-on-path-ref.html #Bug 1638909

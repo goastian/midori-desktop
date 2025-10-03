@@ -548,10 +548,10 @@ function checkIfKeyStartsQuery(key, shouldStartQuery, win) {
       queryStarted = true;
     },
   };
-  win.gURLBar.controller.addListener(queryListener);
+  win.gURLBar.controller.addQueryListener(queryListener);
   EventUtils.synthesizeKey(key, {}, win);
   win.gURLBar.eventBufferer.replayDeferredEvents(false);
-  win.gURLBar.controller.removeListener(queryListener);
+  win.gURLBar.controller.removeQueryListener(queryListener);
   Assert.equal(
     queryStarted,
     shouldStartQuery,

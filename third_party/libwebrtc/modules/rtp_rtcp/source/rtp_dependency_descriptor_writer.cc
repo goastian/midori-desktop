@@ -125,12 +125,12 @@ int RtpDependencyDescriptorWriter::StructureSizeBits() const {
   for (const FrameDependencyTemplate& frame_template : structure_.templates) {
     bits += 5 * frame_template.frame_diffs.size();
   }
-  bits += BitBufferWriter::SizeNonSymmetricBits(
+  bits += rtc::BitBufferWriter::SizeNonSymmetricBits(
       structure_.num_chains, structure_.num_decode_targets + 1);
   if (structure_.num_chains > 0) {
     for (int protected_by : structure_.decode_target_protected_by_chain) {
-      bits += BitBufferWriter::SizeNonSymmetricBits(protected_by,
-                                                    structure_.num_chains);
+      bits += rtc::BitBufferWriter::SizeNonSymmetricBits(protected_by,
+                                                         structure_.num_chains);
     }
     bits += 4 * structure_.templates.size() * structure_.num_chains;
   }

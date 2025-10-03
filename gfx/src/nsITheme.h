@@ -164,11 +164,6 @@ class nsITheme : public nsISupports {
     return mozilla::CSSCoord(1.0f);
   }
 
-  /* Get the minimum size of a themed range */
-  virtual mozilla::CSSCoord GetMinimumRangeThumbSize() {
-    return mozilla::CSSCoord(20.0f);
-  }
-
   /**
    * Get the minimum border-box size of a widget, in device pixels.
    */

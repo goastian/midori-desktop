@@ -1275,11 +1275,12 @@ void ContentSubtreeIterator::Next() {
       MOZ_ASSERT(root);
       nextNode = root->GetFirstChild();
     } else if (auto* slot = HTMLSlotElement::FromNode(nextNode);
-               slot && IterAllowCrossShadowBoundary() &&
-               !slot->AssignedNodes().IsEmpty()) {
+               slot && IterAllowCrossShadowBoundary()) {
       // Ancestor is a slot, we start from the first assigned node within this
       // slot
-      nextNode = slot->AssignedNodes()[0];
+      if (!NS_WARN_IF(slot->AssignedNodes().IsEmpty())) {
+        nextNode = slot->AssignedNodes()[0];
+      }
     } else {
       if (root) {
         // nextNode is a shadow host but the descendant in the light DOM

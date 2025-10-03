@@ -265,10 +265,11 @@ bool CallOrNewEmitter::emitSpreadArgumentsTest() {
       //            [stack] CALLEE THIS ARG0 ARRAY_OR_UNDEF ARRAY_OR_UNDEF
       return false;
     }
-
-    ConstantCompareOperand operand(
-        ConstantCompareOperand::EncodedType::Undefined);
-    if (!bce_->emitUint16Operand(JSOp::StrictConstantEq, operand.rawValue())) {
+    if (!bce_->emit1(JSOp::Undefined)) {
+      //            [stack] CALLEE THIS ARG0 ARRAY_OR_UNDEF ARRAY_OR_UNDEF UNDEF
+      return false;
+    }
+    if (!bce_->emit1(JSOp::StrictEq)) {
       //            [stack] CALLEE THIS ARG0 ARRAY_OR_UNDEF EQ
       return false;
     }

@@ -25,10 +25,6 @@ support-files = ["topstories.json"]
 
 ["test_PlacesFeed.js"]
 
-["test_SmartShortcutsFeed.js"]
-
-["test_StartupCacheInit.js"]
-
 ["test_Store.js"]
 
 ["test_TelemetryFeed.js"]
@@ -42,5 +38,3 @@ support-files = ["../schemas/*.schema.json"]
 tags = "remote-settings"
 
 ["test_WeatherFeed.js"]
-
-["test_ShortcutRanker.js"]

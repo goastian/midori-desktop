@@ -22,6 +22,9 @@ test();
 
 function test()
 {
+  printBugNumber(BUGNUMBER);
+  printStatus (summary);
+ 
   print('Note: You must run this test under valgrind to determine if it passes');
 
   try

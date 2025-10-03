@@ -4,37 +4,40 @@
 
 package org.mozilla.fenix.components.metrics
 
-import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleRegistry
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import io.mockk.Called
 import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
-import kotlinx.coroutines.test.runTest
 import mozilla.components.concept.base.crash.Breadcrumb
 import mozilla.components.lib.crash.Crash
 import mozilla.components.lib.crash.CrashReporter
 import mozilla.components.lib.crash.service.CrashReporterService
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
+@RunWith(FenixRobolectricTestRunner::class)
 class BreadcrumbRecorderTest {
 
     @Test
-    fun `sets listener on create and destroy`() = runTest {
+    fun `sets listener on create and destroy`() {
         val navController: NavController = mockk(relaxUnitFun = true)
-        val lifecycleOwner: LifecycleOwner = mockk()
+
+        val lifecycle = LifecycleRegistry(mockk())
         val breadCrumbRecorder = BreadcrumbsRecorder(mockk(), navController) { "test" }
 
+        lifecycle.addObserver(breadCrumbRecorder)
         verify { navController wasNot Called }
 
-        // Simulate ON_CREATE
-        breadCrumbRecorder.onCreate(lifecycleOwner)
+        lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         verify { navController.addOnDestinationChangedListener(breadCrumbRecorder) }
 
-        // Simulate ON_DESTROY
-        breadCrumbRecorder.onDestroy(lifecycleOwner)
+        lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         verify { navController.removeOnDestinationChangedListener(breadCrumbRecorder) }
     }
 

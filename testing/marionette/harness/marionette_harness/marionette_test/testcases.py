@@ -12,6 +12,7 @@ import warnings
 import weakref
 from unittest.case import SkipTest
 
+import six
 from marionette_driver.errors import TimeoutException, UnresponsiveInstanceException
 from mozfile import load_source
 from mozlog import get_default_logger
@@ -78,7 +79,8 @@ class MetaParameterized(type):
         return type.__new__(cls, name, bases, attrs)
 
 
-class CommonTestCase(unittest.TestCase, metaclass=MetaParameterized):
+@six.add_metaclass(MetaParameterized)
+class CommonTestCase(unittest.TestCase):
     match_re = None
     failureException = AssertionError
     pydebugger = None
@@ -114,7 +116,8 @@ class CommonTestCase(unittest.TestCase, metaclass=MetaParameterized):
     def assertRaisesRegxp(
         self, expected_exception, expected_regexp, callable_obj=None, *args, **kwargs
     ):
-        return self.assertRaisesRegex(
+        return six.assertRaisesRegex(
+            self,
             expected_exception,
             expected_regexp,
             callable_obj=None,

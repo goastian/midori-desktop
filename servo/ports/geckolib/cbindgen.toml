@@ -175,6 +175,7 @@ include = [
   "Overflow",
   "LengthPercentage",
   "LetterSpacing",
+  "LikelyBaseUriDependency",
   "NonNegativeLengthPercentage",
   "LengthPercentageOrAuto",
   "LineHeight",
@@ -329,7 +330,6 @@ include = [
   "ViewTransitionName",
   "Inset",
   "AnchorFunction",
-  "AnchorSide",
   "AnchorSizeFunction",
   "Margin",
   "PositionProperty",
@@ -402,9 +402,6 @@ renaming_overrides_prefixing = true
 "ThinVec" = "CopyableTArray"
 "RawPthread" = "pthread_t"
 "RawHandle" = "void*"
-"PseudoStyleRequest" = "PseudoStyleRequest"
-"AnchorPosResolutionParams" = "AnchorPosResolutionParams"
-"AnchorPosOffsetResolutionParams" = "AnchorPosOffsetResolutionParams"
 
 [export.body]
 "CSSPixelLength" = """
@@ -1197,8 +1194,4 @@ renaming_overrides_prefixing = true
   inline float ToPercentage() const;
   inline bool HasAnchorPositioningFunction() const;
   inline explicit StyleGenericMargin(const LP &);
-"""
-
-"PositionArea" = """
-  inline bool IsNone() const;
 """

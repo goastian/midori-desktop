@@ -123,14 +123,14 @@ static const ValueWrapper* ExtractValueWrapper(const SMILValue& aValue) {
 
 // Class methods
 // -------------
-void SMILCSSValueType::InitValue(SMILValue& aValue) const {
+void SMILCSSValueType::Init(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.IsNull(), "Unexpected SMIL value type");
 
   aValue.mU.mPtr = nullptr;
   aValue.mType = this;
 }
 
-void SMILCSSValueType::DestroyValue(SMILValue& aValue) const {
+void SMILCSSValueType::Destroy(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.mType == this, "Unexpected SMIL value type");
   delete static_cast<ValueWrapper*>(aValue.mU.mPtr);
   aValue.mType = SMILNullType::Singleton();
@@ -452,7 +452,7 @@ void SMILCSSValueType::ValueFromString(nsCSSPropertyID aPropID,
   }
 
   if (!parsedValues.IsEmpty()) {
-    sSingleton.InitValue(aValue);
+    sSingleton.Init(aValue);
     aValue.mU.mPtr = new ValueWrapper(aPropID, std::move(parsedValues));
   }
 }
@@ -474,7 +474,7 @@ SMILValue SMILCSSValueType::ValueFromAnimationValue(
     return result;
   }
 
-  sSingleton.InitValue(result);
+  sSingleton.Init(result);
   result.mU.mPtr = new ValueWrapper(aPropID, aValue);
 
   return result;

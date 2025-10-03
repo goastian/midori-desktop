@@ -2,9 +2,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from urllib.parse import quote
+import sys
+from unittest import skipIf
+
+from six.moves.urllib.parse import quote
 
 from marionette_driver import By, errors
+from marionette_driver.marionette import Alert
 
 from marionette_harness import (
     MarionetteTestCase,

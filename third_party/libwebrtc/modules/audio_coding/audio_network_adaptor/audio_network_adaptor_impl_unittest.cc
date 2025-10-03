@@ -176,7 +176,7 @@ TEST(AudioNetworkAdaptorImplTest,
      DumpEncoderRuntimeConfigIsCalledOnGetEncoderRuntimeConfig) {
   test::ScopedFieldTrials override_field_trials(
       "WebRTC-Audio-FecAdaptation/Enabled/");
-  ScopedFakeClock fake_clock;
+  rtc::ScopedFakeClock fake_clock;
   fake_clock.AdvanceTime(TimeDelta::Millis(kClockInitialTimeMs));
   auto states = CreateAudioNetworkAdaptor();
   AudioEncoderRuntimeConfig config;
@@ -194,7 +194,7 @@ TEST(AudioNetworkAdaptorImplTest,
 
 TEST(AudioNetworkAdaptorImplTest,
      DumpNetworkMetricsIsCalledOnSetNetworkMetrics) {
-  ScopedFakeClock fake_clock;
+  rtc::ScopedFakeClock fake_clock;
   fake_clock.AdvanceTime(TimeDelta::Millis(kClockInitialTimeMs));
 
   auto states = CreateAudioNetworkAdaptor();

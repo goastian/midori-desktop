@@ -752,7 +752,7 @@ bool CallOnMainStack(JSContext* cx, CallOnMainStackFn fn, void* data) {
   // clang-format on
 #  endif  // JS_SIMULATOR
 
-  bool ok = (res & 255) != 0;  // need only low byte
+  bool ok = res;
   suspender->setActive(cx);
   cx->wasm().promiseIntegration.setActiveSuspender(suspender);
 
@@ -1035,6 +1035,7 @@ class SuspendingFunctionModuleFactory {
                      ValTypeVector&& results) {
     FeatureOptions options;
     options.isBuiltinModule = true;
+    options.requireExnref = true;
 
     ScriptedCaller scriptedCaller;
     SharedCompileArgs compileArgs =

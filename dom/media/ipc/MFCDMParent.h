@@ -13,7 +13,7 @@
 #include "MFCDMExtra.h"
 #include "MFCDMSession.h"
 #include "MFPMPHostWrapper.h"
-#include "RemoteMediaManagerParent.h"
+#include "RemoteDecoderManagerParent.h"
 
 namespace mozilla {
 
@@ -32,7 +32,7 @@ class MFCDMParent final : public PMFCDMParent {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MFCDMParent);
 
-  MFCDMParent(const nsAString& aKeySystem, RemoteMediaManagerParent* aManager,
+  MFCDMParent(const nsAString& aKeySystem, RemoteDecoderManagerParent* aManager,
               nsISerialEventTarget* aManagerThread);
 
   static void SetWidevineL1Path(const char* aPath);
@@ -131,7 +131,7 @@ class MFCDMParent final : public PMFCDMParent {
 
   nsString mKeySystem;
 
-  const RefPtr<RemoteMediaManagerParent> mManager;
+  const RefPtr<RemoteDecoderManagerParent> mManager;
   const RefPtr<nsISerialEventTarget> mManagerThread;
 
   MOZ_RUNINIT static inline nsTHashMap<nsUint64HashKey, MFCDMParent*>

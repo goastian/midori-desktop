@@ -128,6 +128,3 @@ newtab-topsites-cancel-button = Anular
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

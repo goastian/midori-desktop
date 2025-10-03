@@ -113,7 +113,6 @@ class WebExtensionsMenuBinding(
         val loadIcon = action.loadIcon?.invoke(iconSize)
 
         return WebExtensionMenuItem(
-            id = extension.id,
             label = title,
             enabled = action.enabled,
             icon = loadIcon,

@@ -5,6 +5,7 @@
 import sys
 
 from marionette_driver import Wait
+from six import reraise
 
 
 class WindowManagerMixin(object):
@@ -70,9 +71,11 @@ class WindowManagerMixin(object):
                     )
         except Exception:
             exc_cls, exc, tb = sys.exc_info()
-            raise exc_cls(
-                "Failed to trigger opening a new tab: {}".format(exc)
-            ).with_traceback(tb)
+            reraise(
+                exc_cls,
+                exc_cls("Failed to trigger opening a new tab: {}".format(exc)),
+                tb,
+            )
         else:
             Wait(self.marionette).until(
                 lambda mn: len(mn.window_handles) == len(current_tabs) + 1,
@@ -115,9 +118,11 @@ class WindowManagerMixin(object):
                     )
         except Exception:
             exc_cls, exc, tb = sys.exc_info()
-            raise exc_cls(
-                "Failed to trigger opening a new window: {}".format(exc)
-            ).with_traceback(tb)
+            reraise(
+                exc_cls,
+                exc_cls("Failed to trigger opening a new window: {}".format(exc)),
+                tb,
+            )
         else:
             Wait(self.marionette).until(
                 lambda mn: len(mn.chrome_window_handles) == len(current_windows) + 1,

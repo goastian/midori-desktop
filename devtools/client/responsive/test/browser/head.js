@@ -724,11 +724,7 @@ function testViewportDimensions(ui, w, h) {
   );
 }
 
-async function changeUserAgentInput(
-  ui,
-  value,
-  keyPressedAfterChange = "VK_RETURN"
-) {
+async function changeUserAgentInput(ui, value) {
   const { Simulate } = ui.toolWindow.require(
     "resource://devtools/client/shared/vendor/react-dom-test-utils.js"
   );
@@ -737,27 +733,17 @@ async function changeUserAgentInput(
 
   const userAgentInput = document.getElementById("user-agent-input");
   userAgentInput.value = value;
-  userAgentInput.focus();
   Simulate.change(userAgentInput);
 
-  function pressKey() {
-    EventUtils.synthesizeKey(keyPressedAfterChange, {}, ui.toolWindow);
-  }
+  const userAgentChanged = waitUntilState(
+    store,
+    state => state.ui.userAgent === value
+  );
+  const changed = once(ui, "user-agent-changed");
 
-  if (keyPressedAfterChange === "VK_ESCAPE") {
-    pressKey();
-  } else {
-    const userAgentChanged = waitUntilState(
-      store,
-      state => state.ui.userAgent === value
-    );
-    const changed = once(ui, "user-agent-changed");
-    const waitForDevToolsReload = await watchForDevToolsReload(browser);
-
-    pressKey();
-
-    await Promise.all([changed, waitForDevToolsReload(), userAgentChanged]);
-  }
+  const waitForDevToolsReload = await watchForDevToolsReload(browser);
+  Simulate.keyUp(userAgentInput, { keyCode: KeyCodes.DOM_VK_RETURN });
+  await Promise.all([changed, waitForDevToolsReload(), userAgentChanged]);
 }
 
 /**

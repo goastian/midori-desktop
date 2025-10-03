@@ -17,12 +17,6 @@ const {
   TYPES,
   getResourceWatcher,
 } = require("resource://devtools/server/actors/resources/index.js");
-loader.lazyRequireGetter(
-  this,
-  ["isValidSavedFrame"],
-  "devtools/server/actors/frame",
-  true
-);
 
 // Get a string message to display when a frame evaluation throws.
 function getThrownMessage(completion) {
@@ -39,54 +33,15 @@ function getThrownMessage(completion) {
 }
 module.exports.getThrownMessage = getThrownMessage;
 
-function evalAndLogEvent({
-  threadActor,
-  frame,
-  level,
-  expression,
-  bindings,
-  showStacktrace,
-}) {
+function evalAndLogEvent({ threadActor, frame, level, expression, bindings }) {
   const frameLocation = threadActor.sourcesManager.getFrameLocation(frame);
   const { sourceActor, line } = frameLocation;
   const displayName = formatDisplayName(frame);
-  const stacktrace = showStacktrace ? [] : undefined;
-
-  if (showStacktrace) {
-    let currentFrame = frame;
-    while (currentFrame) {
-      if (currentFrame.script) {
-        stacktrace.push({
-          filename: currentFrame.script.url,
-          functionName: currentFrame.script.displayName,
-          lineNumber: currentFrame.script.startLine,
-          columnNumber: currentFrame.script.startColumn,
-          sourceId: currentFrame.script.source.id,
-        });
-      } else {
-        stacktrace.push({
-          filename: "unknown",
-          functionName: currentFrame.displayName || "anonymous",
-          lineNumber: 0,
-          columnNumber: 0,
-          sourceId: "",
-        });
-      }
-      const olderSavedFrame =
-        currentFrame.olderSavedFrame &&
-        isValidSavedFrame(threadActor, currentFrame.olderSavedFrame)
-          ? currentFrame.olderSavedFrame
-          : null;
-      currentFrame = currentFrame.older || olderSavedFrame;
-    }
-  }
 
   // TODO remove this branch when (#1749668) lands (#1609540)
   if (isWorker) {
     threadActor.targetActor._consoleActor.evaluateJS({
-      text: showStacktrace
-        ? `console.trace(...${expression})`
-        : `console.log(...${expression})`,
+      text: `console.log(...${expression})`,
       bindings: { displayName, ...bindings },
       url: sourceActor.url,
       lineNumber: line,
@@ -129,7 +84,7 @@ function evalAndLogEvent({
 
   ChromeUtils.addProfilerMarker("Debugger log point", undefined, value);
 
-  emitConsoleMessage(threadActor, frameLocation, value, level, stacktrace);
+  emitConsoleMessage(threadActor, frameLocation, value, level);
 
   return undefined;
 }
@@ -160,13 +115,7 @@ function logEvent({ threadActor, frame }) {
   return undefined;
 }
 
-function emitConsoleMessage(
-  threadActor,
-  frameLocation,
-  args,
-  level,
-  stacktrace
-) {
+function emitConsoleMessage(threadActor, frameLocation, args, level) {
   const targetActor = threadActor.targetActor;
   const { sourceActor, line, column } = frameLocation;
 
@@ -178,6 +127,7 @@ function emitConsoleMessage(
     // `frameLocation` comes from the SourcesManager which uses 0-base column
     // whereas CONSOLE_MESSAGE resources emits 1-based columns.
     columnNumber: column + 1,
+
     arguments: args,
     level,
     timeStamp: ChromeUtils.dateNow(),
@@ -187,7 +137,6 @@ function emitConsoleMessage(
     // The 'prepareConsoleMessageForRemote' method in webconsoleActor expects internal source ID,
     // thus we can't set sourceId directly to sourceActorID.
     sourceId: sourceActor.internalSourceId,
-    stacktrace,
   };
 
   // Note that only WindowGlobalTarget actor support resource watcher

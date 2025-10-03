@@ -24,6 +24,9 @@ test();
 
 function test()
 {
+  printBugNumber(BUGNUMBER);
+  printStatus (summary);
+
 // ------- Comment #79 From Jason Orendorff
 
   x; var x; function x() { return 0; }

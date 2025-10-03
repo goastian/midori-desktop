@@ -183,19 +183,22 @@ static constexpr Register RegExpSearcherRegExpReg = CallTempReg1;
 static constexpr Register RegExpSearcherStringReg = CallTempReg2;
 static constexpr Register RegExpSearcherLastIndexReg = CallTempReg3;
 
-class ABIArgGenerator : public ABIArgGeneratorShared {
+class ABIArgGenerator {
 #if defined(XP_WIN)
   unsigned regIndex_;
 #else
   unsigned intRegIndex_;
   unsigned floatRegIndex_;
 #endif
+  uint32_t stackOffset_;
   ABIArg current_;
 
  public:
-  explicit ABIArgGenerator(ABIKind kind);
+  ABIArgGenerator();
   ABIArg next(MIRType argType);
   ABIArg& current() { return current_; }
+  uint32_t stackBytesConsumedSoFar() const { return stackOffset_; }
+  void increaseStackOffset(uint32_t bytes) { stackOffset_ += bytes; }
 };
 
 // These registers may be volatile or nonvolatile.

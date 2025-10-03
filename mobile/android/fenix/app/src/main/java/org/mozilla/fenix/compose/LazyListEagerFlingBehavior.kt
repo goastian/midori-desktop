@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
  * to fully show the next item.
  */
 @Composable
-fun eagerFlingBehavior(
+fun EagerFlingBehavior(
     lazyRowState: LazyListState,
 ): FlingBehavior {
     val scope = rememberCoroutineScope()

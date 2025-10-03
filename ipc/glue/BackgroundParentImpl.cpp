@@ -1317,20 +1317,20 @@ mozilla::ipc::IPCResult
 BackgroundParentImpl::RecvEnsureRDDProcessAndCreateBridge(
     EnsureRDDProcessAndCreateBridgeResolver&& aResolver) {
   using Type = std::tuple<const nsresult&,
-                          Endpoint<mozilla::PRemoteMediaManagerChild>&&>;
+                          Endpoint<mozilla::PRemoteDecoderManagerChild>&&>;
 
   RefPtr<ThreadsafeContentParentHandle> parent =
       BackgroundParent::GetContentParentHandle(this);
   if (NS_WARN_IF(!parent)) {
     aResolver(
-        Type(NS_ERROR_NOT_AVAILABLE, Endpoint<PRemoteMediaManagerChild>()));
+        Type(NS_ERROR_NOT_AVAILABLE, Endpoint<PRemoteDecoderManagerChild>()));
     return IPC_OK();
   }
 
   RDDProcessManager* rdd = RDDProcessManager::Get();
   if (!rdd) {
     aResolver(
-        Type(NS_ERROR_NOT_AVAILABLE, Endpoint<PRemoteMediaManagerChild>()));
+        Type(NS_ERROR_NOT_AVAILABLE, Endpoint<PRemoteDecoderManagerChild>()));
     return IPC_OK();
   }
 
@@ -1342,7 +1342,7 @@ BackgroundParentImpl::RecvEnsureRDDProcessAndCreateBridge(
                      ResolveOrRejectValue&& aValue) mutable {
                if (aValue.IsReject()) {
                  resolver(Type(aValue.RejectValue(),
-                               Endpoint<PRemoteMediaManagerChild>()));
+                               Endpoint<PRemoteDecoderManagerChild>()));
                  return;
                }
                resolver(Type(NS_OK, std::move(aValue.ResolveValue())));
@@ -1352,7 +1352,7 @@ BackgroundParentImpl::RecvEnsureRDDProcessAndCreateBridge(
 
 mozilla::ipc::IPCResult
 BackgroundParentImpl::RecvEnsureUtilityProcessAndCreateBridge(
-    const RemoteMediaIn& aLocation,
+    const RemoteDecodeIn& aLocation,
     EnsureUtilityProcessAndCreateBridgeResolver&& aResolver) {
   EndpointProcInfo otherProcInfo = OtherEndpointProcInfo();
   RefPtr<ThreadsafeContentParentHandle> parent =
@@ -1370,15 +1370,16 @@ BackgroundParentImpl::RecvEnsureUtilityProcessAndCreateBridge(
       [aResolver, managerThread, otherProcInfo, childId, aLocation]() {
         RefPtr<UtilityProcessManager> upm =
             UtilityProcessManager::GetSingleton();
-        using Type = std::tuple<const nsresult&,
-                                Endpoint<mozilla::PRemoteMediaManagerChild>&&>;
+        using Type =
+            std::tuple<const nsresult&,
+                       Endpoint<mozilla::PRemoteDecoderManagerChild>&&>;
         if (!upm) {
           managerThread->Dispatch(NS_NewRunnableFunction(
               "BackgroundParentImpl::RecvEnsureUtilityProcessAndCreateBridge::"
               "Failure",
               [aResolver]() {
                 aResolver(Type(NS_ERROR_NOT_AVAILABLE,
-                               Endpoint<PRemoteMediaManagerChild>()));
+                               Endpoint<PRemoteDecoderManagerChild>()));
               }));
         } else {
           SandboxingKind sbKind = GetSandboxingKindFromLocation(aLocation);
@@ -1393,7 +1394,7 @@ BackgroundParentImpl::RecvEnsureUtilityProcessAndCreateBridge(
                          // the RejectValue() has something that might be an
                          // nsresult, but our sole caller discards it anyway
                          resolver(Type(NS_ERROR_FAILURE,
-                                       Endpoint<PRemoteMediaManagerChild>()));
+                                       Endpoint<PRemoteDecoderManagerChild>()));
                          return;
                        }
                        resolver(Type(NS_OK, std::move(aValue.ResolveValue())));

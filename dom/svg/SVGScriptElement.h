@@ -46,7 +46,7 @@ class SVGScriptElement final : public SVGScriptElementBase,
   FetchPriority GetFetchPriority() const override;
 
   // ScriptElement
-  bool HasExternalScriptContent() override;
+  bool HasScriptContent() override;
 
   // nsIContent specializations:
   nsresult BindToTree(BindContext&, nsINode& aParent) override;

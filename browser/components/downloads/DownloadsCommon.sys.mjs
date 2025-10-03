@@ -75,6 +75,10 @@ const kDownloadsFluentStrings = new Localization(
 );
 
 const kDownloadsStringsRequiringFormatting = {
+  contentAnalysisNoAgentError: true,
+  contentAnalysisInvalidAgentSignatureError: true,
+  contentAnalysisUnspecifiedError: true,
+  contentAnalysisTimeoutError: true,
   sizeWithUnits: true,
   statusSeparator: true,
   statusSeparatorBeforeNumber: true,
@@ -1461,10 +1465,7 @@ DownloadsIndicatorDataCtor.prototype = {
       ? lazy.PrivateDownloadsData._downloads
       : lazy.DownloadsData._downloads;
     for (let download of downloads) {
-      if (
-        download.isInCurrentBatch ||
-        (download.canceled && download.hasPartialData)
-      ) {
+      if (!download.stopped || (download.canceled && download.hasPartialData)) {
         yield download;
       }
     }

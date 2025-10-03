@@ -16,6 +16,9 @@ var summary = 'null-closure property initialiser mis-brands object literal scope
 var actual;
 var expect;
 
+printBugNumber(BUGNUMBER);
+printStatus(summary);
+
 function make(g) {
     var o = {f: function(a,b) { return a*b; }, g: g};
     return o;
@@ -29,5 +32,7 @@ actual = callg(x, 1);
 expect = -callg(y, 1);
 
 assert.sameValue(expect, actual, summary);
+
+printStatus("All tests passed!");
 
 reportCompare(0, 0);

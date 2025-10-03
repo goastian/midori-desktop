@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/types/variant.h"
 #include "common_video/h264/h264_common.h"
 #include "common_video/h264/pps_parser.h"
 #include "common_video/h264/sps_parser.h"

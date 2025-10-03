@@ -3,14 +3,14 @@
 // See the corresponding WPT RFC:
 // https://github.com/web-platform-tests/rfcs/blob/master/rfcs/address_space_overrides.md
 //
-// These ports are used to test the Local Network Access specification:
-// https://github.com/explainers-by-googlers/local-network-access
+// These ports are used to test the Private Network Access specification:
+// https://wicg.github.io/private-network-access/
 //
-// More tests can be found in `fetch/local-network-access/`.
+// More tests can be found in `fetch/private-network-access/`.
 
 const alternatePorts = {
-  httpLocal:  "{{ports[http-local][0]}}",
-  httpsLocal: "{{ports[https-local][0]}}",
+  httpPrivate:  "{{ports[http-private][0]}}",
+  httpsPrivate: "{{ports[https-private][0]}}",
   httpPublic:   "{{ports[http-public][0]}}",
   httpsPublic:  "{{ports[https-public][0]}}",
 };
@@ -38,13 +38,13 @@ function resolveUrl(url, options) {
 }
 
 const alternateOrigins = {
-  httpLocal: {
+  httpPrivate: {
     protocol: "http:",
-    port: alternatePorts.httpLocal,
+    port: alternatePorts.httpPrivate,
   },
-  httpsLocal: {
+  httpsPrivate: {
     protocol: "https:",
-    port: alternatePorts.httpsLocal,
+    port: alternatePorts.httpsPrivate,
   },
   httpPublic: {
     protocol: "http:",
@@ -58,17 +58,17 @@ const alternateOrigins = {
 
 promise_test(async () => {
   const url =
-    resolveUrl("/common/blank-with-cors.html", alternateOrigins.httpsLocal);
+    resolveUrl("/common/blank-with-cors.html", alternateOrigins.httpsPrivate);
   const response = await fetch(url);
   assert_true(response.ok);
-}, "Fetch from https-local port works.");
+}, "Fetch from https-private port works.");
 
 promise_test(async () => {
   const url =
-    resolveUrl("/common/blank-with-cors.html", alternateOrigins.httpLocal);
+    resolveUrl("/common/blank-with-cors.html", alternateOrigins.httpPrivate);
   const response = await fetch(url);
   assert_true(response.ok);
-}, "Fetch from http-local port works.");
+}, "Fetch from http-private port works.");
 
 promise_test(async () => {
   const url =

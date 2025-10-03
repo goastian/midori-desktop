@@ -674,7 +674,7 @@ export class NetworkManager extends EventEmitter<NetworkManagerEvents> {
       return;
     }
 
-    this.#adoptCdpSessionIfNeeded(client, request);
+    this.#maybeReassignOOPIFRequestClient(client, request);
 
     // Under certain conditions we never get the Network.responseReceived
     // event from protocol. @see https://crbug.com/883475
@@ -711,7 +711,7 @@ export class NetworkManager extends EventEmitter<NetworkManagerEvents> {
     if (!request) {
       return;
     }
-    this.#adoptCdpSessionIfNeeded(client, request);
+    this.#maybeReassignOOPIFRequestClient(client, request);
     request._failureText = event.errorText;
     const response = request.response();
     if (response) {
@@ -721,14 +721,16 @@ export class NetworkManager extends EventEmitter<NetworkManagerEvents> {
     this.emit(NetworkManagerEvent.RequestFailed, request);
   }
 
-  #adoptCdpSessionIfNeeded(client: CDPSession, request: CdpHTTPRequest): void {
-    // Document requests for OOPIFs start in the parent frame but are
-    // adopted by their child frame, meaning their loadingFinished and
-    // loadingFailed events are fired on the child session. In this case
-    // we reassign the request CDPSession to ensure all subsequent
-    // actions use the correct session (e.g. retrieving response body in
-    // HTTPResponse). The same applies to main worker script requests.
-    if (client !== request.client) {
+  #maybeReassignOOPIFRequestClient(
+    client: CDPSession,
+    request: CdpHTTPRequest,
+  ): void {
+    // Document requests for OOPIFs start in the parent frame but are adopted by their
+    // child frame, meaning their loadingFinished and loadingFailed events are fired on
+    // the child session. In this case we reassign the request CDPSession to ensure all
+    // subsequent actions use the correct session (e.g. retrieving response body in
+    // HTTPResponse).
+    if (client !== request.client && request.isNavigationRequest()) {
       request.client = client;
     }
   }

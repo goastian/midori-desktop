@@ -25,6 +25,14 @@ bool DataChannelInterface::ordered() const {
   return false;
 }
 
+uint16_t DataChannelInterface::maxRetransmitTime() const {
+  return 0;
+}
+
+uint16_t DataChannelInterface::maxRetransmits() const {
+  return 0;
+}
+
 std::optional<int> DataChannelInterface::maxRetransmitsOpt() const {
   return std::nullopt;
 }

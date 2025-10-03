@@ -65,7 +65,7 @@ public class ProfilerController {
    *
    * @return true if profiler is active and safe to add a new marker.
    */
-  public static boolean isProfilerActive() {
+  public boolean isProfilerActive() {
     return GeckoJavaSampler.isProfilerActive();
   }
 
@@ -79,7 +79,7 @@ public class ProfilerController {
    *
    * @return profiler time as double or null if the profiler is not active.
    */
-  public static @Nullable Double getProfilerTime() {
+  public @Nullable Double getProfilerTime() {
     return GeckoJavaSampler.tryToGetProfilerTime();
   }
 
@@ -92,7 +92,7 @@ public class ProfilerController {
    * @param aEndTime End time as Double. If it's null, this function implicitly gets the end time.
    * @param aText An optional string field for more information about the marker.
    */
-  public static void addMarker(
+  public void addMarker(
       @NonNull final String aMarkerName,
       @Nullable final Double aStartTime,
       @Nullable final Double aEndTime,
@@ -110,7 +110,7 @@ public class ProfilerController {
    * @param aStartTime Start time as Double. It can be null if you want to mark a point of time.
    * @param aText An optional string field for more information about the marker.
    */
-  public static void addMarker(
+  public void addMarker(
       @NonNull final String aMarkerName,
       @Nullable final Double aStartTime,
       @Nullable final String aText) {
@@ -126,8 +126,7 @@ public class ProfilerController {
    * @param aMarkerName Name of the event as a string.
    * @param aStartTime Start time as Double. It can be null if you want to mark a point of time.
    */
-  public static void addMarker(
-      @NonNull final String aMarkerName, @Nullable final Double aStartTime) {
+  public void addMarker(@NonNull final String aMarkerName, @Nullable final Double aStartTime) {
     addMarker(aMarkerName, aStartTime, null, null);
   }
 
@@ -140,7 +139,7 @@ public class ProfilerController {
    * @param aMarkerName Name of the event as a string.
    * @param aText An optional string field for more information about the marker.
    */
-  public static void addMarker(@NonNull final String aMarkerName, @Nullable final String aText) {
+  public void addMarker(@NonNull final String aMarkerName, @Nullable final String aText) {
     addMarker(aMarkerName, null, null, aText);
   }
 
@@ -152,7 +151,7 @@ public class ProfilerController {
    *
    * @param aMarkerName Name of the event as a string.
    */
-  public static void addMarker(@NonNull final String aMarkerName) {
+  public void addMarker(@NonNull final String aMarkerName) {
     addMarker(aMarkerName, null, null, null);
   }
 
@@ -166,7 +165,7 @@ public class ProfilerController {
    *     Each filter is used as a case-insensitive substring match against the actual thread names.
    * @param aFeaturesArr The list of profiler features to enable for profiling, as a string array.
    */
-  public static void startProfiler(
+  public void startProfiler(
       @NonNull final String[] aFilters, @NonNull final String[] aFeaturesArr) {
     GeckoJavaSampler.startProfiler(aFilters, aFeaturesArr);
   }
@@ -177,7 +176,7 @@ public class ProfilerController {
    * @return GeckoResult for the captured profile. The profile is returned as a byte[] buffer
    *     containing a gzip-compressed payload (with gzip header) of the profile JSON.
    */
-  public static @NonNull GeckoResult<byte[]> stopProfiler() {
+  public @NonNull GeckoResult<byte[]> stopProfiler() {
     return GeckoJavaSampler.stopProfiler();
   }
 }

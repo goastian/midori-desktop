@@ -310,6 +310,3 @@ newtab-custom-settings = ຈັດການການຕັ້ງຄ່າເພ�
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

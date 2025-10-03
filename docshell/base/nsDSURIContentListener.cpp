@@ -131,7 +131,7 @@ nsDSURIContentListener::DoContent(const nsACString& aContentType,
   nsresult rv;
   NS_ENSURE_ARG_POINTER(aContentHandler);
   NS_ENSURE_TRUE(mDocShell, NS_ERROR_FAILURE);
-  RefPtr<nsDocShell> docShell = mDocShell;
+  RefPtr<nsDocShell> docShell = mDocShell.get();
 
   *aAbortProcess = false;
 

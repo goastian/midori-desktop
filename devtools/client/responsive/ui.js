@@ -55,7 +55,6 @@ loader.lazyRequireGetter(
 const RELOAD_CONDITION_PREF_PREFIX = "devtools.responsive.reloadConditions.";
 const RELOAD_NOTIFICATION_PREF =
   "devtools.responsive.reloadNotification.enabled";
-const USE_DYNAMIC_TOOLBAR_PREF = "devtools.responsive.dynamicToolbar.enabled";
 
 function debug(_msg) {
   // console.log(`RDM manager: ${_msg}`);
@@ -96,7 +95,6 @@ class ResponsiveUI {
     this.onResizeStop = this.onResizeStop.bind(this);
 
     this.onTargetAvailable = this.onTargetAvailable.bind(this);
-    this.onContentScrolled = this.onContentScrolled.bind(this);
 
     this.networkFront = null;
     // Promise resolved when the UI init has completed.
@@ -104,8 +102,6 @@ class ResponsiveUI {
     this.initialized = promise;
     this.resolveInited = resolve;
 
-    this.dynamicToolbar = null;
-    this.dynamicToolbarMaxHeight = 0;
     EventEmitter.decorate(this);
   }
 
@@ -178,17 +174,6 @@ class ResponsiveUI {
     rdmFrame.src = "chrome://devtools/content/responsive/toolbar.xhtml";
     rdmFrame.classList.add("rdm-toolbar");
 
-    // Create dynamic toolbar
-    this.dynamicToolbar = doc.createElement("div");
-    this.dynamicToolbar.classList.add("rdm-dynamic-toolbar", "dynamic-toolbar");
-    this.dynamicToolbar.style.visibility = "hidden";
-
-    if (Services.prefs.getBoolPref(USE_DYNAMIC_TOOLBAR_PREF)) {
-      this.dynamicToolbar.style.visibility = "visible";
-      this.dynamicToolbar.style.height = "40px";
-      this.dynamicToolbarMaxHeight = this.dynamicToolbar.style.height;
-    }
-
     // Create resizer handlers
     const resizeHandle = doc.createElement("div");
     resizeHandle.classList.add(
@@ -217,12 +202,9 @@ class ResponsiveUI {
     // Prepend the RDM iframe inside of the current tab's browser container.
     this.browserContainerEl.prepend(rdmFrame);
 
-    this.browserStackEl.append(
-      this.dynamicToolbar,
-      resizeHandle,
-      resizeHandleX,
-      resizeHandleY
-    );
+    this.browserStackEl.append(resizeHandle);
+    this.browserStackEl.append(resizeHandleX);
+    this.browserStackEl.append(resizeHandleY);
 
     // Wait for the frame script to be loaded.
     message.wait(rdmFrame.contentWindow, "script-init").then(async () => {
@@ -259,7 +241,7 @@ class ResponsiveUI {
           // in devtools/client/responsive/index.css
           this.rdmFrame.classList.toggle(
             "accomodate-ua",
-            entry.contentBoxSize[0].inlineSize <= 800
+            entry.contentBoxSize[0].inlineSize < 520
           );
         }
       }
@@ -329,7 +311,6 @@ class ResponsiveUI {
     this.resizeHandle.remove();
     this.resizeHandleX.remove();
     this.resizeHandleY.remove();
-    this.dynamicToolbar.remove();
 
     this.browserContainerEl.classList.remove("responsive-mode");
     this.browserStackEl.style.removeProperty("--rdm-width");
@@ -382,7 +363,6 @@ class ResponsiveUI {
     this.resizeHandle = null;
     this.resizeHandleX = null;
     this.resizeHandleY = null;
-    this.dynamicToolbar = null;
     this.resizeToolbarObserver = null;
 
     // Destroying the commands will close the devtools client used to speak with responsive emulation actor.
@@ -1079,18 +1059,6 @@ class ResponsiveUI {
     return this.browserWindow;
   }
 
-  clamp(min, max, value) {
-    return Math.min(Math.max(value, min), max);
-  }
-
-  onContentScrolled(deltaY) {
-    const maxHeight = parseInt(this.dynamicToolbarMaxHeight, 10);
-    const currentHeight = parseInt(this.dynamicToolbar.style.height, 10);
-    const newHeight = currentHeight + deltaY;
-    const newHeightClamped = this.clamp(0, maxHeight, newHeight);
-    this.dynamicToolbar.style.height = newHeightClamped + "px";
-  }
-
   async onTargetAvailable({ targetFront, isTargetSwitching }) {
     if (this.destroying) {
       return;
@@ -1105,10 +1073,6 @@ class ResponsiveUI {
 
       await this.restoreActorState(isTargetSwitching);
       this.emitForTests("responsive-ui-target-switch-done");
-    }
-
-    if (Services.prefs.getBoolPref(USE_DYNAMIC_TOOLBAR_PREF)) {
-      targetFront.on("contentScrolled", this.onContentScrolled);
     }
   }
   // This just needed to setup watching for network resources,

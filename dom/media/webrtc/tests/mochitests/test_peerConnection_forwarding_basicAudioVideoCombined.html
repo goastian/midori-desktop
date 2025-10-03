@@ -11,13 +11,7 @@
     title: "Forwarding a stream from a combined audio/video peerconnection to another"
   });
 
-runNetworkTest(async function() {
-  // [TODO] re-enable HW decoder after bug 1526207 is fixed.
-  if (navigator.userAgent.includes("Android")) {
-    await pushPrefs(["media.navigator.mediadatadecoder_vpx_enabled", false],
-                    ["media.webrtc.hw.h264.enabled", false]);
-  }
-
+runNetworkTest(function() {
   var gumTest = new PeerConnectionTest();
 
   var forwardingOptions = { config_local: { label_suffix: "forwarded" },
@@ -36,10 +30,10 @@ runNetworkTest(async function() {
     }
   ]);
   gumTest.chain.removeAfter("PC_REMOTE_WAIT_FOR_MEDIA_FLOW");
-  await gumTest.chain.execute();
-  await forwardingTest.chain.execute();
-  await gumTest.close();
-  await forwardingTest.close();
+  return gumTest.chain.execute()
+    .then(() => forwardingTest.chain.execute())
+    .then(() => gumTest.close())
+    .then(() => forwardingTest.close());
 });
 </script>
 </pre>

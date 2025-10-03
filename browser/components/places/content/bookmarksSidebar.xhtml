@@ -49,7 +49,7 @@
 #include placesContextMenu.inc.xhtml
 #include bookmarksHistoryTooltip.inc.xhtml
   <box id="sidebar-panel-header" align="center">
-    <h4 data-l10n-id="sidebar-menu-bookmarks-2"></h4>
+    <html:h4 data-l10n-id="sidebar-menu-bookmarks-2"></html:h4>
     <html:moz-button
         id="sidebar-panel-close"
         type="icon ghost"
@@ -58,10 +58,10 @@
     </html:moz-button>
   </box>
   <hbox id="sidebar-search-container" align="center">
-    <html:moz-input-search id="search-box"
-        data-l10n-id="places-bookmarks-search"
-        data-l10n-attrs="placeholder"
-        aria-controls="bookmarks-view"/>
+    <search-textbox id="search-box" flex="1"
+                    data-l10n-id="places-bookmarks-search"
+                    data-l10n-attrs="placeholder"
+                    aria-controls="bookmarks-view"/>
   </hbox>
 
   <tree id="bookmarks-view"

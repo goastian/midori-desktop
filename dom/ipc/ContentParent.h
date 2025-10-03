@@ -292,7 +292,7 @@ class ContentParent final : public PContentParent,
   static void BroadcastThemeUpdate(widget::ThemeChangeKind);
 
   static void BroadcastMediaCodecsSupportedUpdate(
-      RemoteMediaIn aLocation, const media::MediaCodecsSupported& aSupported);
+      RemoteDecodeIn aLocation, const media::MediaCodecsSupported& aSupported);
 
   const nsACString& GetRemoteType() const override;
 
@@ -1302,9 +1302,9 @@ class ContentParent final : public PContentParent,
 
   mozilla::ipc::IPCResult RecvHistoryCommit(
       const MaybeDiscarded<BrowsingContext>& aContext, const uint64_t& aLoadID,
-      const nsID& aChangeID, const uint32_t& aLoadType,
+      const nsID& aChangeID, const uint32_t& aLoadType, const bool& aPersist,
       const bool& aCloneEntryChildren, const bool& aChannelExpired,
-      const uint32_t& aCacheKey, nsIPrincipal* aPartitionedPrincipal);
+      const uint32_t& aCacheKey);
 
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvHistoryGo(
@@ -1469,6 +1469,7 @@ class ContentParent final : public PContentParent,
   GeckoChildProcessHost* mSubprocess;
   const TimeStamp mLaunchTS;  // used to calculate time to start content process
   TimeStamp mLaunchYieldTS;   // used to calculate async launch main thread time
+  TimeStamp mActivateTS;
 
   bool mIsAPreallocBlocker;  // We called AddBlocker for this ContentParent
 

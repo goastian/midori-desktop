@@ -126,13 +126,6 @@ static Accessible* GetTextContainer(Accessible* aDescendant) {
   return nullptr;
 }
 
-static MsaaAccessible* GetTextPatternProviderFor(Accessible* aOrigin) {
-  if (HasTextPattern(aOrigin)) {
-    return MsaaAccessible::GetFrom(aOrigin);
-  }
-  return MsaaAccessible::GetFrom(GetTextContainer(aOrigin));
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // uiaRawElmProvider
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,13 +187,11 @@ void uiaRawElmProvider::RaiseUiaEventForGeckoEvent(Accessible* aAcc,
       return;
     case nsIAccessibleEvent::EVENT_TEXT_CARET_MOVED:
     case nsIAccessibleEvent::EVENT_TEXT_SELECTION_CHANGED:
-      ::UiaRaiseAutomationEvent(GetTextPatternProviderFor(aAcc),
-                                UIA_Text_TextSelectionChangedEventId);
+      ::UiaRaiseAutomationEvent(uia, UIA_Text_TextSelectionChangedEventId);
       return;
     case nsIAccessibleEvent::EVENT_TEXT_INSERTED:
     case nsIAccessibleEvent::EVENT_TEXT_REMOVED:
-      ::UiaRaiseAutomationEvent(GetTextPatternProviderFor(aAcc),
-                                UIA_Text_TextChangedEventId);
+      ::UiaRaiseAutomationEvent(uia, UIA_Text_TextChangedEventId);
       MaybeRaiseUiaLiveRegionEvent(aAcc, aGeckoEvent);
       return;
     case nsIAccessibleEvent::EVENT_TEXT_VALUE_CHANGE:
@@ -699,12 +690,6 @@ uiaRawElmProvider::GetPropertyValue(PROPERTYID aPropertyId,
       aPropertyValue->vt = VT_BOOL;
       aPropertyValue->boolVal =
           (acc->State() & states::FOCUSABLE) ? VARIANT_TRUE : VARIANT_FALSE;
-      return S_OK;
-
-    case UIA_IsOffscreenPropertyId:
-      aPropertyValue->vt = VT_BOOL;
-      aPropertyValue->boolVal =
-          (acc->State() & states::OFFSCREEN) ? VARIANT_TRUE : VARIANT_FALSE;
       return S_OK;
 
     case UIA_LabeledByPropertyId:

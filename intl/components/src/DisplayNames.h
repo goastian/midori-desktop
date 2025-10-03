@@ -386,10 +386,11 @@ class DisplayNames final {
       Fallback aFallback = Fallback::None) const {
     static_assert(std::is_same<typename B::CharType, char16_t>::value);
 
+    mozilla::intl::RegionSubtag region;
     if (!IsStructurallyValidRegionTag(aCode)) {
       return Err(DisplayNamesError::InvalidOption);
     }
-    mozilla::intl::RegionSubtag region{aCode};
+    region.Set(aCode);
 
     mozilla::intl::Locale tag;
     tag.SetLanguage("und");
@@ -527,14 +528,15 @@ class DisplayNames final {
       B& aBuffer, Span<const char> aScript,
       Fallback aFallback = Fallback::None) const {
     static_assert(std::is_same<typename B::CharType, char16_t>::value);
-
+    mozilla::intl::ScriptSubtag script;
     if (!IsStructurallyValidScriptTag(aScript)) {
       return Err(DisplayNamesError::InvalidOption);
     }
-    mozilla::intl::ScriptSubtag script{aScript};
+    script.Set(aScript);
 
     mozilla::intl::Locale tag;
     tag.SetLanguage("und");
+
     tag.SetScript(script);
 
     {

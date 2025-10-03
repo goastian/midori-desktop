@@ -2,10 +2,6 @@
 // domain. The cookie should be considered third party.
 "use strict";
 add_task(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-
   const iconUrl =
     "http://example.org/browser/netwerk/test/browser/damonbowling.jpg";
   const pageUrl =

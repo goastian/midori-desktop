@@ -9,7 +9,6 @@ import {
   html,
   ifDefined,
   when,
-  nothing,
 } from "chrome://global/content/vendor/lit.all.mjs";
 import { navigateToLink } from "chrome://browser/content/firefoxview/helpers.mjs";
 
@@ -29,17 +28,17 @@ export class SidebarHistory extends SidebarPage {
     emptyState: "fxview-empty-state",
     lists: { all: "sidebar-tab-list" },
     menuButton: ".menu-button",
-    searchTextbox: "moz-input-search",
+    searchTextbox: "fxview-search-textbox",
   };
 
   constructor() {
     super();
     this.handlePopupEvent = this.handlePopupEvent.bind(this);
-    this.controller = new lazy.HistoryController(this, {
-      component: "sidebar",
-    });
-    this.selectedLists = new Set();
   }
+
+  controller = new lazy.HistoryController(this, {
+    component: "sidebar",
+  });
 
   connectedCallback() {
     super.connectedCallback();
@@ -55,9 +54,6 @@ export class SidebarHistory extends SidebarPage {
     );
     this._menu.addEventListener("command", this);
     this._menu.addEventListener("popuphidden", this.handlePopupEvent);
-    this.addEventListener("update-selection", this);
-    this.addEventListener("clear-selection", this);
-    this._contextMenu.addEventListener("popupshowing", this);
     this.addContextMenuListeners();
     this.addSidebarFocusedListeners();
     this.controller.updateCache();
@@ -67,48 +63,8 @@ export class SidebarHistory extends SidebarPage {
     super.disconnectedCallback();
     this._menu.removeEventListener("command", this);
     this._menu.removeEventListener("popuphidden", this.handlePopupEvent);
-    this.removeEventListener("update-selection", this);
-    this.removeEventListener("clear-selection", this);
-    this._contextMenu.removeEventListener("popupshowing", this);
     this.removeContextMenuListeners();
     this.removeSidebarFocusedListeners();
-  }
-
-  handleEvent(e) {
-    switch (e.type) {
-      case "update-selection":
-        this.selectedLists.add(e.originalTarget);
-        break;
-      case "clear-selection":
-        this.selectedLists.delete(e.originalTarget);
-        this.#clearSelection();
-        break;
-      case "popupshowing":
-        this.updateContextMenu();
-        break;
-      default:
-        super.handleEvent(e);
-    }
-  }
-
-  get isMultipleRowsSelected() {
-    return !!this.selectedLists.size;
-  }
-
-  /**
-   * Only show multiselect commands when multiple items are selected.
-   */
-  updateContextMenu() {
-    for (const child of this._contextMenu.children) {
-      const isMultiSelectCommand = child.classList.contains(
-        "sidebar-history-multiselect-command"
-      );
-      if (this.isMultipleRowsSelected) {
-        child.hidden = !isMultiSelectCommand;
-      } else {
-        child.hidden = isMultiSelectCommand;
-      }
-    }
   }
 
   handleContextMenuEvent(e) {
@@ -136,10 +92,7 @@ export class SidebarHistory extends SidebarPage {
         lazy.Sanitizer.showUI(this.topWindow);
         break;
       case "sidebar-history-context-delete-page":
-        this.controller.deleteFromHistory().catch(console.error);
-        break;
-      case "sidebar-history-context-delete-pages":
-        this.controller.deleteMultipleFromHistory().catch(console.error);
+        this.controller.deleteFromHistory();
         break;
       default:
         super.handleCommandEvent(e);
@@ -159,17 +112,12 @@ export class SidebarHistory extends SidebarPage {
   }
 
   onPrimaryAction(e) {
-    if (this.isMultipleRowsSelected) {
-      // Avoid opening multiple links at once.
-      return;
-    }
     navigateToLink(e);
-    this.#clearSelection();
   }
 
   onSecondaryAction(e) {
     this.triggerNode = e.detail.item;
-    this.controller.deleteFromHistory().catch(console.error);
+    this.controller.deleteFromHistory();
   }
 
   handleCardKeydown(e) {
@@ -178,7 +126,6 @@ export class SidebarHistory extends SidebarPage {
     }
     let nextSibling = e.target.nextElementSibling;
     let prevSibling = e.target.previousElementSibling;
-    let focusedRow = null;
     switch (e.code) {
       case "Tab":
         if (prevSibling.localName == "moz-card") {
@@ -192,7 +139,7 @@ export class SidebarHistory extends SidebarPage {
             // Going up from the first site card. Focus the date header.
             dateCard.summaryEl.focus();
           }
-          break;
+          return;
         }
         if (prevSibling.expanded) {
           let innerElement = prevSibling.contentSlotEl.assignedElements()[0];
@@ -202,15 +149,15 @@ export class SidebarHistory extends SidebarPage {
             const prevSite = prevSibling.lastElementChild;
             if (prevSite.expanded) {
               const prevTabList = prevSite.contentSlotEl.assignedElements()[0];
-              focusedRow = prevTabList.rowEls[prevTabList.rowEls.length - 1];
-              focusedRow.focus();
+              const lastRow = prevTabList.rowEls[prevTabList.rowEls.length - 1];
+              lastRow.focus();
             } else {
               prevSite.summaryEl.focus();
             }
           } else {
             // Not sorted by Date & Site, innerElement is a SidebarTabList.
-            focusedRow = innerElement.rowEls[innerElement.rowEls.length - 1];
-            focusedRow.focus();
+            let lastRow = innerElement.rowEls[innerElement.rowEls.length - 1];
+            lastRow.focus();
           }
         } else {
           prevSibling.summaryEl.focus();
@@ -224,8 +171,7 @@ export class SidebarHistory extends SidebarPage {
             innerElement.summaryEl.focus();
           } else {
             // Not sorted by Date & Site, innerElement is a SidebarTabList.
-            focusedRow = innerElement.rowEls[0];
-            focusedRow.focus();
+            innerElement.rowEls[0].focus();
           }
         } else if (nextSibling && nextSibling.localName == "moz-card") {
           nextSibling.summaryEl.focus();
@@ -243,40 +189,6 @@ export class SidebarHistory extends SidebarPage {
         e.target.expanded = true;
         break;
     }
-    this.#updateSelection(e, focusedRow);
-  }
-
-  /**
-   * When a row is focused while the shift key is held down, add it to the
-   * selection. If shift key was not held down, clear the selection.
-   *
-   * @param {KeyboardEvent} event
-   * @param {Element} rowEl
-   */
-  #updateSelection(event, rowEl) {
-    if (event.code !== "ArrowUp" && event.code !== "ArrowDown") {
-      return;
-    }
-    if (!event.shiftKey) {
-      this.#clearSelection();
-      return;
-    }
-    if (rowEl != null) {
-      const listForRow = rowEl.getRootNode().host;
-      listForRow.selectedGuids.add(rowEl.guid);
-      listForRow.requestVirtualListUpdate();
-      this.selectedLists.add(listForRow);
-    }
-  }
-
-  /**
-   * Clear the selection from all lists.
-   */
-  #clearSelection() {
-    for (const list of this.selectedLists) {
-      list.clearSelection();
-    }
-    this.selectedLists.clear();
   }
 
   /**
@@ -367,8 +279,6 @@ export class SidebarHistory extends SidebarPage {
       heading=${domain}
       @keydown=${this.handleCardKeydown}
       tabindex=${ifDefined(tabIndex)}
-      data-l10n-id=${domain ? nothing : "sidebar-history-site-localhost"}
-      data-l10n-attrs=${domain ? nothing : "heading"}
     >
       ${this.#tabListTemplate(this.getTabItems(items))}
     </moz-card>`;
@@ -508,11 +418,12 @@ export class SidebarHistory extends SidebarPage {
         >
         </sidebar-panel-header>
         <div class="options-container">
-          <moz-input-search
+          <fxview-search-textbox
             data-l10n-id="firefoxview-search-text-box-history"
             data-l10n-attrs="placeholder"
-            @MozInputSearch:search=${this.onSearchQuery}
-          ></moz-input-search>
+            @fxview-search-textbox-query=${this.onSearchQuery}
+            .size=${15}
+          ></fxview-search-textbox>
           <moz-button
             class="menu-button"
             @click=${this.openMenu}

@@ -38,7 +38,6 @@ class UrlClassifierExceptionListEntry final
  private:
   ~UrlClassifierExceptionListEntry() = default;
 
-  nsIUrlClassifierExceptionListEntry::Category mCategory;
   nsCString mUrlPattern;
   nsCString mTopLevelUrlPattern;
   bool mIsPrivateBrowsingOnly{};

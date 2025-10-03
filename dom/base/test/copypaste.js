@@ -380,7 +380,11 @@ async function testCopyPaste(isXHTML) {
       // The <ul> should appear because it has a <li>
       // The preceding linefeed of the <br> in the empty <li> is an invisible
       // white-space.  Thus, it's not important whether it appears or not in the result.
-      '<ul id="ul3"><li><br></li></ul>Copy3then Paste'
+      SpecialPowers.getBoolPref(
+        "editor.white_space_normalization.blink_compatible"
+      )
+        ? '<ul id="ul3"><li><br></li></ul>Copy3then Paste'
+        : '<ul id="ul3"><li>\n<br></li></ul>Copy3then Paste'
     );
 
     // with elements of different depth

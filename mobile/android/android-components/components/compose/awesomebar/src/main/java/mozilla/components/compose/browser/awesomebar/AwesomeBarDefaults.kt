@@ -4,7 +4,8 @@
 
 package mozilla.components.compose.browser.awesomebar
 
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.ContentAlpha
+import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
@@ -21,11 +22,13 @@ object AwesomeBarDefaults {
      */
     @Composable
     fun colors(
-        background: Color = MaterialTheme.colorScheme.background,
-        title: Color = MaterialTheme.colorScheme.onBackground,
-        description: Color = MaterialTheme.colorScheme.onSurfaceVariant,
-        autocompleteIcon: Color = MaterialTheme.colorScheme.onSurface,
-        groupTitle: Color = MaterialTheme.colorScheme.onBackground,
+        background: Color = MaterialTheme.colors.background,
+        title: Color = MaterialTheme.colors.onBackground,
+        description: Color = MaterialTheme.colors.onBackground.copy(
+            alpha = ContentAlpha.medium,
+        ),
+        autocompleteIcon: Color = MaterialTheme.colors.onSurface,
+        groupTitle: Color = MaterialTheme.colors.onBackground,
     ) = AwesomeBarColors(
         background,
         title,

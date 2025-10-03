@@ -148,8 +148,7 @@ already_AddRefed<Promise> FontFaceSet::Load(JSContext* aCx,
     if (aRv.Failed()) {
       return nullptr;
     }
-    if (!faces.AppendElements(weakFaces, fallible) ||
-        !promises.SetCapacity(weakFaces.Length(), fallible)) {
+    if (!faces.AppendElements(weakFaces, fallible)) {
       aRv.Throw(NS_ERROR_FAILURE);
       return nullptr;
     }
@@ -160,7 +159,10 @@ already_AddRefed<Promise> FontFaceSet::Load(JSContext* aCx,
     if (aRv.Failed()) {
       return nullptr;
     }
-    promises.AppendElement(promise);
+    if (!promises.AppendElement(promise, fallible)) {
+      aRv.Throw(NS_ERROR_FAILURE);
+      return nullptr;
+    }
   }
 
   return Promise::All(aCx, promises, aRv);

@@ -43,8 +43,7 @@ class Location final : public nsISupports,
   void Assign(const nsACString& aUrl, nsIPrincipal& aSubjectPrincipal,
               ErrorResult& aError);
 
-  MOZ_CAN_RUN_SCRIPT
-  void Reload(JSContext* aCx, bool aForceget, nsIPrincipal& aSubjectPrincipal,
+  void Reload(bool aForceget, nsIPrincipal& aSubjectPrincipal,
               ErrorResult& aError);
 
   void GetHref(nsACString& aHref, nsIPrincipal& aSubjectPrincipal,

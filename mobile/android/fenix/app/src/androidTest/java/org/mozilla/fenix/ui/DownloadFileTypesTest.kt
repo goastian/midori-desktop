@@ -13,7 +13,6 @@ import org.junit.runners.Parameterized
 import org.mozilla.fenix.customannotations.SmokeTest
 import org.mozilla.fenix.helpers.HomeActivityTestRule
 import org.mozilla.fenix.helpers.TestSetup
-import org.mozilla.fenix.ui.robots.browserScreen
 import org.mozilla.fenix.ui.robots.downloadRobot
 
 /**
@@ -57,13 +56,11 @@ class DownloadFileTypesTest(fileName: String) : TestSetup() {
     fun allFilesAppearInDownloadsMenuTest() {
         downloadRobot {
             openPageAndDownloadFile(url = downloadTestPage.toUri(), downloadFile = downloadFile)
-            verifyDownloadCompleteSnackbar(fileName = downloadFile)
-        }
-
-        browserScreen {
+            verifyDownloadCompleteNotificationPopup()
+        }.closeDownloadPrompt {
         }.openThreeDotMenu {
         }.openDownloadsManager {
             verifyDownloadedFileExistsInDownloadsList(activityTestRule, downloadFile)
         }.exitDownloadsManagerToBrowser(activityTestRule) { }
     }
-    }
+}

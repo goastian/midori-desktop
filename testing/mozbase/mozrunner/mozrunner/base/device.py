@@ -11,6 +11,7 @@ import tempfile
 import time
 
 import mozfile
+import six
 
 from ..devices import BaseEmulator
 from .runner import BaseRunner
@@ -28,7 +29,7 @@ class DeviceRunner(BaseRunner):
         "MOZ_CRASHREPORTER_SHUTDOWN": "1",
         "MOZ_HIDE_RESULTS_TABLE": "1",
         "MOZ_IN_AUTOMATION": "1",
-        "MOZ_LOG": "signaling:3,mtransport:4,DataChannel:3,jsep:4",
+        "MOZ_LOG": "signaling:3,mtransport:4,DataChannel:4,jsep:4",
         "R_LOG_LEVEL": "6",
         "R_LOG_DESTINATION": "stderr",
         "R_LOG_VERBOSE": "1",
@@ -44,7 +45,10 @@ class DeviceRunner(BaseRunner):
         if env:
             self._device_env.update(env)
 
-        stdout = codecs.getwriter("utf-8")(sys.stdout.buffer)
+        if six.PY2:
+            stdout = codecs.getwriter("utf-8")(sys.stdout)
+        else:
+            stdout = codecs.getwriter("utf-8")(sys.stdout.buffer)
         process_args = {
             "stream": stdout,
             "processOutputLine": self.on_output,

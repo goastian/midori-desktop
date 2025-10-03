@@ -89,7 +89,7 @@ add_task(async function testSortedAlpnH3() {
   checkResult(inRecord, false, true, {
     expectedPriority: 1,
     expectedName: "test.alpn.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 1,
@@ -106,12 +106,12 @@ add_task(async function testSortedAlpnH3() {
   checkResult(inRecord, false, false, {
     expectedPriority: 1,
     expectedName: "test.alpn.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, false, true, {
     expectedPriority: 1,
     expectedName: "test.alpn.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 1,
@@ -130,12 +130,12 @@ add_task(async function testSortedAlpnH3() {
   checkResult(inRecord, false, false, {
     expectedPriority: 1,
     expectedName: "test.alpn.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, false, true, {
     expectedPriority: 1,
     expectedName: "test.alpn.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 1,
@@ -158,7 +158,7 @@ add_task(async function testSortedAlpnH3() {
   checkResult(inRecord, false, true, {
     expectedPriority: 1,
     expectedName: "test.alpn.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 1,
@@ -203,12 +203,12 @@ add_task(async function testSortedAlpnH2() {
   checkResult(inRecord, false, false, {
     expectedPriority: 1,
     expectedName: "test.alpn_2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, false, true, {
     expectedPriority: 1,
     expectedName: "test.alpn_2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 1,

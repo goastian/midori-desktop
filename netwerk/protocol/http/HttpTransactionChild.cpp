@@ -69,9 +69,7 @@ nsresult HttpTransactionChild::InitInternal(
     uint64_t browserId, uint8_t httpTrafficCategory, uint64_t requestContextID,
     ClassOfService classOfService, uint32_t initialRwin,
     bool responseTimeoutEnabled, uint64_t channelId,
-    bool aHasTransactionObserver,
-    const nsILoadInfo::IPAddressSpace& aParentIPAddressSpace,
-    const LNAPerms& aLnaPermissionStatus) {
+    bool aHasTransactionObserver) {
   LOG(("HttpTransactionChild::InitInternal [this=%p caps=%x]\n", this, caps));
 
   RefPtr<nsHttpConnectionInfo> cinfo =
@@ -94,7 +92,7 @@ nsresult HttpTransactionChild::InitInternal(
       nullptr,  // TODO: security callback, fix in bug 1512479.
       this, browserId, static_cast<HttpTrafficCategory>(httpTrafficCategory),
       rc, classOfService, initialRwin, responseTimeoutEnabled, channelId,
-      std::move(observer), aParentIPAddressSpace, aLnaPermissionStatus);
+      std::move(observer));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     mTransaction = nullptr;
     return rv;
@@ -149,9 +147,7 @@ mozilla::ipc::IPCResult HttpTransactionChild::RecvInit(
     const bool& aResponseTimeoutEnabled, const uint64_t& aChannelId,
     const bool& aHasTransactionObserver,
     const mozilla::Maybe<PInputChannelThrottleQueueChild*>& aThrottleQueue,
-    const bool& aIsDocumentLoad,
-    const nsILoadInfo::IPAddressSpace& aParentIPAddressSpace,
-    const LNAPerms& aLnaPermissionStatus, const TimeStamp& aRedirectStart,
+    const bool& aIsDocumentLoad, const TimeStamp& aRedirectStart,
     const TimeStamp& aRedirectEnd) {
   mRequestHead = aReqHeaders;
   if (aRequestBody) {
@@ -173,8 +169,7 @@ mozilla::ipc::IPCResult HttpTransactionChild::RecvInit(
       aCaps, aArgs, &mRequestHead, mUploadStream, aReqContentLength,
       aReqBodyIncludesHeaders, aTopLevelOuterContentWindowId,
       aHttpTrafficCategory, aRequestContextID, aClassOfService, aInitialRwin,
-      aResponseTimeoutEnabled, aChannelId, aHasTransactionObserver,
-      aParentIPAddressSpace, aLnaPermissionStatus);
+      aResponseTimeoutEnabled, aChannelId, aHasTransactionObserver);
   if (NS_FAILED(rv)) {
     LOG(("HttpTransactionChild::RecvInit: [this=%p] InitInternal failed!\n",
          this));

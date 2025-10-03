@@ -154,6 +154,8 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
     EXPORTS += [
         "gfxDWriteCommon.h",
         "gfxDWriteFonts.h",
+        "gfxGDIFont.h",
+        "gfxGDIFontList.h",
         "gfxWindowsNativeDrawing.h",
         "gfxWindowsPlatform.h",
         "gfxWindowsSurface.h",
@@ -166,6 +168,8 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
         "DisplayConfigWindows.cpp",
         "gfxDWriteCommon.cpp",
         "gfxDWriteFonts.cpp",
+        "gfxGDIFont.cpp",
+        "gfxGDIFontList.cpp",
         "gfxWindowsNativeDrawing.cpp",
         "gfxWindowsPlatform.cpp",
         "gfxWindowsSurface.cpp",

@@ -76,7 +76,6 @@ class UserAgentInput extends PureComponent {
 
     this.onChange = this.onChange.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
-    this.onBlur = this.onBlur.bind(this);
   }
 
   /**
@@ -102,17 +101,13 @@ class UserAgentInput extends PureComponent {
    */
   onKeyUp({ target, keyCode }) {
     if (keyCode == KeyCodes.DOM_VK_RETURN) {
-      // This triggers the onBlur() handler, which calls this.props.onChangeUserAgent()
+      this.props.onChangeUserAgent(target.value);
       target.blur();
     }
 
     if (keyCode == KeyCodes.DOM_VK_ESCAPE) {
-      this.setState({ value: this.props.userAgent }, () => target.blur());
+      target.blur();
     }
-  }
-
-  onBlur({ target }) {
-    this.props.onChangeUserAgent(target.value);
   }
 
   onChangeUserAgent(userAgent) {
@@ -206,7 +201,6 @@ class UserAgentInput extends PureComponent {
         className: "text-input",
         onChange: this.onChange,
         onKeyUp: this.onKeyUp,
-        onBlur: this.onBlur,
         placeholder: getStr("responsive.customUserAgent"),
         type: "text",
         value: this.state.value,

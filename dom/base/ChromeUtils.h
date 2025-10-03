@@ -39,7 +39,6 @@ class PrecompiledScript;
 class Promise;
 struct ProcessActorOptions;
 struct WindowActorOptions;
-class WindowProxyHolder;
 
 class ChromeUtils {
  private:
@@ -201,10 +200,6 @@ class ChromeUtils {
                                  const dom::ClearResourceCacheOptions& aOptions,
                                  ErrorResult& aRv);
 
-  static void ClearBfcacheByPrincipal(GlobalObject& aGlobal,
-                                      nsIPrincipal* aPrincipal,
-                                      ErrorResult& aRv);
-
   static void SetPerfStatsCollectionMask(GlobalObject& aGlobal, uint64_t aMask);
 
   static already_AddRefed<Promise> CollectPerfStats(GlobalObject& aGlobal,
@@ -265,8 +260,7 @@ class ChromeUtils {
 
   static void ResetLastExternalProtocolIframeAllowed(GlobalObject& aGlobal);
 
-  static already_AddRefed<Promise> EndWheelTransaction(
-      GlobalObject& aGlobal, WindowProxyHolder& aWindow, ErrorResult& aRv);
+  static void EndWheelTransaction(GlobalObject& aGlobal);
 
   static void RegisterWindowActor(const GlobalObject& aGlobal,
                                   const nsACString& aName,

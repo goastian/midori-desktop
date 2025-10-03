@@ -2568,8 +2568,8 @@
                 "value": "firefox"
               },
               {
-                "experimentConfig": "search_rich_suggestions",
-                "name": "channel"
+                "name": "channel",
+                "value": "fen"
               }
             ],
             "searchTermParamName": "q"
@@ -2588,14 +2588,36 @@
               }
             ],
             "searchTermParamName": "q"
+          },
+          "visualSearch": {
+            "acceptedContentTypes": [
+              "image/jpeg",
+              "image/gif",
+              "image/png",
+              "image/avif",
+              "image/webp"
+            ],
+            "base": "https://lens.google.com/upload",
+            "displayNameMap": {
+              "default": "Google Lens"
+            },
+            "excludePartnerCodeFromTelemetry": true,
+            "isNewUntil": "2025-10-14",
+            "params": [
+              {
+                "name": "ep",
+                "value": "fcm"
+              }
+            ],
+            "searchTermParamName": "url"
           }
         }
       },
       "id": "7ace4aa1-e762-4f4b-87b9-b23b3c3a930b",
       "identifier": "google",
-      "last_modified": 1753192235006,
+      "last_modified": 1757010932841,
       "recordType": "engine",
-      "schema": 1753191541223,
+      "schema": 1756779343136,
       "variants": [
         {
           "environment": {
@@ -3432,15 +3454,21 @@
             "searchTermParamName": "q"
           },
           "trending": {
-            "base": "https://www.perplexity.ai/rest/autosuggest/list-trending-suggest"
+            "base": "https://www.perplexity.ai/rest/autosuggest/list-trending-suggest",
+            "params": [
+              {
+                "name": "lang",
+                "value": "{acceptLanguages}"
+              }
+            ]
           }
         }
       },
       "id": "bb836721-7be9-4de6-ac18-520189a69076",
       "identifier": "perplexity",
-      "last_modified": 1749848937099,
+      "last_modified": 1757017987655,
       "recordType": "engine",
-      "schema": 1749743664865,
+      "schema": 1757010932955,
       "variants": [
         {
           "environment": {
@@ -3449,9 +3477,20 @@
           "subVariants": [
             {
               "environment": {
+                "maxVersion": "143.0a1"
+              },
+              "urls": {
+                "trending": {
+                  "params": []
+                }
+              }
+            },
+            {
+              "environment": {
                 "locales": [
                   "de"
                 ],
+                "maxVersion": "143.0a1",
                 "regions": [
                   "de",
                   "us",
@@ -3460,7 +3499,12 @@
               },
               "urls": {
                 "trending": {
-                  "base": "https://www.perplexity.ai/rest/autosuggest/list-trending-suggest?lang=de-DE"
+                  "params": [
+                    {
+                      "name": "lang",
+                      "value": "de-DE"
+                    }
+                  ]
                 }
               }
             }
@@ -3682,7 +3726,6 @@
     },
     {
       "base": {
-        "charset": "EUC-JP",
         "classification": "unknown",
         "name": "楽天市場",
         "urls": {
@@ -3694,9 +3737,9 @@
       },
       "id": "ab6f7178-b0be-452a-82f2-f5df8df2d836",
       "identifier": "rakuten",
-      "last_modified": 1753280249778,
+      "last_modified": 1753710379308,
       "recordType": "engine",
-      "schema": 1753236937885,
+      "schema": 1753668939392,
       "variants": [
         {
           "environment": {
@@ -8401,5 +8444,5 @@
       "schema": 1707824831520
     }
   ],
-  "timestamp": 1753280249778
+  "timestamp": 1757017987655
 }

@@ -508,21 +508,20 @@ void CompositorD3D11::SetRenderTarget(CompositingRenderTarget* aRenderTarget) {
   }
 }
 
-ID3D11PixelShader* CompositorD3D11::GetPSForEffect(Effect* aEffect,
-                                                   const ClipType aClipType) {
+ID3D11PixelShader* CompositorD3D11::GetPSForEffect(Effect* aEffect) {
   switch (aEffect->mType) {
     case EffectTypes::RGB: {
       SurfaceFormat format =
           static_cast<TexturedEffect*>(aEffect)->mTexture->GetFormat();
       return (format == SurfaceFormat::B8G8R8A8 ||
               format == SurfaceFormat::R8G8B8A8)
-                 ? mAttachments->mRGBAShader[aClipType]
-                 : mAttachments->mRGBShader[aClipType];
+                 ? mAttachments->mRGBAShader
+                 : mAttachments->mRGBShader;
     }
     case EffectTypes::NV12:
-      return mAttachments->mNV12Shader[aClipType];
+      return mAttachments->mNV12Shader;
     case EffectTypes::YCBCR:
-      return mAttachments->mYCbCrShader[aClipType];
+      return mAttachments->mYCbCrShader;
     default:
       NS_WARNING("No shader to load");
       return nullptr;
@@ -552,8 +551,7 @@ void CompositorD3D11::ClearRect(const gfx::Rect& aRect) {
   scissor.bottom = aRect.YMost();
   mContext->RSSetScissorRects(1, &scissor);
   mContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-  mContext->VSSetShader(mAttachments->mVSQuadShader[ClipType::ClipNone],
-                        nullptr, 0);
+  mContext->VSSetShader(mAttachments->mVSQuadShader, nullptr, 0);
 
   mContext->PSSetShader(mAttachments->mSolidColorShader, nullptr, 0);
   mPSConstants.layerColor[0] = 0;
@@ -643,33 +641,10 @@ void CompositorD3D11::DrawQuad(const gfx::Rect& aRect,
 
   mContext->RSSetScissorRects(1, &scissor);
 
-  auto clipType = ClipType::ClipNone;
-
-  if (aEffectChain.mRoundedClipEffect) {
-    clipType = ClipType::RoundedRect;
-
-    mVSConstants.roundedClipRect[0] = aEffectChain.mRoundedClipEffect->mRect.x;
-    mVSConstants.roundedClipRect[1] = aEffectChain.mRoundedClipEffect->mRect.y;
-    mVSConstants.roundedClipRect[2] =
-        aEffectChain.mRoundedClipEffect->mRect.width;
-    mVSConstants.roundedClipRect[3] =
-        aEffectChain.mRoundedClipEffect->mRect.height;
-
-    mPSConstants.roundedClipRadii[0] =
-        aEffectChain.mRoundedClipEffect->mRadii[eCornerTopLeft].width;
-    mPSConstants.roundedClipRadii[1] =
-        aEffectChain.mRoundedClipEffect->mRadii[eCornerBottomLeft].width;
-    mPSConstants.roundedClipRadii[2] =
-        aEffectChain.mRoundedClipEffect->mRadii[eCornerTopRight].width;
-    mPSConstants.roundedClipRadii[3] =
-        aEffectChain.mRoundedClipEffect->mRadii[eCornerBottomRight].width;
-  }
-
-  RefPtr<ID3D11VertexShader> vertexShader =
-      mAttachments->mVSQuadShader[clipType];
+  RefPtr<ID3D11VertexShader> vertexShader = mAttachments->mVSQuadShader;
 
   RefPtr<ID3D11PixelShader> pixelShader =
-      GetPSForEffect(aEffectChain.mPrimaryEffect, clipType);
+      GetPSForEffect(aEffectChain.mPrimaryEffect);
 
   mContext->VSSetShader(vertexShader, nullptr, 0);
   mContext->PSSetShader(pixelShader, nullptr, 0);

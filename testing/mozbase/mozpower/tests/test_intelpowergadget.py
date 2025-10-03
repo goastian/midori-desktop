@@ -7,12 +7,19 @@ from unittest import mock
 
 import mozunit
 import pytest
+import six
 from mozpower.intel_power_gadget import (
     IPGEmptyFileError,
     IPGMissingOutputFileError,
     IPGTimeoutError,
     IPGUnknownValueTypeError,
 )
+
+
+def thread_is_alive(thread):
+    if six.PY2:
+        return thread.isAlive()
+    return thread.is_alive()
 
 
 def test_ipg_pathsplitting(ipg_obj):
@@ -63,7 +70,7 @@ def test_ipg_start_and_stop(ipg_obj):
             time.sleep(1)
 
         assert ipg_obj._running
-        assert ipg_obj._thread.is_alive()
+        assert thread_is_alive(ipg_obj._thread)
 
         # Stop recording IPG measurements
         ipg_obj.stop_ipg(wait_interval=1, timeout=30)

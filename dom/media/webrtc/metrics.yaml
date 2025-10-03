@@ -20,19 +20,16 @@ rtcrtpsender:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1832459
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1881403
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1912188
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969184
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1401592
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1832459
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1881403
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1912188
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969184
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   count_setparameters_compat:
     type: counter
@@ -44,19 +41,16 @@ rtcrtpsender:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1832459
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1881403
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1912188
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969184
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1401592
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1832459
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1881403
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1912188
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969184
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   used_sendencodings:
     type: rate
@@ -77,9 +71,8 @@ rtcrtpsender:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
 rtcrtpsender.setparameters:
   warn_no_getparameters:
@@ -103,9 +96,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   warn_length_changed:
     type: rate
@@ -127,9 +119,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   warn_no_transactionid:
     type: rate
@@ -151,9 +142,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   fail_length_changed:
     type: rate
@@ -175,9 +165,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   fail_rid_changed:
     type: rate
@@ -200,9 +189,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   fail_no_getparameters:
     type: rate
@@ -224,9 +212,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   fail_no_transactionid:
     type: rate
@@ -247,9 +234,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   fail_stale_transactionid:
     type: rate
@@ -270,9 +256,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   fail_no_encodings:
     type: rate
@@ -296,9 +281,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
   fail_other:
     type: rate
@@ -319,9 +303,8 @@ rtcrtpsender.setparameters:
     data_sensitivity:
       - technical
     notification_emails:
-      - bcampen@mozilla.com
       - webrtc-telemetry-alerts@mozilla.com
-    expires: never
+    expires: 142
 
 codec.stats:
   ulpfec_negotiated:

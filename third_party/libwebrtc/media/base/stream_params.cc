@@ -12,16 +12,11 @@
 
 #include <stdint.h>
 
-#include <cstddef>
-#include <string>
-#include <vector>
+#include <list>
 
 #include "absl/algorithm/container.h"
 #include "api/array_view.h"
-#include "media/base/rid_description.h"
-#include "rtc_base/checks.h"
 #include "rtc_base/strings/string_builder.h"
-#include "rtc_base/unique_id_generator.h"
 
 namespace cricket {
 namespace {
@@ -178,13 +173,13 @@ void StreamParams::GenerateSsrcs(int num_layers,
   }
 }
 
-void StreamParams::GetPrimarySsrcs(std::vector<uint32_t>* primary_ssrcs) const {
+void StreamParams::GetPrimarySsrcs(std::vector<uint32_t>* ssrcs) const {
   const SsrcGroup* sim_group = get_ssrc_group(kSimSsrcGroupSemantics);
   if (sim_group == NULL) {
-    primary_ssrcs->push_back(first_ssrc());
+    ssrcs->push_back(first_ssrc());
   } else {
-    primary_ssrcs->insert(primary_ssrcs->end(), sim_group->ssrcs.begin(),
-                          sim_group->ssrcs.end());
+    ssrcs->insert(ssrcs->end(), sim_group->ssrcs.begin(),
+                  sim_group->ssrcs.end());
   }
 }
 

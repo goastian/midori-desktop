@@ -140,8 +140,8 @@ using namespace js;
 /* static */ bool AsyncDisposableStackObject::disposed_impl(
     JSContext* cx, const JS::CallArgs& args) {
   // Step 1. Let disposableStack be the this value.
-  auto* disposableStack =
-      &args.thisv().toObject().as<AsyncDisposableStackObject>();
+  JS::Rooted<AsyncDisposableStackObject*> disposableStack(
+      cx, &args.thisv().toObject().as<AsyncDisposableStackObject>());
 
   // Step 2. Perform ? RequireInternalSlot(disposableStack,
   // [[DisposableState]]).

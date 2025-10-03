@@ -125,6 +125,7 @@ const extraBrowserTestPaths = [
   "browser/base/content/test/webrtc/",
   "browser/base/content/test/zoom/",
   "browser/components/customizableui/test/",
+  "browser/components/pocket/test/",
   "browser/components/preferences/tests/",
   "browser/components/safebrowsing/content/test/",
   "browser/components/sessionstore/test/",

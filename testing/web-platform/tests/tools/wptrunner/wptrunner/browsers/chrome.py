@@ -140,14 +140,13 @@ def executor_kwargs(logger, test_type, test_environment, run_info_data, subsuite
     # require local CDP access.
     chrome_options["args"].append("--remote-debugging-pipe")
 
-    # Classify `http-local`, `http-public` and https variants in the
+    # Classify `http-private`, `http-public` and https variants in the
     # appropriate IP address spaces.
     # For more details, see: https://github.com/web-platform-tests/rfcs/blob/master/rfcs/address_space_overrides.md
-    # and https://github.com/explainers-by-googlers/local-network-access
     address_space_overrides_ports = [
-        ("http-local", "local"),
+        ("http-private", "private"),
         ("http-public", "public"),
-        ("https-local", "local"),
+        ("https-private", "private"),
         ("https-public", "public"),
     ]
     address_space_overrides_arg = ",".join(

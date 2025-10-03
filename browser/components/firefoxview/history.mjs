@@ -121,7 +121,7 @@ class HistoryInView extends ViewPage {
     emptyState: "fxview-empty-state",
     lists: { all: "fxview-tab-list" },
     showAllHistoryBtn: ".show-all-history-button",
-    searchTextbox: "moz-input-search",
+    searchTextbox: "fxview-search-textbox",
     sortInputs: { all: "input[name=history-sort-option]" },
     panelList: "panel-list",
   };
@@ -155,7 +155,7 @@ class HistoryInView extends ViewPage {
   }
 
   deleteFromHistory(e) {
-    this.controller.deleteFromHistory().catch(console.error);
+    this.controller.deleteFromHistory();
     this.recordContextMenuTelemetry("delete-from-history", e);
   }
 
@@ -168,11 +168,6 @@ class HistoryInView extends ViewPage {
   }
 
   onSearchQuery(e) {
-    if (!this.recentBrowsing) {
-      Glean.firefoxviewNext.searchInitiatedSearch.record({
-        page: "history",
-      });
-    }
     this.controller.onSearchQuery(e);
     this.cumulativeSearches = this.controller.searchQuery
       ? this.cumulativeSearches + 1
@@ -419,11 +414,13 @@ class HistoryInView extends ViewPage {
         <h2 class="page-header" data-l10n-id="firefoxview-history-header"></h2>
         <div class="history-sort-options">
           <div class="history-sort-option">
-            <moz-input-search
+            <fxview-search-textbox
               data-l10n-id="firefoxview-search-text-box-history"
               data-l10n-attrs="placeholder"
-              @MozInputSearch:search=${this.onSearchQuery}
-            ></moz-input-search>
+              .size=${this.searchTextboxSize}
+              pageName=${this.recentBrowsing ? "recentbrowsing" : "history"}
+              @fxview-search-textbox-query=${this.onSearchQuery}
+            ></fxview-search-textbox>
           </div>
           <div class="history-sort-option">
             <input

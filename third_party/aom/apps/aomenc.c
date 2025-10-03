@@ -469,7 +469,6 @@ static const arg_def_t *const av1_key_val_args[] = {
   &g_av1_codec_arg_defs.dist_metric,
   &g_av1_codec_arg_defs.kf_max_pyr_height,
   &g_av1_codec_arg_defs.auto_tiles,
-  &g_av1_codec_arg_defs.screen_detection_mode,
   NULL,
 };
 
@@ -815,7 +814,7 @@ static struct stream_state *new_stream(struct AvxEncoderConfig *global,
   }
 
   if (prev) {
-    *stream = *prev;
+    memcpy(stream, prev, sizeof(*stream));
     stream->index++;
     prev->next = stream;
   } else {
@@ -850,7 +849,8 @@ static struct stream_state *new_stream(struct AvxEncoderConfig *global,
 
     /* Allows removal of the application version from the EBML tags */
     stream->webm_ctx.debug = global->debug;
-    stream->config.cfg.encoder_cfg = global->encoder_config;
+    memcpy(&stream->config.cfg.encoder_cfg, &global->encoder_config,
+           sizeof(stream->config.cfg.encoder_cfg));
   }
 
   /* Output files must be specified for each stream */

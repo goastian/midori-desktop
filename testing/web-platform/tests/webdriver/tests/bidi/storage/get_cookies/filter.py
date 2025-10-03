@@ -25,13 +25,13 @@ async def test_filter(
     value_1 = "bar"
 
     cookie1_name = "baz"
-    await add_cookie(new_tab["context"], cookie1_name, value_1, secure=True)
+    await add_cookie(new_tab["context"], cookie1_name, value_1)
 
     cookie2_name = "foo"
-    await add_cookie(new_tab["context"], cookie2_name, value_1, secure=True)
+    await add_cookie(new_tab["context"], cookie2_name, value_1)
 
     cookie3_name = "foo_3"
-    await add_cookie(new_tab["context"], cookie3_name, "bar_3", secure=True)
+    await add_cookie(new_tab["context"], cookie3_name, "bar_3")
 
     cookies = await bidi_session.storage.get_cookies(
         filter=filter,
@@ -48,7 +48,7 @@ async def test_filter(
             "name": cookie1_name,
             "path": "/webdriver/tests/support",
             "sameSite": "none",
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": value_1},
         },
@@ -61,7 +61,7 @@ async def test_filter(
             "name": cookie2_name,
             "path": "/webdriver/tests/support",
             "sameSite": "none",
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": value_1},
         },
@@ -87,15 +87,15 @@ async def test_filter_domain(
 
     cookie1_name = "bar"
     cookie1_value = "foo"
-    await add_cookie(top_context["context"], cookie1_name, cookie1_value, secure=True)
+    await add_cookie(top_context["context"], cookie1_name, cookie1_value)
 
     cookie2_name = "foo"
     cookie2_value = "bar"
-    await add_cookie(top_context["context"], cookie2_name, cookie2_value, secure=True)
+    await add_cookie(top_context["context"], cookie2_name, cookie2_value)
 
     cookie3_name = "foo_2"
     cookie3_value = "bar_2"
-    await add_cookie(new_tab["context"], cookie3_name, cookie3_value, secure=True)
+    await add_cookie(new_tab["context"], cookie3_name, cookie3_value)
     domain = domain_value()
 
     cookies = await bidi_session.storage.get_cookies(
@@ -113,7 +113,7 @@ async def test_filter_domain(
             "name": cookie1_name,
             "path": "/webdriver/tests/support",
             "sameSite": "none",
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": cookie1_value},
         },
@@ -126,7 +126,7 @@ async def test_filter_domain(
             "name": cookie2_name,
             "path": "/webdriver/tests/support",
             "sameSite": "none",
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": cookie2_value},
         },
@@ -165,7 +165,6 @@ async def test_filter_expiry(
         name=cookie1_name,
         value=cookie1_value,
         expiry=cookie1_date_string,
-        secure=True
     )
 
     cookie2_name = "foo"
@@ -175,7 +174,6 @@ async def test_filter_expiry(
         name=cookie2_name,
         value=cookie2_value,
         expiry=cookie1_date_string,
-        secure=True,
     )
 
     cookie3_name = "foo_3"
@@ -186,7 +184,7 @@ async def test_filter_expiry(
         cookie2_date_string = format_expiry_string(cookie2_expiry_date)
 
     await add_cookie(
-        new_tab["context"], cookie3_name, "bar_3", expiry=cookie2_date_string, secure=True
+        new_tab["context"], cookie3_name, "bar_3", expiry=cookie2_date_string
     )
 
     cookies = await bidi_session.storage.get_cookies(
@@ -205,7 +203,7 @@ async def test_filter_expiry(
             "name": cookie1_name,
             "path": "/webdriver/tests/support",
             "sameSite": "none",
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": cookie1_value},
         },
@@ -219,7 +217,7 @@ async def test_filter_expiry(
             "name": cookie2_name,
             "path": "/webdriver/tests/support",
             "sameSite": "none",
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": cookie2_value},
         },
@@ -234,10 +232,10 @@ async def test_filter_name(bidi_session, new_tab, test_page, domain_value, add_c
 
     cookie1_name = "foo"
     cookie1_value = "bar"
-    await add_cookie(new_tab["context"], cookie1_name, cookie1_value, secure=True)
+    await add_cookie(new_tab["context"], cookie1_name, cookie1_value)
 
     cookie2_name = "foo_2"
-    await add_cookie(new_tab["context"], cookie2_name, "bar_2", secure=True)
+    await add_cookie(new_tab["context"], cookie2_name, "bar_2")
 
     cookies = await bidi_session.storage.get_cookies(
         filter={"name": "foo"},
@@ -252,7 +250,7 @@ async def test_filter_name(bidi_session, new_tab, test_page, domain_value, add_c
                     "name": cookie1_name,
                     "path": "/webdriver/tests/support",
                     "sameSite": "none",
-                    "secure": True,
+                    "secure": False,
                     "size": 6,
                     "value": {"type": "string", "value": cookie1_value},
                 }
@@ -271,9 +269,6 @@ async def test_filter_name(bidi_session, new_tab, test_page, domain_value, add_c
         ("strict", "none"),
         ("lax", "strict"),
         ("strict", "lax"),
-        ("none", "default"),
-        ("default", "lax"),
-        ("default", "strict"),
     ],
 )
 async def test_filter_same_site(
@@ -290,7 +285,6 @@ async def test_filter_same_site(
         cookie1_name,
         cookie1_value,
         same_site=same_site_1,
-        secure=True
     )
 
     cookie2_name = "foo"
@@ -300,11 +294,10 @@ async def test_filter_same_site(
         cookie2_name,
         cookie2_value,
         same_site=same_site_1,
-        secure=True
     )
 
     cookie3_name = "foo_3"
-    await add_cookie(new_tab["context"], cookie3_name, "bar_3", same_site=same_site_2, secure=True)
+    await add_cookie(new_tab["context"], cookie3_name, "bar_3", same_site=same_site_2)
 
     cookies = await bidi_session.storage.get_cookies(
         filter=CookieFilter(same_site=same_site_1),
@@ -321,7 +314,7 @@ async def test_filter_same_site(
             "name": cookie1_name,
             "path": "/webdriver/tests/support",
             "sameSite": same_site_1,
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": cookie1_value},
         },
@@ -334,7 +327,7 @@ async def test_filter_same_site(
             "name": cookie2_name,
             "path": "/webdriver/tests/support",
             "sameSite": same_site_1,
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": cookie2_value},
         },
@@ -359,7 +352,6 @@ async def test_filter_secure(
         new_tab["context"],
         cookie1_name,
         cookie1_value,
-        same_site="strict",
         secure=secure_1,
     )
 
@@ -369,12 +361,11 @@ async def test_filter_secure(
         new_tab["context"],
         cookie2_name,
         cookie2_value,
-        same_site="strict",
         secure=secure_1,
     )
 
     cookie3_name = "foo_3"
-    await add_cookie(new_tab["context"], cookie3_name, "bar_3", same_site="strict", secure=secure_2)
+    await add_cookie(new_tab["context"], cookie3_name, "bar_3", secure=secure_2)
 
     cookies = await bidi_session.storage.get_cookies(
         filter=CookieFilter(secure=secure_1),
@@ -390,7 +381,7 @@ async def test_filter_secure(
             "httpOnly": False,
             "name": cookie1_name,
             "path": "/webdriver/tests/support",
-            "sameSite": "strict",
+            "sameSite": "none",
             "secure": secure_1,
             "size": 6,
             "value": {"type": "string", "value": cookie1_value},
@@ -403,7 +394,7 @@ async def test_filter_secure(
             "httpOnly": False,
             "name": cookie2_name,
             "path": "/webdriver/tests/support",
-            "sameSite": "strict",
+            "sameSite": "none",
             "secure": secure_1,
             "size": 6,
             "value": {"type": "string", "value": cookie2_value},
@@ -440,7 +431,6 @@ async def test_filter_path(
         cookie1_name,
         cookie1_value,
         path=path_1,
-        secure=True
     )
 
     cookie2_name = "foo"
@@ -450,11 +440,10 @@ async def test_filter_path(
         cookie2_name,
         cookie2_value,
         path=path_1,
-        secure=True
     )
 
     cookie3_name = "foo_3"
-    await add_cookie(new_tab["context"], cookie3_name, "bar_3", path=path_2, secure=True)
+    await add_cookie(new_tab["context"], cookie3_name, "bar_3", path=path_2)
 
     cookies = await bidi_session.storage.get_cookies(
         filter=CookieFilter(path=path_1),
@@ -470,7 +459,7 @@ async def test_filter_path(
             "name": cookie1_name,
             "path": path_1,
             "sameSite": "none",
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": cookie1_value},
         },
@@ -483,7 +472,7 @@ async def test_filter_path(
             "name": cookie2_name,
             "path": path_1,
             "sameSite": "none",
-            "secure": True,
+            "secure": False,
             "size": 6,
             "value": {"type": "string", "value": cookie2_value},
         },

@@ -10,18 +10,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
 });
 
-/**
- * @import {RemoteSettingsClient} from "resource://services-settings/RemoteSettingsClient.sys.mjs"
- */
-
-/**
- * @typedef {object} PersistedTermsProviderInfo
- * @property {string} providerId
- * @property {RegExp} [searchPageRegexp]
- * @property {{key: string, values: string[], canBeMissing: boolean}[]} includeParams
- * @property {{key: string, values: string[]}[]} excludeParams
- */
-
 ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   UrlbarUtils.getLogger({ prefix: "UrlbarSearchTermsPersistence" })
 );
@@ -42,16 +30,10 @@ class _UrlbarSearchTermsPersistence {
   // The original provider information, mainly used for tests.
   #originalProviderInfo = [];
 
-  /**
-   * @type {PersistedTermsProviderInfo[]}
-   *  The current search provider info.
-   */
+  // The current search provider info.
   #searchProviderInfo = [];
 
-  /**
-   * @type {RemoteSettingsClient}
-   * An instance of remote settings that is used to access the provider info.
-   */
+  // An instance of remote settings that is used to access the provider info.
   #urlbarSearchTermsPersistenceSettings;
 
   // Callback used when syncing Urlbar Search Terms Persistence config settings.
@@ -242,17 +224,21 @@ class _UrlbarSearchTermsPersistence {
       return false;
     }
 
-    let origin;
+    let origin, pathname;
     try {
-      origin = URL.fromURI(uri)?.origin;
+      let url = URL.fromURI(uri);
+      origin = url.origin;
+      pathname = url.pathname;
     } catch (ex) {
       return false;
     }
 
     // Bug 1972464: Prevent search terms from persisting across different origin
-    // due to a possible race condition. This check prevents cross-origin
-    // persistence until the persistence logic is refactored.
-    if (origin !== state.persist.origin) {
+    // or pathnames. This should be refactored later to be simplified.
+    if (
+      origin !== state.persist.origin ||
+      pathname !== state.persist.pathname
+    ) {
       return false;
     }
 
@@ -265,12 +251,17 @@ class _UrlbarSearchTermsPersistence {
       // Whether the engine that loaded the URI is the default search engine.
       isDefaultEngine: null,
 
-      // Temporary until we resolve Bug 1972464: Cache origin for validation
-      // checks. This should be removed once the architecture is refactored.
+      // Temporary until we resolve Bug 1972464 - refactor the architecture.
       origin: null,
 
       // The name of the engine that was used to load the URI.
       originalEngineName: null,
+
+      // Temporary until we resolve Bug 1972464 - refactor the architecture.
+      originalURI: null,
+
+      // Temporary until we resolve Bug 1972464 - refactor the architecture.
+      path: null,
 
       // The search provider associated with the URI. If one exists, it means
       // we have custom rules for this search provider to determine whether or
@@ -284,21 +275,25 @@ class _UrlbarSearchTermsPersistence {
       shouldPersist: null,
     };
 
-    let origin;
+    let origin, pathname;
     try {
-      origin = URL.fromURI(uri)?.origin;
+      let url = URL.fromURI(uri);
+      origin = url.origin;
+      pathname = url.pathname;
     } catch (ex) {
       return;
     }
 
     let searchTerms = this.getSearchTerm(uri);
     // Avoid setting state if either are missing.
-    if (!searchTerms || !origin) {
+    if (!searchTerms || !origin || !pathname) {
       return;
     }
 
     state.persist.origin = origin;
     state.persist.searchTerms = searchTerms;
+    state.persist.pathname = pathname;
+    state.persist.originalURI = uri;
 
     let provider = this.#getProviderInfoForURL(uri?.spec);
     // If we have specific Remote Settings defined providers for the URL,
@@ -371,11 +366,6 @@ class _UrlbarSearchTermsPersistence {
     Services.obs.notifyObservers(null, "urlbar-persisted-search-terms-synced");
   }
 
-  /**
-   * Gets the search mode for a URL, if it matches an engine.
-   *
-   * @param {string} url
-   */
   #searchModeForUrl(url) {
     // If there's no default engine, no engines are available.
     if (!Services.search.defaultEngine) {
@@ -412,10 +402,9 @@ class _UrlbarSearchTermsPersistence {
   /**
    * Searches for provider information for a given url.
    *
-   * @param {string} url
-   *   The url to match for a provider.
-   * @returns {PersistedTermsProviderInfo|null}
-   *   Returns the provider information.
+   * @param {string} url The url to match for a provider.
+   * @returns {Array | null} Returns an array of provider name and the provider
+   *   information.
    */
   #getProviderInfoForURL(url) {
     return this.#searchProviderInfo.find(info =>
@@ -429,10 +418,11 @@ class _UrlbarSearchTermsPersistence {
    *
    * @param {nsIURI} currentURI
    *   The current URI
-   * @param {PersistedTermsProviderInfo} provider
+   * @param {Array} provider
    *   An array of provider information
-   * @returns {boolean}
-   *   Returns true if the parameteres match, null otherwise.
+   * @returns {string | null} Returns null if there is no provider match, an
+   *   empty string if search terms should not be persisted, or the value of the
+   *   first matched query parameter to be persisted.
    */
   isDefaultPage(currentURI, provider) {
     let { searchParams } = URL.fromURI(currentURI);

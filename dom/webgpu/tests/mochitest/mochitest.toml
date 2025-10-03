@@ -6,17 +6,14 @@ subsuite = "webgpu"
 #
 # This condition should be the exact complement of the `run-if`
 # condition in `mochitest-disabled.html`.
-run-if = [
-  "nightly_build",
-  "os == 'win'",
-]
+run-if = ["nightly_build || (os == 'win' && early_beta_or_earlier)"]
 
 # `test-verify` jobs don't guarantee a GPU, so skip them.
 skip-if = ["verify"]
 
 prefs = [
   "dom.webgpu.enabled=true",
-  "dom.webgpu.service-workers.enabled=true",
+  "dom.webgpu.workers.enabled=true",
 ]
 support-files = [
   "worker_wrapper.js",
@@ -82,5 +79,3 @@ scheme = "http"
 ["test_submit_render_empty.worker.html"]
 
 ["test_adapter_enabled.html"]
-
-["test_submit_render_multiple.html"]

@@ -37,7 +37,6 @@
 #include "imgLoader.h"
 #include "imgRequestProxy.h"
 #include "js/Value.h"
-#include "js/TelemetryTimers.h"
 #include "jsapi.h"
 #include "mozAutoDocUpdate.h"
 #include "mozIDOMWindow.h"
@@ -268,7 +267,6 @@
 #include "mozilla/dom/XPathExpression.h"
 #include "mozilla/dom/nsCSPContext.h"
 #include "mozilla/dom/nsCSPUtils.h"
-#include "mozilla/dom/IntegrityPolicy.h"
 #include "mozilla/extensions/WebExtensionPolicy.h"
 #include "mozilla/fallible.h"
 #include "mozilla/gfx/BaseCoord.h"
@@ -343,7 +341,6 @@
 #include "nsICSSLoaderObserver.h"
 #include "nsICategoryManager.h"
 #include "nsICertOverrideService.h"
-#include "nsIClassifiedChannel.h"
 #include "nsIContent.h"
 #include "nsIContentInlines.h"
 #include "nsIContentPolicy.h"
@@ -1508,7 +1505,6 @@ Document::Document(const char* aContentType)
       mThrowOnDynamicMarkupInsertionCounter(0),
       mIgnoreOpensDuringUnloadCounter(0),
       mSavedResolution(1.0f),
-      mClassificationFlags({0, 0}),
       mGeneration(0),
       mCachedTabSizeGeneration(0),
       mNextFormNumber(0),
@@ -2045,6 +2041,10 @@ void Document::LoadEventFired() {
   // twice.
   glean::perf::PageLoadExtra pageLoadEventData;
 
+  // Accumulate timing data located in each document's realm and report to
+  // telemetry.
+  AccumulateJSTelemetry(pageLoadEventData);
+
   // Collect page load timings
   AccumulatePageLoadTelemetry(pageLoadEventData);
 
@@ -2133,24 +2133,6 @@ void Document::RecordPageLoadEventTelemetry(
   }
 
   aEventTelemetryData.loadType = mozilla::Some(loadTypeStr);
-
-  // Collect any JS timers that were measured during pageload.
-  if (GetScopeObject() && GetScopeObject()->GetGlobalJSObject()) {
-    AutoJSContext cx;
-    JSObject* globalObject = GetScopeObject()->GetGlobalJSObject();
-    JSAutoRealm ar(cx, globalObject);
-    JS::JSTimers timers = JS::GetJSTimers(cx);
-
-    if (!timers.executionTime.IsZero()) {
-      aEventTelemetryData.jsExecTime = mozilla::Some(
-          static_cast<uint32_t>(timers.executionTime.ToMilliseconds()));
-    }
-
-    if (!timers.delazificationTime.IsZero()) {
-      aEventTelemetryData.delazifyTime = mozilla::Some(
-          static_cast<uint32_t>(timers.delazificationTime.ToMilliseconds()));
-    }
-  }
 
   // Sending a glean ping must be done on the parent process.
   if (ContentChild* cc = ContentChild::GetSingleton()) {
@@ -2420,6 +2402,60 @@ void Document::AccumulatePageLoadTelemetry(
 #endif
 
   aEventTelemetryDataOut.features = mozilla::Some(mPageloadEventFeatures);
+}
+
+void Document::AccumulateJSTelemetry(
+    glean::perf::PageLoadExtra& aEventTelemetryDataOut) {
+  if (!IsTopLevelContentDocument() || !ShouldIncludeInTelemetry()) {
+    return;
+  }
+
+  if (!GetScopeObject() || !GetScopeObject()->GetGlobalJSObject()) {
+    return;
+  }
+
+  AutoJSContext cx;
+  JSObject* globalObject = GetScopeObject()->GetGlobalJSObject();
+  JSAutoRealm ar(cx, globalObject);
+  JS::JSTimers timers = JS::GetJSTimers(cx);
+
+  if (!timers.executionTime.IsZero()) {
+    glean::javascript_pageload::execution_time.AccumulateRawDuration(
+        timers.executionTime);
+    aEventTelemetryDataOut.jsExecTime = mozilla::Some(
+        static_cast<uint32_t>(timers.executionTime.ToMilliseconds()));
+  }
+
+  if (!timers.delazificationTime.IsZero()) {
+    glean::javascript_pageload::delazification_time.AccumulateRawDuration(
+        timers.delazificationTime);
+  }
+
+  if (!timers.xdrEncodingTime.IsZero()) {
+    glean::javascript_pageload::xdr_encode_time.AccumulateRawDuration(
+        timers.xdrEncodingTime);
+  }
+
+  if (!timers.baselineCompileTime.IsZero()) {
+    glean::javascript_pageload::baseline_compile_time.AccumulateRawDuration(
+        timers.baselineCompileTime);
+  }
+
+  if (!timers.gcTime.IsZero()) {
+    glean::javascript_pageload::gc_time.AccumulateRawDuration(timers.gcTime);
+  }
+
+  if (!timers.protectTime.IsZero()) {
+    glean::javascript_pageload::protect_time.AccumulateRawDuration(
+        timers.protectTime);
+    // GLAM EXPERIMENT
+    // This metric is temporary, disabled by default, and will be enabled only
+    // for the purpose of experimenting with client-side sampling of data for
+    // GLAM use. See Bug 1947604 for more information.
+    glean::glam_experiment::protect_time.AccumulateRawDuration(
+        timers.protectTime);
+    // END GLAM EXPERIMENT
+  }
 }
 
 Document::~Document() {
@@ -3632,15 +3668,6 @@ nsresult Document::StartDocumentLoad(const char* aCommand, nsIChannel* aChannel,
     WarnIfSandboxIneffective(docShell, mSandboxFlags, GetChannel());
   }
 
-  nsCOMPtr<nsIClassifiedChannel> classifiedChannel =
-      do_QueryInterface(aChannel);
-
-  if (classifiedChannel) {
-    mClassificationFlags = {
-        classifiedChannel->GetFirstPartyClassificationFlags(),
-        classifiedChannel->GetThirdPartyClassificationFlags()};
-  }
-
   // Set the opener policy for the top level content document.
   nsCOMPtr<nsIHttpChannelInternal> httpChan = do_QueryInterface(mChannel);
   nsILoadInfo::CrossOriginOpenerPolicy policy =
@@ -3689,9 +3716,6 @@ nsresult Document::StartDocumentLoad(const char* aCommand, nsIChannel* aChannel,
   }
 
   rv = InitCSP(aChannel);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = InitIntegrityPolicy(aChannel);
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = InitDocPolicy(aChannel);
@@ -3990,33 +4014,6 @@ nsresult Document::InitCSP(nsIChannel* aChannel) {
   return NS_OK;
 }
 
-nsresult Document::InitIntegrityPolicy(nsIChannel* aChannel) {
-  MOZ_ASSERT(!mScriptGlobalObject,
-             "Integrity Policy must be initialized before mScriptGlobalObject "
-             "is set!");
-
-  MOZ_ASSERT(!mIntegrityPolicy,
-             "where did mIntegrityPolicy get set if not here?");
-
-  nsAutoCString headerValue, headerROValue;
-  nsCOMPtr<nsIHttpChannel> httpChannel;
-  nsresult rv = GetHttpChannelHelper(aChannel, getter_AddRefs(httpChannel));
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  if (httpChannel) {
-    Unused << httpChannel->GetResponseHeader("integrity-policy"_ns,
-                                             headerValue);
-
-    Unused << httpChannel->GetResponseHeader("integrity-policy-report-only"_ns,
-                                             headerROValue);
-  }
-
-  return IntegrityPolicy::ParseHeaders(headerValue, headerROValue,
-                                       getter_AddRefs(mIntegrityPolicy));
-}
-
 static FeaturePolicy* GetFeaturePolicyFromElement(Element* aElement) {
   if (auto* iframe = HTMLIFrameElement::FromNodeOrNull(aElement)) {
     return iframe->FeaturePolicy();
@@ -4275,6 +4272,13 @@ void Document::SetDocumentURI(nsIURI* aURI) {
     RefreshLinkHrefs();
   }
 
+  // Recalculate our base domain
+  mBaseDomain.Truncate();
+  ThirdPartyUtil* thirdPartyUtil = ThirdPartyUtil::GetInstance();
+  if (thirdPartyUtil) {
+    Unused << thirdPartyUtil->GetBaseDomain(mDocumentURI, mBaseDomain);
+  }
+
   // Tell our WindowGlobalParent that the document's URI has been changed.
   if (WindowGlobalChild* wgc = GetWindowGlobalChild()) {
     wgc->SetDocumentURI(mDocumentURI);
@@ -4499,10 +4503,9 @@ nsresult Document::Dispatch(already_AddRefed<nsIRunnable>&& aRunnable) const {
 }
 
 void Document::NoteScriptTrackingStatus(const nsACString& aURL,
-                                        net::ClassificationFlags& aFlags) {
-  // If the script is not tracking, we don't need to do anything.
-  if (aFlags.firstPartyFlags || aFlags.thirdPartyFlags) {
-    mTrackingScripts.InsertOrUpdate(aURL, aFlags);
+                                        bool aIsTracking) {
+  if (aIsTracking) {
+    mTrackingScripts.Insert(aURL);
   }
   // Ideally, whether a given script is tracking or not should be consistent,
   // but there is a race so that it is not, when loading real sites in debug
@@ -4515,27 +4518,7 @@ bool Document::IsScriptTracking(JSContext* aCx) const {
   if (!JS::DescribeScriptedCaller(&filename, aCx)) {
     return false;
   }
-
-  auto entry = mTrackingScripts.Lookup(nsDependentCString(filename.get()));
-  if (!entry) {
-    return false;
-  }
-
-  return net::UrlClassifierCommon::IsTrackingClassificationFlag(
-      entry.Data().thirdPartyFlags, IsInPrivateBrowsing());
-}
-
-net::ClassificationFlags Document::GetScriptTrackingFlags() const {
-  if (auto loc = JSCallingLocation::Get()) {
-    if (auto entry = mTrackingScripts.Lookup(loc.FileName())) {
-      return entry.Data();
-    }
-  }
-
-  // If the currently executing script is not a tracker, return the
-  // classification flags of the document.
-
-  return mClassificationFlags;
+  return mTrackingScripts.Contains(nsDependentCString(filename.get()));
 }
 
 void Document::GetContentType(nsAString& aContentType) {
@@ -7517,8 +7500,7 @@ bool Document::ShouldThrottleFrameRequests() const {
   // it if needed by adding an intersection margin or something of that sort.
   auto margin = DOMIntersectionObserver::LazyLoadingRootMargin();
   const IntersectionInput input = DOMIntersectionObserver::ComputeInput(
-      *el->OwnerDoc(), /* aRoot = */ nullptr, &margin,
-      /* aScrollMargin = */ nullptr);
+      *el->OwnerDoc(), /* aRoot = */ nullptr, &margin);
   const IntersectionOutput output = DOMIntersectionObserver::Intersect(
       input, *el, DOMIntersectionObserver::BoxToUse::Content);
   return !output.Intersects();
@@ -8754,7 +8736,7 @@ void Document::CreateCustomContentContainerIfNeeded() {
     return;
   }
   RefPtr root = GetRootElement();
-  if (NS_WARN_IF(!root)) {
+  if (!root) {
     // We'll deal with it when we get a root element, if needed.
     return;
   }
@@ -12445,11 +12427,7 @@ void Document::OnPageHide(bool aPersisted, EventTarget* aDispatchStartTarget,
     mAnimationController->OnPageHide();
   }
 
-  if (inFrameLoaderSwap) {
-    if (RefPtr transition = mActiveViewTransition) {
-      transition->SkipTransition(SkipTransitionReason::PageSwap);
-    }
-  } else {
+  if (!inFrameLoaderSwap) {
     if (aPersisted) {
       // We do not stop the animations (bug 1024343) when the page is refreshing
       // while being dragged out.
@@ -17372,7 +17350,7 @@ static void UpdateEffectsOnBrowsingContext(BrowsingContext* aBc,
       //    this code very often anyways.
       return EffectsInfo::FullyHidden();
     }
-    if (MOZ_UNLIKELY(!subDocFrame)) {
+    if (MOZ_UNLIKELY(NS_WARN_IF(!subDocFrame))) {
       // <frame> not inside a <frameset> might not create a subdoc frame,
       // for example.
       return EffectsInfo::FullyHidden();
@@ -17432,7 +17410,7 @@ static void UpdateEffectsOnBrowsingContext(BrowsingContext* aBc,
 void Document::UpdateRemoteFrameEffects(bool aIncludeInactive) {
   auto margin = DOMIntersectionObserver::LazyLoadingRootMargin();
   const IntersectionInput input = DOMIntersectionObserver::ComputeInput(
-      *this, /* aRoot = */ nullptr, &margin, /* aScrollMargin = */ nullptr);
+      *this, /* aRoot = */ nullptr, &margin);
   if (auto* wc = GetWindowContext()) {
     for (const RefPtr<BrowsingContext>& child : wc->Children()) {
       UpdateEffectsOnBrowsingContext(child, input, aIncludeInactive);
@@ -18491,12 +18469,6 @@ already_AddRefed<ViewTransition> Document::StartViewTransition(
   }
   // Step 6: Set document's active view transition to transition.
   mActiveViewTransition = transition;
-
-  // Enable :active-view-transition to allow associated styles to
-  // be applied during the view transition.
-  if (auto* root = this->GetRootElement()) {
-    root->AddStates(ElementState::ACTIVE_VIEW_TRANSITION);
-  }
 
   EnsureViewTransitionOperationsHappen();
 
@@ -20066,21 +20038,8 @@ void Document::SetIsInitialDocument(bool aIsInitialDocument) {
 // static
 void Document::AddToplevelLoadingDocument(Document* aDoc) {
   MOZ_ASSERT(aDoc && aDoc->IsTopLevelContentDocument());
-
-  if (!XRE_IsContentProcess()) {
-    return;
-  }
-
-  // Start the JS execution timer.
-  {
-    AutoJSContext cx;
-    if (static_cast<JSContext*>(cx)) {
-      JS::SetMeasuringExecutionTimeEnabled(cx, true);
-    }
-  }
-
   // Currently we're interested in foreground documents only, so bail out early.
-  if (aDoc->IsInBackgroundWindow()) {
+  if (aDoc->IsInBackgroundWindow() || !XRE_IsContentProcess()) {
     return;
   }
 
@@ -20111,14 +20070,6 @@ void Document::RemoveToplevelLoadingDocument(Document* aDoc) {
       if (idleScheduler) {
         idleScheduler->SendPrioritizedOperationDone();
       }
-    }
-  }
-
-  // Stop the JS execution timer once the page is loaded.
-  {
-    AutoJSContext cx;
-    if (static_cast<JSContext*>(cx)) {
-      JS::SetMeasuringExecutionTimeEnabled(cx, false);
     }
   }
 }

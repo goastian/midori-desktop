@@ -483,6 +483,3 @@ newtab-section-cancel-button = Ne tagad
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

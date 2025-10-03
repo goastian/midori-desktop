@@ -19,12 +19,6 @@ add_common_setup();
 
 const VIDEO_URL = `${BASE_URL}/videotest.mp4`;
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 add_task(async function testWebcompatComFallbacks() {
   ensureReportBrokenSitePreffedOff();
 

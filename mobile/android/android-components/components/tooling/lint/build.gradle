@@ -16,10 +16,7 @@ dependencies {
 
   testImplementation libs.tools.lint
   testImplementation libs.tools.linttests
-  testImplementation platform(libs.junit.bom)
-  testImplementation libs.junit4
-  testRuntimeOnly libs.junit.vintage
-  testRuntimeOnly libs.junit.platform.launcher
+  testImplementation libs.junit.vintage
   testImplementation libs.testing.mockito
 }
 

@@ -131,7 +131,7 @@ TEST(CongestionControlFeedbackTest, CreateReturnsTrueForBasicPacket) {
 
   rtc::Buffer buf(fb.BlockLength());
   size_t position = 0;
-  FunctionView<void(rtc::ArrayView<const uint8_t> packet)> callback;
+  rtc::FunctionView<void(rtc::ArrayView<const uint8_t> packet)> callback;
   EXPECT_TRUE(fb.Create(buf.data(), &position, buf.capacity(), callback));
 }
 

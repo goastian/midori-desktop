@@ -563,11 +563,11 @@ void RunTestsContent(SandboxTestingChild* child) {
     return ioctl(0, _IOW('b', 0, uint64_t), nullptr);
   });
 
-    child->ErrnoValueTest("send_with_flag"_ns, ENOSYS, [] {
+  child->ErrnoValueTest("send_with_flag"_ns, ENOSYS, [] {
     char c = 0;
     return send(0, &c, 1, MSG_CONFIRM);
   });
-  
+
 #  endif  // XP_LINUX
 
 #  ifdef XP_MACOSX
@@ -728,7 +728,7 @@ void RunTestsSocket(SandboxTestingChild* child) {
     return 0;
   });
 
-    child->ErrnoValueTest("send_with_flag"_ns, ENOSYS, [] {
+  child->ErrnoValueTest("send_with_flag"_ns, ENOSYS, [] {
     char c = 0;
     return send(0, &c, 1, MSG_OOB);
   });

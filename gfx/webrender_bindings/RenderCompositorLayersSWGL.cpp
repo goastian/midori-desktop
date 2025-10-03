@@ -132,19 +132,10 @@ void RenderCompositorLayersSWGL::CompositorEndFrame() {
                             it->first.mY * surface->mTileSize.height);
       gfx::Rect drawRect = it->second->mValidRect + tileOffset;
 
-      RefPtr<EffectRoundedClip> clipEffect;
-
-      if (!frameSurface.mRoundedClipRadii.IsEmpty()) {
-        clipEffect = new EffectRoundedClip(frameSurface.mRoundedClipRect,
-                                           frameSurface.mRoundedClipRadii);
-      }
-
       RefPtr<TexturedEffect> texturedEffect =
           new EffectRGB(it->second->GetTextureSource(),
                         /* aPremultiplied */ true, frameSurface.mFilter);
-      // TODO(gw): Enable premul copy on tiles that aren't affected
-      //           by the rounded clip.
-      if (surface->mIsOpaque && !clipEffect) {
+      if (surface->mIsOpaque) {
         texturedEffect->mPremultipliedCopy = true;
       }
 
@@ -156,7 +147,6 @@ void RenderCompositorLayersSWGL::CompositorEndFrame() {
 
       EffectChain effect;
       effect.mPrimaryEffect = texturedEffect;
-      effect.mRoundedClipEffect = clipEffect;
       mCompositor->DrawQuad(drawRect, frameSurface.mClipRect, effect, 1.0,
                             frameSurface.mTransform, drawRect);
     }
@@ -328,15 +318,8 @@ void RenderCompositorLayersSWGL::AddSurface(
   gfx::IntRect clipRect(aClipRect.min.x, aClipRect.min.y, aClipRect.width(),
                         aClipRect.height());
 
-  gfx::Rect roundedClipRect(aRoundedClipRect.min.x, aRoundedClipRect.min.y,
-                            aRoundedClipRect.width(),
-                            aRoundedClipRect.height());
-  gfx::RectCornerRadii radii(aClipRadius.top_left, aClipRadius.top_right,
-                             aClipRadius.bottom_right, aClipRadius.bottom_left);
-
   mFrameSurfaces.AppendElement(FrameSurface{aId, transform, clipRect,
-                                            ToSamplingFilter(aImageRendering),
-                                            roundedClipRect, radii});
+                                            ToSamplingFilter(aImageRendering)});
 }
 
 void RenderCompositorLayersSWGL::MaybeRequestAllowFrameRecording(

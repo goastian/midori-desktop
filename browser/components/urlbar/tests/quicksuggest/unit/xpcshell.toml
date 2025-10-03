@@ -12,6 +12,8 @@ firefox-appdir = "browser"
 
 ["test_quicksuggest_dynamicSuggestions.js"]
 
+["test_quicksuggest_dynamicWikipedia.js"]
+
 ["test_quicksuggest_exposures.js"]
 
 ["test_quicksuggest_exposures_locales.js"]
@@ -48,8 +50,6 @@ skip-if = ["true"] # Bug 1880214
 ["test_quicksuggest_yelp_ml.js"]
 
 ["test_rust_ingest.js"]
-
-["test_suggestBackendMl.js"]
 
 ["test_weather.js"]
 

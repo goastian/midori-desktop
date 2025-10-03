@@ -222,6 +222,3 @@ newtab-error-fallback-refresh-link = Təkrar yoxlamaq üçün səhifəni yenilə
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

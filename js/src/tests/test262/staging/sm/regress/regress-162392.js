@@ -31,6 +31,9 @@ test();
 
 function test()
 {
+  printBugNumber(BUGNUMBER);
+  printStatus (summary);
+ 
   assert.sameValue(expect, actual, summary);
 }
 

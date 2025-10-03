@@ -26,9 +26,6 @@ const fxaDevices = [
 ];
 
 add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
   await promiseSyncReady();
   await Services.search.init();
   // gSync.init() is called in a requestIdleCallback. Force its initialization.
@@ -127,6 +124,7 @@ add_task(async function test_link_contextmenu() {
     "context-sep-open",
     "context-bookmarklink",
     "context-savelink",
+    "context-savelinktopocket",
     "context-copylink",
     ...(expectStripOnShareLink ? ["context-stripOnShareLink"] : []),
     "context-sendlinktodevice",

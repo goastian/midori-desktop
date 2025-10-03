@@ -78,7 +78,7 @@ class RadioSearchEngineListPreference @JvmOverloads constructor(
         )
 
         state.searchEngines.filter { engine ->
-            engine.type != SearchEngine.Type.APPLICATION
+            engine.type != SearchEngine.Type.APPLICATION && engine.isGeneral
         }.forEach { engine ->
             val searchEngineView = makeButtonFromSearchEngine(
                 engine = engine,
@@ -105,7 +105,12 @@ class RadioSearchEngineListPreference @JvmOverloads constructor(
 
         val binding = SearchEngineRadioButtonBinding.bind(wrapper)
 
-        wrapper.setOnClickListener { binding.radioButton.isChecked = true }
+        if (!engine.isGeneral) {
+            binding.radioButton.isEnabled = false
+            wrapper.isEnabled = false
+        } else {
+            wrapper.setOnClickListener { binding.radioButton.isChecked = true }
+        }
 
         binding.radioButton.tag = engine.id
         binding.radioButton.isChecked = isSelected

@@ -158,9 +158,7 @@ class CrashActivity : AppCompatActivity(), View.OnClickListener {
             }
 
             binding.crashList -> {
-                supportFragmentManager.beginTransaction()
-                    .add(binding.root.id, CrashListFragment())
-                    .commit()
+                startActivity(Intent(this, CrashListActivity::class.java))
             }
 
             else -> throw java.lang.RuntimeException("Unknown ID")

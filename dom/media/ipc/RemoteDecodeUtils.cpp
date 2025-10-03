@@ -14,103 +14,88 @@ SandboxingKind GetCurrentSandboxingKind() {
   return ipc::UtilityProcessChild::GetSingleton()->mSandbox;
 }
 
-SandboxingKind GetSandboxingKindFromLocation(RemoteMediaIn aLocation) {
+SandboxingKind GetSandboxingKindFromLocation(RemoteDecodeIn aLocation) {
   switch (aLocation) {
-    case RemoteMediaIn::UtilityProcess_Generic:
+    case RemoteDecodeIn::UtilityProcess_Generic:
       return SandboxingKind::GENERIC_UTILITY;
 #ifdef MOZ_APPLEMEDIA
-    case RemoteMediaIn::UtilityProcess_AppleMedia:
+    case RemoteDecodeIn::UtilityProcess_AppleMedia:
       return SandboxingKind::UTILITY_AUDIO_DECODING_APPLE_MEDIA;
       break;
 #endif
 #ifdef XP_WIN
-    case RemoteMediaIn::UtilityProcess_WMF:
+    case RemoteDecodeIn::UtilityProcess_WMF:
       return SandboxingKind::UTILITY_AUDIO_DECODING_WMF;
 #endif
 #ifdef MOZ_WMF_MEDIA_ENGINE
-    case RemoteMediaIn::UtilityProcess_MFMediaEngineCDM:
+    case RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM:
       return SandboxingKind::MF_MEDIA_ENGINE_CDM;
 #endif
     default:
-      MOZ_ASSERT_UNREACHABLE("Unsupported RemoteMediaIn");
+      MOZ_ASSERT_UNREACHABLE("Unsupported RemoteDecodeIn");
       return SandboxingKind::COUNT;
   }
 }
 
-RemoteMediaIn GetRemoteMediaInFromKind(SandboxingKind aKind) {
+RemoteDecodeIn GetRemoteDecodeInFromKind(SandboxingKind aKind) {
   switch (aKind) {
     case SandboxingKind::GENERIC_UTILITY:
-      return RemoteMediaIn::UtilityProcess_Generic;
+      return RemoteDecodeIn::UtilityProcess_Generic;
 #ifdef MOZ_APPLEMEDIA
     case SandboxingKind::UTILITY_AUDIO_DECODING_APPLE_MEDIA:
-      return RemoteMediaIn::UtilityProcess_AppleMedia;
+      return RemoteDecodeIn::UtilityProcess_AppleMedia;
 #endif
 #ifdef XP_WIN
     case SandboxingKind::UTILITY_AUDIO_DECODING_WMF:
-      return RemoteMediaIn::UtilityProcess_WMF;
+      return RemoteDecodeIn::UtilityProcess_WMF;
 #endif
 #ifdef MOZ_WMF_MEDIA_ENGINE
     case SandboxingKind::MF_MEDIA_ENGINE_CDM:
-      return RemoteMediaIn::UtilityProcess_MFMediaEngineCDM;
+      return RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM;
 #endif
     default:
       MOZ_ASSERT_UNREACHABLE("Unsupported SandboxingKind");
-      return RemoteMediaIn::Unspecified;
+      return RemoteDecodeIn::Unspecified;
   }
 }
 
-RemoteMediaIn GetRemoteMediaInFromVideoBridgeSource(
+RemoteDecodeIn GetRemoteDecodeInFromVideoBridgeSource(
     layers::VideoBridgeSource aSource) {
   switch (aSource) {
     case layers::VideoBridgeSource::RddProcess:
-      return RemoteMediaIn::RddProcess;
+      return RemoteDecodeIn::RddProcess;
     case layers::VideoBridgeSource::GpuProcess:
-      return RemoteMediaIn::GpuProcess;
+      return RemoteDecodeIn::GpuProcess;
     case layers::VideoBridgeSource::MFMediaEngineCDMProcess:
-      return RemoteMediaIn::UtilityProcess_MFMediaEngineCDM;
+      return RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM;
     default:
       MOZ_ASSERT_UNREACHABLE("Unsupported VideoBridgeSource");
-      return RemoteMediaIn::Unspecified;
+      return RemoteDecodeIn::Unspecified;
   }
 }
 
-layers::VideoBridgeSource GetVideoBridgeSourceFromRemoteMediaIn(
-    RemoteMediaIn aSource) {
-  switch (aSource) {
-    case RemoteMediaIn::RddProcess:
-      return layers::VideoBridgeSource::RddProcess;
-    case RemoteMediaIn::GpuProcess:
-      return layers::VideoBridgeSource::GpuProcess;
-    case RemoteMediaIn::UtilityProcess_MFMediaEngineCDM:
-      return layers::VideoBridgeSource::MFMediaEngineCDMProcess;
-    default:
-      MOZ_ASSERT_UNREACHABLE("Unsupported RemoteMediaIn");
-      return layers::VideoBridgeSource::_Count;
-  }
-}
-
-const char* RemoteMediaInToStr(RemoteMediaIn aLocation) {
+const char* RemoteDecodeInToStr(RemoteDecodeIn aLocation) {
   switch (aLocation) {
-    case RemoteMediaIn::RddProcess:
+    case RemoteDecodeIn::RddProcess:
       return "RDD";
-    case RemoteMediaIn::GpuProcess:
+    case RemoteDecodeIn::GpuProcess:
       return "GPU";
-    case RemoteMediaIn::UtilityProcess_Generic:
+    case RemoteDecodeIn::UtilityProcess_Generic:
       return "Utility Generic";
 #ifdef MOZ_APPLEMEDIA
-    case RemoteMediaIn::UtilityProcess_AppleMedia:
+    case RemoteDecodeIn::UtilityProcess_AppleMedia:
       return "Utility AppleMedia";
 #endif
 #ifdef XP_WIN
-    case RemoteMediaIn::UtilityProcess_WMF:
+    case RemoteDecodeIn::UtilityProcess_WMF:
       return "Utility WMF";
 #endif
 #ifdef MOZ_WMF_MEDIA_ENGINE
-    case RemoteMediaIn::UtilityProcess_MFMediaEngineCDM:
+    case RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM:
       return "Utility MF Media Engine CDM";
 #endif
     default:
-      MOZ_ASSERT_UNREACHABLE("Unsupported RemoteMediaIn");
+      MOZ_ASSERT_UNREACHABLE("Unsupported RemoteDecodeIn");
       return "Unknown";
   }
 }

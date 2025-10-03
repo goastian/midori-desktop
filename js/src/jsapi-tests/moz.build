@@ -17,6 +17,7 @@ UNIFIED_SOURCES += [
     "testArrayBufferOrViewAPI.cpp",
     "testArrayBufferView.cpp",
     "testArrayBufferWithUserOwnedContents.cpp",
+    "testAssemblerCodeGen.cpp",
     "testAtomicOperations.cpp",
     "testAtomizeUtf8NonAsciiLatin1CodePoint.cpp",
     "testAtomizeWithoutActiveZone.cpp",

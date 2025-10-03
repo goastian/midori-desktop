@@ -51,7 +51,6 @@ import mozilla.components.feature.customtabs.store.CustomTabsServiceStore
 import mozilla.components.feature.downloads.DateTimeProvider
 import mozilla.components.feature.downloads.DefaultDateTimeProvider
 import mozilla.components.feature.downloads.DefaultFileSizeFormatter
-import mozilla.components.feature.downloads.DownloadEstimator
 import mozilla.components.feature.downloads.DownloadMiddleware
 import mozilla.components.feature.downloads.DownloadsUseCases
 import mozilla.components.feature.downloads.FileSizeFormatter
@@ -244,8 +243,7 @@ open class DefaultComponents(private val applicationContext: Context) {
 
     val appLinksInterceptor by lazy {
         AppLinksInterceptor(
-            applicationContext,
-            interceptLinkClicks = true,
+            context = applicationContext,
             launchInApp = {
                 applicationContext.components.preferences.getBoolean(PREF_LAUNCH_EXTERNAL_APP, false)
             },
@@ -523,6 +521,4 @@ open class DefaultComponents(private val applicationContext: Context) {
     val fileSizeFormatter: FileSizeFormatter by lazy { DefaultFileSizeFormatter(applicationContext) }
 
     val dateTimeProvider: DateTimeProvider by lazy { DefaultDateTimeProvider() }
-
-    val downloadEstimator: DownloadEstimator by lazy { DownloadEstimator(dateTimeProvider = dateTimeProvider) }
 }

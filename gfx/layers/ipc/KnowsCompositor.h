@@ -112,11 +112,6 @@ class KnowsCompositor {
     return lock.ref().mTextureFactoryIdentifier.mCompositorUseDComp;
   }
 
-  bool GetUseLayerCompositor() const {
-    auto lock = mData.Lock();
-    return lock.ref().mTextureFactoryIdentifier.mUseLayerCompositor;
-  }
-
   bool GetUseCompositorWnd() const {
     auto lock = mData.Lock();
     return lock.ref().mTextureFactoryIdentifier.mUseCompositorWnd;

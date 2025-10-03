@@ -6,12 +6,6 @@
 
 loadScripts({ name: "role.js", dir: MOCHITESTS_DIR });
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 // test basic translation
 addAccessibleTask(
   `<p id="translate">hello world</p>`,

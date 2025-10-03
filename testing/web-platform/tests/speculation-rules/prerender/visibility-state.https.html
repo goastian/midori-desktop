@@ -14,13 +14,13 @@
 setup(() => assertSpeculationRulesIsSupported());
 
 promise_test(async t => {
-  const rcHelper = new PrerenderingRemoteContextHelper();
+  const rcHelper = new RemoteContextHelper();
   const referrerRC = await rcHelper.addWindow(undefined, { features: 'noopener' });
-  const prerenderedRC = await referrerRC.addPrerender();
+  const prerenderedRC = await addPrerenderRC(referrerRC);
 
   assert_equals(await prerenderedRC.executeScript(() => document.visibilityState), "hidden");
 
-  await referrerRC.navigateExpectingPrerenderingActivation(prerenderedRC);
+  await activatePrerenderRC(referrerRC, prerenderedRC);
 
   assert_equals(await prerenderedRC.executeScript(() => document.visibilityState), "visible");
 });

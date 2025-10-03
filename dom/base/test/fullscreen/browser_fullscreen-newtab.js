@@ -75,7 +75,6 @@ async function runTest() {
 
 add_task(async function () {
   await pushPrefs(
-    ["test.wait300msAfterTabSwitch", true],
     ["full-screen-api.transition-duration.enter", "0 0"],
     ["full-screen-api.transition-duration.leave", "0 0"]
   );

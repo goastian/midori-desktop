@@ -16,8 +16,8 @@ import {assert} from '../util/assert.js';
 
 import {BidiCdpSession} from './CDPSession.js';
 import type {
-  BidiEvents,
   Commands as BidiCommands,
+  BidiEvents,
   Connection,
 } from './core/Connection.js';
 
@@ -28,15 +28,15 @@ const debugProtocolReceive = debug('puppeteer:webDriverBiDi:RECV ◀');
  * @internal
  */
 export interface Commands extends BidiCommands {
-  'goog:cdp.sendCommand': {
+  'cdp.sendCommand': {
     params: Bidi.Cdp.SendCommandParameters;
     returnType: Bidi.Cdp.SendCommandResult;
   };
-  'goog:cdp.getSession': {
+  'cdp.getSession': {
     params: Bidi.Cdp.GetSessionParameters;
     returnType: Bidi.Cdp.GetSessionResult;
   };
-  'goog:cdp.resolveRealm': {
+  'cdp.resolveRealm': {
     params: Bidi.Cdp.ResolveRealmParameters;
     returnType: Bidi.Cdp.ResolveRealmResult;
   };
@@ -208,5 +208,5 @@ function createProtocolError(object: Bidi.ErrorResponse): string {
 }
 
 function isCdpEvent(event: Bidi.ChromiumBidi.Event): event is Bidi.Cdp.Event {
-  return event.method.startsWith('goog:cdp.');
+  return event.method.startsWith('cdp.');
 }

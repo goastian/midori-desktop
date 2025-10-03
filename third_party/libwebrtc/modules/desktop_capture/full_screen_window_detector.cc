@@ -33,7 +33,7 @@ DesktopCapturer::SourceId FullScreenWindowDetector::FindFullScreenWindow(
 
 void FullScreenWindowDetector::UpdateWindowListIfNeeded(
     DesktopCapturer::SourceId original_source_id,
-    FunctionView<bool(DesktopCapturer::SourceList*)> get_sources) {
+    rtc::FunctionView<bool(DesktopCapturer::SourceList*)> get_sources) {
   const bool skip_update = previous_source_id_ != original_source_id;
   previous_source_id_ = original_source_id;
 
@@ -54,13 +54,13 @@ void FullScreenWindowDetector::UpdateWindowListIfNeeded(
 
   constexpr int64_t kUpdateIntervalMs = 500;
 
-  if ((TimeMillis() - last_update_time_ms_) <= kUpdateIntervalMs) {
+  if ((rtc::TimeMillis() - last_update_time_ms_) <= kUpdateIntervalMs) {
     return;
   }
 
   DesktopCapturer::SourceList window_list;
   if (get_sources(&window_list)) {
-    last_update_time_ms_ = TimeMillis();
+    last_update_time_ms_ = rtc::TimeMillis();
     window_list_.swap(window_list);
   }
 }

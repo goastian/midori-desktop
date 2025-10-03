@@ -14,8 +14,15 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustSuggest.sys.mjs",
   ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
-  SharedRemoteSettingsService:
-    "resource://gre/modules/RustSharedRemoteSettingsService.sys.mjs",
+  Region: "resource://gre/modules/Region.sys.mjs",
+  RemoteSettingsConfig2:
+    "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRemoteSettings.sys.mjs",
+  RemoteSettingsContext:
+    "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRemoteSettings.sys.mjs",
+  RemoteSettingsServer:
+    "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRemoteSettings.sys.mjs",
+  RemoteSettingsService:
+    "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRemoteSettings.sys.mjs",
   SuggestIngestionConstraints:
     "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustSuggest.sys.mjs",
   SuggestStoreBuilder:
@@ -101,16 +108,18 @@ export class SuggestBackendRust extends SuggestBackend {
     // which is a "cannot-be-a-base" URL. The error is harmless, but it can be
     // logged many times during a test suite.
     //
-    // To prevent Suggest from using the dummy URL, we skip setting the
-    // remoteSettingsService, which prevents the Suggest store from being
+    // To prevent Suggest from using the dummy URL, we skip setting the initial
+    // RS config here during tests, which prevents the Suggest store from being
     // created, effectively disabling Rust suggestions. Suggest tests manually
     // set the RS config when they set up the mock RS server, so they'll work
     // fine. Alternatively the test harnesses could disable Suggest by default
     // just like they set the server pref to the dummy URL, but Suggest is more
     // than Rust suggestions.
     if (!lazy.Utils.shouldSkipRemoteActivityDueToTests) {
-      this.#remoteSettingsService =
-        lazy.SharedRemoteSettingsService.rustService();
+      this.#setRemoteSettingsConfig({
+        serverUrl: lazy.Utils.SERVER_URL,
+        bucketName: lazy.Utils.actualBucketName("main"),
+      });
     }
   }
 
@@ -345,7 +354,7 @@ export class SuggestBackendRust extends SuggestBackend {
    *   subclasses exposed over FFI, e.g., `Suggestion.Wikipedia`. Typically the
    *   suggestion will have been returned from the Rust component, but tests may
    *   find it useful to make a `Suggestion` object directly.
-   * @returns {Promise<boolean>}
+   * @returns {boolean}
    *   Whether the suggestion has been dismissed.
    */
   async isRustSuggestionDismissed(suggestion) {
@@ -369,7 +378,7 @@ export class SuggestBackendRust extends SuggestBackend {
    *
    * @param {string} dismissalKey
    *   The dismissal key.
-   * @returns {Promise<boolean>}
+   * @returns {boolean}
    *   Whether a dismissal is recorded for the key.
    */
   async isDismissedByKey(dismissalKey) {
@@ -427,38 +436,16 @@ export class SuggestBackendRust extends SuggestBackend {
    * @returns {Array}
    *   Array of `GeonameMatch` objects. An empty array if there are no matches.
    */
-  async fetchGeonames(searchString, matchNamePrefix, geonameType, filter) {
+  fetchGeonames(searchString, matchNamePrefix, geonameType, filter) {
     if (!this.#store) {
       return [];
     }
-    let geonames = await this.#store.fetchGeonames(
+    return this.#store.fetchGeonames(
       searchString,
       matchNamePrefix,
       geonameType,
       filter
     );
-    return geonames;
-  }
-
-  /**
-   * Fetches geonames alternate names stored in the Suggest database. A single
-   * geoname can have many alternate names since a place can have many different
-   * variations of its name. Alternate names also include translations of names
-   * into different languages.
-   *
-   * See `SuggestStore::fetch_geoname_alternates()` in the Rust component for
-   * full documentation.
-   *
-   * @param {Geoname} geoname
-   *   A `Geoname` object returned from `fetchGeonames()`.
-   * @returns {GeonameAlternates}
-   *   A `GeonameAlternates` object containing the alternates for the geoname,
-   *   its administrative divisions, and its country. See the Rust component for
-   *   details.
-   */
-  async fetchGeonameAlternates(geoname) {
-    let alts = await this.#store?.fetchGeonameAlternates(geoname);
-    return alts;
   }
 
   /**
@@ -481,6 +468,15 @@ export class SuggestBackendRust extends SuggestBackend {
       Services.dirsvc.get("ProfD", Ci.nsIFile).path,
       SUGGEST_DATA_STORE_BASENAME
     );
+  }
+
+  /**
+   * @returns {string}
+   *   The path of the directory that should contain the remote settings cache
+   *   used internally by the Rust component.
+   */
+  get #remoteSettingsStoragePath() {
+    return Services.dirsvc.get("ProfLD", Ci.nsIFile).path;
   }
 
   /**
@@ -563,8 +559,44 @@ export class SuggestBackendRust extends SuggestBackend {
   }
 
   #makeStore() {
-    this.logger.info("Creating SuggestStore");
-    if (!this.#remoteSettingsService) {
+    this.logger.info("Creating SuggestStore", {
+      server: this.#remoteSettingsServer,
+      bucketName: this.#remoteSettingsBucketName,
+      dataPath: this.#storeDataPath,
+      storagePath: this.#remoteSettingsStoragePath,
+    });
+
+    if (!this.#remoteSettingsServer) {
+      return null;
+    }
+
+    let rsContext = {
+      formFactor: "desktop",
+      appId: Services.appinfo.ID || "",
+      channel: AppConstants.IS_ESR ? "esr" : AppConstants.MOZ_UPDATE_CHANNEL,
+      appVersion: Services.appinfo.version,
+      locale: Services.locale.appLocaleAsBCP47,
+      os: AppConstants.platform,
+      osVersion: Services.sysinfo.get("version"),
+    };
+
+    // We assume `QuickSuggest` init already awaited `Region.init()`.
+    if (lazy.Region.home) {
+      rsContext.country = lazy.Region.home;
+    }
+
+    let rsService;
+    try {
+      rsService = lazy.RemoteSettingsService.init(
+        this.#remoteSettingsStoragePath,
+        new lazy.RemoteSettingsConfig2({
+          server: this.#remoteSettingsServer,
+          bucketName: this.#remoteSettingsBucketName,
+          appContext: new lazy.RemoteSettingsContext(rsContext),
+        })
+      );
+    } catch (error) {
+      this.logger.error("Error creating RemoteSettingsService", error);
       return null;
     }
 
@@ -572,7 +604,7 @@ export class SuggestBackendRust extends SuggestBackend {
     try {
       builder = lazy.SuggestStoreBuilder.init()
         .dataPath(this.#storeDataPath)
-        .remoteSettingsService(this.#remoteSettingsService)
+        .remoteSettingsService(rsService)
         .loadExtension(
           AppConstants.SQLITE_LIBRARY_FILENAME,
           "sqlite3_fts5_init"
@@ -706,6 +738,14 @@ export class SuggestBackendRust extends SuggestBackend {
     return lazy.SuggestionProvider[key];
   }
 
+  #setRemoteSettingsConfig(options) {
+    let { serverUrl, bucketName } = options || {};
+    this.#remoteSettingsServer = serverUrl
+      ? new lazy.RemoteSettingsServer.Custom(serverUrl)
+      : null;
+    this.#remoteSettingsBucketName = bucketName;
+  }
+
   /**
    * Dismissals are stored in the Rust component but were previously stored as
    * URL digests in a pref. This method migrates the pref to the Rust component
@@ -779,8 +819,8 @@ export class SuggestBackendRust extends SuggestBackend {
     return this.#enabledSuggestionTypes;
   }
 
-  async _test_setRemoteSettingsService(remoteSettingsService) {
-    this.#remoteSettingsService = remoteSettingsService;
+  async _test_setRemoteSettingsConfig(options) {
+    this.#setRemoteSettingsConfig(options);
     if (this.isEnabled) {
       // Recreate the store and re-ingest.
       Services.prefs.clearUserPref(INGEST_TIMER_LAST_UPDATE_PREF);
@@ -811,7 +851,8 @@ export class SuggestBackendRust extends SuggestBackend {
 
   #ingestQueue;
   #shutdownBlocker;
-  #remoteSettingsService;
+  #remoteSettingsServer;
+  #remoteSettingsBucketName;
 }
 
 /**
@@ -888,12 +929,12 @@ function liftSuggestion(suggestion) {
         return null;
       }
     }
-    return new lazy.Suggestion.Dynamic({
-      suggestionType: suggestion.suggestionType,
+    return new lazy.Suggestion.Dynamic(
+      suggestion.suggestionType,
       data,
-      dismissalKey: suggestion.dismissalKey,
-      score: suggestion.score,
-    });
+      suggestion.dismissalKey,
+      suggestion.score
+    );
   }
 
   return suggestion;
@@ -919,12 +960,12 @@ function lowerSuggestion(suggestion) {
     if (data !== null && data !== undefined) {
       data = JSON.stringify(data);
     }
-    return new lazy.Suggestion.Dynamic({
-      suggestionType: suggestion.suggestionType,
+    return new lazy.Suggestion.Dynamic(
+      suggestion.suggestionType,
       data,
-      dismissalKey: suggestion.dismissalKey,
-      score: suggestion.score,
-    });
+      suggestion.dismissalKey,
+      suggestion.score
+    );
   }
 
   return suggestion;

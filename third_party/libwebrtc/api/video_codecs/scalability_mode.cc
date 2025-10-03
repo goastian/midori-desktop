@@ -10,8 +10,6 @@
 
 #include "api/video_codecs/scalability_mode.h"
 
-#include <optional>
-
 #include "absl/strings/string_view.h"
 #include "rtc_base/checks.h"
 
@@ -89,13 +87,6 @@ absl::string_view ScalabilityModeToString(ScalabilityMode scalability_mode) {
       return "S3T3h";
   }
   RTC_CHECK_NOTREACHED();
-}
-
-absl::string_view ScalabilityModeToString(
-    std::optional<ScalabilityMode> scalability_mode) {
-  return scalability_mode.has_value()
-             ? ScalabilityModeToString(*scalability_mode)
-             : "nullopt";
 }
 
 }  // namespace webrtc

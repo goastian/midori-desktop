@@ -19,8 +19,6 @@
 #include "api/array_view.h"
 #include "api/audio/audio_device.h"
 #include "api/audio_codecs/audio_codec_pair_id.h"
-#include "api/audio_codecs/audio_decoder_factory.h"
-#include "api/audio_codecs/audio_encoder_factory.h"
 #include "api/audio_options.h"
 #include "api/crypto/crypto_options.h"
 #include "api/field_trials_view.h"
@@ -33,6 +31,7 @@
 #include "media/base/media_channel.h"
 #include "media/base/media_config.h"
 #include "media/base/stream_params.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/system/file_wrapper.h"
 
 namespace webrtc {
@@ -122,19 +121,9 @@ class VoiceEngineInterface : public RtpHeaderExtensionQueryInterface {
   // Legacy: Retrieve list of supported codecs.
   // + protection codecs, and assigns PT numbers that may have to be
   // reassigned.
-  // This function is being moved to cricket::CodecVendor
-  // TODO: https://issues.webrtc.org/360058654 - remove when all users updated.
-  [[deprecated]] inline const std::vector<Codec>& send_codecs() const {
-    return LegacySendCodecs();
-  }
-  [[deprecated]] inline const std::vector<Codec>& recv_codecs() const {
-    return LegacyRecvCodecs();
-  }
-  virtual const std::vector<Codec>& LegacySendCodecs() const = 0;
-  virtual const std::vector<Codec>& LegacyRecvCodecs() const = 0;
-
-  virtual webrtc::AudioEncoderFactory* encoder_factory() const = 0;
-  virtual webrtc::AudioDecoderFactory* decoder_factory() const = 0;
+  // TODO: https://issues.webrtc.org/360058654 - deprecate and remove.
+  virtual const std::vector<Codec>& send_codecs() const = 0;
+  virtual const std::vector<Codec>& recv_codecs() const = 0;
 
   // Starts AEC dump using existing file, a maximum file size in bytes can be
   // specified. Logging is stopped just before the size limit is exceeded.
@@ -174,24 +163,19 @@ class VideoEngineInterface : public RtpHeaderExtensionQueryInterface {
   // Legacy: Retrieve list of supported codecs.
   // + protection codecs, and assigns PT numbers that may have to be
   // reassigned.
-  // This functionality is being moved to the cricket::CodecVendor class.
   // TODO: https://issues.webrtc.org/360058654 - deprecate and remove.
-  [[deprecated]] inline std::vector<Codec> send_codecs() const {
-    return LegacySendCodecs();
-  }
-  [[deprecated]] inline std::vector<Codec> recv_codecs() const {
-    return LegacyRecvCodecs();
-  }
-  virtual std::vector<Codec> LegacySendCodecs() const = 0;
-  virtual std::vector<Codec> LegacyRecvCodecs() const = 0;
+  virtual std::vector<Codec> send_codecs() const = 0;
+  virtual std::vector<Codec> recv_codecs() const = 0;
   // As above, but if include_rtx is false, don't include RTX codecs.
-  [[deprecated]] inline std::vector<Codec> send_codecs(bool include_rtx) const {
-    return LegacySendCodecs(include_rtx);
+  // TODO(bugs.webrtc.org/13931): Remove default implementation once
+  // upstream subclasses have converted.
+  virtual std::vector<Codec> send_codecs(bool include_rtx) const {
+    RTC_DCHECK(include_rtx);
+    return send_codecs();
   }
-  virtual std::vector<Codec> LegacySendCodecs(bool include_rtx) const = 0;
-  virtual std::vector<Codec> LegacyRecvCodecs(bool include_rtx) const = 0;
-  [[deprecated]] inline std::vector<Codec> recv_codecs(bool include_rtx) const {
-    return LegacyRecvCodecs(include_rtx);
+  virtual std::vector<Codec> recv_codecs(bool include_rtx) const {
+    RTC_DCHECK(include_rtx);
+    return recv_codecs();
   }
 };
 

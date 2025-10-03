@@ -115,9 +115,10 @@ class MOZ_STACK_CLASS JS_PUBLIC_API AutoStableStringChars final {
 
   template <typename T>
   T* allocOwnChars(JSContext* cx, size_t count);
-  bool copyLatin1Chars(JSContext* cx, JSLinearString* linearString);
-  bool copyTwoByteChars(JSContext* cx, JSLinearString* linearString);
-  bool copyAndInflateLatin1Chars(JSContext*, JSLinearString* linearString);
+  bool copyLatin1Chars(JSContext* cx, Handle<JSLinearString*> linearString);
+  bool copyTwoByteChars(JSContext* cx, Handle<JSLinearString*> linearString);
+  bool copyAndInflateLatin1Chars(JSContext*,
+                                 Handle<JSLinearString*> linearString);
 };
 
 }  // namespace JS

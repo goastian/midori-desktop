@@ -10,6 +10,7 @@ import sys
 import mozprofile
 import mozunit
 import pytest
+from six import text_type
 
 here = os.path.dirname(os.path.abspath(__file__))
 
@@ -39,7 +40,7 @@ def test_str_cast():
 def test_unicode_cast():
     """Test casting to a unicode string."""
     profile = mozprofile.Profile()
-    assert str(profile) == profile.summary()
+    assert text_type(profile) == profile.summary()
 
 
 def test_profile_diff():

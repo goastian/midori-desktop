@@ -5,9 +5,7 @@
 package org.mozilla.fenix.downloads.listscreen.ui
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -22,9 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.PreviewLightDark
-import androidx.compose.ui.tooling.preview.PreviewParameter
-import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
 import org.mozilla.fenix.R
 import org.mozilla.fenix.downloads.listscreen.store.FileItem
@@ -84,51 +79,6 @@ internal fun DownloadChip(
                 } else {
                     FirefoxTheme.typography.body2
                 },
-            )
-        }
-    }
-}
-
-private data class DownloadChipPreviewState(
-    val selected: Boolean,
-    val contentTypeFilter: FileItem.ContentTypeFilter,
-)
-
-private class DownloadChipParameterProvider : PreviewParameterProvider<DownloadChipPreviewState> {
-    override val values: Sequence<DownloadChipPreviewState>
-        get() = sequenceOf(
-            DownloadChipPreviewState(
-                selected = true,
-                contentTypeFilter = FileItem.ContentTypeFilter.Document,
-            ),
-            DownloadChipPreviewState(
-                selected = false,
-                contentTypeFilter = FileItem.ContentTypeFilter.Document,
-            ),
-            DownloadChipPreviewState(
-                selected = true,
-                contentTypeFilter = FileItem.ContentTypeFilter.Video,
-            ),
-            DownloadChipPreviewState(
-                selected = false,
-                contentTypeFilter = FileItem.ContentTypeFilter.Video,
-            ),
-        )
-}
-
-@PreviewLightDark
-@Composable
-private fun DownloadChipPreview(
-    @PreviewParameter(DownloadChipParameterProvider::class) downloadChipPreviewState: DownloadChipPreviewState,
-) {
-    FirefoxTheme {
-        Box(
-            modifier = Modifier.background(FirefoxTheme.colors.layer1),
-        ) {
-            DownloadChip(
-                selected = downloadChipPreviewState.selected,
-                contentTypeFilter = downloadChipPreviewState.contentTypeFilter,
-                onContentTypeSelected = {},
             )
         }
     }

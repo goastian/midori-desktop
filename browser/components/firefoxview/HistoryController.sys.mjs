@@ -94,14 +94,7 @@ export class HistoryController {
   }
 
   deleteFromHistory() {
-    return lazy.PlacesUtils.history.remove(this.host.triggerNode.url);
-  }
-
-  deleteMultipleFromHistory() {
-    const pageGuids = [...this.host.selectedLists].flatMap(
-      ({ selectedGuids }) => [...selectedGuids]
-    );
-    return lazy.PlacesUtils.history.remove(pageGuids);
+    lazy.PlacesUtils.history.remove(this.host.triggerNode.url);
   }
 
   onSearchQuery(e) {

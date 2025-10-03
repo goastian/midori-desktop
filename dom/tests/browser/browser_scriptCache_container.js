@@ -1,5 +1,3 @@
-requestLongerTimeout(2);
-
 const TEST_SCRIPT_URL =
   "https://example.com/browser/dom/tests/browser/page_scriptCache_container.html";
 const TEST_MODULE_URL =

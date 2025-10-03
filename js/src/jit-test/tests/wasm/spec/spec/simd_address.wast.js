@@ -336,13 +336,13 @@ assert_malformed(
 );
 
 // ./test/core/simd/simd_address.wast:143
-assert_invalid(
+assert_malformed(
   () => instantiate(`(memory 1) (func (drop (v128.load offset=4294967296 (i32.const 0)))) `),
-  `offset out of range`,
+  `i32 constant`,
 );
 
 // ./test/core/simd/simd_address.wast:151
-assert_invalid(
+assert_malformed(
   () => instantiate(`(memory 1) (func (v128.store offset=4294967296 (i32.const 0) (v128.const i32x4 0 0 0 0))) `),
-  `offset out of range`,
+  `i32 constant`,
 );

@@ -1841,42 +1841,6 @@ MDefinition* MStringConvertCase::foldsTo(TempAllocator& alloc) {
   return this;
 }
 
-// Return true if |def| is `MConstant(Int32(0))`.
-static bool IsConstantZeroInt32(MDefinition* def) {
-  return def->isConstant() && def->toConstant()->isInt32(0);
-}
-
-// If |def| is `MBitOr` and one operand is `MConstant(Int32(0))`, then return
-// the other operand. Otherwise return |def|.
-static MDefinition* RemoveUnnecessaryBitOps(MDefinition* def) {
-  if (def->isBitOr()) {
-    auto* bitOr = def->toBitOr();
-    if (IsConstantZeroInt32(bitOr->lhs())) {
-      return bitOr->rhs();
-    }
-    if (IsConstantZeroInt32(bitOr->rhs())) {
-      return bitOr->lhs();
-    }
-  }
-  return def;
-}
-
-// Return a match if both operands of |binary| have the requested types. If
-// |binary| is commutative, the operands may appear in any order.
-template <typename Lhs, typename Rhs>
-static mozilla::Maybe<std::pair<Lhs*, Rhs*>> MatchOperands(
-    MBinaryInstruction* binary) {
-  auto* lhs = binary->lhs();
-  auto* rhs = binary->rhs();
-  if (lhs->is<Lhs>() && rhs->is<Rhs>()) {
-    return mozilla::Some(std::pair{lhs->to<Lhs>(), rhs->to<Rhs>()});
-  }
-  if (binary->isCommutative() && rhs->is<Lhs>() && lhs->is<Rhs>()) {
-    return mozilla::Some(std::pair{rhs->to<Lhs>(), lhs->to<Rhs>()});
-  }
-  return mozilla::Nothing();
-}
-
 static bool IsSubstrTo(MSubstr* substr, int32_t len) {
   // We want to match this pattern:
   //
@@ -1885,160 +1849,56 @@ static bool IsSubstrTo(MSubstr* substr, int32_t len) {
   // which is generated for the self-hosted `String.p.{substring,slice,substr}`
   // functions when called with constants `start` and `end` parameters.
 
-  if (!IsConstantZeroInt32(substr->begin())) {
+  auto isConstantZero = [](auto* def) {
+    return def->isConstant() && def->toConstant()->isInt32(0);
+  };
+
+  if (!isConstantZero(substr->begin())) {
     return false;
   }
 
-  // Unnecessary bit-ops haven't yet been removed.
-  auto* length = RemoveUnnecessaryBitOps(substr->length());
+  auto* length = substr->length();
+  if (length->isBitOr()) {
+    // Unnecessary bit-ops haven't yet been removed.
+    auto* bitOr = length->toBitOr();
+    if (isConstantZero(bitOr->lhs())) {
+      length = bitOr->rhs();
+    } else if (isConstantZero(bitOr->rhs())) {
+      length = bitOr->lhs();
+    }
+  }
   if (!length->isMinMax() || length->toMinMax()->isMax()) {
     return false;
   }
 
-  auto match = MatchOperands<MConstant, MStringLength>(length->toMinMax());
-  if (!match) {
+  auto* min = length->toMinMax();
+  if (!min->lhs()->isConstant() && !min->rhs()->isConstant()) {
+    return false;
+  }
+
+  auto* minConstant = min->lhs()->isConstant() ? min->lhs()->toConstant()
+                                               : min->rhs()->toConstant();
+
+  auto* minOperand = min->lhs()->isConstant() ? min->rhs() : min->lhs();
+  if (!minOperand->isStringLength() ||
+      minOperand->toStringLength()->string() != substr->string()) {
     return false;
   }
 
   // Ensure |len| matches the substring's length.
-  auto [cst, strLength] = *match;
-  return cst->isInt32(len) && strLength->string() == substr->string();
-}
-
-static bool IsSubstrLast(MSubstr* substr, int32_t start) {
-  MOZ_ASSERT(start < 0, "start from end is negative");
-
-  // We want to match either this pattern:
-  //
-  // begin = Max(StringLength(string) + start, 0)
-  // length = Max(StringLength(string) - begin, 0)
-  // Substr(string, begin, length)
-  //
-  // or this pattern:
-  //
-  // begin = Max(StringLength(string) + start, 0)
-  // length = Min(StringLength(string), StringLength(string) - begin)
-  // Substr(string, begin, length)
-  //
-  // which is generated for the self-hosted `String.p.{slice,substr}`
-  // functions when called with parameters `start < 0` and `end = undefined`.
-
-  auto* string = substr->string();
-
-  // Unnecessary bit-ops haven't yet been removed.
-  auto* begin = RemoveUnnecessaryBitOps(substr->begin());
-  auto* length = RemoveUnnecessaryBitOps(substr->length());
-
-  // Matches: Max(StringLength(string) + start, 0)
-  auto matchesBegin = [&]() {
-    if (!begin->isMinMax() || !begin->toMinMax()->isMax()) {
-      return false;
-    }
-
-    auto maxOperands = MatchOperands<MAdd, MConstant>(begin->toMinMax());
-    if (!maxOperands) {
-      return false;
-    }
-
-    auto [add, cst] = *maxOperands;
-    if (!cst->isInt32(0)) {
-      return false;
-    }
-
-    auto addOperands = MatchOperands<MStringLength, MConstant>(add);
-    if (!addOperands) {
-      return false;
-    }
-
-    auto [strLength, cstAdd] = *addOperands;
-    return strLength->string() == string && cstAdd->isInt32(start);
-  };
-
-  // Matches: Max(StringLength(string) - begin, 0)
-  auto matchesSliceLength = [&]() {
-    if (!length->isMinMax() || !length->toMinMax()->isMax()) {
-      return false;
-    }
-
-    auto maxOperands = MatchOperands<MSub, MConstant>(length->toMinMax());
-    if (!maxOperands) {
-      return false;
-    }
-
-    auto [sub, cst] = *maxOperands;
-    if (!cst->isInt32(0)) {
-      return false;
-    }
-
-    auto subOperands = MatchOperands<MStringLength, MMinMax>(sub);
-    if (!subOperands) {
-      return false;
-    }
-
-    auto [strLength, minmax] = *subOperands;
-    return strLength->string() == string && minmax == begin;
-  };
-
-  // Matches: Min(StringLength(string), StringLength(string) - begin)
-  auto matchesSubstrLength = [&]() {
-    if (!length->isMinMax() || length->toMinMax()->isMax()) {
-      return false;
-    }
-
-    auto minOperands = MatchOperands<MStringLength, MSub>(length->toMinMax());
-    if (!minOperands) {
-      return false;
-    }
-
-    auto [strLength1, sub] = *minOperands;
-    if (strLength1->string() != string) {
-      return false;
-    }
-
-    auto subOperands = MatchOperands<MStringLength, MMinMax>(sub);
-    if (!subOperands) {
-      return false;
-    }
-
-    auto [strLength2, minmax] = *subOperands;
-    return strLength2->string() == string && minmax == begin;
-  };
-
-  return matchesBegin() && (matchesSliceLength() || matchesSubstrLength());
+  return minConstant->isInt32(len);
 }
 
 MDefinition* MSubstr::foldsTo(TempAllocator& alloc) {
   // Fold |str.substring(0, 1)| to |str.charAt(0)|.
-  if (IsSubstrTo(this, 1)) {
-    MOZ_ASSERT(IsConstantZeroInt32(begin()));
-
-    auto* charCode = MCharCodeAtOrNegative::New(alloc, string(), begin());
-    block()->insertBefore(this, charCode);
-
-    return MFromCharCodeEmptyIfNegative::New(alloc, charCode);
+  if (!IsSubstrTo(this, 1)) {
+    return this;
   }
 
-  // Fold |str.slice(-1)| and |str.substr(-1)| to |str.charAt(str.length + -1)|.
-  if (IsSubstrLast(this, -1)) {
-    auto* length = MStringLength::New(alloc, string());
-    block()->insertBefore(this, length);
+  auto* charCode = MCharCodeAtOrNegative::New(alloc, string(), begin());
+  block()->insertBefore(this, charCode);
 
-    auto* index = MConstant::New(alloc, Int32Value(-1));
-    block()->insertBefore(this, index);
-
-    // Folded MToRelativeStringIndex, see MToRelativeStringIndex::foldsTo.
-    //
-    // Safe to truncate because |length| is never negative.
-    auto* add = MAdd::New(alloc, index, length, TruncateKind::Truncate);
-    block()->insertBefore(this, add);
-
-    auto* charCode = MCharCodeAtOrNegative::New(alloc, string(), add);
-    block()->insertBefore(this, charCode);
-
-    return MFromCharCodeEmptyIfNegative::New(alloc, charCode);
-  }
-
-  return this;
+  return MFromCharCodeEmptyIfNegative::New(alloc, charCode);
 }
 
 MDefinition* MCharCodeAt::foldsTo(TempAllocator& alloc) {
@@ -5379,28 +5239,22 @@ MDefinition* MCompare::tryFoldStringSubstring(TempAllocator& alloc) {
   static_assert(JSString::MAX_LENGTH < INT32_MAX,
                 "string length can be casted to int32_t");
 
-  int32_t stringLength = int32_t(constant->toString()->length());
-
-  MInstruction* replacement;
-  if (IsSubstrTo(substr, stringLength)) {
-    // Fold |str.substring(0, 2) == "aa"| to |str.startsWith("aa")|.
-    replacement = MStringStartsWith::New(alloc, substr->string(), constant);
-  } else if (IsSubstrLast(substr, -stringLength)) {
-    // Fold |str.slice(-2) == "aa"| to |str.endsWith("aa")|.
-    replacement = MStringEndsWith::New(alloc, substr->string(), constant);
-  } else {
+  if (!IsSubstrTo(substr, int32_t(constant->toString()->length()))) {
     return this;
   }
 
+  // Now fold code like |str.substring(0, 2) == "aa"| to |str.startsWith("aa")|.
+
+  auto* startsWith = MStringStartsWith::New(alloc, substr->string(), constant);
   if (jsop() == JSOp::Eq || jsop() == JSOp::StrictEq) {
-    return replacement;
+    return startsWith;
   }
 
   // Invert for inequality.
   MOZ_ASSERT(jsop() == JSOp::Ne || jsop() == JSOp::StrictNe);
 
-  block()->insertBefore(this, replacement);
-  return MNot::New(alloc, replacement);
+  block()->insertBefore(this, startsWith);
+  return MNot::New(alloc, startsWith);
 }
 
 MDefinition* MCompare::tryFoldStringIndexOf(TempAllocator& alloc) {
@@ -6707,16 +6561,12 @@ MDefinition* MIsObject::foldsTo(TempAllocator& alloc) {
 }
 
 MDefinition* MIsNullOrUndefined::foldsTo(TempAllocator& alloc) {
-  // MIsNullOrUndefined doesn't have a type-policy, so the value can already be
-  // unboxed.
-  MDefinition* unboxed = value();
-  if (unboxed->type() == MIRType::Value) {
-    if (!unboxed->isBox()) {
-      return this;
-    }
-    unboxed = unboxed->toBox()->input();
+  MDefinition* input = value();
+  if (!input->isBox()) {
+    return this;
   }
 
+  MDefinition* unboxed = input->toBox()->input();
   return MConstant::New(alloc,
                         BooleanValue(IsNullOrUndefined(unboxed->type())));
 }
@@ -7192,6 +7042,16 @@ AliasSet MGuardDOMExpandoMissingOrGuardShape::getAliasSet() const {
 MDefinition* MGuardToClass::foldsTo(TempAllocator& alloc) {
   const JSClass* clasp = GetObjectKnownJSClass(object());
   if (!clasp || getClass() != clasp) {
+    return this;
+  }
+
+  AssertKnownClass(alloc, this, object());
+  return object();
+}
+
+MDefinition* MGuardToEitherClass::foldsTo(TempAllocator& alloc) {
+  const JSClass* clasp = GetObjectKnownJSClass(object());
+  if (!clasp || (getClass1() != clasp && getClass2() != clasp)) {
     return this;
   }
 

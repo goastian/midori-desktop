@@ -52,7 +52,7 @@ add_setup(function () {
   controller = UrlbarTestUtils.newMockController({
     manager: fPM,
   });
-  controller.addListener(generalListener);
+  controller.addQueryListener(generalListener);
 });
 
 add_task(function test_constructor_throws() {
@@ -127,19 +127,19 @@ add_task(function test_constructor_throws() {
 
 add_task(function test_add_and_remove_listeners() {
   Assert.throws(
-    () => controller.addListener(null),
+    () => controller.addQueryListener(null),
     /Expected listener to be an object/,
     "Should throw for a null listener"
   );
   Assert.throws(
-    () => controller.addListener(123),
+    () => controller.addQueryListener(123),
     /Expected listener to be an object/,
     "Should throw for a non-object listener"
   );
 
   const listener = {};
 
-  controller.addListener(listener);
+  controller.addQueryListener(listener);
 
   Assert.ok(
     controller._listeners.has(listener),
@@ -147,9 +147,9 @@ add_task(function test_add_and_remove_listeners() {
   );
 
   // Adding a non-existent listener shouldn't throw.
-  controller.removeListener(123);
+  controller.removeQueryListener(123);
 
-  controller.removeListener(listener);
+  controller.removeQueryListener(listener);
 
   Assert.ok(
     !controller._listeners.has(listener),
@@ -169,8 +169,8 @@ add_task(function test__notify() {
     onFake: sandbox.stub(),
   };
 
-  controller.addListener(listener1);
-  controller.addListener(listener2);
+  controller.addQueryListener(listener1);
+  controller.addQueryListener(listener2);
 
   const param = "1234";
 
@@ -197,8 +197,8 @@ add_task(function test__notify() {
     "Should have called the first listener with the correct argument"
   );
 
-  controller.removeListener(listener2);
-  controller.removeListener(listener1);
+  controller.removeQueryListener(listener2);
+  controller.removeQueryListener(listener1);
 
   // This should succeed without errors.
   controller.notify("onNewFake");
@@ -344,7 +344,7 @@ add_task(async function test_notifications_order() {
       },
     }
   );
-  controller.addListener(collectingListener);
+  controller.addQueryListener(collectingListener);
   controller.startQuery(context);
   Assert.deepEqual(
     ["onQueryStarted"],

@@ -142,8 +142,7 @@ class CustomTabsTest : TestSetup() {
         }.clickDownloadLink(downloadFile) {
             verifyDownloadPrompt(downloadFile)
         }.clickDownload {
-            verifyDownloadCompleteSnackbar(fileName = "web_icon.png")
-            waitUntilDownloadSnackbarGone()
+            verifyDownloadCompleteNotificationPopup()
         }
         mDevice.openNotification()
         notificationShade {

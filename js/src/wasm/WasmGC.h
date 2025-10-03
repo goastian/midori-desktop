@@ -325,9 +325,8 @@ class StackMaps {
 // signature must include any receiver argument -- in other words, it must be
 // the complete native-ABI-level call signature.
 template <class T>
-static inline size_t StackArgAreaSizeUnaligned(const T& argTypes,
-                                               jit::ABIKind kind) {
-  jit::ABIArgIter<const T> i(argTypes, kind);
+static inline size_t StackArgAreaSizeUnaligned(const T& argTypes) {
+  jit::WasmABIArgIter<const T> i(argTypes);
   while (!i.done()) {
     i++;
   }
@@ -335,7 +334,7 @@ static inline size_t StackArgAreaSizeUnaligned(const T& argTypes,
 }
 
 static inline size_t StackArgAreaSizeUnaligned(
-    const SymbolicAddressSignature& saSig, jit::ABIKind kind) {
+    const SymbolicAddressSignature& saSig) {
   // WasmABIArgIter::ABIArgIter wants the items to be iterated over to be
   // presented in some type that has methods length() and operator[].  So we
   // have to wrap up |saSig|'s array of types in this API-matching class.
@@ -359,7 +358,7 @@ static inline size_t StackArgAreaSizeUnaligned(
              jit::MIRType::None /*the end marker*/);
 
   ItemsAndLength itemsAndLength(saSig.argTypes, saSig.numArgs);
-  return StackArgAreaSizeUnaligned(itemsAndLength, kind);
+  return StackArgAreaSizeUnaligned(itemsAndLength);
 }
 
 static inline size_t AlignStackArgAreaSize(size_t unalignedSize) {

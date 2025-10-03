@@ -994,8 +994,7 @@ GLuint CompositorOGL::CreateTexture(const IntRect& aRect, bool aCopyFromSource,
 }
 
 ShaderConfigOGL CompositorOGL::GetShaderConfigFor(Effect* aEffect,
-                                                  bool aDEAAEnabled,
-                                                  bool aRoundedClip) const {
+                                                  bool aDEAAEnabled) const {
   ShaderConfigOGL config;
 
   switch (aEffect->mType) {
@@ -1042,7 +1041,6 @@ ShaderConfigOGL CompositorOGL::GetShaderConfigFor(Effect* aEffect,
     }
   }
   config.SetDEAA(aDEAAEnabled);
-  config.SetRoundedClip(aRoundedClip);
   return config;
 }
 
@@ -1174,10 +1172,8 @@ void CompositorOGL::DrawGeometry(const Geometry& aGeometry,
   bool bEnableAA = StaticPrefs::layers_deaa_enabled() &&
                    !aTransform.Is2DIntegerTranslation();
 
-  bool bRoundedClip = aEffectChain.mRoundedClipEffect;
-
   ShaderConfigOGL config =
-      GetShaderConfigFor(aEffectChain.mPrimaryEffect, bEnableAA, bRoundedClip);
+      GetShaderConfigFor(aEffectChain.mPrimaryEffect, bEnableAA);
 
   config.SetOpacity(aOpacity != 1.f);
   ApplyPrimitiveConfig(config, aGeometry);
@@ -1201,11 +1197,6 @@ void CompositorOGL::DrawGeometry(const Geometry& aGeometry,
     // 0,0..1,1.
     program->SetTexCoordMultiplier(source->GetSize().width,
                                    source->GetSize().height);
-  }
-
-  if (aEffectChain.mRoundedClipEffect) {
-    program->SetRoundedClipRect(aEffectChain.mRoundedClipEffect->mRect);
-    program->SetRoundedClipRadii(aEffectChain.mRoundedClipEffect->mRadii);
   }
 
   // XXX kip - These calculations could be performed once per layer rather than

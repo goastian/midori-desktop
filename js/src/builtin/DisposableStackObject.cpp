@@ -313,7 +313,8 @@ using namespace js;
 /* static */ bool DisposableStackObject::disposed_impl(
     JSContext* cx, const JS::CallArgs& args) {
   // Step 1. Let disposableStack be the this value.
-  auto* disposableStack = &args.thisv().toObject().as<DisposableStackObject>();
+  JS::Rooted<DisposableStackObject*> disposableStack(
+      cx, &args.thisv().toObject().as<DisposableStackObject>());
 
   // Step 2. Perform ? RequireInternalSlot(disposableStack,
   // [[DisposableState]]).

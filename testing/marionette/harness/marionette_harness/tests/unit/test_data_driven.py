@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import six
+
 from marionette_harness.marionette_test import (
     parameterized,
     with_parameters,
@@ -10,7 +12,8 @@ from marionette_harness.marionette_test import (
 )
 
 
-class Parameterizable(object, metaclass=MetaParameterized):
+@six.add_metaclass(MetaParameterized)
+class Parameterizable(object):
     pass
 
 

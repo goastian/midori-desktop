@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
+import json
 import logging
 import os
 import xml.etree.ElementTree as ET
@@ -11,7 +12,6 @@ from urllib.parse import quote, urlencode
 import requests
 import yaml
 from redo import retry
-from taskgraph.util import json
 from taskgraph.util.copy import deepcopy
 from taskgraph.util.schema import resolve_keyed_by
 

@@ -58,7 +58,6 @@ abstract class ToolbarIntegration(
         urlRenderConfiguration = ToolbarFeature.UrlRenderConfiguration(
             context.components.publicSuffixList,
             context.getColorFromAttr(R.attr.textPrimary),
-            context.getColorFromAttr(R.attr.textSecondary),
             renderStyle = renderStyle,
         ),
     )
@@ -141,7 +140,7 @@ class DefaultToolbarIntegration(
     interactor = interactor,
     customTabId = customTabId,
     isPrivate = isPrivate,
-    renderStyle = ToolbarFeature.RenderStyle.ColoredUrl,
+    renderStyle = ToolbarFeature.RenderStyle.UncoloredUrl,
 ) {
 
     @VisibleForTesting

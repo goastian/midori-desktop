@@ -9,9 +9,4 @@ class SettingsPasswordsTest : BaseTest() {
     fun verifySettingsPasswordsLoadsTest() {
         on.settingsPasswords.navigateToPage()
     }
-
-    @Test
-    fun verifySettingsSavePasswordsSectionTest() {
-        on.settingsSavePasswords.navigateToPage()
-    }
 }

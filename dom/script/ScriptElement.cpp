@@ -141,9 +141,7 @@ bool ScriptElement::MaybeProcessScript() {
     return false;
   }
 
-  bool hasScriptContent = HasExternalScriptContent() ||
-                          nsContentUtils::HasNonEmptyTextContent(cont);
-  if (!hasScriptContent) {
+  if (!HasScriptContent()) {
     // In the case of an empty, non-external classic script, there is nothing
     // to process. However, we must perform a microtask checkpoint afterwards,
     // as per https://html.spec.whatwg.org/#clean-up-after-running-script

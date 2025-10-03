@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-array.prototype.tospliced
+esid: sec-array.prototype.toSpliced
 description: >
   Array.prototype.toSpliced treats a negative start as relative to the end.
 info: |

@@ -400,10 +400,6 @@ class WindowManager {
     }
   }
 
-  supportsWindows() {
-    return !lazy.AppInfo.isAndroid;
-  }
-
   /**
    * Minimize the specified window.
    *

@@ -1427,6 +1427,7 @@ void gfxFont::CheckForFeaturesInvolvingSpace() const {
         flags = flags | gfxFontEntry::SpaceFeatures::HasFeatures;
         uint32_t index = static_cast<uint32_t>(s) >> 5;
         uint32_t bit = static_cast<uint32_t>(s) & 0x1f;
+        MutexAutoLock lock(mFontEntry->mFeatureInfoLock);
         if (isDefaultFeature) {
           mFontEntry->mDefaultSubSpaceFeatures[index] |= (1 << bit);
         } else {
@@ -1440,8 +1441,11 @@ void gfxFont::CheckForFeaturesInvolvingSpace() const {
   // spaces in default features of default script?
   // ==> can't use word cache, skip GPOS analysis
   bool canUseWordCache = true;
-  if (HasSubstitution(mFontEntry->mDefaultSubSpaceFeatures, Script::COMMON)) {
-    canUseWordCache = false;
+  {
+    MutexAutoLock lock(mFontEntry->mFeatureInfoLock);
+    if (HasSubstitution(mFontEntry->mDefaultSubSpaceFeatures, Script::COMMON)) {
+      canUseWordCache = false;
+    }
   }
 
   // GPOS lookups - distinguish kerning from non-kerning features
@@ -1460,6 +1464,7 @@ void gfxFont::CheckForFeaturesInvolvingSpace() const {
   }
 
   if (MOZ_UNLIKELY(log)) {
+    MutexAutoLock lock(mFontEntry->mFeatureInfoLock);
     TimeDuration elapsed = TimeStamp::Now() - start;
     LOG_FONTINIT((
         "(fontinit-spacelookups) font: %s - "
@@ -1494,6 +1499,7 @@ bool gfxFont::HasSubstitutionRulesWithSpaceLookups(Script aRunScript) const {
   }
 
   // default features have space lookups ==> true
+  MutexAutoLock lock(mFontEntry->mFeatureInfoLock);
   if (HasSubstitution(mFontEntry->mDefaultSubSpaceFeatures, Script::COMMON) ||
       HasSubstitution(mFontEntry->mDefaultSubSpaceFeatures, aRunScript)) {
     return true;

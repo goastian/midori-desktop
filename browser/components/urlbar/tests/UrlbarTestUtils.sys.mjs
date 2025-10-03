@@ -718,9 +718,9 @@ export var UrlbarTestUtils = {
     }
     this.info("Waiting for the urlbar view to open");
     await new Promise(resolve => {
-      win.gURLBar.controller.addListener({
+      win.gURLBar.controller.addQueryListener({
         onViewOpen() {
-          win.gURLBar.controller.removeListener(this);
+          win.gURLBar.controller.removeQueryListener(this);
           resolve();
         },
       });
@@ -742,9 +742,9 @@ export var UrlbarTestUtils = {
         resolve();
         return;
       }
-      win.gURLBar.controller.addListener({
+      win.gURLBar.controller.addQueryListener({
         onViewClose() {
-          win.gURLBar.controller.removeListener(this);
+          win.gURLBar.controller.removeQueryListener(this);
           resolve();
         },
       });
@@ -843,20 +843,9 @@ export var UrlbarTestUtils = {
         "browser.urlbar.placeholderName" +
         (lazy.PrivateBrowsingUtils.isWindowPrivate(window) ? ".private" : "");
       let engineName = Services.prefs.getStringPref(prefName, "");
-      let keywordEnabled = Services.prefs.getBoolPref("keyword.enabled");
-
-      let expectedPlaceholder;
-      if (keywordEnabled && engineName) {
-        expectedPlaceholder = {
-          id: "urlbar-placeholder-with-name",
-          args: { name: engineName },
-        };
-      } else if (keywordEnabled && !engineName) {
-        expectedPlaceholder = { id: "urlbar-placeholder" };
-      } else {
-        expectedPlaceholder = { id: "urlbar-placeholder-keyword-disabled" };
-      }
-
+      let expectedPlaceholder = engineName
+        ? { id: "urlbar-placeholder-with-name", args: { name: engineName } }
+        : { id: "urlbar-placeholder", args: null };
       await lazy.BrowserTestUtils.waitForCondition(() => {
         let l10nAttributes = window.document.l10n.getAttributes(
           window.gURLBar.inputField
@@ -1395,18 +1384,15 @@ export var UrlbarTestUtils = {
 
   async openSearchModeSwitcher(win) {
     let popup = this.searchModeSwitcherPopup(win);
-    let button = win.document.getElementById("urlbar-searchmode-switcher");
-    this.Assert.ok(lazy.BrowserTestUtils.isVisible(button));
-    await this.EventUtils.promiseElementReadyForUserInput(button, win);
-
     let promiseMenuOpen = lazy.BrowserTestUtils.waitForPopupEvent(
       popup,
       "shown"
     );
-    let rebuildPromise = lazy.BrowserTestUtils.waitForEvent(popup, "rebuild");
+    let button = win.document.getElementById("urlbar-searchmode-switcher");
+    this.Assert.ok(lazy.BrowserTestUtils.isVisible(button));
+    await this.EventUtils.promiseElementReadyForUserInput(button, win);
     this.EventUtils.synthesizeMouseAtCenter(button, {}, win);
-    await Promise.all([promiseMenuOpen, rebuildPromise]);
-
+    await promiseMenuOpen;
     return popup;
   },
 

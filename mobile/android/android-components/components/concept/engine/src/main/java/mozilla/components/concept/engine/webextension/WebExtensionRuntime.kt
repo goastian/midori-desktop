@@ -129,8 +129,6 @@ interface WebExtensionRuntime {
      * @param extensionId the id of the [WebExtension].
      * @param permissions [List] the list of permissions to be added to the [WebExtension].
      * @param origins [List] the list of origins to be added to the [WebExtension].
-     * @param dataCollectionPermissions [List] the list of data collection permissions to be added to the
-     * [WebExtension].
      * @param onSuccess (optional) callback invoked when permissions are added to the [WebExtension].
      * @param onError (optional) callback invoked if there was an error adding permissions to
      * the [WebExtension]. This callback is invoked with an [UnsupportedOperationException]
@@ -140,7 +138,6 @@ interface WebExtensionRuntime {
         extensionId: String,
         permissions: List<String> = emptyList(),
         origins: List<String> = emptyList(),
-        dataCollectionPermissions: List<String> = emptyList(),
         onSuccess: ((WebExtension) -> Unit) = { },
         onError: ((Throwable) -> Unit) = { },
     ): Unit = onError(UnsupportedOperationException("Web extension support is not available in this engine"))
@@ -151,8 +148,6 @@ interface WebExtensionRuntime {
      * @param extensionId the id of the [WebExtension].
      * @param permissions [List] the list of permissions to be removed from the [WebExtension].
      * @param origins [List] the list of origins to be removed from the [WebExtension].
-     * @param dataCollectionPermissions [List] the list of data collection permissions to be removed from the
-     * [WebExtension].
      * @param onSuccess (optional) callback invoked when permissions are removed from the [WebExtension].
      * @param onError (optional) callback invoked if there was an error removing permissions from
      * the [WebExtension]. This callback is invoked with an [UnsupportedOperationException]
@@ -162,7 +157,6 @@ interface WebExtensionRuntime {
         extensionId: String,
         permissions: List<String> = emptyList(),
         origins: List<String> = emptyList(),
-        dataCollectionPermissions: List<String> = emptyList(),
         onSuccess: ((WebExtension) -> Unit) = { },
         onError: ((Throwable) -> Unit) = { },
     ): Unit = onError(UnsupportedOperationException("Web extension support is not available in this engine"))

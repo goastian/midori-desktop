@@ -20,14 +20,14 @@ SVGPointListSMILType SVGPointListSMILType::sSingleton;
 //----------------------------------------------------------------------
 // nsISMILType implementation
 
-void SVGPointListSMILType::InitValue(SMILValue& aValue) const {
+void SVGPointListSMILType::Init(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.IsNull(), "Unexpected value type");
 
   aValue.mU.mPtr = new SVGPointListAndInfo();
   aValue.mType = this;
 }
 
-void SVGPointListSMILType::DestroyValue(SMILValue& aValue) const {
+void SVGPointListSMILType::Destroy(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.mType == this, "Unexpected SMIL value type");
   delete static_cast<SVGPointListAndInfo*>(aValue.mU.mPtr);
   aValue.mU.mPtr = nullptr;

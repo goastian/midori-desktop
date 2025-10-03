@@ -27,7 +27,7 @@ function f()
 
 hadSideEffect = false;
 assertThrowsInstanceOf(function() { f()++; }, ReferenceError);
-assertEq(hadSideEffect, false);
+assertEq(hadSideEffect, true);
 
 hadSideEffect = false;
 assertThrowsInstanceOf(function() {
@@ -37,12 +37,12 @@ assertThrowsInstanceOf(function() {
       f()++;
   }
 }, ReferenceError);
-assertEq(hadSideEffect, false);
+assertEq(hadSideEffect, true);
 
 
 hadSideEffect = false;
 assertThrowsInstanceOf(function() { f()--; }, ReferenceError);
-assertEq(hadSideEffect, false);
+assertEq(hadSideEffect, true);
 
 hadSideEffect = false;
 assertThrowsInstanceOf(function() {
@@ -52,12 +52,12 @@ assertThrowsInstanceOf(function() {
       f()--;
   }
 }, ReferenceError);
-assertEq(hadSideEffect, false);
+assertEq(hadSideEffect, true);
 
 
 hadSideEffect = false;
 assertThrowsInstanceOf(function() { ++f(); }, ReferenceError);
-assertEq(hadSideEffect, false);
+assertEq(hadSideEffect, true);
 
 hadSideEffect = false;
 assertThrowsInstanceOf(function() {
@@ -67,12 +67,12 @@ assertThrowsInstanceOf(function() {
       ++f();
   }
 }, ReferenceError);
-assertEq(hadSideEffect, false);
+assertEq(hadSideEffect, true);
 
 
 hadSideEffect = false;
 assertThrowsInstanceOf(function() { --f(); }, ReferenceError);
-assertEq(hadSideEffect, false);
+assertEq(hadSideEffect, true);
 
 hadSideEffect = false;
 assertThrowsInstanceOf(function() {
@@ -82,7 +82,7 @@ assertThrowsInstanceOf(function() {
       --f();
   }
 }, ReferenceError);
-assertEq(hadSideEffect, false);
+assertEq(hadSideEffect, true);
 
 
 /******************************************************************************/

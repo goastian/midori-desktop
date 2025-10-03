@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-array.prototype.tospliced
+esid: sec-array.prototype.toSpliced
 description: >
   Array.prototype.toSpliced returns a new array even if it the result is equal to the original array
 features: [change-array-by-copy]

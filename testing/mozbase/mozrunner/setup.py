@@ -16,6 +16,7 @@ deps = [
     "mozlog>=6.0",
     "mozprocess>=1.3.0,<2",
     "mozprofile~=3.0",
+    "six>=1.13.0,<2",
 ]
 
 EXTRAS_REQUIRE = {"crash": ["mozcrash >= 2.0"]}
@@ -31,14 +32,8 @@ setup(
         "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
         "Natural Language :: English",
         "Operating System :: OS Independent",
-        "Programming Language :: Python",
-        "Programming Language :: Python :: 3 :: Only",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3.5",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     keywords="mozilla",
@@ -55,5 +50,4 @@ setup(
       [console_scripts]
       mozrunner = mozrunner:cli
       """,
-    python_requires=">=3.8",
 )

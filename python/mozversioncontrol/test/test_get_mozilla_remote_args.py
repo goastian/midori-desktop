@@ -31,7 +31,6 @@ STEPS = {
             True,
             [
                 "--remotes=central",
-                "--remotes=firefox",
                 "--remotes=unified",
             ],
         ),

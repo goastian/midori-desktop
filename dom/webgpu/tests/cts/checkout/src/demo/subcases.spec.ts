@@ -5,28 +5,19 @@ import { UnitTest } from '../unittests/unit_test.js';
 
 export const g = makeTestGroup(UnitTest);
 
-g.test('skip')
-  .paramsSubcasesOnly(u => u.combine('y', [1, 2]))
-  .fn(t => {
-    t.skip('I skip!');
-  });
-
-g.test('pass_warn_fail_skip')
+g.test('pass_warn_fail')
   .params(u =>
     u
-      .combine('x', [0, 1, 2, 3]) //
+      .combine('x', [1, 2, 3]) //
       .beginSubcases()
       .combine('y', [1, 2, 3])
   )
   .fn(t => {
     const { x, y } = t.params;
-    if (x + y >= 5) {
-      t.fail('I fail!');
-    } else if (x + y >= 4) {
-      t.warn('I warn!');
-    }
-    if (x + y === 1 || x + y === 6) {
-      t.skip('I skip!');
+    if (x + y > 5) {
+      t.fail();
+    } else if (x + y > 4) {
+      t.warn();
     }
   });
 

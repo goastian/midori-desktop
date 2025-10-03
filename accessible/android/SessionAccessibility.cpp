@@ -633,7 +633,7 @@ void SessionAccessibility::SendAnnouncementEvent(Accessible* aAccessible,
 void SessionAccessibility::PopulateNodeInfo(
     Accessible* aAccessible, mozilla::jni::Object::Param aNodeInfo) {
   nsAutoString name;
-  ENameValueFlag nameFlag = aAccessible->Name(name);
+  aAccessible->Name(name);
   nsAutoString textValue;
   aAccessible->Value(textValue);
   nsAutoString nodeID;
@@ -666,12 +666,7 @@ void SessionAccessibility::PopulateNodeInfo(
   } else {
     if (role == roles::LINK || role == roles::HEADING) {
       description.Assign(name);
-    } else if (role != roles::CELL || nameFlag != eNameFromSubtree) {
-      // In most cases, use the name as the text. We discard the name completely
-      // for a table cell where the name is computed from the subtree because
-      // we don't want UI Automator to find the cell instead of a link inside
-      // it. TraversalRule ignores table cells anyway, so this is only relevant
-      // to UI Automator.
+    } else {
       text.Assign(name);
     }
   }

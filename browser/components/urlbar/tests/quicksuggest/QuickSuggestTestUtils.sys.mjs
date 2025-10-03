@@ -14,8 +14,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   RemoteSettingsServer:
     "resource://testing-common/RemoteSettingsServer.sys.mjs",
   SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
-  SharedRemoteSettingsService:
-    "resource://gre/modules/RustSharedRemoteSettingsService.sys.mjs",
   Suggestion:
     "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustSuggest.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
@@ -245,13 +243,10 @@ class _QuickSuggestTestUtils {
     }
 
     // Tell the Rust backend to use the local remote setting server.
-    lazy.SharedRemoteSettingsService.updateServer({
-      url: this.#remoteSettingsServer.url.toString(),
+    await lazy.QuickSuggest.rustBackend._test_setRemoteSettingsConfig({
       bucketName: "main",
+      serverUrl: this.#remoteSettingsServer.url.toString(),
     });
-    await lazy.QuickSuggest.rustBackend._test_setRemoteSettingsService(
-      lazy.SharedRemoteSettingsService.rustService()
-    );
 
     // Wait for the Rust backend to finish syncing.
     await this.forceSync();
@@ -301,7 +296,7 @@ class _QuickSuggestTestUtils {
       lazy.UrlbarPrefs.clear("quicksuggest.dataCollection.enabled");
     }
 
-    await lazy.QuickSuggest.rustBackend._test_setRemoteSettingsService(null);
+    await lazy.QuickSuggest.rustBackend._test_setRemoteSettingsConfig(null);
 
     this.#log("#uninitQuickSuggest", "Done");
   }
@@ -482,22 +477,22 @@ class _QuickSuggestTestUtils {
 
     if (result.payload.source == "rust") {
       result.payload.iconBlob = iconBlob;
-      result.payload.suggestionObject = new lazy.Suggestion.Amp({
+      result.payload.suggestionObject = new lazy.Suggestion.Amp(
         title,
         url,
-        rawUrl: originalUrl,
-        icon: null,
-        iconMimetype: null,
+        originalUrl, // rawUrl
+        null, // icon,
+        null, // iconMimetype
         fullKeyword,
         blockId,
         advertiser,
         iabCategory,
         impressionUrl,
         clickUrl,
-        rawClickUrl: clickUrl,
-        score: 0.3,
-        ftsMatchInfo: null,
-      });
+        clickUrl, // rawClickUrl
+        0.3, // score
+        null // ftsMatchInfo
+      );
     } else {
       result.payload.icon = icon;
     }
@@ -533,7 +528,7 @@ class _QuickSuggestTestUtils {
   }
 
   /**
-   * Returns an expected Wikipedia result that can be passed to
+   * Returns an expected Wikipedia (non-sponsored) result that can be passed to
    * `check_results()` in xpcshell tests.
    *
    * @returns {object}
@@ -546,11 +541,9 @@ class _QuickSuggestTestUtils {
     fullKeyword = keyword,
     title = "Wikipedia Suggestion",
     url = "https://example.com/wikipedia",
-    icon = null,
     iconBlob = null,
     suggestedIndex = -1,
     isSuggestedIndexRelativeToGroup = true,
-    telemetryType = "adm_nonsponsored",
   } = {}) {
     let result = {
       suggestedIndex,
@@ -561,30 +554,71 @@ class _QuickSuggestTestUtils {
       payload: {
         title,
         url,
-        icon,
         iconBlob,
         source,
         provider,
-        telemetryType,
+        displayUrl: url.replace(/^https:\/\//, ""),
+        isSponsored: false,
+        qsSuggestion: fullKeyword ?? keyword,
+        sponsoredAdvertiser: "Wikipedia",
+        sponsoredIabCategory: "5 - Education",
+        isBlockable: true,
+        isManageable: true,
+        telemetryType: "adm_nonsponsored",
+      },
+    };
+
+    if (source == "rust") {
+      result.payload.suggestionObject = new lazy.Suggestion.Wikipedia(
+        title,
+        url,
+        null, // icon
+        null, // iconMimetype
+        fullKeyword
+      );
+    }
+
+    return result;
+  }
+
+  /**
+   * Returns an expected dynamic Wikipedia (non-sponsored) result that can be
+   * passed to `check_results()` in xpcshell tests.
+   *
+   * @returns {object}
+   *   An object that can be passed to `check_results()`.
+   */
+  dynamicWikipediaResult({
+    source = "merino",
+    provider = "wikipedia",
+    keyword = "wikipedia",
+    fullKeyword = keyword,
+    title = "Wikipedia Suggestion",
+    url = "https://example.com/wikipedia",
+    icon = null,
+    suggestedIndex = -1,
+    isSuggestedIndexRelativeToGroup = true,
+  } = {}) {
+    return {
+      suggestedIndex,
+      isSuggestedIndexRelativeToGroup,
+      type: lazy.UrlbarUtils.RESULT_TYPE.URL,
+      source: lazy.UrlbarUtils.RESULT_SOURCE.SEARCH,
+      heuristic: false,
+      payload: {
+        title,
+        url,
+        source,
+        provider,
+        icon,
         displayUrl: url.replace(/^https:\/\//, ""),
         isSponsored: false,
         qsSuggestion: fullKeyword ?? keyword,
         isBlockable: true,
         isManageable: true,
+        telemetryType: "wikipedia",
       },
     };
-
-    if (source == "rust") {
-      result.payload.suggestionObject = new lazy.Suggestion.Wikipedia({
-        title,
-        url,
-        icon: null,
-        iconMimeType: null,
-        fullKeyword,
-      });
-    }
-
-    return result;
   }
 
   /**
@@ -643,18 +677,6 @@ class _QuickSuggestTestUtils {
    */
   geonamesRecords() {
     let geonames = [
-      // United States
-      {
-        id: 6252001,
-        name: "United States",
-        feature_class: "A",
-        feature_code: "PCLI",
-        country: "US",
-        admin1: "00",
-        population: 327167434,
-        latitude: "39.76",
-        longitude: "-98.5",
-      },
       // Waterloo, AL
       {
         id: 4096497,
@@ -706,7 +728,6 @@ class _QuickSuggestTestUtils {
         latitude: "42.00027",
         longitude: "-93.50049",
       },
-
       // Made-up cities with the same name in the US and CA. The CA city has a
       // larger population.
       {
@@ -731,7 +752,6 @@ class _QuickSuggestTestUtils {
         latitude: "45.50884",
         longitude: "-73.58781",
       },
-
       // Made-up cities that are only ~1.5 km apart.
       {
         id: 102,
@@ -755,8 +775,6 @@ class _QuickSuggestTestUtils {
         latitude: "33.76",
         longitude: "-84.4",
       },
-
-      // Tokyo
       {
         id: 1850147,
         name: "Tokyo",
@@ -767,57 +785,6 @@ class _QuickSuggestTestUtils {
         population: 9733276,
         latitude: "35.6895",
         longitude: "139.69171",
-      },
-
-      // UK
-      {
-        id: 2635167,
-        name: "United Kingdom of Great Britain and Northern Ireland",
-        feature_class: "A",
-        feature_code: "PCLI",
-        country: "GB",
-        admin1: "00",
-        population: 66488991,
-        latitude: "54.75844",
-        longitude: "-2.69531",
-      },
-      // England
-      {
-        id: 6269131,
-        name: "England",
-        feature_class: "A",
-        feature_code: "ADM1",
-        country: "GB",
-        admin1: "ENG",
-        population: 57106398,
-        latitude: "52.16045",
-        longitude: "-0.70312",
-      },
-      // Liverpool (metropolitan borough, admin2 for Liverpool city)
-      {
-        id: 3333167,
-        name: "Liverpool",
-        feature_class: "A",
-        feature_code: "ADM2",
-        country: "GB",
-        admin1: "ENG",
-        admin2: "H8",
-        population: 484578,
-        latitude: "53.41667",
-        longitude: "-2.91667",
-      },
-      // Liverpool (city)
-      {
-        id: 2644210,
-        name: "Liverpool",
-        feature_class: "P",
-        feature_code: "PPLA2",
-        country: "GB",
-        admin1: "ENG",
-        admin2: "H8",
-        population: 864122,
-        latitude: "53.41058",
-        longitude: "-2.97794",
       },
     ];
 
@@ -846,27 +813,6 @@ class _QuickSuggestTestUtils {
             alternates_by_geoname_id: [
               [4829764, ["AL"]],
               [4862182, ["IA"]],
-              [2635167, ["UK"]],
-            ],
-          },
-        ],
-      },
-      {
-        type: "geonames-alternates",
-        attachment: [
-          {
-            language: "en",
-            alternates_by_geoname_id: [
-              [
-                2635167,
-                [
-                  {
-                    name: "United Kingdom",
-                    is_preferred: true,
-                    is_short: true,
-                  },
-                ],
-              ],
             ],
           },
         ],
@@ -922,16 +868,16 @@ class _QuickSuggestTestUtils {
     };
 
     if (source == "rust") {
-      result.payload.suggestionObject = new lazy.Suggestion.Amo({
+      result.payload.suggestionObject = new lazy.Suggestion.Amo(
         title,
-        url: originalUrl,
-        iconUrl: icon,
+        originalUrl, // url
+        icon,
         description,
-        rating: "4.7",
-        numberOfRatings: 1,
-        guid: "amo-suggestion@example.com",
-        score: 0.2,
-      });
+        "4.7", // rating
+        1, // numberOfRatings
+        "amo-suggestion@example.com", // guid
+        0.2 // score
+      );
     }
 
     return result;
@@ -973,12 +919,12 @@ class _QuickSuggestTestUtils {
         bottomTextL10n: { id: "firefox-suggest-mdn-bottom-text" },
         source: "rust",
         provider: "Mdn",
-        suggestionObject: new lazy.Suggestion.Mdn({
+        suggestionObject: new lazy.Suggestion.Mdn(
           title,
           url,
           description,
-          score: 0.2,
-        }),
+          0.2 // score
+        ),
       },
     };
   }
@@ -1040,23 +986,17 @@ class _QuickSuggestTestUtils {
     };
 
     if (source == "rust") {
-      result.payload.suggestionObject = new lazy.Suggestion.Yelp({
-        url: originalUrl,
-        // `title` will be undefined if the caller passed in `titleL10n`
-        // instead, but the Rust suggestion must be created with a string title.
-        // The Rust suggestion title doesn't actually matter since no test
-        // relies on it directly or indirectly. Pick an arbitrary string, and
-        // make it distinctive so it's easier to track down bugs in case it does
-        // start to matter at some point.
-        title: title ?? "<QuickSuggestTestUtils Yelp suggestion>",
-        icon: null,
-        iconMimeType: null,
-        score: 0.2,
-        hasLocationSign: false,
-        subjectExactMatch: false,
-        subjectType: suggestedType,
-        locationParam: "find_loc",
-      });
+      result.payload.suggestionObject = new lazy.Suggestion.Yelp(
+        originalUrl, // url
+        title,
+        null, // icon
+        null, // iconMimetype
+        0.2, // score
+        false, // hasLocationSign
+        false, // subjectExactMatch
+        suggestedType, // subjectType
+        "find_loc" // locationParam
+      );
     }
 
     return result;
@@ -1072,37 +1012,14 @@ class _QuickSuggestTestUtils {
   weatherResult({
     source = "rust",
     provider = "Weather",
-    titleL10n = undefined,
+    city = null,
+    region = null,
     temperatureUnit = undefined,
   } = {}) {
     if (!temperatureUnit) {
       temperatureUnit =
         Services.locale.regionalPrefsLocales[0] == "en-US" ? "f" : "c";
     }
-
-    if (!titleL10n) {
-      titleL10n = {
-        id: "urlbar-result-weather-title",
-        args: {
-          city: lazy.MerinoTestUtils.WEATHER_SUGGESTION.city_name,
-          region: lazy.MerinoTestUtils.WEATHER_SUGGESTION.region_code,
-        },
-      };
-    }
-    titleL10n = {
-      ...titleL10n,
-      args: {
-        ...titleL10n.args,
-        temperature:
-          lazy.MerinoTestUtils.WEATHER_SUGGESTION.current_conditions
-            .temperature[temperatureUnit],
-        unit: temperatureUnit.toUpperCase(),
-      },
-      parseMarkup: true,
-      cacheable: true,
-      excludeArgsFromCacheKey: true,
-    };
-
     return {
       type: lazy.UrlbarUtils.RESULT_TYPE.URL,
       source: lazy.UrlbarUtils.RESULT_SOURCE.SEARCH,
@@ -1111,10 +1028,24 @@ class _QuickSuggestTestUtils {
       isRichSuggestion: true,
       richSuggestionIconVariation: "6",
       payload: {
-        titleL10n,
         url: lazy.MerinoTestUtils.WEATHER_SUGGESTION.url,
+        titleL10n: {
+          id: "firefox-suggest-weather-title-simplest",
+          args: {
+            temperature:
+              lazy.MerinoTestUtils.WEATHER_SUGGESTION.current_conditions
+                .temperature[temperatureUnit],
+            unit: temperatureUnit.toUpperCase(),
+            city: city || lazy.MerinoTestUtils.WEATHER_SUGGESTION.city_name,
+            region:
+              region || lazy.MerinoTestUtils.WEATHER_SUGGESTION.region_code,
+          },
+          parseMarkup: true,
+          cacheable: true,
+          excludeArgsFromCacheKey: true,
+        },
         bottomTextL10n: {
-          id: "urlbar-result-weather-provider-sponsored",
+          id: "firefox-suggest-weather-sponsored",
           args: { provider: "AccuWeather®" },
           cacheable: true,
         },
@@ -1470,7 +1401,7 @@ class _QuickSuggestTestUtils {
 
     let originalHome = lazy.Region.home;
     if (homeRegion) {
-      lazy.Region._setHomeRegion(homeRegion, true);
+      lazy.Region._setHomeRegion(homeRegion, false);
     }
 
     let available = Services.locale.availableLocales;
@@ -1491,7 +1422,7 @@ class _QuickSuggestTestUtils {
     await callback();
 
     if (homeRegion) {
-      lazy.Region._setHomeRegion(originalHome, true);
+      lazy.Region._setHomeRegion(originalHome, false);
     }
 
     promise = promiseChanges(requested);

@@ -20,12 +20,12 @@ add_task(
     threadFront.setBreakpoint(location, {});
     await client.waitForRequestsToSettle();
 
-    debuggee.eval("var console = { log: x => void x }");
+    debuggee.console = { log: x => void x };
 
     await resume(threadFront);
 
     const packet2 = await executeOnNextTickAndWaitForPause(
-      () => debuggee.eval("test()"),
+      debuggee.test,
       threadFront
     );
     Assert.equal(packet2.why.type, "breakpoint");

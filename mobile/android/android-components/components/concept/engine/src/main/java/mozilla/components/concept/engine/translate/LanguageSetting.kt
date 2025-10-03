@@ -34,7 +34,7 @@ enum class LanguageSetting(private val languageSetting: String) {
          *
          * @param languageSetting The specified language setting.
          */
-        fun fromValue(languageSetting: String): LanguageSetting = when (languageSetting.lowercase()) {
+        fun fromValue(languageSetting: String): LanguageSetting = when (languageSetting) {
             "always" -> ALWAYS
             "offer" -> OFFER
             "never" -> NEVER

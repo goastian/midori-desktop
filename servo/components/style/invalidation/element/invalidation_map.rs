@@ -50,7 +50,7 @@ pub struct Dependency {
     /// The offset into the selector that we should match on.
     pub selector_offset: usize,
 
-    /// The next dependency for a selector chain. For example, consider
+    /// The parent dependency for an ancestor selector. For example, consider
     /// the following:
     ///
     ///     .foo .bar:where(.baz span) .qux
@@ -59,14 +59,14 @@ pub struct Dependency {
     ///
     ///  We'd generate:
     ///
-    ///    * One dependency for .qux (offset: 0, next: None)
-    ///    * One dependency for .baz pointing to B with next being a
+    ///    * One dependency for .qux (offset: 0, parent: None)
+    ///    * One dependency for .baz pointing to B with parent being a
     ///      dependency pointing to C.
-    ///    * One dependency from .bar pointing to C (next: None)
-    ///    * One dependency from .foo pointing to A (next: None)
+    ///    * One dependency from .bar pointing to C (parent: None)
+    ///    * One dependency from .foo pointing to A (parent: None)
     ///
     #[ignore_malloc_size_of = "Arc"]
-    pub next: Option<Arc<Dependency>>,
+    pub parent: Option<Arc<Dependency>>,
 
     /// What kind of relative selector invalidation this generates.
     /// None if this dependency is not within a relative selector.
@@ -141,7 +141,7 @@ impl Dependency {
         Self {
             selector_offset: selector.len() + 1,
             selector,
-            next: None,
+            parent: None,
             relative_kind: None,
         }
     }
@@ -456,14 +456,14 @@ pub fn note_selector_for_invalidation(
 
     let mut document_state = DocumentState::empty();
     {
-        let mut next_stack = NextSelectors::new();
+        let mut parent_stack = ParentSelectors::new();
         let mut alloc_error = None;
         let mut collector = SelectorDependencyCollector {
             map,
             relative_selector_invalidation_map,
             document_state: &mut document_state,
             selector,
-            next_selectors: &mut next_stack,
+            parent_selectors: &mut parent_stack,
             quirks_mode,
             compound_state: PerCompoundState::new(0),
             alloc_error: &mut alloc_error,
@@ -503,7 +503,7 @@ impl PerCompoundState {
     }
 }
 
-struct NextDependencyEntry {
+struct ParentDependencyEntry {
     selector: Selector<SelectorImpl>,
     offset: usize,
     cached_dependency: Option<Arc<Dependency>>,
@@ -643,7 +643,7 @@ fn add_pseudo_class_dependency<C: Collector>(
     )
 }
 
-type NextSelectors = SmallVec<[NextDependencyEntry; 5]>;
+type ParentSelectors = SmallVec<[ParentDependencyEntry; 5]>;
 
 /// A struct that collects invalidations for a given compound selector.
 struct SelectorDependencyCollector<'a> {
@@ -659,12 +659,12 @@ struct SelectorDependencyCollector<'a> {
     /// The current selector and offset we're iterating.
     selector: &'a Selector<SelectorImpl>,
 
-    /// The stack of next selectors that we have, and at which offset of the
+    /// The stack of parent selectors that we have, and at which offset of the
     /// sequence.
     ///
     /// This starts empty. It grows when we find nested :is and :where selector
     /// lists. The dependency field is cached and reference counted.
-    next_selectors: &'a mut NextSelectors,
+    parent_selectors: &'a mut ParentSelectors,
 
     /// The quirks mode of the document where we're inserting dependencies.
     quirks_mode: QuirksMode,
@@ -676,17 +676,17 @@ struct SelectorDependencyCollector<'a> {
     alloc_error: &'a mut Option<AllocErr>,
 }
 
-fn next_dependency(
-    next_selector: &mut NextSelectors,
-    next_outer_dependency: Option<&Arc<Dependency>>,
+fn parent_dependency(
+    parent_selectors: &mut ParentSelectors,
+    outer_parent: Option<&Arc<Dependency>>,
 ) -> Option<Arc<Dependency>> {
-    if next_selector.is_empty() {
-        return next_outer_dependency.cloned();
+    if parent_selectors.is_empty() {
+        return outer_parent.cloned();
     }
 
     fn dependencies_from(
-        entries: &mut [NextDependencyEntry],
-        next_outer_dependency: &Option<&Arc<Dependency>>,
+        entries: &mut [ParentDependencyEntry],
+        outer_parent: &Option<&Arc<Dependency>>,
     ) -> Option<Arc<Dependency>> {
         if entries.is_empty() {
             return None;
@@ -703,7 +703,7 @@ fn next_dependency(
                     Arc::new(Dependency {
                         selector: selector.clone(),
                         selector_offset,
-                        next: dependencies_from(previous, next_outer_dependency),
+                        parent: dependencies_from(previous, outer_parent),
                         relative_kind: None,
                     })
                 })
@@ -711,16 +711,16 @@ fn next_dependency(
         )
     }
 
-    dependencies_from(next_selector, &next_outer_dependency)
+    dependencies_from(parent_selectors, &outer_parent)
 }
 
 impl<'a> Collector for SelectorDependencyCollector<'a> {
     fn dependency(&mut self) -> Dependency {
-        let next = next_dependency(self.next_selectors, None);
+        let parent = parent_dependency(self.parent_selectors, None);
         Dependency {
             selector: self.selector.clone(),
             selector_offset: self.compound_state.offset,
-            next: next,
+            parent,
             relative_kind: None,
         }
     }
@@ -823,7 +823,7 @@ impl<'a> SelectorVisitor for SelectorDependencyCollector<'a> {
 
             index += 1; // account for the combinator.
 
-            self.next_selectors.push(NextDependencyEntry {
+            self.parent_selectors.push(ParentDependencyEntry {
                 selector: self.selector.clone(),
                 offset: self.compound_state.offset,
                 cached_dependency: None,
@@ -833,7 +833,7 @@ impl<'a> SelectorVisitor for SelectorDependencyCollector<'a> {
                 relative_selector_invalidation_map: &mut *self.relative_selector_invalidation_map,
                 document_state: &mut *self.document_state,
                 selector,
-                next_selectors: &mut *self.next_selectors,
+                parent_selectors: &mut *self.parent_selectors,
                 quirks_mode: self.quirks_mode,
                 compound_state: PerCompoundState::new(index),
                 alloc_error: &mut *self.alloc_error,
@@ -841,7 +841,7 @@ impl<'a> SelectorVisitor for SelectorDependencyCollector<'a> {
             if !nested.visit_whole_selector_from(iter, index) {
                 return false;
             }
-            self.next_selectors.pop();
+            self.parent_selectors.pop();
         }
         true
     }
@@ -854,7 +854,7 @@ impl<'a> SelectorVisitor for SelectorDependencyCollector<'a> {
         for relative_selector in list {
             // We can't cheat here like we do with other selector lists - the rightmost
             // compound of a relative selector is not the subject of the invalidation.
-            self.next_selectors.push(NextDependencyEntry {
+            self.parent_selectors.push(ParentDependencyEntry {
                 selector: self.selector.clone(),
                 offset: self.compound_state.offset,
                 cached_dependency: None,
@@ -864,7 +864,7 @@ impl<'a> SelectorVisitor for SelectorDependencyCollector<'a> {
                 document_state: &mut *self.document_state,
                 selector: &relative_selector,
                 combinator_count: RelativeSelectorCombinatorCount::new(relative_selector),
-                next_selectors: &mut *self.next_selectors,
+                parent_selectors: &mut *self.parent_selectors,
                 quirks_mode: self.quirks_mode,
                 compound_state: RelativeSelectorPerCompoundState::new(0),
                 alloc_error: &mut *self.alloc_error,
@@ -872,7 +872,7 @@ impl<'a> SelectorVisitor for SelectorDependencyCollector<'a> {
             if !nested.visit_whole_selector() {
                 return false;
             }
-            self.next_selectors.pop();
+            self.parent_selectors.pop();
         }
         true
     }
@@ -942,12 +942,12 @@ struct RelativeSelectorDependencyCollector<'a> {
     /// Running combinator for this inner relative selector.
     combinator_count: RelativeSelectorCombinatorCount,
 
-    /// The stack of next selectors that we have, and at which offset of the
+    /// The stack of parent selectors that we have, and at which offset of the
     /// sequence.
     ///
     /// This starts empty. It grows when we find nested :is and :where selector
     /// lists. The dependency field is cached and reference counted.
-    next_selectors: &'a mut NextSelectors,
+    parent_selectors: &'a mut ParentSelectors,
 
     /// The quirks mode of the document where we're inserting dependencies.
     quirks_mode: QuirksMode,
@@ -1080,7 +1080,7 @@ impl<'a> RelativeSelectorDependencyCollector<'a> {
 
 impl<'a> Collector for RelativeSelectorDependencyCollector<'a> {
     fn dependency(&mut self) -> Dependency {
-        let next = next_dependency(self.next_selectors, None);
+        let parent = parent_dependency(self.parent_selectors, None);
         Dependency {
             selector: self.selector.selector.clone(),
             selector_offset: self.compound_state.state.offset,
@@ -1102,7 +1102,7 @@ impl<'a> Collector for RelativeSelectorDependencyCollector<'a> {
                     RelativeDependencyInvalidationKind::AncestorEarlierSibling
                 },
             }),
-            next: next,
+            parent,
         }
     }
 
@@ -1197,8 +1197,8 @@ impl<'a> SelectorVisitor for RelativeSelectorDependencyCollector<'a> {
         _list_kind: SelectorListKind,
         list: &[Selector<SelectorImpl>],
     ) -> bool {
-        let mut next_stack = NextSelectors::new();
-        let next_dependency = Arc::new(self.dependency());
+        let mut parent_stack = ParentSelectors::new();
+        let parent_dependency = Arc::new(self.dependency());
         for selector in list {
             // Subjects inside relative selectors aren't really subjects.
             // This simplifies compound state tracking as well (Additional
@@ -1206,10 +1206,10 @@ impl<'a> SelectorVisitor for RelativeSelectorDependencyCollector<'a> {
             // not leak out of the relevant selector).
             let mut nested = RelativeSelectorInnerDependencyCollector {
                 map: &mut *self.map,
-                next_dependency: &next_dependency,
+                parent_dependency: &parent_dependency,
                 document_state: &mut *self.document_state,
                 selector,
-                next_selectors: &mut next_stack,
+                parent_selectors: &mut parent_stack,
                 quirks_mode: self.quirks_mode,
                 compound_state: RelativeSelectorPerCompoundState::new(0),
                 alloc_error: &mut *self.alloc_error,
@@ -1272,18 +1272,18 @@ struct RelativeSelectorInnerDependencyCollector<'a, 'b> {
     /// state and it changes for everything.
     document_state: &'a mut DocumentState,
 
-    /// Next relative selector dependency.
-    next_dependency: &'b Arc<Dependency>,
+    /// Parent relative selector dependency.
+    parent_dependency: &'b Arc<Dependency>,
 
     /// The current inner relative selector and offset we're iterating.
     selector: &'a Selector<SelectorImpl>,
 
-    /// The stack of next selectors that we have, and at which offset of the
+    /// The stack of parent selectors that we have, and at which offset of the
     /// sequence.
     ///
     /// This starts empty. It grows when we find nested :is and :where selector
     /// lists. The dependency field is cached and reference counted.
-    next_selectors: &'a mut NextSelectors,
+    parent_selectors: &'a mut ParentSelectors,
 
     /// The quirks mode of the document where we're inserting dependencies.
     quirks_mode: QuirksMode,
@@ -1297,11 +1297,11 @@ struct RelativeSelectorInnerDependencyCollector<'a, 'b> {
 
 impl<'a, 'b> Collector for RelativeSelectorInnerDependencyCollector<'a, 'b> {
     fn dependency(&mut self) -> Dependency {
-        let next = next_dependency(self.next_selectors, Some(self.next_dependency));
+        let parent = parent_dependency(self.parent_selectors, Some(self.parent_dependency));
         Dependency {
             selector: self.selector.clone(),
             selector_offset: self.compound_state.state.offset,
-            next: next,
+            parent,
             relative_kind: None,
         }
     }
@@ -1403,7 +1403,7 @@ impl<'a, 'b> SelectorVisitor for RelativeSelectorInnerDependencyCollector<'a, 'b
         _list_kind: SelectorListKind,
         list: &[Selector<SelectorImpl>],
     ) -> bool {
-        let next_dependency = Arc::new(self.dependency());
+        let parent_dependency = Arc::new(self.dependency());
         for selector in list {
             // Subjects inside relative selectors aren't really subjects.
             // This simplifies compound state tracking as well (Additional
@@ -1411,10 +1411,10 @@ impl<'a, 'b> SelectorVisitor for RelativeSelectorInnerDependencyCollector<'a, 'b
             // not leak out of the relevant selector).
             let mut nested = RelativeSelectorInnerDependencyCollector {
                 map: &mut *self.map,
-                next_dependency: &next_dependency,
+                parent_dependency: &parent_dependency,
                 document_state: &mut *self.document_state,
                 selector,
-                next_selectors: &mut *self.next_selectors,
+                parent_selectors: &mut *self.parent_selectors,
                 quirks_mode: self.quirks_mode,
                 compound_state: RelativeSelectorPerCompoundState::new(0),
                 alloc_error: &mut *self.alloc_error,

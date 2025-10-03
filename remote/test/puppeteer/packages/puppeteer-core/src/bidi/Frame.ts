@@ -52,7 +52,7 @@ import type {Request} from './core/Request.js';
 import {BidiDeserializer} from './Deserializer.js';
 import {BidiDialog} from './Dialog.js';
 import type {BidiElementHandle} from './ElementHandle.js';
-import {ExposableFunction} from './ExposedFunction.js';
+import {ExposeableFunction} from './ExposedFunction.js';
 import {BidiHTTPRequest, requests} from './HTTPRequest.js';
 import type {BidiHTTPResponse} from './HTTPResponse.js';
 import {BidiJSHandle} from './JSHandle.js';
@@ -406,7 +406,11 @@ export class BidiFrame extends Frame {
                 raceWith(
                   fromEmitterEvent(navigation, 'fragment'),
                   fromEmitterEvent(navigation, 'failed'),
-                  fromEmitterEvent(navigation, 'aborted'),
+                  fromEmitterEvent(navigation, 'aborted').pipe(
+                    map(({url}) => {
+                      throw new Error(`Navigation aborted: ${url}`);
+                    }),
+                  ),
                 ),
                 switchMap(() => {
                   if (navigation.request) {
@@ -478,7 +482,7 @@ export class BidiFrame extends Frame {
     return this.browsingContext.closed;
   }
 
-  #exposedFunctions = new Map<string, ExposableFunction<never[], unknown>>();
+  #exposedFunctions = new Map<string, ExposeableFunction<never[], unknown>>();
   async exposeFunction<Args extends unknown[], Ret>(
     name: string,
     apply: (...args: Args) => Awaitable<Ret>,
@@ -488,8 +492,8 @@ export class BidiFrame extends Frame {
         `Failed to add page binding with name ${name}: globalThis['${name}'] already exists!`,
       );
     }
-    const exposable = await ExposableFunction.from(this, name, apply);
-    this.#exposedFunctions.set(name, exposable);
+    const exposeable = await ExposeableFunction.from(this, name, apply);
+    this.#exposedFunctions.set(name, exposeable);
   }
 
   async removeExposedFunction(name: string): Promise<void> {

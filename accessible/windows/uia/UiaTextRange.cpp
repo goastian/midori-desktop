@@ -914,8 +914,7 @@ MOZ_CAN_RUN_SCRIPT_BOUNDARY STDMETHODIMP UiaTextRange::Select() {
   if (!range) {
     return CO_E_OBJNOTCONNECTED;
   }
-  if (!range.SetSelection(TextLeafRange::kRemoveAllExistingSelectedRanges,
-                          /* aSetFocus */ false)) {
+  if (!range.SetSelection(TextLeafRange::kRemoveAllExistingSelectedRanges)) {
     return UIA_E_INVALIDOPERATION;
   }
   return S_OK;
@@ -927,7 +926,7 @@ MOZ_CAN_RUN_SCRIPT_BOUNDARY STDMETHODIMP UiaTextRange::AddToSelection() {
   if (!range) {
     return CO_E_OBJNOTCONNECTED;
   }
-  if (!range.SetSelection(-1, /* aSetFocus */ false)) {
+  if (!range.SetSelection(-1)) {
     return UIA_E_INVALIDOPERATION;
   }
   return S_OK;

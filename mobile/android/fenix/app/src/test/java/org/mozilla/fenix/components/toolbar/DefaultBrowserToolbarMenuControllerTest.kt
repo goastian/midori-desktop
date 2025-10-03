@@ -22,7 +22,6 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
 import io.mockk.slot
-import io.mockk.spyk
 import io.mockk.unmockkObject
 import io.mockk.unmockkStatic
 import io.mockk.verify
@@ -31,11 +30,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import mozilla.appservices.places.BookmarkRoot
 import mozilla.components.browser.state.action.CustomTabListAction
-import mozilla.components.browser.state.action.ShareResourceAction
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.ReaderState
 import mozilla.components.browser.state.state.TabSessionState
-import mozilla.components.browser.state.state.content.ShareResourceState
 import mozilla.components.browser.state.state.createCustomTab
 import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.state.store.BrowserStore
@@ -87,12 +84,12 @@ import org.mozilla.fenix.compose.snackbar.Snackbar
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.directionsEq
 import org.mozilla.fenix.helpers.FenixGleanTestRule
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.settings.deletebrowsingdata.deleteAndQuit
 import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.webcompat.WEB_COMPAT_REPORTER_URL
-import org.robolectric.RobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class DefaultBrowserToolbarMenuControllerTest {
 
     @get:Rule
@@ -723,34 +720,6 @@ class DefaultBrowserToolbarMenuControllerTest {
                         data = arrayOf(ShareData(url = "https://mozilla.org", title = "Mozilla")),
                         showPage = true,
                     ),
-                ),
-            )
-        }
-    }
-
-    @Test
-    fun `GIVEN tab is a local PDF WHEN share menu item is pressed THEN trigger ShareResourceAtion`() = runTest {
-        val item = ToolbarMenu.Item.Share
-        val url = "content://pdf.pdf"
-        val tab = createTab(
-            url = url,
-            id = "1",
-        )
-        browserStore = spyk(BrowserStore(BrowserState(tabs = listOf(tab), selectedTabId = "1")))
-        val controller = createController(scope = this, store = browserStore)
-        assertNull(Events.browserMenuAction.testGetValue())
-
-        controller.handleToolbarItemInteraction(item)
-
-        val snapshot = requireNotNull(Events.browserMenuAction.testGetValue()) { "Snapshot should'nt be null" }
-        assertEquals(1, snapshot.size)
-        assertEquals("share", snapshot.single().extra?.getValue("item"))
-
-        verify {
-            browserStore.dispatch(
-                ShareResourceAction.AddShareAction(
-                    tabId = "1",
-                    ShareResourceState.LocalResource("content://pdf.pdf"),
                 ),
             )
         }

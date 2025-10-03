@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-%typedarray%.prototype.tosorted
+esid: sec-%typedarray%.prototype.toSorted
 description: >
   %TypedArray%.prototype.toSorted does not mutate its this value
 includes: [testTypedArray.js, compareArray.js]

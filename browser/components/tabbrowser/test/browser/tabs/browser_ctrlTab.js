@@ -83,7 +83,7 @@ add_task(async function () {
     BrowserTestUtils.removeTab(tabToClose);
     await promise;
     checkTabs(3);
-    SessionWindowUI.undoCloseTab(window);
+    undoCloseTab();
     checkTabs(4);
     is(
       gBrowser.tabContainer.selectedIndex,

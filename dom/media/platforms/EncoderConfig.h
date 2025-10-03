@@ -12,7 +12,6 @@
 #include "mozilla/Result.h"
 #include "mozilla/Variant.h"
 #include "mozilla/dom/ImageBitmapBinding.h"
-#include "mozilla/ipc/IPCCore.h"
 
 namespace mozilla {
 
@@ -56,11 +55,10 @@ const char* GetCodecTypeString(const CodecType& aCodecType);
 enum class H264BitStreamFormat { AVC, ANNEXB };
 
 struct H264Specific final {
-  H264_PROFILE mProfile{H264_PROFILE::H264_PROFILE_UNKNOWN};
-  H264_LEVEL mLevel{H264_LEVEL::H264_LEVEL_1};
-  H264BitStreamFormat mFormat{H264BitStreamFormat::AVC};
+  const H264_PROFILE mProfile;
+  const H264_LEVEL mLevel;
+  const H264BitStreamFormat mFormat;
 
-  H264Specific() = default;
   H264Specific(H264_PROFILE aProfile, H264_LEVEL aLevel,
                H264BitStreamFormat aFormat)
       : mProfile(aProfile), mLevel(aLevel), mFormat(aFormat) {}
@@ -94,12 +92,12 @@ struct VP8Specific {
         mDenoising(aDenoising),
         mAutoResize(aAutoResize),
         mFrameDropping(aFrameDropping) {}
-  VPXComplexity mComplexity{VPXComplexity::Normal};
-  bool mResilience{true};
-  uint8_t mNumTemporalLayers{1};
-  bool mDenoising{true};
-  bool mAutoResize{false};
-  bool mFrameDropping{false};
+  const VPXComplexity mComplexity{VPXComplexity::Normal};
+  const bool mResilience{true};
+  const uint8_t mNumTemporalLayers{1};
+  const bool mDenoising{true};
+  const bool mAutoResize{false};
+  const bool mFrameDropping{false};
 };
 
 struct VP9Specific : public VP8Specific {
@@ -114,9 +112,9 @@ struct VP9Specific : public VP8Specific {
         mAdaptiveQp(aAdaptiveQp),
         mNumSpatialLayers(aNumSpatialLayers),
         mFlexible(aFlexible) {}
-  bool mAdaptiveQp{true};
-  uint8_t mNumSpatialLayers{1};
-  bool mFlexible{false};
+  const bool mAdaptiveQp{true};
+  const uint8_t mNumSpatialLayers{1};
+  const bool mFlexible{false};
 };
 
 // A class that holds the intial configuration of an encoder. For simplicity,
@@ -125,7 +123,7 @@ struct VP9Specific : public VP8Specific {
 class EncoderConfig final {
  public:
   using CodecSpecific =
-      Variant<void_t, H264Specific, OpusSpecific, VP8Specific, VP9Specific>;
+      Variant<H264Specific, OpusSpecific, VP8Specific, VP9Specific>;
 
   struct VideoColorSpace {
     Maybe<gfx::ColorRange> mRange;
@@ -190,7 +188,6 @@ class EncoderConfig final {
     static Result<SampleFormat, MediaResult> FromImage(layers::Image* aImage);
   };
 
-  EncoderConfig() = default;
   EncoderConfig(const EncoderConfig& aConfig) = default;
 
   // This constructor is used for video encoders
@@ -201,7 +198,7 @@ class EncoderConfig final {
                 const uint32_t aMaxBitrate, const BitrateMode aBitrateMode,
                 const HardwarePreference aHardwarePreference,
                 const ScalabilityMode aScalabilityMode,
-                const CodecSpecific& aCodecSpecific)
+                const Maybe<CodecSpecific>& aCodecSpecific)
       : mCodec(aCodecType),
         mSize(aSize),
         mBitrateMode(aBitrateMode),
@@ -221,7 +218,7 @@ class EncoderConfig final {
   // This constructor is used for audio encoders
   EncoderConfig(const CodecType aCodecType, uint32_t aNumberOfChannels,
                 const BitrateMode aBitrateMode, uint32_t aSampleRate,
-                uint32_t aBitrate, const CodecSpecific& aCodecSpecific)
+                uint32_t aBitrate, const Maybe<CodecSpecific>& aCodecSpecific)
       : mCodec(aCodecType),
         mBitrateMode(aBitrateMode),
         mBitrate(aBitrate),
@@ -259,7 +256,7 @@ class EncoderConfig final {
   // Audio-only
   uint32_t mNumberOfChannels{};
   uint32_t mSampleRate{};
-  CodecSpecific mCodecSpecific{void_t{}};
+  Maybe<CodecSpecific> mCodecSpecific{};
 };
 
 }  // namespace mozilla

@@ -58,12 +58,12 @@ function forgetListener(intervention, key) {
   return listener;
 }
 
-function makeHeaderAlterer(headerType, webRequestAPI) {
-  return {
+var CUSTOM_FUNCTIONS = {
+  alter_response_headers: {
     details: ["headers", "replacement"],
     optionalDetails: ["fallback", "replace", "types", "urls"],
     getKey(config) {
-      return `alter_${headerType}_headers:${JSON.stringify(config)}`;
+      return `alter_headers:${JSON.stringify(config)}`;
     },
     enable(config, intervention) {
       let { fallback, headers, replace, replacement, types, urls } = config;
@@ -77,55 +77,43 @@ function makeHeaderAlterer(headerType, webRequestAPI) {
         replace === null ? null : new RegExp(replace ?? "^.*$", "gi");
       const listener = evt => {
         let found = false;
-        const finalHeaders = [];
-        for (const header of evt[`${headerType}Headers`]) {
+        const responseHeaders = [];
+        for (const header of evt.responseHeaders) {
           if (headers.includes(header.name.toLowerCase())) {
-            found = true;
-            if (
-              regex !== null &&
-              replacement !== null &&
-              replacement !== undefined
-            ) {
+            if (regex !== null && replacement !== null) {
+              found = true;
               const value = header.value.replaceAll(regex, replacement);
-              finalHeaders.push({ name: header.name, value });
-            } else if (replacement !== null) {
-              finalHeaders.push(header);
+              responseHeaders.push({ name: header.name, value });
             }
           } else {
-            finalHeaders.push(header);
+            responseHeaders.push(header);
           }
         }
         if (!found && (replace === undefined || typeof fallback === "string")) {
           const value = fallback ?? replacement;
           if (value !== null) {
-            finalHeaders.push({
+            responseHeaders.push({
               name: headers[0],
               value,
             });
           }
         }
-        const retval = {};
-        retval[`${headerType}Headers`] = finalHeaders;
-        return retval;
+        return { responseHeaders };
       };
-      browser.webRequest[webRequestAPI].addListener(listener, { types, urls }, [
-        "blocking",
-        `${headerType}Headers`,
-      ]);
+      browser.webRequest.onHeadersReceived.addListener(
+        listener,
+        { types, urls },
+        ["blocking", "responseHeaders"]
+      );
       rememberListener(intervention, this.getKey(config), listener);
     },
     disable(config, intervention) {
       const listener = forgetListener(intervention, this.getKey(config));
       if (listener) {
-        browser.webRequest[webRequestAPI].removeListener(listener);
+        browser.webRequest.onHeadersReceived.removeListener(listener);
       }
     },
-  };
-}
-
-var CUSTOM_FUNCTIONS = {
-  alter_request_headers: makeHeaderAlterer("request", "onBeforeSendHeaders"),
-  alter_response_headers: makeHeaderAlterer("response", "onHeadersReceived"),
+  },
   replace_string_in_request: {
     details: ["find", "replace", "urls"],
     optionalDetails: ["types"],

@@ -4,7 +4,7 @@
 
 import logging
 from pathlib import Path
-from typing import Union
+from typing import List, Union
 
 from mozlint.parser import Parser
 from mozlint.pathutils import filterpaths
@@ -47,7 +47,7 @@ class SkipUnlessMozlint(OptimizationStrategy):
         self.linters_path = Path(GECKO) / linters_path
 
     def should_remove_task(
-        self, task, params, mozlint_confs: Union[str, list[str]]
+        self, task, params, mozlint_confs: Union[str, List[str]]
     ) -> bool:
         include = []
         exclude = []

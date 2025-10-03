@@ -168,16 +168,19 @@
 #ifdef XP_MACOSX
                 <menuitem id="enterFullScreenItem"
                           key="key_enterFullScreen"
-                          data-l10n-id="menu-view-enter-full-screen"/>
+                          command="View:FullScreen"
+                          data-l10n-id="menu-view-enter-full-screen">
+                </menuitem>
                 <menuitem id="exitFullScreenItem"
                           key="key_exitFullScreen"
-                          hidden="true" data-l10n-id="menu-view-exit-full-screen"/>
+                          command="View:FullScreen"
+                          hidden="true" data-l10n-id="menu-view-exit-full-screen">
+                </menuitem>
 #else
                 <menuitem id="fullScreenItem"
                           key="key_enterFullScreen"
                           type="checkbox"
                           command="View:FullScreen"
-                          observes="View:FullScreen"
                           data-l10n-id="menu-view-full-screen"/>
 #endif
                 <menuitem id="menu_readerModeItem"

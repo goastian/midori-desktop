@@ -733,7 +733,6 @@ export function handleError(error: ProtocolError): void {
   // 'Expected "header" [...]'.
   if (
     error.originalMessage.includes('Invalid header') ||
-    error.originalMessage.includes('Unsafe header') ||
     error.originalMessage.includes('Expected "header"') ||
     // WebDriver BiDi error for invalid values, for example, headers.
     error.originalMessage.includes('invalid argument')

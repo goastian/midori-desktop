@@ -2,12 +2,6 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
-add_setup(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-});
-
 async function createAndShowDropdown(browser) {
   // Add a select element to the DOM of the loaded document.
   await SpecialPowers.spawn(browser, [], async function () {

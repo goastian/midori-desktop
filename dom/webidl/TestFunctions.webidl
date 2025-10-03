@@ -145,15 +145,6 @@ interface TestFunctions {
 
   boolean staticAndNonStaticOverload();
   static boolean staticAndNonStaticOverload(optional unsigned long foo);
-
-  [ChromeOnly, NewObject]
-  static TestChromeOnlyInterface createTestChromeOnlyInterface();
-};
-
-[Pref="dom.expose_test_interfaces",
- ChromeOnly,
- Exposed=Window]
-interface TestChromeOnlyInterface {
 };
 
 [Pref="dom.expose_test_interfaces",

@@ -15,7 +15,6 @@
 #include <cstdint>
 #include <vector>
 
-#include "api/array_view.h"
 #include "media/base/fake_rtp.h"
 #include "rtc_base/async_packet_socket.h"
 #include "test/gtest.h"
@@ -187,7 +186,7 @@ TEST(RtpUtilsTest, UpdateAbsSendTimeExtensionInTurnSendIndication) {
 // Test without any packet options variables set. This method should return
 // without HMAC value in the packet.
 TEST(RtpUtilsTest, ApplyPacketOptionsWithDefaultValues) {
-  webrtc::PacketTimeUpdateParams packet_time_params;
+  rtc::PacketTimeUpdateParams packet_time_params;
   std::vector<uint8_t> rtp_packet(
       kRtpMsgWithOneByteAbsSendTimeExtension,
       kRtpMsgWithOneByteAbsSendTimeExtension +
@@ -208,7 +207,7 @@ TEST(RtpUtilsTest, ApplyPacketOptionsWithDefaultValues) {
 
 // Veirfy HMAC is updated when packet option parameters are set.
 TEST(RtpUtilsTest, ApplyPacketOptionsWithAuthParams) {
-  webrtc::PacketTimeUpdateParams packet_time_params;
+  rtc::PacketTimeUpdateParams packet_time_params;
   packet_time_params.srtp_auth_key.assign(kTestKey,
                                           kTestKey + sizeof(kTestKey));
   packet_time_params.srtp_auth_tag_len = 4;
@@ -265,7 +264,7 @@ TEST(RtpUtilsTest, UpdateTwoByteAbsSendTimeExtensionInRtpPacket) {
 
 // Verify we update both AbsSendTime extension header and HMAC.
 TEST(RtpUtilsTest, ApplyPacketOptionsWithAuthParamsAndAbsSendTime) {
-  webrtc::PacketTimeUpdateParams packet_time_params;
+  rtc::PacketTimeUpdateParams packet_time_params;
   packet_time_params.srtp_auth_key.assign(kTestKey,
                                           kTestKey + sizeof(kTestKey));
   packet_time_params.srtp_auth_tag_len = 4;

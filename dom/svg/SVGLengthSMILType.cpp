@@ -13,14 +13,14 @@
 
 namespace mozilla {
 
-void SVGLengthSMILType::InitValue(SMILValue& aValue) const {
+void SVGLengthSMILType::Init(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.IsNull(), "Unexpected value type");
 
   aValue.mU.mPtr = new SVGLengthAndInfo();
   aValue.mType = this;
 }
 
-void SVGLengthSMILType::DestroyValue(SMILValue& aValue) const {
+void SVGLengthSMILType::Destroy(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.mType == this, "Unexpected SMIL value");
   delete static_cast<SVGLengthAndInfo*>(aValue.mU.mPtr);
   aValue.mU.mPtr = nullptr;

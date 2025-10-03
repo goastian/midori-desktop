@@ -26,17 +26,17 @@ add_task(async function () {
     ? [
         {
           menuItemId: "request-list-context-copy-as-curl-win",
-          data: buildTestData(QUOTE_WIN),
+          data: buildTestData(QUOTE_WIN, true),
         },
         {
           menuItemId: "request-list-context-copy-as-curl-posix",
-          data: buildTestData(QUOTE_POSIX),
+          data: buildTestData(QUOTE_POSIX, false),
         },
       ]
     : [
         {
           menuItemId: "request-list-context-copy-as-curl",
-          data: buildTestData(QUOTE_POSIX),
+          data: buildTestData(QUOTE_POSIX, false),
         },
       ];
 
@@ -45,7 +45,7 @@ add_task(async function () {
   await teardown(monitor);
 });
 
-function buildTestData(QUOTE) {
+function buildTestData(QUOTE, isWin) {
   // Quote a string, escape the quotes inside the string
   function quote(str) {
     return QUOTE + str.replace(new RegExp(QUOTE, "g"), `\\${QUOTE}`) + QUOTE;
@@ -56,9 +56,11 @@ function buildTestData(QUOTE) {
     return "-H " + quote(h);
   }
 
+  const CMD = isWin ? "curl.exe " : "curl ";
+
   // Construct the expected command
-  const SIMPLE_BASE = ["curl " + quote(HTTPS_SIMPLE_SJS)];
-  const SLOW_BASE = ["curl " + quote(HTTPS_SLOW_SJS)];
+  const SIMPLE_BASE = [CMD + quote(HTTPS_SIMPLE_SJS)];
+  const SLOW_BASE = [CMD + quote(HTTPS_SLOW_SJS)];
   const BASE_RESULT = [
     "--compressed",
     header("User-Agent: " + navigator.userAgent),
@@ -220,8 +222,9 @@ async function testForPlatform(tab, monitor, testData) {
 
         // This monster regexp parses the command line into an array of arguments,
         // recognizing quoted args with matching quotes and escaped quotes inside:
+        // [ "curl.exe 'url'", "--standalone-arg", "-arg-with-quoted-string 'value\'s'" ]
         // [ "curl 'url'", "--standalone-arg", "-arg-with-quoted-string 'value\'s'" ]
-        const matchRe = /[-A-Za-z1-9]+(?: ([\^\\"']+)(?:\\\1|.)*?\1)?/g;
+        const matchRe = /[-\.A-Za-z1-9]+(?: ([\^\"']+)(?:\\\1|.)*?\1)?/g;
 
         const actual = result.match(matchRe);
         // Must begin with the same "curl 'URL'" segment

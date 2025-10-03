@@ -92,12 +92,8 @@ class RenderCompositorANGLE final : public RenderCompositor {
             wr::DeviceIntRect aDirtyRect,
             wr::DeviceIntRect aValidRect) override;
   void Unbind() override;
-  void BindSwapChain(wr::NativeSurfaceId aId,
-                     const wr::DeviceIntRect* aDirtyRects,
-                     size_t aNumDirtyRects) override;
-  void PresentSwapChain(wr::NativeSurfaceId aId,
-                        const wr::DeviceIntRect* aDirtyRects,
-                        size_t aNumDirtyRects) override;
+  void BindSwapChain(wr::NativeSurfaceId aId) override;
+  void PresentSwapChain(wr::NativeSurfaceId aId) override;
   void CreateSurface(wr::NativeSurfaceId aId, wr::DeviceIntPoint aVirtualOffset,
                      wr::DeviceIntSize aTileSize, bool aIsOpaque) override;
   void CreateExternalSurface(wr::NativeSurfaceId aId, bool aIsOpaque) override;

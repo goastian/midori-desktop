@@ -69,7 +69,7 @@ data class WallpaperState(
      * Run the Composable [run] block only if the current wallpaper's card colors are available.
      */
     @Composable
-    fun ComposeRunIfWallpaperCardColorsAreAvailable(
+    fun composeRunIfWallpaperCardColorsAreAvailable(
         run: @Composable (cardColorLight: Color, cardColorDark: Color) -> Unit,
     ) {
         if (currentWallpaper.cardColorLight != null && currentWallpaper.cardColorDark != null) {

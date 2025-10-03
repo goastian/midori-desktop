@@ -359,12 +359,10 @@ Result<H265SPS, nsresult> H265::DecodeSPSFromSPSNALU(const H265NALU& aSPSNALU) {
   sps.max_transform_hierarchy_depth_intra = reader.ReadUE();
   const auto scaling_list_enabled_flag = reader.ReadBit();
   if (scaling_list_enabled_flag) {
-    const auto sps_scaling_list_data_present_flag = reader.ReadBit();
-    if (sps_scaling_list_data_present_flag) {
-      if (auto rv = ParseAndIgnoreScalingListData(reader); rv.isErr()) {
-        LOG("Failed to parse scaling list data.");
-        return Err(NS_ERROR_FAILURE);
-      }
+    Unused << reader.ReadBit();  // sps_scaling_list_data_present_flag
+    if (auto rv = ParseAndIgnoreScalingListData(reader); rv.isErr()) {
+      LOG("Failed to parse scaling list data.");
+      return Err(NS_ERROR_FAILURE);
     }
   }
 
@@ -1247,7 +1245,7 @@ already_AddRefed<mozilla::MediaByteBuffer> H265::ExtractHVCCExtraData(
   // If we encounter SPS with the same id but different content, we will stop
   // attempting to detect duplicates.
   bool checkDuplicate = true;
-  const H265SPS* firstSPS = nullptr;
+  Maybe<uint8_t> firstSPSId;
 
   RefPtr<mozilla::MediaByteBuffer> extradata = new mozilla::MediaByteBuffer;
   while (reader.Remaining() > nalLenSize) {
@@ -1307,8 +1305,8 @@ already_AddRefed<mozilla::MediaByteBuffer> H265::ExtractHVCCExtraData(
       } else {
         spsRefTable[spsId] = Some(sps);
         nalusMap.LookupOrInsert(nalu.mNalUnitType).AppendElement(nalu);
-        if (!firstSPS) {
-          firstSPS = spsRefTable[spsId].ptr();
+        if (!firstSPSId) {
+          firstSPSId.emplace(spsId);
         }
       }
     } else if (nalu.IsVPS() || nalu.IsPPS()) {
@@ -1324,8 +1322,10 @@ already_AddRefed<mozilla::MediaByteBuffer> H265::ExtractHVCCExtraData(
        spsEntry ? spsEntry.Data().Length() : 0,
        vpsEntry ? vpsEntry.Data().Length() : 0,
        ppsEntry ? ppsEntry.Data().Length() : 0);
-  if (firstSPS) {
+  if (firstSPSId) {
     BitWriter writer(extradata);
+    const H265SPS* firstSPS = spsRefTable[*firstSPSId].ptr();
+    MOZ_ASSERT(firstSPS);
 
     // ISO/IEC 14496-15, HEVCDecoderConfigurationRecord.
     writer.WriteBits(1, 8);  // version

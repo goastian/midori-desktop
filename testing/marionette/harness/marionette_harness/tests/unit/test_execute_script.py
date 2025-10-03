@@ -1,6 +1,6 @@
 import os
 
-from urllib.parse import quote
+from six.moves.urllib.parse import quote
 
 from marionette_driver import By, errors
 from marionette_driver.marionette import Alert, WebElement

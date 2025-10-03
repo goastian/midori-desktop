@@ -4,10 +4,10 @@
 
 package org.mozilla.fenix.crashes
 
-import android.view.View
 import android.view.View.GONE
 import android.view.View.VISIBLE
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.spyk
 import io.mockk.verify
 import mozilla.components.support.test.robolectric.testContext
@@ -17,9 +17,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.R
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.crashes.CrashContentView.Companion.TAP_INCREASE_DP
+import org.mozilla.fenix.ext.increaseTapArea
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
+@RunWith(FenixRobolectricTestRunner::class)
 class CrashContentViewTest {
     @Test
     fun `WHEN show is called THEN remember the controller, inflate and display the View`() {
@@ -47,39 +49,31 @@ class CrashContentViewTest {
     @Test
     fun `GIVEN the View is not shown WHEN needing to be shown THEN inflate the layout and bind all widgets`() {
         val controller: CrashReporterController = mockk(relaxed = true)
-        val view = spyk(CrashContentView(testContext))
-
-        val viewArgumentCaptor = mutableListOf<View>()
-
+        val view = CrashContentView(testContext)
         view.controller = controller
         assertFalse(view.isBindingInitialized)
 
-        view.inflateViewIfNecessary()
+        mockkStatic("org.mozilla.fenix.ext.ViewKt") {
+            view.inflateViewIfNecessary()
 
-        assertTrue(view.isBindingInitialized)
-        assertEquals(
-            testContext.getString(
-                R.string.tab_crash_title_2,
-                testContext.getString(R.string.app_name),
-            ),
-            view.binding.title.text,
-        )
+            assertTrue(view.isBindingInitialized)
+            assertEquals(
+                testContext.getString(R.string.tab_crash_title_2, testContext.getString(R.string.app_name)),
+                view.binding.title.text,
+            )
+            verify {
+                view.binding.restoreTabButton.increaseTapArea(TAP_INCREASE_DP)
+                view.binding.closeTabButton.increaseTapArea(TAP_INCREASE_DP)
+            }
 
-        verify {
-            view.increaseTapArea(capture(viewArgumentCaptor))
-            view.increaseTapArea(capture(viewArgumentCaptor))
+            view.binding.sendCrashCheckbox.isChecked = true
+            view.binding.restoreTabButton.callOnClick()
+            verify { controller.handleCloseAndRestore(true) }
+
+            view.binding.sendCrashCheckbox.isChecked = false
+            view.binding.closeTabButton.callOnClick()
+            verify { controller.handleCloseAndRemove(false) }
         }
-
-        assertEquals(view.binding.restoreTabButton, viewArgumentCaptor[0])
-        assertEquals(view.binding.closeTabButton, viewArgumentCaptor[1])
-
-        view.binding.sendCrashCheckbox.isChecked = true
-        view.binding.restoreTabButton.callOnClick()
-        verify { controller.handleCloseAndRestore(true) }
-
-        view.binding.sendCrashCheckbox.isChecked = false
-        view.binding.closeTabButton.callOnClick()
-        verify { controller.handleCloseAndRemove(false) }
     }
 
     @Test

@@ -7,8 +7,22 @@ package mozilla.components.feature.downloads.fake
 import mozilla.components.feature.downloads.DateTimeProvider
 
 class FakeDateTimeProvider(
-    private val currentTime: Long = 0,
+    private val startTime: Long,
+    private val currentTime: Long,
 ) : DateTimeProvider {
 
-    override fun currentTimeMillis(): Long = currentTime
+    private var startTimeCalled = false
+
+    override fun currentTimeMillis(): Long {
+        return if (startTimeCalled) {
+            currentTime
+        } else {
+            setStartTimeCalled()
+            startTime
+        }
+    }
+
+    private fun setStartTimeCalled() {
+        startTimeCalled = true
+    }
 }

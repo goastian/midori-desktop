@@ -906,8 +906,7 @@ export const kFeatureNameInfo =
   'clip-distances': {},
   'dual-source-blending': {},
   'subgroups': {},
-  'core-features-and-limits': {},
-  'texture-formats-tier1': {}
+  'core-features-and-limits': {}
 };
 /** List of all GPUFeatureName values. */
 export const kFeatureNames = keysOf(kFeatureNameInfo);

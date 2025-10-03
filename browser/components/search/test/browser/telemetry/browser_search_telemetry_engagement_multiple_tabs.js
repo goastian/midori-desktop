@@ -63,10 +63,7 @@ add_setup(async function () {
   SearchSERPTelemetry.overrideSearchTelemetryForTests(TEST_PROVIDER_INFO);
   await waitForIdle();
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      ["dom.ipc.processCount.webIsolated", MAX_IPC],
-    ],
+    set: [["dom.ipc.processCount.webIsolated", MAX_IPC]],
   });
 
   registerCleanupFunction(async () => {

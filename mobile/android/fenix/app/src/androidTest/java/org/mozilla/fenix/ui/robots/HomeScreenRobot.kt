@@ -14,6 +14,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.filter
 import androidx.compose.ui.test.hasAnyChild
 import androidx.compose.ui.test.hasAnySibling
@@ -23,6 +25,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onChildAt
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -59,24 +62,25 @@ import org.mozilla.fenix.helpers.MatcherHelper.assertItemIsChecked
 import org.mozilla.fenix.helpers.MatcherHelper.assertUIObjectExists
 import org.mozilla.fenix.helpers.MatcherHelper.itemContainingText
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithClassNameAndIndex
+import org.mozilla.fenix.helpers.MatcherHelper.itemWithDescription
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithIndex
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithResId
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdAndIndex
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdAndText
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdContainingText
+import org.mozilla.fenix.helpers.MatcherHelper.itemWithText
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTime
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTimeLong
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTimeShort
 import org.mozilla.fenix.helpers.TestHelper.appName
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.packageName
+import org.mozilla.fenix.helpers.TestHelper.scrollToElementByText
 import org.mozilla.fenix.helpers.click
 import org.mozilla.fenix.helpers.ext.waitNotNull
 import org.mozilla.fenix.home.topsites.TopSitesTestTag
 import org.mozilla.fenix.home.topsites.TopSitesTestTag.TOP_SITE_CARD_FAVICON
 import org.mozilla.fenix.home.ui.HomepageTestTag.HOMEPAGE
-import org.mozilla.fenix.home.ui.HomepageTestTag.HOMEPAGE_PRIVATE_BROWSING_LEARN_MORE_LINK
-import org.mozilla.fenix.home.ui.HomepageTestTag.HOMEPAGE_STORY
 import org.mozilla.fenix.home.ui.HomepageTestTag.HOMEPAGE_WORDMARK_LOGO
 import org.mozilla.fenix.home.ui.HomepageTestTag.HOMEPAGE_WORDMARK_TEXT
 import org.mozilla.fenix.home.ui.HomepageTestTag.PRIVATE_BROWSING_HOMEPAGE_BUTTON
@@ -94,9 +98,13 @@ class HomeScreenRobot {
         verifyHomeScreenAppBarItems()
         assertUIObjectExists(
             itemContainingText(
-                getStringResource(R.string.felt_privacy_desc_card_title),
+                "$appName clears your search and browsing history from private tabs when you close them" +
+                    " or quit the app. While this doesn’t make you anonymous to websites or your internet" +
+                    " service provider, it makes it easier to keep what you do online private from anyone" +
+                    " else who uses this device.",
             ),
         )
+        verifyCommonMythsLink()
     }
 
     fun verifyHomeScreenAppBarItems() =
@@ -259,11 +267,29 @@ class HomeScreenRobot {
         Log.i(TAG, "swipeSecondOnboardingCardToRight: Performed swipe right action on second onboarding card")
     }
 
+    fun clickGetStartedButton(testRule: ComposeTestRule) {
+        Log.i(TAG, "clickGetStartedButton: Trying to click \"Get started\" onboarding button")
+        testRule.onNodeWithText(getStringResource(R.string.onboarding_home_get_started_button))
+            .performClick()
+        Log.i(TAG, "clickGetStartedButton: Clicked \"Get started\" onboarding button")
+    }
+
     fun clickCloseButton(testRule: ComposeTestRule) {
         Log.i(TAG, "clickCloseButton: Trying to click close onboarding button")
         testRule.onNode(hasContentDescription("Close")).performClick()
         Log.i(TAG, "clickCloseButton: Clicked close onboarding button")
     }
+
+    fun clickSkipButton(testRule: ComposeTestRule) {
+        Log.i(TAG, "clickSkipButton: Trying to click \"Skip\" onboarding button")
+        testRule
+            .onNodeWithText(getStringResource(R.string.onboarding_home_skip_button))
+            .performClick()
+        Log.i(TAG, "clickSkipButton: Clicked \"Skip\" onboarding button")
+    }
+
+    fun verifyCommonMythsLink() =
+        assertUIObjectExists(itemContainingText(getStringResource(R.string.private_browsing_common_myths)))
 
     @OptIn(ExperimentalTestApi::class)
     fun verifyExistingTopSitesList(composeTestRule: ComposeTestRule) {
@@ -371,9 +397,9 @@ class HomeScreenRobot {
     }
 
     fun verifyJumpBackInSectionIsDisplayed() {
+        scrollToElementByText(getStringResource(R.string.recent_tabs_header))
         assertUIObjectExists(itemContainingText(getStringResource(R.string.recent_tabs_header)))
     }
-
     fun verifyJumpBackInSectionIsNotDisplayed(composeTestRule: ComposeTestRule) =
         composeTestRule.onNodeWithText(getStringResource(R.string.recent_tabs_header)).assertIsNotDisplayed()
 
@@ -442,7 +468,7 @@ class HomeScreenRobot {
     fun scrollToPocketProvokingStories() {
         Log.i(TAG, "scrollToPocketProvokingStories: Trying to scroll into view the featured pocket stories")
         homeScreenList().scrollIntoView(
-            mDevice.findObject(UiSelector().resourceId(HOMEPAGE_STORY).index(2)),
+            mDevice.findObject(UiSelector().resourceId("pocket.recommended.story").index(2)),
         )
         Log.i(TAG, "scrollToPocketProvokingStories: Scrolled into view the featured pocket stories")
     }
@@ -464,20 +490,91 @@ class HomeScreenRobot {
 //    fun verifyPocketSponsoredStoriesItems(vararg positions: Int) {
 //        positions.forEach {
 //            pocketStoriesList
-//                .scrollIntoView(UiSelector().resourceId(HOMEPAGE_SPONSORED_STORY).index(it - 1))
+//                .scrollIntoView(UiSelector().resourceId("pocket.sponsored.story").index(it - 1))
 //
 //            assertTrue(
 //                "Pocket story item at position $it not found.",
-//                mDevice.findObject(UiSelector().index(it - 1).resourceId(HOMEPAGE_SPONSORED_STORY))
+//                mDevice.findObject(UiSelector().index(it - 1).resourceId("pocket.sponsored.story"))
 //                    .waitForExists(waitingTimeShort),
 //            )
 //        }
 //    }
 
+    fun verifyDiscoverMoreStoriesButton(composeTestRule: ComposeTestRule) {
+        Log.i(TAG, "verifyDiscoverMoreStoriesButton: Trying to scroll into view the \"Stories\" pocket section")
+        composeTestRule.onNodeWithTag("homepage.view").performScrollToNode(hasTestTag("pocket.stories"))
+        Log.i(TAG, "verifyDiscoverMoreStoriesButton: Scrolled into view the \"Stories\" pocket section")
+        Log.i(TAG, "verifyDiscoverMoreStoriesButton: Trying to scroll into view the Pocket \"Discover more\" button")
+        composeTestRule.onNodeWithTag("pocket.stories").performScrollToNode(hasText("Discover more"))
+        Log.i(TAG, "verifyDiscoverMoreStoriesButton: Scrolled into view the Pocket \"Discover more\" button")
+        assertUIObjectExists(itemWithText("Discover more"))
+    }
+
+    fun verifyStoriesByTopic(enabled: Boolean) {
+        if (enabled) {
+            scrollToElementByText(getStringResource(R.string.pocket_stories_categories_header))
+            assertUIObjectExists(itemContainingText(getStringResource(R.string.pocket_stories_categories_header)))
+        } else {
+            assertUIObjectExists(itemContainingText(getStringResource(R.string.pocket_stories_categories_header)), exists = false)
+        }
+    }
+
+    fun verifyStoriesByTopicItems() {
+        Log.i(TAG, "verifyStoriesByTopicItems: Trying to scroll into view the stories by topic home screen section")
+        homeScreenList().scrollIntoView(UiSelector().resourceId("pocket.categories"))
+        Log.i(TAG, "verifyStoriesByTopicItems: Scrolled into view the stories by topic home screen section")
+        Log.i(TAG, "verifyStoriesByTopicItems: Trying to verify that there are more than 1 \"Stories by topic\" categories")
+        assertTrue(mDevice.findObject(UiSelector().resourceId("pocket.categories")).childCount > 1)
+        Log.i(TAG, "verifyStoriesByTopicItems: Verified that there are more than 1 \"Stories by topic\" categories")
+    }
+
+    fun verifyStoriesByTopicItemState(composeTestRule: ComposeTestRule, isSelected: Boolean, position: Int) {
+        Log.i(TAG, "verifyStoriesByTopicItemState: Trying to scroll into view \"Stories by topic\" home screen section")
+        homeScreenList().scrollIntoView(mDevice.findObject(UiSelector().resourceId("pocket.header")))
+        Log.i(TAG, "verifyStoriesByTopicItemState: Scrolled into view \"Stories by topic\" home screen section")
+
+        if (isSelected) {
+            Log.i(TAG, "verifyStoriesByTopicItemState: Trying verify that the stories by topic home screen section is displayed")
+            composeTestRule.onNodeWithTag("pocket.categories").assertIsDisplayed()
+            Log.i(TAG, "verifyStoriesByTopicItemState: Verified that the stories by topic home screen section is displayed")
+            Log.i(TAG, "verifyStoriesByTopicItemState: Trying verify that the stories by topic item at position: $position is selected")
+            storyByTopicItem(composeTestRule, position).assertIsSelected()
+            Log.i(TAG, "verifyStoriesByTopicItemState: Verified that the stories by topic item at position: $position is selected")
+        } else {
+            Log.i(TAG, "verifyStoriesByTopicItemState: Trying verify that the stories by topic home screen section is displayed")
+            composeTestRule.onNodeWithTag("pocket.categories").assertIsDisplayed()
+            Log.i(TAG, "verifyStoriesByTopicItemState: Verified that the stories by topic home screen section is displayed")
+            Log.i(TAG, "verifyStoriesByTopicItemState: Trying to verify that the stories by topic item at position: $position is not selected")
+            storyByTopicItem(composeTestRule, position).assertIsNotSelected()
+            Log.i(TAG, "verifyStoriesByTopicItemState: Verified that the stories by topic item at position: $position is not selected")
+        }
+    }
+
+    fun clickStoriesByTopicItem(composeTestRule: ComposeTestRule, position: Int) {
+        Log.i(TAG, "clickStoriesByTopicItem: Trying to click stories by topic item from position: $position")
+        storyByTopicItem(composeTestRule, position).performClick()
+        Log.i(TAG, "clickStoriesByTopicItem: Clicked stories by topic item from position: $position")
+    }
+
+    fun verifyCustomizeHomepageButton(composeTestRule: ComposeTestRule, enabled: Boolean) {
+        if (enabled) {
+            Log.i(TAG, "verifyCustomizeHomepageButton: Trying to perform scroll to the \"Customize homepage\" button")
+            composeTestRule.onNodeWithTag(HOMEPAGE).performScrollToNode(hasText("Customize homepage"))
+            Log.i(TAG, "verifyCustomizeHomepageButton: Performed scroll to the \"Customize homepage\" button")
+            Log.i(TAG, "verifyCustomizeHomepageButton: Trying to verify that the \"Customize homepage\" button is displayed")
+            composeTestRule.onNodeWithText("Customize homepage").assertIsDisplayed()
+            Log.i(TAG, "verifyCustomizeHomepageButton: Verified that the \"Customize homepage\" button is displayed")
+        } else {
+            Log.i(TAG, "verifyCustomizeHomepageButton: Trying to verify that the \"Customize homepage\" button is not displayed")
+            composeTestRule.onNodeWithText("Customize homepage").assertIsNotDisplayed()
+            Log.i(TAG, "verifyCustomizeHomepageButton: Verified that the \"Customize homepage\" button is not displayed")
+        }
+    }
+
     fun getProvokingStoryPublisher(position: Int): String {
         val publisher = mDevice.findObject(
             UiSelector()
-                .resourceId(HOMEPAGE_STORY)
+                .resourceId("pocket.recommended.story")
                 .index(position - 1),
         ).getChild(
             UiSelector()
@@ -615,11 +712,10 @@ class HomeScreenRobot {
             return ThreeDotMenuMainRobot.Transition()
         }
 
-        fun openThreeDotMenu(composeTestRule: ComposeTestRule, interact: ThreeDotMenuMainRobotCompose.() -> Unit): ThreeDotMenuMainRobotCompose.Transition {
+        fun openThreeDotMenuFromRedesignedToolbar(composeTestRule: ComposeTestRule, interact: ThreeDotMenuMainRobotCompose.() -> Unit): ThreeDotMenuMainRobotCompose.Transition {
             Log.i(TAG, "openThreeDotMenuFromRedesignedToolbar: Trying to click main menu button")
-            itemWithResId("$packageName:id/menuButton").click()
+            itemWithDescription(getStringResource(R.string.content_description_menu)).click()
             Log.i(TAG, "openThreeDotMenuFromRedesignedToolbar: Clicked main menu button")
-            assertUIObjectExists(itemWithResId("$packageName:id/design_bottom_sheet"))
 
             ThreeDotMenuMainRobotCompose(composeTestRule).interact()
             return ThreeDotMenuMainRobotCompose.Transition(composeTestRule)
@@ -638,6 +734,18 @@ class HomeScreenRobot {
 
             SearchRobot().interact()
             return SearchRobot.Transition()
+        }
+
+        fun clickUpgradingUserOnboardingSignInButton(
+            testRule: ComposeTestRule,
+            interact: SyncSignInRobot.() -> Unit,
+        ): SyncSignInRobot.Transition {
+            Log.i(TAG, "clickUpgradingUserOnboardingSignInButton: Trying to click the upgrading user onboarding \"Sign in\" button")
+            testRule.onNodeWithText("Sign in").performClick()
+            Log.i(TAG, "clickUpgradingUserOnboardingSignInButton: Clicked the upgrading user onboarding \"Sign in\" button")
+
+            SyncSignInRobot().interact()
+            return SyncSignInRobot.Transition()
         }
 
         fun togglePrivateBrowsingMode(switchPBModeOn: Boolean = true) {
@@ -811,10 +919,15 @@ class HomeScreenRobot {
             return SettingsSubMenuHomepageRobot.Transition()
         }
 
-        fun openPrivateBrowsingModeLearnMoreLink(composeTestRule: ComposeTestRule, interact: BrowserRobot.() -> Unit): BrowserRobot.Transition {
-            Log.i(TAG, "openPrivateBrowsingModeLearnMoreLink: Trying to click private browsing home screen link")
-            composeTestRule.onNodeWithTag(HOMEPAGE_PRIVATE_BROWSING_LEARN_MORE_LINK).performClick()
-            Log.i(TAG, "openPrivateBrowsingModeLearnMoreLink: Clicked private browsing home screen link")
+        fun openCommonMythsLink(interact: BrowserRobot.() -> Unit): BrowserRobot.Transition {
+            Log.i(TAG, "openCommonMythsLink: Trying to click private browsing home screen common myths link")
+            mDevice.findObject(
+                UiSelector()
+                    .textContains(
+                        getStringResource(R.string.private_browsing_common_myths),
+                    ),
+            ).also { it.click() }
+            Log.i(TAG, "openCommonMythsLink: Clicked private browsing home screen common myths link")
 
             BrowserRobot().interact()
             return BrowserRobot.Transition()
@@ -846,6 +959,18 @@ class HomeScreenRobot {
             return HistoryRobot.Transition()
         }
 
+        fun openCustomizeHomepage(composeTestRule: ComposeTestRule, interact: SettingsSubMenuHomepageRobot.() -> Unit): SettingsSubMenuHomepageRobot.Transition {
+            Log.i(TAG, "openCustomizeHomepage: Trying to perform scroll to the \"Customize homepage\" button")
+            composeTestRule.onNodeWithTag(HOMEPAGE).performScrollToNode(hasText("Customize homepage"))
+            Log.i(TAG, "openCustomizeHomepage: Performed scroll to the \"Customize homepage\" button")
+            Log.i(TAG, "openCustomizeHomepage: Trying to click \"Customize homepage\" button")
+            composeTestRule.onNodeWithText("Customize homepage").performClick()
+            Log.i(TAG, "openCustomizeHomepage: Clicked \"Customize homepage\" button")
+
+            SettingsSubMenuHomepageRobot().interact()
+            return SettingsSubMenuHomepageRobot.Transition()
+        }
+
         fun clickJumpBackInShowAllButton(composeTestRule: HomeActivityComposeTestRule, interact: TabDrawerRobot.() -> Unit): TabDrawerRobot.Transition {
             Log.i(TAG, "clickJumpBackInShowAllButton: Trying to click \"Show all\" button and wait for $waitingTime ms for a new window")
             mDevice
@@ -872,6 +997,19 @@ class HomeScreenRobot {
                     .textContains(publisher),
             ).clickAndWaitForNewWindow(waitingTime)
             Log.i(TAG, "clickPocketStoryItem: Clicked pocket story item published by: $publisher at position: $position and wait for $waitingTime ms for a new window")
+
+            BrowserRobot().interact()
+            return BrowserRobot.Transition()
+        }
+
+        fun clickPocketDiscoverMoreButton(composeTestRule: ComposeTestRule, interact: BrowserRobot.() -> Unit): BrowserRobot.Transition {
+            Log.i(TAG, "clickPocketDiscoverMoreButton: Trying to scroll into view the \"Discover more\" button")
+            pocketStoriesList().scrollToEnd(3)
+            Log.i(TAG, "clickPocketDiscoverMoreButton: Scrolled into view the \"Discover more\" button")
+
+            Log.i(TAG, "clickPocketDiscoverMoreButton: Trying to click the \"Discover more\" button")
+            composeTestRule.onNodeWithTag("pocket.discover.more.story").performClick()
+            Log.i(TAG, "clickPocketDiscoverMoreButton: Clicked the \"Discover more\" button")
 
             BrowserRobot().interact()
             return BrowserRobot.Transition()
@@ -936,6 +1074,9 @@ private fun sponsoredShortcut(sponsoredShortcutTitle: String) =
             withText(sponsoredShortcutTitle),
         ),
     )
+
+private fun storyByTopicItem(composeTestRule: ComposeTestRule, position: Int) =
+    composeTestRule.onNodeWithTag("pocket.categories").onChildAt(position - 1)
 
 private fun homeScreen() =
     itemWithResId("$packageName:id/homepageView")

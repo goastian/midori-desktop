@@ -14,10 +14,9 @@
 #include <string.h>
 
 #include <algorithm>
-#include <cstdint>
 #include <cstdlib>
+#include <memory>
 
-#include "api/transport/bandwidth_usage.h"
 #include "modules/remote_bitrate_estimator/inter_arrival.h"
 #include "modules/remote_bitrate_estimator/overuse_estimator.h"
 #include "rtc_base/random.h"

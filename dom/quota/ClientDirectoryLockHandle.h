@@ -84,10 +84,6 @@ class ClientDirectoryLockHandle final {
 
   ClientDirectoryLock* operator->() const;
 
-  bool IsRegistered() const;
-
-  void SetRegistered(bool aRegistered);
-
   /**
    * Returns true if this handle is in an inert state — either it was
    * default-constructed and never assigned a lock, or it was explicitly
@@ -109,12 +105,7 @@ class ClientDirectoryLockHandle final {
  private:
   NS_DECL_OWNINGTHREAD
 
-  // If new members are added or existing ones are changed, make sure to update
-  // the move constructor and move assignment operator accordingly to preserve
-  // correct state during moves.
   RefPtr<ClientDirectoryLock> mClientDirectoryLock;
-
-  bool mRegistered = false;
 };
 
 }  // namespace mozilla::dom::quota

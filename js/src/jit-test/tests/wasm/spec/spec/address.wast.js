@@ -391,9 +391,9 @@ assert_trap(() => invoke($0, `16s_bad`, [1]), `out of bounds memory access`);
 assert_trap(() => invoke($0, `32_bad`, [1]), `out of bounds memory access`);
 
 // ./test/core/address.wast:213
-assert_invalid(
+assert_malformed(
   () => instantiate(`(memory 1) (func (drop (i32.load offset=4294967296 (i32.const 0)))) `),
-  `offset out of range`,
+  `i32 constant`,
 );
 
 // ./test/core/address.wast:223

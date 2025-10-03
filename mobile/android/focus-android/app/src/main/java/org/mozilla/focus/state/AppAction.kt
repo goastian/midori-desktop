@@ -61,11 +61,6 @@ sealed class AppAction : Action {
 
     data class OpenSettings(val page: Screen.Settings.Page) : AppAction()
 
-    /**
-     * Show the content of about:crashes
-     */
-    internal object OpenCrashList : AppAction()
-
     data class OpenSitePermissionOptionsScreen(val sitePermission: SitePermission) : AppAction()
 
     data class NavigateUp(val tabId: String? = null) : AppAction()

@@ -14,11 +14,11 @@
 
 bool js::gc::ArenaList::hasNonFullArenas() const {
   // Non-full arenas are kept at the start so we can check the first one.
-  return !isEmpty() && !getFirst()->isFull();
+  return !isEmpty() && !first()->isFull();
 }
 
 js::gc::Arena* js::gc::ArenaList::takeInitialNonFullArena() {
-  Arena* arena = getFirst();
+  Arena* arena = first();
   if (!arena || arena->isFull()) {
     return nullptr;
   }
@@ -101,7 +101,7 @@ void js::gc::SortedArenaList::extractEmptyTo(Arena** destListHeadPtr) {
   Bucket& bucket = buckets[emptyIndex()];
   if (!bucket.isEmpty()) {
     Arena* tail = *destListHeadPtr;
-    Arena* bucketLast = bucket.getLast();
+    Arena* bucketLast = bucket.last();
     *destListHeadPtr = bucket.release();
     bucketLast->next = tail;
   }
@@ -119,7 +119,7 @@ js::gc::ArenaList js::gc::SortedArenaList::convertToArenaList(
 
   if (maybeBucketLastOut) {
     for (size_t i = 0; i < BucketCount; i++) {
-      maybeBucketLastOut[i] = buckets[i].getLast();
+      maybeBucketLastOut[i] = buckets[i].last();
     }
   }
 
@@ -245,12 +245,12 @@ JSRuntime* js::gc::ArenaLists::runtimeFromAnyThread() {
 }
 
 js::gc::Arena* js::gc::ArenaLists::getFirstArena(AllocKind thingKind) const {
-  return arenaList(thingKind).getFirst();
+  return arenaList(thingKind).first();
 }
 
 js::gc::Arena* js::gc::ArenaLists::getFirstCollectingArena(
     AllocKind thingKind) const {
-  return collectingArenaList(thingKind).getFirst();
+  return collectingArenaList(thingKind).first();
 }
 
 bool js::gc::ArenaLists::arenaListsAreEmpty() const {

@@ -1,7 +1,6 @@
 /**
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
 **/export const description = 'checkPixels helpers behave as expected against real textures';import { makeTestGroup } from '../../../common/framework/test_group.js';
-import { getBlockInfoForColorTextureFormat } from '../../format_info.js';
 import { AllFeaturesMaxLimitsGPUTest } from '../../gpu_test.js';
 
 import { TexelView } from './texel_view.js';
@@ -61,9 +60,7 @@ u.
 combine('mode', ['bytes', 'colors']).
 combineWithParams([
 { format: 'r8unorm', _maxValue: 255 },
-{ format: 'r8snorm', _maxValue: 127 },
-{ format: 'r16unorm', _maxValue: 65535 },
-{ format: 'r16snorm', _maxValue: 32767 }]
+{ format: 'r8snorm', _maxValue: 127 }]
 ).
 beginSubcases().
 combineWithParams([
@@ -76,7 +73,6 @@ combineWithParams([
 ).
 fn(async (t) => {
   const { mode, format, _maxValue, data, _ok } = t.params;
-  t.skipIfTextureFormatNotSupported(format);
 
   const size = [2, 1];
   const texture = t.createTextureTracked({
@@ -84,18 +80,12 @@ fn(async (t) => {
     size,
     usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
   });
-  const { bytesPerBlock } = getBlockInfoForColorTextureFormat(format);
-  const [InputCtor, ExpectCtor] =
-  bytesPerBlock === 1 ? [Int8Array, Uint8Array] : [Int16Array, Uint16Array];
-  t.device.queue.writeTexture({ texture }, new InputCtor(data), {}, size);
+  t.device.queue.writeTexture({ texture }, new Int8Array(data), {}, size);
 
   let expTexelView;
   switch (mode) {
     case 'bytes':
-      expTexelView = TexelView.fromTexelsAsBytes(
-        format,
-        (_coords) => new Uint8Array(new ExpectCtor([10]).buffer)
-      );
+      expTexelView = TexelView.fromTexelsAsBytes(format, (_coords) => new Uint8Array([10]));
       break;
     case 'colors':
       expTexelView = TexelView.fromTexelsAsColors(format, (_coords) => ({ R: 10 / _maxValue }));

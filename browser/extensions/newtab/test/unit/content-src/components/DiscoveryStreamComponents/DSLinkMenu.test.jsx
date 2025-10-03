@@ -43,6 +43,7 @@ describe("<DSLinkMenu>", () => {
   describe("DS context menu options", () => {
     const ValidDSLinkMenuProps = {
       site: {},
+      pocket_button_enabled: true,
       card_type: "organic",
     };
 
@@ -88,7 +89,29 @@ describe("<DSLinkMenu>", () => {
       ].forEach(prop => assert.property(linkMenuProps, prop));
     });
 
-    it("should pass through the correct menu options to LinkMenu for recommended stories", () => {
+    it("should pass through the correct menu options to LinkMenu for recommended stories if Pocket is enabled", () => {
+      wrapper
+        .find(ContextMenuButton)
+        .simulate("click", { preventDefault: () => {} });
+      const linkMenuProps = wrapper.find(LinkMenu).props();
+      assert.deepEqual(linkMenuProps.options, [
+        "CheckBookmark",
+        "CheckArchiveFromPocket",
+        "CheckSavedToPocket",
+        "Separator",
+        "OpenInNewWindow",
+        "OpenInPrivateWindow",
+        "Separator",
+        "BlockUrl",
+      ]);
+    });
+
+    it("should pass through the correct menu options to LinkMenu for recommended stories if Pocket is disabled", () => {
+      wrapper = mount(
+        <Provider store={store}>
+          <DSLinkMenu {...ValidDSLinkMenuProps} pocket_button_enabled={false} />
+        </Provider>
+      );
       wrapper
         .find(ContextMenuButton)
         .simulate("click", { preventDefault: () => {} });
@@ -106,7 +129,11 @@ describe("<DSLinkMenu>", () => {
     it("should pass through ReportContent as a link menu option when section is defined", () => {
       wrapper = mount(
         <Provider store={store}>
-          <DSLinkMenu {...ValidDSLinkMenuProps} section="abc" />
+          <DSLinkMenu
+            {...ValidDSLinkMenuProps}
+            pocket_button_enabled={false}
+            section="abc"
+          />
         </Provider>
       );
 

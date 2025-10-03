@@ -17,6 +17,9 @@ var summary = 'Crash with JIT in js_FillPropertyCache';
 var actual = 'No Crash';
 var expect = 'No Crash';
 
+printBugNumber(BUGNUMBER);
+printStatus (summary);
+
 
 /************************ BROWSER DETECT (http://www.quirksmode.org/js/detect.html) ************************/
 

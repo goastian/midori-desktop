@@ -203,32 +203,20 @@ class ProviderTopSites extends UrlbarProvider {
       return site;
     });
 
-    let tabUrlsToContextIds = new Map();
+    let tabUrlsToContextIds;
     if (lazy.UrlbarPrefs.get("suggest.openpage")) {
       if (lazy.UrlbarPrefs.get("switchTabs.searchAllContainers")) {
-        lazy.UrlbarProviderOpenTabs.getOpenTabUrls(
+        tabUrlsToContextIds = lazy.UrlbarProviderOpenTabs.getOpenTabUrls(
           queryContext.isPrivate
-        ).forEach((userContextAndGroupIds, url) => {
-          let userContextIds = new Set();
-          for (let [userContextId] of userContextAndGroupIds) {
-            userContextIds.add(userContextId);
-          }
-          tabUrlsToContextIds.set(url, userContextIds);
-        });
+        );
       } else {
-        for (let [
-          url,
-          userContextId,
-        ] of lazy.UrlbarProviderOpenTabs.getOpenTabUrlsForUserContextId(
+        // Build an object compatible with the output of getOpenTabs.
+        tabUrlsToContextIds = new Map();
+        for (let url of lazy.UrlbarProviderOpenTabs.getOpenTabUrlsForUserContextId(
           queryContext.userContextId,
           queryContext.isPrivate
         )) {
-          let userContextIds = tabUrlsToContextIds.get(url);
-          if (!userContextIds) {
-            userContextIds = new Set();
-          }
-          userContextIds.add(userContextId);
-          tabUrlsToContextIds.set(url, userContextIds);
+          tabUrlsToContextIds.set(url, new Set([queryContext.userContextId]));
         }
       }
     }

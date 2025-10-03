@@ -195,12 +195,12 @@ function waitForQueryFinished() {
   let listener = {
     onQueryFinished: () => deferred.resolve(),
   };
-  gURLBar.controller.addListener(listener);
+  gURLBar.controller.addQueryListener(listener);
 
   return {
     promise: deferred.promise,
     cleanup() {
-      gURLBar.controller.removeListener(listener);
+      gURLBar.controller.removeQueryListener(listener);
     },
   };
 }

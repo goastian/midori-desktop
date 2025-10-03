@@ -313,6 +313,3 @@ newtab-custom-settings = Gestiona més paràmetres
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-string.prototype.trimend
+esid: sec-string.prototype.trimEnd
 description: >
   Abrupt completion when toString called and abrupt completes.
 info: |

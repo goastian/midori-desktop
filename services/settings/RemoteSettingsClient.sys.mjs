@@ -228,13 +228,6 @@ class AttachmentDownloader extends Downloader {
    * @see Downloader.download
    */
   async download(record, options) {
-    await lazy.UptakeTelemetry.report(
-      TELEMETRY_COMPONENT,
-      lazy.UptakeTelemetry.STATUS.DOWNLOAD_START,
-      {
-        source: this._client.identifier,
-      }
-    );
     try {
       // Explicitly await here to ensure we catch a network error.
       return await super.download(record, options);
@@ -305,9 +298,6 @@ export class RemoteSettingsClient extends EventEmitter {
   }
   static get UnknownCollectionError() {
     return UnknownCollectionError;
-  }
-  static get EmptyDatabaseError() {
-    return lazy.Database.EmptyDatabaseError;
   }
 
   constructor(
@@ -441,7 +431,6 @@ export class RemoteSettingsClient extends EventEmitter {
    *   Verify the signature of the local data (default: `false`).
    * @return {Promise<object[]>}
    */
-  // eslint-disable-next-line complexity
   async get(options = {}) {
     const {
       filters = {},
@@ -467,12 +456,6 @@ export class RemoteSettingsClient extends EventEmitter {
             return true; // No need to re-verify signature after sync.
           })();
         }
-      } else if (!syncIfEmpty && !hasLocalData && !emptyListFallback) {
-        // The local database is empty, we neither want to sync nor fallback to an empty list.
-        throw new RemoteSettingsClient.EmptyDatabaseError(this.identifier);
-      } else if (!syncIfEmpty && !hasLocalData && verifySignature) {
-        // The local database is empty and we want to verify the signature.
-        throw new RemoteSettingsClient.MissingSignatureError(this.identifier);
       } else if (syncIfEmpty && !hasLocalData) {
         // .get() was called before we had the chance to synchronize the local database.
         // We'll try to avoid returning an empty list.
@@ -566,24 +549,15 @@ export class RemoteSettingsClient extends EventEmitter {
         }
       }
 
-      // If there is no data for this collection, it will throw an error.
+      // Read from the local DB.
       data = await this.db.list({ filters, order });
     } catch (e) {
-      // If the local DB is empty or cannot be read (for unknown reasons, Bug 1649393)
+      // If the local DB cannot be read (for unknown reasons, Bug 1649393)
       // or sync failed, we fallback to the packaged data, and filter/sort in memory.
       if (!dumpFallback) {
         throw e;
       }
-      if (
-        e instanceof RemoteSettingsClient.EmptyDatabaseError &&
-        emptyListFallback
-      ) {
-        // If consumer requested an empty list fallback, no need to raise attention if no data in DB.
-        lazy.console.debug(e);
-      } else {
-        // Report error, and continue with trying to load the binary dump.
-        lazy.console.error(e);
-      }
+      lazy.console.error(e);
       ({ data } = await lazy.SharedUtils.loadJSONDump(
         this.bucketName,
         this.collectionName
@@ -648,7 +622,6 @@ export class RemoteSettingsClient extends EventEmitter {
    */
   async sync(options) {
     if (lazy.Utils.shouldSkipRemoteActivityDueToTests) {
-      lazy.console.debug(`${this.identifier} Skip sync() due to tests.`);
       return;
     }
 
@@ -690,7 +663,6 @@ export class RemoteSettingsClient extends EventEmitter {
    * @return {Promise<void>}
    *   which rejects on sync or process failure.
    */
-  // eslint-disable-next-line complexity
   async maybeSync(expectedTimestamp, options = {}) {
     // Should the clients try to load JSON dump? (mainly disabled in tests)
     const {
@@ -715,15 +687,6 @@ export class RemoteSettingsClient extends EventEmitter {
 
     this._syncRunning = true;
 
-    await lazy.UptakeTelemetry.report(
-      TELEMETRY_COMPONENT,
-      lazy.UptakeTelemetry.STATUS.SYNC_START,
-      {
-        source: this.identifier,
-        trigger,
-      }
-    );
-
     let importedFromDump = [];
     const startedAt = new Date();
     let reportStatus = null;
@@ -736,18 +699,16 @@ export class RemoteSettingsClient extends EventEmitter {
 
       // Read last timestamp and local data before sync.
       let collectionLastModified = await this.db.getLastModified();
-      const hasLocalData = collectionLastModified !== null;
+      const allData = await this.db.list();
       // Local data can contain local fields, strip them.
-      let localRecords = hasLocalData
-        ? (await this.db.list()).map(r => this._cleanLocalFields(r))
-        : null;
+      let localRecords = allData.map(r => this._cleanLocalFields(r));
       const localMetadata = await this.db.getMetadata();
 
       // If there is no data currently in the collection, attempt to import
       // initial data from the application defaults.
       // This allows to avoid synchronizing the whole collection content on
       // cold start.
-      if (!hasLocalData && loadDump) {
+      if (!collectionLastModified && loadDump) {
         try {
           const imported = await this._importJSONDump();
           // The worker only returns an integer. List the imported records to build the sync event.
@@ -1117,10 +1078,8 @@ export class RemoteSettingsClient extends EventEmitter {
     expectedTimestamp,
     options = {}
   ) {
-    const hasLocalData = localTimestamp !== null;
     const { retry = false } = options;
-    // On retry, we fully re-fetch the collection (no `?_since`).
-    const since = retry || !hasLocalData ? undefined : `"${localTimestamp}"`;
+    const since = retry || !localTimestamp ? undefined : `"${localTimestamp}"`;
 
     // Fetch collection metadata and list of changes from server.
     lazy.console.debug(
@@ -1141,10 +1100,7 @@ export class RemoteSettingsClient extends EventEmitter {
     lazy.console.debug(
       `${this.identifier} local timestamp: ${localTimestamp}, remote: ${remoteTimestamp}`
     );
-    if (hasLocalData && remoteTimestamp < localTimestamp) {
-      lazy.console.debug(
-        `${this.identifier} No records to sync, local data is up-to-date`
-      );
+    if (localTimestamp && remoteTimestamp < localTimestamp) {
       return syncResult;
     }
 
@@ -1175,27 +1131,22 @@ export class RemoteSettingsClient extends EventEmitter {
 
         // In order to distinguish signature errors that happen
         // during sync, from hijacks of local DBs, we will verify
-        // the signature on the data that we had before syncing
-        // (if any).
+        // the signature on the data that we had before syncing.
         let localTrustworthy = false;
-        if (hasLocalData) {
-          lazy.console.debug(`${this.identifier} verify data before sync`);
-          try {
-            await this.validateCollectionSignature(
-              localRecords,
-              localTimestamp,
-              localMetadata
-            );
-            localTrustworthy = true;
-          } catch (sigerr) {
-            if (!(sigerr instanceof InvalidSignatureError)) {
-              // If it fails for other reason, keep original error and give up.
-              throw sigerr;
-            }
-            lazy.console.debug(`${this.identifier} previous data was invalid`);
+        lazy.console.debug(`${this.identifier} verify data before sync`);
+        try {
+          await this.validateCollectionSignature(
+            localRecords,
+            localTimestamp,
+            localMetadata
+          );
+          localTrustworthy = true;
+        } catch (sigerr) {
+          if (!(sigerr instanceof InvalidSignatureError)) {
+            // If it fails for other reason, keep original error and give up.
+            throw sigerr;
           }
-        } else {
-          lazy.console.debug(`${this.identifier} No previous data to restore`);
+          lazy.console.debug(`${this.identifier} previous data was invalid`);
         }
 
         if (!localTrustworthy && !retry) {
@@ -1238,9 +1189,7 @@ export class RemoteSettingsClient extends EventEmitter {
       // If we have some listeners for the "sync" event,
       // Compute the changes, comparing records before and after.
       syncResult.current = newRecords;
-      const oldById = hasLocalData
-        ? new Map(localRecords.map(e => [e.id, e]))
-        : new Map();
+      const oldById = new Map(localRecords.map(e => [e.id, e]));
       for (const r of newRecords) {
         const old = oldById.get(r.id);
         if (old) {

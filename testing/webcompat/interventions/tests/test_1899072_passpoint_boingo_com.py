@@ -6,7 +6,6 @@ SUPPORTED_CSS = "header + section.login"
 UNSUPPORTED_CSS = "header + section.unsupported"
 
 
-@pytest.mark.skip_platforms("windows")
 @pytest.mark.asyncio
 @pytest.mark.with_interventions
 async def test_enabled(client):
@@ -15,7 +14,6 @@ async def test_enabled(client):
     assert not client.find_css(UNSUPPORTED_CSS, is_displayed=True)
 
 
-@pytest.mark.skip_platforms("windows")
 @pytest.mark.asyncio
 @pytest.mark.without_interventions
 async def test_disabled(client):

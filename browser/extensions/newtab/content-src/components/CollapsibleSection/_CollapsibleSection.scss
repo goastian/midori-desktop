@@ -1,7 +1,7 @@
 /* stylelint-disable max-nesting-depth */
 
 .collapsible-section {
-  padding: var(--space-small) var(--space-xlarge);
+  padding: $section-vertical-padding $section-horizontal-padding;
 
   .section-title-container {
     margin: 0;
@@ -57,7 +57,7 @@
 
   .section-top-bar {
     min-height: 19px;
-    margin-block-end: var(--space-medium);
+    margin-bottom: 13px;
     position: relative;
     display: flex;
     justify-content: space-between;
@@ -77,7 +77,7 @@
 
   .learn-more-link {
     font-size: var(--font-size-small);
-    margin-inline-start: var(--space-medium);
+    margin-inline-start: 12px;
 
     a {
       color: var(--newtab-primary-action-background);
@@ -90,8 +90,10 @@
 
   .section-body {
     // This is so the top sites favicon and card dropshadows don't get clipped during animation:
-    margin: 0 calc(var(--space-xsmall) * -1);
-    padding: 0 var(--space-small);
+    $horizontal-padding: 7px;
+
+    margin: 0 (-$horizontal-padding);
+    padding: 0 $horizontal-padding;
 
     &.animating {
       overflow: hidden;
@@ -112,13 +114,19 @@
     }
   }
 
-  .button-topic-selection {
-    display: none;
+  // Bug 1914195 - Only show the topic selection button/modal on larger and wider breakpoints
+  .layout-variant-a &,
+  .layout-variant-b & {
+    .button-topic-selection {
+      display: none;
 
-    @media(min-width: $break-point-layout-variant) {
-      display: block;
+      @media(min-width: $break-point-layout-variant) {
+        display: block;
+      }
     }
+  }
 
+  .button-topic-selection {
     // Note: the 'primary' theme uses a solid color and does not need this override
     moz-button[type='default'] {
       // Bug 1908010 - This overwrites the design system color because of a

@@ -46,7 +46,7 @@ class FakeBandwidthQualityScalerHandler
     event_.Set();
   }
 
-  Event event_;
+  rtc::Event event_;
   int adapt_up_event_count_ = 0;
   int adapt_down_event_count_ = 0;
 };

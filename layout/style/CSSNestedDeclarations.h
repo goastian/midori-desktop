@@ -69,7 +69,7 @@ class CSSNestedDeclarations final : public css::Rule {
   nsICSSDeclaration* Style() { return &mDecls; }
 
   StyleLockedNestedDeclarationsRule* Raw() const { return mRawRule.get(); }
-  const StyleLockedDeclarationBlock* RawStyle() const;
+  StyleLockedDeclarationBlock* RawStyle() const;
   void SetRawAfterClone(RefPtr<StyleLockedNestedDeclarationsRule>);
 
   // Methods of mozilla::css::Rule

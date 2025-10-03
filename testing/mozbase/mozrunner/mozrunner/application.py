@@ -7,6 +7,7 @@ import posixpath
 from abc import ABCMeta, abstractmethod
 from shutil import which
 
+import six
 from mozdevice import ADBDeviceFactory
 from mozprofile import (
     ChromeProfile,
@@ -37,7 +38,8 @@ class DefaultContext:
     profile_class = Profile
 
 
-class RemoteContext(metaclass=ABCMeta):
+@six.add_metaclass(ABCMeta)
+class RemoteContext:
     device = None
     _remote_profile = None
     _adb = None

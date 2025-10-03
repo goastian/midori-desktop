@@ -1783,20 +1783,20 @@ class InstJump : public Instruction {
   }
 };
 
-class ABIArgGenerator : public ABIArgGeneratorShared {
+class ABIArgGenerator {
  public:
-  explicit ABIArgGenerator(ABIKind kind)
-      : ABIArgGeneratorShared(kind),
-        intRegIndex_(0),
-        floatRegIndex_(0),
-        current_() {}
+  ABIArgGenerator()
+      : intRegIndex_(0), floatRegIndex_(0), stackOffset_(0), current_() {}
 
   ABIArg next(MIRType argType);
   ABIArg& current() { return current_; }
+  uint32_t stackBytesConsumedSoFar() const { return stackOffset_; }
+  void increaseStackOffset(uint32_t bytes) { stackOffset_ += bytes; }
 
  protected:
   unsigned intRegIndex_;
   unsigned floatRegIndex_;
+  uint32_t stackOffset_;
   ABIArg current_;
 };
 

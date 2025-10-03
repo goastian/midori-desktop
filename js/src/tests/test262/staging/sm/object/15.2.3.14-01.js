@@ -4,7 +4,7 @@
  */
 
 /*---
-includes: [sm/non262.js, sm/non262-shell.js]
+includes: [sm/non262.js, sm/non262-shell.js, sm/non262-object-shell.js]
 flags:
   - noStrict
 description: |
@@ -16,6 +16,9 @@ var BUGNUMBER = 307791;
 var summary = 'ES5 Object.keys(O)';
 var actual = '';
 var expect = '';
+
+printBugNumber(BUGNUMBER);
+printStatus(summary);
 
 function arraysEqual(a1, a2)
 {
@@ -93,5 +96,7 @@ if (typeof Namespace !== "undefined" && typeof QName !== "undefined")
 /******************************************************************************/
 
 assert.sameValue(expect, actual, "Object.keys");
+
+printStatus("All tests passed!");
 
 reportCompare(0, 0);

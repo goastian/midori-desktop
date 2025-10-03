@@ -30,12 +30,7 @@ function test() {
   waitForExplicitFinish();
 
   SpecialPowers.pushPrefEnv(
-    {
-      set: [
-        ["test.wait300msAfterTabSwitch", true],
-        ["privacy.userContext.enabled", true],
-      ],
-    },
+    { set: [["privacy.userContext.enabled", true]] },
     function () {
       requestLongerTimeout(10); // slowwww shutdown on e10s
       startReferrerTest(startNewWindowTestCase, { userContextId: 1 });

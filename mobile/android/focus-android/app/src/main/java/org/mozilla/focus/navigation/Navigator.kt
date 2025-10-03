@@ -51,7 +51,6 @@ class Navigator(
             is Screen.Settings -> navigation.settings(screen.page)
             is Screen.SitePermissionOptionsScreen -> navigation.sitePermissionOptionsFragment(screen.sitePermission)
             is Screen.OnboardingSecondScreen -> navigation.showOnBoardingSecondScreen()
-            is Screen.CrashListScreen -> navigation.showCrashList()
         }
     }
 }

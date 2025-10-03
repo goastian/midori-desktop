@@ -13,7 +13,7 @@
 
 #include <optional>
 
-#include "api/rtp_parameters.h"
+#include "api/video_codecs/sdp_video_format.h"
 
 namespace webrtc {
 // Generate codec parameters that will be used as answer in an SDP negotiation

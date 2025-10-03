@@ -73,7 +73,7 @@ class AecDumpImpl : public AecDump {
 
   FileWrapper debug_file_;
   int64_t num_bytes_left_for_log_ = 0;
-  RaceChecker race_checker_;
+  rtc::RaceChecker race_checker_;
   absl::Nonnull<TaskQueueBase*> worker_queue_;
   CaptureStreamInfo capture_stream_info_;
 };

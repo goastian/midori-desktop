@@ -203,6 +203,3 @@ newtab-error-fallback-refresh-link = ထပ်ကြိုးစားရန် 
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

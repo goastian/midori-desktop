@@ -525,16 +525,10 @@ impl ClipTreeBuilder {
         &mut self,
         clip_chain_id: Option<ClipChainId>,
         reset_seen: bool,
-        ignore_ancestor_clips: bool,
     ) {
         let (mut clip_node_id, mut seen_clips) = {
             let prev = self.clip_stack.last().unwrap();
-            let clip_node_id = if ignore_ancestor_clips {
-                ClipNodeId::NONE
-            } else {
-                prev.clip_node_id
-            };
-            (clip_node_id, prev.seen_clips.clone())
+            (prev.clip_node_id, prev.seen_clips.clone())
         };
 
         if let Some(clip_chain_id) = clip_chain_id {
@@ -1351,7 +1345,7 @@ impl ClipStore {
         let mut local_clip_rect = clip_leaf.local_clip_rect;
         let mut current = clip_leaf.node_id;
 
-        while current != clip_root && current != ClipNodeId::NONE {
+        while current != clip_root {
             let node = clip_tree.get_node(current);
 
             if !add_clip_node_to_current_chain(

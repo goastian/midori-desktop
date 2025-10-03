@@ -5,7 +5,6 @@
 package org.mozilla.fenix.ui
 
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
-import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.mozilla.fenix.customannotations.SmokeTest
@@ -36,6 +35,7 @@ class CollectionTest : TestSetup() {
     val composeTestRule =
         AndroidComposeTestRule(
             HomeActivityIntentTestRule(
+                isHomeOnboardingDialogEnabled = false,
                 isRecentTabsFeatureEnabled = false,
                 isRecentlyVisitedFeatureEnabled = false,
                 isPocketEnabled = false,
@@ -368,7 +368,6 @@ class CollectionTest : TestSetup() {
     }
 
     // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/343427
-    @Ignore("Failing: https://bugzilla.mozilla.org/show_bug.cgi?id=1972084")
     @Test
     fun removeTabFromCollectionUsingSwipeLeftActionTest() {
         val testPage = getGenericAsset(mockWebServer, 1)
@@ -397,7 +396,6 @@ class CollectionTest : TestSetup() {
     }
 
     // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/991278
-    @Ignore("Failing: https://bugzilla.mozilla.org/show_bug.cgi?id=1972084")
     @Test
     fun removeTabFromCollectionUsingSwipeRightActionTest() {
         val testPage = getGenericAsset(mockWebServer, 1)

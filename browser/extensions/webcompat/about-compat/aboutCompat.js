@@ -55,14 +55,10 @@ Promise.all([
   DOMContentLoadedPromise,
 ]).then(([info]) => {
   // alphabetize the interventions and shims
-  if (info.interventions) {
-    info.interventions = info.interventions.sort((a, b) =>
-      a.domain.localeCompare(b.domain)
-    );
-  }
-  if (info.shims) {
-    info.shims = info.shims.sort((a, b) => a.name.localeCompare(b.name));
-  }
+  info.interventions = info.interventions.sort((a, b) =>
+    a.domain.localeCompare(b.domain)
+  );
+  info.shims = info.shims.sort((a, b) => a.name.localeCompare(b.name));
 
   document.body.addEventListener("click", async evt => {
     const ele = evt.target;

@@ -12,7 +12,6 @@
 #include "mozilla/UniquePtr.h"
 #include "nsIClassOfService.h"
 #include "nsIEarlyHintObserver.h"
-#include "nsILoadInfo.h"
 #include "nsISupports.h"
 #include "nsITransportSecurityInfo.h"
 #include "nsInputStreamPump.h"
@@ -36,17 +35,6 @@ class nsHttpRequestHead;
 class nsHttpTransaction;
 class TransactionObserverResult;
 union NetAddr;
-
-enum class LNAPermission {
-  Granted,
-  Denied,
-  Pending,
-};
-
-struct LNAPerms {
-  LNAPermission mLocalHostPermission{LNAPermission::Pending};
-  LNAPermission mLocalNetworkPermission{LNAPermission::Pending};
-};
 
 //----------------------------------------------------------------------------
 // Abstract base class for a HTTP transaction in the chrome process
@@ -92,9 +80,7 @@ class HttpTransactionShell : public nsISupports {
       HttpTrafficCategory trafficCategory, nsIRequestContext* requestContext,
       ClassOfService classOfService, uint32_t initialRwin,
       bool responseTimeoutEnabled, uint64_t channelId,
-      TransactionObserverFunc&& transactionObserver,
-      nsILoadInfo::IPAddressSpace aParentIPAddressSpace,
-      const LNAPerms& aLnaPermissionStatus) = 0;
+      TransactionObserverFunc&& transactionObserver) = 0;
 
   // @param aListener
   //        receives notifications.
@@ -192,9 +178,7 @@ class HttpTransactionShell : public nsISupports {
       HttpTrafficCategory trafficCategory, nsIRequestContext* requestContext,  \
       ClassOfService classOfService, uint32_t initialRwin,                     \
       bool responseTimeoutEnabled, uint64_t channelId,                         \
-      TransactionObserverFunc&& transactionObserver,                           \
-      nsILoadInfo::IPAddressSpace aParentIPAddressSpace,                       \
-      const LNAPerms& aLnaPermissionStatus) override;                          \
+      TransactionObserverFunc&& transactionObserver) override;                 \
   virtual nsresult AsyncRead(nsIStreamListener* listener, nsIRequest** pump)   \
       override;                                                                \
   virtual UniquePtr<nsHttpResponseHead> TakeResponseHeadAndConnInfo(           \

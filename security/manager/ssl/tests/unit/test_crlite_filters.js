@@ -848,9 +848,7 @@ add_task(
   async function test_crlite_filters_reprocess_filters_on_channel_change() {
     Services.prefs.setBoolPref(CRLITE_FILTERS_ENABLED_PREF, true);
     Services.prefs.setStringPref(CRLITE_FILTER_CHANNEL_PREF, "specified");
-    registerCleanupFunction(async () => {
-      // Clear the DB to prevent event listener from executing stuff during shutdown.
-      await CRLiteFiltersClient.client.db.clear();
+    registerCleanupFunction(() => {
       Services.prefs.clearUserPref(CRLITE_FILTERS_ENABLED_PREF);
       Services.prefs.clearUserPref(CRLITE_FILTER_CHANNEL_PREF);
     });

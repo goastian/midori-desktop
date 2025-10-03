@@ -23,10 +23,6 @@ let enteredTelemetry = [
 ];
 
 add_setup(async () => {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-
   registerCleanupFunction(async () => {
     await SpecialPowers.popPrefEnv();
     clearHistory();

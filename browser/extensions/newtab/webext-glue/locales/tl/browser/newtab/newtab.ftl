@@ -300,6 +300,3 @@ newtab-custom-settings = Mamahala ng higit pang mga setting
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

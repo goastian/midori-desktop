@@ -33,10 +33,10 @@ import org.mozilla.fenix.GleanMetrics.Events
 import org.mozilla.fenix.GleanMetrics.TabsTray
 import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.robolectric.RobolectricTestRunner
+import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import mozilla.components.browser.state.state.createTab as createStateTab
 
-@RunWith(RobolectricTestRunner::class) // for gleanTestRule
+@RunWith(FenixRobolectricTestRunner::class) // for gleanTestRule
 class NavigationInteractorTest {
     private lateinit var store: BrowserStore
     private val testTab: TabSessionState = createStateTab(url = "https://mozilla.org")

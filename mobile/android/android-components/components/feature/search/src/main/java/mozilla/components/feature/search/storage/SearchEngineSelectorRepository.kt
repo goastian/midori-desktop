@@ -9,12 +9,12 @@ import mozilla.appservices.remotesettings.RemoteSettingsClient
 import mozilla.appservices.remotesettings.RemoteSettingsRecord
 import mozilla.appservices.search.RefinedSearchConfig
 import mozilla.appservices.search.SearchApiException
-import mozilla.appservices.search.SearchEngineSelector
 import mozilla.appservices.search.SearchUserEnvironment
 import mozilla.components.browser.state.search.RegionState
 import mozilla.components.browser.state.search.SearchEngine
 import mozilla.components.feature.search.SearchApplicationName
 import mozilla.components.feature.search.SearchDeviceType
+import mozilla.components.feature.search.SearchEngineSelector
 import mozilla.components.feature.search.SearchUpdateChannel
 import mozilla.components.feature.search.icons.SearchConfigIconsParser
 import mozilla.components.feature.search.icons.SearchConfigIconsUpdateService
@@ -36,7 +36,6 @@ class SearchEngineSelectorRepository(
     private val searchEngineSelectorConfig: SearchEngineSelectorConfig,
     private val defaultSearchEngineIcon: Bitmap,
     client: RemoteSettingsClient?,
-    private val selector: SearchEngineSelector = SearchEngineSelector(),
 ) : SearchMiddleware.SearchEngineRepository {
 
     private val searchConfigIconsUpdateService: SearchConfigIconsUpdateService = SearchConfigIconsUpdateService(client)
@@ -46,7 +45,7 @@ class SearchEngineSelectorRepository(
 
     init {
         try {
-            selector.useRemoteSettingsServer(
+            searchEngineSelectorConfig.selector.useRemoteSettingsServer(
                 service = searchEngineSelectorConfig.service.remoteSettingsService,
                 applyEngineOverrides = false,
             )
@@ -77,7 +76,7 @@ class SearchEngineSelectorRepository(
                 appName = searchEngineSelectorConfig.appName.into(),
                 deviceType = searchEngineSelectorConfig.deviceType.into(),
             )
-            val searchConfig = selector.filterEngineConfiguration(config)
+            val searchConfig = searchEngineSelectorConfig.selector.filterEngineConfiguration(config)
 
             val iconsList = searchConfigIconsUpdateService.fetchIconsRecords(searchEngineSelectorConfig.service)
 
@@ -157,6 +156,7 @@ data class SearchEngineSelectorConfig(
     val deviceType: SearchDeviceType,
     val experiment: String,
     val updateChannel: SearchUpdateChannel,
+    val selector: SearchEngineSelector,
     val service: RemoteSettingsService,
 )
 

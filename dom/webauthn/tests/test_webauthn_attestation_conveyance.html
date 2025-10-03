@@ -22,7 +22,7 @@
 
     add_task(async () => {
       await SpecialPowers.pushPrefEnv({"set": [
-        ["security.webauth.webauthn_testing_allow_direct_attestation", true],
+        ["security.webauthn.always_allow_direct_attestation", true],
       ]});
       await addVirtualAuthenticator();
     });

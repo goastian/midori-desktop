@@ -10,7 +10,6 @@
 
 #include "call/adaptation/video_source_restrictions.h"
 
-#include <cstddef>
 #include <optional>
 
 #include "test/gtest.h"

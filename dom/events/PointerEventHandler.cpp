@@ -23,20 +23,10 @@
 #include "nsUserCharacteristics.h"
 
 namespace mozilla {
-// MouseLocation logs the mouse location and when/where enqueued synthesized
-// mouse move is flushed.  If you don't need all mouse location recording at
-// eMouseMove, you can use MouseLocation:3,sync.  Then, it's logged once per
-// 50 times.  Otherwise, if you need to log all eMouseMove locations, you can
-// use MouseLocation:5,sync.
-// Note that this is actually available only on debug builds for saving the
-// runtime cost on opt builds.
-LazyLogModule gLogMouseLocation("MouseLocation");
 
 using namespace dom;
 
 Maybe<int32_t> PointerEventHandler::sSpoofedPointerId;
-StaticAutoPtr<PointerInfo> PointerEventHandler::sLastMouseInfo;
-StaticRefPtr<nsIWeakReference> PointerEventHandler::sLastMousePresShell;
 
 // Keeps a map between pointerId and element that currently capturing pointer
 // with such pointerId. If pointerId is absent in this map then nobody is
@@ -83,8 +73,6 @@ void PointerEventHandler::ReleaseStatics() {
     delete sPointerCaptureRemoteTargetTable;
     sPointerCaptureRemoteTargetTable = nullptr;
   }
-  sLastMouseInfo = nullptr;
-  sLastMousePresShell = nullptr;
 }
 
 /* static */
@@ -120,130 +108,16 @@ bool PointerEventHandler::ShouldDispatchClickEventOnCapturingElement(
 }
 
 /* static */
-void PointerEventHandler::RecordPointerState(
-    const nsPoint& aRefPoint, const WidgetMouseEvent& aMouseEvent) {
-  MOZ_ASSERT_IF(aMouseEvent.mMessage == eMouseMove ||
-                    aMouseEvent.mMessage == ePointerMove,
-                aMouseEvent.IsReal());
-
-  PointerInfo* pointerInfo = sActivePointersIds->Get(aMouseEvent.pointerId);
-  if (!pointerInfo) {
-    // If there is no pointer info (i.e., no last pointer state too) and the
-    // input device is not stationary or the caller wants to clear the last
-    // state, we need to do nothing.
-    if (!aMouseEvent.InputSourceSupportsHover() ||
-        aRefPoint == nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE)) {
-      return;
-    }
-    // If there is no PointerInfo, we need to add an inactive PointeInfo to
-    // store the state.
-    pointerInfo = sActivePointersIds
-                      ->InsertOrUpdate(
-                          aMouseEvent.pointerId,
-                          MakeUnique<PointerInfo>(
-                              PointerInfo::Active::No, aMouseEvent.mInputSource,
-                              PointerInfo::Primary::Yes,
-                              PointerInfo::FromTouchEvent::No, nullptr, nullptr,
-                              static_cast<PointerInfo::SynthesizeForTests>(
-                                  aMouseEvent.mFlags.mIsSynthesizedForTests)))
-                      .get();
-  }
-  // If the input source is a stationary device and the point is defined, we may
-  // need to dispatch synthesized ePointerMove at the pointer later.  So, in
-  // that case, we should store the data.
-  if (aMouseEvent.InputSourceSupportsHover() &&
-      aRefPoint != nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE)) {
-    pointerInfo->RecordLastState(aRefPoint, aMouseEvent);
-  }
-  // Otherwise, i.e., if it's not a stationary device or the caller wants to
-  // forget the point, we should clear the last position to abort to synthesize
-  // ePointerMove.
-  else {
-    pointerInfo->ClearLastState();
-  }
-}
-
-/* static */
-void PointerEventHandler::RecordMouseState(
-    PresShell& aRootPresShell, const WidgetMouseEvent& aMouseEvent) {
-  MOZ_ASSERT(aRootPresShell.IsRoot());
-  if (!sLastMouseInfo) {
-    sLastMouseInfo = new PointerInfo();
-  }
-  sLastMousePresShell = do_GetWeakReference(&aRootPresShell);
-  sLastMouseInfo->mLastRefPointInRootDoc =
-      aRootPresShell.GetEventLocation(aMouseEvent);
-  sLastMouseInfo->mLastTargetGuid =
-      layers::InputAPZContext::GetTargetLayerGuid();
-  // FIXME: Don't trust the synthesized for tests flag of drag events.
-  if (aMouseEvent.mClass != eDragEventClass) {
-    sLastMouseInfo->mInputSource = aMouseEvent.mInputSource;
-    sLastMouseInfo->mIsSynthesizedForTests =
-        aMouseEvent.mFlags.mIsSynthesizedForTests;
-  }
-#ifdef DEBUG
-  if (MOZ_LOG_TEST(gLogMouseLocation, LogLevel::Info)) {
-    static uint32_t sFrequentMessageCount = 0;
-    const bool isFrequentMessage =
-        aMouseEvent.mMessage == eMouseMove || aMouseEvent.mMessage == eDragOver;
-    if (!isFrequentMessage ||
-        MOZ_LOG_TEST(gLogMouseLocation, LogLevel::Verbose) ||
-        !(sFrequentMessageCount % 50)) {
-      MOZ_LOG(gLogMouseLocation,
-              isFrequentMessage ? LogLevel::Debug : LogLevel::Info,
-              ("[ps=%p]got %s for %p at {%d, %d}\n", &aRootPresShell,
-               ToChar(aMouseEvent.mMessage), aMouseEvent.mWidget.get(),
-               sLastMouseInfo->mLastRefPointInRootDoc.x,
-               sLastMouseInfo->mLastRefPointInRootDoc.y));
-    }
-    if (isFrequentMessage) {
-      sFrequentMessageCount++;
-    } else {
-      // Let's log the next eMouseMove or eDragOver after the other
-      // messages.
-      sFrequentMessageCount = 0;
-    }
-  }
-#endif
-}
-
-/* static */
-void PointerEventHandler::ClearMouseState(PresShell& aRootPresShell,
-                                          const WidgetMouseEvent& aMouseEvent) {
-  MOZ_ASSERT(aRootPresShell.IsRoot());
-  const RefPtr<PresShell> lastMousePresShell =
-      do_QueryReferent(sLastMousePresShell);
-  if (lastMousePresShell != &aRootPresShell) {
-    return;
-  }
-  sLastMouseInfo->ClearLastState();
-  sLastMouseInfo->mLastTargetGuid =
-      layers::InputAPZContext::GetTargetLayerGuid();
-  sLastMouseInfo->mInputSource = MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
-  sLastMouseInfo->mIsSynthesizedForTests =
-      aMouseEvent.mFlags.mIsSynthesizedForTests;
-#ifdef DEBUG
-  MOZ_LOG(gLogMouseLocation, LogLevel::Info,
-          ("[ps=%p]got %s for %p, mouse location is cleared\n", &aRootPresShell,
-           ToChar(aMouseEvent.mMessage), aMouseEvent.mWidget.get()));
-#endif
-}
-
-/* static */
-LazyLogModule& PointerEventHandler::MouseLocationLogRef() {
-  return gLogMouseLocation;
-}
-
-/* static */
-void PointerEventHandler::UpdatePointerActiveState(WidgetMouseEvent* aEvent,
+void PointerEventHandler::UpdateActivePointerState(WidgetMouseEvent* aEvent,
                                                    nsIContent* aTargetContent) {
   if (!aEvent) {
     return;
   }
   switch (aEvent->mMessage) {
-    case eMouseEnterIntoWidget: {
-      const PointerInfo* const pointerInfo = GetPointerInfo(aEvent->pointerId);
+    case eMouseEnterIntoWidget:
       if (aEvent->mFlags.mIsSynthesizedForTests) {
+        const PointerInfo* const pointerInfo =
+            GetPointerInfo(aEvent->pointerId);
         if (pointerInfo && !pointerInfo->mIsSynthesizedForTests) {
           // Do not overwrite the PointerInfo which is set by user input with
           // synthesized pointer move.
@@ -253,35 +127,31 @@ void PointerEventHandler::UpdatePointerActiveState(WidgetMouseEvent* aEvent,
       // In this case we have to know information about available mouse pointers
       sActivePointersIds->InsertOrUpdate(
           aEvent->pointerId,
-          MakeUnique<PointerInfo>(PointerInfo::Active::No, aEvent->mInputSource,
-                                  PointerInfo::Primary::Yes,
-                                  PointerInfo::FromTouchEvent::No, nullptr,
-                                  pointerInfo,
-                                  static_cast<PointerInfo::SynthesizeForTests>(
-                                      aEvent->mFlags.mIsSynthesizedForTests)));
+          MakeUnique<PointerInfo>(
+              false, aEvent->mInputSource, true, false, nullptr,
+              // XXX build-linux64-base-toolchains (Bb) requires this hack.
+              // NOLINTNEXTLINE
+              aEvent->mFlags.mIsSynthesizedForTests != false));
 
       MaybeCacheSpoofedPointerID(aEvent->mInputSource, aEvent->pointerId);
       break;
-    }
-    case ePointerMove: {
+    case ePointerMove:
       // If the event is a synthesized mouse event, we should register the
       // pointerId for the test if the pointer is not there.
       if (!aEvent->mFlags.mIsSynthesizedForTests ||
           aEvent->mInputSource != MouseEvent_Binding::MOZ_SOURCE_MOUSE) {
         return;
       }
-      const PointerInfo* const pointerInfo = GetPointerInfo(aEvent->pointerId);
-      if (pointerInfo) {
+      if (GetPointerInfo(aEvent->pointerId)) {
         return;
       }
       sActivePointersIds->InsertOrUpdate(
           aEvent->pointerId,
           MakeUnique<PointerInfo>(
-              PointerInfo::Active::No, MouseEvent_Binding::MOZ_SOURCE_MOUSE,
-              PointerInfo::Primary::Yes, PointerInfo::FromTouchEvent::No,
-              nullptr, pointerInfo, PointerInfo::SynthesizeForTests::Yes));
+              /* aActiveState = */ false, MouseEvent_Binding::MOZ_SOURCE_MOUSE,
+              /* aPrimaryState = */ true, /* aFromTouchEvent = */ false,
+              nullptr, /* aIsOnlySynthesizedForTests = */ true));
       return;
-    }
     case ePointerDown:
       sPointerCapturingElementAtLastPointerUpEvent = nullptr;
       // In this case we switch pointer to active state
@@ -292,9 +162,12 @@ void PointerEventHandler::UpdatePointerActiveState(WidgetMouseEvent* aEvent,
         sActivePointersIds->InsertOrUpdate(
             pointerEvent->pointerId,
             MakeUnique<PointerInfo>(
-                PointerInfo::Active::Yes, *pointerEvent,
+                true, pointerEvent->mInputSource, pointerEvent->mIsPrimary,
+                pointerEvent->mFromTouchEvent,
                 aTargetContent ? aTargetContent->OwnerDoc() : nullptr,
-                GetPointerInfo(aEvent->pointerId)));
+                // XXX build-linux64-base-toolchains (Bb) requires this hack.
+                // NOLINTNEXTLINE
+                pointerEvent->mFlags.mIsSynthesizedForTests != false));
         MaybeCacheSpoofedPointerID(pointerEvent->mInputSource,
                                    pointerEvent->pointerId);
       }
@@ -311,9 +184,12 @@ void PointerEventHandler::UpdatePointerActiveState(WidgetMouseEvent* aEvent,
             MouseEvent_Binding::MOZ_SOURCE_TOUCH) {
           sActivePointersIds->InsertOrUpdate(
               pointerEvent->pointerId,
-              MakeUnique<PointerInfo>(PointerInfo::Active::No, *pointerEvent,
-                                      nullptr,
-                                      GetPointerInfo(aEvent->pointerId)));
+              MakeUnique<PointerInfo>(
+                  false, pointerEvent->mInputSource, pointerEvent->mIsPrimary,
+                  pointerEvent->mFromTouchEvent, nullptr,
+                  // XXX build-linux64-base-toolchains (Bb) requires this hack.
+                  // NOLINTNEXTLINE
+                  pointerEvent->mFlags.mIsSynthesizedForTests != false));
         } else {
           // XXX If the PointerInfo is registered with same pointerId as actual
           // pointer and the event is synthesized for tests, we unregister the
@@ -480,22 +356,6 @@ void PointerEventHandler::ReleaseAllPointerCaptureRemoteTarget() {
 /* static */
 const PointerInfo* PointerEventHandler::GetPointerInfo(uint32_t aPointerId) {
   return sActivePointersIds->Get(aPointerId);
-}
-
-/* static */
-const PointerInfo* PointerEventHandler::GetLastMouseInfo(
-    const PresShell* aRootPresShell /* = nullptr */) {
-  if (!sLastMousePresShell || !sLastMouseInfo) {
-    return nullptr;
-  }
-  if (aRootPresShell) {
-    const RefPtr<PresShell> lastMousePresShell =
-        do_QueryReferent(sLastMousePresShell);
-    if (lastMousePresShell != aRootPresShell) {
-      return nullptr;
-    }
-  }
-  return sLastMouseInfo;
 }
 
 /* static */
@@ -876,7 +736,7 @@ void PointerEventHandler::PostHandlePointerEventsPreventDefault(
     return;
   }
   // PreventDefault only applied for active pointers.
-  if (!pointerInfo->mIsActive) {
+  if (!pointerInfo->mActiveState) {
     return;
   }
   aMouseOrTouchEvent->PreventDefault(false);
@@ -1042,23 +902,15 @@ void PointerEventHandler::DispatchPointerFromMouseOrTouch(
       return;
     }
 
-    // If it is not mouse then it is likely will come as touch event.
+    // If it is not mouse then it is likely will come as touch event
     if (!mouseEvent->convertToPointer) {
       return;
     }
 
-    // Normal synthesized mouse move events are marked as "not convert to
-    // pointer" by PresShell::ProcessSynthMouseOrPointerMoveEvent().  However:
-    // 1. if the event is synthesized via nsIDOMWindowUtils, it's not marked as
-    // so because there is no synthesized pointer move dispatcher.  So, we need
-    // to dispatch synthesized pointer move from here.  This path may be used by
-    // mochitests which check the synthesized mouse/pointer boundary event
-    // behavior.
-    // 2. if the event comes from another process and our content will be moved
-    // underneath the mouse cursor.  In this case, we should handle preceding
-    // ePointerMove.
-    // FIXME: In the latter case, we may need to synthesize ePointerMove for the
-    // other pointers too.
+    // If it's a synthesized eMouseMove and the input source supports hover, we
+    // need to dispatch pointer boundary events if the element underneath the
+    // pointer has already been changed from the last `pointerover` event
+    // target.
     if (mouseEvent->IsSynthesized()) {
       if (!StaticPrefs::
               dom_event_pointer_boundary_dispatch_when_layout_change() ||
@@ -1269,7 +1121,7 @@ bool PointerEventHandler::IsDragAndDropEnabled(WidgetMouseEvent& aEvent) {
 uint16_t PointerEventHandler::GetPointerType(uint32_t aPointerId) {
   PointerInfo* pointerInfo = nullptr;
   if (sActivePointersIds->Get(aPointerId, &pointerInfo) && pointerInfo) {
-    return pointerInfo->mInputSource;
+    return pointerInfo->mPointerType;
   }
   return MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
 }
@@ -1278,7 +1130,7 @@ uint16_t PointerEventHandler::GetPointerType(uint32_t aPointerId) {
 bool PointerEventHandler::GetPointerPrimaryState(uint32_t aPointerId) {
   PointerInfo* pointerInfo = nullptr;
   if (sActivePointersIds->Get(aPointerId, &pointerInfo) && pointerInfo) {
-    return pointerInfo->mIsPrimary;
+    return pointerInfo->mPrimaryState;
   }
   return false;
 }

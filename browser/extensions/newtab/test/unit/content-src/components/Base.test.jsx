@@ -1,4 +1,8 @@
-import { _Base as Base, BaseContent } from "content-src/components/Base/Base";
+import {
+  _Base as Base,
+  BaseContent,
+  PrefsButton,
+} from "content-src/components/Base/Base";
 import { DiscoveryStreamAdmin } from "content-src/components/DiscoveryStreamAdmin/DiscoveryStreamAdmin";
 import { ErrorBoundary } from "content-src/components/ErrorBoundary/ErrorBoundary";
 import React from "react";
@@ -186,5 +190,18 @@ describe("<BaseContent>", () => {
 
     assert.equal(listeners.size, 0);
     assert.isDefined(wrapper.state("firstVisibleTimestamp"));
+  });
+});
+
+describe("<PrefsButton>", () => {
+  it("should render icon-settings if props.icon is empty", () => {
+    const wrapper = shallow(<PrefsButton icon="" />);
+
+    assert.isTrue(wrapper.find("button").hasClass("icon-settings"));
+  });
+  it("should render props.icon as a className", () => {
+    const wrapper = shallow(<PrefsButton icon="icon-happy" />);
+
+    assert.isTrue(wrapper.find("button").hasClass("icon-happy"));
   });
 });

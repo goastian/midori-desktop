@@ -79,7 +79,6 @@
 .equ HAVE_ARM_CRC32, 0
 .equ HAVE_AVX, 0
 .equ HAVE_AVX2, 0
-.equ HAVE_AVX512, 0
 .equ HAVE_FEXCEPT, 1
 .equ HAVE_MMX, 0
 .equ HAVE_NEON, 1

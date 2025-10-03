@@ -79,7 +79,6 @@
 #include "nsICookieJarSettings.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeOwner.h"
-#include "nsIDOMWindowUtils.h"
 #include "nsImportModule.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsILoadInfo.h"
@@ -1164,6 +1163,7 @@ void BrowserParent::SizeModeChanged(const nsSizeMode& aSizeMode) {
   }
 }
 
+#ifdef MOZ_WIDGET_ANDROID
 void BrowserParent::DynamicToolbarMaxHeightChanged(ScreenIntCoord aHeight) {
   if (!mIsDestroyed) {
     Unused << SendDynamicToolbarMaxHeightChanged(aHeight);
@@ -1176,7 +1176,6 @@ void BrowserParent::DynamicToolbarOffsetChanged(ScreenIntCoord aOffset) {
   }
 }
 
-#ifdef MOZ_WIDGET_ANDROID
 void BrowserParent::KeyboardHeightChanged(ScreenIntCoord aHeight) {
   if (!mIsDestroyed) {
     Unused << SendKeyboardHeightChanged(aHeight);
@@ -1817,25 +1816,21 @@ mozilla::ipc::IPCResult BrowserParent::RecvRequestNativeKeyBindings(
   return IPC_OK();
 }
 
-class SynthesizedEventCallback final : public nsISynthesizedEventCallback {
+class SynthesizedEventObserver : public nsIObserver {
   NS_DECL_ISUPPORTS
 
  public:
-  SynthesizedEventCallback(BrowserParent* aBrowserParent,
-                           const uint64_t& aCallbackId)
-      : mBrowserParent(aBrowserParent), mCallbackId(aCallbackId) {
-    MOZ_ASSERT(xpc::IsInAutomation());
+  SynthesizedEventObserver(BrowserParent* aBrowserParent,
+                           const uint64_t& aObserverId)
+      : mBrowserParent(aBrowserParent), mObserverId(aObserverId) {
     MOZ_ASSERT(mBrowserParent);
-    MOZ_ASSERT(mCallbackId > 0, "Invalid callback ID");
   }
 
-  NS_IMETHOD OnCompleteDispatch() override {
-    MOZ_ASSERT(mCallbackId > 0, "Invalid callback ID");
-
-    if (!mBrowserParent) {
+  NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic,
+                     const char16_t* aData) override {
+    if (!mBrowserParent || !mObserverId) {
       // We already sent the notification, or we don't actually need to
       // send any notification at all.
-      MOZ_ASSERT_UNREACHABLE("OnCompleteDispatch called multiple times");
       return NS_OK;
     }
 
@@ -1844,52 +1839,55 @@ class SynthesizedEventCallback final : public nsISynthesizedEventCallback {
       NS_WARNING(
           "BrowserParent was unexpectedly destroyed during event "
           "synthesization!");
-    } else if (!mBrowserParent->SendSynthesizedEventResponse(mCallbackId)) {
+    } else if (!mBrowserParent->SendNativeSynthesisResponse(
+                   mObserverId, nsCString(aTopic))) {
       NS_WARNING("Unable to send native event synthesization response!");
     }
-
     // Null out browserParent to indicate we already sent the response
     mBrowserParent = nullptr;
     return NS_OK;
   }
 
-  static already_AddRefed<SynthesizedEventCallback> MaybeCreate(
-      BrowserParent* aBrowserParent, const Maybe<uint64_t>& aCallbackId) {
-    if (aCallbackId.isNothing()) {
-      // No callback ID means we don't need to send a response.
-      return nullptr;
-    }
-    return MakeAndAddRef<SynthesizedEventCallback>(aBrowserParent,
-                                                   aCallbackId.value());
-  }
-
  private:
-  virtual ~SynthesizedEventCallback() {
-    if (mBrowserParent) {
-      NS_WARNING(
-          "SynthesizedEventCallback destroyed without calling "
-          "OnCompleteDispatch!");
-    }
-  };
+  virtual ~SynthesizedEventObserver() = default;
 
   RefPtr<BrowserParent> mBrowserParent;
-  uint64_t mCallbackId;
+  uint64_t mObserverId;
 };
 
-NS_IMPL_ISUPPORTS(SynthesizedEventCallback, nsISynthesizedEventCallback)
+NS_IMPL_ISUPPORTS(SynthesizedEventObserver, nsIObserver)
+
+class MOZ_STACK_CLASS AutoSynthesizedEventResponder {
+ public:
+  AutoSynthesizedEventResponder(BrowserParent* aBrowserParent,
+                                const uint64_t& aObserverId, const char* aTopic)
+      : mObserver(new SynthesizedEventObserver(aBrowserParent, aObserverId)),
+        mTopic(aTopic) {}
+
+  ~AutoSynthesizedEventResponder() {
+    // This may be a no-op if the observer already sent a response.
+    mObserver->Observe(nullptr, mTopic, nullptr);
+  }
+
+  nsIObserver* GetObserver() { return mObserver; }
+
+ private:
+  nsCOMPtr<nsIObserver> mObserver;
+  const char* mTopic;
+};
 
 mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeKeyEvent(
     const int32_t& aNativeKeyboardLayout, const int32_t& aNativeKeyCode,
     const uint32_t& aModifierFlags, const nsString& aCharacters,
-    const nsString& aUnmodifiedCharacters, const Maybe<uint64_t>& aCallbackId) {
+    const nsString& aUnmodifiedCharacters, const uint64_t& aObserverId) {
   NS_ENSURE_TRUE(xpc::IsInAutomation(), IPC_FAIL(this, "Unexpected event"));
 
-  nsCOMPtr<nsISynthesizedEventCallback> callback =
-      SynthesizedEventCallback::MaybeCreate(this, aCallbackId);
-  if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
-    widget->SynthesizeNativeKeyEvent(aNativeKeyboardLayout, aNativeKeyCode,
-                                     aModifierFlags, aCharacters,
-                                     aUnmodifiedCharacters, callback);
+  AutoSynthesizedEventResponder responder(this, aObserverId, "keyevent");
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (widget) {
+    widget->SynthesizeNativeKeyEvent(
+        aNativeKeyboardLayout, aNativeKeyCode, aModifierFlags, aCharacters,
+        aUnmodifiedCharacters, responder.GetObserver());
   }
   return IPC_OK();
 }
@@ -1897,32 +1895,32 @@ mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeKeyEvent(
 mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeMouseEvent(
     const LayoutDeviceIntPoint& aPoint, const uint32_t& aNativeMessage,
     const int16_t& aButton, const uint32_t& aModifierFlags,
-    const Maybe<uint64_t>& aCallbackId) {
+    const uint64_t& aObserverId) {
   NS_ENSURE_TRUE(xpc::IsInAutomation(), IPC_FAIL(this, "Unexpected event"));
 
   const uint32_t last =
       static_cast<uint32_t>(nsIWidget::NativeMouseMessage::LeaveWindow);
   NS_ENSURE_TRUE(aNativeMessage <= last, IPC_FAIL(this, "Bogus message"));
-
-  nsCOMPtr<nsISynthesizedEventCallback> callback =
-      SynthesizedEventCallback::MaybeCreate(this, aCallbackId);
-  if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
+  AutoSynthesizedEventResponder responder(this, aObserverId, "mouseevent");
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (widget) {
     widget->SynthesizeNativeMouseEvent(
         aPoint, static_cast<nsIWidget::NativeMouseMessage>(aNativeMessage),
         static_cast<mozilla::MouseButton>(aButton),
-        static_cast<nsIWidget::Modifiers>(aModifierFlags), callback);
+        static_cast<nsIWidget::Modifiers>(aModifierFlags),
+        responder.GetObserver());
   }
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeMouseMove(
-    const LayoutDeviceIntPoint& aPoint, const Maybe<uint64_t>& aCallbackId) {
+    const LayoutDeviceIntPoint& aPoint, const uint64_t& aObserverId) {
   // This is used by pointer lock API.  So, even if it's not in the automation
   // mode, we need to accept the request.
-  nsCOMPtr<nsISynthesizedEventCallback> callback =
-      SynthesizedEventCallback::MaybeCreate(this, aCallbackId);
-  if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
-    widget->SynthesizeNativeMouseMove(aPoint, callback);
+  AutoSynthesizedEventResponder responder(this, aObserverId, "mousemove");
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (widget) {
+    widget->SynthesizeNativeMouseMove(aPoint, responder.GetObserver());
   }
   return IPC_OK();
 }
@@ -1931,15 +1929,16 @@ mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeMouseScrollEvent(
     const LayoutDeviceIntPoint& aPoint, const uint32_t& aNativeMessage,
     const double& aDeltaX, const double& aDeltaY, const double& aDeltaZ,
     const uint32_t& aModifierFlags, const uint32_t& aAdditionalFlags,
-    const Maybe<uint64_t>& aCallbackId) {
+    const uint64_t& aObserverId) {
   NS_ENSURE_TRUE(xpc::IsInAutomation(), IPC_FAIL(this, "Unexpected event"));
 
-  nsCOMPtr<nsISynthesizedEventCallback> callback =
-      SynthesizedEventCallback::MaybeCreate(this, aCallbackId);
-  if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
-    widget->SynthesizeNativeMouseScrollEvent(aPoint, aNativeMessage, aDeltaX,
-                                             aDeltaY, aDeltaZ, aModifierFlags,
-                                             aAdditionalFlags, callback);
+  AutoSynthesizedEventResponder responder(this, aObserverId,
+                                          "mousescrollevent");
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (widget) {
+    widget->SynthesizeNativeMouseScrollEvent(
+        aPoint, aNativeMessage, aDeltaX, aDeltaY, aDeltaZ, aModifierFlags,
+        aAdditionalFlags, responder.GetObserver());
   }
   return IPC_OK();
 }
@@ -1947,7 +1946,7 @@ mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeMouseScrollEvent(
 mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeTouchPoint(
     const uint32_t& aPointerId, const TouchPointerState& aPointerState,
     const LayoutDeviceIntPoint& aPoint, const double& aPointerPressure,
-    const uint32_t& aPointerOrientation, const Maybe<uint64_t>& aCallbackId) {
+    const uint32_t& aPointerOrientation, const uint64_t& aObserverId) {
   // This is used by DevTools to emulate touch events from mouse events in the
   // responsive design mode.  Therefore, we should accept the IPC messages even
   // if it's not in the automation mode but the browsing context is in RDM pane.
@@ -1959,12 +1958,12 @@ mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeTouchPoint(
     NS_ENSURE_TRUE(mBrowsingContext->Top()->GetInRDMPane(), IPC_OK());
   }
 
-  nsCOMPtr<nsISynthesizedEventCallback> callback =
-      SynthesizedEventCallback::MaybeCreate(this, aCallbackId);
-  if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
+  AutoSynthesizedEventResponder responder(this, aObserverId, "touchpoint");
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (widget) {
     widget->SynthesizeNativeTouchPoint(aPointerId, aPointerState, aPoint,
                                        aPointerPressure, aPointerOrientation,
-                                       callback);
+                                       responder.GetObserver());
   }
   return IPC_OK();
 }
@@ -1984,13 +1983,25 @@ mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeTouchPadPinch(
 
 mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeTouchTap(
     const LayoutDeviceIntPoint& aPoint, const bool& aLongTap,
-    const Maybe<uint64_t>& aCallbackId) {
+    const uint64_t& aObserverId) {
   NS_ENSURE_TRUE(xpc::IsInAutomation(), IPC_FAIL(this, "Unexpected event"));
 
-  nsCOMPtr<nsISynthesizedEventCallback> callback =
-      SynthesizedEventCallback::MaybeCreate(this, aCallbackId);
-  if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
-    widget->SynthesizeNativeTouchTap(aPoint, aLongTap, callback);
+  AutoSynthesizedEventResponder responder(this, aObserverId, "touchtap");
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (widget) {
+    widget->SynthesizeNativeTouchTap(aPoint, aLongTap, responder.GetObserver());
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult BrowserParent::RecvClearNativeTouchSequence(
+    const uint64_t& aObserverId) {
+  NS_ENSURE_TRUE(xpc::IsInAutomation(), IPC_FAIL(this, "Unexpected event"));
+
+  AutoSynthesizedEventResponder responder(this, aObserverId, "cleartouch");
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (widget) {
+    widget->ClearNativeTouchSequence(responder.GetObserver());
   }
   return IPC_OK();
 }
@@ -1999,15 +2010,15 @@ mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativePenInput(
     const uint32_t& aPointerId, const TouchPointerState& aPointerState,
     const LayoutDeviceIntPoint& aPoint, const double& aPressure,
     const uint32_t& aRotation, const int32_t& aTiltX, const int32_t& aTiltY,
-    const int32_t& aButton, const Maybe<uint64_t>& aCallbackId) {
+    const int32_t& aButton, const uint64_t& aObserverId) {
   NS_ENSURE_TRUE(xpc::IsInAutomation(), IPC_FAIL(this, "Unexpected event"));
 
-  nsCOMPtr<nsISynthesizedEventCallback> callback =
-      SynthesizedEventCallback::MaybeCreate(this, aCallbackId);
-  if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
+  AutoSynthesizedEventResponder responder(this, aObserverId, "peninput");
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (widget) {
     widget->SynthesizeNativePenInput(aPointerId, aPointerState, aPoint,
                                      aPressure, aRotation, aTiltX, aTiltY,
-                                     aButton, callback);
+                                     aButton, responder.GetObserver());
   }
   return IPC_OK();
 }
@@ -2026,14 +2037,17 @@ mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeTouchpadDoubleTap(
 mozilla::ipc::IPCResult BrowserParent::RecvSynthesizeNativeTouchpadPan(
     const TouchpadGesturePhase& aEventPhase, const LayoutDeviceIntPoint& aPoint,
     const double& aDeltaX, const double& aDeltaY, const int32_t& aModifierFlags,
-    const Maybe<uint64_t>& aCallbackId) {
+    const uint64_t& aObserverId) {
   NS_ENSURE_TRUE(xpc::IsInAutomation(), IPC_FAIL(this, "Unexpected event"));
 
-  nsCOMPtr<nsISynthesizedEventCallback> callback =
-      SynthesizedEventCallback::MaybeCreate(this, aCallbackId);
-  if (nsCOMPtr<nsIWidget> widget = GetWidget()) {
+  AutoSynthesizedEventResponder responder(this, aObserverId,
+                                          "touchpadpanevent");
+
+  nsCOMPtr<nsIWidget> widget = GetWidget();
+  if (widget) {
     widget->SynthesizeNativeTouchpadPan(aEventPhase, aPoint, aDeltaX, aDeltaY,
-                                        aModifierFlags, callback);
+                                        aModifierFlags,
+                                        responder.GetObserver());
   }
   return IPC_OK();
 }
@@ -2280,12 +2294,6 @@ bool BrowserParent::SendHandleTap(
              : PBrowserParent::SendNormalPriorityHandleTap(
                    aType, TransformParentToChild(aPoint), aModifiers, aGuid,
                    aInputBlockId, aDoubleTapToZoomMetrics);
-}
-
-mozilla::ipc::IPCResult BrowserParent::RecvSynthesizedEventResponse(
-    const uint64_t& aCallbackId) {
-  AutoSynthesizedEventCallbackNotifier::NotifySavedCallback(aCallbackId);
-  return IPC_OK();
 }
 
 mozilla::ipc::IPCResult BrowserParent::RecvSyncMessage(
@@ -2910,12 +2918,18 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnStateChange(
     const WebProgressData& aWebProgressData, const RequestData& aRequestData,
     const uint32_t aStateFlags, const nsresult aStatus,
     const Maybe<WebProgressStateChangeData>& aStateChangeData) {
-  RefPtr<CanonicalBrowsingContext> browsingContext;
-  nsCOMPtr<nsIRequest> request;
-  if (!ReceiveProgressListenerData(aWebProgressData, aRequestData,
-                                   getter_AddRefs(browsingContext),
-                                   getter_AddRefs(request))) {
+  RefPtr<CanonicalBrowsingContext> browsingContext =
+      BrowsingContextForWebProgress(aWebProgressData);
+  if (!browsingContext) {
     return IPC_OK();
+  }
+
+  nsCOMPtr<nsIRequest> request;
+  if (aRequestData.requestURI()) {
+    request = MakeAndAddRef<RemoteWebProgressRequest>(
+        aRequestData.requestURI(), aRequestData.originalRequestURI(),
+        aRequestData.matchedList());
+    request->SetCanceledReason(aRequestData.canceledReason());
   }
 
   if (aStateChangeData.isSome()) {
@@ -2953,11 +2967,6 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnProgressChange(
     return IPC_OK();
   }
 
-  // NOTE: We always capture progress change notifications only in the top
-  // content in nsDocShell (totalProgress reflects this).
-  // NOTE: This notification was filtered by nsBrowserStatusFilter in the
-  // content process, so other arguments are unavailable. See comments in
-  // PBrowser.ipdl for more information.
   GetBrowsingContext()->GetWebProgress()->OnProgressChange(
       nullptr, nullptr, 0, 0, aCurTotalProgress, aMaxTotalProgress);
 
@@ -2969,12 +2978,18 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnLocationChange(
     nsIURI* aLocation, const uint32_t aFlags, const bool aCanGoBack,
     const bool aCanGoBackIgnoringUserInteraction, const bool aCanGoForward,
     const Maybe<WebProgressLocationChangeData>& aLocationChangeData) {
-  RefPtr<CanonicalBrowsingContext> browsingContext;
-  nsCOMPtr<nsIRequest> request;
-  if (!ReceiveProgressListenerData(aWebProgressData, aRequestData,
-                                   getter_AddRefs(browsingContext),
-                                   getter_AddRefs(request))) {
+  RefPtr<CanonicalBrowsingContext> browsingContext =
+      BrowsingContextForWebProgress(aWebProgressData);
+  if (!browsingContext) {
     return IPC_OK();
+  }
+
+  nsCOMPtr<nsIRequest> request;
+  if (aRequestData.requestURI()) {
+    request = MakeAndAddRef<RemoteWebProgressRequest>(
+        aRequestData.requestURI(), aRequestData.originalRequestURI(),
+        aRequestData.matchedList());
+    request->SetCanceledReason(aRequestData.canceledReason());
   }
 
   browsingContext->SetCurrentRemoteURI(aLocation);
@@ -3025,14 +3040,17 @@ mozilla::ipc::IPCResult BrowserParent::RecvOnLocationChange(
 
 mozilla::ipc::IPCResult BrowserParent::RecvOnStatusChange(
     const nsString& aMessage) {
-  // NOTE: As nsBrowserStatusFilter discarded which BrowsingContext the status
-  // change was delivered to, we always deliver to the root BrowsingContext.
-  if (auto* listener = GetBrowsingContext()->Top()->GetWebProgress()) {
-    // NOTE: This notification was filtered by nsBrowserStatusFilter in the
-    // content process, so other arguments are unavailable. See comments in
-    // PBrowser.ipdl for more information.
-    listener->OnStatusChange(nullptr, nullptr, NS_OK, aMessage.get());
+  // We only collect status change notifications for the toplevel
+  // BrowserParent.
+  // FIXME: In the future, consider merging in status change information from
+  // oop subframes.
+  if (!GetBrowsingContext()->IsTopContent() ||
+      !GetBrowsingContext()->GetWebProgress()) {
+    return IPC_OK();
   }
+
+  GetBrowsingContext()->GetWebProgress()->OnStatusChange(nullptr, nullptr,
+                                                         NS_OK, aMessage.get());
 
   return IPC_OK();
 }
@@ -3109,16 +3127,13 @@ already_AddRefed<nsIBrowser> BrowserParent::GetBrowser() {
   return browser.forget();
 }
 
-bool BrowserParent::ReceiveProgressListenerData(
-    const WebProgressData& aWebProgressData, const RequestData& aRequestData,
-    CanonicalBrowsingContext** aBrowsingContext, nsIRequest** aRequest) {
-  *aBrowsingContext = nullptr;
-  *aRequest = nullptr;
-
+already_AddRefed<CanonicalBrowsingContext>
+BrowserParent::BrowsingContextForWebProgress(
+    const WebProgressData& aWebProgressData) {
   // Look up the BrowsingContext which this notification was fired for.
   if (aWebProgressData.browsingContext().IsNullOrDiscarded()) {
     NS_WARNING("WebProgress Ignored: BrowsingContext is null or discarded");
-    return false;
+    return nullptr;
   }
   RefPtr<CanonicalBrowsingContext> browsingContext =
       aWebProgressData.browsingContext().get_canonical();
@@ -3131,7 +3146,7 @@ bool BrowserParent::ReceiveProgressListenerData(
     WindowGlobalParent* embedder = browsingContext->GetParentWindowContext();
     if (!embedder || embedder->GetBrowserParent() != this) {
       NS_WARNING("WebProgress Ignored: wrong embedder process");
-      return false;
+      return nullptr;
     }
   }
 
@@ -3142,7 +3157,7 @@ bool BrowserParent::ReceiveProgressListenerData(
           browsingContext->GetCurrentWindowGlobal();
       current && current->GetBrowserParent() != this) {
     NS_WARNING("WebProgress Ignored: no longer current window global");
-    return false;
+    return nullptr;
   }
 
   if (RefPtr<BrowsingContextWebProgress> progress =
@@ -3150,17 +3165,7 @@ bool BrowserParent::ReceiveProgressListenerData(
     progress->SetLoadType(aWebProgressData.loadType());
   }
 
-  nsCOMPtr<nsIRequest> request;
-  if (aRequestData.requestURI()) {
-    request = MakeAndAddRef<RemoteWebProgressRequest>(
-        aRequestData.requestURI(), aRequestData.originalRequestURI(),
-        aRequestData.matchedList());
-    request->SetCanceledReason(aRequestData.canceledReason());
-  }
-
-  browsingContext.forget(aBrowsingContext);
-  request.forget(aRequest);
-  return true;
+  return browsingContext.forget();
 }
 
 mozilla::ipc::IPCResult BrowserParent::RecvIntrinsicSizeOrRatioChanged(

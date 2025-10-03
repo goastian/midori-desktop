@@ -13,7 +13,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -76,7 +75,7 @@ private const val TOAST_LENGTH = Toast.LENGTH_SHORT
  * be clickable.
  * @param modifier [Modifier] to be applied to the layout.
  * @param onClick Called when the user clicks on the item.
- * @param afterListItemAction Optional Composable for adding UI to the end of the list item.
+ * @param afterListAction Optional Composable for adding UI to the end of the list item.
  */
 @Composable
 fun ImageListItem(
@@ -86,14 +85,14 @@ fun ImageListItem(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    afterListItemAction: @Composable RowScope.() -> Unit = {},
+    afterListAction: @Composable RowScope.() -> Unit = {},
 ) {
     ListItem(
         label = label,
         modifier = modifier,
         enabled = enabled,
         onClick = onClick,
-        beforeListItemAction = {
+        beforeListAction = {
             Image(
                 painter = iconPainter,
                 contentDescription = null,
@@ -103,7 +102,7 @@ fun ImageListItem(
 
             Spacer(modifier = Modifier.width(16.dp))
         },
-        afterListItemAction = afterListItemAction,
+        afterListAction = afterListAction,
     )
 }
 
@@ -193,7 +192,6 @@ fun TextListItem(
  * @param onLongClick Called when the user long clicks on the item.
  * @param showDivider Whether or not to display a vertical divider line before the [IconButton]
  * at the end.
- * @param dividerColor [Color] to be applied to the divider. Default is [FirefoxTheme.colors.borderSecondary].
  * @param iconPainter [Painter] used to display an [IconButton] after the list item.
  * @param iconButtonModifier [Modifier] to be applied to the icon button.
  * @param iconDescription Content description of the icon.
@@ -210,7 +208,6 @@ fun FaviconListItem(
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     showDivider: Boolean = false,
-    dividerColor: Color = FirefoxTheme.colors.borderSecondary,
     iconPainter: Painter? = null,
     iconButtonModifier: Modifier = Modifier,
     iconDescription: String? = null,
@@ -223,7 +220,7 @@ fun FaviconListItem(
         description = description,
         onClick = onClick,
         onLongClick = onLongClick,
-        beforeListItemAction = {
+        beforeListAction = {
             if (faviconPainter != null) {
                 Image(
                     painter = faviconPainter,
@@ -239,7 +236,7 @@ fun FaviconListItem(
 
             Spacer(modifier = Modifier.width(16.dp))
         },
-        afterListItemAction = {
+        afterListAction = {
             if (iconPainter == null || onIconClick == null) {
                 return@ListItem
             }
@@ -252,7 +249,7 @@ fun FaviconListItem(
                         .padding(vertical = DIVIDER_VERTICAL_PADDING)
                         .fillMaxHeight()
                         .width(1.dp),
-                    color = dividerColor,
+                    color = FirefoxTheme.colors.borderSecondary,
                 )
             }
 
@@ -338,7 +335,7 @@ fun IconListItem(
         minHeight = minHeight,
         onClick = onClick,
         onLongClick = onLongClick,
-        beforeListItemAction = {
+        beforeListAction = {
             Icon(
                 painter = beforeIconPainter,
                 contentDescription = beforeIconDescription,
@@ -347,7 +344,7 @@ fun IconListItem(
 
             Spacer(modifier = Modifier.width(16.dp))
         },
-        afterListItemAction = {
+        afterListAction = {
             afterListAction?.let {
                 it()
                 return@ListItem
@@ -433,7 +430,7 @@ fun RadioButtonListItem(
         description = description,
         maxDescriptionLines = maxDescriptionLines,
         onClick = onClick,
-        beforeListItemAction = {
+        beforeListAction = {
             RadioButton(
                 selected = selected,
                 modifier = Modifier
@@ -488,7 +485,7 @@ fun SelectableFaviconListItem(
         description = description,
         onClick = onClick,
         onLongClick = onLongClick,
-        beforeListItemAction = {
+        beforeListAction = {
             SelectableItemIcon(
                 isSelected = isSelected,
                 icon = {
@@ -509,7 +506,7 @@ fun SelectableFaviconListItem(
 
             Spacer(modifier = Modifier.width(16.dp))
         },
-        afterListItemAction = {
+        afterListAction = {
             if ((iconPainter == null || onIconClick == null) && iconSlot == null) {
                 return@ListItem
             }
@@ -610,7 +607,7 @@ fun SelectableIconListItem(
         minHeight = minHeight,
         onClick = onClick,
         onLongClick = onLongClick,
-        beforeListItemAction = {
+        beforeListAction = {
             SelectableItemIcon(
                 isSelected = isSelected,
                 icon = {
@@ -624,7 +621,7 @@ fun SelectableIconListItem(
 
             Spacer(modifier = Modifier.width(16.dp))
         },
-        afterListItemAction = {
+        afterListAction = {
             if (afterIconPainter == null && iconSlot == null) {
                 return@ListItem
             }
@@ -681,11 +678,8 @@ fun SelectableIconListItem(
  * @param description The description text below the label.
  * @param icon The icon resource to be displayed at the beginning of the list item.
  * @param isSelected The selected state of the item.
+ * @param afterListAction Composable for adding UI to the end of the list item.
  * @param modifier [Modifier] to be applied to the composable.
- * @param descriptionTextColor [Color] to be applied to the description.
- * @param iconTint Tint to be applied to [icon].
- * @param afterListItemAction Composable for adding UI to the end of the list item.
- * @param belowListItemContent Composable for adding UI to the bottom of the list item content.
  */
 @Composable
 fun SelectableListItem(
@@ -693,25 +687,20 @@ fun SelectableListItem(
     description: String,
     @DrawableRes icon: Int,
     isSelected: Boolean,
+    afterListAction: @Composable RowScope.() -> Unit,
     modifier: Modifier = Modifier,
-    descriptionTextColor: Color = FirefoxTheme.colors.textSecondary,
-    iconTint: Color = FirefoxTheme.colors.iconPrimary,
-    afterListItemAction: @Composable RowScope.() -> Unit,
-    belowListItemContent: @Composable ColumnScope.() -> Unit = {},
 ) {
     ListItem(
         label = label,
         description = description,
         modifier = modifier,
-        descriptionTextColor = descriptionTextColor,
-        belowListItemContent = belowListItemContent,
-        beforeListItemAction = {
+        beforeListAction = {
             SelectableItemIcon(
                 icon = {
                     Icon(
                         painter = painterResource(id = icon),
                         contentDescription = null,
-                        tint = iconTint,
+                        tint = FirefoxTheme.colors.iconPrimary,
                     )
                 },
                 isSelected = isSelected,
@@ -719,7 +708,7 @@ fun SelectableListItem(
 
             Spacer(modifier = Modifier.width(16.dp))
         },
-        afterListItemAction = afterListItemAction,
+        afterListAction = afterListAction,
     )
 }
 
@@ -773,9 +762,8 @@ private fun SelectableItemIcon(
  * @param minHeight An optional minimum height for the list item.
  * @param onClick Called when the user clicks on the item.
  * @param onLongClick Called when the user long clicks on the item.
- * @param belowListItemContent Optional Composable for adding UI below the list item content.
- * @param beforeListItemAction Optional Composable for adding UI before the list item.
- * @param afterListItemAction Optional Composable for adding UI to the end of the list item.
+ * @param beforeListAction Optional Composable for adding UI before the list item.
+ * @param afterListAction Optional Composable for adding UI to the end of the list item.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -792,9 +780,8 @@ private fun ListItem(
     minHeight: Dp = LIST_ITEM_HEIGHT,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
-    belowListItemContent: @Composable ColumnScope.() -> Unit = {},
-    beforeListItemAction: @Composable RowScope.() -> Unit = {},
-    afterListItemAction: @Composable RowScope.() -> Unit = {},
+    beforeListAction: @Composable RowScope.() -> Unit = {},
+    afterListAction: @Composable RowScope.() -> Unit = {},
 ) {
     val haptics = LocalHapticFeedback.current
     Row(
@@ -816,72 +803,43 @@ private fun ListItem(
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        beforeListItemAction()
+        beforeListAction()
 
-        ListItemContent(
-            label = label,
+        Column(
             modifier = Modifier.weight(1f),
-            labelModifier = labelModifier,
-            labelTextColor = labelTextColor,
-            descriptionTextColor = descriptionTextColor,
-            maxLabelLines = maxLabelLines,
-            description = description,
-            maxDescriptionLines = maxDescriptionLines,
-            enabled = enabled,
-            belowListItemContent = belowListItemContent,
-        )
-
-        afterListItemAction()
-    }
-}
-
-@Composable
-private fun ListItemContent(
-    label: String,
-    modifier: Modifier = Modifier,
-    labelModifier: Modifier = Modifier,
-    labelTextColor: Color = FirefoxTheme.colors.textPrimary,
-    descriptionTextColor: Color = FirefoxTheme.colors.textSecondary,
-    maxLabelLines: Int = 1,
-    description: String? = null,
-    maxDescriptionLines: Int = 1,
-    enabled: Boolean = true,
-    belowListItemContent: @Composable ColumnScope.() -> Unit = {},
-) {
-    Column(
-        modifier = modifier,
-    ) {
-        Text(
-            text = label,
-            modifier = labelModifier,
-            color = if (enabled) labelTextColor else FirefoxTheme.colors.textDisabled,
-            overflow = TextOverflow.Ellipsis,
-            style = FirefoxTheme.typography.subtitle1.merge(
-                platformStyle = PlatformTextStyle(includeFontPadding = true),
-            ),
-            maxLines = maxLabelLines,
-        )
-
-        description?.let {
+        ) {
             Text(
-                text = description,
-                color = if (enabled) descriptionTextColor else FirefoxTheme.colors.textDisabled,
+                text = label,
+                modifier = labelModifier,
+                color = if (enabled) labelTextColor else FirefoxTheme.colors.textDisabled,
                 overflow = TextOverflow.Ellipsis,
-                maxLines = maxDescriptionLines,
-                style = FirefoxTheme.typography.body2
-                    .merge(
-                        // Bug 1915867 - We must force the text direction to correctly truncate a LTR
-                        // description that is too long when the app in RTL mode - at least until this
-                        // bug gets fixed in Compose.
-                        // This isn't the most optional solution but it should have less side-effects
-                        // than forcing no letter spacing (which would be the best approach here).
-                        textDirection = TextDirection.Content,
-                        platformStyle = PlatformTextStyle(includeFontPadding = true),
-                    ),
+                style = FirefoxTheme.typography.subtitle1.merge(
+                    platformStyle = PlatformTextStyle(includeFontPadding = true),
+                ),
+                maxLines = maxLabelLines,
             )
+
+            description?.let {
+                Text(
+                    text = description,
+                    color = if (enabled) descriptionTextColor else FirefoxTheme.colors.textDisabled,
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = maxDescriptionLines,
+                    style = FirefoxTheme.typography.body2
+                        .merge(
+                            // Bug 1915867 - We must force the text direction to correctly truncate a LTR
+                            // description that is too long when the app in RTL mode - at least until this
+                            // bug gets fixed in Compose.
+                            // This isn't the most optional solution but it should have less side-effects
+                            // than forcing no letter spacing (which would be the best approach here).
+                            textDirection = TextDirection.Content,
+                            platformStyle = PlatformTextStyle(includeFontPadding = true),
+                        ),
+                )
+            }
         }
 
-        belowListItemContent()
+        afterListAction()
     }
 }
 
@@ -1055,7 +1013,7 @@ private fun ImageListItemPreview() {
                 iconPainter = painterResource(R.drawable.mozac_ic_web_extension_default_icon),
                 enabled = true,
                 onClick = {},
-                afterListItemAction = {
+                afterListAction = {
                     Text(
                         text = "afterListItemText",
                         color = Color.White,
@@ -1259,7 +1217,7 @@ private fun SelectableListItemPreview() {
                 description = "Description text",
                 icon = R.drawable.mozac_ic_folder_24,
                 isSelected = true,
-                afterListItemAction = {},
+                afterListAction = {},
             )
 
             SelectableListItem(
@@ -1267,7 +1225,7 @@ private fun SelectableListItemPreview() {
                 description = "without after action",
                 icon = R.drawable.mozac_ic_folder_24,
                 isSelected = false,
-                afterListItemAction = {},
+                afterListAction = {},
             )
 
             SelectableListItem(
@@ -1275,7 +1233,7 @@ private fun SelectableListItemPreview() {
                 description = "with after action",
                 icon = R.drawable.mozac_ic_folder_24,
                 isSelected = false,
-                afterListItemAction = {
+                afterListAction = {
                     IconButton(
                         onClick = {},
                         modifier = Modifier.size(ICON_SIZE),

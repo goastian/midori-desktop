@@ -1061,16 +1061,8 @@ function synthesizeTouchAtCenter(aTarget, aEvent = {}, aWindow = window) {
  * @param {number} aTop - Floating-point value for the Y offset in CSS pixels.
  * @param {WheelEventData} aEvent - Details of the wheel event to dispatch.
  * @param {DOMWindow} [aWindow=window] - DOM window used to dispatch the event.
- * @param {Function} [aCallback=null] - A callback function that is invoked when
- *                                      the wheel event is dispatched.
  */
-function synthesizeWheelAtPoint(
-  aLeft,
-  aTop,
-  aEvent,
-  aWindow = window,
-  aCallback = null
-) {
+function synthesizeWheelAtPoint(aLeft, aTop, aEvent, aWindow = window) {
   var utils = _getDOMWindowUtils(aWindow);
   if (!utils) {
     return;
@@ -1149,8 +1141,7 @@ function synthesizeWheelAtPoint(
     modifiers,
     lineOrPageDeltaX,
     lineOrPageDeltaY,
-    options,
-    aCallback
+    options
   );
 }
 
@@ -1165,24 +1156,20 @@ function synthesizeWheelAtPoint(
  * @param {number} aOffsetY - Y offset in CSS pixels from the element’s top edge.
  * @param {WheelEventData} aEvent - Details of the wheel event to dispatch.
  * @param {DOMWindow} [aWindow=window] - DOM window used to dispatch the event.
- * @param {Function} [aCallback=null] - A callback function that is invoked when
- *                                      the wheel event is dispatched.
  */
 function synthesizeWheel(
   aTarget,
   aOffsetX,
   aOffsetY,
   aEvent,
-  aWindow = window,
-  aCallback = null
+  aWindow = window
 ) {
   var rect = aTarget.getBoundingClientRect();
   synthesizeWheelAtPoint(
     rect.left + aOffsetX,
     rect.top + aOffsetY,
     aEvent,
-    aWindow,
-    aCallback
+    aWindow
   );
 }
 
@@ -1378,7 +1365,14 @@ function synthesizeNativeTap(
     (aWindow.mozInnerScreenY + rect.top + aOffsetY) * scale
   );
 
-  utils.sendNativeTouchTap(x, y, aLongTap, aCallback);
+  let observer = {
+    observe: (subject, topic, data) => {
+      if (aCallback && topic == "mouseevent") {
+        aCallback(data);
+      }
+    },
+  };
+  utils.sendNativeTouchTap(x, y, aLongTap, observer);
 }
 
 /**
@@ -1513,6 +1507,13 @@ function synthesizeNativeMouseEvent(aParams, aCallback = null) {
   );
   const modifierFlags = _parseNativeModifiers(modifiers);
 
+  const observer = {
+    observe: (subject, topic, data) => {
+      if (aCallback && topic == "mouseevent") {
+        aCallback(data);
+      }
+    },
+  };
   if (type === "click") {
     utils.sendNativeMouseEvent(
       x,
@@ -1529,7 +1530,7 @@ function synthesizeNativeMouseEvent(aParams, aCallback = null) {
           button,
           modifierFlags,
           elementOnWidget,
-          aCallback
+          observer
         );
       }
     );
@@ -1553,7 +1554,7 @@ function synthesizeNativeMouseEvent(aParams, aCallback = null) {
     button,
     modifierFlags,
     elementOnWidget,
-    aCallback
+    observer
   );
 }
 
@@ -2058,13 +2059,20 @@ function synthesizeNativeKey(
     return false;
   }
 
+  var observer = {
+    observe(aSubject, aTopic, aData) {
+      if (aCallback && aTopic == "keyevent") {
+        aCallback(aData);
+      }
+    },
+  };
   utils.sendNativeKeyEvent(
     nativeKeyboardLayout,
     aNativeKeyCode,
     _parseNativeModifiers(aModifiers, aWindow),
     aChars,
     aUnmodifiedChars,
-    aCallback
+    observer
   );
   return true;
 }
@@ -4206,7 +4214,6 @@ async function synthesizePlainDragAndCancel(
  *                MockDragController that the function should use.  This
  *                function will automatically generate one if none is given.
  */
-// eslint-disable-next-line complexity
 async function synthesizeMockDragAndDrop(aParams) {
   const {
     srcElement,

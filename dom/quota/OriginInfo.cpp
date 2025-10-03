@@ -67,16 +67,10 @@ OriginMetadata OriginInfo::FlattenToOriginMetadata() const {
           mGroupInfo->mPersistenceType};
 }
 
-OriginStateMetadata OriginInfo::LockedFlattenToOriginStateMetadata() const {
-  AssertCurrentThreadOwnsQuotaMutex();
-
-  return {mAccessTime, mAccessed, mPersisted};
-}
-
 FullOriginMetadata OriginInfo::LockedFlattenToFullOriginMetadata() const {
   AssertCurrentThreadOwnsQuotaMutex();
 
-  return {FlattenToOriginMetadata(), LockedFlattenToOriginStateMetadata()};
+  return {FlattenToOriginMetadata(), mPersisted, mAccessTime};
 }
 
 nsresult OriginInfo::LockedBindToStatement(

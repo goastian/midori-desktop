@@ -414,9 +414,7 @@ const logicalAndTests = [
 
 if (navigator.ml) {
   logicalAndTests.forEach((test) => {
-    webnn_conformance_test(
-        buildAndExecuteGraph, getPrecisionTolerance, test,
-        /*cast_to_supported_type=*/true);
+    webnn_conformance_test(buildAndExecuteGraph, getPrecisionTolerance, test);
   });
 } else {
   test(() => assert_implements(navigator.ml, 'missing navigator.ml'));

@@ -11,7 +11,6 @@
 
 #include <stdint.h>
 
-#include "jit/ABIFunctionType.h"
 #include "jit/Assembler.h"
 #include "jit/IonTypes.h"
 #include "jit/RegisterSets.h"
@@ -41,9 +40,9 @@ static inline MIRType ToMIRType(ABIType argType) {
   MOZ_CRASH("unexpected argType");
 }
 
-template <class VecT>
-class ABIArgIter {
-  ABIArgGenerator gen_;
+template <class VecT, class ABIArgGeneratorT>
+class ABIArgIterBase {
+  ABIArgGeneratorT gen_;
   const VecT& types_;
   unsigned i_;
 
@@ -52,8 +51,7 @@ class ABIArgIter {
   }
 
  public:
-  ABIArgIter(const VecT& types, ABIKind kind)
-      : gen_(kind), types_(types), i_(0) {
+  explicit ABIArgIterBase(const VecT& types) : types_(types), i_(0) {
     settle();
   }
   void operator++(int) {
@@ -83,6 +81,29 @@ class ABIArgIter {
   uint32_t stackBytesConsumedSoFar() const {
     return gen_.stackBytesConsumedSoFar();
   }
+};
+
+// This is not an alias because we want to allow class template argument
+// deduction.
+template <class VecT>
+class ABIArgIter : public ABIArgIterBase<VecT, ABIArgGenerator> {
+ public:
+  explicit ABIArgIter(const VecT& types)
+      : ABIArgIterBase<VecT, ABIArgGenerator>(types) {}
+};
+
+class WasmABIArgGenerator : public ABIArgGenerator {
+ public:
+  WasmABIArgGenerator() {
+    increaseStackOffset(wasm::FrameWithInstances::sizeOfInstanceFields());
+  }
+};
+
+template <class VecT>
+class WasmABIArgIter : public ABIArgIterBase<VecT, WasmABIArgGenerator> {
+ public:
+  explicit WasmABIArgIter(const VecT& types)
+      : ABIArgIterBase<VecT, WasmABIArgGenerator>(types) {}
 };
 
 }  // namespace js::jit

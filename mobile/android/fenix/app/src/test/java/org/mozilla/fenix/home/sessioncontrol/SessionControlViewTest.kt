@@ -23,7 +23,7 @@ import org.mozilla.fenix.utils.Settings
 class SessionControlViewTest {
 
     @Test
-    fun `GIVEN recent Bookmarks WHEN normalModeAdapterItems is called THEN show bookmarks section`() {
+    fun `GIVEN recent Bookmarks WHEN normalModeAdapterItems is called THEN add a customize home button`() {
         val settings: Settings = mockk()
         val topSites = emptyList<TopSite>()
         val collections = emptyList<TabCollection>()
@@ -53,11 +53,10 @@ class SessionControlViewTest {
             pocketStories = pocketStories,
         )
 
-        assertEquals(4, results.size)
         assertTrue(results[0] is AdapterItem.TopPlaceholderItem)
         assertTrue(results[1] is AdapterItem.BookmarksHeader)
         assertTrue(results[2] is AdapterItem.Bookmarks)
-        assertTrue(results[3] is AdapterItem.BottomSpacer)
+        assertTrue(results[3] is AdapterItem.CustomizeHomeButton)
     }
 
     @Test
@@ -96,7 +95,7 @@ class SessionControlViewTest {
     }
 
     @Test
-    fun `GIVEN recent tabs WHEN normalModeAdapterItems is called THEN show jump back in section`() {
+    fun `GIVEN recent tabs WHEN normalModeAdapterItems is called THEN add a customize home button`() {
         val settings: Settings = mockk()
         val topSites = emptyList<TopSite>()
         val collections = emptyList<TabCollection>()
@@ -126,15 +125,14 @@ class SessionControlViewTest {
             pocketStories,
         )
 
-        assertEquals(4, results.size)
         assertTrue(results[0] is AdapterItem.TopPlaceholderItem)
         assertTrue(results[1] is AdapterItem.RecentTabsHeader)
         assertTrue(results[2] is AdapterItem.RecentTabItem)
-        assertTrue(results[3] is AdapterItem.BottomSpacer)
+        assertTrue(results[3] is AdapterItem.CustomizeHomeButton)
     }
 
     @Test
-    fun `GIVEN history metadata WHEN normalModeAdapterItems is called THEN show recently visited section`() {
+    fun `GIVEN history metadata WHEN normalModeAdapterItems is called THEN add a customize home button`() {
         val settings: Settings = mockk()
         val topSites = emptyList<TopSite>()
         val collections = emptyList<TabCollection>()
@@ -164,15 +162,14 @@ class SessionControlViewTest {
             pocketStories,
         )
 
-        assertEquals(4, results.size)
         assertTrue(results[0] is AdapterItem.TopPlaceholderItem)
         assertTrue(results[1] is AdapterItem.RecentVisitsHeader)
         assertTrue(results[2] is AdapterItem.RecentVisitsItems)
-        assertTrue(results[3] is AdapterItem.BottomSpacer)
+        assertTrue(results[3] is AdapterItem.CustomizeHomeButton)
     }
 
     @Test
-    fun `GIVEN pocket articles WHEN normalModeAdapterItems is called THEN show stories section`() {
+    fun `GIVEN pocket articles WHEN normalModeAdapterItems is called THEN add a customize home button`() {
         val settings: Settings = mockk()
         val topSites = emptyList<TopSite>()
         val collections = emptyList<TabCollection>()
@@ -186,6 +183,7 @@ class SessionControlViewTest {
         every { settings.showBookmarksHomeFeature } returns true
         every { settings.historyMetadataUIFeature } returns true
         every { settings.showPocketRecommendationsFeature } returns true
+        every { settings.showContentRecommendations } returns false
         every { settings.showSetupChecklist } returns false
 
         val results = normalModeAdapterItems(
@@ -203,10 +201,10 @@ class SessionControlViewTest {
             true,
         )
 
-        assertEquals(3, results.size)
         assertTrue(results[0] is AdapterItem.TopPlaceholderItem)
         assertTrue(results[1] is AdapterItem.PocketStoriesItem)
-        assertTrue(results[2] is AdapterItem.BottomSpacer)
+        assertTrue(results[2] is AdapterItem.PocketCategoriesItem)
+        assertTrue(results[3] is AdapterItem.CustomizeHomeButton)
 
         // When the first frame has not yet drawn don't add pocket.
         val results2 = normalModeAdapterItems(
@@ -224,9 +222,48 @@ class SessionControlViewTest {
             false,
         )
 
-        assertEquals(2, results2.size)
         assertTrue(results2[0] is AdapterItem.TopPlaceholderItem)
         assertTrue(results2[1] is AdapterItem.BottomSpacer)
+    }
+
+    @Test
+    fun `GIVEN pocket articles and content recommendations are enabled WHEN normalModeAdapterItems is called THEN do not show pocket topic categories and footer`() {
+        val settings: Settings = mockk()
+        val topSites = emptyList<TopSite>()
+        val collections = emptyList<TabCollection>()
+        val expandedCollections = emptySet<Long>()
+        val bookmarks = listOf<Bookmark>()
+        val historyMetadata = emptyList<RecentHistoryGroup>()
+        val pocketStories = listOf(PocketRecommendedStory("", "", "", "", "", 1, 1))
+
+        every { settings.showTopSitesFeature } returns true
+        every { settings.showRecentTabsFeature } returns true
+        every { settings.showBookmarksHomeFeature } returns true
+        every { settings.historyMetadataUIFeature } returns true
+        every { settings.showPocketRecommendationsFeature } returns true
+        every { settings.showContentRecommendations } returns true
+        every { settings.showSetupChecklist } returns false
+
+        val results = normalModeAdapterItems(
+            settings = settings,
+            topSites = topSites,
+            collections = collections,
+            expandedCollections = expandedCollections,
+            bookmarks = bookmarks,
+            showCollectionsPlaceholder = false,
+            nimbusMessageCard = null,
+            showRecentTab = false,
+            showRecentSyncedTab = false,
+            recentVisits = historyMetadata,
+            pocketStories = pocketStories,
+            firstFrameDrawn = true,
+        )
+
+        assertEquals(4, results.size)
+        assertTrue(results[0] is AdapterItem.TopPlaceholderItem)
+        assertTrue(results[1] is AdapterItem.PocketStoriesItem)
+        assertTrue(results[2] is AdapterItem.CustomizeHomeButton)
+        assertTrue(results[3] is AdapterItem.BottomSpacer)
     }
 
     @Test

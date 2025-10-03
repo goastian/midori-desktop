@@ -23,5 +23,6 @@ tasks:
         from-deps:
             group-by: chunk-locales
             copy-attributes: true
+        max-run-time: 1800
         treeherder:
             symbol: BMN

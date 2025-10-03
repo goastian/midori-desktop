@@ -6,7 +6,7 @@
 
 /* eslint-disable import/order */
 
-import {readFile, writeFile} from 'fs/promises';
+import {readFile, writeFile, copyFile} from 'fs/promises';
 
 import versionData from './versions.json' with {type: 'json'};
 
@@ -116,10 +116,7 @@ export const docsTask = task({
     );
 
     // Copy combined changelog.
-    let changelog = await readFile('CHANGELOG.md', 'utf-8');
-    // Escape for MDX.
-    changelog = changelog.replaceAll('{', '\\{');
-    await writeFile('docs/CHANGELOG.md', changelog);
+    await copyFile('CHANGELOG.md', 'docs/CHANGELOG.md');
 
     // Format everything.
     await execa('prettier', ['--ignore-path', 'none', '--write', 'docs']);

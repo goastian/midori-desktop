@@ -127,7 +127,7 @@ ChannelId VoipCore::CreateChannel(Transport* transport,
 
   // Set local ssrc to random if not set by caller.
   if (!local_ssrc) {
-    Random random(TimeMicros());
+    Random random(rtc::TimeMicros());
     local_ssrc = random.Rand<uint32_t>();
   }
 

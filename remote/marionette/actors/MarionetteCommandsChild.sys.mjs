@@ -67,7 +67,7 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
     return lazy.assertTargetInViewPort(target, this.contentWindow);
   }
 
-  async #dispatchEvent(options) {
+  #dispatchEvent(options) {
     const { eventName, details } = options;
     const win = this.contentWindow;
 
@@ -98,7 +98,7 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
           lazy.event.synthesizeMultiTouch(details.eventData, win);
           break;
         case "synthesizeWheelAtPoint":
-          await lazy.event.synthesizeWheelAtPoint(
+          lazy.event.synthesizeWheelAtPoint(
             details.x,
             details.y,
             details.eventData,
@@ -129,7 +129,7 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
   async #finalizeAction() {
     // Terminate the current wheel transaction if there is one. Wheel
     // transactions should not live longer than a single action chain.
-    await ChromeUtils.endWheelTransaction(this.contentWindow);
+    ChromeUtils.endWheelTransaction();
 
     // Wait for the next animation frame to make sure the page's content
     // was updated.
@@ -187,7 +187,7 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
           result = this.#assertInViewPort(data);
           break;
         case "MarionetteCommandsParent:_dispatchEvent":
-          await this.#dispatchEvent(data);
+          this.#dispatchEvent(data);
           waitForNextTick = true;
           break;
         case "MarionetteCommandsParent:_getClientRects":

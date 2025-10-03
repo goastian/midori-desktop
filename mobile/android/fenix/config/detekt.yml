@@ -799,6 +799,8 @@ mozilla-detekt-rules:
     bannedProperties: 'BuildConfig.DEBUG'
   MozillaStrictModeSuppression:
     active: true
+  MozillaCorrectUnitTestRunner:
+    active: true
   MozillaRunBlockingCheck:
     active: true
   MozillaUseLazyMonitored:

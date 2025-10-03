@@ -83,6 +83,13 @@ class DefaultBrowserToolbarInteractorTest {
     }
 
     @Test
+    fun onEraseButtonClicked() {
+        interactor.onEraseButtonClicked()
+
+        verify { browserToolbarController.handleEraseButtonClick() }
+    }
+
+    @Test
     fun onTranslationsButtonClicked() {
         interactor.onTranslationsButtonClicked()
 

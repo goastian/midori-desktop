@@ -8,6 +8,8 @@ import sys
 import time
 from threading import RLock
 
+import six
+
 
 class SocketTimeout:
     def __init__(self, socket_ctx, timeout):
@@ -331,8 +333,8 @@ class TcpTransport:
                 self.expected_response = obj
         else:
             data = json.dumps(obj)
-        data = data.encode()
-        payload = str(len(data)).encode() + b":" + data
+        data = six.ensure_binary(data)
+        payload = six.ensure_binary(str(len(data))) + b":" + data
 
         with self._socket_context as sock:
             totalsent = 0

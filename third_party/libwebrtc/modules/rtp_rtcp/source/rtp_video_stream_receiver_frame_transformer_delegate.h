@@ -41,8 +41,7 @@ class RtpVideoStreamReceiverFrameTransformerDelegate
       RtpVideoFrameReceiver* receiver,
       Clock* clock,
       rtc::scoped_refptr<FrameTransformerInterface> frame_transformer,
-      TaskQueueBase* network_thread,
-      uint32_t ssrc);
+      TaskQueueBase* network_thread, uint32_t ssrc);
 
   void Init();
   void Reset();

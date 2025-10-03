@@ -185,6 +185,11 @@ impl WebAuthnRegisterResult {
         Ok(out)
     }
 
+    xpcom_method!(get_attestation_consent_prompt_shown => GetAttestationConsentPromptShown() -> bool);
+    fn get_attestation_consent_prompt_shown(&self) -> Result<bool, nsresult> {
+        Ok(false)
+    }
+
     xpcom_method!(get_credential_id => GetCredentialId() -> ThinVec<u8>);
     fn get_credential_id(&self) -> Result<ThinVec<u8>, nsresult> {
         let Some(credential_data) = &self.result.borrow().att_obj.auth_data.credential_data else {

@@ -16,14 +16,14 @@ namespace mozilla {
 /*static*/
 SVGViewBoxSMILType SVGViewBoxSMILType::sSingleton;
 
-void SVGViewBoxSMILType::InitValue(SMILValue& aValue) const {
+void SVGViewBoxSMILType::Init(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.IsNull(), "Unexpected value type");
 
   aValue.mU.mPtr = new SVGViewBox(0.0f, 0.0f, 0.0f, 0.0f);
   aValue.mType = this;
 }
 
-void SVGViewBoxSMILType::DestroyValue(SMILValue& aValue) const {
+void SVGViewBoxSMILType::Destroy(SMILValue& aValue) const {
   MOZ_ASSERT(aValue.mType == this, "Unexpected SMIL value");
   delete static_cast<SVGViewBox*>(aValue.mU.mPtr);
   aValue.mU.mPtr = nullptr;

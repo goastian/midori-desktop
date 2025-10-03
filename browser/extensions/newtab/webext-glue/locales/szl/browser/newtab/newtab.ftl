@@ -310,6 +310,3 @@ newtab-custom-settings = Inksze nasztalowania
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

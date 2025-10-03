@@ -214,7 +214,6 @@ class BreakpointActor {
         frame,
         level: "logPoint",
         expression: `[${logValue}]`,
-        showStacktrace: this.options.showStacktrace,
       });
     }
 

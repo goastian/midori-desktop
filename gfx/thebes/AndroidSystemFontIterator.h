@@ -8,18 +8,21 @@
 
 #include "mozilla/Maybe.h"
 
-#include <android/font.h>
-#include <android/system_fonts.h>
-
 namespace mozilla {
 
-class __attribute__((
-    availability(android, introduced = 29))) AndroidFont final {
+typedef void* (*_ASystemFontIterator_open)();
+typedef void* (*_ASystemFontIterator_next)(void*);
+typedef void (*_ASystemFontIterator_close)(void*);
+
+typedef const char* (*_AFont_getFontFilePath)(const void*);
+typedef void (*_AFont_close)(void*);
+
+class AndroidFont final {
  public:
-  explicit AndroidFont(AFont* _Nullable aFont) : mFont(aFont) {};
+  explicit AndroidFont(void* aFont) : mFont(aFont) {};
 
   AndroidFont() = delete;
-  AndroidFont(const AndroidFont&) = delete;
+  AndroidFont(AndroidFont&) = delete;
 
   AndroidFont(AndroidFont&& aSrc) {
     mFont = aSrc.mFont;
@@ -28,24 +31,33 @@ class __attribute__((
 
   ~AndroidFont();
 
-  const char* _Nullable GetFontFilePath();
+  const char* GetFontFilePath();
 
  private:
-  AFont* _Nullable mFont;
+  void* mFont;
+
+  static _AFont_getFontFilePath sFont_getFontFilePath;
+  static _AFont_close sFont_close;
+
+  friend class AndroidSystemFontIterator;
 };
 
-class __attribute__((
-    availability(android, introduced = 29))) AndroidSystemFontIterator final {
+class AndroidSystemFontIterator final {
  public:
-  AndroidSystemFontIterator();
+  AndroidSystemFontIterator() = default;
+
   ~AndroidSystemFontIterator();
 
-  static void Preload();
+  bool Init();
 
   Maybe<AndroidFont> Next();
 
  private:
-  ASystemFontIterator* _Nullable mIterator;
+  void* mIterator = nullptr;
+
+  static _ASystemFontIterator_open sSystemFontIterator_open;
+  static _ASystemFontIterator_next sSystemFontIterator_next;
+  static _ASystemFontIterator_close sSystemFontIterator_close;
 };
 
 }  // namespace mozilla

@@ -92,7 +92,6 @@ void RenderBundleEncoder::SetBindGroup(uint32_t aSlot,
   RawId bindGroup = 0;
   if (aBindGroup) {
     mUsedBindGroups.AppendElement(aBindGroup);
-    mUsedCanvasContexts.AppendElements(aBindGroup->GetCanvasContexts());
     bindGroup = aBindGroup->mId;
   }
   ffi::wgpu_render_bundle_set_bind_group(
@@ -189,7 +188,6 @@ void RenderBundleEncoder::DrawIndirect(const Buffer& aIndirectBuffer,
   if (!mValid) {
     return;
   }
-  mUsedBuffers.AppendElement(&aIndirectBuffer);
   ffi::wgpu_render_bundle_draw_indirect(mEncoder.get(), aIndirectBuffer.mId,
                                         aIndirectOffset);
 }
@@ -199,7 +197,6 @@ void RenderBundleEncoder::DrawIndexedIndirect(const Buffer& aIndirectBuffer,
   if (!mValid) {
     return;
   }
-  mUsedBuffers.AppendElement(&aIndirectBuffer);
   ffi::wgpu_render_bundle_draw_indexed_indirect(
       mEncoder.get(), aIndirectBuffer.mId, aIndirectOffset);
 }
@@ -252,9 +249,7 @@ already_AddRefed<RenderBundle> RenderBundleEncoder::Finish(
 
   Cleanup();
 
-  auto canvasContexts = mUsedCanvasContexts.Clone();
-  RefPtr<RenderBundle> bundle =
-      new RenderBundle(mParent, id, std::move(canvasContexts));
+  RefPtr<RenderBundle> bundle = new RenderBundle(mParent, id);
   return bundle.forget();
 }
 

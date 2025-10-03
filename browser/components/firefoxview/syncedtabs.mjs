@@ -62,7 +62,7 @@ class SyncedTabsInView extends ViewPage {
   static queries = {
     cardEls: { all: "card-container" },
     emptyState: "fxview-empty-state",
-    searchTextbox: "moz-input-search",
+    searchTextbox: "fxview-search-textbox",
     tabLists: { all: "syncedtabs-tab-list" },
   };
 
@@ -77,7 +77,7 @@ class SyncedTabsInView extends ViewPage {
 
     if (this.recentBrowsing) {
       this.recentBrowsingElement.addEventListener(
-        "MozInputSearch:search",
+        "fxview-search-textbox-query",
         this.onSearchQuery
       );
     }
@@ -94,7 +94,7 @@ class SyncedTabsInView extends ViewPage {
 
     if (this.recentBrowsing) {
       this.recentBrowsingElement.removeEventListener(
-        "MozInputSearch:search",
+        "fxview-search-textbox-query",
         this.onSearchQuery
       );
     }
@@ -252,11 +252,6 @@ class SyncedTabsInView extends ViewPage {
   }
 
   onSearchQuery(e) {
-    if (!this.recentBrowsing) {
-      Glean.firefoxviewNext.searchInitiatedSearch.record({
-        page: "syncedtabs",
-      });
-    }
     this.controller.searchQuery = e.detail.query;
     this.cumulativeSearches = e.detail.query ? this.cumulativeSearches + 1 : 0;
     this.showAll = false;
@@ -395,11 +390,15 @@ class SyncedTabsInView extends ViewPage {
           ></h2>
           <div class="syncedtabs-header">
             <div>
-              <moz-input-search
+              <fxview-search-textbox
                 data-l10n-id="firefoxview-search-text-box-tabs"
                 data-l10n-attrs="placeholder"
-                @MozInputSearch:search=${this.onSearchQuery}
-              ></moz-input-search>
+                @fxview-search-textbox-query=${this.onSearchQuery}
+                .size=${this.searchTextboxSize}
+                pageName=${this.recentBrowsing
+                  ? "recentbrowsing"
+                  : "syncedtabs"}
+              ></fxview-search-textbox>
             </div>
             ${when(
               this.controller.currentSetupStateIndex === 4,

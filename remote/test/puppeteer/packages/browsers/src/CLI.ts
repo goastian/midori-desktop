@@ -4,10 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {stdin as input, stdout as output} from 'node:process';
-import * as readline from 'node:readline';
+import {stdin as input, stdout as output} from 'process';
+import * as readline from 'readline';
 
+import ProgressBar from 'progress';
 import type * as Yargs from 'yargs';
+import yargs from 'yargs';
+import {hideBin} from 'yargs/helpers';
 
 import {
   resolveBuildId,
@@ -17,7 +20,6 @@ import {
 } from './browser-data/browser-data.js';
 import {Cache} from './Cache.js';
 import {detectBrowserPlatform} from './detectPlatform.js';
-import {packageVersion} from './generated/version.js';
 import {install} from './install.js';
 import {
   computeExecutablePath,
@@ -37,15 +39,33 @@ interface InstallArgs {
   installDeps?: boolean;
 }
 
+interface LaunchArgs {
+  browser: {
+    name: Browser;
+    buildId: string;
+  };
+  path?: string;
+  platform?: BrowserPlatform;
+  detached: boolean;
+  system: boolean;
+}
+
+interface ClearArgs {
+  path?: string;
+}
+
+interface ListArgs {
+  path?: string;
+}
+
 /**
  * @public
  */
 export class CLI {
-  #cachePath: string;
+  #cachePath;
   #rl?: readline.Interface;
-  #scriptName: string;
-  #version: string;
-  #allowCachePathOverride: boolean;
+  #scriptName = '';
+  #allowCachePathOverride = true;
   #pinnedBrowsers?: Partial<
     Record<
       Browser,
@@ -63,7 +83,6 @@ export class CLI {
       | {
           cachePath?: string;
           scriptName?: string;
-          version?: string;
           prefixCommand?: {cmd: string; description: string};
           allowCachePathOverride?: boolean;
           pinnedBrowsers?: Partial<
@@ -89,37 +108,27 @@ export class CLI {
     this.#cachePath = opts.cachePath ?? process.cwd();
     this.#rl = rl;
     this.#scriptName = opts.scriptName ?? '@puppeteer/browsers';
-    this.#version = opts.version ?? packageVersion;
     this.#allowCachePathOverride = opts.allowCachePathOverride ?? true;
     this.#pinnedBrowsers = opts.pinnedBrowsers;
     this.#prefixCommand = opts.prefixCommand;
   }
 
-  #defineBrowserParameter<T>(
-    yargs: Yargs.Argv<T>,
-    required: true,
-  ): Yargs.Argv<T & {browser: InstallBrowser}>;
-  #defineBrowserParameter<T>(
-    yargs: Yargs.Argv<T>,
-    required: boolean,
-  ): Yargs.Argv<T & {browser: InstallBrowser | undefined}>;
-  #defineBrowserParameter<T>(yargs: Yargs.Argv<T>, required: boolean) {
-    return yargs.positional('browser', {
+  #defineBrowserParameter(yargs: Yargs.Argv<unknown>): void {
+    yargs.positional('browser', {
       description:
         'Which browser to install <browser>[@<buildId|latest>]. `latest` will try to find the latest available build. `buildId` is a browser-specific identifier such as a version or a revision.',
       type: 'string',
-      coerce: (opt): InstallBrowser => {
+      coerce: (opt): InstallArgs['browser'] => {
         return {
           name: this.#parseBrowser(opt),
           buildId: this.#parseBuildId(opt),
         };
       },
-      demandOption: required,
     });
   }
 
-  #definePlatformParameter<T>(yargs: Yargs.Argv<T>) {
-    return yargs.option('platform', {
+  #definePlatformParameter(yargs: Yargs.Argv<unknown>): void {
+    yargs.option('platform', {
       type: 'string',
       desc: 'Platform that the binary needs to be compatible with.',
       choices: Object.values(BrowserPlatform),
@@ -127,27 +136,24 @@ export class CLI {
     });
   }
 
-  #definePathParameter<T>(yargs: Yargs.Argv<T>, required = false) {
+  #definePathParameter(yargs: Yargs.Argv<unknown>, required = false): void {
     if (!this.#allowCachePathOverride) {
-      return yargs as Yargs.Argv<T & {path: undefined}>;
+      return;
     }
-
-    return yargs.option('path', {
+    yargs.option('path', {
       type: 'string',
       desc: 'Path to the root folder for the browser downloads and installation. If a relative path is provided, it will be resolved relative to the current working directory. The installation folder structure is compatible with the cache structure used by Puppeteer.',
       defaultDescription: 'Current working directory',
       ...(required ? {} : {default: process.cwd()}),
-      demandOption: required,
     });
+    if (required) {
+      yargs.demandOption('path');
+    }
   }
 
   async run(argv: string[]): Promise<void> {
-    const {default: yargs} = await import('yargs');
-    const {hideBin} = await import('yargs/helpers');
     const yargsInstance = yargs(hideBin(argv));
-    let target = yargsInstance
-      .scriptName(this.#scriptName)
-      .version(this.#version);
+    let target = yargsInstance.scriptName(this.#scriptName);
     if (this.#prefixCommand) {
       target = target.command(
         this.#prefixCommand.cmd,
@@ -163,10 +169,10 @@ export class CLI {
       .demandCommand(1)
       .help()
       .wrap(Math.min(120, yargsInstance.terminalWidth()))
-      .parseAsync();
+      .parse();
   }
 
-  #build(yargs: Yargs.Argv<unknown>) {
+  #build(yargs: Yargs.Argv<unknown>): Yargs.Argv<unknown> {
     const latestOrPinned = this.#pinnedBrowsers ? 'pinned' : 'latest';
     // If there are pinned browsers allow the positional arg to be optional
     const browserArgType = this.#pinnedBrowsers ? '[browser]' : '<browser>';
@@ -175,124 +181,118 @@ export class CLI {
         `install ${browserArgType}`,
         'Download and install the specified browser. If successful, the command outputs the actual browser buildId that was installed and the absolute path to the browser executable (format: <browser>@<buildID> <path>).',
         yargs => {
+          this.#defineBrowserParameter(yargs);
+          this.#definePlatformParameter(yargs);
+          this.#definePathParameter(yargs);
+          yargs.option('base-url', {
+            type: 'string',
+            desc: 'Base URL to download from',
+          });
           if (this.#pinnedBrowsers) {
             yargs.example('$0 install', 'Install all pinned browsers');
           }
-          yargs
-            .example(
-              '$0 install chrome',
-              `Install the ${latestOrPinned} available build of the Chrome browser.`,
-            )
-            .example(
-              '$0 install chrome@latest',
-              'Install the latest available build for the Chrome browser.',
-            )
-            .example(
-              '$0 install chrome@stable',
-              'Install the latest available build for the Chrome browser from the stable channel.',
-            )
-            .example(
-              '$0 install chrome@beta',
-              'Install the latest available build for the Chrome browser from the beta channel.',
-            )
-            .example(
-              '$0 install chrome@dev',
-              'Install the latest available build for the Chrome browser from the dev channel.',
-            )
-            .example(
-              '$0 install chrome@canary',
-              'Install the latest available build for the Chrome Canary browser.',
-            )
-            .example(
-              '$0 install chrome@115',
-              'Install the latest available build for Chrome 115.',
-            )
-            .example(
-              '$0 install chromedriver@canary',
-              'Install the latest available build for ChromeDriver Canary.',
-            )
-            .example(
-              '$0 install chromedriver@115',
-              'Install the latest available build for ChromeDriver 115.',
-            )
-            .example(
-              '$0 install chromedriver@115.0.5790',
-              'Install the latest available patch (115.0.5790.X) build for ChromeDriver.',
-            )
-            .example(
-              '$0 install chrome-headless-shell',
-              'Install the latest available chrome-headless-shell build.',
-            )
-            .example(
-              '$0 install chrome-headless-shell@beta',
-              'Install the latest available chrome-headless-shell build corresponding to the Beta channel.',
-            )
-            .example(
-              '$0 install chrome-headless-shell@118',
-              'Install the latest available chrome-headless-shell 118 build.',
-            )
-            .example(
-              '$0 install chromium@1083080',
-              'Install the revision 1083080 of the Chromium browser.',
-            )
-            .example(
-              '$0 install firefox',
-              'Install the latest nightly available build of the Firefox browser.',
-            )
-            .example(
-              '$0 install firefox@stable',
-              'Install the latest stable build of the Firefox browser.',
-            )
-            .example(
-              '$0 install firefox@beta',
-              'Install the latest beta build of the Firefox browser.',
-            )
-            .example(
-              '$0 install firefox@devedition',
-              'Install the latest devedition build of the Firefox browser.',
-            )
-            .example(
-              '$0 install firefox@esr',
-              'Install the latest ESR build of the Firefox browser.',
-            )
-            .example(
-              '$0 install firefox@nightly',
-              'Install the latest nightly build of the Firefox browser.',
-            )
-            .example(
-              '$0 install firefox@stable_111.0.1',
-              'Install a specific version of the Firefox browser.',
-            )
-            .example(
-              '$0 install firefox --platform mac',
-              'Install the latest Mac (Intel) build of the Firefox browser.',
-            );
+          yargs.option('install-deps', {
+            type: 'boolean',
+            desc: 'Whether to attempt installing system dependencies (only supported on Linux, requires root privileges).',
+            default: false,
+          });
+          yargs.example(
+            '$0 install chrome',
+            `Install the ${latestOrPinned} available build of the Chrome browser.`,
+          );
+          yargs.example(
+            '$0 install chrome@latest',
+            'Install the latest available build for the Chrome browser.',
+          );
+          yargs.example(
+            '$0 install chrome@stable',
+            'Install the latest available build for the Chrome browser from the stable channel.',
+          );
+          yargs.example(
+            '$0 install chrome@beta',
+            'Install the latest available build for the Chrome browser from the beta channel.',
+          );
+          yargs.example(
+            '$0 install chrome@dev',
+            'Install the latest available build for the Chrome browser from the dev channel.',
+          );
+          yargs.example(
+            '$0 install chrome@canary',
+            'Install the latest available build for the Chrome Canary browser.',
+          );
+          yargs.example(
+            '$0 install chrome@115',
+            'Install the latest available build for Chrome 115.',
+          );
+          yargs.example(
+            '$0 install chromedriver@canary',
+            'Install the latest available build for ChromeDriver Canary.',
+          );
+          yargs.example(
+            '$0 install chromedriver@115',
+            'Install the latest available build for ChromeDriver 115.',
+          );
+          yargs.example(
+            '$0 install chromedriver@115.0.5790',
+            'Install the latest available patch (115.0.5790.X) build for ChromeDriver.',
+          );
+          yargs.example(
+            '$0 install chrome-headless-shell',
+            'Install the latest available chrome-headless-shell build.',
+          );
+          yargs.example(
+            '$0 install chrome-headless-shell@beta',
+            'Install the latest available chrome-headless-shell build corresponding to the Beta channel.',
+          );
+          yargs.example(
+            '$0 install chrome-headless-shell@118',
+            'Install the latest available chrome-headless-shell 118 build.',
+          );
+          yargs.example(
+            '$0 install chromium@1083080',
+            'Install the revision 1083080 of the Chromium browser.',
+          );
+          yargs.example(
+            '$0 install firefox',
+            'Install the latest nightly available build of the Firefox browser.',
+          );
+          yargs.example(
+            '$0 install firefox@stable',
+            'Install the latest stable build of the Firefox browser.',
+          );
+          yargs.example(
+            '$0 install firefox@beta',
+            'Install the latest beta build of the Firefox browser.',
+          );
+          yargs.example(
+            '$0 install firefox@devedition',
+            'Install the latest devedition build of the Firefox browser.',
+          );
+          yargs.example(
+            '$0 install firefox@esr',
+            'Install the latest ESR build of the Firefox browser.',
+          );
+          yargs.example(
+            '$0 install firefox@nightly',
+            'Install the latest nightly build of the Firefox browser.',
+          );
+          yargs.example(
+            '$0 install firefox@stable_111.0.1',
+            'Install a specific version of the Firefox browser.',
+          );
+          yargs.example(
+            '$0 install firefox --platform mac',
+            'Install the latest Mac (Intel) build of the Firefox browser.',
+          );
           if (this.#allowCachePathOverride) {
             yargs.example(
               '$0 install firefox --path /tmp/my-browser-cache',
               'Install to the specified cache directory.',
             );
           }
-
-          const yargsWithBrowserParam = this.#defineBrowserParameter(
-            yargs,
-            !Boolean(this.#pinnedBrowsers),
-          );
-          const yargsWithPlatformParam = this.#definePlatformParameter(
-            yargsWithBrowserParam,
-          );
-          return this.#definePathParameter(yargsWithPlatformParam, false)
-            .option('base-url', {
-              type: 'string',
-              desc: 'Base URL to download from',
-            })
-            .option('install-deps', {
-              type: 'boolean',
-              desc: 'Whether to attempt installing system dependencies (only supported on Linux, requires root privileges).',
-              default: false,
-            });
         },
-        async args => {
+        async argv => {
+          const args = argv as unknown as InstallArgs;
           if (this.#pinnedBrowsers && !args.browser) {
             // Use allSettled to avoid scenarios that
             // a browser may fail early and leave the other
@@ -304,7 +304,7 @@ export class CLI {
                     return;
                   }
                   await this.#install({
-                    ...args,
+                    ...argv,
                     browser: {
                       name: browser as Browser,
                       buildId: options.buildId,
@@ -328,61 +328,38 @@ export class CLI {
         'launch <browser>',
         'Launch the specified browser',
         yargs => {
-          yargs
-            .example(
-              '$0 launch chrome@115.0.5790.170',
-              'Launch Chrome 115.0.5790.170',
-            )
-            .example(
-              '$0 launch firefox@112.0a1',
-              'Launch the Firefox browser identified by the milestone 112.0a1.',
-            )
-            .example(
-              '$0 launch chrome@115.0.5790.170 --detached',
-              'Launch the browser but detach the sub-processes.',
-            )
-            .example(
-              '$0 launch chrome@canary --system',
-              'Try to locate the Canary build of Chrome installed on the system and launch it.',
-            )
-            .example(
-              '$0 launch chrome@115.0.5790.170 -- --version',
-              'Launch Chrome 115.0.5790.170 and pass custom argument to the binary.',
-            );
-
-          const yargsWithExtraAgs = yargs.parserConfiguration({
-            'populate--': true,
-            // Yargs does not have the correct overload for this.
-          }) as Yargs.Argv<{'--'?: Array<string | number>}>;
-          const yargsWithBrowserParam = this.#defineBrowserParameter(
-            yargsWithExtraAgs,
-            true,
-          );
-          const yargsWithPlatformParam = this.#definePlatformParameter(
-            yargsWithBrowserParam,
-          );
-          return this.#definePathParameter(yargsWithPlatformParam)
-            .option('detached', {
-              type: 'boolean',
-              desc: 'Detach the child process.',
-              default: false,
-            })
-            .option('system', {
-              type: 'boolean',
-              desc: 'Search for a browser installed on the system instead of the cache folder.',
-              default: false,
-            })
-            .option('dumpio', {
-              type: 'boolean',
-              desc: "Forwards the browser's process stdout and stderr",
-              default: false,
-            });
-        },
-        async args => {
-          const extraArgs = args['--']?.filter(arg => {
-            return typeof arg === 'string';
+          this.#defineBrowserParameter(yargs);
+          this.#definePlatformParameter(yargs);
+          this.#definePathParameter(yargs);
+          yargs.option('detached', {
+            type: 'boolean',
+            desc: 'Detach the child process.',
+            default: false,
           });
-
+          yargs.option('system', {
+            type: 'boolean',
+            desc: 'Search for a browser installed on the system instead of the cache folder.',
+            default: false,
+          });
+          yargs.example(
+            '$0 launch chrome@115.0.5790.170',
+            'Launch Chrome 115.0.5790.170',
+          );
+          yargs.example(
+            '$0 launch firefox@112.0a1',
+            'Launch the Firefox browser identified by the milestone 112.0a1.',
+          );
+          yargs.example(
+            '$0 launch chrome@115.0.5790.170 --detached',
+            'Launch the browser but detach the sub-processes.',
+          );
+          yargs.example(
+            '$0 launch chrome@canary --system',
+            'Try to locate the Canary build of Chrome installed on the system and launch it.',
+          );
+        },
+        async argv => {
+          const args = argv as unknown as LaunchArgs;
           const executablePath = args.system
             ? computeSystemExecutablePath({
                 browser: args.browser.name,
@@ -397,9 +374,7 @@ export class CLI {
                 platform: args.platform,
               });
           launch({
-            args: extraArgs,
             executablePath,
-            dumpio: args.dumpio,
             detached: args.detached,
           });
         },
@@ -410,9 +385,10 @@ export class CLI {
           ? 'Removes all installed browsers from the specified cache directory'
           : `Removes all installed browsers from ${this.#cachePath}`,
         yargs => {
-          return this.#definePathParameter(yargs, true);
+          this.#definePathParameter(yargs, true);
         },
-        async args => {
+        async argv => {
+          const args = argv as unknown as ClearArgs;
           const cacheDir = args.path ?? this.#cachePath;
           const rl = this.#rl ?? readline.createInterface({input, output});
           rl.question(
@@ -434,6 +410,7 @@ export class CLI {
         'list',
         'List all installed browsers in the cache directory',
         yargs => {
+          this.#definePathParameter(yargs);
           yargs.example(
             '$0 list',
             'List all installed browsers in the cache directory',
@@ -444,10 +421,9 @@ export class CLI {
               'List browsers installed in the specified cache directory',
             );
           }
-
-          return this.#definePathParameter(yargs);
         },
-        async args => {
+        async argv => {
+          const args = argv as unknown as ListArgs;
           const cacheDir = args.path ?? this.#cachePath;
           const cache = new Cache(cacheDir);
           const browsers = cache.getInstalledBrowsers();
@@ -479,7 +455,7 @@ export class CLI {
   async #install(args: InstallArgs) {
     args.platform ??= detectBrowserPlatform();
     if (!args.browser) {
-      throw new Error(`No browser arg provided`);
+      throw new Error(`No browser arg proveded`);
     }
     if (!args.platform) {
       throw new Error(`Could not resolve the current platform`);
@@ -502,7 +478,10 @@ export class CLI {
       buildId: args.browser.buildId,
       platform: args.platform,
       cacheDir: args.path ?? this.#cachePath,
-      downloadProgressCallback: 'default',
+      downloadProgressCallback: makeProgressCallback(
+        args.browser.name,
+        args.browser.buildId,
+      ),
       baseUrl: args.baseUrl,
       buildIdAlias:
         originalBuildId !== args.browser.buildId ? originalBuildId : undefined,
@@ -517,4 +496,38 @@ export class CLI {
       })}`,
     );
   }
+}
+
+/**
+ * @public
+ */
+export function makeProgressCallback(
+  browser: Browser,
+  buildId: string,
+): (downloadedBytes: number, totalBytes: number) => void {
+  let progressBar: ProgressBar;
+  let lastDownloadedBytes = 0;
+  return (downloadedBytes: number, totalBytes: number) => {
+    if (!progressBar) {
+      progressBar = new ProgressBar(
+        `Downloading ${browser} ${buildId} - ${toMegabytes(
+          totalBytes,
+        )} [:bar] :percent :etas `,
+        {
+          complete: '=',
+          incomplete: ' ',
+          width: 20,
+          total: totalBytes,
+        },
+      );
+    }
+    const delta = downloadedBytes - lastDownloadedBytes;
+    lastDownloadedBytes = downloadedBytes;
+    progressBar.tick(delta);
+  };
+}
+
+function toMegabytes(bytes: number) {
+  const mb = bytes / 1000 / 1000;
+  return `${Math.round(mb * 10) / 10} MB`;
 }

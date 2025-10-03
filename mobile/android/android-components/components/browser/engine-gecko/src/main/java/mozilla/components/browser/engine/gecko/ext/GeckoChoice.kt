@@ -12,7 +12,11 @@ import mozilla.components.concept.engine.prompt.Choice
  */
 private fun GeckoChoice.toChoice(): Choice {
     val choiceChildren = items?.map { it.toChoice() }?.toTypedArray()
-    return Choice(id, !disabled, label, selected, separator, choiceChildren)
+    // On the GeckoView docs states that label is a @NonNull, but on run-time
+    // we are getting null values
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=1771149
+    @Suppress("USELESS_ELVIS")
+    return Choice(id, !disabled, label ?: "", selected, separator, choiceChildren)
 }
 
 /**

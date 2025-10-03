@@ -314,6 +314,3 @@ newtab-custom-settings = Keisti daugiau nuostatų
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

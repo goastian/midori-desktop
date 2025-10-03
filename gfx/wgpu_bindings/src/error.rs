@@ -149,9 +149,9 @@ mod foreign {
             GetBindGroupLayoutError,
         },
         command::{
-            ClearError, CommandEncoderError, ComputePassError, CreateRenderBundleError,
-            EncoderStateError, QueryError, QueryUseError, RenderBundleError, RenderPassError,
-            ResolveError, TransferError,
+            ClearError, CommandEncoderError, ComputePassError, CopyError, CreateRenderBundleError,
+            QueryError, QueryUseError, RenderBundleError, RenderPassError, ResolveError,
+            TransferError,
         },
         device::{
             queue::{QueueSubmitError, QueueWriteError},
@@ -163,7 +163,7 @@ mod foreign {
         },
         resource::{
             BufferAccessError, CreateBufferError, CreateQuerySetError, CreateSamplerError,
-            CreateTextureError, CreateTextureViewError,
+            CreateTextureError, CreateTextureViewError, DestroyError,
         },
     };
     use wgt::RequestAdapterError;
@@ -475,9 +475,17 @@ mod foreign {
         }
     }
 
-    impl HasErrorBufferType for EncoderStateError {
+    impl HasErrorBufferType for CopyError {
         fn error_type(&self) -> ErrorBufferType {
-            ErrorBufferType::Validation
+            match self {
+                CopyError::Encoder(e) => e.error_type(),
+                CopyError::Transfer(e) => e.error_type(),
+
+                CopyError::InvalidResource(_) => ErrorBufferType::Validation,
+
+                // N.B: forced non-exhaustiveness
+                _ => ErrorBufferType::Validation,
+            }
         }
     }
 
@@ -532,7 +540,7 @@ mod foreign {
     impl HasErrorBufferType for QueryError {
         fn error_type(&self) -> ErrorBufferType {
             match self {
-                QueryError::EncoderState(e) => e.error_type(),
+                QueryError::Encoder(e) => e.error_type(),
                 QueryError::Use(e) => e.error_type(),
                 QueryError::Resolve(e) => e.error_type(),
 
@@ -633,6 +641,12 @@ mod foreign {
             // We can't classify this ourselves, because inner error classification is private. We
             // may need some upstream work to do this properly. For now, we trust that this opaque
             // type only ever represents `Validation`.
+            ErrorBufferType::Validation
+        }
+    }
+
+    impl HasErrorBufferType for DestroyError {
+        fn error_type(&self) -> ErrorBufferType {
             ErrorBufferType::Validation
         }
     }

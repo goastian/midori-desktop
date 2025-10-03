@@ -90,7 +90,7 @@ def initlog(*allargs):
     if logfile and not logfp:
         try:
             kwargs = {}
-            if sys.version_info[:2] >= (3, 10):
+            if sys.version_info > (3, 9):
                 kwargs["encoding"] = "locale"
             logfp = open(logfile, "a", **kwargs)
         except OSError:

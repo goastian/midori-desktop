@@ -3,29 +3,26 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-importScripts("../../tests/mochitest/general/interface_exposure_checker.js");
-
 // IMPORTANT: Do not change the list below without review from a DOM peer!
 var supportedProps = [
-  { name: "appCodeName", insecureContext: true },
-  { name: "appName", insecureContext: true },
-  { name: "appVersion", insecureContext: true },
-  { name: "globalPrivacyControl", insecureContext: true },
-  { name: "gpu", earlyBetaOrEarlier: true },
-  { name: "gpu", windows: true },
-  { name: "platform", insecureContext: true },
-  { name: "product", insecureContext: true },
-  { name: "userAgent", insecureContext: true },
-  { name: "onLine", insecureContext: true },
-  { name: "language", insecureContext: true },
-  { name: "languages", insecureContext: true },
-  "locks",
-  { name: "mediaCapabilities", insecureContext: true },
-  { name: "hardwareConcurrency", insecureContext: true },
-  "storage",
-  { name: "connection", insecureContext: true },
-  { name: "permissions", insecureContext: true },
-  "serviceWorker",
+  "appCodeName",
+  "appName",
+  "appVersion",
+  "globalPrivacyControl",
+  { name: "gpu", isEarlyBetaOrEarlier: true, isSecureContext: true },
+  "platform",
+  "product",
+  "userAgent",
+  "onLine",
+  "language",
+  "languages",
+  { name: "locks", isSecureContext: true },
+  "mediaCapabilities",
+  "hardwareConcurrency",
+  { name: "storage", isSecureContext: true },
+  "connection",
+  "permissions",
+  { name: "serviceWorker", isSecureContext: true },
 ];
 
 self.onmessage = function (event) {
@@ -37,17 +34,28 @@ self.onmessage = function (event) {
 };
 
 function startTest(channelData) {
-  // Prepare the interface map showing if a property should exist in this build.
+  // Prepare the interface map showing if a propery should exist in this build.
   // For example, if interfaceMap[foo] = true means navigator.foo should exist.
   var interfaceMap = {};
 
   for (var prop of supportedProps) {
     if (typeof prop === "string") {
-      interfaceMap[prop] = !channelData.isInsecureContext;
+      interfaceMap[prop] = true;
       continue;
     }
 
-    interfaceMap[prop.name] ||= !entryDisabled(prop, channelData);
+    if (
+      prop.isNightly === !channelData.isNightly ||
+      prop.isEarlyBetaOrEarlier === !channelData.isEarlyBetaOrEarlier ||
+      prop.release === !channelData.isRelease ||
+      prop.isSecureContext === !isSecureContext ||
+      prop.isAndroid === !channelData.isAndroid
+    ) {
+      interfaceMap[prop.name] = false;
+      continue;
+    }
+
+    interfaceMap[prop.name] = true;
   }
 
   for (var prop in navigator) {

@@ -4,12 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import path from 'node:path';
+import path from 'path';
 
 import expect from 'expect';
 import {TimeoutError} from 'puppeteer';
 
 import {getTestState, setupTestBrowserHooks} from './mocha-utils.js';
+import {waitEvent} from './utils.js';
 
 const FILE_TO_UPLOAD = path.join(__dirname, '/../assets/file-to-upload.txt');
 
@@ -195,7 +196,10 @@ describe('input tests', function () {
         page.waitForFileChooser(),
         page.click('input'),
       ]);
-      await Promise.all([chooser.accept([FILE_TO_UPLOAD])]);
+      await Promise.all([
+        chooser.accept([FILE_TO_UPLOAD]),
+        waitEvent(page, 'metrics'),
+      ]);
       expect(
         await page.$eval('input', input => {
           return input.files!.length;

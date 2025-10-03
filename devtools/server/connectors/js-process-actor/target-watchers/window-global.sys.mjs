@@ -250,16 +250,6 @@ function onWindowGlobalCreated(
         const existingTarget = findTargetActor({
           watcherDataObject,
           innerWindowId: windowGlobal.innerWindowId,
-          // Also use a loose match per browsing context's ID instead of only window global's innerWindowId
-          // as we would like to destroy eagerly the previous target actor,
-          // which will anyway be wiped by the frontend as soon as we notify it about this new target.
-          // TargetCommand wipes all existing targets as soon as we receive a new Top Level target.
-          //
-          // Matching only per innerWindowId was making browser_webconsole_message_categories.js test to fail
-          // because some very early message resource was attached to this `existingTarget` actor.
-          // The `existingTarget` actor is actually destroyed and their related resource ignored.
-          // Instead we bind these early resources to the new target actor.
-          browsingContextID: windowGlobal.browsingContext.id,
         });
 
         // See comment in `observe()` method and `DOMDocElementInserted` condition to know why we sometime
@@ -572,24 +562,12 @@ function handleEvent({ type, persisted, target }) {
  *
  * @returns {WindowGlobalTargetActor|null}
  */
-function findTargetActor({
-  watcherDataObject,
-  innerWindowId,
-  browsingContextID,
-}) {
+function findTargetActor({ watcherDataObject, innerWindowId }) {
   // First let's check if a target was created for this watcher actor in this specific
   // DevToolsProcessChild instance.
-  //
-  // And start by checking if there is a perfect match first by doing a WindowGlobal / innerWindowId lookup,
-  // before falling back to a BrowsingContext / browsingContextID lookup.
-  let targetActor = watcherDataObject.actors.find(
+  const targetActor = watcherDataObject.actors.find(
     actor => actor.innerWindowId == innerWindowId
   );
-  if (!targetActor && browsingContextID) {
-    targetActor = watcherDataObject.actors.find(
-      actor => actor.browsingContextID == browsingContextID
-    );
-  }
   if (targetActor) {
     return targetActor;
   }

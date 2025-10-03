@@ -106,7 +106,7 @@ add_task(async function testEchConfigEnabled() {
   checkResult(inRecord, false, true, {
     expectedPriority: 2,
     expectedName: "test.bar_2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 1,
@@ -129,12 +129,12 @@ add_task(async function testEchConfigEnabled() {
   checkResult(inRecord, false, false, {
     expectedPriority: 2,
     expectedName: "test.bar_2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, false, true, {
     expectedPriority: 2,
     expectedName: "test.bar_2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 2,
@@ -212,12 +212,12 @@ add_task(async function testTwoRecordsHaveEchConfig() {
   checkResult(inRecord, false, false, {
     expectedPriority: 2,
     expectedName: "test.foo_h2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, false, true, {
     expectedPriority: 2,
     expectedName: "test.foo_h2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 2,
@@ -244,7 +244,7 @@ add_task(async function testTwoRecordsHaveEchConfig() {
   checkResult(inRecord, false, true, {
     expectedPriority: 2,
     expectedName: "test.foo_h2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 1,
@@ -429,7 +429,7 @@ add_task(async function testOneRecordsHasEchConfig() {
   checkResult(inRecord, false, true, {
     expectedPriority: 2,
     expectedName: "test.foo_h2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 1,
@@ -456,7 +456,7 @@ add_task(async function testOneRecordsHasEchConfig() {
   checkResult(inRecord, false, true, {
     expectedPriority: 2,
     expectedName: "test.foo_h2.com",
-    expectedAlpn: "h2",
+    expectedAlpn: "",
   });
   checkResult(inRecord, true, false, {
     expectedPriority: 1,

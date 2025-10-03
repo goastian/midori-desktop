@@ -582,6 +582,11 @@ bool Navigator::CookieEnabled() {
 }
 
 bool Navigator::OnLine() {
+  if (nsContentUtils::ShouldResistFingerprinting(
+          GetDocShell(), RFPTarget::NetworkConnection)) {
+    return true;
+  }
+
   if (mWindow) {
     // Check if this tab is set to be offline.
     BrowsingContext* bc = mWindow->GetBrowsingContext();
@@ -652,7 +657,13 @@ void Navigator::GetBuildID(nsAString& aBuildID, CallerType aCallerType,
 }
 
 void Navigator::GetDoNotTrack(nsAString& aResult) {
-  if (StaticPrefs::privacy_donottrackheader_enabled()) {
+  bool doNotTrack = StaticPrefs::privacy_donottrackheader_enabled();
+  if (!doNotTrack) {
+    nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(mWindow);
+    doNotTrack = loadContext && loadContext->UseTrackingProtection();
+  }
+
+  if (doNotTrack) {
     aResult.AssignLiteral("1");
   } else {
     aResult.AssignLiteral("unspecified");
@@ -1868,7 +1879,7 @@ network::Connection* Navigator::GetConnection(ErrorResult& aRv) {
     }
     mConnection = network::Connection::CreateForWindow(
         mWindow, nsGlobalWindowInner::Cast(mWindow)->ShouldResistFingerprinting(
-                     RFPTarget::NavigatorConnection));
+                     RFPTarget::NetworkConnection));
   }
 
   return mConnection;
@@ -2269,7 +2280,7 @@ dom::LockManager* Navigator::Locks() {
 
 NavigatorLogin* Navigator::Login() {
   if (!mLogin) {
-    mLogin = new NavigatorLogin(GetWindow());
+    mLogin = new NavigatorLogin(GetWindow()->AsGlobal());
   }
   return mLogin;
 }

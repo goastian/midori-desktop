@@ -413,8 +413,14 @@ void SharedContextWebgl::ClearCachesIfNecessary() {
 // not exceed the available texture limits and that shader creation succeeded.
 bool DrawTargetWebgl::Init(const IntSize& size, const SurfaceFormat format,
                            const RefPtr<SharedContextWebgl>& aSharedContext) {
-  MOZ_ASSERT(format == SurfaceFormat::B8G8R8A8 ||
-             format == SurfaceFormat::B8G8R8X8);
+  switch (format) {
+    case SurfaceFormat::B8G8R8A8:
+    case SurfaceFormat::B8G8R8X8:
+      break;
+    default:
+      MOZ_ASSERT_UNREACHABLE("Unsupported format for DrawTargetWebgl.");
+      return false;
+  }
 
   mSize = size;
   mFormat = format;
@@ -1775,6 +1781,10 @@ void DrawTargetWebgl::PushDeviceSpaceClipRects(const IntRect* aRects,
 }
 
 void DrawTargetWebgl::PopClip() {
+  if (mClipStack.empty()) {
+    return;
+  }
+
   mClipChanged = true;
   mRefreshClipState = true;
   mSkia->PopClip();
@@ -2022,10 +2032,29 @@ bool SharedContextWebgl::UploadSurface(DataSourceSurface* aData,
                                        const IntPoint& aDstOffset, bool aInit,
                                        bool aZero,
                                        const RefPtr<WebGLTexture>& aTex) {
-  webgl::TexUnpackBlobDesc texDesc = {
-      LOCAL_GL_TEXTURE_2D,
-      {uint32_t(aSrcRect.width), uint32_t(aSrcRect.height), 1}};
+  webgl::TexUnpackBlobDesc texDesc = {LOCAL_GL_TEXTURE_2D};
+  IntRect srcRect(aSrcRect);
+  IntPoint dstOffset(aDstOffset);
+  if (srcRect.IsEmpty()) {
+    return true;
+  }
   if (aData) {
+    // If the source rect could not possibly overlap the surface, then it is
+    // effectively empty with nothing to upload.
+    srcRect = srcRect.SafeIntersect(IntRect(IntPoint(0, 0), aData->GetSize()));
+    if (srcRect.IsEmpty()) {
+      return true;
+    }
+    // If there is a non-empty rect remaining, then ensure the dest offset
+    // reflects the change in source rect.
+    dstOffset += srcRect.TopLeft() - aSrcRect.TopLeft();
+
+    // Ensure source data matches the expected format size.
+    int32_t bpp = BytesPerPixel(aFormat);
+    if (bpp != BytesPerPixel(aData->GetFormat())) {
+      return false;
+    }
+
     // The surface needs to be uploaded to its backing texture either to
     // initialize or update the texture handle contents. Map the data
     // contents of the surface so it can be read.
@@ -2034,13 +2063,11 @@ bool SharedContextWebgl::UploadSurface(DataSourceSurface* aData,
       return false;
     }
     int32_t stride = map.GetStride();
-    int32_t bpp = BytesPerPixel(aFormat);
     // Get the data pointer range considering the sampling rect offset and
     // size.
     Span<const uint8_t> range(
-        map.GetData() + aSrcRect.y * size_t(stride) + aSrcRect.x * bpp,
-        std::max(aSrcRect.height - 1, 0) * size_t(stride) +
-            aSrcRect.width * bpp);
+        map.GetData() + srcRect.y * size_t(stride) + srcRect.x * bpp,
+        std::max(srcRect.height - 1, 0) * size_t(stride) + srcRect.width * bpp);
     texDesc.cpuData = Some(range);
     // If the stride happens to be 4 byte aligned, assume that is the
     // desired alignment regardless of format (even A8). Otherwise, we
@@ -2050,10 +2077,16 @@ bool SharedContextWebgl::UploadSurface(DataSourceSurface* aData,
   } else if (aZero) {
     // Create a PBO filled with zero data to initialize the texture data and
     // avoid slow initialization inside WebGL.
-    MOZ_ASSERT(aSrcRect.TopLeft() == IntPoint(0, 0));
-    size_t size =
-        size_t(GetAlignedStride<4>(aSrcRect.width, BytesPerPixel(aFormat))) *
-        aSrcRect.height;
+    if (srcRect.TopLeft() != IntPoint(0, 0)) {
+      MOZ_ASSERT_UNREACHABLE("Invalid origin for texture initialization.");
+      return false;
+    }
+    int32_t stride = GetAlignedStride<4>(srcRect.width, BytesPerPixel(aFormat));
+    if (stride <= 0) {
+      MOZ_ASSERT_UNREACHABLE("Invalid stride for texture initialization.");
+      return false;
+    }
+    size_t size = size_t(stride) * srcRect.height;
     if (!mZeroBuffer || size > mZeroSize) {
       ClearZeroBuffer();
       mZeroBuffer = mWebgl->CreateBuffer();
@@ -2069,6 +2102,7 @@ bool SharedContextWebgl::UploadSurface(DataSourceSurface* aData,
     }
     texDesc.pboOffset = Some(0);
   }
+  texDesc.size = uvec3(uint32_t(srcRect.width), uint32_t(srcRect.height), 1);
   // Upload as RGBA8 to avoid swizzling during upload. Surfaces provide
   // data as BGRA, but we manually swizzle that in the shader. An A8
   // surface will be stored as an R8 texture that will also be swizzled
@@ -2083,7 +2117,7 @@ bool SharedContextWebgl::UploadSurface(DataSourceSurface* aData,
     mWebgl->BindTexture(LOCAL_GL_TEXTURE_2D, aTex);
   }
   mWebgl->TexImage(0, aInit ? intFormat : 0,
-                   {uint32_t(aDstOffset.x), uint32_t(aDstOffset.y), 0}, texPI,
+                   {uint32_t(dstOffset.x), uint32_t(dstOffset.y), 0}, texPI,
                    texDesc);
   if (aTex) {
     mWebgl->BindTexture(LOCAL_GL_TEXTURE_2D, mLastTexture);
@@ -2322,12 +2356,15 @@ bool SharedContextWebgl::DrawRectAccel(
     rectXform.PreMultiply(*aRectXform);
   }
 
-  if (aOptions.mCompositionOp == CompositionOp::OP_SOURCE && aTransformed &&
-      aClipped &&
-      (HasClipMask() || !rectXform.PreservesAxisAlignedRectangles() ||
-       !rectXform.TransformBounds(aRect).Contains(Rect(mClipAARect)) ||
+  if (aOptions.mCompositionOp == CompositionOp::OP_SOURCE && aClipped &&
+      (aVertexRange ||
+       !(aTransformed
+             ? rectXform.PreservesAxisAlignedRectangles() &&
+                   rectXform.TransformBounds(aRect).Contains(mClipAARect)
+             : aRect.IsEqualEdges(Rect(mClipRect)) ||
+                   aRect.Contains(mClipAARect)) ||
        (aPattern.GetType() == PatternType::SURFACE &&
-        !IsAlignedRect(aTransformed, rectXform, aRect)))) {
+        (HasClipMask() || !IsAlignedRect(false, Matrix(), mClipAARect))))) {
     // Clear outside the mask region for masks that are not bounded by clip.
     return DrawRectAccel(Rect(mClipRect), ColorPattern(DeviceColor(0, 0, 0, 0)),
                          DrawOptions(1.0f, CompositionOp::OP_SOURCE,

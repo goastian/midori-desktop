@@ -12,7 +12,7 @@ const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs"
 );
 const { PlacesUIUtils } = ChromeUtils.importESModule(
-  "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs"
+  "resource:///modules/PlacesUIUtils.sys.mjs"
 );
 
 let sandbox;

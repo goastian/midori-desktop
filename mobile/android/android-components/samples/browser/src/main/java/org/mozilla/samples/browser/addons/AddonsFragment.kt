@@ -160,7 +160,6 @@ class AddonsFragment : Fragment(), AddonsManagerAdapterDelegate {
             origins = addon.optionalOrigins.map {
                 it.name
             },
-            dataCollectionPermissions = emptyList(),
         )
 
         if (!isAlreadyADialogCreated() && isAdded) {
@@ -181,7 +180,7 @@ class AddonsFragment : Fragment(), AddonsManagerAdapterDelegate {
         }
     }
 
-    private val onConfirmPermissionButtonClicked: ((Addon, Boolean, Boolean) -> Unit) = { addon, _, _ ->
+    private val onConfirmPermissionButtonClicked: ((Addon, Boolean) -> Unit) = { addon, _ ->
         val includedBinding = OverlayAddOnProgressBinding.bind(binding.addonProgressOverlay.addonProgressOverlay)
 
         includedBinding.root.visibility = View.VISIBLE

@@ -83,7 +83,7 @@ class InputModule extends WindowGlobalBiDiModule {
           );
           break;
         case "synthesizeWheelAtPoint":
-          await lazy.event.synthesizeWheelAtPoint(
+          lazy.event.synthesizeWheelAtPoint(
             details.x,
             details.y,
             details.eventData,
@@ -114,7 +114,7 @@ class InputModule extends WindowGlobalBiDiModule {
   async _finalizeAction() {
     // Terminate the current wheel transaction if there is one. Wheel
     // transactions should not live longer than a single action chain.
-    await ChromeUtils.endWheelTransaction(this.messageHandler.window);
+    ChromeUtils.endWheelTransaction();
 
     // Wait for the next animation frame to make sure the page's content
     // was updated.

@@ -14,19 +14,45 @@ const BITS_PER_ENTRY: usize = 64;
 const BITS_PER_ENTRY: usize = 32;
 
 /// One bit per each non-custom CSS property.
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CountedUnknownPropertyUseCounters {
     storage:
         [Cell<usize>; (property_counts::COUNTED_UNKNOWN - 1 + BITS_PER_ENTRY) / BITS_PER_ENTRY],
 }
 
 /// One bit per each non-custom CSS property.
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct NonCustomPropertyUseCounters {
     storage: [Cell<usize>; (property_counts::NON_CUSTOM - 1 + BITS_PER_ENTRY) / BITS_PER_ENTRY],
 }
 
-macro_rules! property_use_counters_methods {
+/// A custom style use counter that we may want to record.
+#[derive(Copy, Clone, Debug)]
+#[repr(u32)]
+pub enum CustomUseCounter {
+    /// Whether we are likely to be using relative URIs that depend on our path depth.
+    MaybeHasPathBaseUriDependency = 0,
+    /// Whether we are likely to be using relative URIs that depend on our full URI.
+    MaybeHasFullBaseUriDependency,
+    /// Dummy value, used for indexing purposes.
+    Last,
+}
+
+impl CustomUseCounter {
+    #[inline]
+    fn bit(self) -> usize {
+        self as usize
+    }
+}
+
+/// One bit for each custom use counter.
+#[derive(Debug, Default, Clone)]
+pub struct CustomUseCounters {
+    storage:
+        [Cell<usize>; ((CustomUseCounter::Last as usize) - 1 + BITS_PER_ENTRY) / BITS_PER_ENTRY],
+}
+
+macro_rules! use_counters_methods {
     ($id: ident) => {
         /// Returns the bucket a given property belongs in, and the bitmask for that
         /// property.
@@ -65,21 +91,27 @@ macro_rules! property_use_counters_methods {
 }
 
 impl CountedUnknownPropertyUseCounters {
-    property_use_counters_methods!(CountedUnknownProperty);
+    use_counters_methods!(CountedUnknownProperty);
 }
 
 impl NonCustomPropertyUseCounters {
-    property_use_counters_methods!(NonCustomPropertyId);
+    use_counters_methods!(NonCustomPropertyId);
+}
+
+impl CustomUseCounters {
+    use_counters_methods!(CustomUseCounter);
 }
 
 /// The use-counter data related to a given document we want to store.
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct UseCounters {
     /// The counters for non-custom properties that have been parsed in the
     /// document's stylesheets.
     pub non_custom_properties: NonCustomPropertyUseCounters,
     /// The counters for css properties which we haven't implemented yet.
     pub counted_unknown_properties: CountedUnknownPropertyUseCounters,
+    /// Custom counters for virtually everything else.
+    pub custom: CustomUseCounters,
 }
 
 impl UseCounters {
@@ -92,5 +124,6 @@ impl UseCounters {
             .merge(&other.non_custom_properties);
         self.counted_unknown_properties
             .merge(&other.counted_unknown_properties);
+        self.custom.merge(&other.custom);
     }
 }

@@ -4,7 +4,7 @@
 
 
 import os
-from functools import cache
+from functools import lru_cache
 
 import yaml
 
@@ -26,14 +26,12 @@ def get_components():
 
 
 def get_path(component):
-    return _read_build_config(ANDROID_COMPONENTS_DIR)["projects"][
-        f"components:{component}"
-    ]["path"]
+    return _read_build_config(ANDROID_COMPONENTS_DIR)["projects"][component]["path"]
 
 
 def get_extensions(component):
     artifact_type = _read_build_config(ANDROID_COMPONENTS_DIR)["projects"][
-        f"components:{component}"
+        component
     ].get("artifact-type", "aar")
     if artifact_type not in EXTENSIONS:
         raise ValueError(
@@ -47,7 +45,7 @@ def get_extensions(component):
     ]
 
 
-@cache
+@lru_cache(maxsize=None)
 def _read_build_config(root_dir):
     with open(os.path.join(root_dir, ".buildconfig.yml"), "rb") as f:
         return yaml.safe_load(f)

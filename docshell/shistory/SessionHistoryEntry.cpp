@@ -158,7 +158,7 @@ void SessionHistoryInfo::Reset(nsIURI* aURI, const nsID& aDocShellID,
   mLoadReplace = false;
   mURIWasModified = false;
   mScrollRestorationIsManual = false;
-  mTransient = false;
+  mPersist = false;
   mHasUserInteraction = false;
   mHasUserActivation = false;
 
@@ -225,11 +225,6 @@ nsIPrincipal* SessionHistoryInfo::GetPrincipalToInherit() const {
 
 nsIPrincipal* SessionHistoryInfo::GetPartitionedPrincipalToInherit() const {
   return mSharedState.Get()->mPartitionedPrincipalToInherit;
-}
-
-void SessionHistoryInfo::SetPartitionedPrincipalToInherit(
-    nsIPrincipal* aPartitionedPrincipal) {
-  mSharedState.Get()->mPartitionedPrincipalToInherit = aPartitionedPrincipal;
 }
 
 nsIContentSecurityPolicy* SessionHistoryInfo::GetCsp() const {
@@ -1020,14 +1015,14 @@ SessionHistoryEntry::GetChildCount(int32_t* aChildCount) {
 }
 
 NS_IMETHODIMP
-SessionHistoryEntry::IsTransient(bool* aIsTransient) {
-  *aIsTransient = mInfo->IsTransient();
+SessionHistoryEntry::GetPersist(bool* aPersist) {
+  *aPersist = mInfo->mPersist;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-SessionHistoryEntry::SetTransient() {
-  mInfo->SetTransient();
+SessionHistoryEntry::SetPersist(bool aPersist) {
+  mInfo->mPersist = aPersist;
   return NS_OK;
 }
 
@@ -1575,7 +1570,7 @@ void IPDLParamTraits<dom::SessionHistoryInfo>::Write(
   WriteIPDLParam(aWriter, aActor, aParam.mLoadReplace);
   WriteIPDLParam(aWriter, aActor, aParam.mURIWasModified);
   WriteIPDLParam(aWriter, aActor, aParam.mScrollRestorationIsManual);
-  WriteIPDLParam(aWriter, aActor, aParam.mTransient);
+  WriteIPDLParam(aWriter, aActor, aParam.mPersist);
   WriteIPDLParam(aWriter, aActor, aParam.mHasUserInteraction);
   WriteIPDLParam(aWriter, aActor, aParam.mHasUserActivation);
   WriteIPDLParam(aWriter, aActor, aParam.mSharedState.Get()->mId);
@@ -1619,7 +1614,7 @@ bool IPDLParamTraits<dom::SessionHistoryInfo>::Read(
       !ReadIPDLParam(aReader, aActor, &aResult->mLoadReplace) ||
       !ReadIPDLParam(aReader, aActor, &aResult->mURIWasModified) ||
       !ReadIPDLParam(aReader, aActor, &aResult->mScrollRestorationIsManual) ||
-      !ReadIPDLParam(aReader, aActor, &aResult->mTransient) ||
+      !ReadIPDLParam(aReader, aActor, &aResult->mPersist) ||
       !ReadIPDLParam(aReader, aActor, &aResult->mHasUserInteraction) ||
       !ReadIPDLParam(aReader, aActor, &aResult->mHasUserActivation) ||
       !ReadIPDLParam(aReader, aActor, &sharedId)) {
@@ -1670,10 +1665,12 @@ bool IPDLParamTraits<dom::SessionHistoryInfo>::Read(
                          aResult->mSharedState.Get()->mPrincipalToInherit)
                    : !aResult->mSharedState.Get()->mPrincipalToInherit,
                "We don't expect this to change!");
-    MOZ_ASSERT_IF(
-        aResult->mSharedState.Get()->mPartitionedPrincipalToInherit,
-        aResult->mSharedState.Get()->mPartitionedPrincipalToInherit->Equals(
-            partitionedPrincipalToInherit));
+    MOZ_ASSERT(
+        partitionedPrincipalToInherit
+            ? partitionedPrincipalToInherit->Equals(
+                  aResult->mSharedState.Get()->mPartitionedPrincipalToInherit)
+            : !aResult->mSharedState.Get()->mPartitionedPrincipalToInherit,
+        "We don't expect this to change!");
     MOZ_ASSERT(
         csp ? nsCSPContext::Equals(csp, aResult->mSharedState.Get()->mCsp)
             : !aResult->mSharedState.Get()->mCsp,

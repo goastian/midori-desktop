@@ -4465,9 +4465,6 @@ MacroAssembler::MacroAssembler(TempAllocator& alloc,
     : maybeRuntime_(maybeRuntime),
       maybeRealm_(maybeRealm),
       framePushed_(0),
-      abiArgs_(/* This will be overwritten for every ABI call, the initial value
-                  doesn't matter */
-               ABIKind::System),
 #ifdef DEBUG
       inCall_(false),
 #endif
@@ -4767,7 +4764,8 @@ void MacroAssembler::loadVMFunctionOutParam(const VMFunctionData& f,
 
 // ===============================================================
 // ABI function calls.
-void MacroAssembler::setupABICallHelper(ABIKind kind) {
+template <class ABIArgGeneratorT>
+void MacroAssembler::setupABICallHelper() {
 #ifdef DEBUG
   MOZ_ASSERT(!inCall_);
   inCall_ = true;
@@ -4778,23 +4776,27 @@ void MacroAssembler::setupABICallHelper(ABIKind kind) {
 #endif
 
   // Reinitialize the ABIArg generator.
-  abiArgs_ = ABIArgGenerator(kind);
+  abiArgs_ = ABIArgGeneratorT();
 
 #if defined(JS_CODEGEN_ARM)
-  if (kind != ABIKind::Wasm) {
-    // On ARM, we need to know what ABI we are using.
-    abiArgs_.setUseHardFp(ARMFlags::UseHardFpABI());
-  }
+  // On ARM, we need to know what ABI we are using.
+  abiArgs_.setUseHardFp(ARMFlags::UseHardFpABI());
 #endif
 }
 
 void MacroAssembler::setupNativeABICall() {
-  setupABICallHelper(ABIKind::System);
+  setupABICallHelper<ABIArgGenerator>();
 }
 
 void MacroAssembler::setupWasmABICall() {
   MOZ_ASSERT(IsCompilingWasm(), "non-wasm should use setupAlignedABICall");
-  setupABICallHelper(ABIKind::System);
+  setupABICallHelper<WasmABIArgGenerator>();
+
+#if defined(JS_CODEGEN_ARM)
+  // The builtin thunk does the FP -> GPR moving on soft-FP, so
+  // use hard fp unconditionally.
+  abiArgs_.setUseHardFp(true);
+#endif
   dynamicAlignment_ = false;
 }
 
@@ -4809,30 +4811,6 @@ void MacroAssembler::setupAlignedABICall() {
   setupNativeABICall();
   dynamicAlignment_ = false;
 }
-
-#ifdef JS_CHECK_UNSAFE_CALL_WITH_ABI
-void MacroAssembler::wasmCheckUnsafeCallWithABIPre() {
-  // Set the JSContext::inUnsafeCallWithABI flag.
-  loadPtr(Address(InstanceReg, wasm::Instance::offsetOfCx()),
-          ABINonArgReturnReg0);
-  Address flagAddr(ABINonArgReturnReg0,
-                   JSContext::offsetOfInUnsafeCallWithABI());
-  store32(Imm32(1), flagAddr);
-}
-
-void MacroAssembler::wasmCheckUnsafeCallWithABIPost() {
-  // Check JSContext::inUnsafeCallWithABI was cleared as expected.
-  Label ok;
-  // InstanceReg is invariant in the system ABI, so we can use it here.
-  loadPtr(Address(InstanceReg, wasm::Instance::offsetOfCx()),
-          ABINonArgReturnReg0);
-  Address flagAddr(ABINonArgReturnReg0,
-                   JSContext::offsetOfInUnsafeCallWithABI());
-  branch32(Assembler::Equal, flagAddr, Imm32(0), &ok);
-  assumeUnreachable("callWithABI: callee did not use AutoUnsafeCallWithABI");
-  bind(&ok);
-}
-#endif  // JS_CHECK_UNSAFE_CALL_WITH_ABI
 
 void MacroAssembler::passABIArg(const MoveOperand& from, ABIType type) {
   MOZ_ASSERT(inCall_);
@@ -4916,49 +4894,29 @@ CodeOffset MacroAssembler::callWithABI(wasm::BytecodeOffset bytecode,
                                        wasm::SymbolicAddress imm,
                                        mozilla::Maybe<int32_t> instanceOffset,
                                        ABIType result) {
+  MOZ_ASSERT(wasm::NeedsBuiltinThunk(imm));
+
   uint32_t stackAdjust;
   callWithABIPre(&stackAdjust, /* callFromWasm = */ true);
 
   // The instance register is used in builtin thunks and must be set.
-  bool needsBuiltinThunk = wasm::NeedsBuiltinThunk(imm);
-#ifdef JS_CHECK_UNSAFE_CALL_WITH_ABI
-  // The builtin thunk exits the JIT activation, if we don't have one we must
-  // use AutoUnsafeCallWithABI inside the builtin and check that here.
-  bool checkUnsafeCallWithABI = !needsBuiltinThunk;
-#else
-  bool checkUnsafeCallWithABI = false;
-#endif
-  if (needsBuiltinThunk || checkUnsafeCallWithABI) {
-    if (instanceOffset) {
-      loadPtr(Address(getStackPointer(), *instanceOffset + stackAdjust),
-              InstanceReg);
-    } else {
-      MOZ_CRASH("callWithABI missing instanceOffset");
-    }
+  if (instanceOffset) {
+    loadPtr(Address(getStackPointer(), *instanceOffset + stackAdjust),
+            InstanceReg);
+  } else {
+    MOZ_CRASH("instanceOffset is Nothing only for unsupported abi calls.");
   }
-
-#ifdef JS_CHECK_UNSAFE_CALL_WITH_ABI
-  if (checkUnsafeCallWithABI) {
-    wasmCheckUnsafeCallWithABIPre();
-  }
-#endif
-
   CodeOffset raOffset = call(
       wasm::CallSiteDesc(bytecode.offset(), wasm::CallSiteKind::Symbolic), imm);
 
   callWithABIPost(stackAdjust, result, /* callFromWasm = */ true);
-
-#ifdef JS_CHECK_UNSAFE_CALL_WITH_ABI
-  if (checkUnsafeCallWithABI) {
-    wasmCheckUnsafeCallWithABIPost();
-  }
-#endif
 
   return raOffset;
 }
 
 void MacroAssembler::callDebugWithABI(wasm::SymbolicAddress imm,
                                       ABIType result) {
+  MOZ_ASSERT(!wasm::NeedsBuiltinThunk(imm));
   uint32_t stackAdjust;
   callWithABIPre(&stackAdjust, /* callFromWasm = */ false);
   call(imm);
@@ -5650,8 +5608,8 @@ void MacroAssembler::branchIfObjectNotExtensible(Register obj, Register scratch,
 
   // Spectre-style checks are not needed here because we do not interpret data
   // based on this check.
-  static_assert(sizeof(ObjectFlags) == sizeof(uint32_t));
-  load32(Address(scratch, Shape::offsetOfObjectFlags()), scratch);
+  static_assert(sizeof(ObjectFlags) == sizeof(uint16_t));
+  load16ZeroExtend(Address(scratch, Shape::offsetOfObjectFlags()), scratch);
   branchTest32(Assembler::NonZero, scratch,
                Imm32(uint32_t(ObjectFlag::NotExtensible)), label);
 }
@@ -5668,8 +5626,8 @@ void MacroAssembler::branchTestObjectNeedsProxyResultValidation(
   branchTest32(Assembler::Zero,
                Address(scratch, Shape::offsetOfImmutableFlags()),
                Imm32(Shape::isNativeBit()), doValidation);
-  static_assert(sizeof(ObjectFlags) == sizeof(uint32_t));
-  load32(Address(scratch, Shape::offsetOfObjectFlags()), scratch);
+  static_assert(sizeof(ObjectFlags) == sizeof(uint16_t));
+  load16ZeroExtend(Address(scratch, Shape::offsetOfObjectFlags()), scratch);
   branchTest32(Assembler::NonZero, scratch,
                Imm32(uint32_t(ObjectFlag::NeedsProxyGetSetResultValidation)),
                doValidation);
@@ -6209,16 +6167,14 @@ CodeOffset MacroAssembler::wasmReturnCall(
 
 CodeOffset MacroAssembler::wasmCallBuiltinInstanceMethod(
     const wasm::CallSiteDesc& desc, const ABIArg& instanceArg,
-    wasm::SymbolicAddress builtin, wasm::FailureMode failureMode,
-    wasm::Trap failureTrap) {
+    wasm::SymbolicAddress builtin, wasm::FailureMode failureMode) {
   MOZ_ASSERT(instanceArg != ABIArg());
-  MOZ_ASSERT_IF(!wasm::NeedsBuiltinThunk(builtin),
-                failureMode == wasm::FailureMode::Infallible ||
-                    failureTrap != wasm::Trap::ThrowReported);
 
-  // Instance methods take the instance as the first argument. This is in
-  // addition to the builtin thunk (if any) requiring the InstanceReg to be
-  // set.
+  storePtr(InstanceReg,
+           Address(getStackPointer(), WasmCallerInstanceOffsetBeforeCall));
+  storePtr(InstanceReg,
+           Address(getStackPointer(), WasmCalleeInstanceOffsetBeforeCall));
+
   if (instanceArg.kind() == ABIArg::GPR) {
     movePtr(InstanceReg, instanceArg.gpr());
   } else if (instanceArg.kind() == ABIArg::Stack) {
@@ -6228,35 +6184,18 @@ CodeOffset MacroAssembler::wasmCallBuiltinInstanceMethod(
     MOZ_CRASH("Unknown abi passing style for pointer");
   }
 
-#ifdef JS_CHECK_UNSAFE_CALL_WITH_ABI
-  // The builtin thunk exits the JIT activation, if we don't have one we must
-  // use AutoUnsafeCallWithABI inside the builtin and check that here.
-  bool checkUnsafeCallWithABI = !wasm::NeedsBuiltinThunk(builtin);
-  if (checkUnsafeCallWithABI) {
-    wasmCheckUnsafeCallWithABIPre();
-  }
-#endif
-
   CodeOffset ret = call(desc, builtin);
+  wasmTrapOnFailedInstanceCall(ReturnReg, failureMode, desc.toTrapSiteDesc());
 
-#ifdef JS_CHECK_UNSAFE_CALL_WITH_ABI
-  if (checkUnsafeCallWithABI) {
-    wasmCheckUnsafeCallWithABIPost();
-  }
-#endif
-
-  wasmTrapOnFailedInstanceCall(ReturnReg, failureMode, failureTrap,
-                               desc.toTrapSiteDesc());
   return ret;
 }
 
 void MacroAssembler::wasmTrapOnFailedInstanceCall(
     Register resultRegister, wasm::FailureMode failureMode,
-    wasm::Trap failureTrap, const wasm::TrapSiteDesc& trapSiteDesc) {
+    const wasm::TrapSiteDesc& trapSiteDesc) {
   Label noTrap;
   switch (failureMode) {
     case wasm::FailureMode::Infallible:
-      MOZ_ASSERT(failureTrap == wasm::Trap::Limit);
       return;
     case wasm::FailureMode::FailOnNegI32:
       branchTest32(Assembler::NotSigned, resultRegister, resultRegister,
@@ -6276,7 +6215,7 @@ void MacroAssembler::wasmTrapOnFailedInstanceCall(
                 &noTrap);
       break;
   }
-  wasmTrap(failureTrap, trapSiteDesc);
+  wasmTrap(wasm::Trap::ThrowReported, trapSiteDesc);
   bind(&noTrap);
 }
 
@@ -6716,6 +6655,7 @@ void MacroAssembler::wasmBoundsCheckRange32(
   bind(&ok);
 }
 
+#ifdef ENABLE_WASM_MEMORY64
 void MacroAssembler::wasmClampTable64Address(Register64 address, Register out) {
   Label oob;
   Label ret;
@@ -6727,6 +6667,7 @@ void MacroAssembler::wasmClampTable64Address(Register64 address, Register out) {
   move32(Imm32(UINT32_MAX), out);
   bind(&ret);
 };
+#endif
 
 BranchWasmRefIsSubtypeRegisters MacroAssembler::regsForBranchWasmRefIsSubtype(
     wasm::RefType type) {
@@ -8828,50 +8769,33 @@ static constexpr bool ValidateSizeRange(Scalar::Type from, Scalar::Type to) {
 }
 
 void MacroAssembler::typedArrayElementSize(Register obj, Register output) {
-  static_assert(std::end(TypedArrayObject::fixedLengthClasses) ==
-                        std::begin(TypedArrayObject::immutableClasses) &&
-                    std::end(TypedArrayObject::immutableClasses) ==
-                        std::begin(TypedArrayObject::resizableClasses),
-                "TypedArray classes are in contiguous memory");
-
-  // Constexpr subtraction requires using elements of the same array, so we have
-  // to use `std::end` instead of `std::begin`. We still get the right results,
-  // because the classes are in contiguous memory, as asserted above.
-  constexpr ptrdiff_t diffFirstImmutableToFirstFixedLength =
-      std::end(TypedArrayObject::fixedLengthClasses) -
-      std::begin(TypedArrayObject::fixedLengthClasses);
-  constexpr ptrdiff_t diffFirstResizableToFirstImmutable =
-      std::end(TypedArrayObject::immutableClasses) -
-      std::begin(TypedArrayObject::immutableClasses);
-  constexpr ptrdiff_t diffFirstResizableToFirstFixedLength =
-      diffFirstResizableToFirstImmutable + diffFirstImmutableToFirstFixedLength;
-
   loadObjClassUnsafe(obj, output);
 
-  // Map immutable and resizable to fixed-length TypedArray classes.
-  Label fixedLength, immutable;
+  // Map resizable to fixed-length TypedArray classes.
+  Label fixedLength;
   branchPtr(Assembler::Below, output,
             ImmPtr(std::end(TypedArrayObject::fixedLengthClasses)),
             &fixedLength);
-  branchPtr(Assembler::Below, output,
-            ImmPtr(std::end(TypedArrayObject::immutableClasses)), &immutable);
   {
-    // NB: constexpr evaluation doesn't allow overflow, so the difference is
-    // guaranteed to fit into an int32.
-    constexpr int32_t diff = static_cast<int32_t>(
-        diffFirstResizableToFirstFixedLength * sizeof(JSClass));
+    MOZ_ASSERT(std::end(TypedArrayObject::fixedLengthClasses) ==
+                   std::begin(TypedArrayObject::resizableClasses),
+               "TypedArray classes are in contiguous memory");
 
-    subPtr(Imm32(diff), output);
-    jump(&fixedLength);
-  }
-  bind(&immutable);
-  {
-    // NB: constexpr evaluation doesn't allow overflow, so the difference is
-    // guaranteed to fit into an int32.
-    constexpr int32_t diff = static_cast<int32_t>(
-        diffFirstImmutableToFirstFixedLength * sizeof(JSClass));
+    const auto* firstFixedLengthTypedArrayClass =
+        std::begin(TypedArrayObject::fixedLengthClasses);
+    const auto* firstResizableTypedArrayClass =
+        std::begin(TypedArrayObject::resizableClasses);
 
-    subPtr(Imm32(diff), output);
+    MOZ_ASSERT(firstFixedLengthTypedArrayClass < firstResizableTypedArrayClass);
+
+    ptrdiff_t diff =
+        firstResizableTypedArrayClass - firstFixedLengthTypedArrayClass;
+
+    mozilla::CheckedInt<int32_t> checked = diff;
+    checked *= sizeof(JSClass);
+    MOZ_ASSERT(checked.isValid(), "pointer difference fits in int32");
+
+    subPtr(Imm32(int32_t(checked.value())), output);
   }
   bind(&fixedLength);
 
@@ -9030,9 +8954,7 @@ void MacroAssembler::branchIfClassIsNotTypedArray(Register clasp,
   const auto* lastTypedArrayClass =
       std::prev(std::end(TypedArrayObject::resizableClasses));
   MOZ_ASSERT(std::end(TypedArrayObject::fixedLengthClasses) ==
-                     std::begin(TypedArrayObject::immutableClasses) &&
-                 std::end(TypedArrayObject::immutableClasses) ==
-                     std::begin(TypedArrayObject::resizableClasses),
+                 std::begin(TypedArrayObject::resizableClasses),
              "TypedArray classes are in contiguous memory");
 
   branchPtr(Assembler::Below, clasp, ImmPtr(firstTypedArrayClass),
@@ -9041,18 +8963,14 @@ void MacroAssembler::branchIfClassIsNotTypedArray(Register clasp,
             notTypedArray);
 }
 
-void MacroAssembler::branchIfClassIsNotNonResizableTypedArray(
+void MacroAssembler::branchIfClassIsNotFixedLengthTypedArray(
     Register clasp, Label* notTypedArray) {
-  // Inline implementation of IsFixedLengthTypedArrayClass() and
-  // IsImmutableTypedArrayClass().
+  // Inline implementation of IsFixedLengthTypedArrayClass().
 
   const auto* firstTypedArrayClass =
       std::begin(TypedArrayObject::fixedLengthClasses);
   const auto* lastTypedArrayClass =
-      std::prev(std::end(TypedArrayObject::immutableClasses));
-  MOZ_ASSERT(std::end(TypedArrayObject::fixedLengthClasses) ==
-                 std::begin(TypedArrayObject::immutableClasses),
-             "TypedArray classes are in contiguous memory");
+      std::prev(std::end(TypedArrayObject::fixedLengthClasses));
 
   branchPtr(Assembler::Below, clasp, ImmPtr(firstTypedArrayClass),
             notTypedArray);
@@ -9073,61 +8991,6 @@ void MacroAssembler::branchIfClassIsNotResizableTypedArray(
             notTypedArray);
   branchPtr(Assembler::Above, clasp, ImmPtr(lastTypedArrayClass),
             notTypedArray);
-}
-
-void MacroAssembler::branchIfIsNotArrayBuffer(Register obj, Register temp,
-                                              Label* label) {
-  Label ok;
-
-  loadObjClassUnsafe(obj, temp);
-
-  branchPtr(Assembler::Equal, temp,
-            ImmPtr(&FixedLengthArrayBufferObject::class_), &ok);
-  branchPtr(Assembler::Equal, temp, ImmPtr(&ResizableArrayBufferObject::class_),
-            &ok);
-  branchPtr(Assembler::NotEqual, temp,
-            ImmPtr(&ImmutableArrayBufferObject::class_), label);
-
-  bind(&ok);
-
-  if (JitOptions.spectreObjectMitigations) {
-    spectreZeroRegister(Assembler::NotEqual, temp, obj);
-  }
-}
-
-void MacroAssembler::branchIfIsNotSharedArrayBuffer(Register obj, Register temp,
-                                                    Label* label) {
-  Label ok;
-
-  loadObjClassUnsafe(obj, temp);
-
-  branchPtr(Assembler::Equal, temp,
-            ImmPtr(&FixedLengthSharedArrayBufferObject::class_), &ok);
-  branchPtr(Assembler::NotEqual, temp,
-            ImmPtr(&GrowableSharedArrayBufferObject::class_), label);
-
-  bind(&ok);
-
-  if (JitOptions.spectreObjectMitigations) {
-    spectreZeroRegister(Assembler::NotEqual, temp, obj);
-  }
-}
-
-void MacroAssembler::branchIfIsArrayBufferMaybeShared(Register obj,
-                                                      Register temp,
-                                                      Label* label) {
-  loadObjClassUnsafe(obj, temp);
-
-  branchPtr(Assembler::Equal, temp,
-            ImmPtr(&FixedLengthArrayBufferObject::class_), label);
-  branchPtr(Assembler::Equal, temp,
-            ImmPtr(&FixedLengthSharedArrayBufferObject::class_), label);
-  branchPtr(Assembler::Equal, temp, ImmPtr(&ResizableArrayBufferObject::class_),
-            label);
-  branchPtr(Assembler::Equal, temp,
-            ImmPtr(&GrowableSharedArrayBufferObject::class_), label);
-  branchPtr(Assembler::Equal, temp, ImmPtr(&ImmutableArrayBufferObject::class_),
-            label);
 }
 
 void MacroAssembler::branchIfHasDetachedArrayBuffer(BranchIfDetached branchIf,

@@ -7,7 +7,7 @@
 
 idl_test(
   ['paint-timing'],
-  ['performance-timeline', 'hr-time'],
+  ['performance-timeline'],
   (idl_array, t) => {
     idl_array.add_objects({
       PerformancePaintTiming: ['paintTiming'],

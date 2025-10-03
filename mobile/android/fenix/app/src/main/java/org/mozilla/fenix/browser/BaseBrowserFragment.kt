@@ -53,6 +53,7 @@ import kotlinx.coroutines.withContext
 import mozilla.appservices.places.BookmarkRoot
 import mozilla.appservices.places.uniffi.PlacesApiException
 import mozilla.components.browser.menu.view.MenuButton
+import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.selector.findCustomTab
 import mozilla.components.browser.state.selector.findCustomTabOrSelectedTab
 import mozilla.components.browser.state.selector.findTab
@@ -76,6 +77,7 @@ import mozilla.components.concept.storage.CreditCardEntry
 import mozilla.components.concept.storage.Login
 import mozilla.components.concept.storage.LoginEntry
 import mozilla.components.feature.accounts.push.SendTabUseCases
+import mozilla.components.feature.app.links.AppLinksFeature
 import mozilla.components.feature.contextmenu.ContextMenuCandidate
 import mozilla.components.feature.contextmenu.ContextMenuFeature
 import mozilla.components.feature.downloads.DownloadsFeature
@@ -134,7 +136,6 @@ import mozilla.components.support.ktx.android.view.hideKeyboard
 import mozilla.components.support.ktx.kotlin.getOrigin
 import mozilla.components.support.ktx.kotlinx.coroutines.flow.ifAnyChanged
 import mozilla.components.support.locale.ActivityContextWrapper
-import mozilla.components.ui.widgets.behavior.EngineViewClippingBehavior
 import mozilla.components.ui.widgets.withCenterAlignedButtons
 import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.BuildConfig
@@ -182,6 +183,7 @@ import org.mozilla.fenix.components.toolbar.ToolbarIntegration
 import org.mozilla.fenix.components.toolbar.ToolbarPosition
 import org.mozilla.fenix.components.toolbar.interactor.BrowserToolbarInteractor
 import org.mozilla.fenix.components.toolbar.interactor.DefaultBrowserToolbarInteractor
+import org.mozilla.fenix.components.toolbar.navbar.EngineViewClippingBehavior
 import org.mozilla.fenix.compose.core.Action
 import org.mozilla.fenix.compose.snackbar.Snackbar
 import org.mozilla.fenix.compose.snackbar.SnackbarState
@@ -190,7 +192,9 @@ import org.mozilla.fenix.crashes.CrashContentView
 import org.mozilla.fenix.customtabs.ExternalAppBrowserActivity
 import org.mozilla.fenix.databinding.FragmentBrowserBinding
 import org.mozilla.fenix.downloads.DownloadService
-import org.mozilla.fenix.downloads.dialog.createDownloadAppDialog
+import org.mozilla.fenix.downloads.dialog.DynamicDownloadDialog
+import org.mozilla.fenix.downloads.dialog.StartDownloadDialog
+import org.mozilla.fenix.downloads.dialog.ThirdPartyDownloadDialog
 import org.mozilla.fenix.ext.accessibilityManager
 import org.mozilla.fenix.ext.breadcrumb
 import org.mozilla.fenix.ext.components
@@ -207,6 +211,7 @@ import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.ext.tabClosedUndoMessage
 import org.mozilla.fenix.ext.updateMicrosurveyPromptForConfigurationChange
 import org.mozilla.fenix.home.HomeScreenViewModel
+import org.mozilla.fenix.home.SharedViewModel
 import org.mozilla.fenix.library.bookmarks.friendlyRootTitle
 import org.mozilla.fenix.lifecycle.observePrivateModeLock
 import org.mozilla.fenix.messaging.FenixMessageSurfaceId
@@ -227,6 +232,8 @@ import org.mozilla.fenix.utils.allowUndo
 import org.mozilla.fenix.wifi.SitePermissionsWifiIntegration
 import java.lang.ref.WeakReference
 import kotlin.coroutines.cancellation.CancellationException
+import mozilla.components.ui.widgets.behavior.EngineViewClippingBehavior as OldEngineViewClippingBehavior
+import mozilla.components.ui.widgets.behavior.ToolbarPosition as OldToolbarPosition
 import org.mozilla.fenix.GleanMetrics.TabStrip as TabStripMetrics
 
 /**
@@ -295,6 +302,7 @@ abstract class BaseBrowserFragment :
     private val lastTabFeature = ViewBoundFeatureWrapper<LastTabFeature>()
     private val contextMenuFeature = ViewBoundFeatureWrapper<ContextMenuFeature>()
     private val downloadsFeature = ViewBoundFeatureWrapper<DownloadsFeature>()
+    private val appLinksFeature = ViewBoundFeatureWrapper<AppLinksFeature>()
     private val shareResourceFeature = ViewBoundFeatureWrapper<ShareResourceFeature>()
     private val copyDownloadsFeature = ViewBoundFeatureWrapper<CopyDownloadFeature>()
     private val promptsFeature = ViewBoundFeatureWrapper<PromptFeature>()
@@ -333,10 +341,12 @@ abstract class BaseBrowserFragment :
     @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED)
     internal var webAppToolbarShouldBeVisible = true
 
-    protected lateinit var browserScreenStore: BrowserScreenStore
+    private lateinit var browserScreenStore: BrowserScreenStore
+    internal val sharedViewModel: SharedViewModel by activityViewModels()
     private val homeViewModel: HomeScreenViewModel by activityViewModels()
 
-    private var downloadDialog: AlertDialog? = null
+    private var currentStartDownloadDialog: StartDownloadDialog? = null
+    private var firstPartyDownloadDialog: AlertDialog? = null
 
     private var lastSavedGeneratedPassword: String? = null
 
@@ -478,6 +488,8 @@ abstract class BaseBrowserFragment :
         val store = context.components.core.store
         val activity = requireActivity() as HomeActivity
 
+        context.components.appStore.dispatch(AppAction.ModeChange(activity.browsingModeManager.mode))
+
         browserAnimator = BrowserAnimator(
             fragment = WeakReference(this),
             engineView = WeakReference(binding.engineView),
@@ -552,7 +564,7 @@ abstract class BaseBrowserFragment :
             browserToolbarMenuController,
         )
 
-        _browserToolbarView = initializeBrowserToolbar(activity, store, readerMenuController)
+        _browserToolbarView = initializeBrowserToolbar(activity, store)
 
         if (context.settings().microsurveyFeatureEnabled) {
             listenForMicrosurveyMessage(context)
@@ -711,19 +723,12 @@ abstract class BaseBrowserFragment :
                 ),
                 positiveButtonRadius = (resources.getDimensionPixelSize(R.dimen.tab_corner_radius)).toFloat(),
             ),
-            onDownloadStartedListener = {
-                context.components.appStore.dispatch(
-                    AppAction.DownloadAction.DownloadInProgress(
-                        getCurrentTab()?.id,
-                    ),
-                )
-            },
             onNeedToRequestPermissions = { permissions ->
                 requestPermissions(permissions, REQUEST_CODE_DOWNLOAD_PERMISSIONS)
             },
             customFirstPartyDownloadDialog = { filename, contentSize, positiveAction, negativeAction ->
                 run {
-                    if (downloadDialog == null) {
+                    if (firstPartyDownloadDialog == null && currentStartDownloadDialog == null) {
                         requireContext().components.analytics.crashReporter.recordCrashBreadcrumb(
                             Breadcrumb("FirstPartyDownloadDialog created"),
                         )
@@ -731,7 +736,7 @@ abstract class BaseBrowserFragment :
                         val contentSizeInBytes =
                             requireComponents.core.fileSizeFormatter.formatSizeInBytes(contentSize.value)
 
-                        downloadDialog = AlertDialog.Builder(requireContext())
+                        firstPartyDownloadDialog = AlertDialog.Builder(requireContext())
                             .setTitle(
                                 getString(
                                     R.string.mozac_feature_downloads_dialog_title_3,
@@ -747,7 +752,7 @@ abstract class BaseBrowserFragment :
                                 negativeAction.value.invoke()
                                 dialog.dismiss()
                             }.setOnDismissListener {
-                                downloadDialog = null
+                                firstPartyDownloadDialog = null
                                 context.components.analytics.crashReporter.recordCrashBreadcrumb(
                                     Breadcrumb("FirstPartyDownloadDialog onDismiss"),
                                 )
@@ -757,22 +762,23 @@ abstract class BaseBrowserFragment :
             },
             customThirdPartyDownloadDialog = { downloaderApps, onAppSelected, negativeActionCallback ->
                 run {
-                    if (downloadDialog == null) {
+                    if (firstPartyDownloadDialog == null && currentStartDownloadDialog == null) {
                         context.components.analytics.crashReporter.recordCrashBreadcrumb(
-                            Breadcrumb("DownloaderAppDialog created"),
+                            Breadcrumb("ThirdPartyDownloadDialog created"),
                         )
-                        downloadDialog = createDownloadAppDialog(
-                            context = context,
+                        ThirdPartyDownloadDialog(
+                            activity = requireActivity(),
                             downloaderApps = downloaderApps.value,
                             onAppSelected = onAppSelected.value,
-                            onDismiss = {
-                                downloadDialog = null
-                                context.components.analytics.crashReporter.recordCrashBreadcrumb(
-                                    Breadcrumb("DownloaderAppDialog onDismiss"),
-                                )
-                            },
-                        )
-                        downloadDialog?.show()
+                            negativeButtonAction = negativeActionCallback.value,
+                        ).onDismiss {
+                            context.components.analytics.crashReporter.recordCrashBreadcrumb(
+                                Breadcrumb("ThirdPartyDownloadDialog onDismiss"),
+                            )
+                            currentStartDownloadDialog = null
+                        }.show(binding.startDownloadDialogContainer).also {
+                            currentStartDownloadDialog = it
+                        }
                     }
                 }
             },
@@ -818,15 +824,21 @@ abstract class BaseBrowserFragment :
 
         downloadFeature.onDownloadStopped = { downloadState, _, downloadJobStatus ->
             handleOnDownloadFinished(
-                appStore = requireComponents.appStore,
                 downloadState = downloadState,
                 downloadJobStatus = downloadJobStatus,
+                tryAgain = downloadFeature::tryAgain,
                 browserToolbars = listOfNotNull(
                     browserToolbarView,
                     _bottomToolbarContainerView?.toolbarContainerView,
                 ),
             )
         }
+
+        resumeDownloadDialogState(
+            getCurrentTab()?.id,
+            store,
+            context,
+        )
 
         this.shareResourceFeature.set(
             shareResourceFeature,
@@ -920,6 +932,33 @@ abstract class BaseBrowserFragment :
             },
             onShow = ::onAutocompleteBarShow,
             onHide = ::onAutocompleteBarHide,
+        )
+
+        appLinksFeature.set(
+            feature = AppLinksFeature(
+                context = requireContext(),
+                store = store,
+                sessionId = tab.id,
+                fragmentManager = parentFragmentManager,
+                launchInApp = { context.settings().shouldOpenLinksInApp(customTabSessionId != null) },
+                loadUrlUseCase = requireComponents.useCases.sessionUseCases.loadUrl,
+                shouldPrompt = { context.settings().shouldPromptOpenLinksInApp() },
+                alwaysOpenCheckboxAction = {
+                    context.settings().openLinksInExternalApp =
+                        context.getString(R.string.pref_key_open_links_in_apps_always)
+                },
+                failedToLaunchAction = { fallbackUrl ->
+                    fallbackUrl?.let {
+                        val appLinksUseCases = requireComponents.useCases.appLinksUseCases
+                        val getRedirect = appLinksUseCases.appLinkRedirect
+                        val redirect = getRedirect.invoke(fallbackUrl)
+                        redirect.appIntent?.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        appLinksUseCases.openAppLink.invoke(redirect.appIntent)
+                    }
+                },
+            ),
+            owner = this,
+            view = binding.root,
         )
 
         promptsFeature.set(
@@ -1238,19 +1277,17 @@ abstract class BaseBrowserFragment :
     private fun initializeBrowserToolbar(
         activity: HomeActivity,
         store: BrowserStore,
-        readerMenuController: DefaultReaderModeController,
     ) = when (activity.settings().shouldUseComposableToolbar) {
-        true -> initializeBrowserToolbarComposable(activity, store, readerMenuController)
+        true -> initializeBrowserToolbarComposable(activity, store)
         false -> initializeBrowserToolbarView(activity, store)
     }
 
     private fun initializeBrowserToolbarComposable(
         activity: HomeActivity,
         store: BrowserStore,
-        readerMenuController: DefaultReaderModeController,
     ): BrowserToolbarComposable {
         val middleware = getOrCreate<BrowserScreenMiddleware>()
-        browserScreenStore = StoreProvider.get(this) {
+        val browserScreenStore = StoreProvider.get(this) {
             BrowserScreenStore(
                 middleware = listOf(middleware),
             )
@@ -1267,7 +1304,6 @@ abstract class BaseBrowserFragment :
             browsingModeManager = activity.browsingModeManager,
             browserAnimator = browserAnimator,
             thumbnailsFeature = thumbnailsFeature.get(),
-            readerModeController = readerMenuController,
             settings = activity.settings(),
             customTabSession = customTabSessionId?.let { store.state.findCustomTab(it) },
             tabStripContent = buildTabStrip(activity),
@@ -1454,6 +1490,73 @@ abstract class BaseBrowserFragment :
         }
     }
 
+    /**
+     * Preserves current state of the [DynamicDownloadDialog] to persist through tab changes and
+     * other fragments navigation.
+     * */
+    internal fun saveDownloadDialogState(
+        sessionId: String?,
+        downloadState: DownloadState,
+        downloadJobStatus: DownloadState.Status,
+    ) {
+        sessionId?.let { id ->
+            sharedViewModel.downloadDialogState[id] = Pair(
+                downloadState,
+                downloadJobStatus == DownloadState.Status.FAILED,
+            )
+        }
+    }
+
+    /**
+     * Re-initializes [DynamicDownloadDialog] if the user hasn't dismissed the dialog
+     * before navigating away from it's original tab.
+     * onTryAgain it will use [ContentAction.UpdateDownloadAction] to re-enqueue the former failed
+     * download, because [DownloadsFeature] clears any queued downloads onStop.
+     * */
+    @VisibleForTesting
+    internal fun resumeDownloadDialogState(
+        sessionId: String?,
+        store: BrowserStore,
+        context: Context,
+    ) {
+        val savedDownloadState =
+            sharedViewModel.downloadDialogState[sessionId]
+
+        if (savedDownloadState == null || sessionId == null) {
+            binding.viewDynamicDownloadDialog.root.visibility = View.GONE
+            return
+        }
+
+        val onTryAgain: (String) -> Unit = {
+            savedDownloadState.first?.let { dlState ->
+                store.dispatch(
+                    ContentAction.UpdateDownloadAction(
+                        sessionId,
+                        dlState.copy(skipConfirmation = true),
+                    ),
+                )
+            }
+        }
+
+        val onDismiss: () -> Unit =
+            { sharedViewModel.downloadDialogState.remove(sessionId) }
+
+        DynamicDownloadDialog(
+            context = context,
+            fileSizeFormatter = requireComponents.core.fileSizeFormatter,
+            downloadState = savedDownloadState.first,
+            didFail = savedDownloadState.second,
+            tryAgain = onTryAgain,
+            onCannotOpenFile = {
+                showCannotOpenFileError(binding.dynamicSnackbarContainer, context, it)
+            },
+            binding = binding.viewDynamicDownloadDialog,
+            onDismiss = onDismiss,
+        ).show()
+
+        browserToolbarView.expand()
+    }
+
     @VisibleForTesting
     internal fun shouldPullToRefreshBeEnabled(inFullScreen: Boolean): Boolean {
         return FeatureFlags.PULL_TO_REFRESH_ENABLED &&
@@ -1483,14 +1586,34 @@ abstract class BaseBrowserFragment :
         if (isToolbarDynamic(context) && webAppToolbarShouldBeVisible) {
             getEngineView().setDynamicToolbarMaxHeight(topToolbarHeight + bottomToolbarHeight)
 
-            (getSwipeRefreshLayout().layoutParams as CoordinatorLayout.LayoutParams).behavior =
-                EngineViewClippingBehavior(
-                    context = context,
-                    attrs = null,
-                    engineViewParent = getSwipeRefreshLayout(),
-                    topToolbarHeight = topToolbarHeight,
-                    bottomToolbarHeight = bottomToolbarHeight,
-                )
+            if (shouldShowMicrosurveyPrompt(context)) {
+                (getSwipeRefreshLayout().layoutParams as CoordinatorLayout.LayoutParams).behavior =
+                    EngineViewClippingBehavior(
+                        context = context,
+                        attrs = null,
+                        engineViewParent = getSwipeRefreshLayout(),
+                        topToolbarHeight = topToolbarHeight,
+                        bottomToolbarHeight = bottomToolbarHeight,
+                    )
+            } else {
+                val toolbarPosition = when (context.settings().toolbarPosition) {
+                    ToolbarPosition.BOTTOM -> OldToolbarPosition.BOTTOM
+                    ToolbarPosition.TOP -> OldToolbarPosition.TOP
+                }
+
+                val toolbarHeight = when (toolbarPosition) {
+                    OldToolbarPosition.BOTTOM -> bottomToolbarHeight
+                    OldToolbarPosition.TOP -> topToolbarHeight
+                }
+                (getSwipeRefreshLayout().layoutParams as CoordinatorLayout.LayoutParams).behavior =
+                    OldEngineViewClippingBehavior(
+                        context,
+                        null,
+                        getSwipeRefreshLayout(),
+                        toolbarHeight,
+                        toolbarPosition,
+                    )
+            }
         } else {
             // Ensure webpage's bottom elements are aligned to the very bottom of the engineView.
             getEngineView().setDynamicToolbarMaxHeight(0)
@@ -1577,6 +1700,12 @@ abstract class BaseBrowserFragment :
 
                                         context.settings().shouldShowMicrosurveyPrompt = false
                                         activity.isMicrosurveyPromptDismissed.value = true
+
+                                        resumeDownloadDialogState(
+                                            getCurrentTab()?.id,
+                                            context.components.core.store,
+                                            context,
+                                        )
                                     },
                                 )
                             }
@@ -1697,7 +1826,8 @@ abstract class BaseBrowserFragment :
     }
 
     private fun dismissDownloadDialogs() {
-        downloadDialog?.dismiss()
+        currentStartDownloadDialog?.dismiss()
+        firstPartyDownloadDialog?.dismiss()
     }
 
     @VisibleForTesting
@@ -1729,6 +1859,8 @@ abstract class BaseBrowserFragment :
                 fullScreenChanged(false)
                 browserToolbarView.expand()
 
+                val context = requireContext()
+                resumeDownloadDialogState(selectedTab.id, context.components.core.store, context)
                 @Suppress("DEPRECATION")
                 it.announceForAccessibility(selectedTab.toDisplayTitle())
             }
@@ -1749,16 +1881,6 @@ abstract class BaseBrowserFragment :
         }
         hideToolbar()
 
-        components.services.appLinksInterceptor.updateFragmentManger(
-            fragmentManager = parentFragmentManager,
-        )
-        context?.settings()?.shouldOpenLinksInApp(customTabSessionId != null)
-            ?.let { openLinksInExternalApp ->
-                components.services.appLinksInterceptor.updateLaunchInApp {
-                    openLinksInExternalApp
-                }
-            }
-
         evaluateMessagesForMicrosurvey(components)
 
         BiometricAuthenticationManager.biometricAuthenticationNeededInfo.shouldShowAuthenticationPrompt =
@@ -1776,10 +1898,6 @@ abstract class BaseBrowserFragment :
         if (findNavController().currentDestination?.id != R.id.searchDialogFragment) {
             view?.hideKeyboard()
         }
-
-        requireComponents.services.appLinksInterceptor.updateFragmentManger(
-            fragmentManager = null,
-        )
     }
 
     @CallSuper
@@ -1799,10 +1917,14 @@ abstract class BaseBrowserFragment :
     @CallSuper
     override fun onBackPressed(): Boolean {
         return findInPageIntegration.onBackPressed() ||
-                fullScreenFeature.onBackPressed() ||
-                promptsFeature.onBackPressed() ||
-                sessionFeature.onBackPressed() ||
-                lastTabFeature.onBackPressed()
+            fullScreenFeature.onBackPressed() ||
+            promptsFeature.onBackPressed() ||
+            currentStartDownloadDialog?.let {
+                it.dismiss()
+                true
+            } ?: false ||
+            sessionFeature.onBackPressed() ||
+            lastTabFeature.onBackPressed()
     }
 
     @CallSuper
@@ -2254,6 +2376,19 @@ abstract class BaseBrowserFragment :
         breadcrumb(
             message = "onDetach()",
         )
+    }
+
+    internal fun showCannotOpenFileError(
+        container: ViewGroup,
+        context: Context,
+        downloadState: DownloadState,
+    ) {
+        Snackbar.make(
+            snackBarParentView = container,
+            snackbarState = SnackbarState(
+                message = DynamicDownloadDialog.getCannotOpenFileErrorMessage(context, downloadState),
+            ),
+        ).show()
     }
 
     companion object {

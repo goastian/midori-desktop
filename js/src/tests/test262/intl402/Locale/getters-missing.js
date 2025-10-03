@@ -30,7 +30,6 @@ assert.sameValue(loc.baseName, "sv");
 assert.sameValue(loc.language, "sv");
 assert.sameValue(loc.script, undefined);
 assert.sameValue(loc.region, undefined);
-assert.sameValue(loc.variants, undefined);
 
 // 'region' subtag not present.
 var loc = new Intl.Locale("sv-Latn");
@@ -38,7 +37,6 @@ assert.sameValue(loc.baseName, "sv-Latn");
 assert.sameValue(loc.language, "sv");
 assert.sameValue(loc.script, "Latn");
 assert.sameValue(loc.region, undefined);
-assert.sameValue(loc.variants, undefined);
 
 // 'script' subtag not present.
 var loc = new Intl.Locale("sv-SE");
@@ -46,7 +44,6 @@ assert.sameValue(loc.baseName, "sv-SE");
 assert.sameValue(loc.language, "sv");
 assert.sameValue(loc.script, undefined);
 assert.sameValue(loc.region, "SE");
-assert.sameValue(loc.variants, undefined);
 
 // 'variant' subtag present.
 var loc = new Intl.Locale("de-1901");
@@ -54,6 +51,5 @@ assert.sameValue(loc.baseName, "de-1901");
 assert.sameValue(loc.language, "de");
 assert.sameValue(loc.script, undefined);
 assert.sameValue(loc.region, undefined);
-assert.sameValue(loc.variants, '1901');
 
 reportCompare(0, 0);

@@ -7,7 +7,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 # Skip locking for packages or specific versions that aren’t published on PyPI
 SKIP_LIBS = ["dlmanager", "gyp", "html5lib", "wptrunner", "webdriver"]
@@ -39,9 +39,9 @@ class SiteDependencyExtractor:
 
         self.topsrcdir = topsrcdir
         self.requires_python = None
-        self.dependencies: list[Dependency] = []
+        self.dependencies: List[Dependency] = []
 
-    def parse(self) -> tuple[Optional[str], list[Dependency]]:
+    def parse(self) -> Tuple[Optional[str], List[Dependency]]:
         handlers = {
             "requires-python": self._handle_requires_python,
             "pth": self._handle_pth,

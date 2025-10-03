@@ -5,102 +5,82 @@
 package org.mozilla.fenix.components.menu.compose
 
 import android.app.PendingIntent
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
-import androidx.compose.ui.unit.dp
 import mozilla.components.browser.state.state.CustomTabMenuItem
+import mozilla.components.compose.base.Divider
 import org.mozilla.fenix.R
-import org.mozilla.fenix.components.menu.compose.header.MenuNavHeader
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.theme.Theme
 
 /**
  * Wrapper column containing the main menu items.
  *
- * @param isSiteLoading Whether or not the custom tab is currently loading.
  * @param isPdf Whether or not the current custom tab is a PDF.
  * @param isDesktopMode Whether or not the current site is in desktop mode.
  * @param isSandboxCustomTab Whether or not the current custom tab is sandboxed.
  * @param customTabMenuItems Additional [CustomTabMenuItem]s to be displayed to the custom tab menu.
  * @param onCustomMenuItemClick Invoked when the user clicks on [CustomTabMenuItem]s.
- * @param scrollState The [ScrollState] used for vertical scrolling.
  * @param onSwitchToDesktopSiteMenuClick Invoked when the user clicks on the switch to desktop site
  * menu toggle.
  * @param onFindInPageMenuClick Invoked when the user clicks on the find in page menu item.
  * @param onOpenInFirefoxMenuClick Invoked when the user clicks on the open in browser menu item.
- * @param onBackButtonClick Invoked when the user clicks on the back button.
- * @param onForwardButtonClick Invoked when the user clicks on the forward button.
- * @param onRefreshButtonClick Invoked when the user clicks on the refresh button.
- * @param onStopButtonClick Invoked when the user clicks on the stop button.
- * @param onShareButtonClick Invoked when the user clicks on the share button.
+ * @param onShareMenuClick Invoked when the user clicks on the share menu item.
  */
-@Suppress("LongParameterList", "LongMethod")
+@Suppress("LongParameterList")
 @Composable
 internal fun CustomTabMenu(
-    isSiteLoading: Boolean,
     isPdf: Boolean,
     isDesktopMode: Boolean,
     isSandboxCustomTab: Boolean,
     customTabMenuItems: List<CustomTabMenuItem>?,
     onCustomMenuItemClick: (PendingIntent) -> Unit,
-    scrollState: ScrollState,
     onSwitchToDesktopSiteMenuClick: () -> Unit,
     onFindInPageMenuClick: () -> Unit,
     onOpenInFirefoxMenuClick: () -> Unit,
-    onBackButtonClick: (longPress: Boolean) -> Unit,
-    onForwardButtonClick: (longPress: Boolean) -> Unit,
-    onRefreshButtonClick: (longPress: Boolean) -> Unit,
-    onStopButtonClick: () -> Unit,
-    onShareButtonClick: () -> Unit,
+    onShareMenuClick: () -> Unit,
 ) {
-    MenuFrame(
-        header = {
-            MenuNavHeader(
-                isSiteLoading = isSiteLoading,
-                onBackButtonClick = onBackButtonClick,
-                onForwardButtonClick = onForwardButtonClick,
-                onRefreshButtonClick = onRefreshButtonClick,
-                onStopButtonClick = onStopButtonClick,
-                onShareButtonClick = onShareButtonClick,
-                isExtensionsExpanded = false,
-                isMoreMenuExpanded = false,
-            )
-        },
-        scrollState = scrollState,
+    MenuScaffold(
+        header = {},
     ) {
         MenuGroup {
-            val badgeText: String
+            val labelId: Int
+            val iconId: Int
             val menuItemState: MenuItemState
-            val badgeBackgroundColor: Color
 
             if (isDesktopMode) {
-                badgeText = stringResource(id = R.string.browser_feature_desktop_site_on)
-                badgeBackgroundColor = FirefoxTheme.colors.badgeActive
+                labelId = R.string.browser_menu_switch_to_mobile_site
+                iconId = R.drawable.mozac_ic_device_mobile_24
                 menuItemState = MenuItemState.ACTIVE
             } else {
-                badgeText = stringResource(id = R.string.browser_feature_desktop_site_off)
-                badgeBackgroundColor = FirefoxTheme.colors.layerSearch
-                menuItemState = if (isPdf) MenuItemState.DISABLED else MenuItemState.ENABLED
+                labelId = R.string.browser_menu_switch_to_desktop_site
+                iconId = R.drawable.mozac_ic_device_desktop_24
+                menuItemState = MenuItemState.ENABLED
             }
 
+            MenuItem(
+                label = stringResource(id = labelId),
+                beforeIconPainter = painterResource(id = iconId),
+                state = if (isPdf) MenuItemState.DISABLED else menuItemState,
+                onClick = onSwitchToDesktopSiteMenuClick,
+            )
+
+            Divider(color = FirefoxTheme.colors.borderSecondary)
+
+            MenuItem(
+                label = stringResource(id = R.string.browser_menu_find_in_page_2),
+                beforeIconPainter = painterResource(id = R.drawable.mozac_ic_search_24),
+                onClick = onFindInPageMenuClick,
+            )
+        }
+
+        MenuGroup {
             MenuItem(
                 label = stringResource(
                     id = R.string.browser_menu_open_in_fenix,
@@ -115,33 +95,22 @@ internal fun CustomTabMenu(
                 },
             )
 
+            Divider(color = FirefoxTheme.colors.borderSecondary)
+
             MenuItem(
-                label = stringResource(id = R.string.browser_menu_find_in_page),
-                beforeIconPainter = painterResource(id = R.drawable.mozac_ic_search_24),
-                onClick = onFindInPageMenuClick,
+                label = stringResource(id = R.string.browser_menu_share_2),
+                beforeIconPainter = painterResource(id = R.drawable.mozac_ic_share_android_24),
+                onClick = onShareMenuClick,
             )
-
-            MenuItem(
-                label = stringResource(id = R.string.browser_menu_desktop_site),
-                beforeIconPainter = painterResource(id = R.drawable.mozac_ic_device_mobile_24),
-                state = menuItemState,
-                onClick = onSwitchToDesktopSiteMenuClick,
-            ) {
-                if (menuItemState == MenuItemState.DISABLED) {
-                    return@MenuItem
-                }
-
-                Badge(
-                    badgeText = badgeText,
-                    state = menuItemState,
-                    badgeBackgroundColor = badgeBackgroundColor,
-                )
-            }
         }
 
         if (!customTabMenuItems.isNullOrEmpty()) {
             MenuGroup {
-                customTabMenuItems.forEach { customTabMenuItem ->
+                customTabMenuItems.forEachIndexed { index, customTabMenuItem ->
+                    if (index > 0) {
+                        Divider(color = FirefoxTheme.colors.borderSecondary)
+                    }
+
                     MenuTextItem(
                         label = customTabMenuItem.name,
                         onClick = { onCustomMenuItemClick(customTabMenuItem.pendingIntent) },
@@ -149,40 +118,6 @@ internal fun CustomTabMenu(
                 }
             }
         }
-
-        PoweredByFirefoxItem()
-    }
-}
-
-/**
- * A menu item that shows the "Powered by Firefox" text and logo.
- *
- * @param modifier [Modifier] to be applied to the layout.
- */
-@Composable
-private fun PoweredByFirefoxItem(modifier: Modifier = Modifier) {
-    Row(
-        horizontalArrangement = Arrangement.Center,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.ic_firefox),
-            contentDescription = null,
-            modifier = Modifier
-                .size(16.dp)
-                .align(Alignment.CenterVertically),
-        )
-
-        Spacer(Modifier.width(4.dp))
-
-        Text(
-            text = stringResource(
-                id = R.string.browser_menu_powered_by2,
-                stringResource(id = R.string.app_name),
-            ),
-            color = FirefoxTheme.colors.textSecondary,
-            style = FirefoxTheme.typography.caption,
-        )
     }
 }
 
@@ -195,21 +130,15 @@ private fun CustomTabMenuPreview() {
                 .background(color = FirefoxTheme.colors.layer3),
         ) {
             CustomTabMenu(
-                isSiteLoading = true,
                 isPdf = false,
                 isDesktopMode = false,
                 isSandboxCustomTab = false,
                 customTabMenuItems = null,
                 onCustomMenuItemClick = { _: PendingIntent -> },
-                scrollState = rememberScrollState(),
                 onSwitchToDesktopSiteMenuClick = {},
                 onFindInPageMenuClick = {},
                 onOpenInFirefoxMenuClick = {},
-                onBackButtonClick = {},
-                onForwardButtonClick = {},
-                onRefreshButtonClick = {},
-                onStopButtonClick = {},
-                onShareButtonClick = {},
+                onShareMenuClick = {},
             )
         }
     }
@@ -224,21 +153,15 @@ private fun CustomTabMenuPrivatePreview() {
                 .background(color = FirefoxTheme.colors.layer3),
         ) {
             CustomTabMenu(
-                isSiteLoading = false,
                 isPdf = true,
                 isDesktopMode = false,
                 isSandboxCustomTab = false,
                 customTabMenuItems = null,
                 onCustomMenuItemClick = { _: PendingIntent -> },
-                scrollState = rememberScrollState(),
                 onSwitchToDesktopSiteMenuClick = {},
                 onFindInPageMenuClick = {},
                 onOpenInFirefoxMenuClick = {},
-                onBackButtonClick = {},
-                onForwardButtonClick = {},
-                onRefreshButtonClick = {},
-                onStopButtonClick = {},
-                onShareButtonClick = {},
+                onShareMenuClick = {},
             )
         }
     }

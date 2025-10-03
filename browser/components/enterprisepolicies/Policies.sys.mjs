@@ -1256,6 +1256,18 @@ export var Policies = {
           param.Locked
         );
       }
+      if ("SuspectedFingerprinting" in param) {
+        PoliciesUtils.setDefaultPref(
+          "privacy.fingerprintingProtection",
+          param.SuspectedFingerprinting,
+          param.Locked
+        );
+        PoliciesUtils.setDefaultPref(
+          "privacy.fingerprintingProtection.pbmode",
+          param.SuspectedFingerprinting,
+          param.Locked
+        );
+      }
     },
   },
 
@@ -1944,7 +1956,6 @@ export var Policies = {
         setDefaultPermission("xr", param.VirtualReality);
       }
 
-
       if ("ScreenShare" in param) {
         addAllowDenyPermissions(
           "screen",
@@ -2069,6 +2080,7 @@ export var Policies = {
         "security.tls.hello_downgrade_check",
         "security.tls.version.enable-deprecated",
         "security.warn_submit_secure_to_insecure",
+        "security.webauthn.always_allow_direct_attestation",
       ];
       const blockedPrefs = [
         "app.update.channel",

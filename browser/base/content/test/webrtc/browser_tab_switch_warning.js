@@ -190,10 +190,7 @@ async function ensureWarning(tab) {
 
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      ["privacy.webrtc.sharedTabWarning", true],
-    ],
+    set: [["privacy.webrtc.sharedTabWarning", true]],
   });
 
   // Loads up NEW_BACKGROUND_TABS_TO_OPEN background tabs at about:blank,

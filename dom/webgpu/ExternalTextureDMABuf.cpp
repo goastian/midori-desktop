@@ -97,11 +97,6 @@ ExternalTextureDMABuf::ExternalTextureDMABuf(
 
 ExternalTextureDMABuf::~ExternalTextureDMABuf() {}
 
-void ExternalTextureDMABuf::CleanForRecycling() {
-  mSemaphoreFds.Clear();
-  mVkSemaphoreHandles.Clear();
-}
-
 Maybe<layers::SurfaceDescriptor> ExternalTextureDMABuf::ToSurfaceDescriptor() {
   layers::SurfaceDescriptor sd;
   if (!mSurface->Serialize(sd)) {
@@ -113,7 +108,7 @@ Maybe<layers::SurfaceDescriptor> ExternalTextureDMABuf::ToSurfaceDescriptor() {
   }
 
   auto& sdDMABuf = sd.get_SurfaceDescriptorDMABuf();
-  sdDMABuf.semaphoreFd() = mSemaphoreFds.LastElement();
+  sdDMABuf.semaphoreFd() = mSemaphoreFd;
 
   return Some(sd);
 }
@@ -180,17 +175,16 @@ void ExternalTextureDMABuf::onBeforeQueueSubmit(RawId aQueueId) {
     return;
   }
 
+  mVkSemaphoreHandle =
+      MakeUnique<VkSemaphoreHandle>(mParent, mDeviceId, vkSemaphore);
+
   auto rawFd =
       wgpu_vksemaphore_get_file_descriptor(context, mDeviceId, vkSemaphore);
   if (rawFd < 0) {
     gfxCriticalNoteOnce << "Failed to get fd from VkSemaphore";
     return;
   }
-
-  mVkSemaphoreHandles.AppendElement(
-      MakeUnique<VkSemaphoreHandle>(mParent, mDeviceId, vkSemaphore));
-  mSemaphoreFds.AppendElement(
-      new gfx::FileHandleWrapper(UniqueFileHandle(rawFd)));
+  mSemaphoreFd = new gfx::FileHandleWrapper(UniqueFileHandle(rawFd));
 }
 
 }  // namespace mozilla::webgpu

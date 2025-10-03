@@ -9,7 +9,6 @@
  * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 #include "aom/aom_codec.h"
-#include "aom/aomcx.h"
 #include "gtest/gtest.h"
 #include "test/codec_factory.h"
 #include "test/encode_test_driver.h"
@@ -20,14 +19,13 @@ namespace {
 // This class is used to validate if screen_content_tools are turned on
 // appropriately.
 class ScreenContentToolsTestLarge
-    : public ::libaom_test::CodecTestWith3Params<
-          libaom_test::TestMode, aom_rc_mode, aom_screen_detection_mode>,
+    : public ::libaom_test::CodecTestWith2Params<libaom_test::TestMode,
+                                                 aom_rc_mode>,
       public ::libaom_test::EncoderTest {
  protected:
   ScreenContentToolsTestLarge()
       : EncoderTest(GET_PARAM(0)), encoding_mode_(GET_PARAM(1)),
-        rc_end_usage_(GET_PARAM(2)),
-        screen_content_tools_detection_mode_(GET_PARAM(3)) {
+        rc_end_usage_(GET_PARAM(2)) {
     is_screen_content_violated_ = true;
     tune_content_ = AOM_CONTENT_DEFAULT;
   }
@@ -52,8 +50,6 @@ class ScreenContentToolsTestLarge
       encoder->Control(AOME_SET_CPUUSED, 5);
       encoder->Control(AOME_SET_ENABLEAUTOALTREF, 1);
       encoder->Control(AV1E_SET_TUNE_CONTENT, tune_content_);
-      encoder->Control(AV1E_SET_SCREEN_CONTENT_DETECTION_MODE,
-                       screen_content_tools_detection_mode_);
     }
   }
 
@@ -77,7 +73,6 @@ class ScreenContentToolsTestLarge
   bool is_screen_content_violated_;
   int tune_content_;
   aom_rc_mode rc_end_usage_;
-  aom_screen_detection_mode screen_content_tools_detection_mode_;
 };
 
 TEST_P(ScreenContentToolsTestLarge, ScreenContentToolsTest) {
@@ -99,27 +94,22 @@ TEST_P(ScreenContentToolsTestLarge, ScreenContentToolsTest) {
   ASSERT_EQ(is_screen_content_violated_, false)
       << "Failed detection of screen content";
 
-  // The test below is only enabled for mode 2 because the input consists of
-  // anti-aliased text, which mode 1 can't determine as screen content
-  if (screen_content_tools_detection_mode_ ==
-      AOM_SCREEN_DETECTION_ANTIALIASING_AWARE) {
-    // low resolution test
-    ::libaom_test::Y4mVideoSource video_sc_lowres("screendata.y4m", 0, 1);
-    cfg_.g_profile = 0;
-    is_screen_content_violated_ = true;
-    tune_content_ = AOM_CONTENT_DEFAULT;
-    ASSERT_NO_FATAL_FAILURE(RunLoop(&video_sc_lowres));
-    ASSERT_EQ(is_screen_content_violated_, false)
-        << "Failed detection of screen content(lowres)";
-  }
+  // TODO(anyone): Enable below test once low resolution screen content
+  // detection issues are fixed.
+  // low resolution test
+  //  ::libaom_test::Y4mVideoSource video_sc("screendata.y4m", 0, 1);
+  //  cfg_.g_profile = 0;
+  //  is_screen_content_violated_ = true;
+  //  tune_content_ = AOM_CONTENT_DEFAULT;
+  //  ASSERT_NO_FATAL_FAILURE(RunLoop(&video_sc));
+  //  ASSERT_EQ(is_screen_content_violated_, false)
+  //      << "Failed detection of screen content(lowres)";
 }
 
-AV1_INSTANTIATE_TEST_SUITE(
-    ScreenContentToolsTestLarge,
-    ::testing::Values(::libaom_test::kOnePassGood, ::libaom_test::kTwoPassGood),
-    ::testing::Values(AOM_Q),
-    ::testing::Values(AOM_SCREEN_DETECTION_STANDARD,
-                      AOM_SCREEN_DETECTION_ANTIALIASING_AWARE));
+AV1_INSTANTIATE_TEST_SUITE(ScreenContentToolsTestLarge,
+                           ::testing::Values(::libaom_test::kOnePassGood,
+                                             ::libaom_test::kTwoPassGood),
+                           ::testing::Values(AOM_Q));
 
 class ScreenContentToolsMultiThreadTestLarge
     : public ScreenContentToolsTestLarge {};
@@ -138,10 +128,8 @@ TEST_P(ScreenContentToolsMultiThreadTestLarge, ScreenContentToolsTest) {
       << "Failed detection of screen content";
 }
 
-AV1_INSTANTIATE_TEST_SUITE(
-    ScreenContentToolsMultiThreadTestLarge,
-    ::testing::Values(::libaom_test::kOnePassGood, ::libaom_test::kTwoPassGood),
-    ::testing::Values(AOM_Q),
-    ::testing::Values(AOM_SCREEN_DETECTION_STANDARD,
-                      AOM_SCREEN_DETECTION_ANTIALIASING_AWARE));
+AV1_INSTANTIATE_TEST_SUITE(ScreenContentToolsMultiThreadTestLarge,
+                           ::testing::Values(::libaom_test::kOnePassGood,
+                                             ::libaom_test::kTwoPassGood),
+                           ::testing::Values(AOM_Q));
 }  // namespace

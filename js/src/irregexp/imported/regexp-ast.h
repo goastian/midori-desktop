@@ -533,9 +533,6 @@ class RegExpText final : public RegExpTree {
   }
   ZoneList<TextElement>* elements() { return &elements_; }
 
-  bool StartsWithAtom() const;
-  RegExpAtom* FirstAtom() const;
-
  private:
   ZoneList<TextElement> elements_;
   int length_ = 0;

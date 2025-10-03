@@ -365,20 +365,20 @@ UtilityProcessManager::StartProcessForRemoteMediaDecoding(
 
             EndpointProcInfo process = parent->OtherEndpointProcInfo();
 
-            Endpoint<PRemoteMediaManagerChild> childPipe;
-            Endpoint<PRemoteMediaManagerParent> parentPipe;
-            if (nsresult const rv = PRemoteMediaManager::CreateEndpoints(
+            Endpoint<PRemoteDecoderManagerChild> childPipe;
+            Endpoint<PRemoteDecoderManagerParent> parentPipe;
+            if (nsresult const rv = PRemoteDecoderManager::CreateEndpoints(
                     process, aOtherProcess, &parentPipe, &childPipe);
                 NS_FAILED(rv)) {
               MOZ_ASSERT(false, "Could not create content remote decoder");
               return RetPromise::CreateAndReject(
-                  LaunchError("PRemoteMediaManager::CreateEndpoints", rv),
+                  LaunchError("PRemoteDecoderManager::CreateEndpoints", rv),
                   __func__);
             }
 
-            if (!uadc->SendNewContentRemoteMediaManager(std::move(parentPipe),
-                                                        aChildId)) {
-              MOZ_ASSERT(false, "SendNewContentRemoteMediaManager failure");
+            if (!uadc->SendNewContentRemoteDecoderManager(std::move(parentPipe),
+                                                          aChildId)) {
+              MOZ_ASSERT(false, "SendNewContentRemoteDecoderManager failure");
               return RetPromise::CreateAndReject(
                   LaunchError("UADC::SendNewCRDM"), __func__);
             }

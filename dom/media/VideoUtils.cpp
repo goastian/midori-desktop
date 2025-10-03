@@ -78,9 +78,7 @@ CheckedInt64 TimeUnitToFrames(const TimeUnit& aTime, uint32_t aRate) {
 }
 
 nsresult SecondsToUsecs(double aSeconds, int64_t& aOutUsecs) {
-  // This must be a >= test, because int64_t(double(INT64_MAX))
-  // overflows and gives INT64_MIN.
-  if (aSeconds * double(USECS_PER_S) >= double(INT64_MAX)) {
+  if (aSeconds * double(USECS_PER_S) > double(INT64_MAX)) {
     return NS_ERROR_FAILURE;
   }
   aOutUsecs = int64_t(aSeconds * double(USECS_PER_S));

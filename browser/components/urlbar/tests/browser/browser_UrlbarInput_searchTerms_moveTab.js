@@ -17,10 +17,7 @@ const SEARCH_STRING = "chocolate cake";
 
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["test.wait300msAfterTabSwitch", true],
-      ["browser.urlbar.showSearchTerms.featureGate", true],
-    ],
+    set: [["browser.urlbar.showSearchTerms.featureGate", true]],
   });
   let cleanup = await installPersistTestEngines();
   registerCleanupFunction(async function () {

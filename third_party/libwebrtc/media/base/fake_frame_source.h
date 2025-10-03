@@ -11,12 +11,10 @@
 #ifndef MEDIA_BASE_FAKE_FRAME_SOURCE_H_
 #define MEDIA_BASE_FAKE_FRAME_SOURCE_H_
 
-#include <cstdint>
-
 #include "api/video/video_frame.h"
-#include "api/video/video_rotation.h"
+#include "rtc_base/time_utils.h"
 
-namespace webrtc {
+namespace cricket {
 
 class FakeFrameSource {
  public:
@@ -26,33 +24,27 @@ class FakeFrameSource {
                   int64_t timestamp_offset_us);
   FakeFrameSource(int width, int height, int interval_us);
 
-  VideoRotation GetRotation() const;
-  void SetRotation(VideoRotation rotation);
+  webrtc::VideoRotation GetRotation() const;
+  void SetRotation(webrtc::VideoRotation rotation);
 
-  VideoFrame GetFrame();
-  VideoFrame GetFrameRotationApplied();
+  webrtc::VideoFrame GetFrame();
+  webrtc::VideoFrame GetFrameRotationApplied();
 
   // Override configuration.
-  VideoFrame GetFrame(int width,
-                      int height,
-                      VideoRotation rotation,
-                      int interval_us);
+  webrtc::VideoFrame GetFrame(int width,
+                              int height,
+                              webrtc::VideoRotation rotation,
+                              int interval_us);
 
  private:
   const int width_;
   const int height_;
   const int interval_us_;
 
-  VideoRotation rotation_ = webrtc::kVideoRotation_0;
+  webrtc::VideoRotation rotation_ = webrtc::kVideoRotation_0;
   int64_t next_timestamp_us_;
 };
 
-}  //  namespace webrtc
-
-// Re-export symbols from the webrtc namespace for backwards compatibility.
-// TODO(bugs.webrtc.org/4222596): Remove once all references are updated.
-namespace cricket {
-using ::webrtc::FakeFrameSource;
 }  // namespace cricket
 
 #endif  // MEDIA_BASE_FAKE_FRAME_SOURCE_H_

@@ -848,19 +848,21 @@ Result<EditActionResult, nsresult> HTMLEditor::HTMLWithContextInserter::Run(
     NS_WARNING("HTMLEditor::GetBetterInsertionPointFor() failed");
     return Err(NS_ERROR_FAILURE);
   }
-  Result<EditorDOMPoint, nsresult> pointToInsertOrError =
-      WhiteSpaceVisibilityKeeper::NormalizeWhiteSpacesToSplitAt(
-          mHTMLEditor, pointToInsert,
-          {WhiteSpaceVisibilityKeeper::NormalizeOption::
-               StopIfFollowingWhiteSpacesStartsWithNBSP});
-  if (MOZ_UNLIKELY(pointToInsertOrError.isErr())) {
-    NS_WARNING(
-        "WhiteSpaceVisibilityKeeper::NormalizeWhiteSpacesToSplitAt() failed");
-    return pointToInsertOrError.propagateErr();
-  }
-  pointToInsert = pointToInsertOrError.unwrap();
-  if (NS_WARN_IF(!pointToInsert.IsSetAndValidInComposedDoc())) {
-    return Err(NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE);
+  if (StaticPrefs::editor_white_space_normalization_blink_compatible()) {
+    Result<EditorDOMPoint, nsresult> pointToInsertOrError =
+        WhiteSpaceVisibilityKeeper::NormalizeWhiteSpacesToSplitAt(
+            mHTMLEditor, pointToInsert,
+            {WhiteSpaceVisibilityKeeper::NormalizeOption::
+                 StopIfFollowingWhiteSpacesStartsWithNBSP});
+    if (MOZ_UNLIKELY(pointToInsertOrError.isErr())) {
+      NS_WARNING(
+          "WhiteSpaceVisibilityKeeper::NormalizeWhiteSpacesToSplitAt() failed");
+      return pointToInsertOrError.propagateErr();
+    }
+    pointToInsert = pointToInsertOrError.unwrap();
+    if (NS_WARN_IF(!pointToInsert.IsSetAndValidInComposedDoc())) {
+      return Err(NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE);
+    }
   }
 
   const bool insertionPointWasInLink =

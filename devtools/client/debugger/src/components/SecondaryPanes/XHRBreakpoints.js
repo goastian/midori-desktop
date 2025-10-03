@@ -99,11 +99,6 @@ class XHRBreakpoints extends Component {
     e.preventDefault();
     e.stopPropagation();
 
-    // Prevent adding breakpoint with empty path
-    if (!this.state.inputValue.trim()) {
-      return;
-    }
-
     const setXHRBreakpoint = function () {
       this.props.setXHRBreakpoint(
         this.state.inputValue,

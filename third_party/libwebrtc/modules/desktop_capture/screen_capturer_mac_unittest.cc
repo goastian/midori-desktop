@@ -10,9 +10,8 @@
 
 #include <ApplicationServices/ApplicationServices.h>
 
-#include <chrono>
 #include <memory>
-#include <thread>
+#include <ostream>
 
 #include "modules/desktop_capture/desktop_capture_options.h"
 #include "modules/desktop_capture/desktop_capturer.h"
@@ -25,8 +24,7 @@
 
 using ::testing::_;
 using ::testing::AnyNumber;
-using ::testing::AnyOf;
-using ::testing::InSequence;
+using ::testing::Return;
 
 namespace webrtc {
 
@@ -45,18 +43,6 @@ class ScreenCapturerMacTest : public ::testing::Test {
   void SetUp() override {
     capturer_ = DesktopCapturer::CreateScreenCapturer(
         DesktopCaptureOptions::CreateDefault());
-  }
-
-  std::unique_ptr<DesktopCapturer> capturer_;
-  MockDesktopCapturerCallback callback_;
-};
-
-class ScreenCapturerSckTest : public ScreenCapturerMacTest {
- protected:
-  void SetUp() override {
-    auto options = DesktopCaptureOptions::CreateDefault();
-    options.set_allow_sck_capturer(true);
-    capturer_ = DesktopCapturer::CreateScreenCapturer(options);
   }
 
   std::unique_ptr<DesktopCapturer> capturer_;
@@ -91,11 +77,7 @@ void ScreenCapturerMacTest::CaptureDoneCallback2(
   EXPECT_TRUE((*frame)->data() != NULL);
   // Depending on the capture method, the screen may be flipped or not, so
   // the stride may be positive or negative.
-  // The stride may in theory be larger than the width due to alignment, but in
-  // other cases, like window capture, the stride normally matches the monitor
-  // resolution whereas the width matches the window region on said monitor.
-  // Make no assumptions.
-  EXPECT_LE(static_cast<int>(sizeof(uint32_t) * width),
+  EXPECT_EQ(static_cast<int>(sizeof(uint32_t) * width),
             abs((*frame)->stride()));
 }
 
@@ -114,55 +96,6 @@ TEST_F(ScreenCapturerMacTest, Capture) {
 
   // Check that subsequent dirty rects are propagated correctly.
   capturer_->CaptureFrame();
-}
-
-TEST_F(ScreenCapturerSckTest, Capture) {
-  if (!CGPreflightScreenCaptureAccess()) {
-    GTEST_SKIP()
-        << "ScreenCapturerSckTest needs TCC ScreenCapture authorization";
-  }
-
-  std::atomic<bool> done{false};
-  std::atomic<DesktopCapturer::Result> result{
-      DesktopCapturer::Result::ERROR_TEMPORARY};
-  InSequence s;
-  EXPECT_CALL(callback_,
-              OnCaptureResultPtr(DesktopCapturer::Result::ERROR_TEMPORARY, _))
-      .Times(AnyNumber());
-  EXPECT_CALL(callback_,
-              OnCaptureResultPtr(AnyOf(DesktopCapturer::Result::ERROR_PERMANENT,
-                                       DesktopCapturer::Result::SUCCESS),
-                                 _))
-      .WillOnce([this, &result](DesktopCapturer::Result res,
-                                std::unique_ptr<DesktopFrame>* frame) {
-        result = res;
-        if (res == DesktopCapturer::Result::SUCCESS) {
-          CaptureDoneCallback1(res, frame);
-        }
-      });
-  SCOPED_TRACE("");
-  capturer_->Start(&callback_);
-
-  while (result == DesktopCapturer::Result::ERROR_TEMPORARY) {
-    // Check that we get an initial full-screen updated.
-    capturer_->CaptureFrame();
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-  ASSERT_NE(result, DesktopCapturer::Result::ERROR_PERMANENT);
-
-  EXPECT_CALL(callback_,
-              OnCaptureResultPtr(DesktopCapturer::Result::SUCCESS, _))
-      .Times(1)
-      .WillOnce([this, &done](auto res, auto frame) {
-        CaptureDoneCallback2(res, frame);
-        done = true;
-      });
-
-  while (!done) {
-    // Check that we get an initial full-screen updated.
-    capturer_->CaptureFrame();
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
 }
 
 }  // namespace webrtc

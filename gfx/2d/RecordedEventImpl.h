@@ -3255,8 +3255,10 @@ struct ElementStreamFormat<S, layers::SurfaceDescriptor> {
   using T = layers::SurfaceDescriptor;
 
   static void Write(S& s, const T& t) {
-    // More rigorous version is coming soon! -Kelsey
-    const auto valid = dom::ValidSurfaceDescriptorForRemoteCanvas2d(t);
+    Maybe<T> valid;
+    if (!dom::ValidSurfaceDescriptorForRemoteCanvas2d(t, &valid)) {
+      MOZ_CRASH("Invalid surface descriptor for write");
+    }
     MOZ_RELEASE_ASSERT(valid && *valid == t);
     if (kIsDebug) {
       // We better be able to memcpy and destroy this if we're going to send it
@@ -3272,10 +3274,15 @@ struct ElementStreamFormat<S, layers::SurfaceDescriptor> {
     s.write(reinterpret_cast<const char*>(&tValid), sizeof(T));
   }
   static void Read(S& s, T& t) {
-    s.read(reinterpret_cast<char*>(&t), sizeof(T));
-    const auto valid = dom::ValidSurfaceDescriptorForRemoteCanvas2d(t);
-    MOZ_RELEASE_ASSERT(valid && *valid == t);
-    t = *valid;
+    char buf[sizeof(T)];
+    s.read(buf, sizeof(T));
+    const auto& sd = *reinterpret_cast<const layers::SurfaceDescriptor*>(buf);
+    if (dom::ValidSurfaceDescriptorForRemoteCanvas2d(sd)) {
+      t = sd;
+      MOZ_RELEASE_ASSERT(sd == t);
+    } else {
+      s.SetIsBad();
+    }
   }
 };
 
@@ -3531,9 +3538,14 @@ inline bool RecordedSourceSurfaceCreation::PlayEvent(
     return false;
   }
 
-  RefPtr<SourceSurface> src = Factory::CreateWrappingDataSourceSurface(
-      mData, mSize.width * BytesPerPixel(mFormat), mSize, mFormat,
-      [](void* aClosure) { delete[] static_cast<uint8_t*>(aClosure); }, mData);
+  CheckedInt32 stride = CheckedInt32(mSize.width) * BytesPerPixel(mFormat);
+  RefPtr<SourceSurface> src;
+  if (!mSize.IsEmpty() && stride.isValid() && stride.value() > 0) {
+    src = Factory::CreateWrappingDataSourceSurface(
+        mData, stride.value(), mSize, mFormat,
+        [](void* aClosure) { delete[] static_cast<uint8_t*>(aClosure); },
+        mData);
+  }
   if (src) {
     mDataOwned = false;
   }
@@ -3573,18 +3585,23 @@ RecordedSourceSurfaceCreation::RecordedSourceSurfaceCreation(S& aStream)
     return;
   }
 
-  size_t size = 0;
+  CheckedInt<size_t> size;
   if (mSize.width >= 0 && mSize.height >= 0) {
-    size = size_t(mSize.width) * size_t(mSize.height) * BytesPerPixel(mFormat);
-    mData = new (fallible) uint8_t[size];
+    CheckedInt32 stride = CheckedInt32(mSize.width) * BytesPerPixel(mFormat);
+    if (stride.isValid() && stride.value() >= 0) {
+      size = CheckedInt<size_t>(stride.value()) * size_t(mSize.height);
+      if (size.isValid()) {
+        mData = new (fallible) uint8_t[size.value()];
+      }
+    }
   }
   if (!mData) {
     gfxCriticalNote
         << "RecordedSourceSurfaceCreation failed to allocate data of size "
-        << size;
+        << (size.isValid() ? size.value() : 0);
     aStream.SetIsBad();
   } else {
-    aStream.read((char*)mData, size);
+    aStream.read((char*)mData, size.value());
   }
 }
 

@@ -462,6 +462,8 @@ void nsHTMLCanvasFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   DisplayBorderBackgroundOutline(aBuilder, aLists);
 
   if (HidesContent()) {
+    DisplaySelectionOverlay(aBuilder, aLists.Content(),
+                            nsISelectionDisplay::DISPLAY_IMAGES);
     return;
   }
 
@@ -474,6 +476,9 @@ void nsHTMLCanvasFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
       aBuilder, this, clipFlags);
 
   aLists.Content()->AppendNewToTop<nsDisplayCanvas>(aBuilder, this);
+
+  DisplaySelectionOverlay(aBuilder, aLists.Content(),
+                          nsISelectionDisplay::DISPLAY_IMAGES);
 }
 
 void nsHTMLCanvasFrame::AppendDirectlyOwnedAnonBoxes(

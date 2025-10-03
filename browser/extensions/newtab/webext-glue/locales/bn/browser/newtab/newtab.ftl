@@ -306,6 +306,3 @@ newtab-custom-settings = আরও সেটিং পরিচালনা ক�
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

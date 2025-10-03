@@ -6,15 +6,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import {FlatCompat} from '@eslint/eslintrc';
+import js from '@eslint/js';
 import stylisticPlugin from '@stylistic/eslint-plugin';
-import {defineConfig, globalIgnores} from 'eslint/config';
+import typescriptEslint from '@typescript-eslint/eslint-plugin';
+import tsParser from '@typescript-eslint/parser';
 import importPlugin from 'eslint-plugin-import';
 import mocha from 'eslint-plugin-mocha';
 import eslintPrettierPluginRecommended from 'eslint-plugin-prettier/recommended';
 import rulesdir from 'eslint-plugin-rulesdir';
 import tsdoc from 'eslint-plugin-tsdoc';
 import globals from 'globals';
-import typescriptEslint from 'typescript-eslint';
+
+const compat = new FlatCompat({
+  baseDirectory: import.meta.dirname,
+  recommendedConfig: js.configs.recommended,
+  allConfig: js.configs.all,
+});
+
 rulesdir.RULES_DIR = 'tools/eslint/lib';
 
 function getThirdPartyPackages() {
@@ -36,68 +45,70 @@ function getThirdPartyPackages() {
     });
 }
 
-export default defineConfig([
-  globalIgnores([
-    '**/node_modules',
-    '**/build/',
-    '**/lib/',
-    '**/bin/',
-    '**/*.tsbuildinfo',
-    '**/*.api.json',
-    '**/*.tgz',
-    '**/yarn.lock',
-    '**/.docusaurus/',
-    '**/.cache-loader',
-    'test/output-*/',
-    '**/.dev_profile*',
-    '**/coverage/',
-    '**/generated/',
-    '**/.eslintcache',
-    '**/.cache/',
-    '**/.vscode',
-    '!.vscode/extensions.json',
-    '!.vscode/*.template.json',
-    '**/.devcontainer',
-    '**/.DS_Store',
-    '**/.env.local',
-    '**/.env.development.local',
-    '**/.env.test.local',
-    '**/.env.production.local',
-    '**/npm-debug.log*',
-    '**/yarn-debug.log*',
-    '**/yarn-error.log*',
-    '**/.wireit',
-    '**/assets/',
-    '**/third_party/',
-    'packages/ng-schematics/sandbox/**/*',
-    'packages/ng-schematics/multi/**/*',
-    'packages/ng-schematics/src/**/files/',
-    'examples/puppeteer-in-browser/out/**/*',
-    'examples/puppeteer-in-browser/node_modules/**/*',
-    'examples/puppeteer-in-extension/out/**/*',
-    'examples/puppeteer-in-extension/node_modules/**/*',
-  ]),
+/**
+ * @type {import('eslint').Linter.Config[]}
+ */
+export default [
+  {
+    ignores: [
+      '**/node_modules',
+      '**/build/',
+      '**/lib/',
+      '**/bin/',
+      '**/*.tsbuildinfo',
+      '**/*.api.json',
+      '**/*.tgz',
+      '**/yarn.lock',
+      '**/.docusaurus/',
+      '**/.cache-loader',
+      'test/output-*/',
+      '**/.dev_profile*',
+      '**/coverage/',
+      '**/generated/',
+      '**/.eslintcache',
+      '**/.cache/',
+      '**/.vscode',
+      '!.vscode/extensions.json',
+      '!.vscode/*.template.json',
+      '**/.devcontainer',
+      '**/.DS_Store',
+      '**/.env.local',
+      '**/.env.development.local',
+      '**/.env.test.local',
+      '**/.env.production.local',
+      '**/npm-debug.log*',
+      '**/yarn-debug.log*',
+      '**/yarn-error.log*',
+      '**/.wireit',
+      '**/assets/',
+      '**/third_party/',
+      'packages/ng-schematics/sandbox/**/*',
+      'packages/ng-schematics/multi/**/*',
+      'packages/ng-schematics/src/**/files/',
+      'examples/puppeteer-in-browser/out/**/*',
+      'examples/puppeteer-in-browser/node_modules/**/*',
+      'examples/puppeteer-in-extension/out/**/*',
+      'examples/puppeteer-in-extension/node_modules/**/*',
+    ],
+  },
   eslintPrettierPluginRecommended,
   importPlugin.flatConfigs.typescript,
   {
     name: 'JavaScript rules',
     plugins: {
       mocha,
-      '@typescript-eslint': typescriptEslint.plugin,
+      '@typescript-eslint': typescriptEslint,
       import: importPlugin,
       rulesdir,
       '@stylistic': stylisticPlugin,
     },
 
     languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-
       globals: {
         ...globals.node,
       },
 
-      parser: typescriptEslint.parser,
+      parser: tsParser,
     },
 
     settings: {
@@ -208,9 +219,6 @@ export default defineConfig([
         },
       ],
 
-      // TODO: enable with next version
-      // 'import/enforce-node-protocol-usage': 'error',
-
       '@stylistic/func-call-spacing': 'error',
       '@stylistic/semi': 'error',
 
@@ -222,12 +230,12 @@ export default defineConfig([
       'rulesdir/check-license': 'error',
     },
   },
-  ...[
-    typescriptEslint.configs.eslintRecommended,
-    typescriptEslint.configs.recommended,
-    typescriptEslint.configs.stylistic,
-  ]
-    .flat()
+  ...compat
+    .extends(
+      'plugin:@typescript-eslint/eslint-recommended',
+      'plugin:@typescript-eslint/recommended',
+      'plugin:@typescript-eslint/stylistic',
+    )
     .map(config => {
       return {
         ...config,
@@ -243,8 +251,8 @@ export default defineConfig([
     },
 
     languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
+      ecmaVersion: 5,
+      sourceType: 'script',
 
       parserOptions: {
         allowAutomaticSingleRunInference: true,
@@ -412,9 +420,6 @@ export default defineConfig([
             'CallExpression[callee.property.name="on"] BlockStatement > :not(TryStatement) > ExpressionStatement > CallExpression[callee.object.callee.name="expect"]',
         },
       ],
-
-      'mocha/no-pending-tests': 'error',
-      'mocha/no-identical-title': 'error',
     },
   },
-]);
+];

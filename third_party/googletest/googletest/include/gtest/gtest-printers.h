@@ -104,19 +104,15 @@
 #ifndef GOOGLETEST_INCLUDE_GTEST_GTEST_PRINTERS_H_
 #define GOOGLETEST_INCLUDE_GTEST_GTEST_PRINTERS_H_
 
-#include <any>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <ostream>  // NOLINT
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <typeinfo>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #ifdef GTEST_HAS_ABSL
@@ -249,8 +245,8 @@ struct StreamPrinter {
   // ADL (possibly involving implicit conversions).
   // (Use SFINAE via return type, because it seems GCC < 12 doesn't handle name
   // lookup properly when we do it in the template parameter list.)
-  static auto PrintValue(const T& value, ::std::ostream* os)
-      -> decltype((void)(*os << value)) {
+  static auto PrintValue(const T& value,
+                         ::std::ostream* os) -> decltype((void)(*os << value)) {
     // Call streaming operator found by ADL, possibly with implicit conversions
     // of the arguments.
     *os << value;
@@ -525,15 +521,11 @@ GTEST_API_ void PrintTo(wchar_t wc, ::std::ostream* os);
 
 GTEST_API_ void PrintTo(char32_t c, ::std::ostream* os);
 inline void PrintTo(char16_t c, ::std::ostream* os) {
-  // TODO(b/418738869): Incorrect for values not representing valid codepoints.
-  // Also see https://github.com/google/googletest/issues/4762.
-  PrintTo(static_cast<char32_t>(c), os);
+  PrintTo(ImplicitCast_<char32_t>(c), os);
 }
 #ifdef __cpp_lib_char8_t
 inline void PrintTo(char8_t c, ::std::ostream* os) {
-  // TODO(b/418738869): Incorrect for values not representing valid codepoints.
-  // Also see https://github.com/google/googletest/issues/4762.
-  PrintTo(static_cast<char32_t>(c), os);
+  PrintTo(ImplicitCast_<char32_t>(c), os);
 }
 #endif
 
@@ -703,63 +695,44 @@ void PrintRawArrayTo(const T a[], size_t count, ::std::ostream* os) {
   }
 }
 
-// Overloads for ::std::string and ::std::string_view
-GTEST_API_ void PrintStringTo(::std::string_view s, ::std::ostream* os);
+// Overloads for ::std::string.
+GTEST_API_ void PrintStringTo(const ::std::string& s, ::std::ostream* os);
 inline void PrintTo(const ::std::string& s, ::std::ostream* os) {
   PrintStringTo(s, os);
 }
-inline void PrintTo(::std::string_view s, ::std::ostream* os) {
-  PrintStringTo(s, os);
-}
 
-// Overloads for ::std::u8string and ::std::u8string_view
+// Overloads for ::std::u8string
 #ifdef __cpp_lib_char8_t
-GTEST_API_ void PrintU8StringTo(::std::u8string_view s, ::std::ostream* os);
+GTEST_API_ void PrintU8StringTo(const ::std::u8string& s, ::std::ostream* os);
 inline void PrintTo(const ::std::u8string& s, ::std::ostream* os) {
-  PrintU8StringTo(s, os);
-}
-inline void PrintTo(::std::u8string_view s, ::std::ostream* os) {
   PrintU8StringTo(s, os);
 }
 #endif
 
-// Overloads for ::std::u16string and ::std::u16string_view
-GTEST_API_ void PrintU16StringTo(::std::u16string_view s, ::std::ostream* os);
+// Overloads for ::std::u16string
+GTEST_API_ void PrintU16StringTo(const ::std::u16string& s, ::std::ostream* os);
 inline void PrintTo(const ::std::u16string& s, ::std::ostream* os) {
   PrintU16StringTo(s, os);
 }
-inline void PrintTo(::std::u16string_view s, ::std::ostream* os) {
-  PrintU16StringTo(s, os);
-}
 
-// Overloads for ::std::u32string and ::std::u32string_view
-GTEST_API_ void PrintU32StringTo(::std::u32string_view s, ::std::ostream* os);
+// Overloads for ::std::u32string
+GTEST_API_ void PrintU32StringTo(const ::std::u32string& s, ::std::ostream* os);
 inline void PrintTo(const ::std::u32string& s, ::std::ostream* os) {
   PrintU32StringTo(s, os);
 }
-inline void PrintTo(::std::u32string_view s, ::std::ostream* os) {
-  PrintU32StringTo(s, os);
-}
 
-// Overloads for ::std::wstring and ::std::wstring_view
+// Overloads for ::std::wstring.
 #if GTEST_HAS_STD_WSTRING
-GTEST_API_ void PrintWideStringTo(::std::wstring_view s, ::std::ostream* os);
+GTEST_API_ void PrintWideStringTo(const ::std::wstring& s, ::std::ostream* os);
 inline void PrintTo(const ::std::wstring& s, ::std::ostream* os) {
-  PrintWideStringTo(s, os);
-}
-inline void PrintTo(::std::wstring_view s, ::std::ostream* os) {
   PrintWideStringTo(s, os);
 }
 #endif  // GTEST_HAS_STD_WSTRING
 
 #if GTEST_INTERNAL_HAS_STRING_VIEW
-// Overload for internal::StringView. Needed for build configurations where
-// internal::StringView is an alias for absl::string_view, but absl::string_view
-// is a distinct type from std::string_view.
-template <int&... ExplicitArgumentBarrier, typename T = internal::StringView,
-          std::enable_if_t<!std::is_same_v<T, ::std::string_view>, int> = 0>
+// Overload for internal::StringView.
 inline void PrintTo(internal::StringView sp, ::std::ostream* os) {
-  PrintStringTo(sp, os);
+  PrintTo(::std::string(sp), os);
 }
 #endif  // GTEST_INTERNAL_HAS_STRING_VIEW
 
@@ -917,11 +890,14 @@ class UniversalPrinter {
 template <typename T>
 class UniversalPrinter<const T> : public UniversalPrinter<T> {};
 
-// Printer for std::any
+#if GTEST_INTERNAL_HAS_ANY
+
+// Printer for std::any / absl::any
+
 template <>
-class UniversalPrinter<std::any> {
+class UniversalPrinter<Any> {
  public:
-  static void Print(const std::any& value, ::std::ostream* os) {
+  static void Print(const Any& value, ::std::ostream* os) {
     if (value.has_value()) {
       *os << "value of type " << GetTypeName(value);
     } else {
@@ -930,7 +906,7 @@ class UniversalPrinter<std::any> {
   }
 
  private:
-  static std::string GetTypeName(const std::any& value) {
+  static std::string GetTypeName(const Any& value) {
 #if GTEST_HAS_RTTI
     return internal::GetTypeName(value.type());
 #else
@@ -940,11 +916,16 @@ class UniversalPrinter<std::any> {
   }
 };
 
-// Printer for std::optional
+#endif  // GTEST_INTERNAL_HAS_ANY
+
+#if GTEST_INTERNAL_HAS_OPTIONAL
+
+// Printer for std::optional / absl::optional
+
 template <typename T>
-class UniversalPrinter<std::optional<T>> {
+class UniversalPrinter<Optional<T>> {
  public:
-  static void Print(const std::optional<T>& value, ::std::ostream* os) {
+  static void Print(const Optional<T>& value, ::std::ostream* os) {
     *os << '(';
     if (!value) {
       *os << "nullopt";
@@ -956,18 +937,29 @@ class UniversalPrinter<std::optional<T>> {
 };
 
 template <>
-class UniversalPrinter<std::nullopt_t> {
+class UniversalPrinter<decltype(Nullopt())> {
  public:
-  static void Print(std::nullopt_t, ::std::ostream* os) { *os << "(nullopt)"; }
+  static void Print(decltype(Nullopt()), ::std::ostream* os) {
+    *os << "(nullopt)";
+  }
 };
 
-// Printer for std::variant
+#endif  // GTEST_INTERNAL_HAS_OPTIONAL
+
+#if GTEST_INTERNAL_HAS_VARIANT
+
+// Printer for std::variant / absl::variant
+
 template <typename... T>
-class UniversalPrinter<std::variant<T...>> {
+class UniversalPrinter<Variant<T...>> {
  public:
-  static void Print(const std::variant<T...>& value, ::std::ostream* os) {
+  static void Print(const Variant<T...>& value, ::std::ostream* os) {
     *os << '(';
+#ifdef GTEST_HAS_ABSL
+    absl::visit(Visitor{os, value.index()}, value);
+#else
     std::visit(Visitor{os, value.index()}, value);
+#endif  // GTEST_HAS_ABSL
     *os << ')';
   }
 
@@ -983,6 +975,8 @@ class UniversalPrinter<std::variant<T...>> {
     std::size_t index;
   };
 };
+
+#endif  // GTEST_INTERNAL_HAS_VARIANT
 
 // UniversalPrintArray(begin, len, os) prints an array of 'len'
 // elements, starting at address 'begin'.

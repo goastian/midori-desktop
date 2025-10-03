@@ -29,7 +29,6 @@ class DownloadUIStore(
 /**
  * The DownloadState Reducer.
  */
-@Suppress("LongMethod")
 private fun downloadStateReducer(
     state: DownloadUIState,
     action: DownloadUIAction,
@@ -77,33 +76,6 @@ private fun downloadStateReducer(
         is DownloadUIAction.ShareUrlClicked -> state
         is DownloadUIAction.ShareFileClicked -> state
         is DownloadUIAction.UndoPendingDeletion -> state
-        is DownloadUIAction.PauseDownload -> {
-            state.copyWithFileItemStatusTransition(
-                downloadId = action.downloadId,
-                downloadControlAction = FileItem.Status.DownloadControlAction.PAUSE,
-            )
-        }
-
-        is DownloadUIAction.ResumeDownload -> {
-            state.copyWithFileItemStatusTransition(
-                downloadId = action.downloadId,
-                downloadControlAction = FileItem.Status.DownloadControlAction.RESUME,
-            )
-        }
-
-        is DownloadUIAction.RetryDownload -> {
-            state.copyWithFileItemStatusTransition(
-                downloadId = action.downloadId,
-                downloadControlAction = FileItem.Status.DownloadControlAction.RETRY,
-            )
-        }
-
-        is DownloadUIAction.CancelDownload -> {
-            state.copyWithFileItemStatusTransition(
-                downloadId = action.downloadId,
-                downloadControlAction = FileItem.Status.DownloadControlAction.CANCEL,
-            )
-        }
 
         is DownloadUIAction.SearchBarDismissRequest -> state.copy(
             isSearchFieldRequested = false,
@@ -112,23 +84,4 @@ private fun downloadStateReducer(
 
         is DownloadUIAction.SearchBarVisibilityRequest -> state.copy(isSearchFieldRequested = true)
     }
-}
-
-private fun DownloadUIState.copyWithFileItemStatusTransition(
-    downloadId: String,
-    downloadControlAction: FileItem.Status.DownloadControlAction,
-): DownloadUIState {
-    val itemIndex = items.indexOfFirst { it.id == downloadId }
-    if (itemIndex == -1) {
-        return this
-    }
-
-    val updatedItems = items.map {
-        if (it.id == downloadId) {
-            it.copy(status = it.status.transition(action = downloadControlAction))
-        } else {
-            it
-        }
-    }
-    return copy(items = updatedItems)
 }

@@ -11,6 +11,7 @@
 #include "nsGenericHTMLElement.h"
 
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/HTMLOptionsCollection.h"
 #include "mozilla/EnumSet.h"
 #include "nsCheapSets.h"
@@ -35,8 +36,6 @@ class PresState;
 namespace dom {
 
 class FormData;
-class HTMLElementOrLong;
-class HTMLOptionElementOrHTMLOptGroupElement;
 class HTMLSelectElement;
 
 class MOZ_STACK_CLASS SafeOptionListMutation {

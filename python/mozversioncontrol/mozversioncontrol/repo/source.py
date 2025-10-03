@@ -5,7 +5,7 @@
 import contextlib
 import os
 from pathlib import Path
-from typing import Union
+from typing import Dict, Union
 
 from mozpack.files import FileListFinder
 
@@ -143,7 +143,7 @@ class SrcRepository(Repository):
     def push_to_try(
         self,
         message: str,
-        changed_files: dict[str, str] = {},
+        changed_files: Dict[str, str] = {},
         allow_log_capture: bool = False,
     ):
         pass
@@ -163,6 +163,3 @@ class SrcRepository(Repository):
     def get_last_modified_time_for_file(self, path: Path):
         """Return last modified in VCS time for the specified file."""
         raise MissingVCSTool
-
-    def configure(self, state_dir: Path, update_only: bool = False):
-        pass

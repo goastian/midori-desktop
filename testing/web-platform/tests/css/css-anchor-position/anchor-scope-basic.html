@@ -11,8 +11,7 @@
 
   .anchor-a { anchor-name: --a; }
   .anchor-b { anchor-name: --b; }
-  .anchor-ab { anchor-name: --a, --b; }
-  .anchor-a, .anchor-b, .anchor-ab {
+  .anchor-a, .anchor-b {
     background: skyblue;
     height: 10px;
   }
@@ -160,8 +159,7 @@
   <div class=anchor-b></div>
   <div class=anchor-a></div><!--A-->
   <div class=scope-a>
-    <div class=anchor-b></div>
-    <div class=anchor-ab></div><!--B-->
+    <div class=anchor-b></div><!--B-->
     <div class=anchor-a></div>
   </div>
   <div class=anchored-a></div>
@@ -171,7 +169,7 @@
   test((t) => {
     inflate(t, test_scope_a);
     assert_equals(getComputedStyle(main.querySelector('.anchored-a')).top, '20px');
-    assert_equals(getComputedStyle(main.querySelector('.anchored-b')).top, '40px');
+    assert_equals(getComputedStyle(main.querySelector('.anchored-b')).top, '30px');
   }, 'anchor-scope:--a scopes only --a');
 </script>
 
@@ -179,8 +177,8 @@
   <div class=anchor-b></div><!--B-->
   <div class=anchor-a></div>
   <div class=scope-b>
-    <div class=anchor-a></div><!--A-->
     <div class=anchor-b></div>
+    <div class=anchor-a></div><!--A-->
   </div>
   <div class=anchored-a></div>
   <div class=anchored-b></div>
@@ -188,7 +186,7 @@
 <script>
   test((t) => {
     inflate(t, test_scope_b);
-    assert_equals(getComputedStyle(main.querySelector('.anchored-a')).top, '30px');
+    assert_equals(getComputedStyle(main.querySelector('.anchored-a')).top, '40px');
     assert_equals(getComputedStyle(main.querySelector('.anchored-b')).top, '10px');
   }, 'anchor-scope:--b scopes only --b');
 </script>

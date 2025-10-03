@@ -8,7 +8,6 @@
 #define frontend_BytecodeControlStructures_h
 
 #include "mozilla/Assertions.h"  // MOZ_ASSERT
-#include "mozilla/Attributes.h"  // MOZ_STACK_CLASS
 #include "mozilla/Maybe.h"       // mozilla::Maybe
 
 #include <stdint.h>  // int32_t, uint32_t
@@ -27,9 +26,6 @@ namespace frontend {
 struct BytecodeEmitter;
 class EmitterScope;
 
-// This class just like Nestable is not annotated with MOZ_STACK_CLASS
-// in order to allow specific cases where subclasses need to be
-// be allocated on heap.
 class NestableControl : public Nestable<NestableControl> {
   StatementKind kind_;
 
@@ -57,7 +53,7 @@ class NestableControl : public Nestable<NestableControl> {
   }
 };
 
-class MOZ_STACK_CLASS BreakableControl : public NestableControl {
+class BreakableControl : public NestableControl {
  public:
   // Offset of the last break.
   JumpList breaks;
@@ -72,7 +68,7 @@ inline bool NestableControl::is<BreakableControl>() const {
          kind_ == StatementKind::Label;
 }
 
-class MOZ_STACK_CLASS LabelControl : public BreakableControl {
+class LabelControl : public BreakableControl {
   TaggedParserAtomIndex label_;
 
   // The code offset when this was pushed. Used for effectfulness checking.
@@ -154,9 +150,6 @@ class TryFinallyContinuation {
   NonLocalExitKind kind_;
 };
 
-// TryFinallyControl is not annotated with MOZ_STACK_CLASS in order to allow
-// for TryEmitter to be allocated on heap which uses this class to track jumps
-// to the finally block.
 class TryFinallyControl : public NestableControl {
   bool emittingSubroutine_ = false;
 

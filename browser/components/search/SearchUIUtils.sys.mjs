@@ -59,16 +59,12 @@ export var SearchUIUtils = {
    */
   showSearchServiceNotification(notificationType, ...args) {
     switch (notificationType) {
-      case "search-engine-removal": {
-        let [oldEngine, newEngine] = args;
-        this.removalOfSearchEngineNotificationBox(oldEngine, newEngine);
+      case "search-engine-removal":
+        this.removalOfSearchEngineNotificationBox(...args);
         break;
-      }
-      case "search-settings-reset": {
-        let [newEngine] = args;
-        this.searchSettingsResetNotificationBox(newEngine);
+      case "search-settings-reset":
+        this.searchSettingsResetNotificationBox(...args);
         break;
-      }
     }
   },
 
@@ -303,29 +299,24 @@ export var SearchUIUtils = {
       }
     };
 
-    let searchBar = /** @type {MozSearchbar} */ (
-      window.document.getElementById("searchbar")
-    );
+    let searchBar = window.document.getElementById("searchbar");
     let placement =
       lazy.CustomizableUI.getPlacementOfWidget("search-container");
     let focusSearchBar = () => {
-      searchBar = /** @type {MozSearchbar} */ (
-        window.document.getElementById("searchbar")
-      );
+      searchBar = window.document.getElementById("searchbar");
       searchBar.select();
       focusUrlBarIfSearchFieldIsNotActive(searchBar);
     };
     if (
       placement &&
       searchBar &&
-      ((searchBar.parentElement.getAttribute("overflowedItem") == "true" &&
+      ((searchBar.parentNode.getAttribute("overflowedItem") == "true" &&
         placement.area == lazy.CustomizableUI.AREA_NAVBAR) ||
         placement.area == lazy.CustomizableUI.AREA_FIXED_OVERFLOW_PANEL)
     ) {
       let navBar = window.document.getElementById(
         lazy.CustomizableUI.AREA_NAVBAR
       );
-      // @ts-expect-error - Navbar receives the overflowable property upon registration.
       navBar.overflowable.show().then(focusSearchBar);
       return;
     }
@@ -360,7 +351,7 @@ export var SearchUIUtils = {
    *   Set to true for the tab to be loaded in the background.
    * @param {?nsISearchEngine} [engine=null]
    *   The search engine to use for the search.
-   * @param {?MozTabbrowserTab} [tab=null]
+   * @param {?NativeTab} [tab=null]
    *   The tab to show the search result.
    *
    * @returns {Promise<?{engine: nsISearchEngine, url: nsIURI}>}
@@ -431,7 +422,7 @@ export var SearchUIUtils = {
    *   The principal of the document whose context menu was clicked.
    * @param {nsIContentSecurityPolicy} csp
    *   The content security policy to use for a new window or tab.
-   * @param {XULCommandEvent|PointerEvent} event
+   * @param {Event} event
    *   The event triggering the search.
    */
   async loadSearchFromContext(
@@ -531,7 +522,7 @@ export var SearchUIUtils = {
    *   The search engine to use for the search.
    * @param {string} params.where
    *   String indicating where the search should load.
-   * @param {MozTabbrowserTab} params.tab
+   * @param {NativeTab} params.tab
    *   The tab to show the search result.
    * @param {nsIPrincipal} params.triggeringPrincipal
    *   The principal to use for a new window or tab.

@@ -298,6 +298,3 @@ newtab-custom-settings = Gestionează mai multe setări
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

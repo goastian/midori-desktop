@@ -17,15 +17,11 @@ import org.mozilla.fenix.components.appstate.AppAction
  * Process the [Intent] from [CrashReporter] through which the app is informed about
  * recoverable native crashes.
  */
-class CrashReporterIntentProcessor(
-    private val appStore: AppStore,
-    private val isCrashIntent: (Intent) -> Boolean = { intent -> Crash.isCrashIntent(intent) },
-    private val getCrashFromIntent: (Intent) -> Crash = { intent -> Crash.fromIntent(intent) },
-) : HomeIntentProcessor {
+class CrashReporterIntentProcessor(private val appStore: AppStore) : HomeIntentProcessor {
 
     override fun process(intent: Intent, navController: NavController, out: Intent): Boolean {
-        return if (isCrashIntent(intent)) {
-            val crash = getCrashFromIntent(intent)
+        return if (Crash.isCrashIntent(intent)) {
+            val crash = Crash.fromIntent(intent)
             // If only a child process crashed we can handle this gracefully.
             if ((crash as? NativeCodeCrash)?.isFatal == false) {
                 appStore.dispatch(AppAction.AddNonFatalCrash(crash))

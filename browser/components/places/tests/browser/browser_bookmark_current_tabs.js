@@ -6,11 +6,7 @@ const { MockRegistrar } = ChromeUtils.importESModule(
   "resource://testing-common/MockRegistrar.sys.mjs"
 );
 
-add_setup(async () => {
-  await SpecialPowers.pushPrefEnv({
-    set: [["test.wait300msAfterTabSwitch", true]],
-  });
-
+add_setup(() => {
   let mockPromptService = {
     confirmExBC() {
       return 0;

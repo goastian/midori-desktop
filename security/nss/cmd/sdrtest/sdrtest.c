@@ -7,7 +7,6 @@
  */
 
 #include "nspr.h"
-#include "pkcs11t.h"
 #include "string.h"
 #include "nss.h"
 #include "secutil.h"
@@ -159,7 +158,6 @@ main(int argc, char **argv)
     SECItem text;
     PRBool ascii = PR_FALSE;
     secuPWData pwdata = { PW_NONE, 0 };
-    CK_MECHANISM_TYPE mechanism = CKM_AES_CBC;
 
     pr_stderr = PR_STDERR;
     result.data = 0;
@@ -169,7 +167,7 @@ main(int argc, char **argv)
     program_name = PL_strrchr(argv[0], '/');
     program_name = program_name ? (program_name + 1) : argv[0];
 
-    optstate = PL_CreateOptState(argc, argv, "?Had:i:o:t:vf:p:m:");
+    optstate = PL_CreateOptState(argc, argv, "?Had:i:o:t:vf:p:");
     if (optstate == NULL) {
         SECU_PrintError(program_name, "PL_CreateOptState failed");
         return -1;
@@ -227,15 +225,6 @@ main(int argc, char **argv)
 
             case 'v':
                 verbose = PR_TRUE;
-                break;
-
-            case 'm':
-                if (strcmp(optstate->value, "des3")) {
-                    mechanism = CKM_DES3_CBC;
-                } else if (!strcmp(optstate->value, "aes")) {
-                    short_usage(program_name);
-                    return -1;
-                }
                 break;
         }
     }
@@ -323,17 +312,16 @@ main(int argc, char **argv)
                 return SECFailure;
             }
         }
+        if (slot) {
+            PK11_FreeSlot(slot);
+        }
 
-        rv = PK11SDR_EncryptWithMechanism(slot, &keyid, mechanism, &data, &result, &pwdata);
+        rv = PK11SDR_Encrypt(&keyid, &data, &result, &pwdata);
         if (rv != SECSuccess) {
             if (verbose)
                 SECU_PrintError(program_name, "Encrypt operation failed\n");
             retval = -1;
             goto loser;
-        }
-
-        if (slot) {
-            PK11_FreeSlot(slot);
         }
 
         if (verbose)

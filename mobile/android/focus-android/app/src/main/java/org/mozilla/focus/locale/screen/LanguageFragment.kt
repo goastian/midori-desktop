@@ -15,7 +15,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.lib.state.ext.observeAsComposableState
-import mozilla.components.support.locale.LocaleManager
 import mozilla.components.support.locale.LocaleUseCases
 import org.mozilla.focus.R
 import org.mozilla.focus.ext.components
@@ -41,7 +40,6 @@ class LanguageFragment : BaseComposeFragment() {
                     activity = requireActivity(),
                     localeUseCase = localeUseCases,
                     storage = LanguageStorage(requireContext()),
-                    getSystemDefault = { LocaleManager.getSystemDefault() },
                 ),
             ),
         )

@@ -7,11 +7,9 @@ package org.mozilla.fenix.crashes
 import android.content.Context
 import android.util.AttributeSet
 import android.view.LayoutInflater
-import android.view.View
 import androidx.annotation.VisibleForTesting
 import androidx.constraintlayout.widget.ConstraintLayout
 import org.mozilla.fenix.R
-import org.mozilla.fenix.crashes.CrashContentView.Companion.TAP_INCREASE_DP
 import org.mozilla.fenix.databinding.ViewCrashReporterBinding
 import org.mozilla.fenix.ext.increaseTapArea
 
@@ -73,27 +71,18 @@ class CrashContentView @JvmOverloads constructor(
             context.getString(R.string.tab_crash_title_2, context.getString(R.string.app_name))
 
         binding.restoreTabButton.apply {
-            increaseTapArea(this)
+            increaseTapArea(TAP_INCREASE_DP)
             setOnClickListener {
                 controller.handleCloseAndRestore(binding.sendCrashCheckbox.isChecked)
             }
         }
 
         binding.closeTabButton.apply {
-            increaseTapArea(this)
+            increaseTapArea(TAP_INCREASE_DP)
             setOnClickListener {
                 controller.handleCloseAndRemove(binding.sendCrashCheckbox.isChecked)
             }
         }
-    }
-
-    /**
-     * Increases the tap area of the current view by a predefined amount.
-     * This amount is defined by [TAP_INCREASE_DP].
-     */
-    @VisibleForTesting
-    internal fun increaseTapArea(view: View) {
-        view.increaseTapArea(TAP_INCREASE_DP)
     }
 
     companion object {

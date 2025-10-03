@@ -48,7 +48,7 @@ add_task(async function test_bug1874801() {
     TAB_URL,
     true
   );
-  SessionWindowUI.undoCloseTab(window);
+  undoCloseTab();
   const restoredTab = await restoredTabPromise;
 
   // Make sure the image was loaded via HTTPS

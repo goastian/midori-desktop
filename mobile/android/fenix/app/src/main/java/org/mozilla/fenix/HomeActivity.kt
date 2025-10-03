@@ -442,10 +442,7 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
             // Unless the activity is recreated, navigate to home first (without rendering it)
             // to add it to the back stack.
             if (savedInstanceState == null) {
-                val intent = intent.toSafeIntent()
-                val focusOnAddressBar = intent.getStringExtra(OPEN_TO_SEARCH) != null
-
-                navigateToHome(navHost.navController, focusOnAddressBar)
+                navigateToHome(navHost.navController)
             }
 
             if (shouldNavigateToBrowserOnColdStart(savedInstanceState)) {
@@ -542,7 +539,7 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
         // are read possibly needing to load them on the current thread. Move that to a background thread.
         lifecycleScope.launch(IO) {
             if (settings().showPocketRecommendationsFeature) {
-                components.core.pocketStoriesService.startPeriodicContentRecommendationsRefresh()
+                components.core.pocketStoriesService.startPeriodicStoriesRefresh()
             }
 
             if (settings().marsAPIEnabled && !settings().hasPocketSponsoredStoriesProfileMigrated) {
@@ -560,6 +557,10 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
                         components.core.pocketStoriesService.refreshSponsoredStories()
                     }
                 }
+            }
+
+            if (settings().showContentRecommendations) {
+                components.core.pocketStoriesService.startPeriodicContentRecommendationsRefresh()
             }
         }
 
@@ -800,6 +801,7 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
         )
 
         components.core.contileTopSitesUpdater.stopPeriodicWork()
+        components.core.pocketStoriesService.stopPeriodicStoriesRefresh()
         components.core.pocketStoriesService.stopPeriodicSponsoredStoriesRefresh()
         components.core.pocketStoriesService.stopPeriodicContentRecommendationsRefresh()
         components.core.pocketStoriesService.stopPeriodicSponsoredContentsRefresh()
@@ -1104,7 +1106,7 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
     /**
      * External sources such as 3rd party links and shortcuts use this function to enter
      * private mode directly before the content view is created. Returns the mode set by the intent
-     * otherwise falls back to normal browsing mode.
+     * otherwise falls back to the last known mode.
      */
     @VisibleForTesting
     internal fun getModeFromIntentOrLastKnown(intent: Intent?): BrowsingMode {
@@ -1114,14 +1116,7 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
                 return BrowsingMode.fromBoolean(isPrivate = startPrivateMode)
             }
         }
-
-        if (settings().lastKnownMode.isPrivate &&
-            components.core.store.state.getNormalOrPrivateTabs(private = true).isNotEmpty()
-        ) {
-            return BrowsingMode.Private
-        }
-
-        return BrowsingMode.Normal
+        return settings().lastKnownMode
     }
 
     /**
@@ -1264,12 +1259,12 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
     }
 
     @VisibleForTesting
-    internal fun navigateToHome(navController: NavController, focusOnAddressBar: Boolean) {
+    internal fun navigateToHome(navController: NavController) {
         if (this is ExternalAppBrowserActivity) {
             return
         }
 
-        navController.navigate(NavGraphDirections.actionStartupHome(focusOnAddressBar = focusOnAddressBar))
+        navController.navigate(NavGraphDirections.actionStartupHome())
     }
 
     final override fun attachBaseContext(base: Context) {
@@ -1293,18 +1288,11 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
     }
 
     private fun createBrowsingModeManager(initialMode: BrowsingMode): BrowsingModeManager {
-        return DefaultBrowsingModeManager(
-            initialMode = initialMode,
-            settings = components.settings,
-            modeDidChange = { newMode ->
-                updateSecureWindowFlags(newMode)
-                addPrivateHomepageTabIfNecessary(newMode)
-                themeManager.currentTheme = newMode
-            },
-            updateAppStateMode = { newMode ->
-                components.appStore.dispatch(AppAction.BrowsingModeManagerModeChanged(mode = newMode))
-            },
-        ).also {
+        return DefaultBrowsingModeManager(initialMode, components.settings) { newMode ->
+            updateSecureWindowFlags(newMode)
+            addPrivateHomepageTabIfNecessary(newMode)
+            themeManager.currentTheme = newMode
+        }.also {
             updateSecureWindowFlags(initialMode)
         }
     }

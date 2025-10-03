@@ -225,7 +225,9 @@ async function runTests() {
          if (aIsPlaintext) {
            return "a\t";
          }
-         return"a&nbsp; &nbsp;&nbsp;";
+         return SpecialPowers.getBoolPref("editor.white_space_normalization.blink_compatible")
+           ? "a&nbsp; &nbsp;&nbsp;"
+           : "a&nbsp;&nbsp;&nbsp; <br>";
        })(),
        aDescription + "Tab");
     is(SpecialPowers.unwrap(fm.focusedElement), aElement,
@@ -558,7 +560,9 @@ async function runTests() {
          if (aIsPlaintext) {
            return "Mozilla ";
          }
-         return "Mozilla&nbsp;";
+         return SpecialPowers.getBoolPref("editor.white_space_normalization.blink_compatible")
+           ? "Mozilla&nbsp;"
+           : "Mozilla <br>";
        })(),
        aDescription + "typed \"Mozilla \"");
 

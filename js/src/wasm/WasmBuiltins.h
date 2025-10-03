@@ -22,7 +22,6 @@
 #include "intgemm/IntegerGemmIntrinsic.h"
 #include "jit/IonTypes.h"
 #include "wasm/WasmBuiltinModuleGenerated.h"
-#include "wasm/WasmConstants.h"
 
 namespace js {
 class JitFrameIter;
@@ -175,7 +174,7 @@ enum class FailureMode : uint8_t {
   FailOnNegI32,
   FailOnMaxI32,
   FailOnNullPtr,
-  FailOnInvalidRef,
+  FailOnInvalidRef
 };
 
 // SymbolicAddressSignature carries type information for a function referred
@@ -195,8 +194,6 @@ struct SymbolicAddressSignature {
   const jit::MIRType retType;
   // The failure mode, which is checked by masm.wasmCallBuiltinInstanceMethod.
   const FailureMode failureMode;
-  // The trap to execute if the builtin fails.
-  const Trap failureTrap;
   // The number of arguments, 0 .. SymbolicAddressSignatureMaxArgs only.
   const uint8_t numArgs;
   // The argument types; SymbolicAddressSignatureMaxArgs + 1 guard, which
@@ -332,7 +329,7 @@ void* SymbolicAddressTarget(SymbolicAddress sym);
 
 void* ProvisionalLazyJitEntryStub();
 
-void* MaybeGetTypedNative(JSFunction* f, const FuncType& funcType);
+void* MaybeGetBuiltinThunk(JSFunction* f, const FuncType& funcType);
 
 void ReleaseBuiltinThunks();
 

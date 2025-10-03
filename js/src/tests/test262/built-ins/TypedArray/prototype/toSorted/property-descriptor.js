@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-%typedarray%.prototype.tosorted
+esid: sec-%typedarray%.prototype.toSorted
 description: >
   "toSorted" property of %TypedArray%.prototype
 info: |

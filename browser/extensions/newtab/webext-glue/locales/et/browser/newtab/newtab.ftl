@@ -314,6 +314,3 @@ newtab-custom-settings = Halda rohkem sätteid
 
 ## Strings for reporting ads and content
 
-
-## Strings for trending searches
-

@@ -305,8 +305,14 @@ bool RetainedDisplayListBuilder::PreProcessDisplayList(
         !item->GetActiveScrolledRoot()) {
       agrFrame = aAsyncAncestor;
     } else {
-      agrFrame = item->GetActiveScrolledRoot()
-                     ->mScrollContainerFrame->GetScrolledFrame();
+      auto* scrollContainerFrame =
+          item->GetActiveScrolledRoot()->mScrollContainerFrame;
+      if (MOZ_UNLIKELY(!scrollContainerFrame)) {
+        MOZ_DIAGNOSTIC_ASSERT(false);
+        gfxCriticalNoteOnce << "Found null mScrollContainerFrame in asr";
+        return false;
+      }
+      agrFrame = scrollContainerFrame->GetScrolledFrame();
     }
 
     if (aAGR && agrFrame != aAGR) {
@@ -654,9 +660,7 @@ class MergeState {
       nsDisplayItem* aItem, const Maybe<OldListIndex>& aOldIndex,
       Span<const MergedListIndex> aDirectPredecessors,
       const Maybe<MergedListIndex>& aExtraDirectPredecessor) {
-    if (aItem->GetType() != DisplayItemType::TYPE_VT_CAPTURE) {
-      UpdateContainerASR(aItem);
-    }
+    UpdateContainerASR(aItem);
     aItem->NotifyUsed(mBuilder->Builder());
 
 #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED

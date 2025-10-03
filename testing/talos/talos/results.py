@@ -13,6 +13,8 @@ import json
 import os
 import re
 
+import six
+
 from talos import filter, output, utils
 
 
@@ -476,7 +478,7 @@ class BrowserLogResults:
                 # data is counters
                 header = row
                 continue
-            values = dict(zip(header, row))
+            values = dict(six.moves.zip(header, row))
 
             # Format for talos
             thread = values["thread"]
@@ -508,7 +510,7 @@ class BrowserLogResults:
                     # other data is counters
                     header = row
                     continue
-                values = dict(zip(header, row))
+                values = dict(six.moves.zip(header, row))
                 for i, mainthread_counter in enumerate(mainthread_counters):
                     if int(values[mainthread_counter_keys[i]]) > 0:
                         counter_results.setdefault(mainthread_counter, []).append(

@@ -21,7 +21,7 @@ import mozilla.components.concept.engine.cookiehandling.CookieBannersStorage
 import mozilla.components.concept.engine.permission.SitePermissions
 import mozilla.components.feature.session.SessionUseCases
 import mozilla.components.lib.publicsuffixlist.PublicSuffixList
-import mozilla.components.support.ktx.kotlin.isContentUrl
+import mozilla.components.support.utils.ext.isContentUrl
 import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.CookieBanners
 import org.mozilla.fenix.GleanMetrics.Pings
@@ -32,7 +32,6 @@ import org.mozilla.fenix.compose.snackbar.SnackbarState
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getRootView
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
-import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.trackingprotection.CookieBannerUIMode
 import org.mozilla.fenix.trackingprotection.ProtectionsAction
 import org.mozilla.fenix.trackingprotection.ProtectionsStore
@@ -86,9 +85,8 @@ class DefaultCookieBannerDetailsController(
             context.components.useCases.trackingProtectionUseCases.containsException(tab.id) { contains ->
                 ioScope.launch {
                     val cookieBannerUIMode = cookieBannersStorage.getCookieBannerUIMode(
-                        tab = tab,
-                        isFeatureEnabledInPrivateMode = context.settings().shouldUseCookieBannerPrivateMode,
-                        publicSuffixList = publicSuffixList,
+                        context,
+                        tab,
                     )
                     withContext(Dispatchers.Main) {
                         fragment.runIfFragmentIsAttached {

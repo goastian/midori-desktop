@@ -24,7 +24,6 @@ class MockCDPSession extends EventEmitter<CDPSessionEvents> {
   connection() {
     return undefined;
   }
-  readonly detached = false;
   async detach() {}
   id() {
     return '1';

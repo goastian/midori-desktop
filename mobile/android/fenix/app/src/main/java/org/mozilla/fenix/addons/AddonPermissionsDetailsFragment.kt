@@ -30,7 +30,6 @@ import org.mozilla.fenix.theme.FirefoxTheme
 data class AddonPermissionsUpdateRequest(
     val optionalPermissions: List<String> = emptyList(),
     val originPermissions: List<String> = emptyList(),
-    val dataCollectionPermissions: List<String> = emptyList(),
 )
 
 /**
@@ -40,7 +39,6 @@ class AddonPermissionsDetailsFragment : Fragment() {
 
     private val args by navArgs<AddonPermissionsDetailsFragmentArgs>()
 
-    @Suppress("LongMethod")
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -62,10 +60,6 @@ class AddonPermissionsDetailsFragment : Fragment() {
                 )
             }
 
-            val optionalDataCollectionPermissions = rememberSaveable {
-                mutableStateOf(args.addon.translateOptionalDataCollectionPermissions(requireContext()))
-            }
-
             // Note: Even if <all_urls> is in optionalPermissions of the extension manifest, it is found in
             // originPermissions of the Addon
             val allSitesHostPermissionsList = rememberSaveable {
@@ -81,8 +75,6 @@ class AddonPermissionsDetailsFragment : Fragment() {
                 originPermissions.value = updatedAddon.optionalOrigins.map {
                     Addon.LocalizedPermission(it.name, it)
                 }
-                optionalDataCollectionPermissions.value =
-                    updatedAddon.translateOptionalDataCollectionPermissions((requireContext()))
                 allSitesHostPermissionsList.value =
                     updatedAddon.optionalOrigins.getAllSitesPermissionsList()
             }
@@ -92,12 +84,6 @@ class AddonPermissionsDetailsFragment : Fragment() {
                     permissions = args.addon.translatePermissions(requireContext()),
                     optionalPermissions = optionalPermissions.value,
                     originPermissions = originPermissions.value,
-                    requiredDataCollectionPermissions = args.addon.translateRequiredDataCollectionPermissions(
-                        requireContext(),
-                    ),
-                    hasNoneDataCollection = args.addon.requiredDataCollectionPermissions.size == 1 &&
-                            args.addon.requiredDataCollectionPermissions.contains("none"),
-                    optionalDataCollectionPermissions = optionalDataCollectionPermissions.value,
                     isAllSitesSwitchVisible = allSitesHostPermissionsList.value.isNotEmpty(),
                     isAllSitesEnabled = allSitesHostPermissionsList.value.getOrNull(0)?.granted
                         ?: false,
@@ -139,7 +125,6 @@ class AddonPermissionsDetailsFragment : Fragment() {
             args.addon,
             addPermissionsRequest.optionalPermissions,
             addPermissionsRequest.originPermissions,
-            addPermissionsRequest.dataCollectionPermissions,
             onSuccess = {
                 onUpdatePermissionsSuccess(it)
             },
@@ -157,7 +142,6 @@ class AddonPermissionsDetailsFragment : Fragment() {
             args.addon,
             removePermissionsRequest.optionalPermissions,
             removePermissionsRequest.originPermissions,
-            removePermissionsRequest.dataCollectionPermissions,
             onSuccess = {
                 onUpdatePermissionsSuccess(it)
             },

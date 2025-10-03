@@ -49,9 +49,7 @@ document.addEventListener(
           );
           break;
         case "context_pinTab":
-          gBrowser.pinTab(TabContextMenu.contextTab, {
-            telemetrySource: lazy.TabMetrics.METRIC_SOURCE.TAB_MENU,
-          });
+          gBrowser.pinTab(TabContextMenu.contextTab);
           break;
         case "context_unpinTab":
           gBrowser.unpinTab(TabContextMenu.contextTab);

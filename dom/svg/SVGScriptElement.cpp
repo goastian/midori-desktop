@@ -169,10 +169,12 @@ void SVGScriptElement::FreezeExecutionAttrs(const Document* aOwnerDoc) {
 
 //----------------------------------------------------------------------
 // ScriptElement methods
-bool SVGScriptElement::HasExternalScriptContent() {
-  return mFrozen ? mExternal
-                 : (mStringAttributes[HREF].IsExplicitlySet() ||
-                    mStringAttributes[XLINK_HREF].IsExplicitlySet());
+
+bool SVGScriptElement::HasScriptContent() {
+  return (mFrozen ? mExternal
+                  : mStringAttributes[HREF].IsExplicitlySet() ||
+                        mStringAttributes[XLINK_HREF].IsExplicitlySet()) ||
+         nsContentUtils::HasNonEmptyTextContent(this);
 }
 
 //----------------------------------------------------------------------

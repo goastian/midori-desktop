@@ -401,9 +401,8 @@ LexerTransition<nsJPEGDecoder::State> nsJPEGDecoder::ReadJPEGData(
           mInfo.out_color_space != JCS_GRAYSCALE ? mTransform : nullptr;
 
       Maybe<SurfacePipe> pipe = SurfacePipeFactory::CreateReorientSurfacePipe(
-          this, Size(), OutputSize(), SurfaceFormat::OS_RGBX,
-          SurfaceFormat::OS_RGBX, pipeTransform, GetOrientation(),
-          SurfacePipeFlags());
+          this, Size(), OutputSize(), SurfaceFormat::OS_RGBX, pipeTransform,
+          GetOrientation(), SurfacePipeFlags());
       if (!pipe) {
         mState = JPEG_ERROR;
         MOZ_LOG(sJPEGDecoderAccountingLog, LogLevel::Debug,
@@ -658,7 +657,7 @@ EXIFData nsJPEGDecoder::ReadExifData() const {
     return EXIFData();
   }
 
-  return EXIFParser::Parse(/* aExpectExifIdCode = */ true, marker->data,
+  return EXIFParser::Parse(marker->data,
                            static_cast<uint32_t>(marker->data_length),
                            gfx::IntSize(mInfo.image_width, mInfo.image_height));
 }

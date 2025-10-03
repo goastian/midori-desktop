@@ -13,8 +13,9 @@ class LoginPasswordField extends MozLitElement {
     value: { type: String },
     name: { type: String },
     newPassword: { type: Boolean },
-    concealed: { type: Boolean, reflect: true },
+    visible: { type: Boolean, reflect: true },
     required: { type: Boolean, reflect: true },
+    onRevealClick: { type: Function },
   };
 
   static queries = {
@@ -26,7 +27,6 @@ class LoginPasswordField extends MozLitElement {
   constructor() {
     super();
     this.value = "";
-    this.concealed = true;
   }
 
   connectedCallback() {
@@ -37,17 +37,23 @@ class LoginPasswordField extends MozLitElement {
   }
 
   get #type() {
-    return this.concealed ? "password" : "text";
+    return this.visible ? "text" : "password";
   }
 
   get #password() {
-    return !this.newPassword && this.concealed
+    return !this.newPassword && !this.visible
       ? LoginPasswordField.CONCEALED_PASSWORD_TEXT
       : this.value;
   }
 
+  #revealIconSrc(concealed) {
+    return concealed
+      ? "chrome://global/skin/icons/eye-slash.svg"
+      : "chrome://global/skin/icons/eye.svg";
+  }
+
   updated(changedProperties) {
-    if (changedProperties.has("concealed") && !changedProperties.concealed) {
+    if (changedProperties.has("visible") && !changedProperties.visible) {
       this.input.selectionStart = this.value.length;
     }
   }
@@ -66,18 +72,39 @@ class LoginPasswordField extends MozLitElement {
         labelL10nId: "login-item-password-label",
         noteL10nId: "contextual-manager-passwords-password-tooltip",
       })}
+      <moz-button
+        data-l10n-id=${this.visible
+          ? "login-item-password-conceal-checkbox"
+          : "login-item-password-reveal-checkbox"}
+        class="reveal-password-button"
+        type="icon ghost"
+        iconSrc=${this.#revealIconSrc(this.visible)}
+        @mousedown=${() => {
+          /* Programmatically focus the button on mousedown instead of waiting for focus on click
+           * because the blur event occurs before the click event.
+           */
+          this.button.focus();
+        }}
+        @click=${this.onRevealClick}
+      ></moz-button>
     `;
   }
 
   handleFocus() {
-    this.concealed = false;
+    if (this.visible) {
+      return;
+    }
+    this.onRevealClick();
   }
 
   handleBlur(ev) {
-    if (ev.relatedTarget === this.label) {
+    if (ev.relatedTarget === this.button || ev.relatedTarget === this.label) {
       return;
     }
-    this.concealed = true;
+    if (!this.visible) {
+      return;
+    }
+    this.onRevealClick();
   }
 }
 

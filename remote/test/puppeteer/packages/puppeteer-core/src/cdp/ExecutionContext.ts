@@ -400,13 +400,9 @@ export class ExecutionContext
         throw createEvaluationError(exceptionDetails);
       }
 
-      if (returnByValue) {
-        return valueFromRemoteObject(remoteObject);
-      }
-
-      return this.#world.createCdpHandle(remoteObject) as HandleFor<
-        Awaited<ReturnType<Func>>
-      >;
+      return returnByValue
+        ? valueFromRemoteObject(remoteObject)
+        : this.#world.createCdpHandle(remoteObject);
     }
 
     const functionDeclaration = stringifyFunction(pageFunction);
@@ -451,14 +447,9 @@ export class ExecutionContext
     if (exceptionDetails) {
       throw createEvaluationError(exceptionDetails);
     }
-
-    if (returnByValue) {
-      return valueFromRemoteObject(remoteObject);
-    }
-
-    return this.#world.createCdpHandle(remoteObject) as HandleFor<
-      Awaited<ReturnType<Func>>
-    >;
+    return returnByValue
+      ? valueFromRemoteObject(remoteObject)
+      : this.#world.createCdpHandle(remoteObject);
 
     async function convertArgumentAsync(
       context: ExecutionContext,

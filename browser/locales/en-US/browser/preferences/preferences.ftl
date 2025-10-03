@@ -408,9 +408,6 @@ download-choose-folder =
 download-always-ask-where =
     .label = Always ask you where to save files
     .accesskey = A
-download-private-browsing-delete =
-    .label = Delete files downloaded in private browsing when all private windows are closed
-    .accesskey = D
 
 applications-header = Applications
 
@@ -745,10 +742,6 @@ home-prefs-weather-header =
   .label = Weather
 home-prefs-weather-description = Today’s forecast at a glance
 home-prefs-weather-learn-more-link = Learn more
-
-home-prefs-trending-search-header =
-    .label = Trending searches
-home-prefs-trending-search-description = Popular and frequently searched topics
 
 # "Support" here means to help sustain or contribute to something, especially through funding or sponsorship.
 home-prefs-support-firefox-header =
@@ -1376,6 +1369,7 @@ content-blocking-tracking-protection-option-all-windows =
 content-blocking-option-private =
   .label = Only in private windows
   .accesskey = p
+content-blocking-tracking-protection-change-block-list = Change block list
 
 content-blocking-cookies-label =
   .label = Cookies

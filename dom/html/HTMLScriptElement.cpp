@@ -235,11 +235,11 @@ void HTMLScriptElement::SetTrustedScriptOrStringTextContent(
   SetTextContentInternal(*compliantString, aSubjectPrincipal, aError);
 }
 
-void HTMLScriptElement::GetSrc(OwningTrustedScriptURLOrUSVString& aSrc) {
-  GetURIAttr(nsGkAtoms::src, nullptr, aSrc.SetAsUSVString());
+void HTMLScriptElement::GetSrc(OwningTrustedScriptURLOrString& aSrc) {
+  GetURIAttr(nsGkAtoms::src, nullptr, aSrc.SetAsString());
 }
 
-void HTMLScriptElement::SetSrc(const TrustedScriptURLOrUSVString& aSrc,
+void HTMLScriptElement::SetSrc(const TrustedScriptURLOrString& aSrc,
                                nsIPrincipal* aSubjectPrincipal,
                                ErrorResult& aRv) {
   constexpr nsLiteralString sink = u"HTMLScriptElement src"_ns;
@@ -327,8 +327,9 @@ mozilla::dom::ReferrerPolicy HTMLScriptElement::GetReferrerPolicy() {
   return GetReferrerPolicyAsEnum();
 }
 
-bool HTMLScriptElement::HasExternalScriptContent() {
-  return mFrozen ? mExternal : HasAttr(nsGkAtoms::src);
+bool HTMLScriptElement::HasScriptContent() {
+  return (mFrozen ? mExternal : HasAttr(nsGkAtoms::src)) ||
+         nsContentUtils::HasNonEmptyTextContent(this);
 }
 
 // https://html.spec.whatwg.org/multipage/scripting.html#dom-script-supports

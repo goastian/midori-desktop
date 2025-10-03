@@ -17,7 +17,7 @@ if (commonFile) {
 // Put any other stuff relative to this test folder below.
 
 ChromeUtils.defineESModuleGetters(this, {
-  PlacesUIUtils: "moz-src:///browser/components/places/PlacesUIUtils.sys.mjs",
+  PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
 });
 
 // Needed by some test that relies on having an app registered.

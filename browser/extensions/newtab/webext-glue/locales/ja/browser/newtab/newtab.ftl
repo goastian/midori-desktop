@@ -117,8 +117,6 @@ newtab-menu-delete-pocket = { -pocket-brand-name } から削除
 newtab-menu-archive-pocket = { -pocket-brand-name } にアーカイブ
 newtab-menu-show-privacy-info = 私たちのスポンサーとあなたのプライバシー
 newtab-menu-about-fakespot = { -fakespot-brand-name } について
-# Report is a verb (i.e. report issue with the content).
-newtab-menu-report = 報告
 newtab-menu-report-content = このコンテンツを報告
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
@@ -191,8 +189,6 @@ newtab-label-sponsored-by = 提供: { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } 分
-# This string is used under fixed size ads to indicate sponsored content
-newtab-label-sponsored-fixed = 広告
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -255,6 +251,9 @@ newtab-pocket-learn-more = 詳細
 newtab-pocket-cta-button = { -pocket-brand-name } を入手
 newtab-pocket-cta-text = お気に入りに記事を { -pocket-brand-name } に保存して、魅力的な読み物を思う存分楽しみましょう。
 newtab-pocket-pocket-firefox-family = { -pocket-brand-name } は { -brand-product-name } ファミリーの一員です
+# A save to Pocket button that shows over the card thumbnail on hover.
+newtab-pocket-image =
+    .aria-label = { -pocket-brand-name }
 newtab-pocket-save = 保存
 newtab-pocket-saved = 保存しました
 
@@ -386,6 +385,7 @@ newtab-wallpaper-suspension-bridge = 昼の灰色の吊橋
 newtab-wallpaper-sand-dunes = 白砂の砂丘
 newtab-wallpaper-palm-trees = 朝焼けに照らされたココヤシの木々のシルエット
 newtab-wallpaper-blue-flowers = 咲き誇る青い花のクローズアップ写真
+newtab-wallpaper-forest-trees = 霧に覆われた木々
 # Variables
 #   $author_string (String) - The name of the creator of the photo.
 #   $webpage_string (String) - The name of the webpage where the photo is located.
@@ -433,14 +433,14 @@ newtab-weather-menu-weather-display = 天気表示
 # - Simple: Displays a current weather condition icon and the current temperature
 # - Detailed: Include simple information plus a short text summary: e.g. "Mostly cloudy"
 newtab-weather-menu-weather-display-option-simple = シンプル
-newtab-weather-menu-change-weather-display-simple = シンプル表示に切り替える
+newtab-weather-menu-change-weather-display-simple = シンプル表示に切り替えます
 newtab-weather-menu-weather-display-option-detailed = 詳細
-newtab-weather-menu-change-weather-display-detailed = 詳細表示に切り替える
+newtab-weather-menu-change-weather-display-detailed = 詳細表示に切り替えます
 newtab-weather-menu-temperature-units = 温度の単位
 newtab-weather-menu-temperature-option-fahrenheit = 華氏 (℉)
 newtab-weather-menu-temperature-option-celsius = 摂氏 (℃)
-newtab-weather-menu-change-temperature-units-fahrenheit = ファーレンハイト度に切り替える
-newtab-weather-menu-change-temperature-units-celsius = セルシウス度に切り替える
+newtab-weather-menu-change-temperature-units-fahrenheit = ファーレンハイト度に切り替えます
+newtab-weather-menu-change-temperature-units-celsius = セルシウス度に切り替えます
 newtab-weather-menu-hide-weather = 新しいタブの天気表示を隠す
 newtab-weather-menu-learn-more = 詳細情報
 # This message is shown if user is working offline
@@ -516,7 +516,7 @@ newtab-section-confirm-block-topic-p2 = ブロックしたトピックはフィ�
 #   $topic (string) - Name of topic that user is blocking
 newtab-section-block-topic-button = { $topic } をブロック
 
-## Strings for custom wallpaper highlight
+## Panel in the Customize menu section to manage followed and blocked topics
 
 newtab-section-mangage-topics-title = トピック
 newtab-section-manage-topics-button-v2 =
@@ -529,36 +529,3 @@ newtab-custom-wallpaper-title = カスタム壁紙が利用できます
 # 'Make firefox yours" means to customize or personalize
 newtab-custom-wallpaper-subtitle = 壁紙をアップロードするかお好みの色を選んで、あなただけの { -brand-product-name } にカスタマイズしましょう。
 newtab-custom-wallpaper-cta = 壁紙を試す
-
-## Strings for download mobile highlight
-
-newtab-download-mobile-highlight-title = モバイル版 { -brand-product-name } をダウンロード
-# "Scan the code" refers to scanning the QR code that appears above the body text that leads to Firefox for mobile download.
-newtab-download-mobile-highlight-body-variant-a = QR コードをスキャンして安全にダウンロード。
-newtab-download-mobile-highlight-body-variant-b = タブやパスワード、他のデータを同期しておけば、中断したところからピックアップできます。
-newtab-download-mobile-highlight-body-variant-c = 同じ { -brand-product-name } ブラウザーをポケットに入れてを持ち出せることをご存じですか？ 
-newtab-download-mobile-highlight-image =
-    .aria-label = モバイル版 { -brand-product-name } をダウンロードするための QR コード
-
-## Strings for reporting ads and content
-
-newtab-report-content-why-reporting-this =
-    .label = この広告を報告した理由を教えてください。
-newtab-report-ads-reason-not-interested =
-    .label = 興味がない
-newtab-report-ads-reason-inappropriate =
-    .label = 不適切
-newtab-report-ads-reason-seen-it-too-many-times =
-    .label = 表示回数が多すぎる
-newtab-report-content-wrong-category =
-    .label = カテゴリーが誤っている
-newtab-report-content-outdated =
-    .label = 古くなっている
-newtab-report-content-inappropriate-offensive =
-    .label = 不適切または攻撃的
-newtab-report-content-spam-misleading =
-    .label = スパムまたはミスリード
-newtab-report-cancel = キャンセル
-newtab-report-submit = 送信
-newtab-toast-thanks-for-reporting =
-    .message = ご報告ありがとうございます。

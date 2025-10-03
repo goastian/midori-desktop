@@ -3,8 +3,6 @@
 
 "use strict";
 
-requestLongerTimeout(2);
-
 const { JSObjectsTestUtils, CONTEXTS } = ChromeUtils.importESModule(
   "resource://testing-common/JSObjectsTestUtils.sys.mjs"
 );
@@ -19,7 +17,6 @@ add_task(async function () {
   // nsHttpServer does not support https
   // eslint-disable-next-line @microsoft/sdl/no-insecure-url
   const hud = await openNewTabAndConsole("http://example.com");
-  const outputScroller = hud.ui.outputScroller;
 
   let count = 0;
   await JSObjectsTestUtils.runTest(
@@ -32,7 +29,7 @@ add_task(async function () {
       await SpecialPowers.spawn(
         gBrowser.selectedBrowser,
         [expression, count],
-        function (exp, i) {
+        async function (exp, i) {
           let value;
           try {
             value = content.eval(exp);
@@ -43,13 +40,9 @@ add_task(async function () {
         }
       );
 
-      const messageNode = await waitFor(() => {
-        // Expanding objects disables the "pinned-to-bottom" state, and because of virtualization
-        // we might miss the last emitted message. Let's always scroll to the bottom before
-        // checking for the message.
-        outputScroller.scrollTop = outputScroller.scrollHeight;
-        return findConsoleAPIMessage(hud, "test message " + count);
-      });
+      const messageNode = await waitFor(() =>
+        findConsoleAPIMessage(hud, "test message " + count)
+      );
       count++;
       const oi = messageNode.querySelector(".tree");
 

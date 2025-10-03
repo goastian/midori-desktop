@@ -272,8 +272,6 @@ export class UrlbarInput {
     this.view.panel.addEventListener("command", this, true);
 
     lazy.CustomizableUI.addListener(this);
-    lazy.UrlbarPrefs.addObserver(this);
-
     this.window.addEventListener("unload", this);
 
     this.window.gBrowser.tabContainer.addEventListener("TabSelect", this);
@@ -304,10 +302,6 @@ export class UrlbarInput {
 
     this.#updateLayoutBreakout();
 
-    // The engine name is not known yet, but update placeholder
-    // anyway to reflect value of keyword.enabled.
-    this._setPlaceholder("");
-
     this._initCopyCutController();
     this._initPasteAndGo();
     this._initStripOnShare();
@@ -323,23 +317,6 @@ export class UrlbarInput {
     ChromeUtils.defineLazyGetter(this, "logger", () =>
       lazy.UrlbarUtils.getLogger({ prefix: "Input" })
     );
-  }
-
-  /**
-   * Called when a urlbar or urlbar related pref changes.
-   *
-   * @param {string} pref
-   *   The name of the pref. Relative to `browser.urlbar` for urlbar prefs.
-   */
-  onPrefChanged(pref) {
-    switch (pref) {
-      case "keyword.enabled":
-        this._updatePlaceholderFromDefaultEngine().catch(e =>
-          // This can happen if the search service failed.
-          console.warn("Falied to update urlbar placeholder:", e)
-        );
-        break;
-    }
   }
 
   /**
@@ -1213,10 +1190,7 @@ export class UrlbarInput {
           element,
           searchString,
           searchMode,
-          selType: this.controller.engagementEvent.typeFromElement(
-            result,
-            element
-          ),
+          selType: "tabswitch",
         });
 
         let switched = this.window.switchToTabHavingURI(
@@ -1246,11 +1220,10 @@ export class UrlbarInput {
         // tabs that are not currently open. Find out why tabs are not being
         // properly unregistered when they are being closed.
         if (!switched) {
-          console.error(`Tried to switch to non-existent tab: ${url}`);
+          console.error(`Tried to switch to non existant tab: ${url}`);
           lazy.UrlbarProviderOpenTabs.unregisterOpenTab(
             url,
             result.payload.userContextId,
-            result.payload.tabGroup,
             this.isPrivate
           );
         }
@@ -3902,11 +3875,17 @@ export class UrlbarInput {
     // do the work for the first time.
     let firstView = (!isSameDocument && !dueToTabSwitch) || !state.persist;
 
+    let cachedUriDidChange =
+      state.persist?.originalURI &&
+      !state.persist.originalURI.equals(
+        this.window.gBrowser.selectedBrowser.originalURI
+      );
+
     // Capture the shouldPersist property if it exists before
     // setPersistenceState potentially modifies it.
     let wasPersisting = state.persist?.shouldPersist ?? false;
 
-    if (firstView) {
+    if (firstView || cachedUriDidChange) {
       lazy.UrlbarSearchTermsPersistence.setPersistenceState(
         state,
         this.window.gBrowser.selectedBrowser.originalURI
@@ -4089,17 +4068,10 @@ export class UrlbarInput {
    * The name of the engine or an empty string to use the default placeholder.
    */
   _setPlaceholder(name) {
-    let l10nId;
-    if (lazy.UrlbarPrefs.get("keyword.enabled")) {
-      l10nId = name ? "urlbar-placeholder-with-name" : "urlbar-placeholder";
-    } else {
-      l10nId = "urlbar-placeholder-keyword-disabled";
-    }
-
     this.document.l10n.setAttributes(
       this.inputField,
-      l10nId,
-      l10nId == "urlbar-placeholder-with-name" ? { name } : undefined
+      name ? "urlbar-placeholder-with-name" : "urlbar-placeholder",
+      name ? { name } : undefined
     );
   }
 
@@ -4702,7 +4674,6 @@ export class UrlbarInput {
       userContextId: parseInt(
         this.window.gBrowser.selectedBrowser.getAttribute("usercontextid") || 0
       ),
-      tabGroup: this.window.gBrowser.selectedTab.group?.id ?? null,
       currentPage: this.window.gBrowser.currentURI.spec,
       formHistoryName: this.formHistoryName,
       prohibitRemoteResults:

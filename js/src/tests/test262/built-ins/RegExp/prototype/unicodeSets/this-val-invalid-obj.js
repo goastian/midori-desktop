@@ -2,7 +2,7 @@
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
-esid: sec-get-regexp.prototype.unicodesets
+esid: sec-get-regexp.prototype.unicodeSets
 description: Invoked on an object without an [[OriginalFlags]] internal slot
 info: |
     get RegExp.prototype.unicodeSets -> RegExpHasFlag

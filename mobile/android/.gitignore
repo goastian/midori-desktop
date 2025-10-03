@@ -76,6 +76,9 @@ __pycache__/
 *.py[cod]
 venv/
 
+# Web extensions: manifest.json files are generated
+manifest.json
+
 # Xcode
 *.pbxuser
 !default.pbxuser
