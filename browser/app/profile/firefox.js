@@ -2093,8 +2093,8 @@ pref("sidebar.expandOnHover", true);
 pref("sidebar.old-sidebar.has-used", false);
 pref("sidebar.new-sidebar.has-used", false);
 
-pref("browser.ml.chat.enabled", true);
-pref("browser.ml.chat.hideLocalhost", true);
+pref("browser.ml.chat.enabled", false);
+pref("browser.ml.chat.hideLocalhost", false);
 pref("browser.ml.chat.prompt.prefix", '{"l10nId":"genai-prompt-prefix-selection"}');
 pref("browser.ml.chat.prompts.0", '{"id":"summarize","l10nId":"genai-prompts-summarize"}');
 pref("browser.ml.chat.prompts.1", '{"id":"explain","l10nId":"genai-prompts-explain"}');
@@ -2102,10 +2102,10 @@ pref("browser.ml.chat.prompts.2", '{"id":"simplify","l10nId":"genai-prompts-simp
 pref("browser.ml.chat.prompts.3", '{"id":"quiz","l10nId":"genai-prompts-quiz","targeting":"!provider|regExpMatch(\'gemini\') || region == \'US\'"}');
 pref("browser.ml.chat.prompts.4", '{"id":"proofread", "l10nId":"genai-prompts-proofread"}');
 pref("browser.ml.chat.provider", "");
-pref("browser.ml.chat.shortcuts", true);
-pref("browser.ml.chat.shortcuts.custom", true);
+pref("browser.ml.chat.shortcuts", false);
+pref("browser.ml.chat.shortcuts.custom", false);
 pref("browser.ml.chat.shortcuts.longPress", 60000);
-pref("browser.ml.chat.sidebar", true);
+pref("browser.ml.chat.sidebar", false);
 
 pref("browser.ml.linkPreview.allowedLanguages", "en");
 pref("browser.ml.linkPreview.blockListEnabled", true);
