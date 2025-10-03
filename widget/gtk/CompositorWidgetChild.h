@@ -27,6 +27,7 @@ class CompositorWidgetChild final : public PCompositorWidgetChild,
   mozilla::ipc::IPCResult RecvUnobserveVsync() override;
 
   void NotifyClientSizeChanged(const LayoutDeviceIntSize& aClientSize) override;
+  void NotifyFullscreenChanged(bool aIsFullscreen) override {};
   void CleanupResources() override;
   void SetRenderingSurface(const uintptr_t aXWindow) override;
 

@@ -423,10 +423,10 @@ void NativeLayerRootWayland::LogStatsLocked(const MutexAutoLock& aProofOfLock) {
     }
   }
   LOGVERBOSE(
-      "Layers [%d] mapped [%d] attached [%d] visible [%d] opaque [%d] opaque "
-      "set [%d]",
+      "Rendering stats: layers [%d] mapped [%d] attached [%d] visible [%d] "
+      "rendered [%d] opaque [%d] opaque set [%d] fullscreen [%d]",
       layersNum, layersMapped, layersBufferAttached, layersVisible,
-      layersMappedOpaque, layersMappedOpaqueSet);
+      layersRendered, layersMappedOpaque, layersMappedOpaqueSet, mIsFullscreen);
 }
 #endif
 
@@ -979,11 +979,6 @@ void NativeLayerWaylandRender::CommitSurfaceToScreenLocked(
   mSurface->InvalidateRegionLocked(aSurfaceLock, mDirtyRegion);
   mDirtyRegion.SetEmpty();
 
-  auto* buffer = mFrontBuffer->AsWaylandBufferDMABUF();
-  if (buffer) {
-    buffer->GetSurface()->FenceWait();
-  }
-
   mSurface->AttachLocked(aSurfaceLock, mFrontBuffer);
 }
 
@@ -994,10 +989,6 @@ void NativeLayerWaylandRender::NotifySurfaceReady() {
   MOZ_DIAGNOSTIC_ASSERT(mInProgressBuffer);
   mFrontBuffer = std::move(mInProgressBuffer);
   if (mSurfacePoolHandle->gl()) {
-  auto* buffer = mFrontBuffer->AsWaylandBufferDMABUF();
-    if (buffer) {
-      buffer->GetSurface()->FenceSet();
-    }
     mSurfacePoolHandle->gl()->FlushIfHeavyGLCallsSinceLastFlush();
   }
 }
