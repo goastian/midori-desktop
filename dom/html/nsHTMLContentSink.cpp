@@ -740,27 +740,33 @@ nsresult HTMLContentSink::OpenBody() {
         mCurrentContext->mStack[parentIndex].mContent;
     int32_t numFlushed = mCurrentContext->mStack[parentIndex].mNumFlushed;
     int32_t childCount = parent->GetChildCount();
-    NS_ASSERTION(numFlushed < childCount, "Already notified on the body?");
+    if (numFlushed < childCount) {
+      int32_t insertionPoint =
+          mCurrentContext->mStack[parentIndex].mInsertionPoint;
 
-    int32_t insertionPoint =
-        mCurrentContext->mStack[parentIndex].mInsertionPoint;
+      // XXX: I have yet to see a case where numFlushed is non-zero and
+      // insertionPoint is not -1, but this code will try to handle
+      // those cases too.
 
-    // XXX: I have yet to see a case where numFlushed is non-zero and
-    // insertionPoint is not -1, but this code will try to handle
-    // those cases too.
-
-    uint32_t oldUpdates = mUpdatesInNotification;
-    mUpdatesInNotification = 0;
-    if (insertionPoint != -1) {
-      NotifyInsert(parent, mBody);
+      uint32_t oldUpdates = mUpdatesInNotification;
+      mUpdatesInNotification = 0;
+      if (insertionPoint != -1) {
+        NotifyInsert(parent, mBody);
+      } else {
+        NotifyAppend(parent, numFlushed);
+      }
+      mCurrentContext->mStack[parentIndex].mNumFlushed = childCount;
+      if (mUpdatesInNotification > 1) {
+        UpdateChildCounts();
+      }
+      mUpdatesInNotification = oldUpdates;
     } else {
-      NotifyAppend(parent, numFlushed);
+      MOZ_ASSERT(
+          false,
+          "This isn't supposed to happen but per bug 1782501 actually does "
+          "with the NoScript extension. Please debug if this assertion fails.");
+      mCurrentContext->mStack[parentIndex].mNumFlushed = childCount;
     }
-    mCurrentContext->mStack[parentIndex].mNumFlushed = childCount;
-    if (mUpdatesInNotification > 1) {
-      UpdateChildCounts();
-    }
-    mUpdatesInNotification = oldUpdates;
   }
 
   StartLayout(false);
