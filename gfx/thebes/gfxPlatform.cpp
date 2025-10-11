@@ -3205,6 +3205,13 @@ void gfxPlatform::InitWebGPUConfig() {
     feature.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
   }
 
+    if (!gfxConfig::IsEnabled(Feature::GPU_PROCESS) &&
+      !StaticPrefs::dom_webgpu_allow_in_parent_AtStartup()) {
+    feature.Disable(FeatureStatus::UnavailableNoGpuProcess,
+                    "Disabled without GPU process",
+                    "FEATURE_WEBGPU_NO_GPU_PROCESS"_ns);
+  }
+
   // When this condition changes, be sure to update the `run-if`
   // conditions in `dom/webgpu/tests/mochitest/*.toml` accordingly.
 #if !(defined(NIGHTLY_BUILD) || \
@@ -3966,6 +3973,13 @@ bool gfxPlatform::FallbackFromAcceleration(FeatureStatus aStatus,
 
 /* static */
 void gfxPlatform::DisableGPUProcess() {
+  if (gfxVars::AllowWebGPU() &&
+      !StaticPrefs::dom_webgpu_allow_in_parent_AtStartup()) {
+    gfxConfig::Disable(Feature::WEBGPU, FeatureStatus::UnavailableNoGpuProcess,
+                       "Disabled by GPU process disabled",
+                       "FEATURE_WEBGPU_DISABLED_BY_GPU_PROCESS_DISABLED"_ns);
+    gfxVars::SetAllowWebGPU(false);
+  }
   if (gfxVars::RemoteCanvasEnabled() &&
       !StaticPrefs::gfx_canvas_remote_allow_in_parent_AtStartup()) {
     gfxConfig::Disable(
