@@ -43,6 +43,14 @@ elif cmd == "pwd":
 elif cmd == "print_args":
     for arg in sys.argv[2:]:
         output(arg)
+elif cmd == "print_python_executable_path":
+    import psutil  # not stdlib, put already part of our virtualenv.
+
+    # This returns the final executable that launched this script.
+    # We cannot use sys.executable because on Windows that would point to the
+    # python.exe parent that spawns this process.
+    # See getRealPythonExecutable in test_subprocess.js.
+    output(psutil.Process().exe())
 elif cmd == "ignore_sigterm":
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
@@ -54,6 +62,13 @@ elif cmd == "ignore_sigterm":
             import time
 
             time.sleep(3600)
+elif cmd == "close_stdin_and_wait_forever":
+    # Do NOT use non-stdlib modules here; this runs outside our virtualenv,
+    # via the program identified by print_python_executable_path.
+    os.close(sys.stdin.fileno())
+    output("stdin_closed")
+    while True:
+        pass  # Test should kill the program
 elif cmd == "close_pipes_and_wait_for_stdin":
     os.close(sys.stdout.fileno())
     os.close(sys.stderr.fileno())
