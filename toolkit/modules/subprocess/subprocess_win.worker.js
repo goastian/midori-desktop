@@ -105,11 +105,20 @@ class Pipe extends BasePipe {
       debug(`Failed to associate IOCP: ${ctypes.winLastError}`);
     }
 
+    // this.buffer is set to an ArrayBuffer, which should not be reused nor
+    // released until the IO methods (ReadFile or WriteFile) have acknowledged
+    // completion, or reported an error other than ERROR_IO_PENDING.
     this.buffer = null;
+    // Whether this.buffer is part of a pending IO operation.
+    this.bufferIsPendingIO = false;
+    // When close(force = true) is called while IO is pending, we notify
+    // read()/write() callers of completion but internally we await a IOCP
+    // message for this pipe before closing the pipe for real.
+    this.awaitingBufferClose = false;
   }
 
   hasPendingIO() {
-    return !!this.pending.length;
+    return !!this.pending.length || this.bufferIsPendingIO;
   }
 
   maybeClose() {}
@@ -138,6 +147,16 @@ class Pipe extends BasePipe {
     }
     this.pending.length = 0;
 
+    if ((this.bufferIsPendingIO &&= this.#checkIfBufferIsStillPendingIO())) {
+      // We cannot release the pipe (specifically this.buffer) until the
+      // pending ReadFile/WriteFile operation on the buffer completed.
+      this.awaitingBufferClose = true;
+      let ok = libc.CancelIo(this.handle);
+      if (!ok) {
+        debug(`Pipe ${this.id}: Failed to cancel I/O: ${ctypes.winLastError}`);
+      }
+      return this.closedPromise;
+    }
     this.buffer = null;
 
     if (!this.closed) {
@@ -160,6 +179,18 @@ class Pipe extends BasePipe {
    */
   onError() {
     this.close(true);
+  }
+
+  #checkIfBufferIsStillPendingIO() {
+    let numberOfBytesTransferred = win32.DWORD();
+    let ok = libc.GetOverlappedResult(
+      this.handle,
+      this.overlapped.address(),
+      numberOfBytesTransferred.address(),
+      false
+    );
+    // Ok or error other than ERROR_IO_INCOMPLETE means that I/O completed.
+    return !ok && ctypes.winLastError === win32.ERROR_IO_INCOMPLETE;
   }
 }
 
@@ -226,6 +257,7 @@ class InputPipe extends Pipe {
    */
   readBuffer(count) {
     this.buffer = new ArrayBuffer(count);
+    this.bufferIsPendingIO = true;
 
     let ok = libc.ReadFile(
       this.handle,
@@ -239,6 +271,7 @@ class InputPipe extends Pipe {
       !ok &&
       (!this.process.handle || ctypes.winLastError !== win32.ERROR_IO_PENDING)
     ) {
+      this.bufferIsPendingIO = ctypes.winLastError === win32.ERROR_IO_PENDING;
       this.onError();
     } else {
       io.updatePollEvents();
@@ -326,6 +359,7 @@ class OutputPipe extends Pipe {
    */
   writeBuffer(buffer) {
     this.buffer = buffer;
+    this.bufferIsPendingIO = true;
 
     let ok = libc.WriteFile(
       this.handle,
@@ -336,6 +370,7 @@ class OutputPipe extends Pipe {
     );
 
     if (!ok && ctypes.winLastError !== win32.ERROR_IO_PENDING) {
+      this.bufferIsPendingIO = false;
       this.onError();
     } else {
       io.updatePollEvents();
@@ -849,7 +884,8 @@ io = {
           debug(`IOCP notification for unknown pipe: ${pipeId}`);
           continue;
         }
-        if (deqWinErr === win32.ERROR_BROKEN_PIPE) {
+        pipe.bufferIsPendingIO = false;
+        if (deqWinErr === win32.ERROR_BROKEN_PIPE || pipe.awaitingBufferClose) {
           pipe.onError();
           continue;
         }
