@@ -54,6 +54,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://gre/modules/ExtensionScriptingStore.sys.mjs",
   ExtensionStorage: "resource://gre/modules/ExtensionStorage.sys.mjs",
   ExtensionStorageIDB: "resource://gre/modules/ExtensionStorageIDB.sys.mjs",
+  ExtensionUserScripts: "resource://gre/modules/ExtensionUserScripts.sys.mjs",
   ExtensionTelemetry: "resource://gre/modules/ExtensionTelemetry.sys.mjs",
   LightweightThemeManager:
     "resource://gre/modules/LightweightThemeManager.sys.mjs",
@@ -109,6 +110,17 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "dnrEnabled",
   "extensions.dnr.enabled",
   true
+);
+
+// All functionality is gated by the "userScripts" permission, and forgetting
+// about its existence is enough to hide all userScripts functionality.
+// MV3 userScripts API in development (bug 1875475), off by default.
+// Not to be confused with MV2 and extensions.webextensions.userScripts.enabled!
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "userScriptsMV3Enabled",
+  "extensions.userScripts.mv3.enabled",
+  false
 );
 
 // This pref modifies behavior for MV2.  MV3 is enabled regardless.
@@ -201,13 +213,6 @@ ChromeUtils.defineLazyGetter(lazy, "NO_PROMPT_PERMISSIONS", async () => {
   );
 });
 
-// TODO(Bug 1789718): Remove after the deprecated XPIProvider-based implementation is also removed.
-ChromeUtils.defineLazyGetter(lazy, "SCHEMA_SITE_PERMISSIONS", async () => {
-  // Wait until all extension API schemas have been loaded and parsed.
-  await Management.lazyInit();
-  return lazy.Schemas.getPermissionNames(["SitePermission"]);
-});
-
 const { sharedData } = Services.ppmm;
 
 const PRIVATE_ALLOWED_PERMISSION = "internal:privateBrowsingAllowed";
@@ -253,6 +258,13 @@ if (
     PRIVILEGED_PERMS.delete(perm);
   }
 }
+
+// Permissions that are not available in manifest version 2.
+const PERMS_NOT_IN_MV2 = new Set([
+  // MV2 had a userScripts API, tied to "user_scripts" manifest key. In MV3 the
+  // userScripts API availability is gated by the "userScripts" permission.
+  "userScripts",
+]);
 
 // Message included in warnings and errors related to privileged permissions and
 // privileged manifest properties. Provides a link to the firefox-source-docs.mozilla.org
@@ -372,6 +384,8 @@ function classifyPermission(perm, restrictSchemes, isPrivileged) {
     return { invalid: perm, privileged: true };
   } else if (perm.startsWith("declarativeNetRequest") && !lazy.dnrEnabled) {
     return { invalid: perm };
+  } else if (perm === "userScripts" && !lazy.userScriptsMV3Enabled) {
+    return { invalid: perm };
   }
   return { permission: perm };
 }
@@ -380,8 +394,6 @@ const LOGGER_ID_BASE = "addons.webextension.";
 const UUID_MAP_PREF = "extensions.webextensions.uuids";
 const LEAVE_STORAGE_PREF = "extensions.webextensions.keepStorageOnUninstall";
 const LEAVE_UUID_PREF = "extensions.webextensions.keepUuidOnUninstall";
-const WEBCOMPAT_ADDON_ID = "webcompat@mozilla.org";
-const WEBCOMPAT_UUID = "9a310967-e580-48bf-b3e8-4eafebbc122d";
 
 const COMMENT_REGEXP = new RegExp(
   String.raw`
@@ -422,23 +434,6 @@ var UUIDMap = {
   get(id, create = true) {
     let map = this._read();
 
-    // In general, the UUID should not change once assigned because it may be
-    // stored elsewhere within the profile directory, when the extension URL is
-    // exposed (e.g. history, bookmarks, site permissions, web or extension
-    // APIs that associate data with the extension principal or origin).
-    // The webcompat add-on does not rely on the persisted uuid, so we can
-    // simply migrate the uuid below, see bug 1717672.
-    if (id === WEBCOMPAT_ADDON_ID) {
-      if (!create && !(id in map)) {
-        return null;
-      }
-      if (map[id] !== WEBCOMPAT_UUID) {
-        map[id] = WEBCOMPAT_UUID;
-        this._write(map);
-      }
-      return WEBCOMPAT_UUID;
-    }
-
     if (id in map) {
       return map[id];
     }
@@ -471,7 +466,8 @@ function clearCacheForExtensionPrincipal(principal, clearAll = false) {
   const clearDataFlags = clearAll
     ? Ci.nsIClearDataService.CLEAR_ALL_CACHES
     : Ci.nsIClearDataService.CLEAR_IMAGE_CACHE |
-      Ci.nsIClearDataService.CLEAR_CSS_CACHE;
+      Ci.nsIClearDataService.CLEAR_CSS_CACHE |
+      Ci.nsIClearDataService.CLEAR_JS_CACHE;
 
   return new Promise(resolve =>
     Services.clearData.deleteDataFromPrincipal(
@@ -614,6 +610,12 @@ var ExtensionAddonObserver = {
     addShutdownBlocker(
       `Clear scripting store for ${addonId}`,
       lazy.ExtensionScriptingStore.clearOnUninstall(addonId)
+    );
+
+    // Clear MV3 userScripts API data, if any.
+    addShutdownBlocker(
+      `Clear user scripts for ${addonId}`,
+      lazy.ExtensionUserScripts.clearOnUninstall(addonId)
     );
 
     // Clear the DNR API's rules data persisted on disk (if any).
@@ -910,8 +912,6 @@ const manifestTypes = new Map([
   ["locale", "manifest.WebExtensionLangpackManifest"],
   ["dictionary", "manifest.WebExtensionDictionaryManifest"],
   ["extension", "manifest.WebExtensionManifest"],
-  // TODO(Bug 1789718): Remove after the deprecated XPIProvider-based implementation is also removed.
-  ["sitepermission-deprecated", "manifest.WebExtensionSitePermissionsManifest"],
 ]);
 
 /**
@@ -1207,12 +1207,17 @@ export class ExtensionData {
     let permissions = new Set();
     let origins = new Set();
     let { restrictSchemes, isPrivileged } = this;
+    let isMV2 = this.manifestVersion === 2;
 
     for (let perm of permissionsArray.concat(hostPermissions)) {
       let type = classifyPermission(perm, restrictSchemes, isPrivileged);
       if (type.origin) {
         origins.add(perm);
       } else if (type.permission) {
+        if (isMV2 && PERMS_NOT_IN_MV2.has(perm)) {
+          // Skip, without warning (parseManifest warns if needed).
+          continue;
+        }
         permissions.add(perm);
       }
     }
@@ -1273,6 +1278,27 @@ export class ExtensionData {
     }
 
     return Array.from(origins);
+  }
+
+  /**
+   * @returns {MatchPatternSet} MatchPatternSet for only the origins that are
+   * referenced in manifest via permissions, host_permissions, or content_scripts keys.
+   */
+  getManifestOriginsMatchPatternSet() {
+    if (this.type !== "extension") {
+      return null;
+    }
+    if (this._manifestOriginsMatchPatternSet) {
+      return this._manifestOriginsMatchPatternSet;
+    }
+    this._manifestOriginsMatchPatternSet = new MatchPatternSet(
+      this.getManifestOrigins(),
+      {
+        restrictSchemes: this.restrictSchemes,
+        ignorePath: true,
+      }
+    );
+    return this._manifestOriginsMatchPatternSet;
   }
 
   /**
@@ -1495,18 +1521,6 @@ export class ExtensionData {
     return this._backgroundState;
   }
 
-  /**
-   * Returns true if the addon is configured to be installed
-   * by enterprise policy.
-   * Should be kept in sync with XPIDatabase.sys.mjs
-   */
-  get isInstalledByEnterprisePolicy() {
-    const policySettings = Services.policies?.getExtensionSettings(this.id);
-    return ["force_installed", "normal_installed"].includes(
-      policySettings?.installation_mode
-    );
-  }
-
   async getExtensionVersionWithoutValidation() {
     return (await this.readJSON("manifest.json")).version;
   }
@@ -1616,17 +1630,6 @@ export class ExtensionData {
     );
   }
 
-  // AMO enforces a maximum length of 45 on the name since at least 2017, via
-  // https://github.com/mozilla/addons-linter/blame/c4507688899aaafe29c522f1b1aec94b78b8a095/src/schema/updates/manifest.json#L111
-  // added in https://github.com/mozilla/addons-linter/pull/1169
-  // To avoid breaking add-ons that do not go through AMO (e.g. temporarily
-  // loaded extensions), we enforce the limit by truncating and warning if
-  // needed, instead enforcing a maxLength on "name" in schemas/manifest.json.
-  //
-  // We set the limit to 75, which is a safe limit that matches the CWS,
-  // see https://bugzilla.mozilla.org/show_bug.cgi?id=1939087#c5
-  static EXT_NAME_MAX_LEN = 75;
-
   async initializeAddonTypeAndID() {
     if (this.type) {
       // Already initialized.
@@ -1641,9 +1644,6 @@ export class ExtensionData {
       this.type = "locale";
     } else if (manifest.dictionaries) {
       this.type = "dictionary";
-    } else if (manifest.site_permissions) {
-      // TODO(Bug 1789718): Remove after the deprecated XPIProvider-based implementation is also removed.
-      this.type = "sitepermission-deprecated";
     } else {
       this.type = "extension";
     }
@@ -1706,6 +1706,8 @@ export class ExtensionData {
 
     manifest = normalized.value;
 
+    const isMV2 = this.manifestVersion < 3;
+
     // `browser_specific_settings` is the recommended key to use in the
     // manifest, and the only possible choice in MV3+. For MV2 extensions, we
     // still allow `applications`, though. Because `applications` used to be
@@ -1754,14 +1756,6 @@ export class ExtensionData {
       if (strict_max_version?.length) {
         manifest.applications.gecko.strict_max_version = strict_max_version;
       }
-    }
-
-    if (manifest.name.length > ExtensionData.EXT_NAME_MAX_LEN) {
-      // Truncate and warn - see comment in EXT_NAME_MAX_LEN.
-      manifest.name = manifest.name.slice(0, ExtensionData.EXT_NAME_MAX_LEN);
-      this.manifestWarning(
-        `Warning processing "name": must be shorter than ${ExtensionData.EXT_NAME_MAX_LEN}`
-      );
     }
 
     if (
@@ -1822,7 +1816,7 @@ export class ExtensionData {
       modules: null,
       // Whether to treat all origin permissions (including content scripts)
       // from the manifestas as optional, and enable users to control them.
-      originControls: this.manifestVersion >= 3,
+      originControls: this.manifestVersion >= 3 && this.type === "extension",
       originPermissions,
       permissions,
       schemaURLs: null,
@@ -1878,6 +1872,11 @@ export class ExtensionData {
             continue;
           }
           this.manifestWarning(`Invalid extension permission: ${perm}`);
+          continue;
+        } else if (type.permission && isMV2 && PERMS_NOT_IN_MV2.has(perm)) {
+          this.manifestWarning(
+            `Permission "${perm}" requires Manifest Version 3.`
+          );
           continue;
         }
 
@@ -2488,6 +2487,9 @@ export class ExtensionData {
    * @param {boolean} [options.buildOptionalOrigins]
    *                  Wether to build optional origins Maps for permission
    *                  controls.  Defaults to false.
+   * @param {boolean} [options.fullDomainsList]
+   *                  Wether to include the full domains set in the returned
+   *                  results.  Defaults to false.
    *
    * @returns {object} An object with properties containing localized strings
    *                   for various elements of a permission dialog. The "header"
@@ -2503,6 +2505,14 @@ export class ExtensionData {
    *                   "object.optionalOrigins" is a map of a host permission to localized strings
    *                   describing the host permission, where appropriate.  Currently only
    *                   all url style permissions are included.
+   *
+   *                   "object.fullDomainsList" is an object with a Set of the
+   *                   full domains list (with the property name "domainsSet")
+   *                   and the index of the corresponding message string (with
+   *                   the property name "msgIdIndex"). This property is
+   *                   expected to be set only if "options.fullDomainsList" is
+   *                   passed as true and the extension doesn't include
+   *                   allUrls origin permissions.
    */
   static formatPermissionStrings(
     {
@@ -2514,7 +2524,11 @@ export class ExtensionData {
       type,
       unsigned,
     },
-    { collapseOrigins = false, buildOptionalOrigins = false } = {}
+    {
+      collapseOrigins = false,
+      buildOptionalOrigins = false,
+      fullDomainsList = false,
+    } = {}
   ) {
     const l10n = lazy.PERMISSION_L10N;
 
@@ -2563,7 +2577,6 @@ export class ExtensionData {
     // a less-generic message than addons with site permissions.
     // NOTE: this is used as part of the synthetic addon install flow implemented for the
     // SitePermissionAddonProvider.
-    // (and so it should not be removed as part of Bug 1789718 changes, while this additional note should be).
     // FIXME
     if (addon?.type === lazy.SITEPERMS_ADDON_TYPE) {
       // We simplify the origin to make it more user friendly. The origin is assured to be
@@ -2589,7 +2602,9 @@ export class ExtensionData {
       return result;
     }
 
-    // TODO(Bug 1789718): Remove after the deprecated XPIProvider-based implementation is also removed.
+    // NOTE: this is used as part of the synthetic addon implemented for the
+    // SitePermissionAddonProvider to render the site permissions in the
+    // about:addon detail view for the synthetic addon entries.
     if (sitePermissions) {
       for (let permission of sitePermissions) {
         let permMsg;
@@ -2635,7 +2650,7 @@ export class ExtensionData {
       // first, then individual host permissions.
       if (allUrls) {
         msgIds.push("webext-perms-host-description-all-urls");
-      } else {
+      } else if (!fullDomainsList) {
         // Formats a list of host permissions.  If we have 4 or fewer, display
         // them all, otherwise display the first 3 followed by an item that
         // says "...plus N others"
@@ -2665,6 +2680,29 @@ export class ExtensionData {
           "webext-perms-host-description-one-site",
           "webext-perms-host-description-too-many-sites"
         );
+      }
+
+      if (!allUrls && fullDomainsList) {
+        const allHostPermissions = wildcards.union(sites);
+        if (allHostPermissions.size > 1) {
+          msgIds.push({
+            id: "webext-perms-host-description-multiple-domains",
+            args: {
+              domainCount: allHostPermissions.size,
+            },
+          });
+          result.fullDomainsList = {
+            domainsSet: allHostPermissions,
+            msgIdIndex: msgIds.length - 1,
+          };
+        } else if (allHostPermissions.size) {
+          msgIds.push({
+            id: "webext-perms-host-description-one-domain",
+            args: {
+              domain: Array.from(allHostPermissions)[0],
+            },
+          });
+        }
       }
 
       // Finally, show remaining permissions, in the same order as AMO.
@@ -2913,23 +2951,6 @@ class LangpackBootstrapScope extends BootstrapScope {
   }
 }
 
-// TODO(Bug 1789718): Remove after the deprecated XPIProvider-based implementation is also removed.
-class SitePermissionBootstrapScope extends BootstrapScope {
-  install() {}
-  uninstall() {}
-
-  startup(data) {
-    // eslint-disable-next-line no-use-before-define
-    this.sitepermission = new SitePermission(data);
-    return this.sitepermission.startup();
-  }
-
-  async shutdown(data, reason) {
-    this.sitepermission.shutdown(BootstrapScope.BOOTSTRAP_REASON_MAP[reason]);
-    this.sitepermission = null;
-  }
-}
-
 let activeExtensionIDs = new Set();
 
 let pendingExtensions = new Map();
@@ -2947,8 +2968,19 @@ export class Extension extends ExtensionData {
   /** @type {import("ExtensionShortcuts.sys.mjs").ExtensionShortcuts} */
   shortcuts;
 
-  /** @type {TabManagerBase} */
+  /**
+   * Extension's TabManager, initialized at "startup" event of Management.
+   *
+   * @type {TabManagerBase}
+   */
   tabManager;
+
+  /**
+   * Extension's WindowManager, initialized at "startup" event of Management.
+   *
+   * @type {WindowManagerBase}
+   */
+  windowManager;
 
   /** @type {(options?: { ignoreDevToolsAttached?: boolean, disableResetIdleForTest?: boolean }) => Promise} */
   terminateBackground;
@@ -3413,6 +3445,18 @@ export class Extension extends ExtensionData {
     this.updateContentScripts();
   }
 
+  shouldSendSharedData() {
+    return (
+      // If not started or already shutdown, don't bother.
+      !!this.policy?.active &&
+      // If startup() has been called but we have not reached the end of
+      // runManifest() yet, then we have not notified the content process of
+      // via "Extension:Startup", and therefore do not need to notify of
+      // updated sharedData.
+      !pendingExtensions.has(this.id)
+    );
+  }
+
   updateContentScripts() {
     this.setSharedData("contentScripts", this.registeredContentScripts);
   }
@@ -3670,6 +3714,17 @@ export class Extension extends ExtensionData {
         }
       }
 
+      if (this.hasPermission("userScripts")) {
+        this.state = "Startup: Initialize user scripts";
+        // TODO: Parallelize with ExtensionScriptingStore.initExtension?
+        try {
+          await lazy.ExtensionUserScripts.initExtension(this);
+          this.state = "Startup: User scripts initialized";
+        } catch (err) {
+          this.logError(`Failed to initialize user scripts: ${err}`);
+        }
+      }
+
       this.initSharedData();
 
       this.policy.active = false;
@@ -3769,8 +3824,7 @@ export class Extension extends ExtensionData {
     // We automatically add permissions to system/built-in extensions.
     // Extensions expliticy stating not_allowed will never get permission.
     let isAllowed = this.permissions.has(PRIVATE_ALLOWED_PERMISSION);
-    const hasIncognitoNotAllowed = this.manifest.incognito === "not_allowed";
-    if (hasIncognitoNotAllowed) {
+    if (this.manifest.incognito === "not_allowed") {
       // If an extension previously had permission, but upgrades/downgrades to
       // a version that specifies "not_allowed" in manifest, remove the
       // permission.
@@ -3794,32 +3848,6 @@ export class Extension extends ExtensionData {
     // (See Bug 1790115).
     if (this.type === "theme") {
       this.permissions.add(PRIVATE_ALLOWED_PERMISSION);
-    }
-
-    // On builds where Enterprise Policies are supported, grant or revoke
-    // the private browsing access for extensions that are not app provided
-    // (system and builtin add-ons) or hidden.
-    if (
-      Services.policies &&
-      !this.isAppProvided &&
-      !this.isHidden &&
-      !hasIncognitoNotAllowed &&
-      this.type === "extension"
-    ) {
-      const settings = Services.policies.getExtensionSettings(this.id);
-      if (settings?.private_browsing) {
-        lazy.ExtensionPermissions.add(this.id, {
-          permissions: [PRIVATE_ALLOWED_PERMISSION],
-          origins: [],
-        });
-        this.permissions.add(PRIVATE_ALLOWED_PERMISSION);
-      } else if (settings?.private_browsing === false) {
-        lazy.ExtensionPermissions.remove(this.id, {
-          permissions: [PRIVATE_ALLOWED_PERMISSION],
-          origins: [],
-        });
-        this.permissions.delete(PRIVATE_ALLOWED_PERMISSION);
-      }
     }
 
     // We only want to update the SVG_CONTEXT_PROPERTIES_PERMISSION during
@@ -4145,121 +4173,6 @@ export class Langpack extends ExtensionData {
     }
 
     lazy.resourceProtocol.setSubstitution(this.startupData.langpackId, null);
-  }
-}
-
-// TODO(Bug 1789718): Remove after the deprecated XPIProvider-based implementation is also removed.
-export class SitePermission extends ExtensionData {
-  constructor(addonData) {
-    super(addonData.resourceURI);
-    this.id = addonData.id;
-    this.hasShutdown = false;
-  }
-
-  async loadManifest() {
-    let [manifestData] = await Promise.all([this.parseManifest()]);
-
-    if (!manifestData) {
-      return;
-    }
-
-    this.manifest = manifestData.manifest;
-    this.type = manifestData.type;
-    this.sitePermissions = this.manifest.site_permissions;
-    // 1 install_origins is mandatory for this addon type
-    this.siteOrigin = this.manifest.install_origins[0];
-
-    return this.manifest;
-  }
-
-  static getBootstrapScope() {
-    return new SitePermissionBootstrapScope();
-  }
-
-  // Array of principals that may be set by the addon.
-  getSupportedPrincipals() {
-    if (!this.siteOrigin) {
-      return [];
-    }
-    const uri = Services.io.newURI(this.siteOrigin);
-    return [
-      Services.scriptSecurityManager.createContentPrincipal(uri, {}),
-      Services.scriptSecurityManager.createContentPrincipal(uri, {
-        privateBrowsingId: 1,
-      }),
-    ];
-  }
-
-  async startup() {
-    await this.loadManifest();
-
-    this.ensureNoErrors();
-
-    let site_permissions = await lazy.SCHEMA_SITE_PERMISSIONS;
-    let perms = await lazy.ExtensionPermissions.get(this.id);
-
-    if (this.hasShutdown) {
-      // Startup was interrupted and shutdown() has taken care of unloading
-      // the extension and running cleanup logic.
-      return;
-    }
-
-    let privateAllowed = perms.permissions.includes(PRIVATE_ALLOWED_PERMISSION);
-    let principals = this.getSupportedPrincipals();
-
-    // Remove any permissions not contained in site_permissions
-    for (let principal of principals) {
-      let existing = Services.perms.getAllForPrincipal(principal);
-      for (let perm of existing) {
-        if (
-          site_permissions.includes(perm) &&
-          !this.sitePermissions.includes(perm)
-        ) {
-          Services.perms.removeFromPrincipal(principal, perm.type);
-        }
-      }
-    }
-
-    // Ensure all permissions in site_permissions have been set, but do not
-    // overwrite the permission so the user can override the values in preferences.
-    for (let perm of this.sitePermissions) {
-      for (let principal of principals) {
-        let permission = Services.perms.testExactPermissionFromPrincipal(
-          principal,
-          perm
-        );
-        if (permission == Ci.nsIPermissionManager.UNKNOWN_ACTION) {
-          let { privateBrowsingId } = principal.originAttributes;
-          let allow = privateBrowsingId == 0 || privateAllowed;
-          Services.perms.addFromPrincipal(
-            principal,
-            perm,
-            allow ? Services.perms.ALLOW_ACTION : Services.perms.DENY_ACTION,
-            Services.perms.EXPIRE_NEVER
-          );
-        }
-      }
-    }
-
-    Services.obs.notifyObservers(
-      { wrappedJSObject: { sitepermissions: this } },
-      "webextension-sitepermissions-startup"
-    );
-  }
-
-  async shutdown(reason) {
-    this.hasShutdown = true;
-    // Permissions are retained across restarts
-    if (reason == "APP_SHUTDOWN") {
-      return;
-    }
-    let principals = this.getSupportedPrincipals();
-
-    for (let perm of this.sitePermissions || []) {
-      for (let principal of principals) {
-        Services.perms.removeFromPrincipal(principal, perm);
-      }
-    }
   }
 }
 

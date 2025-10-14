@@ -37,6 +37,7 @@ EXTRA_JS_MODULES += [
     "ExtensionStorageSync.sys.mjs",
     "ExtensionStorageSyncKinto.sys.mjs",
     "ExtensionTelemetry.sys.mjs",
+    "ExtensionUserScripts.sys.mjs",
     "ExtensionUserScriptsContent.sys.mjs",
     "ExtensionUtils.sys.mjs",
     "ExtensionWorkerChild.sys.mjs",
