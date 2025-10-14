@@ -943,10 +943,10 @@ var gIdentityHandler = {
     }
 
     // Hide the shield icon if it is a chrome page.
-    // gProtectionsHandler._trackingProtectionIconContainer.classList.toggle(
-    //   "chromeUI",
-    //   this._isSecureInternalUI
-    // );
+     gProtectionsHandler._trackingProtectionIconContainer.classList.toggle(
+       "chromeUI",
+       this._isSecureInternalUI
+     );
   },
 
   /**

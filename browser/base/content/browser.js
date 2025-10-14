@@ -3424,7 +3424,7 @@ var XULBrowserWindow = {
     const nsIWebProgressListener = Ci.nsIWebProgressListener;
 
     let browser = gBrowser.selectedBrowser;
-    //gProtectionsHandler.onStateChange(aWebProgress, aStateFlags);
+    gProtectionsHandler.onStateChange(aWebProgress, aStateFlags);
 
     if (
       aStateFlags & nsIWebProgressListener.STATE_START &&
@@ -3639,7 +3639,7 @@ var XULBrowserWindow = {
 
     gPermissionPanel.onLocationChange();
 
-    //gProtectionsHandler.onLocationChange();
+    gProtectionsHandler.onLocationChange();
 
     BrowserPageActions.onLocationChange();
 
@@ -3899,12 +3899,12 @@ var XULBrowserWindow = {
       );
     }
 
-    // gProtectionsHandler.onContentBlockingEvent(
-    //   aEvent,
-    //   aWebProgress,
-    //   aIsSimulated,
-    //   this._event // previous content blocking event
-    // );
+     gProtectionsHandler.onContentBlockingEvent(
+       aEvent,
+       aWebProgress,
+       aIsSimulated,
+       this._event // previous content blocking event
+    );
 
     // We need the state of the previous content blocking event, so update
     // event after onContentBlockingEvent is called.
