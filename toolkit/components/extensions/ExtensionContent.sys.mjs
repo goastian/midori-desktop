@@ -14,6 +14,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ExtensionProcessScript:
     "resource://gre/modules/ExtensionProcessScript.sys.mjs",
   ExtensionTelemetry: "resource://gre/modules/ExtensionTelemetry.sys.mjs",
+  ExtensionUserScriptsContent:
+    "resource://gre/modules/ExtensionUserScriptsContent.sys.mjs",
   LanguageDetector:
     "resource://gre/modules/translation/LanguageDetector.sys.mjs",
   Schemas: "resource://gre/modules/Schemas.sys.mjs",
@@ -323,10 +325,26 @@ defineLazyGetter(ExtensionChild.prototype, "authorCSSCode", function () {
   return new CSSCodeCache(Ci.nsIStyleSheetService.AUTHOR_SHEET, this);
 });
 
+/**
+ * This is still an ExtensionChild, but with the properties added above.
+ * Unfortunately we can't express that using just JSDocs types locally,
+ * so this needs to be used with `& ExtensionChild` explicitly below.
+ *
+ * @typedef {object} ExtensionChildContent
+ * @property {ScriptCache} staticScripts
+ * @property {ScriptCache} dynamicScripts
+ * @property {ScriptCache} anonStaticScripts
+ * @property {ScriptCache} anonDynamicScripts
+ * @property {CSSCache} userCSS
+ * @property {CSSCache} authorCSS
+ * @property {CSSCodeCache} userCSSCode
+ * @property {CSSCodeCache} authorCSSCode
+ */
+
 // Represents a content script.
 class Script {
   /**
-   * @param {ExtensionChild} extension
+   * @param {ExtensionChild & ExtensionChildContent} extension
    * @param {WebExtensionContentScript|object} matcher
    *        An object with a "matchesWindowGlobal" method and content script
    *        execution details. This is usually a plain WebExtensionContentScript
@@ -412,11 +430,12 @@ class Script {
       };
       // Note: this logic is similar to this.scriptCaches.get(...), but we are
       // not using scriptCaches because we don't want the URL to be cached.
-      let promise = ChromeUtils.compileScript(dataUrl, options);
-      promise.then(script => {
-        promise.script = script;
+      /** @type {Promise<PrecompiledScript> & {script?: PrecompiledScript}} */
+      let promised = ChromeUtils.compileScript(dataUrl, options);
+      promised.then(script => {
+        promised.script = script;
       });
-      this.jsCodeCompiledScript = promise;
+      this.jsCodeCompiledScript = promised;
     } else {
       // this.world === "ISOLATED".
       this.jsCode = jsCode;
@@ -643,6 +662,13 @@ class Script {
       if (this.world === "MAIN") {
         return this.#injectIntoMainWorld(context, scripts, reportExceptions);
       }
+      if (this.world === "USER_SCRIPT") {
+        return this.#injectIntoUserScriptWorld(
+          context,
+          scripts,
+          reportExceptions
+        );
+      }
       return this.#injectIntoIsolatedWorld(context, scripts, reportExceptions);
     } finally {
       lazy.ExtensionTelemetry.contentScriptInjection.stopwatchFinish(
@@ -671,6 +697,27 @@ class Script {
         1
       );
     }
+
+    return result;
+  }
+
+  #injectIntoUserScriptWorld(context, scripts, reportExceptions) {
+    let worldId = "";
+    let sandbox = lazy.ExtensionUserScriptsContent.sandboxFor(context, worldId);
+
+    let result;
+    // Note: every script execution can potentially destroy the context or
+    // navigate the window, in which case context.active will be false.
+    for (let script of scripts) {
+      if (!context.active) {
+        // Return instead of throw, to avoid logspam like bug 1403505.
+        return;
+      }
+      result = script.executeInGlobal(sandbox, { reportExceptions });
+    }
+
+    // NOTE: if userScripts.execute() is implemented (bug 1930776), we may have
+    // to account for this.jsCode here (via addJSCode).
 
     return result;
   }
@@ -730,7 +777,6 @@ class Script {
             new ScriptError(
               error.toString(),
               error.fileName,
-              null,
               error.lineNumber,
               error.columnNumber,
               Ci.nsIScriptError.errorFlag,
@@ -762,7 +808,7 @@ class Script {
 // Represents a user script.
 class UserScript extends Script {
   /**
-   * @param {ExtensionChild} extension
+   * @param {ExtensionChild & ExtensionChildContent} extension
    * @param {WebExtensionContentScript|object} matcher
    *        An object with a "matchesWindowGlobal" method and content script
    *        execution details.
@@ -942,6 +988,7 @@ class ContentScriptContextChild extends BaseContext {
 
       let isMV2 = extension.manifestVersion == 2;
       let wantGlobalProperties;
+      let sandboxContentSecurityPolicy;
       if (isMV2) {
         // In MV2, fetch/XHR support cross-origin requests.
         // WebSocket was also included to avoid CSP effects (bug 1676024).
@@ -949,11 +996,16 @@ class ContentScriptContextChild extends BaseContext {
       } else {
         // In MV3, fetch/XHR have the same capabilities as the web page.
         wantGlobalProperties = [];
+        // In MV3, the base CSP is enforced for content scripts. Overrides are
+        // currently not supported, but this was considered at some point, see
+        // https://bugzilla.mozilla.org/show_bug.cgi?id=1581611#c10
+        sandboxContentSecurityPolicy = extension.policy.baseCSP;
       }
       this.sandbox = Cu.Sandbox(principal, {
         metadata,
         sandboxName: `Content Script ${extension.policy.debugName}`,
         sandboxPrototype: contentWindow,
+        sandboxContentSecurityPolicy,
         sameZoneAs: contentWindow,
         wantXrays: true,
         isWebExtensionContentScript: true,
