@@ -1093,13 +1093,6 @@ const verticalTabbarEnabled = () => Services.prefs.getIntPref("floorp.tabbar.sty
 			children.pop();
 			this._allTabs = children;
 			return children;
-
-		      // explode tab groups
-			Array.from(children).forEach((node, index) => {
-				if (node.tagName == "tab-group") {
-					children.splice(index, 1, ...node.tabs);
-				}
-			});
 		}
 
 
