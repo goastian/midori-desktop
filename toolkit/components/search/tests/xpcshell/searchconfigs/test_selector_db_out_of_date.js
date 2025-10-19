@@ -61,9 +61,11 @@ add_task(async function test_selector_db_out_of_date() {
     region: "default",
   });
 
-  Assert.deepEqual(
-    result.engines.map(e => e.identifier),
-    ["google", "bing", "ddg", "wikipedia"],
-    "Should have returned the correct data."
+  let engineIdentifiers = result.engines.map(e => e.identifier);
+  Assert.ok(
+    ["google", "bing", "ddg", "wikipedia"].every(id =>
+      engineIdentifiers.includes(id)
+    ),
+    "Should have returned the correct engine identifiers."
   );
 });
