@@ -302,7 +302,10 @@ NS_IMPL_ISUPPORTS(UITimerCallback, nsITimerCallback, nsINamed)
 NS_IMETHODIMP
 UITimerCallback::Notify(nsITimer* aTimer) {
   nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
-  if (!obs) return NS_ERROR_FAILURE;
+  // ObserverService shutdown happens after XPCOMShutdownThreads.
+  if (!obs || AppShutdown::IsInOrBeyond(ShutdownPhase::XPCOMShutdownThreads)) {
+    return NS_ERROR_FAILURE;
+  }
   if ((gMouseOrKeyboardEventCounter == mPreviousCount) || !aTimer) {
     gMouseOrKeyboardEventCounter = 0;
     obs->NotifyObservers(nullptr, "user-interaction-inactive", nullptr);
