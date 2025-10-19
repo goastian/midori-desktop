@@ -80,7 +80,13 @@ void GPUProcessManager::Initialize() {
   sSingleton = new GPUProcessManager();
 }
 
-void GPUProcessManager::Shutdown() { sSingleton = nullptr; }
+void GPUProcessManager::Shutdown() {
+  if (!sSingleton) {
+    return;
+  }
+  sSingleton->ShutdownInternal();
+  sSingleton = nullptr;
+}
 
 GPUProcessManager::GPUProcessManager()
     : mTaskFactory(this),
@@ -114,67 +120,83 @@ GPUProcessManager::~GPUProcessManager() {
   MOZ_ASSERT(!mProcess && !mGPUChild);
 
   // We should have already removed observers.
-  MOZ_ASSERT(!mObserver);
+  MOZ_DIAGNOSTIC_ASSERT(!mObserver);
+  MOZ_DIAGNOSTIC_ASSERT(!mBatteryObserver);
 }
 
 NS_IMPL_ISUPPORTS(GPUProcessManager::Observer, nsIObserver);
 
-GPUProcessManager::Observer::Observer(GPUProcessManager* aManager)
-    : mManager(aManager) {}
+GPUProcessManager::Observer::Observer() {
+  nsContentUtils::RegisterShutdownObserver(this);
+  Preferences::AddStrongObserver(this, "");
+  if (nsCOMPtr<nsIObserverService> obsServ = services::GetObserverService()) {
+    obsServ->AddObserver(this, "application-foreground", false);
+    obsServ->AddObserver(this, "application-background", false);
+    obsServ->AddObserver(this, "screen-information-changed", false);
+    obsServ->AddObserver(this, "xpcom-will-shutdown", false);
+  }
+}
+
+void GPUProcessManager::Observer::Shutdown() {
+  nsContentUtils::UnregisterShutdownObserver(this);
+  Preferences::RemoveObserver(this, "");
+  if (nsCOMPtr<nsIObserverService> obsServ = services::GetObserverService()) {
+    obsServ->RemoveObserver(this, "application-foreground");
+    obsServ->RemoveObserver(this, "application-background");
+    obsServ->RemoveObserver(this, "screen-information-changed");
+    obsServ->RemoveObserver(this, "xpcom-will-shutdown");
+  }
+}
 
 NS_IMETHODIMP
 GPUProcessManager::Observer::Observe(nsISupports* aSubject, const char* aTopic,
                                      const char16_t* aData) {
-  if (!strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID)) {
-    mManager->OnXPCOMShutdown();
-  } else if (!strcmp(aTopic, "nsPref:changed")) {
-    mManager->OnPreferenceChange(aData);
-  } else if (!strcmp(aTopic, "application-foreground")) {
-    mManager->mAppInForeground = true;
-    if (!mManager->mProcess && gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
-      Unused << mManager->LaunchGPUProcess();
-    }
-  } else if (!strcmp(aTopic, "application-background")) {
-    mManager->mAppInForeground = false;
-  } else if (!strcmp(aTopic, "screen-information-changed")) {
-    mManager->ScreenInformationChanged();
+  if (auto* gpm = GPUProcessManager::Get()) {
+    gpm->NotifyObserve(aTopic, aData);
   }
   return NS_OK;
 }
 
-GPUProcessManager::BatteryObserver::BatteryObserver(GPUProcessManager* aManager)
-    : mManager(aManager) {
+void GPUProcessManager::NotifyObserve(const char* aTopic,
+                                      const char16_t* aData) {
+  if (!strcmp(aTopic, NS_XPCOM_WILL_SHUTDOWN_OBSERVER_ID)) {
+    StopBatteryObserving();
+  } else if (!strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID)) {
+    ShutdownInternal();
+  } else if (!strcmp(aTopic, "nsPref:changed")) {
+    OnPreferenceChange(aData);
+  } else if (!strcmp(aTopic, "application-foreground")) {
+    mAppInForeground = true;
+    if (!mProcess && gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
+      Unused << LaunchGPUProcess();
+    }
+  } else if (!strcmp(aTopic, "application-background")) {
+    mAppInForeground = false;
+  } else if (!strcmp(aTopic, "screen-information-changed")) {
+    ScreenInformationChanged();
+  }
+}
+
+GPUProcessManager::BatteryObserver::BatteryObserver() {
   hal::RegisterBatteryObserver(this);
 }
 
 void GPUProcessManager::BatteryObserver::Notify(
     const hal::BatteryInformation& aBatteryInfo) {
-  mManager->NotifyBatteryInfo(aBatteryInfo);
+  if (auto* gpm = GPUProcessManager::Get()) {
+    gpm->NotifyBatteryInfo(aBatteryInfo);
+  }
 }
 
-void GPUProcessManager::BatteryObserver::ShutDown() {
+void GPUProcessManager::BatteryObserver::Shutdown() {
   hal::UnregisterBatteryObserver(this);
 }
 
-GPUProcessManager::BatteryObserver::~BatteryObserver() {}
-
-void GPUProcessManager::OnXPCOMShutdown() {
-  if (mObserver) {
-    nsContentUtils::UnregisterShutdownObserver(mObserver);
-    Preferences::RemoveObserver(mObserver, "");
-    nsCOMPtr<nsIObserverService> obsServ = services::GetObserverService();
-    if (obsServ) {
-      obsServ->RemoveObserver(mObserver, "application-foreground");
-      obsServ->RemoveObserver(mObserver, "application-background");
-      obsServ->RemoveObserver(mObserver, "screen-information-changed");
-    }
-    mObserver = nullptr;
+void GPUProcessManager::OnPreferenceChange(const char16_t* aData) {
+  if (!mGPUChild && !IsGPUProcessLaunching()) {
+    return;
   }
 
-  CleanShutdown();
-}
-
-void GPUProcessManager::OnPreferenceChange(const char16_t* aData) {
   // We know prefs are ASCII here.
   NS_LossyConvertUTF16toASCII strData(aData);
 
@@ -183,10 +205,10 @@ void GPUProcessManager::OnPreferenceChange(const char16_t* aData) {
 
   Preferences::GetPreference(&pref, GeckoProcessType_GPU,
                              /* remoteType */ ""_ns);
-  if (!!mGPUChild) {
+  if (mGPUChild) {
     MOZ_ASSERT(mQueuedPrefs.IsEmpty());
     mGPUChild->SendPreferenceUpdate(pref);
-  } else if (IsGPUProcessLaunching()) {
+  } else {
     mQueuedPrefs.AppendElement(pref);
   }
 }
@@ -245,15 +267,7 @@ bool GPUProcessManager::LaunchGPUProcess() {
   // Start listening for pref changes so we can
   // forward them to the process once it is running.
   if (!mObserver) {
-    mObserver = new Observer(this);
-    nsContentUtils::RegisterShutdownObserver(mObserver);
-    Preferences::AddStrongObserver(mObserver, "");
-    nsCOMPtr<nsIObserverService> obsServ = services::GetObserverService();
-    if (obsServ) {
-      obsServ->AddObserver(mObserver, "application-foreground", false);
-      obsServ->AddObserver(mObserver, "application-background", false);
-      obsServ->AddObserver(mObserver, "screen-information-changed", false);
-    }
+    mObserver = new Observer();
   }
 
   // Start the Vsync I/O thread so can use it as soon as the process launches.
@@ -590,8 +604,8 @@ void GPUProcessManager::OnProcessLaunchComplete(GPUProcessHost* aHost) {
                                           std::move(vsyncChild));
   mGPUChild->SendInitVsyncBridge(std::move(vsyncParent));
 
-  MOZ_ASSERT(!mBatteryObserver);
-  mBatteryObserver = new BatteryObserver(this);
+  MOZ_DIAGNOSTIC_ASSERT(!mBatteryObserver);
+  mBatteryObserver = new BatteryObserver();
 
   // Flush any pref updates that happened during launch and weren't
   // included in the blobs set up in LaunchGPUProcess.
@@ -1107,7 +1121,12 @@ void GPUProcessManager::NotifyRemoteActorDestroyed(
   OnProcessUnexpectedShutdown(mProcess);
 }
 
-void GPUProcessManager::CleanShutdown() {
+void GPUProcessManager::ShutdownInternal() {
+  if (mObserver) {
+    mObserver->Shutdown();
+    mObserver = nullptr;
+  }
+
   DestroyProcess();
   mVsyncIOThread = nullptr;
 }
@@ -1149,13 +1168,17 @@ void GPUProcessManager::DestroyProcess(bool aUnexpectedShutdown) {
     mVsyncBridge->Close();
     mVsyncBridge = nullptr;
   }
-  if (mBatteryObserver) {
-    mBatteryObserver->ShutDown();
-    mBatteryObserver = nullptr;
-  }
+  StopBatteryObserving();
 
   CrashReporter::RecordAnnotationCString(
       CrashReporter::Annotation::GPUProcessStatus, "Destroyed");
+}
+
+void GPUProcessManager::StopBatteryObserving() {
+  if (mBatteryObserver) {
+    mBatteryObserver->Shutdown();
+    mBatteryObserver = nullptr;
+  }
 }
 
 already_AddRefed<CompositorSession> GPUProcessManager::CreateTopLevelCompositor(
