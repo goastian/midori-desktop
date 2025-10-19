@@ -25,6 +25,10 @@ class Listener {
 
 Listener.prototype.QueryInterface = ChromeUtils.generateQI(["nsIDNSListener"]);
 
+// This domain used to resolve. We fake the response to avoid
+// depending on the network for automated tests.
+overrideService.addIPOverride("xn--bcher-kva.org", "127.0.0.1");
+
 const DOMAIN_IDN = "bücher.org";
 const ACE_IDN = "xn--bcher-kva.org";
 
