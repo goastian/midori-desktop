@@ -6,6 +6,7 @@
 
 #include "EventStateManager.h"
 
+#include "mozilla/AppShutdown.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EditorBase.h"
