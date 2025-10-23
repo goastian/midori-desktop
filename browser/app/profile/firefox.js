@@ -592,7 +592,7 @@ pref("browser.urlbar.showSearchSuggestionsFirst", true);
 pref("browser.urlbar.maxCharsForSearchSuggestions", 100);
 
 pref("browser.urlbar.trimURLs", true);
-pref("browser.urlbar.trimHttps", false);
+pref("browser.urlbar.trimHttps", true);
 pref("browser.urlbar.untrimOnUserInteraction.featureGate", false);
 
 // If changed to true, copying the entire URL from the location bar will put the
@@ -2275,7 +2275,7 @@ pref("toolkit.telemetry.newProfilePing.enabled", true);
 // Enables sending 'update' pings on Firefox updates.
 pref("toolkit.telemetry.updatePing.enabled", true);
 // Enables sending 'bhr' pings when the browser hangs.
-pref("toolkit.telemetry.bhrPing.enabled", true);
+pref("toolkit.telemetry.bhrPing.enabled", false);
 
 // Enable GMP support in the addon manager.
 pref("media.gmp-provider.enabled", true);

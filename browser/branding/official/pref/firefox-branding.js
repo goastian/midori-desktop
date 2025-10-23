@@ -4,9 +4,10 @@
 
 // This file contains branding-specific prefs.
 
-pref("startup.homepage_override_url", "");
-pref("startup.homepage_welcome_url", "about:welcome");
-pref("startup.homepage_welcome_url.additional", "");
+pref("startup.homepage_override_url", "https://astian.org/midori-en/");
+pref("floorp.startup.homepage_override_url.ja", "https://astian.org/midori-en/");
+pref("startup.homepage_welcome_url", "about:setup | https://astian.org/midori-en/");
+pref("startup.homepage_welcome_url.additional", "https://astian.org/astian-privacy-policies/");
 // Interval: Time between checks for a new version (in seconds)
 pref("app.update.interval", 21600); // 6 hours
 // Give the user x seconds to react before showing the big UI. default=192 hours
