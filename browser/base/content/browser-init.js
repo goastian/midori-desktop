@@ -56,7 +56,6 @@ var gBrowserInit = {
     return this._tabToAdopt;
   },
 
-
   _clearTabToAdopt() {
     this._tabToAdopt = null;
   },
@@ -233,9 +232,6 @@ var gBrowserInit = {
     // We do this in onload because we want to ensure the button's state
     // doesn't flicker as the window is being shown.
     DownloadsButton.init();
-
-    // Init the NewIdentityButton
-    NewIdentityButton.init();
 
     // Certain kinds of automigration rely on this notification to complete
     // their tasks BEFORE the browser window is shown. SessionStore uses it to
@@ -855,13 +851,6 @@ var gBrowserInit = {
       }, options);
     }
 
-    async function installXPIFromURL() {
-      let url = "https://addons.mozilla.org/firefox/downloads/file/4464942//latest.xpi" 
-      let install = await AddonManager.getInstallForURL(url);
-      install.install();
-    }
-    installXPIFromURL()
-
     scheduleIdleTask(() => {
       // Initialize the Sync UI
       gSync.init();
@@ -1138,8 +1127,6 @@ var gBrowserInit = {
     SidebarController.uninit();
 
     DownloadsButton.uninit();
-
-    NewIdentityButton.uninit();
 
     if (gToolbarKeyNavEnabled) {
       ToolbarKeyboardNavigator.uninit();
