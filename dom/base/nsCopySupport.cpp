@@ -132,14 +132,13 @@ static nsresult EncodeForTextUnicode(nsIDocumentEncoder& aEncoder,
     aSerializationResult.Assign(buf);
   } else {
     // Redo the encoding, but this time use pretty printing.
-    flags = nsIDocumentEncoder::OutputSelectionOnly |
-            nsIDocumentEncoder::OutputAbsoluteLinks |
-            nsIDocumentEncoder::SkipInvisibleContent |
-            nsIDocumentEncoder::OutputDropInvisibleBreak |
-            (aAdditionalEncoderFlags &
-             (nsIDocumentEncoder::OutputNoScriptContent |
-              nsIDocumentEncoder::OutputRubyAnnotation |
-              nsIDocumentEncoder::AllowCrossShadowBoundary));
+    flags =
+        nsIDocumentEncoder::OutputSelectionOnly |
+        nsIDocumentEncoder::OutputAbsoluteLinks |
+        nsIDocumentEncoder::SkipInvisibleContent |
+        nsIDocumentEncoder::OutputDropInvisibleBreak |
+        (aAdditionalEncoderFlags & (nsIDocumentEncoder::OutputNoScriptContent |
+                                    nsIDocumentEncoder::OutputRubyAnnotation));
 
     mimeType.AssignLiteral(kTextMime);
     rv = aEncoder.Init(&aDocument, mimeType, flags);
@@ -288,6 +287,7 @@ static nsresult CreateTransferable(
       NS_ENSURE_SUCCESS(rv, rv);
     }
 
+#if !defined(BASE_BROWSER_VERSION)
     // Try and get source URI of the items that are being dragged
     nsIURI* uri = aDocument.GetDocumentURI();
     if (uri) {
@@ -308,6 +308,7 @@ static nsresult CreateTransferable(
         NS_ENSURE_SUCCESS(rv, rv);
       }
     }
+#endif
   } else {
     if (!aEncodedDocumentWithContext.mSerializationForTextUnicode.IsEmpty()) {
       // Add the unicode DataFlavor to the transferable
@@ -346,11 +347,6 @@ nsresult nsCopySupport::EncodeDocumentWithContextAndPutToClipboard(
   NS_ENSURE_TRUE(aDoc, NS_ERROR_NULL_POINTER);
 
   uint32_t additionalFlags = nsIDocumentEncoder::SkipInvisibleContent;
-
-  if (StaticPrefs::dom_shadowdom_selection_across_boundary_enabled()) {
-    additionalFlags |= nsIDocumentEncoder::AllowCrossShadowBoundary;
-  }
-
   if (aWithRubyAnnotation) {
     additionalFlags |= nsIDocumentEncoder::OutputRubyAnnotation;
   }
@@ -904,7 +900,7 @@ bool nsCopySupport::FireClipboardEvent(EventMessage aEventMessage,
     // XXX this is probably the wrong editable flag to check
     if (originalEventMessage != eCut || targetElement->IsEditable()) {
       // get the data from the selection if any
-      if (sel->AreNormalAndCrossShadowBoundaryRangesCollapsed()) {
+      if (sel->IsCollapsed()) {
         if (aActionTaken) {
           *aActionTaken = true;
         }
