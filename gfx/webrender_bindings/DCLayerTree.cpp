@@ -55,6 +55,179 @@ extern LazyLogModule gRenderThreadLog;
   MOZ_LOG(gDcompSurface, LogLevel::Debug, \
           ("DCSurfaceHandle=%p, " msg, this, ##__VA_ARGS__))
 
+static UINT GetVendorId(ID3D11VideoDevice* const aVideoDevice) {
+  RefPtr<IDXGIDevice> dxgiDevice;
+  RefPtr<IDXGIAdapter> adapter;
+  aVideoDevice->QueryInterface((IDXGIDevice**)getter_AddRefs(dxgiDevice));
+  dxgiDevice->GetAdapter(getter_AddRefs(adapter));
+
+  DXGI_ADAPTER_DESC adapterDesc;
+  adapter->GetDesc(&adapterDesc);
+
+  return adapterDesc.VendorId;
+}
+
+// Undocumented NVIDIA VSR data
+struct NvidiaVSRGetData_v1 {
+  UINT vsrGPUisVSRCapable : 1;   // 01/32, 1: GPU is VSR capable
+  UINT vsrOtherFieldsValid : 1;  // 02/32, 1: Other status fields are valid
+  // remaining fields are valid if vsrOtherFieldsValid is set - requires
+  // previous execution of VPBlt with SetStreamExtension for VSR enabled.
+  UINT vsrEnabled : 1;           // 03/32, 1: VSR is enabled
+  UINT vsrIsInUseForThisVP : 1;  // 04/32, 1: VSR is in use by this Video
+                                 // Processor
+  UINT vsrLevel : 3;             // 05-07/32, 0-4 current level
+  UINT vsrReserved : 21;         // 32-07
+};
+
+static Result<NvidiaVSRGetData_v1, HRESULT> GetNvidiaVpSuperResolutionInfo(
+    ID3D11VideoContext* aVideoContext, ID3D11VideoProcessor* aVideoProcessor) {
+  MOZ_ASSERT(aVideoContext);
+  MOZ_ASSERT(aVideoProcessor);
+
+  // Undocumented NVIDIA driver constants
+  constexpr GUID nvGUID = {0xD43CE1B3,
+                           0x1F4B,
+                           0x48AC,
+                           {0xBA, 0xEE, 0xC3, 0xC2, 0x53, 0x75, 0xE6, 0xF7}};
+
+  NvidiaVSRGetData_v1 data{};
+  HRESULT hr = aVideoContext->VideoProcessorGetStreamExtension(
+      aVideoProcessor, 0, &nvGUID, sizeof(data), &data);
+
+  if (FAILED(hr)) {
+    return Err(hr);
+  }
+  return data;
+}
+
+static void AddProfileMarkerForNvidiaVpSuperResolutionInfo(
+    ID3D11VideoContext* aVideoContext, ID3D11VideoProcessor* aVideoProcessor) {
+  MOZ_ASSERT(profiler_thread_is_being_profiled_for_markers());
+
+  auto res = GetNvidiaVpSuperResolutionInfo(aVideoContext, aVideoProcessor);
+  if (res.isErr()) {
+    return;
+  }
+
+  auto data = res.unwrap();
+
+  nsPrintfCString str(
+      "SuperResolution VP Capable %u OtherFieldsValid %u Enabled %u InUse %u "
+      "Level %u",
+      data.vsrGPUisVSRCapable, data.vsrOtherFieldsValid, data.vsrEnabled,
+      data.vsrIsInUseForThisVP, data.vsrLevel);
+  PROFILER_MARKER_TEXT("DCSurfaceVideo", GRAPHICS, {}, str);
+}
+
+static HRESULT SetNvidiaVpSuperResolution(ID3D11VideoContext* aVideoContext,
+                                          ID3D11VideoProcessor* aVideoProcessor,
+                                          bool aEnable) {
+  LOG("SetNvidiaVpSuperResolution() aEnable=%d", aEnable);
+
+  // Undocumented NVIDIA driver constants
+  constexpr GUID nvGUID = {0xD43CE1B3,
+                           0x1F4B,
+                           0x48AC,
+                           {0xBA, 0xEE, 0xC3, 0xC2, 0x53, 0x75, 0xE6, 0xF7}};
+
+  constexpr UINT nvExtensionVersion = 0x1;
+  constexpr UINT nvExtensionMethodSuperResolution = 0x2;
+  struct {
+    UINT version;
+    UINT method;
+    UINT enable;
+  } streamExtensionInfo = {nvExtensionVersion, nvExtensionMethodSuperResolution,
+                           aEnable ? 1u : 0};
+
+  HRESULT hr;
+  hr = aVideoContext->VideoProcessorSetStreamExtension(
+      aVideoProcessor, 0, &nvGUID, sizeof(streamExtensionInfo),
+      &streamExtensionInfo);
+  return hr;
+}
+
+static HRESULT SetVpSuperResolution(UINT aGpuVendorId,
+                                    ID3D11VideoContext* aVideoContext,
+                                    ID3D11VideoProcessor* aVideoProcessor,
+                                    bool aEnable) {
+  MOZ_ASSERT(aVideoContext);
+  MOZ_ASSERT(aVideoProcessor);
+
+  if (aGpuVendorId == 0x10DE) {
+    return SetNvidiaVpSuperResolution(aVideoContext, aVideoProcessor, aEnable);
+  }
+  return E_NOTIMPL;
+}
+
+static bool GetNvidiaRTXVideoTrueHDRSupported(
+    ID3D11VideoContext* aVideoContext, ID3D11VideoProcessor* aVideoProcessor) {
+  const GUID kNvidiaTrueHDRInterfaceGUID = {
+      0xfdd62bb4,
+      0x620b,
+      0x4fd7,
+      {0x9a, 0xb3, 0x1e, 0x59, 0xd0, 0xd5, 0x44, 0xb3}};
+  UINT available = 0;
+  HRESULT hr = aVideoContext->VideoProcessorGetStreamExtension(
+      aVideoProcessor, 0, &kNvidiaTrueHDRInterfaceGUID, sizeof(available),
+      &available);
+  if (FAILED(hr)) {
+    return false;
+  }
+
+  bool driverSupportsTrueHdr = (available == 1);
+  return driverSupportsTrueHdr;
+}
+
+static HRESULT SetNvidiaRTXVideoTrueHDR(ID3D11VideoContext* aVideoContext,
+                                        ID3D11VideoProcessor* aVideoProcessor,
+                                        bool aEnable) {
+  constexpr GUID kNvidiaTrueHDRInterfaceGUID = {
+      0xfdd62bb4,
+      0x620b,
+      0x4fd7,
+      {0x9a, 0xb3, 0x1e, 0x59, 0xd0, 0xd5, 0x44, 0xb3}};
+  constexpr UINT kStreamExtensionMethodTrueHDR = 0x3;
+  const UINT TrueHDRVersion4 = 4;
+  struct {
+    UINT version;
+    UINT method;
+    UINT enable : 1;
+    UINT reserved : 31;
+  } streamExtensionInfo = {TrueHDRVersion4, kStreamExtensionMethodTrueHDR,
+                           aEnable ? 1u : 0u, 0u};
+  HRESULT hr = aVideoContext->VideoProcessorSetStreamExtension(
+      aVideoProcessor, 0, &kNvidiaTrueHDRInterfaceGUID,
+      sizeof(streamExtensionInfo), &streamExtensionInfo);
+  return hr;
+}
+
+static bool GetVpAutoHDRSupported(UINT aGpuVendorId,
+                                  ID3D11VideoContext* aVideoContext,
+                                  ID3D11VideoProcessor* aVideoProcessor) {
+  MOZ_ASSERT(aVideoContext);
+  MOZ_ASSERT(aVideoProcessor);
+
+  if (aGpuVendorId == 0x10DE) {
+    return GetNvidiaRTXVideoTrueHDRSupported(aVideoContext, aVideoProcessor);
+  }
+  return false;
+}
+
+static HRESULT SetVpAutoHDR(UINT aGpuVendorId,
+                            ID3D11VideoContext* aVideoContext,
+                            ID3D11VideoProcessor* aVideoProcessor,
+                            bool aEnable) {
+  MOZ_ASSERT(aVideoContext);
+  MOZ_ASSERT(aVideoProcessor);
+
+  if (aGpuVendorId == 0x10DE) {
+    return SetNvidiaRTXVideoTrueHDR(aVideoContext, aVideoProcessor, aEnable);
+  }
+  MOZ_ASSERT_UNREACHABLE("Unexpected to be called");
+  return E_NOTIMPL;
+}
+
 StaticAutoPtr<GpuOverlayInfo> DCLayerTree::sGpuOverlayInfo;
 
 /* static */
@@ -292,6 +465,24 @@ bool DCLayerTree::InitializeVideoOverlaySupport() {
   }
 
   info->mSupportsOverlays = info->mSupportsHardwareOverlays;
+
+  // Check VpSuperResolution and VpAutoHDR support.
+  const auto size = gfx::IntSize(100, 100);
+  if (EnsureVideoProcessor(size, size)) {
+    const UINT vendorId = GetVendorId(mVideoDevice);
+    if (vendorId == 0x10DE) {
+      auto res = GetNvidiaVpSuperResolutionInfo(mVideoContext, mVideoProcessor);
+      if (res.isOk() && res.unwrap().vsrGPUisVSRCapable) {
+        info->mSupportsVpSuperResolution = true;
+      }
+    }
+
+    const bool driverSupportVpAutoHDR =
+        GetVpAutoHDRSupported(vendorId, mVideoContext, mVideoProcessor);
+    if (driverSupportVpAutoHDR) {
+      info->mSupportsVpAutoHDR = true;
+    }
+  }
 
   // Note: "UniquePtr::release" here is saying "release your ownership stake
   // on your pointer, so that our StaticAutoPtr can take over ownership".
@@ -1021,6 +1212,9 @@ layers::OverlayInfo DCLayerTree::GetOverlayInfo() {
       FlagsToOverlaySupportType(sGpuOverlayInfo->mRgb10a2OverlaySupportFlags,
                                 /* aSoftwareOverlaySupported */ false);
 
+  info.mSupportsVpSuperResolution = sGpuOverlayInfo->mSupportsVpSuperResolution;
+  info.mSupportsVpAutoHDR = sGpuOverlayInfo->mSupportsVpAutoHDR;
+
   return info;
 }
 
@@ -1177,164 +1371,6 @@ void DCSurfaceVideo::AttachExternalImage(wr::ExternalImageId aExternalImage) {
   }
 
   mRenderTextureHost = texture;
-}
-
-static UINT GetVendorId(ID3D11VideoDevice* const aVideoDevice) {
-  RefPtr<IDXGIDevice> dxgiDevice;
-  RefPtr<IDXGIAdapter> adapter;
-  aVideoDevice->QueryInterface((IDXGIDevice**)getter_AddRefs(dxgiDevice));
-  dxgiDevice->GetAdapter(getter_AddRefs(adapter));
-
-  DXGI_ADAPTER_DESC adapterDesc;
-  adapter->GetDesc(&adapterDesc);
-
-  return adapterDesc.VendorId;
-}
-
-struct NvidiaVSRGetData_v1 {
-  UINT vsrGPUisVSRCapable : 1;   // 01/32, 1: GPU is VSR capable
-  UINT vsrOtherFieldsValid : 1;  // 02/32, 1: Other status fields are valid
-  // remaining fields are valid if vsrOtherFieldsValid is set - requires
-  // previous execution of VPBlt with SetStreamExtension for VSR enabled.
-  UINT vsrEnabled : 1;           // 03/32, 1: VSR is enabled
-  UINT vsrIsInUseForThisVP : 1;  // 04/32, 1: VSR is in use by this Video
-                                 // Processor
-  UINT vsrLevel : 3;             // 05-07/32, 0-4 current level
-  UINT vsrReserved : 21;         // 32-07
-};
-
-static void AddProfileMarkerForNvidiaVpSuperResolutionInfo(
-    ID3D11VideoContext* aVideoContext, ID3D11VideoProcessor* aVideoProcessor) {
-  MOZ_ASSERT(profiler_thread_is_being_profiled_for_markers());
-
-  // Undocumented NVIDIA driver constants
-  constexpr GUID nvGUID = {0xD43CE1B3,
-                           0x1F4B,
-                           0x48AC,
-                           {0xBA, 0xEE, 0xC3, 0xC2, 0x53, 0x75, 0xE6, 0xF7}};
-
-  NvidiaVSRGetData_v1 data{};
-  HRESULT hr = aVideoContext->VideoProcessorGetStreamExtension(
-      aVideoProcessor, 0, &nvGUID, sizeof(data), &data);
-
-  if (FAILED(hr)) {
-    return;
-  }
-
-  nsPrintfCString str(
-      "SuperResolution VP Capable %u OtherFieldsValid %u Enabled %u InUse %u "
-      "Level %u",
-      data.vsrGPUisVSRCapable, data.vsrOtherFieldsValid, data.vsrEnabled,
-      data.vsrIsInUseForThisVP, data.vsrLevel);
-  PROFILER_MARKER_TEXT("DCSurfaceVideo", GRAPHICS, {}, str);
-}
-
-static HRESULT SetNvidiaVpSuperResolution(ID3D11VideoContext* aVideoContext,
-                                          ID3D11VideoProcessor* aVideoProcessor,
-                                          bool aEnable) {
-  LOG("SetNvidiaVpSuperResolution() aEnable=%d", aEnable);
-
-  // Undocumented NVIDIA driver constants
-  constexpr GUID nvGUID = {0xD43CE1B3,
-                           0x1F4B,
-                           0x48AC,
-                           {0xBA, 0xEE, 0xC3, 0xC2, 0x53, 0x75, 0xE6, 0xF7}};
-
-  constexpr UINT nvExtensionVersion = 0x1;
-  constexpr UINT nvExtensionMethodSuperResolution = 0x2;
-  struct {
-    UINT version;
-    UINT method;
-    UINT enable;
-  } streamExtensionInfo = {nvExtensionVersion, nvExtensionMethodSuperResolution,
-                           aEnable ? 1u : 0};
-
-  HRESULT hr;
-  hr = aVideoContext->VideoProcessorSetStreamExtension(
-      aVideoProcessor, 0, &nvGUID, sizeof(streamExtensionInfo),
-      &streamExtensionInfo);
-  return hr;
-}
-
-static HRESULT SetVpSuperResolution(UINT aGpuVendorId,
-                                    ID3D11VideoContext* aVideoContext,
-                                    ID3D11VideoProcessor* aVideoProcessor,
-                                    bool aEnable) {
-  MOZ_ASSERT(aVideoContext);
-  MOZ_ASSERT(aVideoProcessor);
-
-  if (aGpuVendorId == 0x10DE) {
-    return SetNvidiaVpSuperResolution(aVideoContext, aVideoProcessor, aEnable);
-  }
-  return E_NOTIMPL;
-}
-
-static bool GetNvidiaRTXVideoTrueHDRSupported(
-    ID3D11VideoContext* aVideoContext, ID3D11VideoProcessor* aVideoProcessor) {
-  const GUID kNvidiaTrueHDRInterfaceGUID = {
-      0xfdd62bb4,
-      0x620b,
-      0x4fd7,
-      {0x9a, 0xb3, 0x1e, 0x59, 0xd0, 0xd5, 0x44, 0xb3}};
-  UINT available = 0;
-  HRESULT hr = aVideoContext->VideoProcessorGetStreamExtension(
-      aVideoProcessor, 0, &kNvidiaTrueHDRInterfaceGUID, sizeof(available),
-      &available);
-  if (FAILED(hr)) {
-    return false;
-  }
-
-  bool driverSupportsTrueHdr = (available == 1);
-  return driverSupportsTrueHdr;
-}
-
-static HRESULT SetNvidiaRTXVideoTrueHDR(ID3D11VideoContext* aVideoContext,
-                                        ID3D11VideoProcessor* aVideoProcessor,
-                                        bool aEnable) {
-  constexpr GUID kNvidiaTrueHDRInterfaceGUID = {
-      0xfdd62bb4,
-      0x620b,
-      0x4fd7,
-      {0x9a, 0xb3, 0x1e, 0x59, 0xd0, 0xd5, 0x44, 0xb3}};
-  constexpr UINT kStreamExtensionMethodTrueHDR = 0x3;
-  const UINT TrueHDRVersion4 = 4;
-  struct {
-    UINT version;
-    UINT method;
-    UINT enable : 1;
-    UINT reserved : 31;
-  } streamExtensionInfo = {TrueHDRVersion4, kStreamExtensionMethodTrueHDR,
-                           aEnable ? 1u : 0u, 0u};
-  HRESULT hr = aVideoContext->VideoProcessorSetStreamExtension(
-      aVideoProcessor, 0, &kNvidiaTrueHDRInterfaceGUID,
-      sizeof(streamExtensionInfo), &streamExtensionInfo);
-  return hr;
-}
-
-static bool GetVpAutoHDRSupported(UINT aGpuVendorId,
-                                  ID3D11VideoContext* aVideoContext,
-                                  ID3D11VideoProcessor* aVideoProcessor) {
-  MOZ_ASSERT(aVideoContext);
-  MOZ_ASSERT(aVideoProcessor);
-
-  if (aGpuVendorId == 0x10DE) {
-    return GetNvidiaRTXVideoTrueHDRSupported(aVideoContext, aVideoProcessor);
-  }
-  return false;
-}
-
-static HRESULT SetVpAutoHDR(UINT aGpuVendorId,
-                            ID3D11VideoContext* aVideoContext,
-                            ID3D11VideoProcessor* aVideoProcessor,
-                            bool aEnable) {
-  MOZ_ASSERT(aVideoContext);
-  MOZ_ASSERT(aVideoProcessor);
-
-  if (aGpuVendorId == 0x10DE) {
-    return SetNvidiaRTXVideoTrueHDR(aVideoContext, aVideoProcessor, aEnable);
-  }
-  MOZ_ASSERT_UNREACHABLE("Unexpected to be called");
-  return E_NOTIMPL;
 }
 
 bool DCSurfaceVideo::CalculateSwapChainSize(gfx::Matrix& aTransform) {
@@ -1863,7 +1899,255 @@ bool DCSurfaceVideo::CallVideoProcessorBlt() {
     }
   }
 
-  if (profiler_thread_is_being_profiled_for_markers() && vendorId == 0x10DE) {
+  if (profiler_thread_is_be��	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÂĂłƂǂȂɂʂ˂̂͂΂ςЂт҂ӂԂՂւׂ؂قڂۂ܂݂ނ߂��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÃăŃƃǃȃɃʃ˃̃̓΃σЃу҃ӃԃՃփ׃؃كڃۃ܃݃ރ߃��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÄĄńƄǄȄɄʄ˄̄̈́΄τЄф҄ӄԄՄքׄ؄لڄۄ܄݄ބ߄��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÅąŅƅǅȅɅʅ˅̅ͅ΅υЅх҅ӅԅՅօׅ؅مڅۅ܅݅ޅ߅��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÆĆņƆǆȆɆʆˆ̆͆ΆφІц҆ӆԆՆֆ׆؆نچۆ܆݆ކ߆��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÇćŇƇǇȇɇʇˇ͇̇·χЇч҇ӇԇՇևׇ؇هڇۇ܇݇އ߇��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÈĈňƈǈȈɈʈˈ͈̈ΈψЈш҈ӈԈՈֈ׈؈وڈۈ܈݈ވ߈��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÉĉŉƉǉȉɉʉˉ͉̉ΉωЉщ҉ӉԉՉ։׉؉ىډۉ܉݉މ߉��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÊĊŊƊǊȊɊʊˊ̊͊ΊϊЊъҊӊԊՊ֊׊؊يڊۊ܊݊ފߊ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ËċŋƋǋȋɋʋˋ̋͋΋ϋЋыҋӋԋՋ֋׋؋ًڋۋ܋݋ދߋ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÌČŌƌǌȌɌʌˌ̌͌ΌόЌьҌӌԌՌ֌׌،ٌڌی܌݌ތߌ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÍčōƍǍȍɍʍˍ͍̍΍ύЍэҍӍԍՍ֍׍؍ٍڍۍ܍ݍލߍ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�\�]�^�g�X�    V�k�p�q�r�s�      t�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÎĎŎƎǎȎɎʎˎ͎̎ΎώЎюҎӎԎՎ֎׎؎َڎێ܎ݎގߎ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÏďŏƏǏȏɏʏˏ̏͏ΏϏЏяҏӏԏՏ֏׏؏ُڏۏ܏ݏޏߏ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÐĐŐƐǐȐɐʐː̐͐ΐϐАѐҐӐԐՐ֐אِؐڐېܐݐސߐ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÑđőƑǑȑɑʑˑ̑͑ΑϑБёґӑԑՑ֑בّؑڑۑܑݑޑߑ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÒĒŒƒǒȒɒʒ˒̒͒ΒϒВђҒӒԒՒ֒גْؒڒےܒݒޒߒ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÓēœƓǓȓɓʓ˓͓̓ΓϓГѓғӓԓՓ֓דؓٓړۓܓݓޓߓ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÔĔŔƔǔȔɔʔ˔͔̔ΔϔДєҔӔԔՔ֔הؔٔڔ۔ܔݔޔߔ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÕĕŕƕǕȕɕʕ˕͕̕ΕϕЕѕҕӕԕՕ֕וٕؕڕەܕݕޕߕ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÖĖŖƖǖȖɖʖ˖̖͖ΖϖЖіҖӖԖՖ֖זٖؖږۖܖݖޖߖ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������×ėŗƗǗȗɗʗ˗̗͗ΗϗЗїҗӗԗ՗֗חؗٗڗۗܗݗޗߗ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ØĘŘƘǘȘɘʘ˘̘͘ΘϘИјҘӘԘ՘֘טؘ٘ژۘܘݘޘߘ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÙęřƙǙșəʙ˙̙͙ΙϙЙљҙәԙՙ֙יؙٙڙۙܙݙޙߙ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÚĚŚƚǚȚɚʚ˚͚̚ΚϚКњҚӚԚ՚֚ךؚٚښۚܚݚޚߚ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÛěśƛǛțɛʛ˛̛͛ΛϛЛћқӛԛ՛֛כ؛ٛڛۛܛݛޛߛ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��    ������T�U�o�����������      ����������������������������������������������������������������������������������������������������ÜĜŜƜǜȜɜʜ˜̜͜ΜϜМќҜӜԜ՜֜ל؜ٜڜۜܜݜޜߜ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÝĝŝƝǝȝɝʝ˝̝͝ΝϝНѝҝӝԝ՝֝ם؝ٝڝ۝ܝݝޝߝ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ÞĞŞƞǞȞɞʞ˞̞͞ΞϞОўҞӞԞ՞֞מ؞ٞڞ۞ܞݞޞߞ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ßğşƟǟȟɟʟ˟̟͟ΟϟПџҟӟԟ՟֟ן؟ٟڟ۟ܟݟޟߟ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�������������������������������������������������������������������������������������������������������������������������������������� àĠŠƠǠȠɠʠˠ̠͠ΠϠРѠҠӠԠՠ֠נؠ٠ڠ۠ܠݠޠߠ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¡áġšơǡȡɡʡˡ̡͡ΡϡСѡҡӡԡա֡סء١ڡۡܡݡޡߡ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¢âĢŢƢǢȢɢʢˢ̢͢΢ϢТѢҢӢԢբ֢עآ٢ڢۢܢݢޢߢ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������£ãģţƣǣȣɣʣˣ̣ͣΣϣУѣңӣԣգ֣ףأ٣ڣۣܣݣޣߣ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¤äĤŤƤǤȤɤʤˤ̤ͤΤϤФѤҤӤԤդ֤פؤ٤ڤۤܤݤޤߤ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¥åĥťƥǥȥɥʥ˥̥ͥΥϥХѥҥӥԥե֥ץإ٥ڥۥܥݥޥߥ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¦æĦŦƦǦȦɦʦ˦̦ͦΦϦЦѦҦӦԦզ֦צئ٦ڦۦܦݦަߦ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������§çħŧƧǧȧɧʧ˧̧ͧΧϧЧѧҧӧԧէ֧קا٧ڧۧܧݧާߧ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¨èĨŨƨǨȨɨʨ˨̨ͨΨϨШѨҨӨԨը֨רب٨ڨۨܨݨިߨ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������©éĩũƩǩȩɩʩ˩̩ͩΩϩЩѩҩөԩթ֩שة٩ک۩ܩݩީߩ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~����������������������������������������������������    w�����l�Y�Z�����������      ��      ��      ����������������������������������ªêĪŪƪǪȪɪʪ˪̪ͪΪϪЪѪҪӪԪժ֪תت٪ڪ۪ܪݪުߪ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������«ëīūƫǫȫɫʫ˫̫ͫΫϫЫѫҫӫԫի֫׫ث٫ګ۫ܫݫޫ߫��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¬ìĬŬƬǬȬɬʬˬ̬ͬάϬЬѬҬӬԬլ֬׬ج٬ڬ۬ܬݬެ߬��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������­íĭŭƭǭȭɭʭ˭̭ͭέϭЭѭҭӭԭխ֭׭ح٭ڭۭܭݭޭ߭��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������®îĮŮƮǮȮɮʮˮ̮ͮήϮЮѮҮӮԮծ֮׮خٮڮۮܮݮޮ߮��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¯ïįůƯǯȯɯʯ˯̯ͯίϯЯѯүӯԯկ֯ׯدٯگۯܯݯޯ߯��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������°ðİŰưǰȰɰʰ˰̰ͰΰϰаѰҰӰ԰հְװذٰڰ۰ܰݰް߰��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������±ñıűƱǱȱɱʱ˱̱ͱαϱбѱұӱԱձֱױرٱڱ۱ܱݱޱ߱��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������²òĲŲƲǲȲɲʲ˲̲ͲβϲвѲҲӲԲղֲײزٲڲ۲ܲݲ޲߲��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������³óĳųƳǳȳɳʳ˳̳ͳγϳгѳҳӳԳճֳ׳سٳڳ۳ܳݳ޳߳��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������´ôĴŴƴǴȴɴʴ˴̴ʹδϴдѴҴӴԴմִ״شٴڴ۴ܴݴ޴ߴ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������µõĵŵƵǵȵɵʵ˵̵͵εϵеѵҵӵԵյֵ׵صٵڵ۵ܵݵ޵ߵ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¶öĶŶƶǶȶɶʶ˶̶Ͷζ϶жѶҶӶԶնֶ׶ضٶڶ۶ܶݶ޶߶��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������·÷ķŷƷǷȷɷʷ˷̷ͷηϷзѷҷӷԷշַ׷طٷڷ۷ܷݷ޷߷��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~����������������������������������������������������������������������������������������������      ��      ��        ����������      ��    ��ø    ��Ǹ      ˸      ϸ̸͸θӸ׸ظٸڸ۸ܸݸ޸߸��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¹ùĹŹƹǹȹɹʹ˹̹͹ιϹйѹҹӹԹչֹ׹عٹڹ۹ܹݹ޹߹��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������ºúĺźƺǺȺɺʺ˺̺ͺκϺкѺҺӺԺպֺ׺غٺںۺܺݺ޺ߺ��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������»ûĻŻƻǻȻɻʻ˻̻ͻλϻлѻһӻԻջֻ׻ػٻڻۻܻݻ޻߻��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¼üļżƼǼȼɼʼ˼̼ͼμϼмѼҼӼԼռּ׼ؼټڼۼܼݼ޼߼��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������½ýĽŽƽǽȽɽʽ˽̽ͽνϽнѽҽӽԽսֽ׽ؽٽڽ۽ܽݽ޽߽��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¾þľžƾǾȾɾʾ˾̾;ξϾоѾҾӾԾվ־׾ؾپھ۾ܾݾ޾߾��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~��������������������������������������������������������������������������������������������������������������������������������������¿ÿĿſƿǿȿɿʿ˿̿ͿοϿпѿҿӿԿտֿ׿ؿٿڿۿܿݿ޿߿��������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������ ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������ ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~� ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ĀāĂăĄąĆćĈĉĊċČčĎďĐđĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħĨĩĪīĬĭĮįİıĲĳĴĵĶķĸĹĺĻļĽľĿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ŀŁłŃńŅņŇňŉŊŋŌōŎŏŐőŒœŔŕŖŗŘřŚśŜŝŞşŠšŢţŤťŦŧŨũŪūŬŭŮůŰűŲųŴŵŶŷŸŹźŻżŽžſ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ƀƁƂƃƄƅƆƇƈƉƊƋƌƍƎƏƐƑƒƓƔƕƖƗƘƙƚƛƜƝƞƟƠơƢƣƤƥƦƧƨƩƪƫƬƭƮƯưƱƲƳƴƵƶƷƸƹƺƷ�    �ƫ�������      ��      ��      ���Ɵ�������������������������������������������������������      ���������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ǀǁǂǃǄǅǆǇǈǉǊǋǌǍǎǏǐǑǒǓǔǕǖǗǘǙǚǛǜǝǞǟǠǡǢǣǤǥǦǧǨǩǪǫǬǭǮǯǰǱǲǳǴǵǶǷǸǹǺǻǼǽǾǿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ȀȁȂȃȄȅȆȇȈȉȊȋȌȍȎȏȐȑȒȓȔȕȖȗȘșȚțȜȝȞȟȠȡȢȣȤȥȦȧȨȩȪȫȬȭȮȯȰȱȲȳȴȵȶȷȸȹȺȻȼȽȾȿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ɀɁɂɃɄɅɆɇɈɉɊɋɌɍɎɏɐɑɒɓɔɕɖɗɘəɚɛɜɝɞɟɠɡɢɣɤɥɦɧɨɩɪɫɬɭɮɯɰɱɲɳɴɵɶɷɸɹɺɻɼɽɾɿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ʀʁʂʃʄʅʆʇʈʉʊʋʌʍʎʏʐʑʒʓʔʕʖʗʘʙʚʛʜʝʞʟʠʡʢʣʤʥʦʧʨʩʪʫʬʭʮʯʰʱʲʳʴʵʶʷʸʹʺʻʼʽʾʿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ˀˁ˂˃˄˅ˆˇˈˉˊˋˌˍˎˏːˑ˒˓˔˕˖˗˘˙˚˛˜˝˞˟ˠˡˢˣˤ˥˦˧˨˩˪˫ˬ˭ˮ˯˰˱˲˳˴˵˶˷˸˹˺˻˼˽˾˿��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�̴̵̶̷̸̡̢̧̨̛̖̗̘̙̜̝̞̟̠̣̤̥̦̩̪̫̬̭̮̯̰̱̲̳̹̺̻̼̀́̂̃̄̅̆̇̈̉̊̋̌̍̎̏̐̑̒̓̔̽̾̿̕̚��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�͇͈͉͍͎̀́͂̓̈́͆͊͋͌ͅ͏͓͔͕͖͙͚͐͑͒͗͛ͣͤͥͦͧͨͩͪͫͬͭͮͯ͘͜͟͢͝͞͠͡ͰͱͲͳʹ͵Ͷͷ͸͹ͺͻͼͽ;Ϳ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�΀΁΂΃΄΅Ά·ΈΉΊ΋Ό΍ΎΏΐΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡ΢ΣΤΥΦΧΨΩΪΫάέήίΰαβγδεζηθικλμνξο��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�πρςστυφχψωϊϋόύώϏϐϑϒϓϔϕϖϗϘϙϚϛϜϝϞϟϠϡϢϣϤϥϦϧϨϩϪϫϬϭϮϯϰϱϲϳϴϵ϶ϷϸϹϺϻϼϽϾϿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ЀЁЂЃЄЅІЇЈЉЊЋЌЍЎЏАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдежзийклмноп��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�рстуфхцчшщъыьэюяѐёђѓєѕіїјљњћќѝўџѠѡѢѣѤѥѦѧѨѩѪѫѬѭѮѯѰѱѲѳѴѵѶѷѸѹѺѻѼѽѾѿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�Ҁҁ҂҃҄҅҆҇҈҉ҊҋҌҍҎҏҐґҒғҔҕҖҗҘҙҚқҜҝҞҟҠҡҢңҤҥҦҧҨҩҪҫҬҭҮүҰұҲҳҴҵҶҷҸҹҺһҼҽҾҿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ӀӁӂӃӄӅӆӇӈӉӊӋӌӍӎӏӐӑӒӓӔӕӖӗӘәӚӛӜӝӞӟӠӡӢӣӤӥӦӧӨөӪӫӬӭӮӯӰӱӲӳӴӵӶӷӸӹӺӻӼӽӾӿ��������������������������������������������������������������������������������������������������������������������������������� ���������	�
+���
+������������������� �!�"�#�$�%�&�'�(�)�*�+�,�-�.�/�0�1�2�3�4�5�6�7�8�9�:�;�<�=�>�?�@�A�B�C�D�E�F�G�H�I�J�K�L�M�N�O�P�Q�R�S�T�U�V�W�X�Y�Z�[�\�]�^�_�`�a�b�c�d�e�f�g�h�i�j�k�l�m�n�o�p�q�r�s�t�u�v�w�x�y�z�{�|�}�~�ԀԁԂԃԄԅԆԇԈԉԊԋԌԍԎԏԐԑԒԓԔԕԖԗԘԙԚԛԜԝԞԟԠԡԢԣԤԥԦԧԨԩԪԫԬԭԮԯ԰ԱԲԳԴԵԶԷԸԹԺԻԼԽԾԿ������������������������������������������������������������������������������������T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T UUUUUUUUU	U
+UUU
+UUUUUUUUUUUUUUUUUUU U!U"U#U$U%U&U'U(U)U*U+U,U-U.U/U0U1U2U3U4U5U6U7U8U9U:U;U<U=U>U?U@UAUBUCUDUEUFUGUHUIUJUKULUMUNUOUPUQURUSUTUUUVUWUXUYUZU[U\U]U^U_U`UaUbUcUdUeUfUgUhUiUjUkUlUmUnUoUpUqUrUsUtUuUvUwUxUyUzU{U|U}U~UU�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U�U VVVVVVVV�G�G�GVV
+VVVVVVVVVVVVVVVVVVV V!V"V#V$V%V&V'V(V)V*V+V,V-V.V/V0V1V2V3V4V5V6V7V8V9V:V;V<V=V>V?V@VAVBVCVDVEVFVGVHVIVJVKVLVMVNVOVPVQVRVSVTVUVVVWVXVYVZV[V\V]V^V_V`VaVbVcVdVeVfVgVhViVjVkVlVmVnVoVpVqVrVsVtVuVvVwVxVyVzV{V|V}V~VV�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V�V WWWWWWWWW	W
+WWW
+WWWWWWWWWWWWWWWWWWW W!W"W#W$W%W&W'W(W)W*W+W,W-W.W/W0W1W2W3W4W5W6W7W8W9W:W;W<W=W>W?W@WAWBWCWDWEWFWGWHWIWJWKWLWMWNWOWPWQWRWSWTWUWVWWWXWYWZW[W\W]W^W_W`WaWbWcWdWeWfWgWhWiWjWkWlWmWnWoWpWqWrWsWtWuWvWwWxWyWzW{W|W}W~WW�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W�W XXXXXXXXX	X
+XXX
+XXXXXXXXXXXXXXXXXXX X!X"X#X$X%X&X'X(X)X*X+X,X-X.X/X0X1X2X3X4X5X6X7X8X9X:X;X<X=X>X?X@XAXBXCXDXEXFXGXHXIXJXKXLXMXNXOXPXQXRXSXTXUXVXWXXXYXZX[X\X]X^X_X`XaXbXcXdXeXfXgXhXiXjXkXlXmXnXoXpXqXrXsXtXuXvXwXxXyXzX{X|X}X~XX�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X�X YYYYYYYYY	Y
+YYY
+YYYYYYYYYYYYYYYYYYY Y!Y"Y#Y$Y%Y&Y'Y(Y)Y*Y+Y,Y-Y.Y/Y0Y1Y2Y3Y4Y5Y6Y7Y8Y9Y:Y;Y<Y=Y>Y?Y@YAYBYCYDYEYFYGYHYIYJYKYLYMYNYOYPYQYRYSYTYUYVYWYXYYYZY[Y\Y]Y^Y_Y`YaYbYcYdYeYfYgYhYiYjYkYlYmYnYoYpYqYrYsYtYuYvYwYxYyYzY{Y|Y}Y~YY�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y�Y ZZZZZZZZZ	Z
+ZZZ
+ZZZZZZZZZZZZZZZZZZZ Z!Z"Z#Z$Z%Z&Z'Z(Z)Z*Z+Z,Z-Z.Z/Z0Z1Z2Z3Z4Z5Z6Z7Z8Z9Z:Z;Z<Z=Z>Z?Z@ZAZBZCZDZEZFZGZHZIZJZKZLZMZNZOZPZQZRZSZTZUZVZWZXZYZZZ[Z\Z]Z^Z_Z`ZaZbZcZdZeZfZgZhZiZjZkZlZmZnZoZpZqZrZsZtZuZvZwZxZyZzZ{Z|Z}Z~ZZ�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z�Z [[[[[[[[[	[
+[[[
+[[[[[[[[[[[[[[[[[[[ [!["[#[$[%[&['[([)[*[+[,[-[.[/[0[1[2[3[4[5[6[7[8[9[:[;[<[=[>[?[@[A[B[C[D[E[F[G[H[I[J[K[L[M[N[O[P[Q[R[S[T[U[V[W[X[Y[Z[[[\[][^[_[`[a[b[c[d[e[f[g[h[i[j[k[l[m[n[o[p[q[r[s[t[u[v[w[x[y[z[{[|[}[~[[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[�[ \\\\\\\\\	\
+\\\
+\\\\\\\\\\\\\\\\\\\ \!\"\#\$\%\&\'\(\)\*\+\,\-\.\/\0\1\2\3\4\5\6\7\8\9\:\;\<\=\>\?\@\A\B\C\D\E\F\G\H\I\J\K\L\M\N\O\P\Q\R\S\T\U\V\W\X\Y\Z\[\\\]\^\_\`\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\u\v\w\x\y\z\{\|\}\~\\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\�\ ]]]]]]]]]	]
+]]]
+]]]]]]]]]]]]]]]]]]] ]!]"]#]$]%]&]'](])]*]+],]-].]/]0]1]2]3]4]5]6]7]8]9]:];]<]=]>]?]@]A]B]C]D]E]F]G]H]I]J]K]L]M]N]O]P]Q]R]S]T]U]V]W]X]Y]Z][]\]]]^]_]`]a]b]c]d]e]f]g]h]i]j]k]l]m]n]o]p]q]r]s]t]u]v]w]x]y]z]{]|]}]~]]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�]�] ^^^^^^^^^	^
+^^^
+^^^^^^^^^^^^^^^^^^^ ^!^"^#^$^%^&^'^(^)^*^+^,^-^.^/^0^1^2^3^4^5^6^7^8^9^:^;^<^=^>^?^@^A^B^C^D^E^F^G^H^I^J^K^L^M^N^O^P^Q^R^S^T^U^V^W^X^Y^Z^[^\^]^^^_^`^a^b^c^d^e^f^g^h^i^j^k^l^m^n^o^p^q^r^s^t^u^v^w^x^y^z^{^|^}^~^^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^�^ _________	_
+___
+___________________ _!_"_#_$_%_&_'_(_)_*_+_,_-_._/_0_1_2_3_4_5_6_7_8_9_:_;_<_=_>_?_@_A_B_C_D_E_F_G_H_I_J_K_L_M_N_O_P_Q_R_S_T_U_V_W_X_Y_Z_[_\_]_^___`_a_b_c_d_e_f_g_h_i_j_k_l_m_n_o_p_q_r_s_t_u_v_w_x_y_z_{_|_}_~__�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_�_ `````````	`
+```
+``````````````````` `!`"`#`$`%`&`'`(`)`*`+`,`-`.`/`0`1`2`3`4`5`6`7`8`9`:`;`<`=`>`?`@`A`B`C`D`E`F`G`H`I`J`K`L`M`N`O`P`Q`R`S`T`U`V`W`X`Y`Z`[`\`]`^`_```a`b`c`d`e`f`g`h`i`j`k`l`m`n`o`p`q`r`s`t`u`v`w`x`y`z`{`|`}`~``�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�`�` aaaaaaaaa	a
+aaa
+aaaaaaaaaaaaaaaaaaa a!a"a#a$a%a&a'a(a)a*a+a,a-a.a/a0a1a2a3a4a5a6a7a8a9a:a;a<a=a>a?a@aAaBaCaDaEaFaGaHaIaJaKaLaMaNaOaPaQaRaSaTaUaVaWaXaYaZa[a\a]a^a_a`aaabacadaeafagahaiajakalamanaoapaqarasatauavawaxayaza{a|a}a~aa�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a�a bbbbbbbbb	b
+bbb
+bbbbbbbbbbbbbbbbbbb b!b"b#b$b%b&b'b(b)b*b+b,b-b.b/b0b1b2b3b4b5b6b7b8b9b:b;b<b=b>b?b@bAbBbCbDbEbFbGbHbIbJbKbLbMbNbObPbQbRbSbTbUbVbWbXbYbZb[b\b]b^b_b`babbbcbdbebfbgbhbibjbkblbmbnbobpbqbrbsbtbubvbwbxbybzb{b|b}b~bb�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b�b ccccccccc	c
+ccc
+ccccccccccccccccccc c!c"c#c$c%c&c'c(c)c*c+c,c-c.c/c0c1c2c3c4c5c6c7c8c9c:c;c<c=c>c?c@cAcBcCcDcEcFcGcHcIcJcKcLcMcNcOcPcQcRcScTcUcVcWcXcYcZc[c\c]c^c_c`cacbcccdcecfcgchcicjckclcmcncocpcqcrcsctcucvcwcxcyczc{c|c}c~cc�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c�c ddddddddd	d
+ddd
+ddddddddddddddddddd d	V
+VV!d%d&d'd(d)d*d+d,d-d.d/d0d1d2d3d4d5d6d7d8d9d:d;d<d=d>d?d@dAdBdCdDdEdFdGdHdIdJdKdLdMdNdOdPdQdRdSdTdUdVdWdXdYdZd[d\d]d^d_d`dadbdcdddedfdgdhdidjdkdldmdndodpdqdrdsdtdudvdwdxdydzd{d|d}d~dd�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d�d eeeeeeeee	e
+eee
+eeeeeeeeeeeeeeeeeee e!e"e#e$e%e&e'e(e)e*e+e,e-e.e/e0e1e2e3e4e5e6e7e8e9e:e;e<e=e>e?e@eAeBeCeDeEeFeGeHeIeJeKeLeMeNeOePeQeReSeTeUeVeWeXeYeZe[e\e]e^e_e`eaebecedeeefegeheiejekelemeneoepeqereseteuevewexeyeze{e|e}e~ee�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e�e fffffffff	f
+fff
+fffffffffffffffffff f!f"f#f$f%f&f'f(f)f*f+f,f-f.f/f0f1f2f3f4f5f6f7f8f9f:f;f<f=f>f?f@fAfBfCfDfEfFfGfHfIfJfKfLfMfNfOfPfQfRfSfTfUfVfWfXfYfZf[f\f]f^f_f`fafbfcfdfefffgfhfifjfkflfmfnfofpfqfrfsftfufvfwfxfyfzf{f|f}f~ff�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f�f ggggggggg	g
+ggg
+ggggggggggggggggggg g!g"g#g$g%g&g'g(g)g*g+g,g-g.g/g0g1g2g3g4g5g6g7g8g9g:g;g<g=g>g?g@gAgBgCgDgEgFgGgHgIgJgKgLgMgNgOgPgQgRgSgTgUgVgWgXgYgZg[g\g]g^g_g`gagbgcgdgegfggghgigjgkglgmgngogpgqgrgsgtgugvgwgxgygzg{g|g}g~gg�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g�g hhhhhhhhh	h
+hhh
+hhhhhhhhhhhhhhhhhhh h!h"h#h$h%h&h'h(h)h*h+h,h-h.h/h0h1h2h3h4h5h6h7h8h9h:h;h<h=h>h?h@hAhBhChDhEhFhGhHhIhJhKhLhMhNhOhPhQhRhShThUhVhWhXhYhZh[h\h]h^h_h`hahbhchdhehfhghhhihjhkhlhmhnhohphqhrhshthuhvhwhxhyhzh{h|h}h~hh�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h�h iiiiiiiii	i
+iii
+iiiiiiiiiiiiiiiiiii i!i"i#i$i%i&i'i(i)i*i+i,i-i.i/i0i1i2i3i4i5i6i7i8i9i:i;i<i=i>i?i@iAiBiCiDiEiFiGiHiIiJiKiLiMiNiOiPiQiRiSiTiUiViWiXiYiZi[i\i]i^i_i`iaibicidieifigihiiijikiliminioipiqirisitiuiviwixiyizi{i|i}i~ii�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i�i jjjjjjjjj	j
+jjj
+jjjjjjjjjjjjjjjjjjj j!j"j#j$j%j&j'j(j)j*j+j,j-j.j/j0j1j2j3j4j5j6j7j8j9j:j;j<j=j>j?j@jAjBjCjDjEjFjGjHjIjJjKjLjMjNjOjPjQjRjSjTjUjVjWjXjYjZj[j\j]j^j_j`jajbjcjdjejfjgjhjijjjkjljmjnjojpjqjrjsjtjujvjwjxjyjzj{j|j}j~jj�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j�j kkkkkkkkk	k
+kkk
+kkkkkkkkkkkkkkkkkkk k!k"k#k$k%k&k'k(k)k*k+k,k-k.k/k0k1k2k3k4k5k6k7k8k9k:k;k<k=k>k?k@kAkBkCkDkEkFkGkHkIkJkKkLkMkNkOkPkQkRkSkTkUkVkWkXkYkZk[k\k]k^k_k`kakbkckdkekfkgkhkikjkkklkmknkokpkqkrksktkukvkwkxkykzk{k|k}k~kk�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k�k lllllllll	l
+lll
+lllllllllllllllllll l!l"l#l$l%l&l'l(l)l*l+l,l-l.l/l0l1l2l3l4l5l6l7l8l9l:l;l<l=l>l?l@lAlBlClDlElFlGlHlIlJlKlLlMlNlOlPlQlRlSlTlUlVlWlXlYlZl[l\l]l^l_l`lalblcldlelflglhliljlklllmlnlolplqlrlsltlulvlwlxlylzl{l|l}l~ll�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l�l mmmmmmmmm	m
+mmm
+mmmmmmmmmmmmmmmmmmm m!m"m#m$m%m&m'm(m)m*m+m,m-m.m/m0m1m2m3m4m5m6m7m8m9m:m;m<m=m>m?m@mAmBmCmDmEmFmGmHmImJmKmLmMmNmOmPmQmRmSmTmUmVmWmXmYmZm[m\m]m^m_m`mambmcmdmemfmgmhmimjmkmlmmmnmompmqmrmsmtmumvmwmxmymzm{m|m}m~mm�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m�m nnnnnnnnn	n
+nnn
+nnnnnnnnnnnnnnnnnnn n!n"n#n$n%n&n'n(n)n*n+n,n-n.n/n0n1n2n3n4n5n6n7n8n9n:n;n<n=n>n?n@nAnBnCnDnEnFnGnHnInJnKnLnMnNnOnPnQnRnSnTnUnVnWnXnYnZn[n\n]n^n_n`nanbncndnenfngnhninjnknlnmnnnonpnqnrnsntnunvnwnxnynzn{n|n}n~nn�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n�n ooooooooo	o
+ooo
+ooooooooooooooooooo o!o"o#o$o%o&o'o(o)o*o+o,o-o.o/o0o1o2o3o4o5o6o7o8o9o:o;o<o=o>o?o@oAoBoCoDoEoFoGoHoIoJoKoLoMoNoOoPoQoRoSoToUoVoWoXoYoZo[o\o]o^o_o`oaobocodoeofogohoiojokolomonooopoqorosotouovowoxoyozo{o|o}o~oo�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o�o ppppppppp	p
+ppp
+ppppppppppppppppppp p!p"p#p$p%p&p'p(p)p*p+p,p-p.p/p0p1p2p3p4p5p6p7p8p9p:p;p<p=p>p?p@pApBpCpDpEpFpGpHpIpJpKpLpMpNpOpPpQpRpSpTpUpVpWpXpYpZp[p\p]p^p_p`papbpcpdpepfpgphpipjpkplpmpnpopppqprpsptpupvpwpxpypzp{p|p}p~pp�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p�p qqqqqqqqq	q
+qqq
+qqqqqqqqqqqqqqqqqqq q!q"q#q$q%q&q'q(q)q*q+q,q-q.q/q0q1q2q3q4q5q6q7q8q9q:q;q<q=q>q?q@qAqBqCqDqEqFqGqHqIqJqKqLqMqNqOqPqQqRqSqTqUqVqWqXqYqZq[q\q]q^q_q`qaqbqcqdqeqfqgqhqiqjqkqlqmqnqoqpqqqrqsqtquqvqwqxqyqzq{q|q}q~qq�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q�q rrrrrrrrr	r
+rrr
+rrrrrrrrrrrrrrrrrrr r!r"r#r$r%r&r'r(r)r*r+r,r-r.r/r0r1r2r3r4r5r6r7r8r9r"d#d$d:r>r?r@rArBrCrDrErFrGrHrIrJrKrLrMrNrOrPrQrRrSrTrUrVrWrXrYrZr[r\r]r^r_r`rarbrcrdrerfrgrhrirjrkrlrmrnrorprqrrrsrtrurvrwrxryrzr{r|r}r~rr�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r�r sssssssss	s
+sss
+sssssssssssssssssss s!s"s#s$s%s&s's(s)s*s+s,s-s.s/s0s1s2s3s4s5s6s7s8s9s:s;s<s=s>s?s@sAsBsCsDsEsFsGsHsIsJsKsLsMsNsOsPsQsRsSsTsUsVsWsXsYsZs[s\s]s^s_s`sasbscsdsesfsgshsisjskslsmsnsospsqsrssstsusvswsxsyszs{s|s}s~ss�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s�s ttttttttt	t
+ttt
+ttttttttttttttttttt t!t"t#t$t%t&t't(t)t*t+t,t-t.t/t0t1t2t3t4t5t6t7t8t9t:t;t<t=t>t?t@tAtBtCtDtEtFtGtHtItJtKtLtMtNtOtPtQtRtStTtUtVtWtXtYtZt[t\t]t^t_t`tatbtctdtetftgthtitjtktltmtntotptqtrtstttutvtwtxtytzt{t|t}t~tt�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t�t uuuuuuuuu	u
+uuu
+uuuuuuuuuuuuuuuuuuu u!u"u#u$u%u&u'u(u)u*u+u,u-u.u/u0u1u2u3u4u5u6u7u8u9u:u;u<u=u>u?u@uAuBuCuDuEuFuGuHuIuJuKuLuMuNuOuPuQuRuSuTuUuVuWuXuYuZu[u\u]u^u_u`uaubucudueufuguhuiujukulumunuoupuqurusutuuuvuwuxuyuzu{u|u}u~uu�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u�u vvvvvvvvv	v
+vvv
+vvvvvvvvvvvvvvvvvvv v!v"v#v$v%v&v'v(v)v*v+v,v-v.v/v0v1v2v3v4v5v6v7v8v9v:v;v<v=v>v?v@vAvBvCvDvEvFvGvHvIvJvKvLvMvNvOvPvQvRvSvTvUvVvWvXvYvZv[v\v]v^v_v`vavbvcvdvevfvgvhvivjvkvlvmvnvovpvqvrvsvtvuvvvwvxvyvzv{v|v}v~vv�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v�v wwwwwwwww	w
+www
+wwwwwwwwwwwwwwwwwww w!w"w#w$w%w&w'w(w)w*w+w,w-w.w/w0w1w2w3w4w5w6w7w8w9w:w;w<w=w>w?w@wAwBwCwDwEwFwGwHwIwJwKwLwMwNwOwPwQwRwSwTwUwVwWwXwYwZw[w\w]w^w_w`wawbwcwdwewfwgwhwiwjwkwlwmwnwowpwqwrwswtwuwvwwwxwywzw{w|w}w~ww�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w�w xxxxxxxxx	x
+xxx
+xxxxxxxxxxxxxxxxxxx x!x"x#x$x%x&x'x(x)x*x+x,x-x.x/x0x1x2x3x4x5x6x7x8x9x:x;x<x=x>x?x@xAxBxCxDxExFxGxHxIxJxKxLxMxNxOxPxQxRxSxTxUxVxWxXxYxZx[x\x]x^x_x`xaxbxcxdxexfxgxhxixjxkxlxmxnxoxpxqxrxsxtxuxvxwxxxyxzx{x|x}x~xx�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x�x yyyyyyyyy	y
+yyy
+yyyyyyyyyyyyyyyyyyy y!y"y#y$y%y&y'y(y)y*y+y,y-y.y/y0y1y2y3y4y5y6y7y8y9y:y;y<y=y>y?y@yAyByCyDyEyFyGyHyIyJyKyLyMyNyOyPyQyRySyTyUyVyWyXyYyZy[y\y]y^y_y`yaybycydyeyfygyhyiyjykylymynyoypyqyrysytyuyvywyxyyyzy{y|y}y~yy�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y�y zzzzzzzzz	z
+zzz
+zzzzzzzzzzzzzzzzzzz z!z"z#z$z%z&z'z(z)z*z+z,z-z.z/z0z1z2z3z4z5z6z7z8z9z:z;z<z=z>z?z@zAzBzCzDzEzFzGzHzIzJzKzLzMzNzOzPzQzRzSzTzUzVzWzXzYzZz[z\z]z^z_z`zazbzczdzezfzgzhzizjzkzlzmznzozpzqzrzsztzuzvzwzxzyzzz{z|z}z~zz�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z�z {{{{{{{{{	{
+{{{
+{{{{{{{{{{{{{{{{{{{ {!{"{#{${%{&{'{({){*{+{,{-{.{/{0{1{2{3{4{5{6{7{8{9{:{;{<{={>{?{@{A{B{C{D{E{F{G{H{I{J{K{L{M{N{O{P{Q{R{S{T{U{V{W{X{Y{Z{[{\{]{^{_{`{a{b{c{d{e{f{g{h{i{j{k{l{m{n{o{p{q{r{s{t{u{v{w{x{y{z{{{|{}{~{{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{�{ |||||||||	|
+|||
+||||||||||||||||||| |!|"|#|$|%|&|'|(|)|*|+|,|-|.|/|0|1|2|3|4|5|6|7|8|9|:|;|<|=|>|?|@|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|[|\|]|^|_|`|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|{|||}|~||�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�|�| }}}}}}}}}	}
+}}}
+}}}}}}}}}}}}}}}}}}} }!}"}#}$}%}&}'}(})}*}+},}-}.}/}0}1}2}3}4}5}6}7}8}9}:};}<}=}>}?}@}A}B}C}D}E}F}G}H}I}J}K}L}M}N}O}P}Q}R}S}T}U}V}W}X}Y}Z}[}\}]}^}_}`}a}b}c}d}e}f}g}h}i}j}k}l}m}n}o}p}q}r}s}t}u}v}w}x}y}z}{}|}}}~}}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�}�} ~~~~~~~ing_profiled_for_markers() && vendorId == 0x10DE) {
     AddProfileMarkerForNvidiaVpSuperResolutionInfo(videoContext,
                                                    videoProcessor);
   }
