@@ -274,6 +274,5 @@
   "gFindBar",
   "gFindBarInitialized",
   "gFindBarPromise",
-  "BrowserSearch",
-  "NewIdentityButton"
+  "BrowserSearch"
 ]
