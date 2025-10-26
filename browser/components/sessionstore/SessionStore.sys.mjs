@@ -4858,7 +4858,7 @@ var SessionStoreInternal = {
     let overwriteTabs = aOptions && aOptions.overwriteTabs;
     let firstWindow = aOptions && aOptions.firstWindow;
 
-    this.restoreSidebar(aWindow, winData.sidebar);
+    this.restoreSidebar(aWindow, winData.sidebar, winData.isPopup);
 
     // initialize window if necessary
     if (aWindow && (!aWindow.__SSi || !this._windows[aWindow.__SSi])) {
@@ -5626,7 +5626,7 @@ var SessionStoreInternal = {
         aWinData.windowUuid || "",
         aWinData.floorpShouldNotRestore || false
       );
-      this.restoreSidebar(aWindow, aWinData.sidebar);
+      this.restoreSidebar(aWindow, aWinData.sidebar, aWinData.isPopup);
     }, 0);
   },
 
