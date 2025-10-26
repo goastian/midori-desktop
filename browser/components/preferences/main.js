@@ -344,7 +344,7 @@ var gMainPane = {
         let ver = parseFloat(Services.sysinfo.getProperty("version"));
         let showTabsInTaskbar = document.getElementById("showTabsInTaskbar");
         showTabsInTaskbar.hidden = ver < 6.1;
-      } catch (ex) {}
+      } catch (ex) { }
     }
 
     let thumbsCheckbox = document.getElementById("tabPreviewShowThumbnails");
@@ -1688,11 +1688,8 @@ var gMainPane = {
       let shellSvc = getShellService();
       let defaultBrowserBox = document.getElementById("defaultBrowserBox");
       let isInFlatpak = gGIOService?.isRunningUnderFlatpak;
-      const xreDirProvider = Cc[
-        "@mozilla.org/xre/directory-provider;1"
-      ].getService(Ci.nsIXREDirProvider);
       // Flatpak does not support setting nor detection of default browser
-      if (!shellSvc || isInFlatpak || xreDirProvider.isPortableMode) {
+      if (!shellSvc || isInFlatpak) {
         defaultBrowserBox.hidden = true;
         return;
       }
@@ -1809,7 +1806,7 @@ var gMainPane = {
     if (Services.prefs.getBoolPref("intl.multilingual.liveReload")) {
       if (
         Services.intl.getScriptDirection(newLocales[0]) !==
-          Services.intl.getScriptDirection(appLocalesAsBCP47[0]) &&
+        Services.intl.getScriptDirection(appLocalesAsBCP47[0]) &&
         !Services.prefs.getBoolPref("intl.multilingual.liveReloadBidirectional")
       ) {
         // Bug 1750852: The directionality of the text changed, which requires a restart
@@ -3423,8 +3420,8 @@ var gMainPane = {
     document.getElementById("downloadFolder").disabled =
       document.getElementById("chooseFolder").disabled =
       document.getElementById("saveTo").disabled =
-        Preferences.get("browser.download.dir").locked ||
-        Preferences.get("browser.download.folderList").locked;
+      Preferences.get("browser.download.dir").locked ||
+      Preferences.get("browser.download.folderList").locked;
     // don't override the preference's value in UI
     return undefined;
   },
@@ -3685,14 +3682,14 @@ function getFileDisplayName(file) {
     if (file instanceof Ci.nsILocalFileWin) {
       try {
         return file.getVersionInfoField("FileDescription");
-      } catch (e) {}
+      } catch (e) { }
     }
   }
   if (AppConstants.platform == "macosx") {
     if (file instanceof Ci.nsILocalFileMac) {
       try {
         return file.bundleDisplayName;
-      } catch (e) {}
+      } catch (e) { }
     }
   }
   return file.leafName;
@@ -3943,7 +3940,7 @@ class HandlerInfoWrapper {
         if (url) {
           return url + "?size=16";
         }
-      } catch (ex) {}
+      } catch (ex) { }
     }
 
     // If this isn't a MIME type object on an OS that supports retrieving
@@ -4015,7 +4012,7 @@ class HandlerInfoWrapper {
     // and always return true in that case to override this invalid value.
     if (
       this.wrappedHandlerInfo.preferredAction ==
-        Ci.nsIHandlerInfo.useHelperApp &&
+      Ci.nsIHandlerInfo.useHelperApp &&
       !gMainPane.isValidHandlerApp(this.preferredApplicationHandler)
     ) {
       if (this.wrappedHandlerInfo.hasDefaultHandler) {
@@ -4061,7 +4058,7 @@ class HandlerInfoWrapper {
       ) {
         return this.wrappedHandlerInfo.primaryExtension;
       }
-    } catch (ex) {}
+    } catch (ex) { }
 
     return null;
   }

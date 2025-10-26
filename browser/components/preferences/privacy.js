@@ -1768,7 +1768,6 @@ var gPrivacyPane = {
     let blockCookiesMenu = document.getElementById("blockCookiesMenu");
     let deleteOnCloseCheckbox = document.getElementById("deleteOnClose");
     let deleteOnCloseNote = document.getElementById("deleteOnCloseNote");
-    let cookieExceptions = document.getElementById("cookieExceptions");
     let blockCookies = behavior != Ci.nsICookieService.BEHAVIOR_ACCEPT;
     let cookieBehaviorLocked = Services.prefs.prefIsLocked(
       "network.cookie.cookieBehavior"
@@ -1783,7 +1782,6 @@ var gPrivacyPane = {
     ).value;
     deleteOnCloseCheckbox.disabled = privateBrowsing || completelyBlockCookies;
     deleteOnCloseNote.hidden = !privateBrowsing;
-    cookieExceptions.disabled = privateBrowsing;
 
     switch (behavior) {
       case Ci.nsICookieService.BEHAVIOR_ACCEPT:
@@ -3039,12 +3037,7 @@ var gPrivacyPane = {
 
   _updateRelayIntegrationUI() {
     document.getElementById("relayIntegrationBox").hidden =
-    // In Base Browser, we always hide the integration checkbox since
-    // FirefoxRelay should remain disabled.
-    // See tor-browser#43109 and tor-browser#42814.
-    // NOTE: FirefoxRelay.isAvailable will be true whenever
-    // FirefoxRelay.isDisabled is true.
-    document.getElementById("relayIntegrationBox").hidden = true;
+      !FirefoxRelay.isAvailable;
     document.getElementById("relayIntegration").checked =
       FirefoxRelay.isAvailable && !FirefoxRelay.isDisabled;
   },
