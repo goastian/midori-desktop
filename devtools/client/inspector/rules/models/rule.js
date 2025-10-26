@@ -880,6 +880,16 @@ class Rule {
     });
   }
 
+
+  /**
+   * @returns {Boolean} Whether or not the rule is in a @starting-style rule
+   */
+  isInStartingStyle() {
+    return this.domRule.ancestorData.some(
+      ({ type }) => type === "starting-style"
+    );
+  }
+
   /**
    * See whether this rule has any non-invisible properties.
    * @return {Boolean} true if there is any visible property, or false
