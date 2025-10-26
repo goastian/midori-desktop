@@ -445,11 +445,9 @@ nsresult SetDefaultBrowserUserChoice(
     return NS_ERROR_FAILURE;
   }
 
-  nsTArray<nsString> browserDefaults = {u"https"_ns, u"MidoriURL"_ns,
-                                        u"http"_ns,  u"MidoriURL"_ns,
-                                        u".html"_ns, u"MidoriHTML"_ns,
-                                        u".htm"_ns,  u"MidoriHTML"_ns};
-
+  nsTArray<nsString> browserDefaults = {
+      u"https"_ns, u"FirefoxURL"_ns,  u"http"_ns, u"FirefoxURL"_ns,
+      u".html"_ns, u"FirefoxHTML"_ns, u".htm"_ns, u"FirefoxHTML"_ns};
 
   browserDefaults.AppendElements(aExtraFileExtensions);
 

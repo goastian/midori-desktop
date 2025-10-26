@@ -486,7 +486,7 @@ class XPIState {
 
     // Builds prior to be 1512436 did not include the rootURI property.
     // If we're updating from such a build, add that property now.
-    if (this.file) {
+    if (!("rootURI" in this) && this.file) {
       this.rootURI = getURIForResourceInFile(this.file, "").spec;
     }
 
@@ -499,10 +499,7 @@ class XPIState {
       saved.currentModifiedTime != this.lastModifiedTime
     ) {
       this.lastModifiedTime = saved.currentModifiedTime;
-    } else if (
-      saved.currentModifiedTime === null &&
-      (!this.file || !this.file.exists())
-    ) {
+    } else if (saved.currentModifiedTime === null) {
       this.missing = true;
     }
   }
@@ -1472,7 +1469,7 @@ var XPIStates = {
       oldLocations.delete(loc.name);
 
       if (shouldRestoreLocationData && oldState[loc.name]) {
-        changed = changed || loc.path != oldState[loc.name].path;
+        loc.restore(oldState[loc.name]);
       }
       changed = changed || loc.changed;
 

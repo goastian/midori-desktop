@@ -70,10 +70,7 @@ function installPromptHandler(info) {
 
   if (info.existingAddon.isInstalledByEnterprisePolicy) {
     return Promise.resolve();
-    // If the existing add-on is installed
-
   }
-
 
   let newPerms = info.addon.userPermissions;
 
