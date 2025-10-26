@@ -112,6 +112,7 @@ export const BrowserManagerSidebar = {
     "https://astian.org/astian-vpn/invite/",
     "https://vpn.astian.org",
     "https://maps.astian.org",
+    "https://wallet.astian.org",
   ],
   prefsUpdate() {
     const defaultPref = { data: {}, index: [] };
