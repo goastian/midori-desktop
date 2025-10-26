@@ -5201,11 +5201,6 @@ export class CheckerService {
       url += (url.includes("?") ? "&" : "?") + "mig64=1";
     }
 
-    // replace version number with "stable"
-    if (Services.prefs.getBoolPref("floorp.upgrade.to12.enabled", false)) {
-      url = url.replace(/\/\d+\.\d+\.\d+\//g, "/stable/");
-    }
-
     if (updatePin) {
       url +=
         (url.includes("?") ? "&" : "?") +
