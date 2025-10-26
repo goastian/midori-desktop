@@ -271,5 +271,7 @@ def push_to_try(
                 raise
             sys.exit(1)
     finally:
-        if config_path and os.path.isfile(config_path):
-            os.remove(config_path)
+        if "try_task_config.json" in changed_files and os.path.isfile(
+            "try_task_config.json"
+        ):
+            os.remove("try_task_config.json")
