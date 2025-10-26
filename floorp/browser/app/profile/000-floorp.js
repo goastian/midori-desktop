@@ -16,18 +16,22 @@
 pref("enable.floorp.updater.latest", false);
 pref("enable.floorp.update", true);
 
-pref("floorp.chrome.theme.mode", -1);
+// userAgent
+pref("floorp.browser.UserAgent", 0);
+pref("floorp.general.useragent.override", "");
 
-pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.section.topstories", false);
+pref("floorp.chrome.theme.mode", -1);
 
 //ブラウザーUIのカスタマイズ設定
 pref("floorp.bookmarks.bar.focus.mode", false);//フォーカスした際にブックマークバーを展開
+pref("floorp.material.effect.enable", false);//マテリアルモードの実装
 pref("floorp.disable.fullscreen.notification", false);//フルスクリーン通知を無効化
 pref("floorp.navbar.bottom", false);
 pref("floorp.tabs.showPinnedTabsTitle", false); //ピン留めされたタブのタイトルを表示
 pref("floorp.delete.browser.border", false); //ブラウザーの枠線削除＆丸くする
-pref("floorp.browser.tabs.tabMinHeight", 30); //タブの高さ
+
+//Fluerial UIの設定
+pref("floorp.fluerial.roundVerticalTabs",false); //垂直タブのタブの形 trueが横に引っ付けるやつ、falseは角丸長方形
 
 pref("floorp.browser.user.interface", 3);// Floorp 10 系以降のインターフェーステーマ設定
 pref("floorp.browser.tabbar.settings", 0);// タブの設定
@@ -38,7 +42,7 @@ pref("floorp.enable.auto.restart", false);
 
 pref("browser.disable.nt.image.gb", false);// 画像を表示しない
 
-pref("floorp.enable.dualtheme", false); //デュアルテーマの有効・無効
+pref("floorp.enable.dualtheme", false); //デュアルテーマの有効・無効 
 pref("floorp.dualtheme.theme", "[]"); //デュアルテーマのリスト
 
 pref("floorp.download.notification", 4); //ダウンロード通知
@@ -103,9 +107,6 @@ pref("floorp.browser.tabs.verticaltab.right", true);
 pref("floorp.browser.tabs.verticaltab.temporary.disabled", false);
 pref("floorp.browser.tabs.verticaltab.width", 200);
 pref("floorp.verticaltab.paddingtop.enabled", false);
-
-// レガシーコンポーネント
-pref("toolkit.legacyUserProfileCustomizations.script", false);
 
 // Chrome 形式のダウンローダー
 pref("floorp.browser.native.downloadbar.enabled", false);
@@ -271,8 +272,6 @@ pref("dom.private-attribution.submission.enabled", false, locked);
 //Firefox調査を無効化
 pref("app.shield.optoutstudies.enabled", false, locked);
 
-pref("midori.urlbar.centered", true);
-
 //拡張機能の推奨を削除
 pref("browser.discovery.enabled", false);
 
@@ -320,14 +319,12 @@ pref("general.smoothScroll.msdPhysics.slowdownSpringConstant", 250);
 pref("mousewheel.default.delta_multiplier_y", 300);
 #endif
 
-// Lepton
-pref("userContent.page.dark_mode", true);
-
 /*-----------------------------------------------------------------------------------all.js の設定-----------------------------------------------------------------------------------*/
 
 pref("extensions.htmlaboutaddons.recommendations.enabled", false, locked);
-pref("datareporting.policy.dataSubmissionEnabled", false, locked);
+pref("datareporting.policy.dataSubmissionEnable", false, locked);
 pref("datareporting.healthreport.uploadEnabled", false, locked);
+pref("toolkit.legacyUserProfileCustomizations.script", false);
 
 /*-----------------------------------------------------------------------------以下、Photon の既定の設定-----------------------------------------------------------------------------*/
 //Floorp
