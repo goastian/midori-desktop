@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-{
+ {
   // start private scope for gBrowser
   /**
    * A set of known icons to use for internal pages. These are hardcoded so we can
@@ -124,9 +124,9 @@
       );
       XPCOMUtils.defineLazyPreferenceGetter(
         this,
-        "showPidAndActiveness",
-        "browser.tabs.tooltipsShowPidAndActiveness",
-        false
+        "_notificationEnableDelay",
+        "security.notification_enable_delay",
+        500
       );
 
       if (AppConstants.MOZ_CRASHREPORTER) {
@@ -495,7 +495,6 @@
       }
 
       let extraOptions;
-
       if (window.arguments?.[1] instanceof Ci.nsIPropertyBag2) {
         extraOptions = window.arguments[1];
       }
@@ -503,9 +502,7 @@
       // If our opener provided a remoteType which was responsible for creating
       // this pop-up window, we'll fall back to using that remote type when no
       // other remote type is available.
-
       let triggeringRemoteType;
-
       if (extraOptions?.hasKey("triggeringRemoteType")) {
         triggeringRemoteType = extraOptions.getPropertyAsACString(
           "triggeringRemoteType"
@@ -569,11 +566,11 @@
           // would mean that `gBrowser.selectedBrowser` might not always exist,
           // which is the current assumption.
 
-          if(Cu.isInAutomation){
+          if (Cu.isInAutomation) {
             ChromeUtils.releaseAssert(
               !triggeringRemoteType,
-              "Unexpected triggeringRemoteType in automation"
-            )
+              "Unexpected triggeringRemoteType with no uriToLoad"
+            );
           }
 
           // In this case we default to the privileged about process as that's
@@ -1001,7 +998,7 @@
           if (browser == this.selectedBrowser) {
             this._updateVisibleNotificationBox(browser);
           }
-        });
+        }, this._notificationEnableDelay);
       }
       return browser._notificationBox;
     },
@@ -2846,7 +2843,9 @@
           // but we were opened from another browser, set the cross group
           // opener ID:
           if (openerBrowser && !openWindowInfo) {
-            b.browsingContext.crossGroupOpener = openerBrowser.browsingContext;
+            b.browsingContext.setCrossGroupOpener(
+              openerBrowser.browsingContext
+            );
           }
         }
       } catch (e) {
@@ -2924,15 +2923,6 @@
         this.selectedTab = t;
       }
       return t;
-    },
-
-    addTabGroup(color, label = "") {
-      let group = document.createXULElement("tab-group", { is: "tab-group" });
-      group.id = `${Date.now()}-${Math.round(Math.random() * 100)}`;
-      group.color = color;
-      group.label = label;
-      this.tabContainer.appendChild(group);
-      return group;
     },
 
     _determineURIToLoad(uriString, createLazyBrowser) {
@@ -3041,9 +3031,8 @@
         triggeringRemoteType,
       }
     ) {
-
       // If we don't have a preferred remote type (or it is `NOT_REMOTE`), and
-      // we have a remote triggering remote type, use that instead.More actions
+      // we have a remote triggering remote type, use that instead.
       if (!preferredRemoteType && triggeringRemoteType) {
         preferredRemoteType = triggeringRemoteType;
       }
@@ -5410,20 +5399,6 @@
       aTab.dispatchEvent(evt);
     },
 
-    moveTabToGroup(aTab, aGroup) {
-      if (aTab.pinned) {
-        return;
-      }
-      if (aTab.group && aTab.group.id === aGroup.id) {
-        return;
-      }
-      let wasFocused = document.activeElement == this.selectedTab;
-      aGroup.appendChild(aTab);
-      // pass -1 to oldPosition because a move occurred even if position
-      // hasn't changed
-      this._updateAfterMoveTabTo(aTab, -1, wasFocused);
-    },
-
     moveTabForward() {
       let nextTab = this.tabContainer.findNextTab(this.selectedTab, {
         direction: 1,
@@ -6057,7 +6032,12 @@
       if (includeLabel) {
         labelArray.push(tab._fullLabel || tab.getAttribute("label"));
       }
-      if (this.showPidAndActiveness) {
+      if (
+        Services.prefs.getBoolPref(
+          "browser.tabs.tooltipsShowPidAndActiveness",
+          false
+        )
+      ) {
         const pids = this.getTabPids(tab);
         if (pids.length) {
           let pidLabel = pids.length > 1 ? "pids" : "pid";
