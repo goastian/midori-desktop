@@ -7,10 +7,6 @@
 // This is loaded into chrome windows with the subscript loader. Wrap in
 // a block to prevent accidentally leaking globals onto `window`.
 {
-
-  const TAB_PREVIEW_PREF = "browser.tabs.hoverPreview.enabled";
-
-
   class MozTabbrowserTab extends MozElements.MozTab {
     static markup = `
       <stack class="tab-stack" flex="1">
@@ -579,6 +575,9 @@
       // Prepare connection to host beforehand.
       SessionStore.speculativeConnectOnTabHover(this);
 
+      const isForegroundWindow =
+        this.ownerGlobal ==
+        BrowserWindowTracker.getTopWindow({ allowPopups: true });
       this.dispatchEvent(new CustomEvent("TabHoverStart", { bubbles: true }));
     }
 

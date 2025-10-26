@@ -263,7 +263,7 @@ function disableFxaBadge() {
 
   // Also prevent a new timer from being set
   return SpecialPowers.pushPrefEnv({
-    set: [["identity.fxaccounts.toolbar.accessed", false]],
+    set: [["identity.fxaccounts.toolbar.accessed", true]],
   });
 }
 

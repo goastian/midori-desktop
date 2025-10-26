@@ -30,8 +30,8 @@ function getTimeZoneOnTab(tab) {
     SpecialPowers.Cu.getJSTestingFunctions().setTimeZone(undefined);
 
     return time
-    .match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}([+-]\d{2}:\d{2})/)
-    .pop();
+      .match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}([+-]\d{2}:\d{2})/)
+      .pop();
   };
 
   const extractTimeExpr = `(${extractTime.toString()})();`;
@@ -68,10 +68,12 @@ async function getTimeZone(enabled) {
 
   return timeZone;
 }
+
 let realTimeZone = "";
 add_setup(async () => {
   realTimeZone = await getTimeZone(false);
 });
+
 async function run_test(enabled) {
   const timeZone = await getTimeZone(enabled);
   const expected = enabled ? "+00:00" : realTimeZone;

@@ -68,7 +68,7 @@ run-if = ["crashreporter"]
 
 ["browser_backup_recovery.js"]
 https_first_disabled = true
-skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && verify"]
+skip-if = ["verify && debug && os == 'linux'"]
 
 ["browser_bfcache_telemetry.js"]
 
@@ -88,7 +88,6 @@ https_first_disabled = true
 ["browser_closed_tabs_closed_windows.js"]
 
 ["browser_closed_tabs_windows.js"]
-skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt"] # Bug 1836198
 
 ["browser_cookies.js"]
 
@@ -167,7 +166,7 @@ skip-if = [
 ["browser_label_and_icon.js"]
 https_first_disabled = true
 skip-if = [
-  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+  "apple_silicon", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
   "apple_catalina && !debug", # Bug 1638958
   "os == 'linux' && !debug", # Bug 1638958
   "win11_2009 && !debug", # Bug 1775605

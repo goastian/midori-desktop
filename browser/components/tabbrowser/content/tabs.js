@@ -1095,8 +1095,6 @@ const verticalTabbarEnabled = () => Services.prefs.getIntPref("floorp.tabbar.sty
 			return children;
 		}
 
-
-
 		get previewPanel() {
 			return this._previewPanel;
 		}

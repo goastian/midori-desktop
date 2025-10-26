@@ -178,30 +178,5 @@
     "domains": ["zhihu.com"],
     "image_url": "images/zhihu-com@2x.png",
     "favicon_url": "favicons/zhihu-com.ico"
-  },
-  {
-    "domains": ["ghostery.com"],
-    "image_url": "images/ghostery-com@2x.png",
-    "favicon_url": "favicons/ghostery-com.ico"
-  },
-  {
-    "domains": ["whotracks.me"],
-    "image_url": "images/whotracks-me@2x.png",
-    "favicon_url": "favicons/whotracks-me.ico"
-  },
-  {
-    "domains": ["privacytools.io"],
-    "image_url": "images/privacytools-io@2x.png",
-    "favicon_url": "favicons/privacytools-io.ico"
-  },
-  {
-    "domains": ["alternativeto.net"],
-    "image_url": "images/alternativeto-net@2x.png",
-    "favicon_url": "favicons/alternativeto-net.ico"
-  },
-  {
-    "domains": ["addons.mozilla.org"],
-    "image_url": "images/firefoxaddons@2x.png",
-    "favicon_url": "favicons/firefoxaddons.ico"
   }
 ]

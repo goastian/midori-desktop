@@ -193,12 +193,13 @@ async function testSearchEngine(engineDetails) {
     if (test.preTest) {
       await test.preTest(tab);
     }
-    
+
     let googleUrl = "https://www.google.com/search?client=" + test.code;
     if (SearchUtils.MODIFIED_APP_CHANNEL == "esr") {
       googleUrl += "&channel=entpr";
     }
     googleUrl += "&q=foo";
+
     let promises = [
       BrowserTestUtils.waitForDocLoadAndStopIt(googleUrl, tab),
       BrowserTestUtils.browserStopped(tab.linkedBrowser, googleUrl, true),

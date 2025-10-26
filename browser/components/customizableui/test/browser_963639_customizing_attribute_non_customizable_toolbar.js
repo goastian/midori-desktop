@@ -31,8 +31,9 @@ add_task(async function () {
 
   await startCustomizing();
   window.setToolbarVisibility(toolbar, "true");
-  ok(
-    !toolbar.hasAttribute("customizing"),
+  isnot(
+    toolbar.getAttribute("customizing"),
+    "true",
     "Toolbar doesn't have the customizing attribute"
   );
 

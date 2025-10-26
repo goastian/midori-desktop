@@ -5,8 +5,8 @@ support-files = [
   "head-common.js",
 ]
 skip-if = [
-  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan", # long running manifest
-  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan", # long running manifest
+  "os == 'linux' && os_version == '18.04' && asan", # long running manifest
+  "os == 'linux' && os_version == '18.04' && tsan", # long running manifest
   "win11_2009 && asan", # long running manifest
 ]
 prefs = [
@@ -19,6 +19,10 @@ prefs = [
 ["browser_UrlbarInput_formatValue.js"]
 
 ["browser_UrlbarInput_formatValue_detachedTab.js"]
+skip-if = [
+  "apple_catalina", # Bug 1756585
+  "os == 'win'", # Bug 1756585
+]
 
 ["browser_UrlbarInput_formatValue_strikeout.js"]
 support-files = ["mixed_active.html"]
@@ -57,7 +61,7 @@ support-files = ["mixed_active.html"]
 
 ["browser_UrlbarInput_setURI.js"]
 https_first_disabled = true
-skip-if = ["os == 'mac' && os_version == '10.15' && processor == 'x86_64' && debug"] # Bug 1773790
+skip-if = ["apple_catalina && debug"] # Bug 1773790
 
 ["browser_UrlbarInput_tooltip.js"]
 
@@ -76,7 +80,7 @@ skip-if = [
 
 ["browser_action_searchengine.js"]
 skip-if = [
-  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan",  # Bug 1834810
+  "os == 'linux' && asan",  # Bug 1834810
   "os == 'linux' && debug", # Bug 1834810
   "os == 'win' && asan",  # Bug 1834810
   "os == 'win' && debug", # Bug 1834810
@@ -203,7 +207,7 @@ support-files = [
 ["browser_display_selectedAction_Extensions.js"]
 
 ["browser_dns_first_for_single_words.js"]
-skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64' && verify"] # Bug 1581635
+skip-if = ["verify && os == 'linux'"] # Bug 1581635
 
 ["browser_downArrowKeySearch.js"]
 https_first_disabled = true
@@ -448,8 +452,6 @@ support-files = [
 
 ["browser_searchMode_no_results.js"]
 
-["browser_searchMode_omnibox.js"]
-
 ["browser_searchMode_oneOffButton.js"]
 
 ["browser_searchMode_pickResult.js"]
@@ -620,14 +622,10 @@ https_first_disabled = true
 https_first_disabled = true
 
 ["browser_urlbar_annotation.js"]
-https_first_disabled = true
 support-files = ["redirect_to.sjs"]
 
 ["browser_urlbar_selection.js"]
-skip-if = [
-  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # bug 1570474
-  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # bug 1570474
-]
+skip-if = ["(os == 'mac')"] # bug 1570474
 
 ["browser_urlbar_telemetry.js"]
 tags = "search-telemetry"
@@ -697,7 +695,9 @@ support-files = [
 ]
 
 ["browser_view_selectionByMouse.js"]
-skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan"] # Bug 1789051
+skip-if = [
+  "os == 'linux' && asan", # Bug 1789051
+]
 
 ["browser_waitForLoadStartOrTimeout.js"]
 https_first_disabled = true

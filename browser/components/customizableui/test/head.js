@@ -231,7 +231,7 @@ function simulateItemDrag(aToDrag, aTarget, aEvent = {}, aOffset = 2) {
 }
 
 function endCustomizing(aWindow = window) {
-  if (!aWindow.document.documentElement.hasAttribute("customizing")) {
+  if (aWindow.document.documentElement.getAttribute("customizing") != "true") {
     return true;
   }
   let afterCustomizationPromise = BrowserTestUtils.waitForEvent(
@@ -243,7 +243,7 @@ function endCustomizing(aWindow = window) {
 }
 
 function startCustomizing(aWindow = window) {
-  if (aWindow.document.documentElement.hasAttribute("customizing")) {
+  if (aWindow.document.documentElement.getAttribute("customizing") == "true") {
     return null;
   }
   let customizationReadyPromise = BrowserTestUtils.waitForEvent(

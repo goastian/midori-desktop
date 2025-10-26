@@ -184,7 +184,6 @@
             <box class="chromeclass-toolbar-additional urlbar-search-button"/>
             <!-- Use onclick instead of normal popup= syntax since the popup
                  code fires onmousedown, and hence eats our favicon drag events. -->
-                 
             <box id="tracking-protection-icon-container" align="center"
                  role="button"
                  onclick="gProtectionsHandler.handleProtectionsButtonEvent(event);"
@@ -199,7 +198,6 @@
                 <description id="tracking-protection-icon-tooltip-label" class="tooltip-label"/>
               </tooltip>
             </box>
-            
             <box id="identity-box"
                  class="identity-box"
                  pageproxystate="invalid"
@@ -588,11 +586,6 @@
                    ondrop="newWindowButtonObserver.onDrop(event)"
                    ondragover="newWindowButtonObserver.onDragOver(event)"
                    ondragenter="newWindowButtonObserver.onDragOver(event)"/>
-
-
-    <toolbarbutton id="new-identity-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                    data-l10n-id="toolbar-new-identity"/>
-
 
     <toolbarbutton id="fullscreen-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
                    observes="View:FullScreen"

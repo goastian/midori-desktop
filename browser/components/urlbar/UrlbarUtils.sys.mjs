@@ -1314,29 +1314,21 @@ export var UrlbarUtils = {
    * @param {object} [options] Preparation options.
    * @param {boolean} [options.trimURL] Whether the displayed URL should be
    *                  trimmed or not.
-   * @param {boolean} [options.schemeless] Trim `http(s)://`.
    * @returns {string} Prepared url.
    */
-  prepareUrlForDisplay(url, { trimURL = true, schemeless = false } = {}) {
+  prepareUrlForDisplay(url, { trimURL = true } = {}) {
     // Some domains are encoded in punycode. The following ensures we display
     // the url in utf-8.
     try {
       url = new URL(url).URI.displaySpec;
     } catch {} // In some cases url is not a valid url.
 
-    if (url) {
-      if (schemeless) {
-        url = UrlbarUtils.stripPrefixAndTrim(url, {
-          stripHttp: true,
-          stripHttps: true,
-        })[0];
-      } else if (trimURL && lazy.UrlbarPrefs.get("trimURLs")) {
-        url = lazy.BrowserUIUtils.removeSingleTrailingSlashFromURL(url);
-        if (url.startsWith("https://")) {
-          url = url.substring(8);
-          if (url.startsWith("www.")) {
-            url = url.substring(4);
-          }
+    if (url && trimURL && lazy.UrlbarPrefs.get("trimURLs")) {
+      url = lazy.BrowserUIUtils.removeSingleTrailingSlashFromURL(url);
+      if (url.startsWith("https://")) {
+        url = url.substring(8);
+        if (url.startsWith("www.")) {
+          url = url.substring(4);
         }
       }
     }
@@ -3066,7 +3058,10 @@ export class TaskQueue {
    *   then a resolved promise is returned.
    */
   get emptyPromise() {
-    return this.#emptyPromise;
+    if (!this._queue.length) {
+      return Promise.resolve();
+    }
+    return new Promise(resolve => this._emptyCallbacks.push(resolve));
   }
 
   /**
@@ -3084,56 +3079,27 @@ export class TaskQueue {
    */
   queue(callback) {
     return new Promise((resolve, reject) => {
-      this.#queue.push({ callback, resolve, reject });
-      if (this.#queue.length == 1) {
-        this.#emptyDeferred = Promise.withResolvers();
-        this.#emptyPromise = this.#emptyDeferred.promise;
-        this.#doNextTask();
+      this._queue.push({ callback, resolve, reject });
+      if (this._queue.length == 1) {
+        this._doNextTask();
       }
     });
   }
-
-    /**
-   * Adds a callback function to the task queue that will be called on idle.
-   *
-   * @param {Function} callback
-   *   The function to queue.
-   * @returns {Promise}
-   *   Resolved after the task queue calls and awaits `callback`. It will be
-   *   resolved with the value returned by `callback`. If `callback` throws an
-   *   error, then it will be rejected with the error.
-   */
-    queueIdleCallback(callback) {
-      return this.queue(async () => {
-        await new Promise((resolve, reject) => {
-          ChromeUtils.idleDispatch(async () => {
-            try {
-              let value = await callback();
-              resolve(value);
-            } catch (error) {
-              console.error(error);
-              reject(error);
-            }
-          });
-        });
-      });
-    }
 
   /**
    * Calls the next function in the task queue and recurses until the queue is
    * empty. Once empty, all empty callback functions are called.
    */
-  async #doNextTask() {
-    if (!this.#queue.length) {
-      this.#emptyDeferred.resolve();
-      this.#emptyDeferred = null;
+  async _doNextTask() {
+    if (!this._queue.length) {
+      while (this._emptyCallbacks.length) {
+        let callback = this._emptyCallbacks.shift();
+        callback();
+      }
       return;
     }
 
-    // Leave the callback in the queue while awaiting it. If we remove it now
-    // the queue could become empty, and if `queue()` were called while we're
-    // awaiting the callback, `#doNextTask()` would be re-entered.
-    let { callback, resolve, reject } = this.#queue[0];
+    let { callback, resolve, reject } = this._queue[0];
     try {
       let value = await callback();
       resolve(value);
@@ -3141,11 +3107,10 @@ export class TaskQueue {
       console.error(error);
       reject(error);
     }
-    this.#queue.shift();
-    this.#doNextTask();
+    this._queue.shift();
+    this._doNextTask();
   }
 
-  #queue = [];
-  #emptyDeferred = null;
-  #emptyPromise = Promise.resolve();
+  _queue = [];
+  _emptyCallbacks = [];
 }

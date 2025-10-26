@@ -23,9 +23,9 @@ export class RemoteSettingsServer {
    *
    * @param {object} options
    * @param {number} options.maxLogLevel
-   *   A log level value as defined by ConsoleInstance. `Info` logs server start
-   *   and stop. `Debug` logs requests, responses, and added and removed
-   *   records.
+   *   A log level value as defined by ConsoleInstance. `Info` logs basic info
+   *   on requests and responses like paths and status codes. Pass `Debug` to
+   *   log more info like headers, response bodies, added and removed records.
    */
   constructor({ maxLogLevel = "Info" } = {}) {
     this.#log = console.createInstance({
@@ -116,7 +116,10 @@ export class RemoteSettingsServer {
    *     JSON'able objects that the server will convert to JSON in responses.
    */
   async addRecords({ bucket = "main", collection = "test", records }) {
-    this.#log.debug("Adding records:", { bucket, collection, records });
+    this.#log.debug(
+      "Adding records: " +
+        JSON.stringify({ bucket, collection, records }, null, 2)
+    );
 
     this.#lastModified++;
 
@@ -141,9 +144,10 @@ export class RemoteSettingsServer {
       allRecords.push(copy);
     }
 
-    this.#log.debug("Done adding records. All records are now:", [
-      ...this.#records.entries(),
-    ]);
+    this.#log.debug(
+      "Done adding records. All records are now: " +
+        JSON.stringify([...this.#records.entries()], null, 2)
+    );
   }
 
   /**
@@ -166,7 +170,7 @@ export class RemoteSettingsServer {
    *   `{ type: "data", last_modified: 1234 }
    */
   removeRecords(filter = null) {
-    this.#log.debug("Removing records", { filter });
+    this.#log.debug("Removing records: " + JSON.stringify({ filter }));
 
     this.#lastModified++;
 
@@ -190,9 +194,10 @@ export class RemoteSettingsServer {
       }
     }
 
-    this.#log.debug("Done removing records. All records are now:", [
-      ...this.#records.entries(),
-    ]);
+    this.#log.debug(
+      "Done removing records. All records are now: " +
+        JSON.stringify([...this.#records.entries()], null, 2)
+    );
   }
 
   /**
@@ -306,8 +311,8 @@ export class RemoteSettingsServer {
 
       {
         spec: "/v1/buckets/$bucket/collections/$collection/changeset",
-        response: ({ bucket, collection }, request) => {
-          let records = this.#getRecords(bucket, collection, request);
+        response: ({ bucket, collection }) => {
+          let records = this.#getRecords(bucket, collection);
           return !records
             ? lazy.HTTP_404
             : {
@@ -322,8 +327,8 @@ export class RemoteSettingsServer {
 
       {
         spec: "/v1/buckets/$bucket/collections/$collection/records",
-        response: ({ bucket, collection }, request) => {
-          let records = this.#getRecords(bucket, collection, request);
+        response: ({ bucket, collection }) => {
+          let records = this.#getRecords(bucket, collection);
           return !records
             ? lazy.HTTP_404
             : {
@@ -439,36 +444,8 @@ export class RemoteSettingsServer {
     return match;
   }
 
-  #getRecords(bucket, collection, request) {
-    let records = this.#records.get(this.#recordsKey(bucket, collection));
-    let params = new URLSearchParams(request.queryString);
-
-    let type = params.get("type");
-    if (type) {
-      records = records.filter(r => r.type == type);
-    }
-
-    let gtLastModified = params.get("gt_last_modified");
-    if (gtLastModified) {
-      records = records.filter(r => r.last_modified > gtLastModified);
-    }
-
-    let since = params.get("_since");
-    if (since) {
-      // Example value: "%221368273600004%22"
-      let match = /^"([0-9]+)"$/.exec(decodeURIComponent(since));
-      if (match) {
-        since = parseInt(match[1]);
-        records = records.filter(r => r.last_modified > since);
-      }
-    }
-
-    let sort = params.get("_sort");
-    if (sort == "last_modified") {
-      records = records.toSorted((a, b) => a.last_modified - b.last_modified);
-    }
-
-    return records;
+  #getRecords(bucket, collection) {
+    return this.#records.get(this.#recordsKey(bucket, collection));
   }
 
   #recordsKey(bucket, collection) {
@@ -586,9 +563,12 @@ export class RemoteSettingsServer {
     if (request.queryString) {
       pathAndQuery += "?" + request.queryString;
     }
-    this.#log.debug(
+    this.#log.info(
       `< HTTP ${request.httpVersion} ${request.method} ${pathAndQuery}`
     );
+    for (let name of request.headers) {
+      this.#log.debug(`${name}: ${request.getHeader(name.toString())}`);
+    }
   }
 
   /**
@@ -599,15 +579,18 @@ export class RemoteSettingsServer {
    *   The associated request.
    * @param {integer} options.status
    *   The HTTP status code of the response.
-   * @param {object} options._headers
+   * @param {object} options.headers
    *   An object mapping from response header names to values.
    * @param {object} options.body
    *   The response body, if any.
    */
-  #logResponse({ request, status, _headers, body }) {
-    this.#log.debug(`> ${status} ${request.path}`);
+  #logResponse({ request, status, headers, body }) {
+    this.#log.info(`> ${status} ${request.path}`);
+    for (let [name, value] of Object.entries(headers)) {
+      this.#log.debug(`${name}: ${value}`);
+    }
     if (body) {
-      this.#log.debug("Response body:", body);
+      this.#log.debug("Response body: " + JSON.stringify(body, null, 2));
     }
   }
 

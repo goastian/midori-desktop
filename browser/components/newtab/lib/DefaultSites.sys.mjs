@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/*
- const DEFAULT_SITES_MAP = new Map([
+const DEFAULT_SITES_MAP = new Map([
   // This first item is the global list fallback for any unexpected geos
   [
     "",
@@ -42,9 +41,6 @@
     "https://www.baidu.com/,https://www.zhihu.com/,https://www.ifeng.com/,https://weibo.com/,https://www.ctrip.com/,https://www.iqiyi.com/",
   ],
 ]);
-*/
-
-const DEFAULT_SITES_MAP = new Map([["", "https://www.ghostery.com/,https://whotracks.me/,https://privacytools.io/,https://alternativeto.net/,https://addons.mozilla.org"]]);
 
 // Immutable for export.
 export const DEFAULT_SITES = Object.freeze(DEFAULT_SITES_MAP);

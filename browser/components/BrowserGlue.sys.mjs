@@ -179,174 +179,13 @@ let gThisInstanceIsLaunchOnLogin = false;
 // a taskbar tab shortcut will contain the "taskbar-tab" flag.
 let gThisInstanceIsTaskbarTab = false;
 
-// Empty clipboard content from private windows on exit
-// (tor-browser#42154)
-const ClipboardPrivacy = {
-  _lastClipboardHash: null,
-  _globalActivation: false,
-  _isPrivateClipboard: false,
-  _hasher: null,
-  _shuttingDown: false,
-
-  _createTransferable() {
-    const trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(
-      Ci.nsITransferable
-    );
-    trans.init(null);
-    return trans;
-  },
-  _computeClipboardHash() {
-    const flavors = ["text/x-moz-url", "text/plain"];
-    if (
-      !Services.clipboard.hasDataMatchingFlavors(
-        flavors,
-        Ci.nsIClipboard.kGlobalClipboard
-      )
-    ) {
-      return null;
-    }
-    const trans = this._createTransferable();
-    flavors.forEach(trans.addDataFlavor);
-    try {
-      Services.clipboard.getData(trans, Ci.nsIClipboard.kGlobalClipboard);
-      const clipboardContent = {};
-      trans.getAnyTransferData({}, clipboardContent);
-      const { data } = clipboardContent.value.QueryInterface(
-        Ci.nsISupportsString
-      );
-      const bytes = new TextEncoder().encode(data);
-      const hasher = (this._hasher ||= Cc[
-        "@mozilla.org/security/hash;1"
-      ].createInstance(Ci.nsICryptoHash));
-      hasher.init(hasher.SHA256);
-      hasher.update(bytes, bytes.length);
-      return hasher.finish(true);
-    } catch (e) {}
-    return null;
-  },
-
-  startup() {
-    this._lastClipboardHash = this._computeClipboardHash();
-
-    // Here we track changes in active window / application,
-    // by filtering focus events and window closures.
-    const handleActivation = (win, activation) => {
-      if (activation) {
-        if (!this._globalActivation) {
-          // focus changed within this window, bail out.
-          return;
-        }
-        this._globalActivation = false;
-      } else if (!Services.focus.activeWindow) {
-        // focus is leaving this window:
-        // let's track whether it remains within the browser.
-        lazy.setTimeout(() => {
-          this._globalActivation = !Services.focus.activeWindow;
-        }, 100);
-      }
-
-      const checkClipboardContent = () => {
-        const clipboardHash = this._computeClipboardHash();
-        if (clipboardHash !== this._lastClipboardHash) {
-          this._isPrivateClipboard =
-            !activation &&
-            (lazy.PrivateBrowsingUtils.permanentPrivateBrowsing ||
-              lazy.PrivateBrowsingUtils.isWindowPrivate(win));
-          this._lastClipboardHash = clipboardHash;
-          lazy.log.debug(
-            `Clipboard changed: private ${this._isPrivateClipboard}, hash ${clipboardHash}.`
-          );
-        }
-      };
-
-      if (win.closed) {
-        checkClipboardContent();
-      } else {
-        // defer clipboard access on DOM events to work-around tor-browser#42306
-        lazy.setTimeout(checkClipboardContent, 0);
-      }
-    };
-    const focusListener = e =>
-      e.isTrusted && handleActivation(e.currentTarget, e.type === "focusin");
-    const initWindow = win => {
-      for (const e of ["focusin", "focusout"]) {
-        win.addEventListener(e, focusListener);
-      }
-    };
-    for (const w of Services.ww.getWindowEnumerator()) {
-      initWindow(w);
-    }
-    Services.ww.registerNotification((win, event) => {
-      switch (event) {
-        case "domwindowopened":
-          initWindow(win);
-          break;
-        case "domwindowclosed":
-          handleActivation(win, false);
-          if (
-            this._isPrivateClipboard &&
-            lazy.PrivateBrowsingUtils.isWindowPrivate(win) &&
-            (this._shuttingDown ||
-              !Array.from(Services.ww.getWindowEnumerator()).find(
-                w =>
-                  lazy.PrivateBrowsingUtils.isWindowPrivate(w) &&
-                  // We need to filter out the HIDDEN WebExtensions window,
-                  // which might be private as well but is not UI-relevant.
-                  !w.location.href.startsWith("chrome://extensions/")
-              ))
-          ) {
-            // no more private windows, empty private content if needed
-            this.emptyPrivate();
-          }
-      }
-    });
-
-    lazy.AsyncShutdown.quitApplicationGranted.addBlocker(
-      "ClipboardPrivacy: removing private data",
-      () => {
-        this._shuttingDown = true;
-        this.emptyPrivate();
-      }
-    );
-  },
-  emptyPrivate() {
-    if (
-      this._isPrivateClipboard &&
-      !Services.prefs.getBoolPref(
-        "browser.privatebrowsing.preserveClipboard",
-        false
-      ) &&
-      this._lastClipboardHash === this._computeClipboardHash()
-    ) {
-      // nsIClipboard.emptyClipboard() does nothing in Wayland:
-      // we'll set an empty string as a work-around.
-      const trans = this._createTransferable();
-      const flavor = "text/plain";
-      trans.addDataFlavor(flavor);
-      const emptyString = Cc["@mozilla.org/supports-string;1"].createInstance(
-        Ci.nsISupportsString
-      );
-      emptyString.data = "";
-      trans.setTransferData(flavor, emptyString);
-      const { clipboard } = Services,
-        { kGlobalClipboard } = clipboard;
-      clipboard.setData(trans, null, kGlobalClipboard);
-      clipboard.emptyClipboard(kGlobalClipboard);
-      this._lastClipboardHash = null;
-      this._isPrivateClipboard = false;
-      lazy.log.info("Private clipboard emptied.");
-    }
-  },
-};
-
-
 /**
  * Fission-compatible JSProcess implementations.
  * Each actor options object takes the form of a ProcessActorOptions dictionary.
  * Detailed documentation of these options is in dom/docs/ipc/jsactors.rst,
  * available at https://firefox-source-docs.mozilla.org/dom/ipc/jsactors.html
  */
-const JSPROCESSACTORS = {
+let JSPROCESSACTORS = {
   // Miscellaneous stuff that needs to be initialized per process.
   BrowserProcess: {
     child: {
@@ -377,7 +216,7 @@ const JSPROCESSACTORS = {
     enablePreference: "accessibility.blockautorefresh",
     onPreferenceChanged: (prefName, prevValue, isEnabled) => {
       lazy.BrowserWindowTracker.orderedWindows.forEach(win => {
-        for (const browser of win.gBrowser.browsers) {
+        for (let browser of win.gBrowser.browsers) {
           try {
             browser.sendMessageToActor(
               "PreferenceChanged",
@@ -397,7 +236,7 @@ const JSPROCESSACTORS = {
  * Detailed documentation of these options is in dom/docs/ipc/jsactors.rst,
  * available at https://firefox-source-docs.mozilla.org/dom/ipc/jsactors.html
  */
-const JSWINDOWACTORS = {
+let JSWINDOWACTORS = {
   Megalist: {
     parent: {
       esModuleURI: "resource://gre/actors/MegalistParent.sys.mjs",
@@ -1080,19 +919,23 @@ if (AppConstants.MOZ_CRASHREPORTER) {
   });
 }
 
-ChromeUtils.defineLazyGetter(lazy, "gBrandBundle", () =>
-  Services.strings.createBundle("chrome://branding/locale/brand.properties")
-);
+ChromeUtils.defineLazyGetter(lazy, "gBrandBundle", function () {
+  return Services.strings.createBundle(
+    "chrome://branding/locale/brand.properties"
+  );
+});
 
-ChromeUtils.defineLazyGetter(lazy, "gBrowserBundle", () =>
-  Services.strings.createBundle("chrome://browser/locale/browser.properties")
-);
+ChromeUtils.defineLazyGetter(lazy, "gBrowserBundle", function () {
+  return Services.strings.createBundle(
+    "chrome://browser/locale/browser.properties"
+  );
+});
 
 ChromeUtils.defineLazyGetter(lazy, "log", () => {
-  const { ConsoleAPI } = ChromeUtils.importESModule(
+  let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
-  const consoleOptions = {
+  let consoleOptions = {
     // tip: set maxLogLevel to "debug" and use lazy.log.debug() to create
     // detailed messages during development. See LOG_LEVELS in Console.sys.mjs
     // for details.
@@ -1110,7 +953,7 @@ const listeners = {
   },
 
   observe(subject, topic, data) {
-    for (const module of this.observers[topic]) {
+    for (let module of this.observers[topic]) {
       try {
         lazy[module].observe(subject, topic, data);
       } catch (e) {
@@ -1120,7 +963,7 @@ const listeners = {
   },
 
   init() {
-    for (const observer of Object.keys(this.observers)) {
+    for (let observer of Object.keys(this.observers)) {
       Services.obs.addObserver(this, observer);
     }
   },
@@ -1150,7 +993,7 @@ const STARTUP_CRASHES_END_DELAY_MS = 30 * 1000;
  */
 const OBSERVE_LASTWINDOW_CLOSE_TOPICS = AppConstants.platform != "macosx";
 
-export const BrowserInitState = {};
+export let BrowserInitState = {};
 BrowserInitState.startupIdleTaskPromise = new Promise(resolve => {
   BrowserInitState._resolveStartupIdleTask = resolve;
 });
@@ -1163,7 +1006,7 @@ export function BrowserGlue() {
     "nsIUserIdleService"
   );
 
-  ChromeUtils.defineLazyGetter(this, "_distributionCustomizer", () => {
+  ChromeUtils.defineLazyGetter(this, "_distributionCustomizer", function () {
     const { DistributionCustomizer } = ChromeUtils.importESModule(
       "resource:///modules/distribution.sys.mjs"
     );
@@ -1196,7 +1039,7 @@ function isPrivateBrowsingAllowedInRegistry() {
   // can be checked to determine if it is enabled
   if (Services.policies.status > Ci.nsIEnterprisePolicies.UNINITIALIZED) {
     // Yield to policies engine if initialized
-    const privateAllowed = Services.policies.isAllowed("privatebrowsing");
+    let privateAllowed = Services.policies.isAllowed("privatebrowsing");
     lazy.log.debug(
       `Yield to initialized policies engine: Private Browsing Allowed = ${privateAllowed}`
     );
@@ -1210,10 +1053,10 @@ function isPrivateBrowsingAllowedInRegistry() {
     return true;
   }
   // If all other checks fail only then do we check registry
-  const wrk = Cc["@mozilla.org/windows-registry-key;1"].createInstance(
+  let wrk = Cc["@mozilla.org/windows-registry-key;1"].createInstance(
     Ci.nsIWindowsRegKey
   );
-  const regLocation = "SOFTWARE\\Policies";
+  let regLocation = "SOFTWARE\\Policies";
   let userPolicies, machinePolicies;
   // Only check HKEY_LOCAL_MACHINE if not in testing
   if (!Cu.isInAutomation) {
@@ -2058,9 +1901,6 @@ BrowserGlue.prototype = {
 
     lazy.DoHController.init();
 
-    ClipboardPrivacy.startup();
-
-
     this._firstWindowTelemetry(aWindow);
     this._firstWindowLoaded();
 
@@ -2461,6 +2301,25 @@ BrowserGlue.prototype = {
     });
   },
 
+  async _setupSearchDetection() {
+    // There is no pref for this add-on because it shouldn't be disabled.
+    const ID = "addons-search-detection@mozilla.com";
+
+    let addon = await lazy.AddonManager.getAddonByID(ID);
+
+    // first time install of addon and install on firefox update
+    addon =
+      (await lazy.AddonManager.maybeInstallBuiltinAddon(
+        ID,
+        "2.0.0",
+        "resource://builtin-addons/search-detection/"
+      )) || addon;
+
+    if (!addon.isActive) {
+      addon.enable();
+    }
+  },
+
   _monitorHTTPSOnlyPref() {
     const PREF_ENABLED = "dom.security.https_only_mode";
     const PREF_WAS_ENABLED = "dom.security.https_only_mode_ever_enabled";
@@ -2691,6 +2550,7 @@ BrowserGlue.prototype = {
     this._monitorHTTPSOnlyPref();
     this._monitorIonPref();
     this._monitorIonStudies();
+    this._setupSearchDetection();
 
     this._monitorGPCPref();
 
@@ -3239,14 +3099,14 @@ BrowserGlue.prototype = {
             AppConstants.MOZ_UPDATER &&
             !lazy.UpdateServiceStub.updateDisabledForTesting
           ) {
-            // try {
-            //   await lazy.BackgroundUpdate.scheduleFirefoxMessagingSystemTargetingSnapshotting();
-            // } catch (e) {
-            //   console.error(
-            //     "There was an error scheduling Firefox Messaging System targeting snapshotting: ",
-            //     e
-            //   );
-            // }
+            try {
+              await lazy.BackgroundUpdate.scheduleFirefoxMessagingSystemTargetingSnapshotting();
+            } catch (e) {
+              console.error(
+                "There was an error scheduling Firefox Messaging System targeting snapshotting: ",
+                e
+              );
+            }
             await lazy.BackgroundUpdate.maybeScheduleBackgroundUpdateTask();
           }
         },
@@ -5343,11 +5203,11 @@ var ContentBlockingCategoriesPrefs = {
         "privacy.fingerprintingProtection.pbmode": null,
       },
     };
-    const type = "strict";
-    const rulesArray = Services.prefs
+    let type = "strict";
+    let rulesArray = Services.prefs
       .getStringPref(this.PREF_STRICT_DEF)
       .split(",");
-    for (const item of rulesArray) {
+    for (let item of rulesArray) {
       switch (item) {
         case "tp":
           this.CATEGORY_PREFS[type][
@@ -5556,14 +5416,14 @@ var ContentBlockingCategoriesPrefs = {
     ) {
       return false;
     }
-    for (const pref in this.CATEGORY_PREFS[category]) {
-      const value = this.CATEGORY_PREFS[category][pref];
+    for (let pref in this.CATEGORY_PREFS[category]) {
+      let value = this.CATEGORY_PREFS[category][pref];
       if (value == null) {
         if (Services.prefs.prefHasUserValue(pref)) {
           return false;
         }
       } else {
-        const prefType = Services.prefs.getPrefType(pref);
+        let prefType = Services.prefs.getPrefType(pref);
         if (
           (prefType == Services.prefs.PREF_BOOL &&
             Services.prefs.getBoolPref(pref) != value) ||
@@ -5597,7 +5457,7 @@ var ContentBlockingCategoriesPrefs = {
     // If there is a custom policy which changes a related pref, then put the user in custom so
     // they still have access to other content blocking prefs, and to keep our default definitions
     // from changing.
-    const policy = Services.policies.getActivePolicies();
+    let policy = Services.policies.getActivePolicies();
     if (policy && (policy.EnableTrackingProtection || policy.Cookies)) {
       Services.prefs.setStringPref(this.PREF_CB_CATEGORY, "custom");
     }
@@ -5613,7 +5473,7 @@ var ContentBlockingCategoriesPrefs = {
     // Turn on switchingCategory flag, to ensure that when the individual prefs that change as a result
     // of the category change do not trigger yet another category change.
     this.switchingCategory = true;
-    const value = Services.prefs.getStringPref(this.PREF_CB_CATEGORY);
+    let value = Services.prefs.getStringPref(this.PREF_CB_CATEGORY);
     this.setPrefsToCategory(value);
     this.switchingCategory = false;
   },
@@ -5627,8 +5487,8 @@ var ContentBlockingCategoriesPrefs = {
       return;
     }
 
-    for (const pref in this.CATEGORY_PREFS[category]) {
-      const value = this.CATEGORY_PREFS[category][pref];
+    for (let pref in this.CATEGORY_PREFS[category]) {
+      let value = this.CATEGORY_PREFS[category][pref];
       if (!Services.prefs.prefIsLocked(pref)) {
         if (value == null) {
           Services.prefs.clearUserPref(pref);
@@ -5741,7 +5601,7 @@ ContentPermissionPrompt.prototype = {
     let type;
     try {
       // Only allow exactly one permission request here.
-      const types = request.types.QueryInterface(Ci.nsIArray);
+      let types = request.types.QueryInterface(Ci.nsIArray);
       if (types.length != 1) {
         throw Components.Exception(
           "Expected an nsIContentPermissionRequest with only 1 type.",
@@ -5750,12 +5610,11 @@ ContentPermissionPrompt.prototype = {
       }
 
       type = types.queryElementAt(0, Ci.nsIContentPermissionType).type;
-      const combinedIntegration =
-        lazy.Integration.contentPermission.getCombined(
-          ContentPermissionIntegration
-        );
+      let combinedIntegration = lazy.Integration.contentPermission.getCombined(
+        ContentPermissionIntegration
+      );
 
-      const permissionPrompt = combinedIntegration.createPermissionPrompt(
+      let permissionPrompt = combinedIntegration.createPermissionPrompt(
         type,
         request
       );
@@ -5773,7 +5632,7 @@ ContentPermissionPrompt.prototype = {
       throw ex;
     }
 
-    const schemeHistogram = Services.telemetry.getKeyedHistogramById(
+    let schemeHistogram = Services.telemetry.getKeyedHistogramById(
       "PERMISSION_REQUEST_ORIGIN_SCHEME"
     );
     let scheme = 0;
@@ -5794,7 +5653,7 @@ ContentPermissionPrompt.prototype = {
     }
     schemeHistogram.add(type, scheme);
 
-    const userInputHistogram = Services.telemetry.getKeyedHistogramById(
+    let userInputHistogram = Services.telemetry.getKeyedHistogramById(
       "PERMISSION_REQUEST_HANDLING_USER_INPUT"
     );
     userInputHistogram.add(
@@ -5819,7 +5678,7 @@ export var DefaultBrowserCheck = {
       AppConstants.platform == "macosx"
         ? "default-browser-prompt-message-pin-mac"
         : "default-browser-prompt-message-pin";
-    const [promptTitle, promptMessage, askLabel, yesButton, notNowButton] = (
+    let [promptTitle, promptMessage, askLabel, yesButton, notNowButton] = (
       await win.document.l10n.formatMessages([
         {
           id: needPin
@@ -5839,12 +5698,12 @@ export var DefaultBrowserCheck = {
       ])
     ).map(({ value }) => value);
 
-    const ps = Services.prompt;
-    const buttonFlags =
+    let ps = Services.prompt;
+    let buttonFlags =
       ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0 +
       ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_1 +
       ps.BUTTON_POS_0_DEFAULT;
-    const rv = await ps.asyncConfirmEx(
+    let rv = await ps.asyncConfirmEx(
       win.browsingContext,
       ps.MODAL_TYPE_INTERNAL_WINDOW,
       promptTitle,
@@ -5857,8 +5716,8 @@ export var DefaultBrowserCheck = {
       false, // checkbox state
       { headerIconURL: "chrome://branding/content/icon32.png" }
     );
-    const buttonNumClicked = rv.get("buttonNumClicked");
-    const checkboxState = rv.get("checked");
+    let buttonNumClicked = rv.get("buttonNumClicked");
+    let checkboxState = rv.get("checked");
     if (buttonNumClicked == 0) {
       try {
         await shellService.setAsDefault();
@@ -5873,7 +5732,7 @@ export var DefaultBrowserCheck = {
     }
 
     try {
-      const resultEnum = buttonNumClicked * 2 + !checkboxState;
+      let resultEnum = buttonNumClicked * 2 + !checkboxState;
       Services.telemetry
         .getHistogramById("BROWSER_SET_DEFAULT_RESULT")
         .add(resultEnum);
@@ -5889,15 +5748,15 @@ export var DefaultBrowserCheck = {
    * @returns {boolean} True if the default browser check prompt will be shown.
    */
   async willCheckDefaultBrowser(isStartupCheck) {
-    const win = lazy.BrowserWindowTracker.getTopWindow();
-    const shellService = win.getShellService();
+    let win = lazy.BrowserWindowTracker.getTopWindow();
+    let shellService = win.getShellService();
 
     // Perform default browser checking.
     if (!shellService) {
       return false;
     }
 
-    const shouldCheck =
+    let shouldCheck =
       !AppConstants.DEBUG && shellService.shouldCheckDefaultBrowser;
 
     // Even if we shouldn't check the default browser, we still continue when
@@ -5924,7 +5783,7 @@ export var DefaultBrowserCheck = {
     // If SessionStartup's state is not initialized, checking sessionType will set
     // its internal state to "do not restore".
     await lazy.SessionStartup.onceInitialized;
-    const willRecoverSession =
+    let willRecoverSession =
       lazy.SessionStartup.sessionType == lazy.SessionStartup.RECOVER_SESSION;
 
     // Don't show the prompt if we're already the default browser.
@@ -5937,7 +5796,7 @@ export var DefaultBrowserCheck = {
     }
 
     if (isDefault && isStartupCheck) {
-      const now = Math.floor(Date.now() / 1000).toString();
+      let now = Math.floor(Date.now() / 1000).toString();
       Services.prefs.setCharPref(
         "browser.shell.mostRecentDateSetAsDefault",
         now
@@ -6110,7 +5969,7 @@ export var AboutHomeStartupCache = {
     // If the user is not configured to load about:home at startup, then
     // let's not bother with the cache - loading it needlessly is more likely
     // to hinder what we're actually trying to load.
-    const willLoadAboutHome =
+    let willLoadAboutHome =
       !lazy.HomePage.overridden &&
       Services.prefs.getIntPref("browser.startup.page") === 1;
 
@@ -6139,8 +5998,8 @@ export var AboutHomeStartupCache = {
       this._cacheEntryResolver = resolve;
     });
 
-    const lci = Services.loadContextInfo.default;
-    const storage = Services.cache2.diskCacheStorage(lci);
+    let lci = Services.loadContextInfo.default;
+    let storage = Services.cache2.diskCacheStorage(lci);
     try {
       storage.asyncOpenURI(
         this.aboutHomeURI,
@@ -6270,14 +6129,14 @@ export var AboutHomeStartupCache = {
       const TIMED_OUT = Symbol();
       let timeoutID = 0;
 
-      const timeoutPromise = new Promise(resolve => {
+      let timeoutPromise = new Promise(resolve => {
         timeoutID = lazy.setTimeout(
           () => resolve(TIMED_OUT),
           this.SHUTDOWN_CACHE_WRITE_TIMEOUT_MS
         );
       });
 
-      const promises = [this._cacheTask.finalize()];
+      let promises = [this._cacheTask.finalize()];
       if (withTimeout) {
         this.log.trace("Using timeout mechanism.");
         promises.push(timeoutPromise);
@@ -6285,7 +6144,7 @@ export var AboutHomeStartupCache = {
         this.log.trace("Skipping timeout mechanism.");
       }
 
-      const result = await Promise.race(promises);
+      let result = await Promise.race(promises);
       this.log.trace("Done blocking shutdown.");
       lazy.clearTimeout(timeoutID);
       if (result === TIMED_OUT) {
@@ -6309,7 +6168,7 @@ export var AboutHomeStartupCache = {
     this.log.trace("Caching now.");
     this._cacheProgress = "Getting cache streams";
 
-    const { pageInputStream, scriptInputStream } = await this.requestCache();
+    let { pageInputStream, scriptInputStream } = await this.requestCache();
 
     if (!pageInputStream || !scriptInputStream) {
       this.log.trace("Failed to get cache streams.");
@@ -6365,7 +6224,7 @@ export var AboutHomeStartupCache = {
       return { pageInputStream: null, scriptInputStream: null };
     }
 
-    const state = lazy.AboutNewTab.activityStream.store.getState();
+    let state = lazy.AboutNewTab.activityStream.store.getState();
     return new Promise(resolve => {
       this._cacheDeferred = resolve;
       this.log.trace("Parent is requesting cache streams.");
@@ -6379,7 +6238,7 @@ export var AboutHomeStartupCache = {
    * @return nsIPipe
    */
   makePipe() {
-    const pipe = Cc["@mozilla.org/pipe;1"].createInstance(Ci.nsIPipe);
+    let pipe = Cc["@mozilla.org/pipe;1"].createInstance(Ci.nsIPipe);
     pipe.init(
       true /* non-blocking input */,
       true /* non-blocking output */,
@@ -6654,7 +6513,7 @@ export var AboutHomeStartupCache = {
       );
 
       this.log.info("Sending input streams down to content process.");
-      const actor = processParent.getActor("BrowserProcess");
+      let actor = processParent.getActor("BrowserProcess");
       actor.sendAsyncMessage(this.SEND_STREAMS_MESSAGE, {
         pageInputStream: this.pagePipe.inputStream,
         scriptInputStream: this.scriptPipe.inputStream,
@@ -6855,17 +6714,17 @@ export var AboutHomeStartupCache = {
       case "process-type-set":
       // Intentional fall-through
       case "ipc:content-created": {
-        const childID = aData;
-        const procManager = aSubject
+        let childID = aData;
+        let procManager = aSubject
           .QueryInterface(Ci.nsIInterfaceRequestor)
           .getInterface(Ci.nsIMessageSender);
-        const pp = aSubject.QueryInterface(Ci.nsIDOMProcessParent);
+        let pp = aSubject.QueryInterface(Ci.nsIDOMProcessParent);
         this.onContentProcessCreated(childID, procManager, pp);
         break;
       }
 
       case "ipc:content-shutdown": {
-        const childID = aData;
+        let childID = aData;
         this.onContentProcessShutdown(childID);
         break;
       }

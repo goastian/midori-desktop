@@ -586,6 +586,7 @@ function closingPopupEndsDrag(popup) {
     on_dragend() {
       this._cleanupDragDetails();
     }
+
     uninit() {
       this.__rootView = null;
     }

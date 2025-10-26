@@ -104,6 +104,11 @@ export class UrlbarInput {
     );
     this.panel = this.textbox.querySelector(".urlbarView");
 
+    this.searchButton = lazy.UrlbarPrefs.get("experimental.searchButton");
+    if (this.searchButton) {
+      this.textbox.classList.add("searchButton");
+    }
+
     this.controller = new lazy.UrlbarController({
       input: this,
       eventTelemetryCategory: options.eventTelemetryCategory,
@@ -330,11 +335,8 @@ export class UrlbarInput {
   saveSelectionStateForBrowser(browser) {
     let state = this.getBrowserState(browser);
     state.selection = {
-      // When the value is empty, we're either on a blank page, or the whole
-      // text has been edited away. In the latter case we'll restore value to
-      // the current URI, and we want to fully select it.
-      start: this.value ? this.selectionStart : 0,
-      end: this.value ? this.selectionEnd : Number.MAX_SAFE_INTEGER,
+      start: this.selectionStart,
+      end: this.selectionEnd,
       // When restoring a URI from an empty value, we don't want to untrim it.
       shouldUntrim: this.value && !this._protocolIsTrimmed,
     };
@@ -348,11 +350,7 @@ export class UrlbarInput {
       if (state.selection.shouldUntrim) {
         this.#maybeUntrimUrl();
       }
-      this.setSelectionRange(
-        state.selection.start,
-        // When selecting all the end value may be larger than the actual value.
-        Math.min(state.selection.end, this.value.length)
-      );
+      this.setSelectionRange(state.selection.start, state.selection.end);
     }
   }
 
@@ -2606,6 +2604,10 @@ export class UrlbarInput {
   }
 
   _toggleActionOverride(event) {
+    // Ignore repeated KeyboardEvents.
+    if (event.repeat) {
+      return;
+    }
     if (
       event.keyCode == KeyEvent.DOM_VK_SHIFT ||
       event.keyCode == KeyEvent.DOM_VK_ALT ||
@@ -4052,23 +4054,15 @@ export class UrlbarInput {
   }
 
   _on_keydown(event) {
-    // Repeated KeyboardEvents can easily cause subtle bugs in this logic, if
-    // not properly handled, so let's first handle things that should not be
-    // evaluated repeatedly.
-    if (!event.repeat) {
-      this.#allTextSelectedOnKeyDown = this.#allTextSelected;
-      this._isKeyDownWithMetaAndLeft =
-        event.keyCode == KeyEvent.DOM_VK_LEFT && event.metaKey;
-      if (event.keyCode === KeyEvent.DOM_VK_RETURN) {
-        if (this._keyDownEnterDeferred) {
-          this._keyDownEnterDeferred.reject();
-        }
-        this._keyDownEnterDeferred = Promise.withResolvers();
-        event._disableCanonization = this._isKeyDownWithCtrl;
-      } else if (event.keyCode !== KeyEvent.DOM_VK_CONTROL && event.ctrlKey) {
-        this._isKeyDownWithCtrl = true;
+    this.#allTextSelectedOnKeyDown = this.#allTextSelected;
+    if (event.keyCode === KeyEvent.DOM_VK_RETURN) {
+      if (this._keyDownEnterDeferred) {
+        this._keyDownEnterDeferred.reject();
       }
-      this._toggleActionOverride(event);
+      this._keyDownEnterDeferred = Promise.withResolvers();
+      event._disableCanonization = this._isKeyDownWithCtrl;
+    } else if (event.keyCode !== KeyEvent.DOM_VK_CONTROL && event.ctrlKey) {
+      this._isKeyDownWithCtrl = true;
     }
 
     // Due to event deferring, it's possible preventDefault() won't be invoked
@@ -4081,6 +4075,7 @@ export class UrlbarInput {
     if (this.eventBufferer.shouldDeferEvent(event)) {
       this.controller.handleKeyNavigation(event, false);
     }
+    this._toggleActionOverride(event);
     this.eventBufferer.maybeDeferEvent(event, () => {
       this.controller.handleKeyNavigation(event);
     });
@@ -4411,6 +4406,10 @@ function losslessDecodeURI(aURI) {
     }
   }
 
+  // IMPORTANT: The following regular expressions are Unicode-aware due to /v.
+  // Avoid matching high or low surrogate pairs directly, always work with
+  // full Unicode scalar values.
+
   // Encode potentially invisible characters:
   //   U+0000-001F: C0/C1 control characters
   //   U+007F-009F: commands
@@ -4429,7 +4428,7 @@ function losslessDecodeURI(aURI) {
   // preserve them encoded.
   value = value.replace(
     // eslint-disable-next-line no-control-regex
-    /[[\p{Separator}--\u0020]\p{Control}\u2800\ufffc]|\u0020(?=[\p{Other}\p{Separator}])|\s$/gv,
+    /[[\p{Separator}--\u{0020}]\p{Control}\u{2800}\u{FFFC}]|\u{0020}(?=[\p{Other}\p{Separator}])|\s$/gv,
     encodeURIComponent
   );
 
@@ -4440,20 +4439,18 @@ function losslessDecodeURI(aURI) {
   // per bug 582186:
   //   U+00AD, U+034F, U+06DD, U+070F, U+115F-1160, U+17B4, U+17B5, U+180B-180E,
   //   U+2060, U+FEFF, U+200B, U+2060-206F, U+3164, U+FE00-FE0F, U+FFA0,
-  //   U+FFF0-FFFB, U+1D173-1D17A (U+D834 + DD73-DD7A),
-  //   U+E0000-E0FFF (U+DB40-DB43 + U+DC00-DFFF)
+  //   U+FFF0-FFFB, U+1D173-1D17A, U+E0000-E0FFF
   // Bidi control characters (RFC 3987 sections 3.2 and 4.1 paragraph 6):
   //   U+061C, U+200E, U+200F, U+202A-202E, U+2066-2069
   // Other format characters in the Cf category that are unlikely to be rendered
   // usefully:
-  //   U+0600-0605, U+08E2, U+110BD (U+D804 + U+DCBD),
-  //   U+110CD (U+D804 + U+DCCD), U+13430-13438 (U+D80D + U+DC30-DC38),
-  //   U+1BCA0-1BCA3 (U+D82F + U+DCA0-DCA3)
+  //   U+0600-0605, U+08E2, U+110BD, U+110CD, U+13430-13438, U+1BCA0-1BCA3
   // Mimicking UI parts:
-  //   U+1F50F-1F513 (U+D83D + U+DD0F-DD13), U+1F6E1 (U+D83D + U+DEE1)
+  //   U+1F50F-1F513, U+1F6E1
+  // Unassigned codepoints, sometimes shown as empty glyphs.
   value = value.replace(
     // eslint-disable-next-line no-misleading-character-class
-    /[\u00ad\u034f\u061c\u06dd\u070f\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b\u200e\u200f\u202a-\u202e\u2060-\u206f\u3164\u0600-\u0605\u08e2\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb\p{Unassigned}\p{Private_Use}]|\ud804[\udcbd\udccd]|\ud80d[\udc30-\udc38]|\ud82f[\udca0-\udca3]|\ud834[\udd73-\udd7a]|[\udb40-\udb43][\udc00-\udfff]|\ud83d[\udd0f-\udd13\udee1]/gv,
+    /[[\p{Format}--[\u{200C}\u{200D}]]\u{034F}\u{115F}\u{1160}\u{17B4}\u{17B5}\u{180B}-\u{180D}\u{3164}\u{FE00}-\u{FE0F}\u{FFA0}\u{FFF0}-\u{FFFB}\p{Unassigned}\p{Private_Use}\u{E0000}-\u{E0FFF}\u{1F50F}-\u{1F513}\u{1F6E1}]/gv,
     encodeURIComponent
   );
   return value;

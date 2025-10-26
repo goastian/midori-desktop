@@ -12,8 +12,6 @@ const POPUP_OPTIONS = {
   y: -2,
 };
 
-const ZERO_DELAY_ACTIVATION_TIME = 300;
-
 /**
  * Detailed preview card that displays when hovering a tab
  */
@@ -23,18 +21,6 @@ export default class TabHoverPreviewPanel {
     this._win = panel.ownerGlobal;
     this._tab = null;
     this._thumbnailElement = null;
-
-    // Observe changes to this tab's DOM, and
-    // update the preview if the tab title changes
-    this._tabObserver = new this._win.MutationObserver(
-      (mutationList, _observer) => {
-        for (const mutation of mutationList) {
-          if (mutation.attributeName === "label") {
-            this._updatePreview();
-          }
-        }
-      }
-    );
 
     this._setExternalPopupListeners();
 
@@ -55,22 +41,18 @@ export default class TabHoverPreviewPanel {
       "browser.tabs.hoverPreview.showThumbnails",
       false
     );
-    this._panelOpener = new TabPreviewPanelTimedFunction(
-      () => {
-        this._panel.openPopup(this._tab, POPUP_OPTIONS);
-      },
-      this._prefPreviewDelay,
-      ZERO_DELAY_ACTIVATION_TIME,
-      this._win
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "_prefShowPidAndActiveness",
+      "browser.tabs.tooltipsShowPidAndActiveness",
+      false
     );
+    this._timer = null;
   }
 
   getPrettyURI(uri) {
     try {
-      let url = new URL(uri);
-      if (url.protocol == "about:" && url.pathname == "reader") {
-        url = new URL(url.searchParams.get("url"));
-      }
+      const url = new URL(uri);
       if (url.protocol === "about:") {
         return url.href;
       }
@@ -82,28 +64,23 @@ export default class TabHoverPreviewPanel {
 
   _hasValidThumbnailState(tab) {
     return (
-      this._prefDisplayThumbnail &&
-      tab &&
-      tab.linkedBrowser &&
-      !tab.getAttribute("pending") &&
-      !tab.selected
+      tab && tab.linkedBrowser && !tab.getAttribute("pending") && !tab.selected
     );
   }
 
   _maybeRequestThumbnail() {
     let tab = this._tab;
 
-    if (!this._hasValidThumbnailState(tab)) {
+    if (!this._prefDisplayThumbnail || !this._hasValidThumbnailState(tab)) {
       return;
     }
     let thumbnailCanvas = this._win.document.createElement("canvas");
-    thumbnailCanvas.width = 280 * this._win.devicePixelRatio;
-    thumbnailCanvas.height = 140 * this._win.devicePixelRatio;
 
-    this._win.PageThumbs.captureTabPreviewThumbnail(
-      tab.linkedBrowser,
-      thumbnailCanvas
-    )
+    this._win.PageThumbs.captureToCanvas(tab.linkedBrowser, thumbnailCanvas, {
+      fullViewport: true,
+      targetWidth: 280,
+      preserveAspectRatio: true,
+    })
       .then(() => {
         // in case we've changed tabs after capture started, ensure we still want to show the thumbnail
         if (this._tab == tab && this._hasValidThumbnailState(tab)) {
@@ -123,9 +100,6 @@ export default class TabHoverPreviewPanel {
     }
 
     this._tab = tab;
-    this._tabObserver.observe(this._tab, {
-      attributes: true,
-    });
 
     // Calling `moveToAnchor` in advance of the call to `openPopup` ensures
     // that race conditions can be avoided in cases where the user hovers
@@ -141,7 +115,13 @@ export default class TabHoverPreviewPanel {
     if (this._panel.state == "open") {
       this._updatePreview();
     }
-    this._panelOpener.execute();
+    if (this._timer) {
+      return;
+    }
+    this._timer = this._win.setTimeout(() => {
+      this._timer = null;
+      this._panel.openPopup(this._tab, POPUP_OPTIONS);
+    }, this._prefPreviewDelay);
     this._win.addEventListener("TabSelect", this);
     this._panel.addEventListener("popupshowing", this);
   }
@@ -159,14 +139,16 @@ export default class TabHoverPreviewPanel {
       return;
     }
     this._tab = null;
-    this._tabObserver.disconnect();
     this._thumbnailElement = null;
     this._panel.removeEventListener("popupshowing", this);
     this._win.removeEventListener("TabSelect", this);
     if (!this._prefDisableAutohide) {
       this._panel.hidePopup();
     }
-    this._panelOpener.setZeroDelay();
+    if (this._timer) {
+      this._win.clearTimeout(this._timer);
+      this._timer = null;
+    }
   }
 
   handleEvent(e) {
@@ -175,7 +157,13 @@ export default class TabHoverPreviewPanel {
         this._updatePreview();
         break;
       case "TabSelect":
-        this.deactivate();
+        if (
+          this._thumbnailElement &&
+          !this._hasValidThumbnailState(this._tab)
+        ) {
+          this._thumbnailElement.remove();
+          this._thumbnailElement = null;
+        }
         break;
     }
   }
@@ -186,7 +174,7 @@ export default class TabHoverPreviewPanel {
     this._panel.querySelector(".tab-preview-uri").textContent =
       this._displayURI;
 
-      if (this._win.gBrowser.showPidAndActiveness) {
+    if (this._prefShowPidAndActiveness) {
       this._panel.querySelector(".tab-preview-pid").textContent =
         this._displayPids;
       this._panel.querySelector(".tab-preview-activeness").textContent =
@@ -198,10 +186,6 @@ export default class TabHoverPreviewPanel {
 
     let thumbnailContainer = this._panel.querySelector(
       ".tab-preview-thumbnail-container"
-    );
-    thumbnailContainer.classList.toggle(
-      "hide-thumbnail",
-      !this._hasValidThumbnailState(this._tab)
     );
     if (thumbnailContainer.firstChild != this._thumbnailElement) {
       thumbnailContainer.replaceChildren();
@@ -240,7 +224,7 @@ export default class TabHoverPreviewPanel {
     // already be open on init. Therefore we need to initialize _openPopups with existing panels
     // the first time.
     const initialPopups = this._win.document.querySelectorAll(
-      "panel[panelopen=true]:not(#tab-preview-panel), panel[animating=true]:not(#tab-preview-panel), menupopup[open=true]"
+      "panel[panelopen=true]:not(#tab-preview-panel), menupopup[open=true]"
     );
     this._openPopups = new Set(initialPopups);
 
@@ -255,18 +239,11 @@ export default class TabHoverPreviewPanel {
       });
     };
     handleExternalPopupEvent("popupshowing", "add");
-    handleExternalPopupEvent("popuphiding", "delete");
+    handleExternalPopupEvent("popuphidden", "delete");
   }
 
   _isDisabled() {
-    return (
-      // Other popups are open.
-      this._openPopups.size ||
-      // TODO (bug 1899556): for now disable in background windows, as there are
-      // issues with windows ordering on Linux (bug 1897475), plus intermittent
-      // persistence of previews after session restore (bug 1888148).
-      this._win != Services.focus.activeWindow
-    );
+    return Boolean(this._openPopups.size);
   }
 
   get _displayTitle() {
@@ -295,54 +272,5 @@ export default class TabHoverPreviewPanel {
 
   get _displayActiveness() {
     return this._tab?.linkedBrowser?.docShellIsActive ? "[A]" : "";
-  }
-}
-
-/**
- * A wrapper that allows for delayed function execution, but with the
- * ability to "zero" (i.e. cancel) the delay for a predetermined period
- */
-class TabPreviewPanelTimedFunction {
-  constructor(target, delay, zeroDelayTime, win) {
-    this._target = target;
-    this._delay = delay;
-    this._zeroDelayTime = zeroDelayTime;
-    this._win = win;
-    this._timer = null;
-    this._useZeroDelay = false;
-  }
-  execute() {
-    if (this.delayActive) {
-      return;
-    }
-    // Always setting a timer, even in the situation where the
-    // delay is zero, seems to prevent a class of race conditions
-    // where multiple tabs are hovered in quick succession
-    this._timer = this._win.setTimeout(
-      () => {
-        this._timer = null;
-        this._target();
-      },
-      this._useZeroDelay ? 0 : this._delay
-    );
-  }
-  clear() {
-    if (this._timer) {
-      this._win.clearTimeout(this._timer);
-      this._timer = null;
-    }
-  }
-  setZeroDelay() {
-    this.clear();
-    if (this._useZeroDelay) {
-      return;
-    }
-    this._win.setTimeout(() => {
-      this._useZeroDelay = false;
-    }, this._zeroDelayTime);
-    this._useZeroDelay = true;
-  }
-  get delayActive() {
-    return this._timer !== null;
   }
 }

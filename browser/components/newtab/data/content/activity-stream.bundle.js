@@ -8189,7 +8189,10 @@ class Section extends (external_React_default()).PureComponent {
       dispatch: this.props.dispatch,
       isWebExtension: this.props.isWebExtension
     }, !shouldShowEmptyState && /*#__PURE__*/external_React_default().createElement("ul", {
-      className: "section-list"
+      className: "section-list",
+      style: {
+        padding: 0
+      }
     }, cards), shouldShowEmptyState && /*#__PURE__*/external_React_default().createElement("div", {
       className: "section-empty-state"
     }, /*#__PURE__*/external_React_default().createElement("div", {
@@ -10940,13 +10943,13 @@ class BaseContent extends (external_React_default()).PureComponent {
       mayHaveSponsoredStories: mayHaveSponsoredStories,
       firstVisibleTimestamp: this.state.firstVisibleTimestamp
     })) : /*#__PURE__*/external_React_default().createElement(Sections_Sections, null)), /*#__PURE__*/external_React_default().createElement(ConfirmDialog, null), wallpapersEnabled && this.renderWallpaperAttribution()), /*#__PURE__*/external_React_default().createElement("aside", null, weatherEnabled && /*#__PURE__*/external_React_default().createElement(ErrorBoundary, null, /*#__PURE__*/external_React_default().createElement(Weather_Weather, null)))), /*#__PURE__*/external_React_default().createElement("div", {
-      id: "midori"
+      id: "floorp"
     }, /*#__PURE__*/external_React_default().createElement("a", {
       className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
-      href: "https://help.astian.org"
+      href: "https://support.ablaze.one"
     }, "Support"), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("br", null), /*#__PURE__*/external_React_default().createElement("a", {
       className: prefs["floorp.newtab.releasenote.hide"] ? "floorp-releasenote-hidden" : "releasenote",
-      href: "https://astian.org/midori-en"
+      href: "https://blog.ablaze.one/category/ablaze/ablaze-project/floorp"
     }, "Release Note")), /*#__PURE__*/external_React_default().createElement("a", {
       className: prefs["floorp.newtab.imagecredit.hide"] ? "floorp-imagecred-hidden" : "imagecred",
       href: "https://unsplash.com/",
