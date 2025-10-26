@@ -104,6 +104,11 @@ add_task(async function test_octet_stream_in_frame() {
       // with its download file URI
       info("Waiting for preview tab");
       let previewTab = await previewTabPromise;
+      await waitForSelector(
+        previewTab.linkedBrowser,
+        ".textLayer .endOfContent",
+        "Wait for text layer."
+      );
       ok(previewTab, "PDF opened in a new tab");
 
       is(DownloadsPanel.isPanelShowing, true, "DownloadsPanel should be open.");
@@ -113,7 +118,7 @@ add_task(async function test_octet_stream_in_frame() {
         "File should be successfully downloaded."
       );
 
-      await BrowserTestUtils.removeTab(previewTab);
+      await waitForPdfJSClose(previewTab.linkedBrowser, /* closeTab */ true);
 
       info("cleaning up downloads");
       try {
@@ -143,4 +148,6 @@ add_task(async function test_octet_stream_in_frame() {
       );
     }
   );
+
+  await SpecialPowers.popPrefEnv();
 });

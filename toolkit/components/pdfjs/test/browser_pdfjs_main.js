@@ -64,9 +64,8 @@ add_task(async function test() {
 
         Assert.ok(!!viewBookmark.href.length, "viewBookmark button has href");
 
-        var viewer = content.wrappedJSObject.PDFViewerApplication;
-        await viewer.close();
       });
+      await waitForPdfJSClose(newTabBrowser);
     }
   );
 });
