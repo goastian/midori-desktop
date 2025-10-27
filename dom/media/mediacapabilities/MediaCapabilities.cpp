@@ -200,7 +200,7 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
   }
 
   if (!supported) {
-    MediaCapabilitiesDecodingInfo info;
+    MediaCapabilitiesInfo info;
     info.mSupported = false;
     info.mSmooth = false;
     info.mPowerEfficient = false;
@@ -256,9 +256,6 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
     tracks.AppendElements(std::move(audioTracks));
   }
 
-  // TODO : implement 'Check Encrypted Decoding Support'
-  // https://www.w3.org/TR/media-capabilities/#is-encrypted-decode-supported
-
   using CapabilitiesPromise = MozPromise<MediaCapabilitiesInfo, MediaResult,
                                          /* IsExclusive = */ true>;
   nsTArray<RefPtr<CapabilitiesPromise>> promises;
@@ -286,7 +283,7 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
               return CapabilitiesPromise::CreateAndReject(NS_ERROR_FAILURE,
                                                           __func__);
             }
-            MediaCapabilitiesDecodingInfo info;
+            MediaCapabilitiesInfo info;
             info.mSupported = true;
             info.mSmooth = true;
             info.mPowerEfficient = true;
@@ -361,7 +358,7 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                             p = CapabilitiesPromise::CreateAndReject(
                                 std::move(aValue.RejectValue()), __func__);
                           } else if (shouldResistFingerprinting) {
-                            MediaCapabilitiesDecodingInfo info;
+                            MediaCapabilitiesInfo info;
                             info.mSupported = true;
                             info.mSmooth = true;
                             info.mPowerEfficient = false;
@@ -389,7 +386,7 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                                     bool smooth = score < 0 || score >
                                       StaticPrefs::
                                         media_mediacapabilities_drop_threshold();
-                                    MediaCapabilitiesDecodingInfo info;
+                                    MediaCapabilitiesInfo info;
                                     info.mSupported = true;
                                     info.mSmooth = smooth;
                                     info.mPowerEfficient = powerEfficient;
@@ -407,7 +404,7 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                               // decoding is hardware accelerated it will be
                               // smooth and power efficient, otherwise we use
                               // the benchmark to estimate
-                              MediaCapabilitiesDecodingInfo info;
+                              MediaCapabilitiesInfo info;
                               info.mSupported = true;
                               info.mSmooth = true;
                               info.mPowerEfficient = true;
@@ -439,7 +436,7 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                                   smooth = needed > 2;
                                 }
                               }
-                              MediaCapabilitiesDecodingInfo info;
+                              MediaCapabilitiesInfo info;
                               info.mSupported = true;
                               info.mSmooth = smooth;
                               info.mPowerEfficient = powerEfficient;
@@ -497,7 +494,7 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                         aValue) {
                holder->Complete();
                if (aValue.IsReject()) {
-                 MediaCapabilitiesDecodingInfo info;
+                 MediaCapabilitiesInfo info;
                  info.mSupported = false;
                  info.mSmooth = false;
                  info.mPowerEfficient = false;
@@ -513,7 +510,7 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                  smooth &= capability.mSmooth;
                  powerEfficient &= capability.mPowerEfficient;
                }
-               MediaCapabilitiesDecodingInfo info;
+               MediaCapabilitiesInfo info;
                info.mSupported = true;
                info.mSmooth = smooth;
                info.mPowerEfficient = powerEfficient;
