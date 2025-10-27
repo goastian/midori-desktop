@@ -449,6 +449,7 @@ let JSWINDOWACTORS = {
       events: {
         "BackupUI:InitWidget": { wantUntrusted: true },
         "BackupUI:ToggleScheduledBackups": { wantUntrusted: true },
+        "BackupUI:ShowFilepicker": { wantUntrusted: true },
       },
     },
     matches: ["about:preferences*", "about:settings*"],

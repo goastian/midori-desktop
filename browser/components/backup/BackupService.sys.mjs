@@ -6,6 +6,7 @@ import * as DefaultBackupResources from "resource:///modules/backup/BackupResour
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
+const BACKUP_DIR_PREF_NAME = "browser.backup.location";
 const SCHEDULED_BACKUPS_ENABLED_PREF_NAME = "browser.backup.scheduled.enabled";
 const lazy = {};
 
@@ -27,26 +28,22 @@ ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
 ChromeUtils.defineESModuleGetters(lazy, {
   ArchiveEncryptionState:
     "resource:///modules/backup/ArchiveEncryptionState.sys.mjs",
-  ArchiveUtils: "resource:///modules/backup/ArchiveUtils.sys.mjs",
-  BasePromiseWorker: "resource://gre/modules/PromiseWorker.sys.mjs",
   ClientID: "resource://gre/modules/ClientID.sys.mjs",
-  FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   JsonSchemaValidator:
     "resource://gre/modules/components-utils/JsonSchemaValidator.sys.mjs",
-  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   UIState: "resource://services-sync/UIState.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "ZipWriter", () =>
   Components.Constructor("@mozilla.org/zipwriter;1", "nsIZipWriter", "open")
 );
-ChromeUtils.defineLazyGetter(lazy, "BinaryInputStream", () =>
-  Components.Constructor(
-    "@mozilla.org/binaryinputstream;1",
-    "nsIBinaryInputStream",
-    "setInputStream"
-  )
-);
+
+ChromeUtils.defineLazyGetter(lazy, "gFluentStrings", function () {
+  return new Localization(
+    ["branding/brand.ftl", "preview/backupSettings.ftl"],
+    true
+  );
+});
 
 XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
@@ -61,275 +58,19 @@ XPCOMUtils.defineLazyPreferenceGetter(
   }
 );
 
-/**
- * A class that wraps a multipart/mixed stream converter instance, and streams
- * in the binary part of a single-file archive (which should be at the second
- * index of the attachments) as a ReadableStream.
- *
- * The bytes that are read in are text decoded, but are not guaranteed to
- * represent a "full chunk" of base64 data. Consumers should ensure to buffer
- * the strings emitted by this stream, and to search for `\n` characters, which
- * indicate the end of a (potentially encrypted and) base64 encoded block.
- */
-class BinaryReadableStream {
-  #channel = null;
-  #inputStream = null;
-
-  /**
-   * Constructs a BinaryReadableStream.
-   *
-   * @param {nsIChannel} channel
-   *   The channel through which to begin the flow of bytes from the
-   *   inputStream
-   * @param {nsIInputStream} inputStream
-   *   The input stream that the bytes are expected to flow from.
-   */
-  constructor(channel, inputStream) {
-    this.#channel = channel;
-    this.#inputStream = inputStream;
-  }
-
-  /**
-   * Implements `start` from the `underlyingSource` of a ReadableStream
-   *
-   * @param {ReadableStreamDefaultController} controller
-   *   The controller for the ReadableStream to feed strings into.
-   */
-  start(controller) {
-    let streamConv = Cc["@mozilla.org/streamConverters;1"].getService(
-      Ci.nsIStreamConverterService
-    );
-
-    let textDecoder = new TextDecoder();
-    let inputStream = this.#inputStream;
-
-    // The attachment index that should contain the binary data.
-    const EXPECTED_CONTENT_TYPE = "application/octet-stream";
-
-    // This is fairly clumsy, but by using an object nsIStreamListener like
-    // this, I can keep from stashing the `controller` somewhere, as it's
-    // available in the closure.
-    let multipartListenerForBinary = {
-      /**
-       * True once we've found an attachment matching our EXPECTED_CONTENT_TYPE.
-       * Once this is true, bytes flowing into onDataAvailable will be
-       * enqueued through the controller.
-       *
-       * @type {boolean}
-       */
-      _enabled: false,
-
-      QueryInterface: ChromeUtils.generateQI([
-        "nsIStreamListener",
-        "nsIRequestObserver",
-      ]),
-
-      /**
-       * Called when we begin to load an attachment from the MIME message.
-       *
-       * @param {nsIRequest} request
-       *   The request corresponding to the source of the data.
-       */
-      onStartRequest(request) {
-        if (!(request instanceof Ci.nsIChannel)) {
-          throw Components.Exception(
-            "onStartRequest expected an nsIChannel request",
-            Cr.NS_ERROR_UNEXPECTED
-          );
-        }
-        this._enabled = request.contentType == EXPECTED_CONTENT_TYPE;
-      },
-
-      /**
-       * Called when data is flowing in for an attachment.
-       *
-       * @param {nsIRequest} request
-       *   The request corresponding to the source of the data.
-       * @param {nsIInputStream} stream
-       *   The input stream containing the data chunk.
-       * @param {number} offset
-       *   The number of bytes that were sent in previous onDataAvailable calls
-       *   for this request. In other words, the sum of all previous count
-       *   parameters.
-       * @param {number} count
-       *   The number of bytes available in the stream
-       */
-      onDataAvailable(request, stream, offset, count) {
-        if (!this._enabled) {
-          // We don't care about this data, just move on.
-          return;
-        }
-
-        let binStream = new lazy.BinaryInputStream(stream);
-        let bytes = new Uint8Array(count);
-        binStream.readArrayBuffer(count, bytes.buffer);
-        let string = textDecoder.decode(bytes);
-        controller.enqueue(string);
-      },
-
-      /**
-       * Called when the load of an attachment finishes.
-       */
-      onStopRequest() {
-        if (this._enabled) {
-          inputStream.close();
-          controller.close();
-
-          // No need to load anything else - abort reading in more
-          // attachments.
-          throw Components.Exception(
-            "Got JSON block - cancelling loading the multipart stream.",
-            Cr.NS_BINDING_ABORTED
-          );
-        }
-      },
-    };
-
-    let conv = streamConv.asyncConvertData(
-      "multipart/mixed",
-      "*/*",
-      multipartListenerForBinary,
-      null
-    );
-
-    this.#channel.asyncOpen(conv);
-  }
-}
-
-/**
- * A TransformStream class that takes in chunks of base64 encoded data,
- * decodes (and eventually, decrypts) them before passing the resulting
- * bytes along to the next step in the pipe.
- *
- * The BinaryReadableStream feeds strings into this TransformStream, but the
- * buffering of these streams means that we cannot be certain that the string
- * that was passed is the entirety of a base64 encoded block. ArchiveWorker
- * puts every block on its own line, meaning that we must simply look for
- * newlines to indicate when a break between full blocks is, and buffer chunks
- * until we see those breaks - only decoding once we have a full block.
- */
-class DecoderDecryptorTransformer {
-  #buffer = "";
-
-  /**
-   * Consumes a single chunk of a base64 encoded string sent by
-   * BinaryReadableStream.
-   *
-   * @param {string} chunk
-   *   A chunk of a base64 encoded string sent by BinaryReadableStream.
-   * @param {TransformStreamDefaultController} controller
-   *   The controller to send decoded bytes to.
-   */
-  async transform(chunk, controller) {
-    // A small optimization, but considering the size of these strings, it's
-    // likely worth it.
-    if (this.#buffer) {
-      this.#buffer += chunk;
-    } else {
-      this.#buffer = chunk;
-    }
-
-    let parts = this.#buffer.split("\n");
-    this.#buffer = parts.pop();
-    // If there were any remaining parts that we split out from the buffer,
-    // they must constitute full blocks that we can decode.
-    for (let part of parts) {
-      this.#processPart(controller, part);
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "backupDirPref",
+  BACKUP_DIR_PREF_NAME,
+  Services.dirsvc.get("Docs", Ci.nsIFile)
+    .path /* Default directory is Documents */,
+  async function onUpdateLocationDirPath(_pref, _prevVal, newVal) {
+    let bs = BackupService.get();
+    if (bs) {
+      await bs.onUpdateLocationDirPath(newVal);
     }
   }
-
-  /**
-   * Called once BinaryReadableStream signals that it has sent all of its
-   * strings, in which case we know that whatever is in the buffer should be
-   * a valid block.
-   *
-   * @param {TransformStreamDefaultController} controller
-   *   The controller to send decoded bytes to.
-   */
-  flush(controller) {
-    this.#processPart(controller, this.#buffer);
-    this.#buffer = "";
-  }
-
-  /**
-   * Decodes (and potentially decrypts) a valid base64 encoded block into a
-   * Uint8Array and sends it to the next step in the pipe.
-   *
-   * @param {TransformStreamDefaultController} controller
-   *   The controller to send decoded bytes to.
-   * @param {string} part
-   *   The base64 encoded string to decode and potentially decrypt.
-   */
-  #processPart(controller, part) {
-    let bytes = lazy.ArchiveUtils.stringToArray(part);
-    // When we start working on the encryption bits, this is where the
-    // decryption step will go.
-    controller.enqueue(bytes);
-  }
-}
-
-/**
- * A class that lets us construct a WritableStream that writes bytes to a file
- * on disk somewhere.
- */
-class FileWriterStream {
-  /**
-   * @type {string}
-   */
-  #destPath = null;
-
-  /**
-   * @type {nsIOutputStream}
-   */
-  #outStream = null;
-
-  /**
-   * @type {nsIBinaryOutputStream}
-   */
-  #binStream = null;
-
-  /**
-   * Constructor for FileWriterStream.
-   *
-   * @param {string} destPath
-   *   The path to write the incoming bytes to.
-   */
-  constructor(destPath) {
-    this.#destPath = destPath;
-  }
-
-  /**
-   * Called once the first set of bytes comes in from the
-   * DecoderDecryptorTransformer. This creates the file, and sets up the
-   * underlying nsIOutputStream mechanisms to let us write bytes to the file.
-   */
-  async start() {
-    let extractionDestFile = await IOUtils.getFile(this.#destPath);
-    this.#outStream =
-      lazy.FileUtils.openSafeFileOutputStream(extractionDestFile);
-    this.#binStream = Cc["@mozilla.org/binaryoutputstream;1"].createInstance(
-      Ci.nsIBinaryOutputStream
-    );
-    this.#binStream.setOutputStream(this.#outStream);
-  }
-
-  /**
-   * Writes bytes to the destination on the file system.
-   *
-   * @param {Uint8Array} chunk
-   *   The bytes to stream to the destination file.
-   */
-  write(chunk) {
-    this.#binStream.writeByteArray(chunk);
-  }
-
-  /**
-   * Called once the stream of bytes finishes flowing in and closes the stream.
-   */
-  close() {
-    lazy.FileUtils.closeSafeFileOutputStream(this.#outStream);
-  }
-}
+);
 
 /**
  * The BackupService class orchestrates the scheduling and creation of profile
@@ -351,6 +92,13 @@ export class BackupService extends EventTarget {
    * @type {Map<string, BackupResource>}
    */
   #resources = new Map();
+
+  /**
+   * The name of the backup folder. Should be localized.
+   *
+   * @see BACKUP_DIR_NAME
+   */
+  static #backupFolderName = null;
 
   /**
    * Set to true if a backup is currently in progress. Causes stateUpdate()
@@ -393,7 +141,12 @@ export class BackupService extends EventTarget {
    * @type {object}
    */
   #_state = {
-    backupFilePath: "Documents", // TODO: make save location configurable (bug 1895943)
+    backupDirPath: lazy.backupDirPref,
+    defaultParent: {
+      path: BackupService.DEFAULT_PARENT_DIR_PATH,
+      fileName: PathUtils.filename(BackupService.DEFAULT_PARENT_DIR_PATH),
+      iconURL: this.getIconFromFilePath(BackupService.DEFAULT_PARENT_DIR_PATH),
+    },
     backupInProgress: false,
     scheduledBackupsEnabled: lazy.scheduledBackupsPref,
     encryptionEnabled: false,
@@ -432,6 +185,29 @@ export class BackupService extends EventTarget {
    * @type {ArchiveEncryptionState|null|undefined}
    */
   #encState = undefined;
+
+  /**
+   * The path of the default parent directory for saving backups.
+   * The current default is the Documents directory.
+   *
+   * @returns {string} The path of the default parent directory
+   */
+  static get DEFAULT_PARENT_DIR_PATH() {
+    return Services.dirsvc.get("Docs", Ci.nsIFile).path;
+  }
+
+  /**
+   * The localized name for the user's backup folder.
+   *
+   * @returns {string} The localized backup folder name
+   */
+  static get BACKUP_DIR_NAME() {
+    if (!BackupService.#backupFolderName) {
+      BackupService.#backupFolderName =
+        lazy.gFluentStrings.formatValueSync("backup-folder-name");
+    }
+    return BackupService.#backupFolderName;
+  }
 
   /**
    * The name of the folder within the profile folder where this service reads
@@ -757,24 +533,7 @@ export class BackupService extends EventTarget {
         backupDirPath
       );
 
-      // Now create the single-file archive. For now, we'll stash this in the
-      // backups folder while we test this. It'll eventually get moved to the
-      // user's configured backup path once that part is built out.
-      let archivePath = PathUtils.join(backupDirPath, "archive.html");
-      lazy.logConsole.log("Exporting single-file archive to ", archivePath);
-      await this.createArchive(
-        archivePath,
-        "chrome://browser/content/backup/archive.template.html",
-        compressedStagingPath,
-        null /* ArchiveEncryptionState */,
-        manifest.meta
-      );
-
-      return {
-        stagingPath: renamedStagingPath,
-        compressedStagingPath,
-        archivePath,
-      };
+      return { stagingPath: renamedStagingPath, compressedStagingPath };
     } finally {
       this.#backupInProgress = false;
     }
@@ -884,319 +643,6 @@ export class BackupService extends EventTarget {
           true
         );
       }
-    }
-  }
-
-  /**
-   * Creates a portable, potentially encrypted single-file archive containing
-   * a compressed backup snapshot. The single-file archive is a specially
-   * crafted HTML file that embeds the compressed backup snapshot and
-   * backup metadata.
-   *
-   * @param {string} archivePath
-   *   The path to write the single-file archive to.
-   * @param {string} templateURI
-   *   A URI pointing at a template for the HTML content for the page. This is
-   *   what is visible if the file is loaded in a web browser.
-   * @param {string} compressedBackupSnapshotPath
-   *   The path on the file system where the compressed backup snapshot exists.
-   * @param {ArchiveEncryptionState|null} encState
-   *   The ArchiveEncryptionState to encrypt the backup with, if encryption is
-   *   enabled. If null is passed, the backup will not be encrypted.
-   * @param {object} backupMetadata
-   *   The metadata for the backup, which is also stored in the backup manifest
-   *   of the compressed backup snapshot.
-   */
-  async createArchive(
-    archivePath,
-    templateURI,
-    compressedBackupSnapshotPath,
-    encState,
-    backupMetadata
-  ) {
-    let worker = new lazy.BasePromiseWorker(
-      "resource:///modules/backup/Archive.worker.mjs",
-      { type: "module" }
-    );
-
-    try {
-      let encryptionArgs = encState
-        ? {
-            publicKey: encState.publicKey,
-            salt: encState.salt,
-            authKey: encState.authKey,
-            wrappedSecrets: encState.wrappedSecrets,
-          }
-        : null;
-
-      await worker.post("constructArchive", [
-        {
-          archivePath,
-          templateURI,
-          backupMetadata,
-          compressedBackupSnapshotPath,
-          encryptionArgs,
-        },
-      ]);
-    } finally {
-      worker.terminate();
-    }
-  }
-
-  /**
-   * Constructs an nsIChannel that serves the bytes from an nsIInputStream -
-   * specifically, a nsIInputStream of bytes being streamed from a file.
-   *
-   * @see BackupService.#extractMetadataFromArchive()
-   * @param {nsIInputStream} inputStream
-   *   The nsIInputStream to create the nsIChannel for.
-   * @param {string} contentType
-   *   The content type for the nsIChannel. This is provided by
-   *   BackupService.#extractMetadataFromArchive().
-   * @returns {nsIChannel}
-   */
-  #createExtractionChannel(inputStream, contentType) {
-    let uri = "http://localhost";
-    let httpChan = lazy.NetUtil.newChannel({
-      uri,
-      loadUsingSystemPrincipal: true,
-    });
-
-    let channel = Cc["@mozilla.org/network/input-stream-channel;1"]
-      .createInstance(Ci.nsIInputStreamChannel)
-      .QueryInterface(Ci.nsIChannel);
-
-    channel.setURI(httpChan.URI);
-    channel.loadInfo = httpChan.loadInfo;
-
-    channel.contentStream = inputStream;
-    channel.contentType = contentType;
-    return channel;
-  }
-
-  /**
-   * A helper for BackupService.extractCompressedSnapshotFromArchive() that
-   * reads in the JSON block from the MIME message embedded within an
-   * archiveFile.
-   *
-   * @see BackupService.extractCompressedSnapshotFromArchive()
-   * @param {nsIFile} archiveFile
-   *   The file to read the MIME message out from.
-   * @param {number} startByteOffset
-   *   The start byte offset of the MIME message.
-   * @param {string} contentType
-   *   The Content-Type of the MIME message.
-   */
-  async #extractJSONFromArchive(archiveFile, startByteOffset, contentType) {
-    let fileInputStream = Cc[
-      "@mozilla.org/network/file-input-stream;1"
-    ].createInstance(Ci.nsIFileInputStream);
-    fileInputStream.init(archiveFile, -1, -1, 0);
-    fileInputStream.seek(Ci.nsISeekableStream.NS_SEEK_SET, startByteOffset);
-
-    const EXPECTED_CONTENT_TYPE = "application/json";
-
-    let extractionChannel = this.#createExtractionChannel(
-      fileInputStream,
-      contentType
-    );
-    let textDecoder = new TextDecoder();
-    return new Promise((resolve, reject) => {
-      let streamConv = Cc["@mozilla.org/streamConverters;1"].getService(
-        Ci.nsIStreamConverterService
-      );
-      let multipartListenerForJSON = {
-        /**
-         * True once we've found an attachment matching our
-         * EXPECTED_CONTENT_TYPE. Once this is true, bytes flowing into
-         * onDataAvailable will be enqueued through the controller.
-         *
-         * @type {boolean}
-         */
-        _enabled: false,
-        /**
-         * A buffer with which we will cobble together the JSON string that
-         * will get parsed once the attachment finishes being read in.
-         *
-         * @type {string}
-         */
-        _buffer: "",
-
-        QueryInterface: ChromeUtils.generateQI([
-          "nsIStreamListener",
-          "nsIRequestObserver",
-        ]),
-
-        /**
-         * Called when we begin to load an attachment from the MIME message.
-         *
-         * @param {nsIRequest} request
-         *   The request corresponding to the source of the data.
-         */
-        onStartRequest(request) {
-          if (!(request instanceof Ci.nsIChannel)) {
-            throw Components.Exception(
-              "onStartRequest expected an nsIChannel request",
-              Cr.NS_ERROR_UNEXPECTED
-            );
-          }
-          this._enabled = request.contentType == EXPECTED_CONTENT_TYPE;
-        },
-
-        /**
-         * Called when data is flowing in for an attachment.
-         *
-         * @param {nsIRequest} request
-         *   The request corresponding to the source of the data.
-         * @param {nsIInputStream} stream
-         *   The input stream containing the data chunk.
-         * @param {number} offset
-         *   The number of bytes that were sent in previous onDataAvailable
-         *   calls for this request. In other words, the sum of all previous
-         *   count parameters.
-         * @param {number} count
-         *   The number of bytes available in the stream
-         */
-        onDataAvailable(request, stream, offset, count) {
-          if (!this._enabled) {
-            // We don't care about this data, just move on.
-            return;
-          }
-
-          let binStream = new lazy.BinaryInputStream(stream);
-          let arrBuffer = new ArrayBuffer(count);
-          binStream.readArrayBuffer(count, arrBuffer);
-          let jsonBytes = new Uint8Array(arrBuffer);
-          this._buffer += textDecoder.decode(jsonBytes);
-        },
-
-        /**
-         * Called when the load of an attachment finishes.
-         */
-        onStopRequest() {
-          if (this._enabled) {
-            fileInputStream.close();
-
-            try {
-              let archiveMetadata = JSON.parse(this._buffer);
-              resolve(archiveMetadata);
-            } catch (e) {
-              reject(new Error("Could not parse archive metadata."));
-            }
-            // No need to load anything else - abort reading in more
-            // attachments.
-            throw Components.Exception(
-              "Got binary block. Aborting further reads.",
-              Cr.NS_BINDING_ABORTED
-            );
-          }
-        },
-      };
-      let conv = streamConv.asyncConvertData(
-        "multipart/mixed",
-        "*/*",
-        multipartListenerForJSON,
-        null
-      );
-
-      extractionChannel.asyncOpen(conv);
-    });
-  }
-
-  /**
-   * A helper for BackupService.#extractCompressedSnapshotFromArchive that
-   * constructs a BinaryReadableStream for a single-file archive on the
-   * file system. The BinaryReadableStream will be used to read out the binary
-   * attachment from the archive.
-   *
-   * @param {nsIFile} archiveFile
-   *   The single-file archive to create the BinaryReadableStream for.
-   * @param {number} startByteOffset
-   *   The start byte offset of the MIME message.
-   * @param {string} contentType
-   *   The Content-Type of the MIME message.
-   * @returns {ReadableStream}
-   */
-  async #createBinaryReadableStream(archiveFile, startByteOffset, contentType) {
-    let fileInputStream = Cc[
-      "@mozilla.org/network/file-input-stream;1"
-    ].createInstance(Ci.nsIFileInputStream);
-    fileInputStream.init(archiveFile, -1, -1, 0);
-    fileInputStream.seek(Ci.nsISeekableStream.NS_SEEK_SET, startByteOffset);
-
-    let extractionChannel = this.#createExtractionChannel(
-      fileInputStream,
-      contentType
-    );
-
-    return new ReadableStream(
-      new BinaryReadableStream(extractionChannel, fileInputStream)
-    );
-  }
-
-  /**
-   * Attempts to extract the compressed backup snapshot from a single-file
-   * archive, and write the extracted file to extractionDestPath. This may
-   * reject if the single-file archive appears malformed or cannot be
-   * properly decrypted.
-   *
-   * NOTE: Currently, this base64 decoding currently occurs on the main thread.
-   * We may end up moving all of this into the Archive Worker if we can modify
-   * IOUtils to allow writing via a stream.
-   *
-   * @param {string} archivePath
-   *   The single-file archive that contains the backup.
-   * @param {string} extractionDestPath
-   *   The path to write the extracted file to.
-   * @returns {Promise<undefined, Error>}
-   */
-  async extractCompressedSnapshotFromArchive(archivePath, extractionDestPath) {
-    let worker = new lazy.BasePromiseWorker(
-      "resource:///modules/backup/Archive.worker.mjs",
-      { type: "module" }
-    );
-
-    if (!(await IOUtils.exists(archivePath))) {
-      throw new Error("Archive file does not exist at path " + archivePath);
-    }
-
-    await IOUtils.remove(extractionDestPath, { ignoreAbsent: true });
-
-    try {
-      let { startByteOffset, contentType } = await worker.post(
-        "parseArchiveHeader",
-        [archivePath]
-      );
-      let archiveFile = await IOUtils.getFile(archivePath);
-      let archiveJSON;
-      try {
-        archiveJSON = await this.#extractJSONFromArchive(
-          archiveFile,
-          startByteOffset,
-          contentType
-        );
-      } catch (e) {
-        lazy.logConsole.error(e);
-        throw new Error("Backup archive is corrupted.");
-      }
-
-      lazy.logConsole.debug("Read out archive JSON: ", archiveJSON);
-
-      let archiveStream = await this.#createBinaryReadableStream(
-        archiveFile,
-        startByteOffset,
-        contentType
-      );
-
-      let binaryDecoder = new TransformStream(
-        new DecoderDecryptorTransformer()
-      );
-      let fileWriter = new WritableStream(
-        new FileWriterStream(extractionDestPath)
-      );
-      await archiveStream.pipeThrough(binaryDecoder).pipeTo(fileWriter);
-    } finally {
-      worker.terminate();
     }
   }
 
@@ -1532,6 +978,65 @@ export class BackupService extends EventTarget {
     } finally {
       await IOUtils.remove(postRecoveryFile, { ignoreAbsent: true });
       this.#postRecoveryResolver();
+    }
+  }
+
+  /**
+   * Sets the parent directory of the backups folder. Calling this function will update
+   * browser.backup.location.
+   *
+   * @param {string} parentDirPath directory path
+   */
+  setParentDirPath(parentDirPath) {
+    try {
+      if (!parentDirPath || !PathUtils.filename(parentDirPath)) {
+        throw new Error("Parent directory path is invalid.");
+      }
+      // Recreate the backups path with the new parent directory.
+      let fullPath = PathUtils.join(
+        parentDirPath,
+        BackupService.BACKUP_DIR_NAME
+      );
+      Services.prefs.setStringPref(BACKUP_DIR_PREF_NAME, fullPath);
+    } catch (e) {
+      lazy.logConsole.error(
+        `Failed to set parent directory ${parentDirPath}. ${e}`
+      );
+    }
+  }
+
+  /**
+   * Updates backupDirPath in the backup service state. Should be called every time the value
+   * for browser.backup.location changes.
+   *
+   * @param {string} newDirPath the new directory path for storing backups
+   */
+  async onUpdateLocationDirPath(newDirPath) {
+    lazy.logConsole.debug(`Updating backup location to ${newDirPath}`);
+
+    this.#_state.backupDirPath = newDirPath;
+    this.stateUpdate();
+  }
+
+  /**
+   * Returns the moz-icon URL of a file. To get the moz-icon URL, the
+   * file path is convered to a fileURI. If there is a problem retreiving
+   * the moz-icon due to an invalid file path, return null instead.
+   *
+   * @param {string} path Path of the file to read its icon from.
+   * @returns {string|null} The moz-icon URL of the specified file, or
+   *  null if the icon cannot be retreived.
+   */
+  getIconFromFilePath(path) {
+    if (!path) {
+      return null;
+    }
+
+    try {
+      let fileURI = PathUtils.toFileURI(path);
+      return `moz-icon:${fileURI}?size=16`;
+    } catch (e) {
+      return null;
     }
   }
 
