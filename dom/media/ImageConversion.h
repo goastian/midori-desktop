@@ -6,13 +6,24 @@
 #ifndef ImageToI420Converter_h
 #define ImageToI420Converter_h
 
+#include "mozilla/AlreadyAddRefed.h"
 #include "nsError.h"
 
 namespace mozilla {
 
+
+namespace gfx {
+class SourceSurface;
+}  
+
 namespace layers {
 class Image;
 }  // namespace layers
+
+/**
+ * Gets a SourceSurface from given image.
+ */
+already_AddRefed<gfx::SourceSurface> GetSourceSurface(layers::Image* aImage);
 
 /**
  * Converts aImage to an I420 image and writes it to the given buffers.
