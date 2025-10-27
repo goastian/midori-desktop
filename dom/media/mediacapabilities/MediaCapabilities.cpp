@@ -118,7 +118,7 @@ MediaCapabilities::MediaCapabilities(nsIGlobalObject* aParent)
     : mParent(aParent) {}
 
 // https://w3c.github.io/media-capabilities/#dom-mediacapabilities-decodinginfo
-already_AddRefed<Promise> MediaCapabilities::DecodingInfo(
+    already_AddRefed<Promise> MediaCapabilities::DecodingInfo(
     const MediaDecodingConfiguration& aConfiguration, ErrorResult& aRv) {
   RefPtr<Promise> promise = Promise::Create(mParent, aRv);
   if (aRv.Failed()) {
@@ -129,10 +129,10 @@ already_AddRefed<Promise> MediaCapabilities::DecodingInfo(
   // rejected with a TypeError.
   if (!aConfiguration.mVideo.WasPassed() &&
       !aConfiguration.mAudio.WasPassed()) {
-    promise->MaybeRejectWithTypeError(
+    aRv.ThrowTypeError<MSG_MISSING_REQUIRED_DICTIONARY_MEMBER>(
         "'audio' or 'video' member of argument of "
         "MediaCapabilities.decodingInfo");
-    return promise.forget();
+    return nullptr;
   }
 
   // If configuration.keySystemConfiguration exists, run the following substeps:
@@ -145,6 +145,7 @@ already_AddRefed<Promise> MediaCapabilities::DecodingInfo(
           "key system configuration is not allowed in the worker scope");
       return promise.forget();
     }
+
     // If the global object’s relevant settings object is a non-secure context,
     // return a Promise rejected with a newly created DOMException whose name is
     // SecurityError.
@@ -156,16 +157,6 @@ already_AddRefed<Promise> MediaCapabilities::DecodingInfo(
     }
   }
 
-  // In parallel, run the Create a MediaCapabilitiesDecodingInfo algorithm with
-  // configuration and resolve p with its result.
-  CreateMediaCapabilitiesDecodingInfo(aConfiguration, aRv, promise);
-  return promise.forget();
-}
-
-// https://w3c.github.io/media-capabilities/#create-media-capabilities-decoding-info
-void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
-    const MediaDecodingConfiguration& aConfiguration, ErrorResult& aRv,
-    Promise* aPromise) {
   LOG("Processing %s", MediaDecodingConfigurationToStr(aConfiguration).get());
 
   bool supported = true;
@@ -177,8 +168,8 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
   if (aConfiguration.mVideo.WasPassed()) {
     videoContainer = CheckVideoConfiguration(aConfiguration.mVideo.Value());
     if (!videoContainer) {
-      aPromise->MaybeRejectWithTypeError("Invalid VideoConfiguration");
-      return;
+      aRv.ThrowTypeError<MSG_INVALID_MEDIA_VIDEO_CONFIGURATION>();
+      return nullptr;
     }
 
     // We have a video configuration and it is valid. Check if it is supported.
@@ -191,8 +182,8 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
   if (aConfiguration.mAudio.WasPassed()) {
     audioContainer = CheckAudioConfiguration(aConfiguration.mAudio.Value());
     if (!audioContainer) {
-      aPromise->MaybeRejectWithTypeError("Invalid AudioConfiguration");
-      return;
+      aRv.ThrowTypeError<MSG_INVALID_MEDIA_AUDIO_CONFIGURATION>();
+      return nullptr;
     }
     // We have an audio configuration and it is valid. Check if it is supported.
     supported &=
@@ -207,8 +198,8 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
         false /* supported */, false /* smooth */, false /* power efficient */);
     LOG("%s -> %s", MediaDecodingConfigurationToStr(aConfiguration).get(),
         MediaCapabilitiesInfoToStr(info.get()).get());
-    aPromise->MaybeResolve(std::move(info));
-    return;
+    promise->MaybeResolve(std::move(info));
+    return promise.forget();
   }
 
   nsTArray<UniquePtr<TrackInfo>> tracks;
@@ -220,17 +211,17 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
     // describing a single media codec. Otherwise, it MUST contain no
     // parameters.
     if (videoTracks.Length() != 1) {
-      aPromise->MaybeRejectWithTypeError(nsPrintfCString(
-          "The provided type '%s' does not have a 'codecs' parameter.",
-          videoContainer->OriginalString().get()));
-      return;
+      promise->MaybeRejectWithTypeError<MSG_NO_CODECS_PARAMETER>(
+          videoContainer->OriginalString());
+      return promise.forget();
     }
     MOZ_DIAGNOSTIC_ASSERT(videoTracks.ElementAt(0),
                           "must contain a valid trackinfo");
     // If the type refers to an audio codec, reject now.
     if (videoTracks[0]->GetType() != TrackInfo::kVideoTrack) {
-      aPromise->MaybeRejectWithTypeError("Invalid VideoConfiguration");
-      return;
+      promise
+          ->MaybeRejectWithTypeError<MSG_INVALID_MEDIA_VIDEO_CONFIGURATION>();
+      return promise.forget();
     }
     tracks.AppendElements(std::move(videoTracks));
   }
@@ -242,17 +233,17 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
     // describing a single media codec. Otherwise, it MUST contain no
     // parameters.
     if (audioTracks.Length() != 1) {
-      aPromise->MaybeRejectWithTypeError(nsPrintfCString(
-          "The provided type '%s' does not have a 'codecs' parameter.",
-          audioContainer->OriginalString().get()));
-      return;
+      promise->MaybeRejectWithTypeError<MSG_NO_CODECS_PARAMETER>(
+          audioContainer->OriginalString());
+      return promise.forget();
     }
     MOZ_DIAGNOSTIC_ASSERT(audioTracks.ElementAt(0),
                           "must contain a valid trackinfo");
     // If the type refers to a video codec, reject now.
     if (audioTracks[0]->GetType() != TrackInfo::kAudioTrack) {
-      aPromise->MaybeRejectWithTypeError("Invalid AudioConfiguration");
-      return;
+      promise
+          ->MaybeRejectWithTypeError<MSG_INVALID_MEDIA_AUDIO_CONFIGURATION>();
+      return promise.forget();
     }
     tracks.AppendElements(std::move(audioTracks));
   }
@@ -472,8 +463,9 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
           holder->DisconnectIfExists();
         });
     if (NS_WARN_IF(!workerRef)) {
-      aPromise->MaybeRejectWithInvalidStateError("The worker is shutting down");
-      return;
+      // The worker is shutting down.
+      aRv.Throw(NS_ERROR_FAILURE);
+      return nullptr;
     }
   }
 
@@ -484,8 +476,8 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
 
   CapabilitiesPromise::All(targetThread, promises)
       ->Then(targetThread, __func__,
-             [promise = RefPtr<Promise>{aPromise}, tracks = std::move(tracks),
-              workerRef, holder, aConfiguration, self,
+             [promise, tracks = std::move(tracks), workerRef, holder,
+              aConfiguration, self,
               this](CapabilitiesPromise::AllPromiseType::ResolveOrRejectValue&&
                         aValue) {
                holder->Complete();
@@ -513,6 +505,8 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                promise->MaybeResolve(std::move(info));
              })
       ->Track(*holder);
+
+  return promise.forget();
 }
 
 already_AddRefed<Promise> MediaCapabilities::EncodingInfo(
