@@ -87,14 +87,15 @@ dictionary AudioConfiguration {
   unsigned long samplerate;
 };
 
-[Exposed=(Window, Worker), HeaderFile="mozilla/dom/MediaCapabilities.h"]
+[Exposed=(Window, Worker), Func="mozilla::dom::MediaCapabilities::Enabled",
+ HeaderFile="mozilla/dom/MediaCapabilities.h"]
 interface MediaCapabilitiesInfo {
   readonly attribute boolean supported;
   readonly attribute boolean smooth;
   readonly attribute boolean powerEfficient;
 };
 
-[Exposed=(Window, Worker)]
+[Exposed=(Window, Worker), Func="mozilla::dom::MediaCapabilities::Enabled"]
 interface MediaCapabilities {
   [NewObject]
   Promise<MediaCapabilitiesInfo> decodingInfo(MediaDecodingConfiguration configuration);
