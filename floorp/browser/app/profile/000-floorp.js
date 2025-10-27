@@ -180,13 +180,13 @@ pref("devtools.debugger.prompt-connection", false);
 
 //個人設定の同期無効
 pref("services.sync.engine.prefs", false); // Never sync prefs, addons, or tabs with other browsers
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.snippets", false, locked);
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsored", false, locked);
-pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsoredTopSites", false, locked);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.feeds.snippets", true, locked);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsored", true, locked);
+pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSponsoredTopSites", true, locked);
 pref("services.sync.telemetry.maxPayloadCount", "0", locked);
 pref("services.sync.telemetry.submissionInterval", "0", locked);
-pref("services.sync.prefs.sync.browser.startup.page", false, locked); // Firefox の自動復元機能を Firefox Sync で同期しないようにします。
-pref("services.sync.prefs.sync.browser.tabs.warnOnClose", false, locked); //たくさんのタブを閉じようとした際の警告表示を Firefox Sync で同期しないようにします。
+pref("services.sync.prefs.sync.browser.startup.page", true, locked); // Firefox の自動復元機能を Firefox Sync で同期しないようにします。
+pref("services.sync.prefs.sync.browser.tabs.warnOnClose", true, locked); //たくさんのタブを閉じようとした際の警告表示を Firefox Sync で同期しないようにします。
 
 // 同期を有効にする
 pref("services.sync.prefs.sync.floorp.browser.sidebar.right", true);// サイドバーの右側を表示
