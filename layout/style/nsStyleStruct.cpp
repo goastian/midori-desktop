@@ -3111,7 +3111,8 @@ nsStyleUIReset::nsStyleUIReset()
           nsStyleAutoArray<StyleViewTimeline>::WITH_SINGLE_INITIAL_ELEMENT),
       mViewTimelineNameCount(1),
       mViewTimelineAxisCount(1),
-      mViewTimelineInsetCount(1) {
+      mViewTimelineInsetCount(1),
+      mFieldSizing(StyleFieldSizing::Fixed) {
   MOZ_COUNT_CTOR(nsStyleUIReset);
 }
 
@@ -3150,7 +3151,8 @@ nsStyleUIReset::nsStyleUIReset(const nsStyleUIReset& aSource)
       mViewTimelines(aSource.mViewTimelines.Clone()),
       mViewTimelineNameCount(aSource.mViewTimelineNameCount),
       mViewTimelineAxisCount(aSource.mViewTimelineAxisCount),
-      mViewTimelineInsetCount(aSource.mViewTimelineInsetCount) {
+      mViewTimelineInsetCount(aSource.mViewTimelineInsetCount),
+      mFieldSizing(aSource.mFieldSizing) {
   MOZ_COUNT_CTOR(nsStyleUIReset);
 }
 
@@ -3163,6 +3165,10 @@ nsChangeHint nsStyleUIReset::CalcDifference(
   }
   if (mMozSubtreeHiddenOnlyVisually != aNewData.mMozSubtreeHiddenOnlyVisually) {
     hint |= nsChangeHint_RepaintFrame;
+  }
+
+  if (mFieldSizing != aNewData.mFieldSizing) {
+    hint |= nsChangeHint_NeutralChange;
   }
   if (mScrollbarWidth != aNewData.mScrollbarWidth) {
     // For scrollbar-width change, we need some special handling similar
