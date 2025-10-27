@@ -87,11 +87,11 @@ dictionary AudioConfiguration {
   unsigned long samplerate;
 };
 
-
-dictionary MediaCapabilitiesInfo {
-  required boolean supported;
-  required boolean smooth;
-  required boolean powerEfficient;
+[Exposed=(Window, Worker), HeaderFile="mozilla/dom/MediaCapabilities.h"]
+interface MediaCapabilitiesInfo {
+  readonly attribute boolean supported;
+  readonly attribute boolean smooth;
+  readonly attribute boolean powerEfficient;
 };
 
 [Exposed=(Window, Worker)]

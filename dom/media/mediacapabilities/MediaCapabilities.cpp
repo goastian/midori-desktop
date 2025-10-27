@@ -86,11 +86,14 @@ static nsCString AudioConfigurationToStr(const AudioConfiguration* aConfig) {
 }
 
 static nsCString MediaCapabilitiesInfoToStr(
-    const MediaCapabilitiesInfo& aInfo) {
+    const MediaCapabilitiesInfo* aInfo) {
+  if (!aInfo) {
+    return nsCString();
+  }
   auto str = nsPrintfCString("[supported:%s smooth:%s powerEfficient:%s]",
-                             aInfo.mSupported ? "true" : "false",
-                             aInfo.mSmooth ? "true" : "false",
-                             aInfo.mPowerEfficient ? "true" : "false");
+                             aInfo->Supported() ? "true" : "false",
+                             aInfo->Smooth() ? "true" : "false",
+                             aInfo->PowerEfficient() ? "true" : "false");
   return std::move(str);
 }
 
@@ -200,12 +203,10 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
   }
 
   if (!supported) {
-    MediaCapabilitiesInfo info;
-    info.mSupported = false;
-    info.mSmooth = false;
-    info.mPowerEfficient = false;
+    auto info = MakeUnique<MediaCapabilitiesInfo>(
+        false /* supported */, false /* smooth */, false /* power efficient */);
     LOG("%s -> %s", MediaDecodingConfigurationToStr(aConfiguration).get(),
-        MediaCapabilitiesInfoToStr(info).get());
+        MediaCapabilitiesInfoToStr(info.get()).get());
     aPromise->MaybeResolve(std::move(info));
     return;
   }
@@ -283,12 +284,10 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
               return CapabilitiesPromise::CreateAndReject(NS_ERROR_FAILURE,
                                                           __func__);
             }
-            MediaCapabilitiesInfo info;
-            info.mSupported = true;
-            info.mSmooth = true;
-            info.mPowerEfficient = true;
-            return CapabilitiesPromise::CreateAndResolve(std::move(info),
-                                                         __func__);
+            return CapabilitiesPromise::CreateAndResolve(
+                MediaCapabilitiesInfo(true /* supported */, true /* smooth */,
+                                      true /* power efficient */),
+                __func__);
           }));
       continue;
     }
@@ -358,11 +357,10 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                             p = CapabilitiesPromise::CreateAndReject(
                                 std::move(aValue.RejectValue()), __func__);
                           } else if (shouldResistFingerprinting) {
-                            MediaCapabilitiesInfo info;
-                            info.mSupported = true;
-                            info.mSmooth = true;
-                            info.mPowerEfficient = false;
-                            p = CapabilitiesPromise::CreateAndResolve(std::move(info), __func__);
+                            p = CapabilitiesPromise::CreateAndResolve(
+                                MediaCapabilitiesInfo(true /* supported */,
+                                true /* smooth */, false /* power efficient */),
+                                __func__);
                           } else {
                             MOZ_ASSERT(config->IsVideo());
                             if (StaticPrefs::media_mediacapabilities_from_database()) {
@@ -386,12 +384,12 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                                     bool smooth = score < 0 || score >
                                       StaticPrefs::
                                         media_mediacapabilities_drop_threshold();
-                                    MediaCapabilitiesInfo info;
-                                    info.mSupported = true;
-                                    info.mSmooth = smooth;
-                                    info.mPowerEfficient = powerEfficient;
                                     return CapabilitiesPromise::
-                                        CreateAndResolve(std::move(info), __func__);
+                                        CreateAndResolve(
+                                            MediaCapabilitiesInfo(
+                                                true, smooth,
+                                                powerEfficient),
+                                            __func__);
                                   },
                                   [](nsresult rv) {
                                     return CapabilitiesPromise::
@@ -404,11 +402,9 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                               // decoding is hardware accelerated it will be
                               // smooth and power efficient, otherwise we use
                               // the benchmark to estimate
-                              MediaCapabilitiesInfo info;
-                              info.mSupported = true;
-                              info.mSmooth = true;
-                              info.mPowerEfficient = true;
-                              p = CapabilitiesPromise::CreateAndResolve(std::move(info), __func__);
+                              p = CapabilitiesPromise::CreateAndResolve(
+                                  MediaCapabilitiesInfo(true, true, true),
+                                  __func__);
                             } else {
                               nsAutoCString reason;
                               bool smooth = true;
@@ -436,11 +432,11 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                                   smooth = needed > 2;
                                 }
                               }
-                              MediaCapabilitiesInfo info;
-                              info.mSupported = true;
-                              info.mSmooth = smooth;
-                              info.mPowerEfficient = powerEfficient;
-                              p = CapabilitiesPromise::CreateAndResolve(std::move(info), __func__);
+
+                              p = CapabilitiesPromise::CreateAndResolve(
+                                  MediaCapabilitiesInfo(true /* supported */,
+                                                        smooth, powerEfficient),
+                                  __func__);
                             }
                           }
                           MOZ_ASSERT(p.get(), "the promise has been created");
@@ -494,29 +490,26 @@ void MediaCapabilities::CreateMediaCapabilitiesDecodingInfo(
                         aValue) {
                holder->Complete();
                if (aValue.IsReject()) {
-                 MediaCapabilitiesInfo info;
-                 info.mSupported = false;
-                 info.mSmooth = false;
-                 info.mPowerEfficient = false;
+                 auto info = MakeUnique<MediaCapabilitiesInfo>(
+                     false /* supported */, false /* smooth */,
+                     false /* power efficient */);
                  LOG("%s -> %s",
                      MediaDecodingConfigurationToStr(aConfiguration).get(),
-                     MediaCapabilitiesInfoToStr(info).get());
+                     MediaCapabilitiesInfoToStr(info.get()).get());
                  promise->MaybeResolve(std::move(info));
                  return;
                }
                bool powerEfficient = true;
                bool smooth = true;
                for (auto&& capability : aValue.ResolveValue()) {
-                 smooth &= capability.mSmooth;
-                 powerEfficient &= capability.mPowerEfficient;
+                 smooth &= capability.Smooth();
+                 powerEfficient &= capability.PowerEfficient();
                }
-               MediaCapabilitiesInfo info;
-               info.mSupported = true;
-               info.mSmooth = smooth;
-               info.mPowerEfficient = powerEfficient;
+               auto info = MakeUnique<MediaCapabilitiesInfo>(
+                   true /* supported */, smooth, powerEfficient);
                LOG("%s -> %s",
                    MediaDecodingConfigurationToStr(aConfiguration).get(),
-                   MediaCapabilitiesInfoToStr(info).get());
+                   MediaCapabilitiesInfoToStr(info.get()).get());
                promise->MaybeResolve(std::move(info));
              })
       ->Track(*holder);
@@ -562,10 +555,7 @@ already_AddRefed<Promise> MediaCapabilities::EncodingInfo(
         CheckTypeForEncoder(aConfiguration.mAudio.Value().mContentType);
   }
 
-  MediaCapabilitiesInfo info;
-  info.mSupported = supported;
-  info.mSmooth = supported;
-  info.mPowerEfficient = false;
+  auto info = MakeUnique<MediaCapabilitiesInfo>(supported, supported, false);
   promise->MaybeResolve(std::move(info));
 
   return promise.forget();
@@ -673,5 +663,13 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(MediaCapabilities)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(MediaCapabilities)
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(MediaCapabilities, mParent)
+
+// MediaCapabilitiesInfo
+bool MediaCapabilitiesInfo::WrapObject(
+    JSContext* aCx, JS::Handle<JSObject*> aGivenProto,
+    JS::MutableHandle<JSObject*> aReflector) {
+  return MediaCapabilitiesInfo_Binding::Wrap(aCx, this, aGivenProto,
+                                             aReflector);
+}
 
 }  // namespace mozilla::dom
