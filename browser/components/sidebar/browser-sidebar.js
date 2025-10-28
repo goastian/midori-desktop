@@ -457,8 +457,7 @@ var SidebarController = {
       return true;
     }
 
-    this._box.style.width =
-      sourceController._box.getBoundingClientRect().width + "px";
+    this._box.style.width = sourceController._box.style.width;
     this.showInitially(commandID);
 
     return true;
