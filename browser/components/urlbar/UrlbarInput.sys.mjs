@@ -472,8 +472,13 @@ export class UrlbarInput {
     }
 
     const previousUntrimmedValue = this.untrimmedValue;
-    const previousSelectionStart = this.selectionStart;
-    const previousSelectionEnd = this.selectionEnd;
+    // When calculating the selection indices we must take into account a
+    // trimmed protocol.
+    let offset = this._protocolIsTrimmed
+      ? lazy.BrowserUIUtils.trimURLProtocol.length
+      : 0;
+    const previousSelectionStart = this.selectionStart + offset;
+    const previousSelectionEnd = this.selectionEnd + offset;
 
     this.value = value;
     this.valueIsTyped = !valid;
@@ -491,8 +496,8 @@ export class UrlbarInput {
         // If the same text is in the same place as the previously selected text,
         // the selection is kept.
         this.inputField.setSelectionRange(
-          previousSelectionStart,
-          previousSelectionEnd
+          previousSelectionStart - offset,
+          previousSelectionEnd - offset
         );
       } else if (
         previousSelectionEnd &&
@@ -507,8 +512,8 @@ export class UrlbarInput {
         // Otherwise clear selection and set the caret position to the previous
         // caret end position.
         this.inputField.setSelectionRange(
-          previousSelectionEnd,
-          previousSelectionEnd
+          previousSelectionEnd - offset,
+          previousSelectionEnd - offset
         );
       }
     }
@@ -657,7 +662,7 @@ export class UrlbarInput {
       (result.heuristic ||
         !this.valueIsTyped ||
         result.type == lazy.UrlbarUtils.RESULT_TYPE.TIP ||
-        this.value == this._getValueFromResult(result));
+        this.value == this.#getValueFromResult(result));
     if (
       !isComposing &&
       element &&
@@ -1384,20 +1389,13 @@ export class UrlbarInput {
       return false;
     }
 
-    // The value setter clobbers the actiontype attribute, so we need this
-    // helper to restore it afterwards.
-    const setValueAndRestoreActionType = (value, allowTrim) => {
-      this._setValue(value, { allowTrim });
-
-      switch (result.type) {
-        case lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH:
-          this.setAttribute("actiontype", "switchtab");
-          break;
-        case lazy.UrlbarUtils.RESULT_TYPE.OMNIBOX:
-          this.setAttribute("actiontype", "extension");
-          break;
-      }
-    };
+    // We won't allow trimming when calling _setValue, since it makes too easy
+    // for the user to wrongly transform `https` into `http`, for example by
+    // picking a https://site/path_1 result and editing the path to path_2,
+    // then we'd end up visiting http://site/path_2.
+    // Trimming `http` would be ok, but there's other cases where it's unsafe,
+    // like transforming a url into a search.
+    // This choice also makes it easier to copy the full url of a result.
 
     // For autofilled results, the value that should be canonized is not the
     // autofilled value but the value that the user typed.
@@ -1406,7 +1404,8 @@ export class UrlbarInput {
       result.autofill ? this._lastSearchString : this.value
     );
     if (canonizedUrl) {
-      setValueAndRestoreActionType(canonizedUrl, true);
+      this._setValue(canonizedUrl);
+
       this.setResultForCurrentValue(result);
       return true;
     }
@@ -1427,35 +1426,19 @@ export class UrlbarInput {
         });
       }
       if (!enteredSearchMode) {
-        setValueAndRestoreActionType(this._getValueFromResult(result), true);
+        this._setValue(this.#getValueFromResult(result), {
+          actionType: this.#getActionTypeFromResult(result),
+        });
         this.searchMode = null;
       }
       this.setResultForCurrentValue(result);
       return false;
     }
 
-    // If the url is trimmed but it's invalid (for example it has an unknown
-    // single word host, or an unknown domain suffix), trimming
-    // it would end up executing a search instead of visiting it.
-    let allowTrim = true;
-    if (
-      (urlOverride || result.type == lazy.UrlbarUtils.RESULT_TYPE.URL) &&
-      lazy.UrlbarPrefs.get("trimURLs")
-    ) {
-      let url = urlOverride || result.payload.url;
-      if (url.startsWith(lazy.BrowserUIUtils.trimURLProtocol)) {
-        let fixupInfo = this._getURIFixupInfo(lazy.BrowserUIUtils.trimURL(url));
-        if (fixupInfo?.keywordAsSent) {
-          allowTrim = false;
-        }
-      }
-    }
-
     if (!result.autofill) {
-      setValueAndRestoreActionType(
-        this._getValueFromResult(result, urlOverride),
-        allowTrim
-      );
+      this._setValue(this.#getValueFromResult(result, urlOverride), {
+        actionType: this.#getActionTypeFromResult(result),
+      });
     }
 
     this.setResultForCurrentValue(result);
@@ -2300,13 +2283,18 @@ export class UrlbarInput {
    * @param {boolean} [options.allowTrim] Whether the value can be trimmed.
    * @param {string} [options.untrimmedValue] Override for this._untrimmedValue.
    * @param {boolean} [options.valueIsTyped] Override for this.valueIsTypede.
-   *
+   * @param {string} [options.actionType] Value for the `actiontype` attribute.
    *
    * @returns {string} The set value.
    */
   _setValue(
     val,
-    { allowTrim = false, untrimmedValue = null, valueIsTyped = false } = {}
+    {
+      allowTrim = false,
+      untrimmedValue = null,
+      valueIsTyped = false,
+      actionType = undefined,
+    } = {}
   ) {
     // Don't expose internal about:reader URLs to the user.
     let originalUrl = lazy.ReaderMode.getOriginalUrlObjectForDisplay(val);
@@ -2327,7 +2315,12 @@ export class UrlbarInput {
     this._resultForCurrentValue = null;
     this.inputField.value = val;
     this.formatValue();
-    this.removeAttribute("actiontype");
+
+    if (actionType !== undefined) {
+      this.setAttribute("actiontype", actionType);
+    } else {
+      this.removeAttribute("actiontype");
+    }
 
     // Dispatch ValueChange event for accessibility.
     let event = this.document.createEvent("Events");
@@ -2337,7 +2330,27 @@ export class UrlbarInput {
     return val;
   }
 
-  _getValueFromResult(result, urlOverride = null) {
+  /**
+   * Extracts a input value from a UrlbarResult, used when filling the input
+   * field on selecting a result.
+   *
+   * Some examples:
+   *  - If the result is a bookmark keyword or dynamic, the value will be
+   *    its `input` property.
+   *  - If the result is search, the value may be `keyword` combined with
+   *    `suggestion` or `query`.
+   *  - If the result is WebExtension Omnibox, the value will be extracted
+   *    from `content`.
+   *  - For results returning URLs the value may be `urlOverride` or `url`.
+   *
+   * @param {UrlbarResult} result
+   *   The result to extract the value from.
+   * @param {string | null} urlOverride
+   *   For results normally returning a url string, this allows to override
+   *   it. A blank string may passed-in to clear the input.
+   * @returns {string} The value.
+   */
+  #getValueFromResult(result, urlOverride = null) {
     switch (result.type) {
       case lazy.UrlbarUtils.RESULT_TYPE.KEYWORD:
         return result.payload.input;
@@ -2355,19 +2368,62 @@ export class UrlbarInput {
         return result.payload.input || "";
     }
 
-    if (urlOverride === "") {
-      // Allow callers to clear the input.
+    // Always respect a set urlOverride property.
+    if (urlOverride !== null) {
+      // This returns null for the empty string, allowing callers to clear the
+      // input by passing an empty string as urlOverride.
+      let url = URL.parse(urlOverride);
+      return url ? losslessDecodeURI(url.URI) : "";
+    }
+
+    let url = URL.parse(result.payload.url);
+    // If the url is not parsable, just return an empty string;
+    if (!url) {
       return "";
     }
 
-    try {
-      let uri = Services.io.newURI(urlOverride || result.payload.url);
-      if (uri) {
-        return losslessDecodeURI(uri);
-      }
-    } catch (ex) {}
+    url = losslessDecodeURI(url.URI);
+    // If the user didn't originally type a protocol, and we generated one,
+    // trim the http protocol from the input value, as https-first may upgrade
+    // it to https, breaking user expectations.
+    let stripHttp =
+      result.heuristic &&
+      result.payload.url.startsWith("http://") &&
+      this.window.gBrowser.userTypedValue &&
+      this.#isSchemeless(this.window.gBrowser.userTypedValue);
+    if (!stripHttp) {
+      return url;
+    }
+    // Attempt to trim the url. If doing so results in a string that is
+    // interpreted as search (e.g. unknown single word host, or domain suffix),
+    // use the unmodified url instead. Otherwise, if the user edits the url
+    // and confirms the new value, we may transform the url into a search.
+    let trimmedUrl = lazy.UrlbarUtils.stripPrefixAndTrim(url, { stripHttp })[0];
+    let isSearch = !!this._getURIFixupInfo(trimmedUrl)?.keywordAsSent;
+    if (isSearch) {
+      // Although https-first might not respect the shown protocol, converting
+      // the result to a search would be more disruptive.
+      return url;
+    }
+    return trimmedUrl;
+  }
 
-    return "";
+  /**
+   * Extracts from a result the value to use for the `actiontype` attribute.
+   *
+   * @param {UrlbarResult} result The UrlbarResult to consider.
+   *
+   * @returns {string} The `actiontype` value, or undefined.
+   */
+  #getActionTypeFromResult(result) {
+    switch (result.type) {
+      case lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH:
+        return "switchtab";
+      case lazy.UrlbarUtils.RESULT_TYPE.OMNIBOX:
+        return "extension";
+      default:
+        return undefined;
+    }
   }
 
   /**
@@ -3195,7 +3251,6 @@ export class UrlbarInput {
     }
 
     this._setValue(this._untrimmedValue, {
-      allowTrim: false,
       valueIsTyped: this.valueIsTyped,
     });
 
@@ -4406,10 +4461,6 @@ function losslessDecodeURI(aURI) {
     }
   }
 
-  // IMPORTANT: The following regular expressions are Unicode-aware due to /v.
-  // Avoid matching high or low surrogate pairs directly, always work with
-  // full Unicode scalar values.
-
   // Encode potentially invisible characters:
   //   U+0000-001F: C0/C1 control characters
   //   U+007F-009F: commands
@@ -4422,13 +4473,12 @@ function losslessDecodeURI(aURI) {
   // Encode all adjacent space chars (U+0020), to prevent spoofing attempts
   // where they would push part of the URL to overflow the location bar
   // (bug 1395508). A single space, or the last space if the are many, is
-  // preserved to maintain readability of certain urls if it's not followed by a
-  // control or separator character. We only do this for the common space,
-  // because others may be eaten when copied to the clipboard,so it's safer to
-  // preserve them encoded.
+  // preserved to maintain readability of certain urls. We only do this for the
+  // common space, because others may be eaten when copied to the clipboard, so
+  // it's safer to preserve them encoded.
   value = value.replace(
     // eslint-disable-next-line no-control-regex
-    /[[\p{Separator}--\u{0020}]\p{Control}\u{2800}\u{FFFC}]|\u{0020}(?=[\p{Other}\p{Separator}])|\s$/gv,
+    /[\u0000-\u001f\u007f-\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u2800\u3000\ufffc]|[\r\n\t]|\u0020(?=\u0020)|\s$/g,
     encodeURIComponent
   );
 
@@ -4439,18 +4489,20 @@ function losslessDecodeURI(aURI) {
   // per bug 582186:
   //   U+00AD, U+034F, U+06DD, U+070F, U+115F-1160, U+17B4, U+17B5, U+180B-180E,
   //   U+2060, U+FEFF, U+200B, U+2060-206F, U+3164, U+FE00-FE0F, U+FFA0,
-  //   U+FFF0-FFFB, U+1D173-1D17A, U+E0000-E0FFF
+  //   U+FFF0-FFFB, U+1D173-1D17A (U+D834 + DD73-DD7A),
+  //   U+E0000-E0FFF (U+DB40-DB43 + U+DC00-DFFF)
   // Bidi control characters (RFC 3987 sections 3.2 and 4.1 paragraph 6):
   //   U+061C, U+200E, U+200F, U+202A-202E, U+2066-2069
   // Other format characters in the Cf category that are unlikely to be rendered
   // usefully:
-  //   U+0600-0605, U+08E2, U+110BD, U+110CD, U+13430-13438, U+1BCA0-1BCA3
+  //   U+0600-0605, U+08E2, U+110BD (U+D804 + U+DCBD),
+  //   U+110CD (U+D804 + U+DCCD), U+13430-13438 (U+D80D + U+DC30-DC38),
+  //   U+1BCA0-1BCA3 (U+D82F + U+DCA0-DCA3)
   // Mimicking UI parts:
-  //   U+1F50F-1F513, U+1F6E1
-  // Unassigned codepoints, sometimes shown as empty glyphs.
+  //   U+1F50F-1F513 (U+D83D + U+DD0F-DD13), U+1F6E1 (U+D83D + U+DEE1)
   value = value.replace(
     // eslint-disable-next-line no-misleading-character-class
-    /[[\p{Format}--[\u{200C}\u{200D}]]\u{034F}\u{115F}\u{1160}\u{17B4}\u{17B5}\u{180B}-\u{180D}\u{3164}\u{FE00}-\u{FE0F}\u{FFA0}\u{FFF0}-\u{FFFB}\p{Unassigned}\p{Private_Use}\u{E0000}-\u{E0FFF}\u{1F50F}-\u{1F513}\u{1F6E1}]/gv,
+    /[\u00ad\u034f\u061c\u06dd\u070f\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b\u200e\u200f\u202a-\u202e\u2060-\u206f\u3164\u0600-\u0605\u08e2\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb]|\ud804[\udcbd\udccd]|\ud80d[\udc30-\udc38]|\ud82f[\udca0-\udca3]|\ud834[\udd73-\udd7a]|[\udb40-\udb43][\udc00-\udfff]|\ud83d[\udd0f-\udd13\udee1]/g,
     encodeURIComponent
   );
   return value;
