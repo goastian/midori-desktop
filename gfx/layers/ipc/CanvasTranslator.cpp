@@ -1232,7 +1232,6 @@ CanvasTranslator::MaybeRecycleDataSurfaceForSurfaceDescriptor(
   }
 
   auto& usedSurf = mUsedDataSurfaceForSurfaceDescriptor;
-  
   auto& usedWrapper = mUsedWrapperForSurfaceDescriptor;
   auto& usedDescriptor = mUsedSurfaceDescriptorForSurfaceDescriptor;
 
@@ -1240,6 +1239,7 @@ CanvasTranslator::MaybeRecycleDataSurfaceForSurfaceDescriptor(
     MOZ_ASSERT(usedSurf);
     MOZ_ASSERT(usedWrapper);
     MOZ_ASSERT(aTextureHost->GetSize() == usedSurf->GetSize());
+
     // Since the data is the same as before, the DataSourceSurfaceWrapper can be
     // reused.
     return do_AddRef(usedWrapper);

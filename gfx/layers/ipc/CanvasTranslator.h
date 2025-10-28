@@ -403,6 +403,8 @@ class CanvasTranslator final : public gfx::InlineTranslator,
   Atomic<bool> mIPDLClosed{false};
   bool mIsInTransaction = false;
   bool mDeviceResetInProgress = false;
+
+  RefPtr<gfx::DataSourceSurface> mUsedDataSurfaceForSurfaceDescriptor;
   RefPtr<gfx::DataSourceSurfaceWrapper> mUsedWrapperForSurfaceDescriptor;
   Maybe<SurfaceDescriptorRemoteDecoder>
       mUsedSurfaceDescriptorForSurfaceDescriptor;
