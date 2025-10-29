@@ -4340,7 +4340,7 @@
 
 - name: dom.vibrator.enabled
   type: bool
-  value: true
+  value: false
   mirror: always
 
 - name: dom.vibrator.max_vibrate_ms
@@ -4778,11 +4778,7 @@
 
 - name: dom.webnotifications.vibrate.enabled
   type: RelaxedAtomicBool
-#if defined(MOZ_WIDGET_ANDROID)
-  value: @IS_NIGHTLY_BUILD@
-#else
   value: false
-#endif
   mirror: always
 
 # Setting log level for notification modules.
