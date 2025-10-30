@@ -1709,7 +1709,7 @@
 # no (0), yes (1), or default (2), which is true everywhere except Linux.
 - name: browser.tabs.inTitlebar
   type: int32_t
-  value: 2
+  value: 0
   mirror: always
 
 # If set, use DocumentChannel to directly initiate loads entirely
