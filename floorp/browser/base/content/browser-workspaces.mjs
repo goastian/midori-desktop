@@ -1,3 +1,5 @@
+var BrowserOpenTab;
+
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
 import { WorkspacesMigratorUtils } from "./modules/workspaces/WorkspacesMigratorUtils.mjs";
