@@ -1573,7 +1573,7 @@ void WindowGlobalParent::ActorDestroy(ActorDestroyReason aWhy) {
       nsCOMPtr<nsILoadContext> loadContext = browserParent->GetLoadContext();
       if (loadContext && !loadContext->UsePrivateBrowsing() &&
           BrowsingContext()->IsTopContent()) {
-        GetContentBlockingLog()->ReportLog(DocumentPrincipal());
+        GetContentBlockingLog()->ReportLog();
 
         if (mDocumentURI && (net::SchemeIsHTTP(mDocumentURI) ||
                              net::SchemeIsHTTPS(mDocumentURI))) {
