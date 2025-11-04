@@ -1,8 +1,0 @@
-[binaries]
-llvm-config = '/builds/worker/fetches/clang-mac/clang/bin/llvm-config'
-
-[host_machine]
-system = 'darwin'
-cpu_family = 'x86_64'
-cpu = 'i686'
-endian = 'little'

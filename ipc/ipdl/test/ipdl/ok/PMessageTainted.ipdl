@@ -1,5 +1,0 @@
-[ChildProc=any]
-sync protocol PMessageTainted {
-child:
-    [Tainted] async foo();
-};

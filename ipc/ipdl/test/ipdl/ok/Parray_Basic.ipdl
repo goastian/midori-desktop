@@ -1,5 +1,0 @@
-[ChildProc=any]
-protocol Parray_Basic {
-child:
-    async Msg(int[] array);
-};

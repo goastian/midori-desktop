@@ -1,4 +1,0 @@
-[DEFAULT]
-run-if = ["os == 'win'"]
-
-["test_windows_mutex.js"]

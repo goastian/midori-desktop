@@ -1,1 +1,0 @@
-buildDir "${topobjdir}/gradle/build/tools/lint/test/files/android-format"

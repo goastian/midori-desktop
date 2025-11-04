@@ -1,1 +1,0 @@
-oomTest(() => eval("function f() {}"));

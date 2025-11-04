@@ -1,8 +1,0 @@
-[
-  [
-    "warning",
-    "included header \"structures.h\" is not used directly",
-    "misc-include-cleaner"
-  ],
-  { "reliability": "high" }
-]

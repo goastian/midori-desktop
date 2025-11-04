@@ -1,2 +1,0 @@
-. "$topsrcdir/tools/rusttests/config/mozconfigs/linux32/rusttests"
-ac_add_options --enable-debug

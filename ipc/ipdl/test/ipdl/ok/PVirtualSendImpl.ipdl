@@ -1,6 +1,0 @@
-[ChildProc=any]
-async protocol PVirtualSendImpl
-{
-child:
-  [VirtualSendImpl] async MockableFoo();
-};

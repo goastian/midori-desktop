@@ -1,9 +1,0 @@
-//error: invalid value for attribute `Compress', expected one of: None, all
-
-include protocol compressCtor;
-
-[ChildProc=any]
-async protocol PCompressInvalid {
-child:
-    [Compress=Invalid] async Message();
-};

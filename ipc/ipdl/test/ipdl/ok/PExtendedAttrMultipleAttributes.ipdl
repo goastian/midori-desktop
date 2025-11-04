@@ -1,5 +1,0 @@
-[NestedUpTo=inside_sync, NeedsOtherPid, ChildProc=any]
-async protocol PExtendedAttrMultipleAttributes {
-parent:
-    async Msg();
-};

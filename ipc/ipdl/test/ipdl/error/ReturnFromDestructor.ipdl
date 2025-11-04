@@ -1,7 +1,0 @@
-//error: destructors cannot return values
-
-[ChildProc=any]
-protocol ReturnFromDestructor {
-child:
-    async __delete__() returns (bool something);
-};

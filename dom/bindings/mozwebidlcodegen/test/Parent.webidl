@@ -1,3 +1,0 @@
-interface Parent {
-  undefined MethodFoo();
-};

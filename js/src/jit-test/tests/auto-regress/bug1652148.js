@@ -1,3 +1,0 @@
-oomTest(() => {
-  new AggregateError([]);
-});

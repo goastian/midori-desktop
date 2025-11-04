@@ -1,8 +1,0 @@
-//error: argument typename `X' of message `Test' has not been declared
-
-[ChildProc=any]
-protocol PBadArrayBase {
-child:
-  async Test(X[] x);
-  async __delete__();
-};

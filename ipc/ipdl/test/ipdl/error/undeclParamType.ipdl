@@ -1,8 +1,0 @@
-//error: argument typename `FARGLEGARGLE' of message `Msg' has not been declared
-
-[ChildProc=any]
-protocol undeclParamType {
-
-child: async Msg(FARGLEGARGLE p);
-
-};

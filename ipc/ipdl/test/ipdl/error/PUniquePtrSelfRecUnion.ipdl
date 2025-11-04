@@ -1,8 +1,0 @@
-//error: union `X' is only partially defined
-
-union X { UniquePtr<X>; };
-
-[ChildProc=any]
-protocol PUniquePtrSelfRecUnion {
-child: async Msg(UniquePtr<X> aa);
-};

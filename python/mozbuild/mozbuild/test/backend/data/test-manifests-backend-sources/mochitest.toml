@@ -1,5 +1,0 @@
-[DEFAULT]
-
-["include:mochitest-common.ini"]
-
-["test_foo.js"]

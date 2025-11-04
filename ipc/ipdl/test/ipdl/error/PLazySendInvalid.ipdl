@@ -1,7 +1,0 @@
-//error: unexpected value for valueless attribute `LazySend'
-
-[ChildProc=any]
-async protocol PLazySendInvalid {
-child:
-    [LazySend=Invalid] async Message();
-};

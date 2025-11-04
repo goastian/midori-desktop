@@ -1,3 +1,0 @@
-This directory contains the JSON schemas used for the Remote Settings collection
-which stores cookie banner rules. It is used locally to validate test rules
-imported via pref.
