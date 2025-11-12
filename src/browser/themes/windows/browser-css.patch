@@ -1,0 +1,29 @@
+diff --git a/browser/themes/windows/browser.css b/browser/themes/windows/browser.css
+index e1a79cd22180738d2ca16e9a6c5591499d337325..d36996359bfa4dd7d98c4f5aeb192c7b144339bb 100644
+--- a/browser/themes/windows/browser.css
++++ b/browser/themes/windows/browser.css
+@@ -31,7 +31,6 @@
+     /* stylelint-disable-next-line media-query-no-invalid */
+     @media -moz-pref("widget.windows.mica.toplevel-backdrop", 2) {
+       /* For acrylic, do the same we do for popups to guarantee some contrast */
+-      background-color: light-dark(rgba(255, 255, 255, 0.6), rgba(0, 0, 0, 0.6));
+     }
+ 
+     /* Using a semitransparent background preserves the tinting from the backdrop.
+@@ -60,14 +59,13 @@
+ }
+ 
+ /* This is needed for Windows 10, see bug 1961257 */
+-@media (-moz-windows-accent-color-in-titlebar) {
+-  :root[customtitlebar][sizemode="normal"] #navigator-toolbox {
++  :root[customtitlebar][sizemode="normal"] #browser {
++    --zen-sidebar-compact-top-offset: 1px;
+     border-top: 0.5px solid ActiveBorder;
+     &:-moz-window-inactive {
+       border-top-color: InactiveBorder;
+     }
+   }
+-}
+ 
+ /* Titlebar */
+ 

@@ -1,0 +1,65 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+zen-panel-ui-workspaces-text = Diğer Çalışma Alanları
+zen-panel-ui-workspaces-create = 
+    .label = Create Space
+zen-panel-ui-folder-create = 
+    .label = Create Folder
+zen-panel-ui-new-empty-split = 
+    .label = New Split
+zen-workspaces-panel-context-delete = 
+    .label = Çalışma Alanını Sil
+    .accesskey = D
+zen-workspaces-panel-change-name = 
+    .label = İsmini Değiştir
+zen-workspaces-panel-change-icon = 
+    .label = Simgeyi Değiştir
+zen-workspaces-panel-context-default-profile = 
+    .label = Set Profile
+zen-workspaces-panel-unload = 
+    .label = Unload Space
+zen-workspaces-how-to-reorder-title = How to reorder spaces
+zen-workspaces-how-to-reorder-desc = Drag the space icons at the bottom of the sidebar to reorder them
+zen-workspaces-change-theme = 
+    .label = Edit Theme
+zen-workspaces-panel-context-open = 
+    .label = Çalışma Alanı Aç
+    .accesskey = O
+zen-workspaces-panel-context-edit = 
+    .label = Çalışma Alanını Düzenle
+    .accesskey = E
+context-zen-change-workspace-tab = 
+    .label = Sekme(ler)i Çalışma Alanına Değiştir
+    .accesskey = C
+zen-bookmark-edit-panel-workspace-selector = 
+    .value = Çalışma Alanları
+    .accesskey = W
+zen-panel-ui-gradient-generator-algo-complementary = 
+    .label = Tamamlayıcı
+zen-panel-ui-gradient-generator-algo-splitComplementary = 
+    .label = Böl
+zen-panel-ui-gradient-generator-algo-analogous = 
+    .label = Analog
+zen-panel-ui-gradient-generator-algo-triadic = 
+    .label = Üçlü
+zen-panel-ui-gradient-generator-algo-floating = 
+    .label = Kayan
+zen-panel-ui-gradient-click-to-add = Renk eklemek için tıkla
+zen-workspace-creation-name = 
+    .placeholder = Space Name
+zen-workspaces-panel-context-reorder = 
+    .label = Reorder Spaces
+zen-workspace-creation-profile = Profile
+    .tooltiptext = Profiles are used to separate cookies and site data between spaces.
+zen-workspace-creation-header = Create a Space
+zen-workspace-creation-label = Spaces are used to organize your tabs and sessions.
+zen-workspaces-delete-workspace-title = Delete Workspace?
+zen-workspaces-delete-workspace-body = Are you sure you want to delete { $name }? This action cannot be undone.
+# Note that the html tag MUST not be changed or removed, as it is used to better
+# display the shortcut in the toast notification.
+zen-workspaces-close-all-unpinned-tabs-toast = Tabs Closed! Use <span>{ $shortcut }</span> to undo.
+zen-workspaces-close-all-unpinned-tabs-title = 
+    .label = Clear
+    .tooltiptext = Close all unpinned tabs

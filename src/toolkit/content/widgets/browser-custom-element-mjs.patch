@@ -1,0 +1,18 @@
+diff --git a/toolkit/content/widgets/browser-custom-element.mjs b/toolkit/content/widgets/browser-custom-element.mjs
+index b5eb24e15cc97b004f182c35901505cb740e8571..f2dd435ba072affff3b4fdada6c360a575c22910 100644
+--- a/toolkit/content/widgets/browser-custom-element.mjs
++++ b/toolkit/content/widgets/browser-custom-element.mjs
+@@ -483,11 +483,11 @@ class MozBrowser extends MozElements.MozElementMixin(XULFrameElement) {
+     if (!this.browsingContext) {
+       return;
+     }
+-    this.browsingContext.isActive = val;
++    this.browsingContext.isActive = val || this.zenModeActive;
+     if (this.isRemoteBrowser) {
+       let remoteTab = this.frameLoader?.remoteTab;
+       if (remoteTab) {
+-        remoteTab.renderLayers = val;
++        remoteTab.renderLayers = val || this.zenModeActive;
+       }
+     }
+   }

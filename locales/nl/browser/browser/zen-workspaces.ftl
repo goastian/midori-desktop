@@ -1,0 +1,65 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+zen-panel-ui-workspaces-text = Ruimtes
+zen-panel-ui-workspaces-create = 
+    .label = Ruimte aanmaken
+zen-panel-ui-folder-create = 
+    .label = Create Folder
+zen-panel-ui-new-empty-split = 
+    .label = New Split
+zen-workspaces-panel-context-delete = 
+    .label = Ruimte verwijderen
+    .accesskey = D
+zen-workspaces-panel-change-name = 
+    .label = Naam wijzigen
+zen-workspaces-panel-change-icon = 
+    .label = Icon wijzigen
+zen-workspaces-panel-context-default-profile = 
+    .label = Profiel instellen
+zen-workspaces-panel-unload = 
+    .label = Unload Space
+zen-workspaces-how-to-reorder-title = Hoe ruimtes te herschikken
+zen-workspaces-how-to-reorder-desc = Sleep het ruimte icoon onderaan de zijbalk om ze te herschikken
+zen-workspaces-change-theme = 
+    .label = Thema bewerken
+zen-workspaces-panel-context-open = 
+    .label = Ruimte openen
+    .accesskey = O
+zen-workspaces-panel-context-edit = 
+    .label = Ruimte bewerken
+    .accesskey = E
+context-zen-change-workspace-tab = 
+    .label = Tabblad(en) veranderen naar ruimte
+    .accesskey = C
+zen-bookmark-edit-panel-workspace-selector = 
+    .value = Werkruimtes
+    .accesskey = W
+zen-panel-ui-gradient-generator-algo-complementary = 
+    .label = Aanvullend
+zen-panel-ui-gradient-generator-algo-splitComplementary = 
+    .label = Splitsen
+zen-panel-ui-gradient-generator-algo-analogous = 
+    .label = Vergelijkbaar
+zen-panel-ui-gradient-generator-algo-triadic = 
+    .label = Driezijdig
+zen-panel-ui-gradient-generator-algo-floating = 
+    .label = Zwevend
+zen-panel-ui-gradient-click-to-add = Klik om een kleur toe te voegen
+zen-workspace-creation-name = 
+    .placeholder = Ruimte naam
+zen-workspaces-panel-context-reorder = 
+    .label = Ruimtes herschikken
+zen-workspace-creation-profile = Profiel
+    .tooltiptext = Profielen worden gebruikt om cookies en site-gegevens tussen ruimtes te scheiden.
+zen-workspace-creation-header = Maak een ruimte
+zen-workspace-creation-label = Ruimtes worden gebruikt om je tabbladen en sessies te organiseren.
+zen-workspaces-delete-workspace-title = Ruimte verwijderen?
+zen-workspaces-delete-workspace-body = Are you sure you want to delete { $name }? This action cannot be undone.
+# Note that the html tag MUST not be changed or removed, as it is used to better
+# display the shortcut in the toast notification.
+zen-workspaces-close-all-unpinned-tabs-toast = Tabs Closed! Use <span>{ $shortcut }</span> to undo.
+zen-workspaces-close-all-unpinned-tabs-title = 
+    .label = Clear
+    .tooltiptext = Close all unpinned tabs

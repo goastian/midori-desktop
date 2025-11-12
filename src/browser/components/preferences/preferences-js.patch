@@ -1,0 +1,23 @@
+diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
+index 1fb8a954f61e89736b369f5fa01bb4f89fff16ad..3030c32cb66529f14e575428654778abd312dfd8 100644
+--- a/browser/components/preferences/preferences.js
++++ b/browser/components/preferences/preferences.js
+@@ -117,6 +117,7 @@ ChromeUtils.defineLazyGetter(this, "gSubDialog", function () {
+       styleSheets: [
+         "chrome://browser/skin/preferences/dialog.css",
+         "chrome://browser/skin/preferences/preferences.css",
++        "chrome://browser/skin/preferences/zen-preferences.css",
+       ],
+       resizeCallback: async ({ title, frame }) => {
+         // Search within main document and highlight matched keyword.
+@@ -196,6 +197,10 @@ function init_all() {
+   register_module("paneSearch", gSearchPane);
+   register_module("panePrivacy", gPrivacyPane);
+   register_module("paneContainers", gContainersPane);
++  register_module("paneZenLooks", gZenLooksAndFeel);
++  register_module("paneZenTabManagement", gZenWorkspacesSettings);
++  register_module("paneZenCKS", gZenCKSSettings);
++  register_module("paneZenMarketplace", gZenMarketplaceManager);
+ 
+   if (Services.prefs.getBoolPref("browser.translations.newSettingsUI.enable")) {
+     register_module("paneTranslations", gTranslationsPane);

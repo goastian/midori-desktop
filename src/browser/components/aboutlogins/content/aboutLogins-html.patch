@@ -1,0 +1,13 @@
+diff --git a/browser/components/aboutlogins/content/aboutLogins.html b/browser/components/aboutlogins/content/aboutLogins.html
+index a2b9a3c3bd60b7c679fc4babf2cc085f79ba84f5..3acd8da43d31cf8e9eb25d74421f522fdbd41094 100644
+--- a/browser/components/aboutlogins/content/aboutLogins.html
++++ b/browser/components/aboutlogins/content/aboutLogins.html
+@@ -6,7 +6,7 @@
+ <html>
+   <head>
+     <meta charset="utf-8">
+-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; object-src 'none'; script-src resource: chrome:; img-src data: blob: https://firefoxusercontent.com https://profile.accounts.firefox.com;">
++    <meta http-equiv="Content-Security-Policy" content="default-src chrome:; object-src 'none'; script-src resource: chrome:; img-src data: blob: https://firefoxusercontent.com https://profile.accounts.firefox.com;">
+     <meta name="color-scheme" content="light dark">
+     <title data-l10n-id="about-logins-page-title-name"></title>
+     <link rel="localization" href="branding/brand.ftl">

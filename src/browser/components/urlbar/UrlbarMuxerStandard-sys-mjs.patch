@@ -1,0 +1,22 @@
+diff --git a/browser/components/urlbar/UrlbarMuxerStandard.sys.mjs b/browser/components/urlbar/UrlbarMuxerStandard.sys.mjs
+index 20be2dbbb8471aeb43a9bf77888c9858a0b61186..a9f974a78c5676d1340a3543852e4126c1d32b04 100644
+--- a/browser/components/urlbar/UrlbarMuxerStandard.sys.mjs
++++ b/browser/components/urlbar/UrlbarMuxerStandard.sys.mjs
+@@ -852,6 +852,7 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
+     }
+ 
+     if (result.providerName == "UrlbarProviderTabToSearch") {
++      return false;
+       // Discard the result if a tab-to-search result was added already.
+       if (!state.canAddTabToSearch) {
+         return false;
+@@ -1498,7 +1499,9 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
+       usedLimits.maxResultCount++;
+     }
+ 
++    if (!(result.heuristic && result.source == UrlbarUtils.RESULT_SOURCE.ZEN_ACTIONS)) {
+     state.usedResultSpan += span;
++    }
+     this._updateStatePostAdd(result, state);
+ 
+     return true;

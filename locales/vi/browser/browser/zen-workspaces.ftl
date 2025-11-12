@@ -1,0 +1,65 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+zen-panel-ui-workspaces-text = Các không gian làm việc
+zen-panel-ui-workspaces-create = 
+    .label = Tạo không gian làm việc
+zen-panel-ui-folder-create = 
+    .label = Tạo thư mục thẻ
+zen-panel-ui-new-empty-split = 
+    .label = New Split
+zen-workspaces-panel-context-delete = 
+    .label = Xóa không gian làm việc
+    .accesskey = D
+zen-workspaces-panel-change-name = 
+    .label = Đổi tên
+zen-workspaces-panel-change-icon = 
+    .label = Đổi biểu tượng không gian làm việc
+zen-workspaces-panel-context-default-profile = 
+    .label = Cài đặt hồ sơ
+zen-workspaces-panel-unload = 
+    .label = Unload Space
+zen-workspaces-how-to-reorder-title = Cách sắp xếp thứ tự của các không gian làm việc
+zen-workspaces-how-to-reorder-desc = Kéo và thả các biểu tượng của không gian làm việc ở dưới thanh bên để sắp xếp thứ tự của chúng
+zen-workspaces-change-theme = 
+    .label = Chỉnh sửa màu sắc của trình duyệt
+zen-workspaces-panel-context-open = 
+    .label = Mở không gian làm việc
+    .accesskey = O
+zen-workspaces-panel-context-edit = 
+    .label = Tùy chỉnh không gian làm việc
+    .accesskey = E
+context-zen-change-workspace-tab = 
+    .label = Di chuyển (nhiều) Thẻ đến không gian làm việc
+    .accesskey = C
+zen-bookmark-edit-panel-workspace-selector = 
+    .value = Không gian làm việc
+    .accesskey = W
+zen-panel-ui-gradient-generator-algo-complementary = 
+    .label = Bổ sung
+zen-panel-ui-gradient-generator-algo-splitComplementary = 
+    .label = Chia nhỏ
+zen-panel-ui-gradient-generator-algo-analogous = 
+    .label = Tương tự
+zen-panel-ui-gradient-generator-algo-triadic = 
+    .label = Tam sắc
+zen-panel-ui-gradient-generator-algo-floating = 
+    .label = Nổi
+zen-panel-ui-gradient-click-to-add = Nhấn để thêm màu sắc
+zen-workspace-creation-name = 
+    .placeholder = Tên của không gian làm việc
+zen-workspaces-panel-context-reorder = 
+    .label = Tái sắp xếp không gian làm việc
+zen-workspace-creation-profile = Hồ sơ
+    .tooltiptext = Các hồ sơ sẽ không sử dụng chung dữ liệu giữa các không gian làm việc.
+zen-workspace-creation-header = Tạo không gian làm việc
+zen-workspace-creation-label = Không gian làm việc sẽ là nơi để bạn chứa các trang web và lượt truy cập của bạn.
+zen-workspaces-delete-workspace-title = Delete Workspace?
+zen-workspaces-delete-workspace-body = Bạn có chắc là bạn muốn xóa { $name }? Thao tác này sẽ không được hoàn lại.
+# Note that the html tag MUST not be changed or removed, as it is used to better
+# display the shortcut in the toast notification.
+zen-workspaces-close-all-unpinned-tabs-toast = Tabs Closed! Use <span>{ $shortcut }</span> to undo.
+zen-workspaces-close-all-unpinned-tabs-title = 
+    .label = Clear
+    .tooltiptext = Close all unpinned tabs

@@ -1,0 +1,12 @@
+diff --git a/toolkit/themes/shared/tree/tree.css b/toolkit/themes/shared/tree/tree.css
+index c50cab31785eecece2bf061b9770ba90c6ed0181..dfbd227ddab802d927b6897454a86fcd7252e96f 100644
+--- a/toolkit/themes/shared/tree/tree.css
++++ b/toolkit/themes/shared/tree/tree.css
+@@ -12,6 +12,7 @@
+ /* ::::: tree ::::: */
+ 
+ tree {
++  --color-accent-primary: var(--zen-primary-color, inherit);
+   margin: 0 4px;
+   background-color: Field;
+   color: FieldText;

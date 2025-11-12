@@ -1,0 +1,27 @@
+diff --git a/browser/components/sessionstore/TabState.sys.mjs b/browser/components/sessionstore/TabState.sys.mjs
+index 82721356d191055bec0d4b0ca49e481221988801..1ea5c394c704da295149443d7794961a12f2060b 100644
+--- a/browser/components/sessionstore/TabState.sys.mjs
++++ b/browser/components/sessionstore/TabState.sys.mjs
+@@ -85,7 +85,22 @@ class _TabState {
+       tabData.groupId = tab.group.id;
+     }
+ 
++    tabData.zenWorkspace = tab.getAttribute("zen-workspace-id");
++    tabData.zenPinnedId = tab.getAttribute("zen-pin-id");
++    tabData.zenEssential = tab.getAttribute("zen-essential");
++    tabData.pinned = tabData.pinned || tabData.zenEssential;
++    tabData.zenDefaultUserContextId = tab.getAttribute("zenDefaultUserContextId");
++    tabData.zenPinnedEntry = tab.getAttribute("zen-pinned-entry");
++    tabData.zenPinnedIcon = tab.getAttribute("zen-pinned-icon");
++    tabData.zenIsEmpty = tab.hasAttribute("zen-empty-tab");
++    tabData.zenHasStaticLabel = tab.hasAttribute("zen-has-static-label");
++    tabData.zenGlanceId = tab.getAttribute("glance-id");
++    tabData.zenIsGlance = tab.hasAttribute("zen-glance-tab");
++
+     tabData.searchMode = tab.ownerGlobal.gURLBar.getSearchMode(browser, true);
++    if (tabData.searchMode?.source === tab.ownerGlobal.UrlbarUtils.RESULT_SOURCE.ZEN_ACTIONS) {
++      delete tabData.searchMode;
++    }
+ 
+     tabData.userContextId = tab.userContextId || 0;
+ 
