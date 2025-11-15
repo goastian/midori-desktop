@@ -1,7 +1,7 @@
 {
   "name": "midori-desktop",
   "version": "1.0.0",
-  "description": "",
+  "description": "[![build result](https://build.opensuse.org/projects/home:astian-inc/packages/midori-browser/badge.svg?type=default)](https://build.opensuse.org/package/show/home:astian-inc/midori-browser) [![Telegram](https://img.shields.io/badge/Telegram-Chat-gray.svg?style=flat&logo=telegram&colorA=5583a4&logoColor=fff)](https://t.me/midoriweb) [![Twitter](https://img.shields.io/twitter/follow/midoriweb.svg?style=social&label=Follow)](https://twitter.com/grupoastian) [![Donate](https://img.shields.io/badge/Stripe-Donate-gray.svg?style=flat&logo=stripe&colorA=0071bb&logoColor=fff)](https://donate.stripe.com/00g6s675Xawl6ZO9AH) [![Patreon](https://img.shields.io/badge/PATREON-Pledge-red.svg)](https://www.patreon.com/midori_browser)",
   "lint-staged": {
     "**/*": ""
   },
@@ -49,7 +49,7 @@
   },
   "homepage": "https://github.com/goastian/midori-desktop#readme",
   "dependencies": {
-    "@zen-browser/surfer": "^1.11.22"
+    "@goastian/amelia": "^1.11.22"
   },
   "devDependencies": {
     "@babel/preset-typescript": "^7.27.0",
@@ -67,5 +67,10 @@
     "lint-staged": "^15.3.0",
     "prettier": "^3.4.2",
     "prettier-plugin-sh": "^0.14.0"
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
   }
 }
