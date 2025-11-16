@@ -14,12 +14,12 @@ def update_rc(last_version: str):
   rc_version = get_rc_response()
   if rc_should_be_updated(rc_version, last_version):
     print(f"New Firefox RC version is available: {rc_version}")
-    print("Removing engine directory and updating surfer.json.")
+    print("Removing engine directory and updating amelia.json.")
     if os.path.exists("engine"):
       shutil.rmtree("engine")
-    with open("surfer.json", "r") as f:
+    with open("amelia.json", "r") as f:
       data = json.load(f)
-    with open("surfer.json", "w") as f:
+    with open("amelia.json", "w") as f:
       data["version"]["candidate"] = rc_version
       json.dump(data, f, indent=2)
     print("Download the new engine by running 'npm run download'.")
@@ -91,9 +91,9 @@ def main():
 
   try:
     if not args.just_l10n:
-      last_version = get_version_from_file("surfer.json", args.rc)
+      last_version = get_version_from_file("amelia.json", args.rc)
       update_ff(args.rc, last_version)
-      new_version = get_version_from_file("surfer.json", args.rc)
+      new_version = get_version_from_file("amelia.json", args.rc)
       update_readme(last_version, new_version, args.rc)
       print(
           f"Updated version from {last_version} to {new_version} in README.md.")

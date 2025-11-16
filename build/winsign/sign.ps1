@@ -35,7 +35,7 @@ Start-Job -Name "SurferInit" -ScriptBlock {
     param($PWD)
     cd $PWD
     npm run import -- --verbose
-    $surferJson = Get-Content surfer.json | ConvertFrom-Json
+    $surferJson = Get-Content amelia.json | ConvertFrom-Json
     $version = $surferJson.brands.release.release.displayVersion
     npm run ci -- $version
 } -Verbose -ArgumentList $PWD -Debug

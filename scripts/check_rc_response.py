@@ -8,7 +8,7 @@ import sys
 import requests
 from typing import Optional
 
-METADATA_FILENAME = "surfer.json"
+METADATA_FILENAME = "amelia.json"
 TAGS_API_URL = "https://hg.mozilla.org/releases/mozilla-release/json-tags"
 
 
