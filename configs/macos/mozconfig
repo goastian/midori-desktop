@@ -7,16 +7,16 @@ unset MOZ_STDCXX_COMPAT
 ac_add_options --disable-dmd
 ac_add_options --enable-eme=widevine
 
-if test "$ZEN_RELEASE"; then
+if test "$MIDORI_RELEASE"; then
   # override LTO settings
   # TODO: Dont use LTO for now, it's causing a lot of issues
   export MOZ_LTO=cross,thin
   ac_add_options --enable-lto=cross,thin
 fi
 
-if test "$ZEN_RELEASE"; then
-  if test "$ZEN_GA_DISABLE_PGO"; then
-    export ZEN_DUMMY=1
+if test "$MIDORI_RELEASE"; then
+  if test "$MIDORI_GA_DISABLE_PGO"; then
+    export MIDORI_DUMMY=1
   else
     export MOZ_PGO=1
     ac_add_options MOZ_PGO=1
@@ -26,7 +26,7 @@ fi
 if test "$SURFER_COMPAT" = "x86_64"; then
   ac_add_options --target=x86_64-apple-darwin
 
-  if test "$ZEN_RELEASE"; then
+  if test "$MIDORI_RELEASE"; then
     ac_add_options --enable-wasm-avx
     ac_add_options --enable-optimize="-march=nehalem -mtune=haswell -O3 -w"
 
@@ -40,7 +40,7 @@ else
   ac_add_options --enable-clang-plugin
   ac_add_options --target=aarch64-apple-darwin
 
-  if test "$ZEN_RELEASE"; then
+  if test "$MIDORI_RELEASE"; then
     ac_add_options --enable-optimize="-O3 -mcpu=apple-m1 -march=armv8.3-a+simd"
 
     # As of Clang 13, the default is -mcpu=apple-m1 when using a aarch64-apple-macos target,
