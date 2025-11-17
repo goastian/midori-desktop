@@ -5,13 +5,21 @@
   "binaryName": "midori",
   "version": {
     "product": "firefox",
-    "version": "144.0.2",
-    "candidate": "144.0.2"
+    "version": "145.0",
+    "candidate": "145.0"
   },
   "buildOptions": {
     "generateBranding": true
   },
-  "addons": {},
+  "addons": {
+        "ublock": {
+      "platform": "github",
+      "id": "midorivpn@astian.org",
+      "repo": "goastian/midorivpn-extension",
+      "version": "1.0.6",
+      "fileGlob": "release.xpi"
+    }
+  },
   "brands": {
     "release": {
       "backgroundColor": "#282A33",
@@ -33,7 +41,7 @@
         }
       }
     },
-    "twilight": {
+    "dawn": {
       "backgroundColor": "#282A33",
       "brandShorterName": "Midori",
       "brandShortName": "Dawn",
