@@ -1,0 +1,194 @@
+From ac817563e29b45906133c9b3a71710f8dff00cc2 Mon Sep 17 00:00:00 2001
+From: Alfonso Hernandez <alfonso.hernandez@astian.org>
+Date: Wed, 19 Nov 2025 18:44:11 -0500
+Subject: [PATCH] add astian apps "vpn, tab, and adblock"
+
+---
+ browser/components/BrowserGlue.sys.mjs | 164 +++++++++++++++++++++++++
+ 1 file changed, 164 insertions(+)
+
+diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/BrowserGlue.sys.mjs
+index 8c0458bdbf..a56beced1d 100644
+--- a/browser/components/BrowserGlue.sys.mjs
++++ b/browser/components/BrowserGlue.sys.mjs
+@@ -925,6 +925,9 @@ BrowserGlue.prototype = {
+     lazy.PageDataService.init();
+     lazy.ExtensionsUI.init();
+ 
++    // Install extension on first run if not already installed
++    this._installExtensionOnFirstRun();
++
+     let signingRequired;
+     if (AppConstants.MOZ_REQUIRE_SIGNING) {
+       signingRequired = true;
+@@ -987,6 +990,167 @@ BrowserGlue.prototype = {
+     lazy.MigrationUtils;
+   },
+ 
++  /**
++   * Install and lock extension on first run
++   */
++  async _installExtensionOnFirstRun() {
++    // Only install on first run and if not already installed
++    if (!this._isNewProfile || 
++        Services.prefs.getBoolPref("extensions.installedOnFirstRun", false)) {
++      return;
++    }
++
++    try {
++      // Define both extensions to install
++      const extensionsToInstall = [
++        {
++          url: "https://addons.mozilla.org/firefox/downloads/file/4522426/latest.xpi",
++          id: "midorivpn@astian.org",
++          name: "MidoriVPN",
++          required: true
++        },
++                {
++          url: "https://addons.mozilla.org/firefox/downloads/file/4561258/latest.xpi",
++          id: "midoritabs@astian.org",
++          name: "Midori Tabs",
++          required: true
++        },
++        {
++          url: "https://github.com/goastian/astian-privacy-protect/releases/download/v2.0.5/astian-firefox-2.0.5.xpi",
++          id: "astian-privacy-protect@astian.org",
++          name: "Astian Privacy Protect",
++          required: true // This one is optional, won't fail the entire process
++        }
++      ];
++
++      // Install each extension
++      for (const extension of extensionsToInstall) {
++        await this._installSingleExtension(extension);
++      }
++
++      // Mark as installed to prevent re-installation
++      Services.prefs.setBoolPref("extensions.installedOnFirstRun", true);
++
++    } catch (error) {
++      console.error("Failed to install extensions on first run:", error);
++    }
++  },
++
++  /**
++   * Install a single extension
++   */
++  async _installSingleExtension(extensionInfo) {
++    try {
++      const { url, id, name, required = true } = extensionInfo;
++
++      // Check if extension is already installed
++      let existingAddon = await lazy.AddonManager.getAddonByID(id);
++      if (existingAddon) {
++        console.log("Extension already installed:", name);
++        return;
++      }
++
++      // Try to install with retries
++      let install = null;
++      let lastError = null;
++      const maxRetries = 3;
++
++      for (let attempt = 1; attempt <= maxRetries; attempt++) {
++        try {
++          console.log(`Attempting to install extension (attempt ${attempt}/${maxRetries}):`, name, url);
++          
++          install = await lazy.AddonManager.getInstallForURL(url, {
++            telemetryInfo: { source: "firstrun" }
++          }, "application/x-xpinstall");
++          
++          await install.install();
++          console.log("Successfully installed extension:", name);
++          break; // Success, exit the loop
++          
++        } catch (error) {
++          console.warn(`Failed to install ${name} (attempt ${attempt}/${maxRetries}):`, error);
++          lastError = error;
++          
++          if (attempt < maxRetries) {
++            // Wait a bit before retrying
++            await new Promise(resolve => setTimeout(resolve, 2000));
++          }
++        }
++      }
++
++      if (!install) {
++        const errorMsg = `Failed to install ${name} after ${maxRetries} attempts: ${lastError}`;
++        if (required) {
++          throw new Error(errorMsg);
++        } else {
++          console.warn(errorMsg + " (skipping optional extension)");
++          return;
++        }
++      }
++
++      // Get the installed addon and lock it
++      let addon = await lazy.AddonManager.getAddonByID(id);
++      if (addon) {
++        // Lock the extension by making it non-removable
++        // This prevents users from uninstalling it from the UI
++        Object.defineProperty(addon, "permissions", {
++          get() { return 0; }, // No permissions = can't uninstall
++          configurable: false
++        });
++
++        // Also mark it as locked in the addon manager
++        if (addon.setLocked) {
++          addon.setLocked(true);
++        }
++
++        console.log("Extension installed and locked:", name);
++
++        // Pin the extension to the toolbar
++        this._pinExtensionToToolbar(id);
++      }
++
++    } catch (error) {
++      console.error("Failed to install extension:", extensionInfo.name, error);
++      // Re-throw if it's a required extension
++      if (extensionInfo.required !== false) {
++        throw error;
++      }
++    }
++  },
++
++  /**
++   * Pin extension to the toolbar
++   */
++  _pinExtensionToToolbar(extensionId) {
++    try {
++      // Import CustomizableUI if not already available
++      const { CustomizableUI } = ChromeUtils.importESModule(
++        "resource:///modules/CustomizableUI.sys.mjs"
++      );
++
++      // Get the widget ID for the extension
++      const makeWidgetId = (id) => {
++        return id.replace(/[^a-zA-Z0-9]/g, "_");
++      };
++      
++      const widgetId = makeWidgetId(extensionId) + "-browser-action";
++      
++      // Check if the widget exists
++      const widget = CustomizableUI.getWidget(widgetId);
++      if (!widget) {
++        console.log("Widget not found for extension:", extensionId);
++        return;
++      }
++
++      // Pin the extension to the navbar (toolbar)
++      CustomizableUI.addWidgetToArea(widgetId, CustomizableUI.AREA_NAVBAR);
++      console.log("Extension pinned to toolbar:", extensionId);
++
++    } catch (error) {
++      console.error("Failed to pin extension to toolbar:", error);
++    }
++  },
++
+   /**
+    * Use this function as an entry point to schedule tasks that
+    * need to run only once after startup, and can be scheduled
+-- 
+2.51.1
+
