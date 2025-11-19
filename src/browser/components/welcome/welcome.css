@@ -1,0 +1,99 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+*/
+
+body {
+  width: 670px;
+  height: 504px;
+
+  display: flex;
+  position: relative;
+  flex-flow: row nowrap;
+  height: 100%;
+  min-height: 500px;
+  overflow: scroll;
+}
+
+.page {
+  display: none;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  align-content: center;
+  width: 100%;
+
+  margin: 32px;
+}
+
+#enableFeatures .card {
+  width: auto;
+}
+
+.card h3 {
+  margin: auto;
+  text-align: center;
+}
+
+.cardGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 8px;
+  justify-content: center;
+}
+
+.cardGroup .card {
+  width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-content: space-between;
+  border: 2px solid transparent;
+  transition: all 250ms ease-in-out;
+  margin: 0;
+  border-radius: 16px;
+}
+
+.cardGroup .card.selected {
+  border: 2px solid var(--in-content-primary-button-background-hover);
+}
+
+h2,
+p {
+  margin: 8px 0;
+}
+
+.icon {
+  -moz-context-properties: fill;
+  fill: currentColor;
+  display: inline-block;
+  height: 82px;
+  width: 82px;
+}
+
+.asset {
+  width: 500px;
+  padding-bottom: 32px;
+}
+
+@media (prefers-color-scheme: light) {
+  .dark-only {
+    display: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .light-only {
+    display: none;
+  }
+}
+
+input[type='checkbox'] {
+  display: inline-block;
+  vertical-align: middle;
+}

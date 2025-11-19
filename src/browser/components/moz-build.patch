@@ -1,0 +1,25 @@
+From 7f3c2f7c400f9e6d89112b43a5a5b2ccc77401ac Mon Sep 17 00:00:00 2001
+From: Alfonso Hernandez <alfonso.hernandez@astian.org>
+Date: Tue, 18 Nov 2025 07:54:32 -0500
+Subject: [PATCH] add custom components for Midori
+
+---
+ browser/components/moz.build | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/browser/components/moz.build b/browser/components/moz.build
+index 4e11d95ad3..6092f1e74d 100644
+--- a/browser/components/moz.build
++++ b/browser/components/moz.build
+@@ -75,6 +75,8 @@ DIRS += [
+     "webrtc",
+ ]
+ 
++# Midori: Custom components
++DIRS +=["welcome"]
+ DIRS += ["build"]
+ 
+ if CONFIG["MOZ_SELECTABLE_PROFILES"]:
+-- 
+2.51.1
+
