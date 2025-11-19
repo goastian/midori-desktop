@@ -9,5 +9,5 @@ if [ ! -f "package.json" ]; then
   exit 1
 fi
 
-npm update @zen-browser/surfer
-npm i @zen-browser/surfer@latest
+npm update @goastian/amelia
+npm i @goastian/amelia@latest
