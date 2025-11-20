@@ -28,7 +28,7 @@ index f1cabb13ca..b6cdedc6f6 100644
 +    const welcomeEnabled = Services.prefs.getBoolPref(MIDORI_WELCOME_PREF, true);
 +    const welcomeSeen = Services.prefs.getBoolPref(MidoriSeenPref, false);
 +
-+    if (welcomeEnabled && \!welcomeSeen)
++    if (welcomeEnabled && !welcomeSeen)
 +      // Open the welcome page in a new tab
 +      this._showWelcomeDialog();
 +    
