@@ -11,15 +11,7 @@
   "buildOptions": {
     "generateBranding": true
   },
-  "addons": {
-        "ublock": {
-      "platform": "github",
-      "id": "midorivpn@astian.org",
-      "repo": "goastian/midorivpn-extension",
-      "version": "1.0.6",
-      "fileGlob": "release.xpi"
-    }
-  },
+  "addons": {},
   "brands": {
     "release": {
       "backgroundColor": "#282A33",
