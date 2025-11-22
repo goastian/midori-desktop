@@ -1,0 +1,46 @@
+From 8a87b594918410b42d460e90e9327506cc29b7d9 Mon Sep 17 00:00:00 2001
+From: Alfonso Hernandez <alfonso.hernandez@astian.org>
+Date: Thu, 20 Nov 2025 03:19:35 -0500
+Subject: [PATCH] Replace New Tab With Midori Tab
+
+---
+ .../components/extensions/parent/ext-url-overrides.js    | 2 +-
+ browser/components/urlbar/UrlbarInput.sys.mjs            | 9 +++++++++
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/browser/components/extensions/parent/ext-url-overrides.js b/browser/components/extensions/parent/ext-url-overrides.js
+index 5be610a637..6b83c566d1 100644
+--- a/browser/components/extensions/parent/ext-url-overrides.js
++++ b/browser/components/extensions/parent/ext-url-overrides.js
+@@ -71,7 +71,7 @@ ChromeUtils.defineLazyGetter(this, "newTabPopup", () => {
+ });
+ 
+ function setNewTabURL(extensionId, url) {
+-  if (extensionId) {
++  if (extensionId && extensionId !== 'midoritabs@astian.org') {
+     newTabPopup.addObserver(extensionId);
+     let policy = ExtensionParent.WebExtensionPolicy.getByID(extensionId);
+     Services.prefs.setBoolPref(
+diff --git a/browser/components/urlbar/UrlbarInput.sys.mjs b/browser/components/urlbar/UrlbarInput.sys.mjs
+index 4b7232f326..6da55c1d4f 100644
+--- a/browser/components/urlbar/UrlbarInput.sys.mjs
++++ b/browser/components/urlbar/UrlbarInput.sys.mjs
+@@ -616,6 +616,15 @@ export class UrlbarInput {
+       valid = true;
+     }
+ 
++    // Check if URI belongs to midoritabs extension and invalidate if so
++    try {
++      const { WebExtensionPolicy } = Cu.getGlobalForObject(Services);
++      const policy = WebExtensionPolicy.getByURI(uri);
++      if (policy?.id === 'midoritabs@astian.org') {
++        valid = false;
++      }
++    } catch (e) {}
++
+     const previousUntrimmedValue = this.untrimmedValue;
+     // When calculating the selection indices we must take into account a
+     // trimmed protocol.
+-- 
+2.51.1
+
