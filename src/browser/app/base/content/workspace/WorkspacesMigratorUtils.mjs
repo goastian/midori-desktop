@@ -1,7 +1,7 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
 import { WorkspacesIdUtils } from "./WorkspacesIdUtils.mjs"
-import { WorkspacesService } from "resource://floorp/WorkspacesService.mjs"
+import { WorkspacesService } from "resource://browser/WorkspacesService.mjs"
 
 function getIconNameByWorkspaceName(workspaceName) {
   const settings = JSON.parse(
@@ -17,7 +17,7 @@ function getIconNameByWorkspaceName(workspaceName) {
     return null;
   }
   let iconURL = settings[targetWorkspaceNumber][workspaceName].icon;
-  let removeSVG = iconURL.replace("chrome://floorp/skin/workspace-icons/", "");
+  let removeSVG = iconURL.replace("chrome://browser/skin/workspace-icons/", "");
   let result = removeSVG.replace(".svg", "");
   return result;
 }
