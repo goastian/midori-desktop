@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="18"
+   height="18"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="bookmarks-symbolic.svg"
+   inkscape:version="1.3 (0e150ed, 2023-07-21)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="true"
+     inkscape:zoom="37.625"
+     inkscape:cx="8"
+     inkscape:cy="7.1229236"
+     inkscape:window-width="1408"
+     inkscape:window-height="747"
+     inkscape:window-x="308"
+     inkscape:window-y="25"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg1">
+    <inkscape:grid
+       id="grid1"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="1"
+       spacingy="1"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       dotted="false"
+       gridanglex="30"
+       gridanglez="30"
+       visible="true" />
+  </sodipodi:namedview>
+  <path
+     d="m 5.7841887,1.5415283 c 0,0 -0.43146,-0.012793 -0.87695,0.22852 -0.44549,0.24131 -0.92383,0.89765 -0.92383,1.6387 V 15.541748 a 1.0001,1.0001 0 0 0 1.5449,0.83789 l 3.4551,-2.2461 3.4550993,2.2461 a 1.0001,1.0001 0 0 0 1.5449,-0.83789 V 3.4087483 c 0,0 0.01489,-0.40654 -0.19141,-0.85352 -0.2063,-0.44698 -0.84826,-1.0137 -1.6094,-1.0137 H 5.7841987 Z m 0,1 h 6.3983993 c 0.8,0 0.80078,0.86719 0.80078,0.86719 V 15.541718 l -3.9999993,-2.5996 -4,2.5996 V 3.4087183 c 0,-0.86667 0.80078,-0.86719 0.80078,-0.86719 z"
+     color="#707070"
+     color-rendering="auto"
+     dominant-baseline="auto"
+     fill="#707070"
+     image-rendering="auto"
+     shape-rendering="auto"
+     solid-color="#707070"
+     style="font-variant-ligatures:normal;font-variant-position:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-alternates:normal;font-feature-settings:normal;text-indent:0;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#707070;text-transform:none;text-orientation:mixed;white-space:normal;shape-padding:0;isolation:auto;mix-blend-mode:normal;fill:#707070"
+     id="path1" />
+</svg>

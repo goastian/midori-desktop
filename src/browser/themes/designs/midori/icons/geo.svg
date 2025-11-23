@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="16"
+   height="16"
+   version="1.1"
+   id="svg4"
+   sodipodi:docname="geo.svg"
+   inkscape:version="1.3.2 (091e20e, 2023-11-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview4"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="37.625"
+     inkscape:cx="7.986711"
+     inkscape:cy="8"
+     inkscape:window-width="1408"
+     inkscape:window-height="747"
+     inkscape:window-x="0"
+     inkscape:window-y="25"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg4" />
+  <defs
+     id="defs1">
+    <style
+       id="current-color-scheme"
+       type="text/css">.ColorScheme-Text { color:#707070; }</style>
+  </defs>
+  <path
+     d="M 8,1 A 7,7 0 0 0 1,8 7,7 0 0 0 8,15 7,7 0 0 0 15,8 7,7 0 0 0 8,1 Z M 8,1.875 A 6.125,6.125 0 0 1 14.125,8 6.125,6.125 0 0 1 8,14.125 6.125,6.125 0 0 1 1.875,8 6.125,6.125 0 0 1 8,1.875 Z"
+     color="#707070"
+     fill="#707070"
+     id="path1"
+     style="stroke-width:0.875" />
+  <rect
+     transform="scale(-1)"
+     x="-8.4375"
+     y="-4.5"
+     width="0.875"
+     height="3.5"
+     rx="0.4375"
+     ry="0.4375"
+     color="#707070"
+     fill="#707070"
+     stroke-width="0.714438"
+     id="rect1" />
+  <rect
+     transform="scale(-1)"
+     x="-8.4375"
+     y="-15"
+     width="0.875"
+     height="3.5"
+     rx="0.4375"
+     ry="0.4375"
+     color="#707070"
+     fill="#707070"
+     stroke-width="0.714438"
+     id="rect2" />
+  <rect
+     transform="rotate(-90)"
+     x="-8.4375"
+     y="11.5"
+     width="0.875"
+     height="3.5"
+     rx="0.4375"
+     ry="0.4375"
+     color="#707070"
+     fill="#707070"
+     stroke-width="0.714438"
+     id="rect3" />
+  <rect
+     transform="rotate(-90)"
+     x="-8.4375"
+     width="0.875"
+     height="3.5"
+     rx="0.4375"
+     ry="0.4375"
+     color="#707070"
+     fill="#707070"
+     stroke-width="0.714438"
+     id="rect4"
+     y="1" />
+  <path
+     d="M 7.95555,5.375 A 2.625,2.625 0 0 0 5.375,8 2.625,2.625 0 0 0 8,10.625 2.625,2.625 0 0 0 10.625,8 2.625,2.625 0 0 0 8,5.375 a 2.625,2.625 0 0 0 -0.044433,0 z M 7.95726,6.25 a 1.75,1.75 0 0 1 0.042725,0 1.75,1.75 0 0 1 1.75,1.75 1.75,1.75 0 0 1 -1.75,1.75 1.75,1.75 0 0 1 -1.75,-1.75 1.75,1.75 0 0 1 1.7073,-1.75 z"
+     fill="#707070"
+     stroke-width="0"
+     style="paint-order:stroke fill markers"
+     id="path4" />
+</svg>

@@ -1,0 +1,244 @@
+@namespace xul url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+
+:root#main-window { min-width: 1050px !important; }
+
+:root {
+  --button-bgcolor: light-dark(rgba(155, 155, 155, .3), rgba(195, 195, 195, .3)) !important;
+  --button-hover-bgcolor: light-dark(rgba(155, 155, 155, .2), rgba(195, 195, 195, .2)) !important;
+  --button-active-bgcolor: light-dark(rgba(155, 155, 155, .4), rgba(195, 195, 195, .4)) !important;
+  --link-color: light-dark(#4481f2, #1280fd) !important;
+  --toolbarbutton-icon-fill-attention: light-dark(#4481f2, #1280fd) !important;
+  --arrowpanel-background: var(--gnome-menu-background) !important;
+  --in-content-box-background: var(--gnome-menu-background) !important;
+  --in-content-box-border-color: color-mix(in srgb, currentColor 20%, transparent) !important;
+  --sidebar-background-color: light-dark(#f0f0f0, #2a2b2b) !important;
+  --sidebar-border-color: light-dark(#eeedee, #272828) !important;
+  --urlbarView-hover-background: light-dark(rgba(155, 155, 155, .2), rgba(195, 195, 195, .2)) !important;
+  --urlbarView-highlight-background: light-dark(rgba(155, 155, 155, .3), rgba(195, 195, 195, .3)) !important;
+}
+
+:root[tabsintitlebar] #titlebar {
+  will-change: unset !important;
+  transition: unset !important;
+}
+
+.titlebar-buttonbox-container {
+  position: absolute !important;
+  left: 7px;
+  top: 18px;
+}
+.browserContainer.responsive-mode,
+.devtools-button:empty:not([aria-expanded="true"]):hover,
+.devtools-button:not(:empty, .checked, [aria-pressed="true"]):hover{
+  background: transparent !important;
+}
+.text-input {
+  border:1px solid var(--gnome-kose) !important;
+}
+#toolbar,
+.text-input{
+  background: transparent !important;
+}
+#toolbar {
+border-bottom: 1px solid var(--gnome-kose) !important;;
+}
+@media (-moz-platform: macos) {
+:root#main-window {
+  background-color: transparent !important;
+}
+
+:root#main-window:-moz-window-inactive, #sidebar-box:-moz-window-inactive {
+  background-color: var(--gnome-inactive-toolbar-background) !important;
+}
+
+:root {
+  --sidebar-border-color: transparent !important;
+  --sidebar-background-color: transparent !important;
+  --focus-outline-color: transparent !important;
+}
+
+#browser {
+  appearance: menupopup !important;
+  #tabbrowser-tabpanels {
+  background-color: transparent !important;
+}
+}
+
+#appcontent browser {
+margin: 1px !important;
+  margin-top: -2px !important;
+ border-radius: .9rem !important;
+  clip-path: circle(100%);
+
+}
+
+:root[tabsintitlebar][inFullscreen] #browser {
+  appearance: none !important;
+  #tabbrowser-tabpanels {
+  background-color: var(--gnome-toolbar-background) !important;
+}
+}
+
+:root[tabsintitlebar][inFullscreen] #nav-bar {
+  background: var(--gnome-toolbar-background) !important;
+  appearance: none !important;
+}
+
+:root[tabsintitlebar][inFullscreen] #sidebar-box {
+  background: var(--gnome-toolbar-background) !important;
+}
+
+#nav-bar {
+  background: transparent !important;
+  appearance: menupopup !important;
+}
+
+
+#titlebar {
+  border: none !important;
+}
+
+
+
+@media (prefers-color-scheme: dark) {
+:root#main-window {
+  outline: 2px solid rgba(255, 255, 255, .3) !important;
+  outline-offset: -1px !important;
+  border-radius: .9rem !important;
+}
+}
+}
+
+@media (-moz-platform: windows) {
+
+:root[tabsintitlebar][inFullscreen] .titlebar-buttonbox-container {
+  display: none !important;
+}
+
+.titlebar-buttonbox-container {
+  position: absolute !important;
+  left: 20px;
+  top: 21px;
+}
+
+.titlebar-button {
+  border: none;
+  padding: 0 4px !important;
+  stroke: none !important;
+  background-color: transparent !important;
+}
+
+.titlebar-button.titlebar-close {
+  order: -1;
+}
+
+.titlebar-close {
+  background: url("../titlebuttons/titlebutton-close.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-min {
+  background: url("../titlebuttons/titlebutton-minimize.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-restore, .titlebar-max {
+  background: url("../titlebuttons/titlebutton-maximize.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-close {
+  background: url("../titlebuttons/titlebutton-close-hover.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-min {
+  background: url("../titlebuttons/titlebutton-minimize-hover.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-restore {
+  background: url("../titlebuttons/titlebutton-unmaximize-hover.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-max {
+  background: url("../titlebuttons/titlebutton-maximize-hover.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-close:active {
+  background: url("../titlebuttons/titlebutton-close-active.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-min:active {
+  background: url("../titlebuttons/titlebutton-minimize-active.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-restore:active {
+  background: url("../titlebuttons/titlebutton-unmaximize-active.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-max:active {
+  background: url("../titlebuttons/titlebutton-maximize-active.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-close:-moz-window-inactive, .titlebar-buttonbox:hover .titlebar-close:-moz-window-inactive {
+  background: url("../titlebuttons/titlebutton-backdrop.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-min:-moz-window-inactive, .titlebar-buttonbox:hover .titlebar-min:-moz-window-inactive {
+  background: url("../titlebuttons/titlebutton-backdrop.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-restore:-moz-window-inactive, .titlebar-max:-moz-window-inactive, .titlebar-buttonbox:hover .titlebar-restore:-moz-window-inactive, .titlebar-buttonbox:hover .titlebar-max:-moz-window-inactive {
+  background: url("../titlebuttons/titlebutton-backdrop.svg") no-repeat;
+  background-size: contain;
+}
+
+@media (prefers-color-scheme: dark) {
+
+.titlebar-buttonbox:hover .titlebar-close:active {
+  background: url("../titlebuttons/titlebutton-close-active-dark.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-min:active {
+  background: url("../titlebuttons/titlebutton-minimize-active-dark.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-restore:active {
+  background: url("../titlebuttons/titlebutton-unmaximize-active-dark.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-buttonbox:hover .titlebar-max:active {
+  background: url("../titlebuttons/titlebutton-maximize-active-dark.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-close:-moz-window-inactive, .titlebar-buttonbox:hover .titlebar-close:-moz-window-inactive {
+  background: url("../titlebuttons/titlebutton-backdrop-dark.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-min:-moz-window-inactive, .titlebar-buttonbox:hover .titlebar-min:-moz-window-inactive {
+  background: url("../titlebuttons/titlebutton-backdrop-dark.svg") no-repeat;
+  background-size: contain;
+}
+
+.titlebar-restore:-moz-window-inactive, .titlebar-max:-moz-window-inactive, .titlebar-buttonbox:hover .titlebar-restore:-moz-window-inactive, .titlebar-buttonbox:hover .titlebar-max:-moz-window-inactive {
+  background: url("../titlebuttons/titlebutton-backdrop-dark.svg") no-repeat;
+  background-size: contain;
+}
+
+}
+
+}

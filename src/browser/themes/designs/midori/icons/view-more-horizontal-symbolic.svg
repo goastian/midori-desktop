@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="18"
+   height="18"
+   version="1.1"
+   id="svg3"
+   sodipodi:docname="view-more-horizontal-symbolic.svg"
+   inkscape:version="1.3.2 (091e20e, 2023-11-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs3">
+    <clipPath
+       clipPathUnits="userSpaceOnUse"
+       id="clipPath2">
+      <path
+         d="M 9.5,1 C 14.15,1 18,4.858333 18,9.5 18,14.15 14.14167,18 9.491667,18 4.85,18 1,14.15 1,9.5 1,4.858333 4.858333,1 9.5,1 Z M 9.495762,2.3 C 5.495291,2.3 2.3,5.501882 2.3,9.5 c 0,3.99812 3.186816,7.2 7.187287,7.2 C 13.48776,16.7 16.7,13.49812 16.7,9.5 16.7,5.501882 13.49623,2.3 9.495762,2.3 Z M 5.608333,8.291667 c 0.666667,0 1.208334,0.541666 1.208334,1.216666 0,0.666667 -0.55,1.208337 -1.208334,1.208337 -0.675,0 -1.216666,-0.54167 -1.216666,-1.208337 0,-0.675 0.541666,-1.216666 1.216666,-1.216666 z m 3.883334,0 c 0.666663,0 1.216663,0.541666 1.216663,1.216666 0,0.666667 -0.55,1.208337 -1.216663,1.208337 C 8.825,10.71667 8.275,10.175 8.275,9.508333 c 0,-0.675 0.55,-1.216666 1.216667,-1.216666 z m 3.891663,0 c 0.66667,0 1.20834,0.541666 1.20834,1.216666 0,0.666667 -0.54167,1.208337 -1.20834,1.208337 -0.675,0 -1.21666,-0.54167 -1.21666,-1.208337 0,-0.675 0.54166,-1.216666 1.21666,-1.216666 z"
+         id="path2" />
+    </clipPath>
+  </defs>
+  <sodipodi:namedview
+     id="namedview3"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="true"
+     inkscape:zoom="37.625"
+     inkscape:cx="7.986711"
+     inkscape:cy="6.8571429"
+     inkscape:window-width="1408"
+     inkscape:window-height="747"
+     inkscape:window-x="225"
+     inkscape:window-y="39"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg3">
+    <inkscape:grid
+       id="grid3"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="1"
+       spacingy="1"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       dotted="false"
+       gridanglex="30"
+       gridanglez="30"
+       visible="true" />
+  </sodipodi:namedview>
+  <path
+     id="path1-5"
+     d="M 0,0 H 19 V 19 H 0 Z"
+     style="fill:#707070;fill-opacity:1;fill-rule:nonzero;stroke:none"
+     transform="matrix(1,0,0,-1,-0.51162788,18.524918)"
+     clip-path="url(#clipPath2)"
+     inkscape:transform-center-x="0.41417502"
+     inkscape:transform-center-y="0.30121801" />
+</svg>

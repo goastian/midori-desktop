@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="18"
+   height="18"
+   version="1.1"
+   id="svg7"
+   sodipodi:docname="save-to-pocket.svg"
+   inkscape:version="1.3.2 (091e20e, 2023-11-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview9"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="true"
+     inkscape:zoom="29.5"
+     inkscape:cx="8.6271186"
+     inkscape:cy="8.9830508"
+     inkscape:window-width="1408"
+     inkscape:window-height="747"
+     inkscape:window-x="257"
+     inkscape:window-y="25"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg7">
+    <inkscape:grid
+       type="xygrid"
+       id="grid238"
+       originx="0"
+       originy="0"
+       spacingy="1"
+       spacingx="1"
+       units="px"
+       visible="true" />
+  </sodipodi:namedview>
+  <defs
+     id="defs3">
+    <style
+       id="current-color-scheme"
+       type="text/css">.ColorScheme-Text { color:#707070; }</style>
+  </defs>
+  <path
+     d="m 3.3235576,1.0529805 c -1.2578998,0 -2.2705771,1.0126772 -2.2705771,2.2705769 v 5.6764427 c 0,4.3890179 3.5580019,7.9470199 7.9470197,7.9470199 4.3890178,0 7.9470198,-3.558002 7.9470198,-7.9470199 V 3.3235574 c 0,-1.2578997 -1.012678,-2.2705769 -2.270577,-2.2705769 z m 0,1.1352885 H 14.676443 c 0.62895,0 1.135288,0.5063386 1.135288,1.1352884 v 5.6764427 c 0,3.7620149 -3.049717,6.8117309 -6.8117308,6.8117309 -3.7620152,0 -6.8117313,-3.049716 -6.8117313,-6.8117309 V 3.3235574 c 0,-0.6289498 0.5063388,-1.1352884 1.1352887,-1.1352884 z m 0.8603329,3.3637009 c -0.1451012,0 -0.290157,0.057334 -0.4013473,0.1685222 -0.2223688,0.2223691 -0.2223688,0.580314 0,0.802683 l 4.8161212,4.8161209 c 0.2223689,0.22237 0.580314,0.22237 0.8026831,0 L 14.217467,6.5231751 c 0.22237,-0.222369 0.22237,-0.5803139 0,-0.802683 -0.222367,-0.2223689 -0.580312,-0.2223689 -0.802683,0 L 8.999989,10.135288 4.5851923,5.7204921 C 4.474009,5.6093088 4.3289463,5.5519699 4.1838451,5.5519699 Z"
+     fill="#707070"
+     stroke-linecap="round"
+     stroke-linejoin="round"
+     stroke-width="2.22374"
+     id="path5"
+     sodipodi:nodetypes="ssssssssssssssssccsssssscscc"
+     style="fill:#707070;stroke:#707070;stroke-width:0.105961;stroke-dasharray:none;stroke-opacity:1" />
+</svg>

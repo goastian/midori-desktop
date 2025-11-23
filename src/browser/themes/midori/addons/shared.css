@@ -1,0 +1,398 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+*/
+
+/* Midori specific variables */
+:root {
+  --gradient-orientation: 90deg;
+  
+  /* Search bar */
+  --toolbarbutton-border-radius: 15px !important;
+  --urlbar-icon-border-radius: 15px !important;
+
+  /* Bookmark panel */
+  --bookmark-panel-image-border-radius: 8px; /* The border radius of the bookmark panel image */
+  --bookmark-panel-favicon-border-radius: 8px; /* The border radius of the bookmark panel favicon */
+  --bookmark-panel-menulist-padding: 5px;
+  --bookmark-panel-input-border-radius: 0; /* The border radius of the bookmark panel input */
+  --bookmark-panel-border-radius: var(
+    --menulist-border-radius
+  ); /* The border radius of the bookmark panel */
+
+  /* Custom elements */
+
+  /* Menulist */
+  --menulist-border-radius: 8px; /* The border radius of the menulist */
+  --panel-border-radius: 15px;
+
+  /* Dialog variables */
+  --dialog-border-radius: 16px; /* The border radius of the dialog */
+
+  /* Make the tabs a touch wider */
+  --tab-min-height: 38px;
+}
+
+#tabs-newtab-button .toolbarbutton-icon {
+  width: 24px;
+  height: 24px;
+  margin-left: 8px;
+  padding: 4px !important;
+}
+
+html|input:is([type="email"], [type="tel"], [type="text"], [type="password"], [type="url"], [type="number"]), html|textarea, xul|search-textbox {
+	border-radius: 15px !important;
+}
+
+.toolbarbutton-icon,
+.tab-close-button {
+  border-radius: 4px !important;
+}
+
+.container.infobar::before {
+  --gradient-orientation: 0;
+  background-image: var(--gradient) !important;
+}
+
+/* ========================================================================== */
+/* Tab style */
+
+/* This keeps the curve visible on the other sides of the tab */
+tab.tabbrowser-tab:nth-child(1) {
+  margin-left: 16px;
+}
+
+.tabbrowser-tab {
+  /* BUG GH#54: The container color does not show up in the midori theme */
+  border-top: 2px solid var(--identity-tab-color);
+
+  /* Expand the overflow margin to contain the tab curves
+    https://searchfox.org/mozilla-central/diff/b269ed31009c9a01be532c9afc0a836e0ad86ed6/browser/themes/shared/tabs.css#103 */
+  overflow-clip-margin: var(--tab-rounding-size) !important;
+}
+
+.tab-background[selected='true']::before,
+.tab-background[selected='true']::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+
+  -moz-context-properties: fill;
+  fill: var(--tab-selected-bgcolor);
+  background-size: cover;
+
+  width: var(--tab-rounding-size);
+  height: var(--tab-rounding-size);
+}
+
+.tab-background[selected='true']::before {
+  background-image: url('chrome://global/skin/icons/tab-rising-edge.svg');
+  left: var(--tab-rounding-size-neg);
+}
+
+.tab-background[selected='true']::after {
+  background-image: url('chrome://global/skin/icons/tab-falling-edge.svg');
+  right: var(--tab-rounding-size-neg);
+}
+
+/* This overrides our settings for the proton theme */
+#browser #TabsToolbar .tab-background {
+  height: var(--tab-min-height);
+}
+
+#tabbrowser-arrowscrollbox .tabbrowser-tab {
+  /* Specifies the padding to the left and right of the tab */
+  padding-inline: var(--tab-padding-inline) !important;
+}
+
+/* Fixing toolbar buttons when the tab box is present */
+#TabsToolbar-customization-target toolbarbutton > .toolbarbutton-icon,
+#TabsToolbar-customization-target toolbarbutton > .toolbarbutton-badge-stack {
+  margin-left: 8px;
+  padding: 4px !important;
+  margin-inline-end: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  border-radius: var(--toolbarbutton-border-radius) !important;
+}
+
+#verticaltabs-splitter {
+  background-color: var(--tab-selected-bgcolor, var(--toolbar-bgcolor));
+  background-image: var(--tab-selected-bgimage, var(--toolbar-bgimage));
+  -moz-default-appearance: auto !important;
+  -moz-font-smoothing-background-color: auto !important;
+  width: 4px;
+}
+
+/* ========================================================================== */
+/* Sidebar tabs & vertical tabs */
+.sidebar-item-background[checked='true']::before,
+.sidebar-item-background[checked='true']::after,
+#browser .tab-background[selected='true']::before,
+#browser .tab-background[selected='true']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+
+  background-size: cover;
+  color: var(--tab-selected-bgcolor);
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+
+  width: var(--tab-rounding-size);
+  height: var(--tab-rounding-size);
+
+  /* HACK: Stops the hoverstate from the next tab over from intersecting with the current tab */
+  z-index: 10;
+}
+
+.sidebar-item-background[checked='true']::before,
+#browser .tab-background[selected='true']::before {
+  background-image: url('chrome://global/skin/icons/tab-rising-edge.svg');
+  top: var(--tab-rounding-size-neg);
+  left: unset; /* This is for vertical tabs */
+}
+
+.sidebar-item-background[checked='true']::after,
+#browser .tab-background[selected='true']::after {
+  background-image: url('chrome://global/skin/icons/tab-falling-edge.svg');
+  bottom: var(--tab-rounding-size-neg);
+  transform: rotate(180deg);
+}
+
+/* Show the curve next to the sidebar panel */
+#sidebar-box[checked] ~ #sidebar-container::before,
+#browser #TabsToolbar ~ #sidebar-container::before {
+  content: '';
+
+  background-image: url('chrome://global/skin/icons/tab-rising-edge.svg');
+  background-size: cover;
+  color: var(--tab-selected-bgcolor, var(--toolbar-bgcolor));
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+
+  width: var(--tab-rounding-size);
+  height: var(--tab-rounding-size);
+  z-index: 1;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: rotate(180deg);
+}
+
+#appcontent,
+#browser #TabsToolbar {
+  position: relative;
+}
+
+/* Curve up at the top of the tabs */
+#sidebar-icons[checked]::before,
+#browser #TabsToolbar::before {
+  content: '';
+  background-image: url('chrome://global/skin/icons/tab-rising-edge.svg');
+  background-size: cover;
+  color: var(--tab-selected-bgcolor, var(--toolbar-bgcolor));
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+  width: var(--tab-rounding-size);
+  height: var(--tab-rounding-size);
+  z-index: 1;
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: rotate(-90deg);
+}
+
+/* The sidebar close icon looks a bit cramped by default */
+#sidebar-close {
+  border-radius: 8px;
+  padding: 8px;
+  width: unset;
+}
+
+#new-tab-button {
+  margin: 0 !important;
+}
+
+/* =========================================================================- */
+/* General sidebar stuff */
+.sidebar-splitter {
+  border-style: none;
+}
+
+#sidebar-switcher-target {
+  overflow: auto;
+}
+
+#sidebar-spacer {
+  flex: 0;
+}
+
+/* ========================================================================== */
+/* Tab Preview Stuff */
+
+.tab-preview-container {
+	background-color: var(--lwt-accent-color);
+	border-radius: 6px;
+	text-align: center;
+	width: 250px;
+	opacity: 0.95
+}
+
+.tab-preview-thumbnail-container {
+	border-radius: 6px;
+}
+
+/* ========================================================================== */
+/* Bookmark styles */
+
+/* Remove messy seperators */
+#editBookmarkHeaderSeparator,
+#editBookmarkSeparator {
+  display: none;
+}
+
+#editBookmarkPanelImage {
+  /* The border radius of the bookmark panel image */
+  border-radius: var(--bookmark-panel-image-border-radius) !important;
+}
+
+html|img#editBookmarkPanelFavicon[src] {
+  /* The border radius of the bookmark panel favicon */
+  border-radius: var(--bookmark-panel-favicon-border-radius) !important;
+}
+
+#editBookmarkPanel menulist {
+  /* Block padding */
+  padding-block: var(--bookmark-panel-menulist-padding);
+  border-radius: var(--bookmark-panel-menulist-padding);
+}
+
+#editBookmarkPanelRows > vbox > html|input,
+#editBookmarkPanelRows > vbox > hbox > html|input {
+  /* The border radius of the bookmark panel input */
+  border-radius: var(--bookmark-panel-input-border-radius);
+}
+
+/* Custom elements */
+menulist:host(:not([native])) {
+  /* The border radius of the menulist */
+  border-radius: var(--menulist-border-radius);
+}
+
+.dialogBox {
+  border-radius: var(--dialog-border-radius) !important;
+}
+
+.panel-footer > button {
+  border-radius: var(--arrowpanel-menuitem-border-radius);
+}
+
+/**
+ * @name Dim Unloaded Tabs
+ * @author Niklas Gollenstede
+ * @licence CC-BY-SA-4.0 or MIT or MPL 2.0
+ * @description
+ *     This style dims not loaded tabs in Firefox.
+ *     It is complementary to the UnloadTabs WebExtension and can either:
+ *     * be manually added to the `chrome/user.chrome.css` file in Firefox's profile directory
+ *     * or installed with the reStyle Firefox extension (and NativeExt).
+ *
+ *     If you have any issues with this style, please open a ticket at https://github.com/NiklasGollenstede/unload-tabs
+ */
+tab[pending],
+#alltabs-popup menuitem[pending] {
+  opacity: 0.6 !important;
+}
+
+/* Hide the firefox view button */
+:root:not([privatebrowsingmode='temporary'])
+  :is(toolbarbutton, toolbarpaletteitem)
+  + #tabbrowser-tabs,
+:root[privatebrowsingmode='temporary']
+  :is(
+    toolbarbutton:not(#firefox-view-button),
+    toolbarpaletteitem:not(#wrapper-firefox-view-button)
+  )
+  + #tabbrowser-tabs {
+  border-inline-start: none;
+}
+
+/* Additional Mods to hide the firefox view button */
+
+#firefox-view-button {
+	display: none !important;
+}
+
+.tab-background {
+  border-top-right-radius: 15px !important;
+  border-top-left-radius: 15px !important;
+  animation: fadeIn 0.5s;
+  transition: 0.3s;
+}
+
+menupopup, panel {
+  &::part(content) {
+    border: 0px !important;
+  }
+}
+
+#titlebar .titlebar-buttonbox-container {
+    display: none;
+}
+
+menupopup, panel {
+  &::part(content) {
+    border-radius: 12px !important;
+	animation: fadeIn 0.5s !important;
+	transition: 0.5s;
+	background: var(--input-bgcolor);
+  }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.titlebar-button:hover, toolbarbutton.bookmark-item:hover, .toolbarbutton-1:hover, .toolbarbutton:hover {
+    transition: 0.2s !important;
+}
+
+.bookmark-item {
+  border-radius: 15px !important;
+}
+
+#policies-container, #searchInput, .search-textbox {
+  border-radius: 15px;
+  border: 0px;
+}
+
+#categories > .category {
+  transition: background-color 0.3s;
+}
+
+.checkbox-check {
+  transition: 0.2s;
+}
+
+button {
+  border-radius: 15px;
+}
+
+input {
+  border-radius: 15px !important;
+}
+
+.info-box-container {
+  border-radius: 15px;
+}
+
+.card {
+  border-radius: 15px;
+}
+
+#sidebar-spacer {
+  display: none !important;
+}

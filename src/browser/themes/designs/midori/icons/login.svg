@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<svg
+   viewBox="0 0 18 18"
+   width="18"
+   height="18"
+   fill="#000000"
+   fill-opacity="context-fill-opacity"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="login.svg"
+   inkscape:version="1.3 (0e150ed, 2023-07-21)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="true"
+     inkscape:zoom="37.625"
+     inkscape:cx="8"
+     inkscape:cy="13.448505"
+     inkscape:window-width="1408"
+     inkscape:window-height="747"
+     inkscape:window-x="308"
+     inkscape:window-y="25"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg1">
+    <inkscape:grid
+       id="grid1"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="1"
+       spacingy="1"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       dotted="false"
+       gridanglex="30"
+       gridanglez="30"
+       visible="true" />
+  </sodipodi:namedview>
+  <path
+     d="M 16.599655,7.9582641 H 8.8477487 C 8.3867799,6.1297016 6.7852487,4.7707642 4.8691862,4.7707642 c -2.2749376,0 -4.12500012,1.9061249 -4.12500012,4.2499998 0,2.343876 1.85006252,4.250001 4.12500012,4.250001 2.18625,0 3.9630938,-1.765875 4.0992188,-3.984376 h 5.053125 v 2.390626 a 0.64453126,0.66406248 0 0 0 1.289062,0 V 9.286389 h 1.289063 a 0.64453126,0.66406248 0 0 0 0,-1.3281249 z M 4.8691862,11.94264 c -1.5644063,0 -2.8359376,-1.310063 -2.8359376,-2.921876 0,-1.6118124 1.2715313,-2.9218748 2.8359376,-2.9218748 1.5644062,0 2.8359375,1.3100624 2.8359375,2.9218748 0,1.611813 -1.2715313,2.921876 -2.8359375,2.921876 z"
+     id="path1"
+     style="stroke-width:1.04675;fill:#707070" />
+</svg>

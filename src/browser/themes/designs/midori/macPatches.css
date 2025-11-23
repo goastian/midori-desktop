@@ -1,0 +1,49 @@
+@import "Mac/macos-native-tabbar.css";
+@import "Mac/csd.css";
+@import "Mac/headerbar-urlbar.css";
+@import "Mac/buttons-fixes.css";
+@import "Mac/entries.css";
+@import "Mac/dialogs.css";
+@import "Mac/notifcation.css";
+@import "Mac/popups.css";
+@import "Mac/buttons.css";
+@import "Mac/video-player.css";
+@import "Mac/theme.css";
+@import "Mac/tabsbar.css";
+@import "Mac/popout_bookmarks_bar_on_hover.css";
+
+/*Custom Websites*/
+@import "Mac/Web/github.css";
+@import "Mac/Web/youtube.css";
+@import "Mac/Web/facebook.css";
+@import "Mac/Web/duckduckgo.css";
+@import "Mac/Web/google.css";
+@import "Mac/Web/twitter.css";
+@import "Mac/Web/yandex.css";
+
+/*Extensions*/
+@import "Mac/Extensions/TWP.css";
+@import "Mac/Extensions/SponsorBlock.css";
+@import "Mac/Extensions/VideoSpeedController.css";
+
+*{
+  scrollbar-width: none !important;
+}
+.preview-overlay {
+  background: var(--gnome-darko) !important;
+  backdrop-filter: blur(33px) !important;
+  border:1px solid var(--gnome-kose) !important;
+  margin: auto !important;
+height: 50% !important;
+  width: 50% !important;
+    border-radius: 12px; /* Panel köşe yuvarlama */
+  top: 25% !important;
+    left: 25% !important;
+  padding: 10px !important;
+}
+.fixed-container {
+  height:57vh !important;
+}
+.all-buttons-container {
+  display: none !important;
+}

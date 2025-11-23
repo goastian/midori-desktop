@@ -1,0 +1,95 @@
+
+@-moz-document domain("github.com") {
+@media (prefers-color-scheme: dark) {
+  :root {
+--github:#010409;
+    --gnome-github:#0d111775;
+    --gnome-git-alan:#21262d75;
+    }
+}
+@media (prefers-color-scheme: light) {
+  :root {
+
+--gnome-github:#ffffff75;
+    --gnome-git-alan:#f6f8fa95;
+    --github:white;
+    }
+}
+:root {
+  --color-canvas-overlay:var(--gnome-github) !important; 
+    --color-border-default:var(--gnome-kose) !important;
+    --borderRadius-medium:12px !important;
+    --borderRadius-small: 12px !important;
+  --borderRadius-large: 12px !important;
+  --color-canvas-default:var(--gnome-github) !important;
+  --color-primer-canvas-backdrop:none !important;
+  --color-canvas-subtle:var(--gnome-git-alan) !important;
+--color-border-muted:var(--gnome-kose) !important;
+  --color-neutral-emphasis-plus:#9da2a675 !important;
+  --overlay-backdrop-bgColor:none !important
+    --bgColor-default:var(--gnome-github) !important;
+  --overlay-bgColor:var(--gnome-github) !important;
+  --bgColor-muted:var(--gnome-git-alan) !important;
+  --bgColor-default:var(--gnome-github) !important;
+ 
+  }
+  .timeline-comment {
+    background:var(--github) !important;
+  }
+  .ijmlfi,
+  .dJCJcP{
+    background:var(--gnome-github) !important;
+   }
+  
+:where([popover]),
+  .Popover-message,
+  .search-suggestions,
+  .Overlay.Overlay--placement-left,
+  .Overlay.Overlay--placement-right,
+  .jEOdLx,
+  details-dialog,
+  .SelectMenu-modal,
+  .SelectMenu-list,
+  .eTCwDn,
+  .cfHMLL,
+  .lakhSY,
+  .frnhlJ,
+  .dropdown-menu,
+  .select-menu-modal,
+  .ePiodO,
+  .frcTWN,
+  .iRQGXA,
+  .Overlay-backdrop--anchor,
+  .Overlay--size-xlarge,
+  .svg-tip,
+  .gh-header .gh-header-sticky.is-stuck + .gh-header-shadow,
+  .p-2,
+  .ijmlfi,
+  .lldDpk,
+  .kVjsFx,
+  .cm-help-panel,
+  .drag-and-drop,
+  .site-subnav,
+  .jjfpJZ,
+  .Overlay:modal,
+  .Box,
+  .dJCJcP,
+  .ActionListWrap,
+  .flash:not(.Banner)
+  {
+    backdrop-filter: blur(15px) !important;
+  }
+  
+  :where([popover]){
+    border:1px solid var(--gnome-kose) !important;
+  }
+
+  anchored-position[popover],
+  .SelectMenu-modal,
+  .Qaxme,
+  .iIGpru,
+  .kRCnTK,
+  .select-menu-modal{
+    border-radius: 12px !important;
+  }
+}

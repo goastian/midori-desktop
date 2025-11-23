@@ -1,0 +1,19 @@
+@import "colors/light.css";
+@import "colors/dark.css";
+@namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+/* Set theme version text in customization panel */
+
+#customization-container,
+#customization-footer{
+	background:transparent !important;
+	 appearance: menupopup !important;
+	color: var(--gnome-toolbar-color) !important;
+}
+.panel-arrowcontent {
+	background:transparent !important;
+	 
+}
+.panel-arrow {
+	display: none !important;
+}

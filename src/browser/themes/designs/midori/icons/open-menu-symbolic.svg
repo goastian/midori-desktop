@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="18"
+   height="18"
+   version="1.1"
+   id="svg3"
+   sodipodi:docname="open-menu-symbolic.svg"
+   inkscape:version="1.3.2 (091e20e, 2023-11-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs3" />
+  <sodipodi:namedview
+     id="namedview3"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="true"
+     inkscape:zoom="37.625"
+     inkscape:cx="7.986711"
+     inkscape:cy="6.8571429"
+     inkscape:window-width="1408"
+     inkscape:window-height="747"
+     inkscape:window-x="0"
+     inkscape:window-y="25"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg3">
+    <inkscape:grid
+       id="grid3"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="1"
+       spacingy="1"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       dotted="false"
+       gridanglex="30"
+       gridanglez="30"
+       visible="true" />
+  </sodipodi:namedview>
+  <g
+     fill="#333333"
+     stroke-linecap="round"
+     stroke-linejoin="round"
+     stroke-width="2.1909"
+     id="g3"
+     style="fill:#707070;stroke:#707070;stroke-width:0.16910019;stroke-dasharray:none;stroke-opacity:1;stroke-linejoin:round;stroke-miterlimit:4"
+     transform="matrix(1.1636769,0,0,1.4021256,-0.31273743,-3.0459748)">
+    <rect
+       x="2"
+       y="4"
+       width="12"
+       height="1"
+       ry="0.5"
+       id="rect1"
+       style="fill:#707070;stroke:#707070;stroke-width:0.16910019;stroke-dasharray:none;stroke-opacity:1;stroke-linejoin:round;stroke-miterlimit:4" />
+    <rect
+       x="2"
+       y="8"
+       width="12"
+       height="1"
+       ry="0.5"
+       id="rect2"
+       style="fill:#707070;stroke:#707070;stroke-width:0.16910019;stroke-dasharray:none;stroke-opacity:1;stroke-linejoin:round;stroke-miterlimit:4" />
+    <rect
+       x="2"
+       y="12"
+       width="12"
+       height="1"
+       ry="0.5"
+       id="rect3"
+       style="fill:#707070;stroke:#707070;stroke-width:0.16910019;stroke-dasharray:none;stroke-opacity:1;stroke-linejoin:round;stroke-miterlimit:4" />
+  </g>
+</svg>

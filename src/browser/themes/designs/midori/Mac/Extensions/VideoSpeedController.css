@@ -1,0 +1,7 @@
+#controller {
+background-color:var(--gnome-darko) !important;
+border:1px solid var(--gnome-kose)!important;;
+backdrop-filter:blur(33px) !important;
+  opacity: 1 !important;
+  border-radius:8px !important;
+}

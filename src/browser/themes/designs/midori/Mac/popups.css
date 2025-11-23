@@ -1,0 +1,269 @@
+/* Popup menus and context menus */
+
+@namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+/* Style menus */
+menupopup {
+	-moz-appearance: none !important;
+        background: transparent !important;
+	--panel-background: var(--gnome-menu-background) !important;
+	--panel-border-radius: 6px !important;
+	--panel-padding: 6px !important;
+	--panel-separator-color: var(--gnome-popover-separator-color) !important;
+	--panel-border-color: transparent !important;
+	--arrowpanel-border-radius: 12px !important;
+	--arrowpanel-background: var(--gnome-menu-background) !important;
+	--arrowpanel-border-color: transparent !important;
+	color: var(--gnome-toolbar-color) !important;
+@media (-moz-platform: macos) {
+        appearance: menupopup !important;
+}
+
+}
+
+panel { 
+        --panel-border-color: transparent !important;
+@media (-moz-platform: macos) {
+        appearance: menupopup !important;
+        --panel-background: transparent !important;
+        --arrowpanel-background: transparent !important;
+        --arrowpanel-border-radius: 0 !important;
+        --arrowpanel-color: var(--gnome-toolbar-color) !important;
+}
+
+}
+
+.panel-arrowcontent {
+	border: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+* {
+        --button-primary-bgcolor: #1280fd !important;
+        --button-primary-hover-bgcolor: #1280fd !important;
+        --button-primary-active-bgcolor: #417bde !important;
+        --button-primary-color: #fff !important;
+        --input-bgcolor: #515151 !important;
+        --input-border-color: #515151 !important;
+        --toolbar-field-focus-background-color: #383838 !important;
+        --panel-border-color: rgba(255, 255, 255, 0.06) !important;
+	--arrowpanel-border-color: rgba(255, 255, 255, 0.06) !important;
+@media (-moz-platform: macos) {
+        --panel-border-color: transparent !important;
+}
+
+}
+
+.panel-arrowcontent {
+	border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        background: #3a3a3a !important;
+}
+
+.panel-arrow {
+	fill: #3a3a3a !important;
+        stroke: #484848 !important;
+}
+
+&:not(:-moz-window-inactive) { ::selection { background: #416189 } }
+
+}
+
+.popup-internal-box,
+#PopupAutoComplete > .autocomplete-richlistbox,
+.menupopup-arrowscrollbox {
+  background: light-dark(#fff, #333) !important;
+@media (-moz-platform: macos) {
+  background: transparent !important;
+}
+
+}
+
+.panel-header + toolbarseparator,
+#identity-popup-mainView-panel-header + toolbarseparator,
+#permission-popup-mainView-panel-header + toolbarseparator,
+#protections-popup-mainView-panel-header-section + toolbarseparator {
+	display: none !important;
+}
+
+.panel-footer toolbarseparator {
+	display: none !important;
+}
+
+.proton-zap {
+	border-image: unset !important;
+}
+
+/* Remove unwanted separators */
+.panel-header + toolbarseparator,
+#identity-popup-mainView-panel-header + toolbarseparator,
+#permission-popup-mainView-panel-header + toolbarseparator,
+#protections-popup-mainView-panel-header-section + toolbarseparator {
+	display: none !important;
+}
+
+/* Style popovers menu buttons */
+menuitem, menu {
+	-moz-appearance: none !important;
+	border-radius: 6px !important;
+	color: light-dark(#000, #fff) !important;
+	font: menu !important;
+	min-height: 28px !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+}
+
+menupopup > menuitem:is([selected="true"]):not([disabled="false"]) {
+    background: none !important;
+}
+
+.bookmark-item {
+	margin: 2px !important;
+}
+
+toolbarbutton.bookmark-item {
+	margin: 0 !important;
+}
+
+/* Menu buttons disabled */
+menuitem[disabled="true"], menupopup menu[disabled="true"],
+.subviewbutton[disabled="true"], .toolbarbutton-1[disabled="true"],
+.protections-popup-category[disabled="true"],
+.identity-popup-content-blocking-category[disabled="true"] {
+	opacity: 0.5 !important;
+}
+
+menuitem[disabled="true"][_moz-menuactive], menupopup menu[disabled="true"][_moz-menuactive] {
+	background: none !important;
+}
+
+/* Menu buttons hover */
+.protections-popup-footer-button:not([disabled="true"]):hover,
+#protections-popup-show-report-stack:hover .protections-popup-footer-button,
+.protections-popup-category:not([disabled="true"]):hover,
+.identity-popup-content-blocking-category:not([disabled="true"]):hover,
+#PlacesToolbar .bookmark-item:is(:hover, [open], [_moz-menuactive]),
+#downloadsPanel-mainView .download-state:hover {
+	background: light-dark(rgba(125, 125, 125, .2), rgba(195, 195, 195, .2)) !important;
+}
+
+menupopup menu:hover:not([disabled=true]),
+menupopup menuitem:hover:not([disabled=true]),
+menupopup menu[_moz-menuactive]:not([disabled=true]),
+menupopup menuitem[_moz-menuactive]:not([disabled=true]) {
+        background: light-dark(rgba(125, 125, 125, .2), rgba(195, 195, 195, .2)) !important;
+}
+
+/* Style popover separators */
+toolbarseparator, menuseparator {
+	appearance: none !important;
+}
+
+#PlacesToolbar menupopup[placespopup="true"] menuseparator {
+	border: none !important;
+	padding: 0 !important;
+}
+
+toolbarseparator, menuseparator::before {
+	border-top: 1px solid var(--gnome-popover-separator-color) !important;
+}
+
+menupopup menuseparator {
+	border: none !important;
+	margin: 4px 0 !important;
+}
+
+toolbarseparator[orient="vertical"] {
+	margin: 0 4px !important;
+}
+
+panelview > toolbarseparator:not([orient="vertical"]),
+#identity-popup-clear-sitedata-footer toolbarseparator:not([orient="vertical"]),
+#identity-popup-more-info-footer toolbarseparator:not([orient="vertical"]){
+	margin: 4px 6px !important;
+}
+
+.item.selected > .item-title-container {
+  background: #0061e0 !important;
+  color: #fff !important;
+}
+
+treechildren::-moz-tree-row {
+  outline: none !important;
+}
+
+treechildren::-moz-tree-row(selected) {
+  background: #0061e0 !important;
+}
+
+treechildren::-moz-tree-image(selected), treechildren::-moz-tree-twisty(selected), treechildren::-moz-tree-cell-text(selected) {
+  color: #fff !important;
+}
+
+@media (-moz-platform: macos) {
+treechildren::-moz-tree-row {
+  border-radius: 5px !important;
+}
+
+treechildren::-moz-tree-row(selected) {
+  background: var(--gnome-headerbar-button-active-background) !important;
+}
+
+.item.selected > .item-title-container {
+  border-radius: 5px !important;
+  background: var(--gnome-headerbar-button-active-background) !important;
+  color: light-dark(#000, #fff) !important;
+}
+
+treechildren::-moz-tree-image(selected), treechildren::-moz-tree-twisty(selected), treechildren::-moz-tree-cell-text(selected) {
+  color: light-dark(#000, #fff) !important;
+}
+}
+
+@-moz-document url("chrome://browser/content/browser.xhtml") {
+tree {
+  background-color: light-dark(#fff, #5f5f5f) !important;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent) !important;
+}
+
+}
+
+#unified-extensions-view .panel-header,
+#unified-extensions-view .panel-header + toolbarseparator,
+#unified-extensions-view .panel-subview-body + toolbarseparator,
+#unified-extensions-view #unified-extensions-manage-extensions,
+#unified-extensions-view .unified-extensions-item-menu-button.subviewbutton {
+  display:none !important;
+}
+
+#unified-extensions-view {
+  --uei-icon-size: 26px !important;
+}
+
+#unified-extensions-panel #unified-extensions-view {
+  width: 100% !important; 
+}
+.panel-subview-body {
+  padding-top: 5px !important;
+  padding-left:-2px !important;
+  padding-bottom: 5px !important;
+}
+
+ #statuspanel-label {
+   background:var(--gnome-bul) !important;
+border-radius:12px !important;
+border:1px solid var(--gnome-kose) !important;
+backdrop-filter:blur(33px) !important;
+  
+  animation: slideInOut 0.3s forwards;
+
+}
+
+@keyframes slideInOut {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1; /* Animasyon sonunda tamamen görünür olacak */
+  }
+}

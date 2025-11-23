@@ -1,0 +1,136 @@
+
+@-moz-document domain("duckduckgo.com") {
+  
+  @media (prefers-color-scheme: dark) {
+  :root {
+
+   --duckgo-bar:#28282875;
+    --duckgo-ara:#33333375;
+    }
+}
+@media (prefers-color-scheme: light) {
+  :root {
+
+       --duckgo-bar:#ffffff75;
+    --duckgo-ara:#ffffff75;
+   
+    }
+  }
+  
+  :root {
+    --default-border-radius:12px !important;
+    --color-gray85:var(--duckgo-ara) !important;
+    --theme-sidemenu-bg:var(--duckgo-bar) !important;
+    --theme-searchbox-bg:var(--duckgo-ara) !important;
+  }
+  .badge-link,
+  .module:not(.module--carousel):not(.module--placeholder):not(.module--images):not(.module--translations):not(.module__chromeless),
+.modal--popout .modal__box,
+.modal__box,
+.sidebar-modules .module,
+.results--main .result:not(.result--ad).highlight,
+.module .module--carousel__item,
+.user-loc-cta,
+.address-detail,
+.modal--dropdown.modal--popout .modal__box,
+.tile--info,
+.place-detail,
+.badge-link,
+.is-atb-fullbleed .content-info__item,
+.atb-banner__bottom,
+.multi-step-mobile-onboarding__step__content,
+.is-mobile .results_links_deep,
+.is-mobile .results_links,
+.is-mobile .result--news,
+.is-mobile .related-searches,
+.user-loc-tooltip,
+.anomaly-modal__modal,
+  .header-wrap,
+  .tileview--grid .metabar--fixed.is-stuck,
+  .acp--highlight{
+    background: var(--duckgo-bar) !important;
+  }
+  .dark-bg .modal__box.modal__box--feedback.modal__box--headed .modal__box__header,
+  .search--header,
+   .nav-menu--slideout,
+  .acp-wrap{
+    background: var(--duckgo-ara) !important;
+  }
+  .searchbox_suggestions__umkQH,
+  .searchbox_searchbox__eaWKL,
+  .sideMenu_sideMenu__ApNj_,
+  .badge-link,
+   .module:not(.module--carousel):not(.module--placeholder):not(.module--images):not(.module--translations):not(.module__chromeless),
+.modal--popout .modal__box,
+.modal__box,
+.sidebar-modules .module,
+.results--main .result:not(.result--ad).highlight,
+.module .module--carousel__item,
+.user-loc-cta,
+.address-detail,
+.modal--dropdown.modal--popout .modal__box,
+.tile--info,
+.place-detail,
+.badge-link,
+.is-atb-fullbleed .content-info__item,
+.atb-banner__bottom,
+.multi-step-mobile-onboarding__step__content,
+.is-mobile .results_links_deep,
+.is-mobile .results_links,
+.is-mobile .result--news,
+.is-mobile .related-searches,
+.user-loc-tooltip,
+.anomaly-modal__modal,
+  .header-wrap,
+  .tileview--grid .metabar--fixed.is-stuck,
+   .nav-menu--slideout,
+  .acp-wrap{
+    backdrop-filter: blur(33px) !important;
+  }
+  
+  .badge-link,
+   .module:not(.module--carousel):not(.module--placeholder):not(.module--images):not(.module--translations):not(.module__chromeless),
+.modal--popout .modal__box,
+.modal__box,
+.sidebar-modules .module,
+.results--main .result:not(.result--ad).highlight,
+.module .module--carousel__item,
+.user-loc-cta,
+.address-detail,
+.modal--dropdown.modal--popout .modal__box,
+.tile--info,
+.place-detail,
+.badge-link,
+.is-atb-fullbleed .content-info__item,
+.atb-banner__bottom,
+.multi-step-mobile-onboarding__step__content,
+.is-mobile .results_links_deep,
+.is-mobile .results_links,
+.is-mobile .result--news,
+.is-mobile .related-searches,
+.user-loc-tooltip,
+.anomaly-modal__modal,
+  .tileview--grid .metabar--fixed.is-stuck,
+  .search--header,
+  .sideMenu_sideMenu__ApNj_,
+  .search__autocomplete{
+    border:1px solid var(--gnome-kose) !important;
+  }
+  .modal--popover {
+    background: none !important;
+  }
+  .metabar__dropdowns-wrap:after,
+  .metabar__dropdowns-wrap::before{
+    background-image: none !important;
+  }
+   {
+    box-shadow: none !important;
+  }
+  
+}
+
+
+
+
+
+

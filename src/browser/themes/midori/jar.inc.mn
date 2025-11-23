@@ -1,0 +1,15 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# This is not a complete / proper jar manifest. It is included by the
+# actual theme-specific manifests, so that shared resources need only
+# be specified once. As a result, the source file paths are relative
+# to the location of the actual manifest.
+
+  skin/classic/browser/midori/sidebar_tabs.css   (../midori/sidebar_tabs.css)
+  skin/classic/browser/midori/tab_tweaks.css     (../midori/tab_tweaks.css)
+  skin/classic/browser/midori/vertical_tabs.css  (../midori/vertical_tabs.css)
+  skin/classic/browser/midori/downloads.css      (../midori/content/downloads.css)
+  skin/classic/browser/addons/shared.css        (../midori/addons/shared.css)
+

@@ -1,0 +1,195 @@
+{
+  "manifest_version": 2,
+
+  "applications": {
+    "gecko": {
+      "id": "midori-dark-new@astian.org"
+    }
+  },
+
+  "name": "Midori Dark",
+  "description": "Midori new dark theme",
+  "author": "Astian Inc",
+  "version": "1.2",
+
+  "icons": { "32": "icon.svg" },
+
+  "theme": {
+    "colors": {
+      "tab_background_text": "rgb(193, 200, 212)",
+      "tab_selected": "rgb(29, 33, 40)",
+      "tab_text": "rgb(232, 241, 255)",
+
+      "icons": "rgb(232, 241, 255)",
+      "frame": "rgb(18, 22, 28)",
+      "popup": "rgb(18, 22, 28)",
+      "popup_text": "rgb(232, 241, 255)",
+      "popup_border": "transparent",
+      "popup_highlight": "rgb(71, 77, 87)",
+      "popup_highlight_text": "rgb(232, 241, 255)",
+      "tab_line": "transparent",
+
+      "toolbar": "rgb(29, 33, 40)",
+      "toolbar_top_separator": "transparent",
+      "toolbar_bottom_separator": "rgb(29, 33, 40)",
+      "toolbar_field": "rgba(18, 22, 28, 0.90)",
+      "toolbar_field_border": "transparent",
+      "toolbar_field_text": "rgb(232, 241, 255)",
+      "toolbar_field_focus": "rgb(43, 51, 64)",
+      "toolbar_text": "rgb(193, 200, 212)",
+
+      "ntp_background": "rgb(29, 33, 41)",
+      "ntp_card_background": "rgb(43, 51, 64)",
+      "ntp_text": "rgb(232, 241, 255)",
+
+      "sidebar_text": "rgb(232, 241, 255)",
+      "sidebar_border": "transparent",
+
+      "button": "rgb(29, 33, 40)",
+      "button_hover": "rgb(71, 77, 87)",
+      "button_active": "rgb(106, 114, 125)",
+      "button_primary": "rgba(17, 94, 199, 1.00)",
+      "button_primary_hover": "rgba(17, 94, 199, 1.00)",
+      "button_primary_active": "rgba(17, 94, 199, 1.00)",
+      "button_primary_color": "rgb(240, 246, 255)",
+
+      "error_text_color": "rgb(255, 154, 162)",
+
+      "input_background": "rgb(43, 51, 64)",
+      "input_color": "rgb(232, 241, 255)",
+      "input_border": "transparent",
+      "input_border_error": "rgb(255, 132, 138)",
+
+      "autocomplete_popup_separator": "rgb(71, 77, 87)",
+      "appmenu_update_icon_color": "#54FFBD",
+      "appmenu_info_icon_color": "#8EA4D4",
+      "tab_icon_overlay_stroke": "rgb(53, 60, 77)",
+      "tab_icon_overlay_fill": "rgb(251,251,254)",
+
+      "pulse_grey_900": "rgb(4, 7, 10)",
+      "pulse_grey_850": "rgb(18, 22, 28)",
+      "pulse_grey_800": "rgb(43, 51, 64)",
+      "pulse_grey_700": "rgb(71, 77, 87)",
+      "pulse_grey_600": "rgb(106, 114, 125)",
+      "pulse_grey_500": "rgb(128, 133, 140)",
+      "pulse_grey_400": "rgb(162, 169, 179)",
+      "pulse_grey_300": "rgb(193, 200, 212)",
+      "pulse_grey_200": "rgb(216, 225, 237)",
+      "pulse_grey_100": "rgb(232, 241, 255)",
+
+      "pulse_primary_900": "rgb(1, 7, 15)",
+      "pulse_primary_800": "rgb(3, 18, 38)",
+      "pulse_primary_700": "rgb(6, 30, 64)",
+      "pulse_primary_600": "rgb(14, 76, 161)",
+      "pulse_primary_500": "rgb(17, 94, 199)",
+      "pulse_primary_400": "rgb(22, 120, 255)",
+      "pulse_primary_300": "rgb(97, 163, 255)",
+      "pulse_primary_200": "rgb(186, 215, 255)",
+      "pulse_primary_100": "rgb(240, 246, 255)",
+
+      "pulse_secondary_900": "rgb(1, 7, 15)",
+      "pulse_secondary_800": "rgb(3, 18, 38)",
+      "pulse_secondary_700": "rgb(6, 30, 64)",
+      "pulse_secondary_600": "rgb(14, 76, 161)",
+      "pulse_secondary_500": "rgb(17, 94, 199)",
+      "pulse_secondary_400": "rgb(22, 120, 255)",
+      "pulse_secondary_300": "rgb(97, 163, 255)",
+      "pulse_secondary_200": "rgb(186, 215, 255)",
+      "pulse_secondary_100": "rgb(240, 246, 255)"
+    },
+    "properties": {
+      "arrowpanel_border_radius": "4px",
+      "arrowpanel_menuitem_border_radius": "4px",
+
+      "panel_hover": "color-mix(in srgb, currentColor 9%, transparent)",
+      "panel_active": "color-mix(in srgb, currentColor 14%, transparent)",
+      "panel_active_darker": "color-mix(in srgb, currentColor 25%, transparent)",
+      "toolbar_field_icon_opacity": "1",
+
+      "tab_rounding_size": "8px",
+      "tab_rounding_size_neg": "-8px",
+      "tab_block_margin": "0px",
+      "tab_border_radius": "0px",
+      "tab_padding_inline": "0px",
+
+      "gradient": "linear-gradient(var(--gradient-orientation), var(--pulse-primary-500) 0%, var(--pulse-secondary-500) 100%)",
+      "zap_gradient": "var(--gradient)",
+
+      "toolbar_button_border_radius": "4px"
+    }
+  },
+
+  "theme_experiment": {
+    "stylesheet": "experiment.css",
+    "colors": {
+      "button": "--button-bgcolor",
+      "button_hover": "--button-hover-bgcolor",
+      "button_active": "--button-active-bgcolor",
+      "button_primary": "--button-primary-bgcolor",
+      "button_primary_hover": "--button-primary-hover-bgcolor",
+      "button_primary_active": "--button-primary-active-bgcolor",
+      "button_primary_color": "--button-primary-color",
+      "error_text_color": "--error-text-color",
+      "input_background": "--input-bgcolor",
+      "input_color": "--input-color",
+      "input_border": "--input-border-color",
+      "input_border_error": "--input-error-border-color",
+      "autocomplete_popup_separator": "--autocomplete-popup-separator-color",
+      "appmenu_update_icon_color": "--panel-banner-item-update-supported-bgcolor",
+      "appmenu_info_icon_color": "--panel-banner-item-info-icon-bgcolor",
+      "tab_icon_overlay_stroke": "--tab-icon-overlay-stroke",
+      "tab_icon_overlay_fill": "--tab-icon-overlay-fill",
+
+      "pulse_grey_900": "--pulse-grey-900",
+      "pulse_grey_850": "--pulse-grey-850",
+      "pulse_grey_800": "--pulse-grey-800",
+      "pulse_grey_700": "--pulse-grey-700",
+      "pulse_grey_600": "--pulse-grey-600",
+      "pulse_grey_500": "--pulse-grey-500",
+      "pulse_grey_400": "--pulse-grey-400",
+      "pulse_grey_300": "--pulse-grey-300",
+      "pulse_grey_200": "--pulse-grey-200",
+      "pulse_grey_100": "--pulse-grey-100",
+
+      "pulse_primary_900": "--pulse-primary-900",
+      "pulse_primary_800": "--pulse-primary-800",
+      "pulse_primary_700": "--pulse-primary-700",
+      "pulse_primary_600": "--pulse-primary-600",
+      "pulse_primary_500": "--pulse-primary-500",
+      "pulse_primary_400": "--pulse-primary-400",
+      "pulse_primary_300": "--pulse-primary-300",
+      "pulse_primary_200": "--pulse-primary-200",
+      "pulse_primary_100": "--pulse-primary-100",
+
+      "pulse_secondary_900": "--pulse-secondary-900",
+      "pulse_secondary_800": "--pulse-secondary-800",
+      "pulse_secondary_700": "--pulse-secondary-700",
+      "pulse_secondary_600": "--pulse-secondary-600",
+      "pulse_secondary_500": "--pulse-secondary-500",
+      "pulse_secondary_400": "--pulse-secondary-400",
+      "pulse_secondary_300": "--pulse-secondary-300",
+      "pulse_secondary_200": "--pulse-secondary-200",
+      "pulse_secondary_100": "--pulse-secondary-100"
+    },
+    "properties": {
+      "arrowpanel_border_radius": "--arrowpanel-border-radius",
+      "arrowpanel_menuitem_border_radius": "--arrowpanel-menuitem-border-radius",
+
+      "panel_hover": "--panel-item-hover-bgcolor",
+      "panel_active": "--arrowpanel-dimmed-further",
+      "panel_active_darker": "--panel-item-active-bgcolor",
+      "toolbar_field_icon_opacity": "--urlbar-icon-fill-opacity",
+
+      "tab_rounding_size": "--tab-rounding-size",
+      "tab_rounding_size_neg": "--tab-rounding-size-neg",
+      "tab_block_margin": "--tab-block-margin",
+      "tab_border_radius": "--tab-border-radius",
+      "tab_padding_inline": "--tab-padding-inline",
+
+      "gradient": "--gradient",
+      "zap_gradient": "--panel-separator-zap-gradient",
+
+      "toolbar_button_border_radius": "--toolbarbutton-border-radius"
+    }
+  }
+}

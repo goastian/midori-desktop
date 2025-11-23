@@ -1,0 +1,61 @@
+/* Entries */
+
+@namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+/* Entries */
+#urlbar > #urlbar-input-container,
+#searchbar, 
+#search-box,
+xul|search-textbox,
+[type="text"] {
+	outline-style: solid !important;
+	outline-color: transparent !important;
+	outline-width: 18px !important;
+}
+
+/* Entries focused */
+#urlbar[focused] > #urlbar-input-container,
+#searchbar:focus-within,
+#search-box[focused],
+xul|search-textbox[focused],
+[type="text"]:focus-visible {
+	outline-color: var(--gnome-focused-urlbar-border-color) !important;
+	outline-width: 2px !important;
+        outline-offset: -1px !important;
+	transition: all .3s cubic-bezier(.8, 0, 0, .8) !important;
+}
+
+#urlbar[breakout][breakout-extend] {
+        background: none !important;
+}
+
+/* Entries fixes */
+#urlbar-container, #search-container {
+	padding: 0 !important;
+	margin: 0 3px !important;
+}
+
+#urlbar-input-container {
+	background: transparent !important;
+	border: 0 !important;
+}
+
+#urlbar, #searchbar {
+	margin: 0 3px !important;
+	padding: 0 !important;
+}
+
+.searchbar-textbox {
+	border: 0 !important;
+	padding: 0 !important;
+	margin: 0 !important;
+	min-height: auto !important;
+}
+
+#searchbar > .searchbar-textbox[focused] .searchbar-search-button:not(#hack) {
+	margin: 0 !important;
+}
+.devtools-side-splitter {
+        background-color:none !important;
+	background: none !important;
+}

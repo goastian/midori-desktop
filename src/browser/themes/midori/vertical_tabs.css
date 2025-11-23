@@ -1,0 +1,204 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+:root {
+  --vertical-tabs-max-width: 350px;
+  --vertical-tabs-collapse-width: calc(
+    16px + 2 * var(--inline-tab-padding) + 2 * var(--tab-block-margin)
+  );
+}
+
+/* ========================================================================== */
+/* Toolbar styles */
+
+#browser #TabsToolbar .toolbar-items {
+  height: 100%;
+}
+
+#browser #TabsToolbar .titlebar-spacer,
+#TabsToolbar .titlebar-buttonbox-container,
+#browser #TabsToolbar #alltabs-button {
+  display: none !important;
+}
+
+#navigator-toolbox-background[verticaltabs='true'] #titlebar {
+  display: none;
+}
+
+#browser #TabsToolbar {
+  background-color: -moz-Dialog;
+  max-width: var(--vertical-tabs-max-width);
+  min-width: var(--vertical-tabs-collapse-width);
+  -moz-box-ordinal-group: 0;
+  overflow-x: hidden;
+
+  transition:
+    min-width 150ms ease-in-out,
+    max-width 150ms ease-in-out;
+}
+
+#browser #TabsToolbar:-moz-lwtheme {
+  background-image: var(--lwt-additional-images);
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position: center;
+  background-size: cover;
+
+  background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
+}
+
+/* Collapse styles */
+#browser #TabsToolbar:not([collapse='true']) {
+  min-width: 76px;
+}
+
+#browser #TabsToolbar[collapse='true'] {
+  max-width: var(--vertical-tabs-collapse-width);
+}
+
+/** On collapse hover of tabs or splitter, the max width should increase again */
+#browser #TabsToolbar[collapse='true']:hover
+/* #TabsToolbar[collapse='true']:has(+ #verticaltabs-splitter:hover)  */ {
+  max-width: var(--vertical-tabs-max-width);
+}
+
+/* ========================================================================== */
+/* Tab styles */
+
+#browser #TabsToolbar .tabbrowser-tab {
+  max-width: unset !important;
+  width: 100%;
+
+  /* Stops the tabs from getting squished or stretched */
+  min-height: unset;
+  height: var(--tab-min-height);
+  max-height: var(--tab-min-height);
+
+  transition:
+    min-height 150ms ease-in-out,
+    max-height 150ms ease-in-out;
+}
+
+#browser #TabsToolbar .tab-background {
+  height: calc(var(--tab-min-height) - 2px);
+}
+
+/* Work around for tab closing animation whilst in vertical tabs. Without this
+    the clean up code (created by 608589) will not work correctly */
+/* TODO: This causes tabs to stick around for longer and trigger a clean up
+    function. This isn't that performant, so we should look into fixing it in
+    the future */
+#browser #TabsToolbar .tabbrowser-tab:not([pinned], [fadein]) {
+  min-width: 0.1px;
+  max-width: 0.1px;
+  max-width: 0.1px;
+  max-height: 0.1px;
+}
+
+#browser #TabsToolbar tab.tabbrowser-tab:nth-child(1) {
+  margin-left: 0;
+}
+
+/* Border radius up at the top left of the browser when vertical tabs are enabled */
+@media (-moz-gtk-csd-available) {
+  :root[tabsintitlebar][sizemode='normal']:not([gtktiledwindow='true'])
+    #navigator-toolbox-background[verticaltabs='true']
+    #nav-bar {
+    border-top-left-radius: env(-moz-gtk-csd-titlebar-radius);
+    border-top-right-radius: env(-moz-gtk-csd-titlebar-radius);
+  }
+}
+
+#navigator-toolbox-background:not([verticaltabs='true'])
+  #nav-bar
+  .titlebar-buttonbox-container {
+  display: none;
+}
+
+/* This fixes some consistencies with which buttons should be visible */
+#browser #tabbrowser-arrowscrollbox-periphery {
+  display: none;
+}
+
+/** Extra margins for pinned tabs */
+#browser
+  #tabbrowser-tabs[haspinnedtabs]:not([positionpinnedtabs])
+  > #tabbrowser-arrowscrollbox
+  > .tabbrowser-tab:nth-child(1 of :not([pinned], [hidden])) {
+  margin-inline-start: 0px !important;
+}
+
+#browser .tab-content {
+  padding: 0 var(--inline-tab-padding) !important;
+}
+
+#browser .tab-throbber,
+#browser .tab-icon-pending,
+#browser .tab-icon-image,
+#browser .tab-sharing-icon-overlay,
+#browser .tab-icon-overlay {
+  margin-inline-end: 5.5px;
+}
+
+/* ========================================================================== */
+/* New tab icon styles */
+
+/* Put the new tab button on the bottom */
+#browser #TabsToolbar #TabsToolbar-customization-target {
+  flex-direction: column;
+  height: 100%;
+  /* Not sure why, but this forces the scroll box to scroll */
+  max-height: 100%;
+}
+
+#browser #new-tab-button {
+  display: inherit !important;
+  appearance: inherit !important;
+
+  border-radius: var(--tab-border-radius);
+  margin: 2px;
+  /* Note that we don't want left & right padding to ensure centering */
+  padding: var(--inline-tab-padding) 0;
+
+  height: calc(var(--tab-min-height) - 2px);
+}
+
+/* Disable text & styling for new tab button */
+#browser #new-tab-button image {
+  margin-left: 0;
+}
+#browser #new-tab-button label {
+  display: none;
+}
+
+#browser #new-tab-button:hover {
+  background: var(--toolbarbutton-hover-background);
+}
+
+#browser #tabbrowser-tabs {
+  border-inline-start: none;
+  margin-inline-start: 0;
+  padding-inline-start: 0;
+}
+
+#browser
+  #tabbrowser-tabs[haspinnedtabs]:not([positionpinnedtabs])
+  > #tabbrowser-arrowscrollbox
+  > .tabbrowser-tab[first-visible-unpinned-tab] {
+  margin-inline-start: 0px !important;
+}
+
+#verticaltabs-splitter {
+  -moz-box-ordinal-group: 1;
+  border: solid 1px var(--tab-selected-bgcolor, var(--toolbar-bgcolor));
+}
+
+#browser #TabsToolbar .tab-background {
+  border-radius: 10px !important;
+  margin: 5px;
+}
+
+#browser #TabsToolbar .tab-content {
+  margin: 5px;
+}

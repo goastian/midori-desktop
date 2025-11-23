@@ -1,0 +1,50 @@
+/* ______ _           __             __  __           _   ____  _     _    _ _____  
+  |  ____(_)         / _|           |  \/  |         | | |  _ \| |   | |  | |  __ \ 
+  | |__   _ _ __ ___| |_ _____  __  | \  / | ___   __| | | |_) | |   | |  | | |__) |
+  |  __| | | '__/ _ \  _/ _ \ \/ /  | |\/| |/ _ \ / _` | |  _ <| |   | |  | |  _  / 
+  | |    | | | |  __/ || (_) >  <   | |  | | (_) | (_| | | |_) | |___| |__| | | \ \ 
+  |_|    |_|_|  \___|_| \___/_/\_\  |_|  |_|\___/ \__,_| |____/|______\____/|_|  \_\
+  
+                                                                                    
+  Github:         github.com/datguypiko/Firefox-Mod-Blur     */
+
+/*===============================================================
+===================== E X T R A   M O D S =======================
+===============================================================*/
+
+@import url("privacy_change_email_text.css");
+@import url("privacy_blur_email_in_main_menu.css");
+@import url("privacy_blur_email_in_sync_menu.css");
+@import url("firefox_view_icon_change.css");
+@import url("no_search_engines_in_url_bar.css");
+@import url("spill-style-part1-file.css");
+@import url("white_github_icon_in_bookmarks.css");
+@import url("hide_list-all-tabs_button.css");
+@import url("bookmarks_bar_same_color_as_toolbar.css");
+@import url("min-max-close_buttons.css");
+@import url("acrylic_micaforeveryone.css");
+@import url("privacy_blur_tabs_content.css");
+@import url("popout_bookmarks_bar_on_hover.css");
+@import url("remove_folder_icons_from_bookmarks.css");
+@import url("icons_in_main_menu.css");
+@import url("ublock-icon-change.css");
+@import url("selected_tabs_static_width.css");
+@import url("autohide_tab_and_bookmarks_bars.css");
+@import url("url_bar_no_border.css");
+@import url("search_bar_transparent_background.css");
+@import url("transparent_bookmarks_bar.css");
+@import url("cleaner_extensions_menu.css");
+@import url("colored_soundplaying_tab.css");
+@import url("menu_icon_change_to_firefox.css");
+@import url("pinned_tabs_no_bg_color.css");
+@import url("reversed_tabs_bg_color.css");
+@import url("transparent_tabs_bg_color.css");
+@import url("tabs_separator.css");
+@import url("searchbox_text_align_left.css");
+@import url("tabs_take_full_bar_width.css");
+@import url("show_searchbar_dots_only_on_hover.css");
+@import url("thicker_control_buttons.css");
+@import url("midori_custom.css") not ((-moz-platform: macos) and (-moz-bool-pref: "pulse.mac-translucent"));
+@import url("macPatches.css") (-moz-platform: macos) and (-moz-bool-pref: "pulse.mac-translucent");
+
+/* Proceding CSS data has been moved to midori_custom due to new mac overrides */

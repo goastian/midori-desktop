@@ -1,0 +1,365 @@
+/* Header bar's URL bar */
+
+@namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+/* Headerbar entries */
+#nav-bar #searchbar,
+#urlbar #urlbar-input-container {
+	-moz-appearance: none !important;
+	box-shadow: none !important;
+	border-radius: 8px !important;
+	color: var(--gnome-urlbar-color) !important;
+	transition: background .5s;
+    border: 1px solid var(--gnome-kose) !important;
+}
+
+#urlbar {
+	--urlbar-height: 30px !important;
+	--urlbar-container-height: 30px !important;
+	--urlbar-toolbar-height: 30px !important;
+	--urlbar-inner-padding: 0 !important;
+}
+
+/* URL bar */
+#urlbar {
+	box-shadow: none !important;
+	border-radius: 8px !important;
+	border: none !important;
+    background: none !important;
+	padding: 0 !important;
+}
+
+#urlbar-background {
+	box-shadow: none !important;
+	background: none !important;
+	border-radius: 8px !important;
+    border: none !important;
+	padding: 0 !important;
+        max-height: 30px !important;
+}
+
+#urlbar-container,
+#wrapper-urlbar-container,
+#urlbar #urlbar-input-container {
+	padding: 0 !important;
+}
+
+:root[sizemode="maximized"] #urlbar,
+:root[sizemode="maximized"] #urlbar-container,
+:root[sizemode="maximized"] #wrapper-urlbar-container {
+
+}
+
+#urlbar[breakout][breakout-extend] {
+	left: 0 !important;
+	top: 0 !important;
+	width: 100% !important;
+	z-index: 5 !important;
+	padding: 0 !important;
+	border-radius: 10px !important;
+}
+
+#urlbar[breakout][breakout-extend][open] {
+	height: auto !important;
+	max-height: unset !important;
+}
+
+#urlbar[breakout][breakout-extend] #urlbar-input-container {
+	height: 30px !important;
+	max-height: 30px !important;
+	padding: 0 !important;
+}
+
+#urlbar-input {
+	text-align: start !important;
+        mask-image: linear-gradient(to right, #fff, transparent 120%) !important;
+}
+
+#urlbar-input::placeholder,
+.searchbar-textbox::placeholder {
+  font-size: 12.5px !important;
+  text-align: left !important;
+}
+
+
+.urlbarView-row[pinned] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-type-icon {
+  display: none !important;
+}
+
+.urlbarView-row[type=bookmark] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-type-icon {
+  display: none !important;
+}
+
+#urlbar { --autocomplete-popup-highlight-background: light-dark(#efeff4, #595959) !important; }
+
+#urlbar-zoom-button {
+  background: var(--gnome-headerbar-button-hover-background) !important;
+}
+
+#searchbar {
+  min-height: 28px !important;
+  margin-bottom: 4px !important;
+}
+
+/* URL bar results */
+.urlbarView {
+	border: 1px solid var(--gnome-kose) !important;
+	backdrop-filter: blur(33px) !important;
+	width: 105% !important;
+	margin: 1px 0 0 -30px !important;
+	border-radius: 8px !important;
+	background-color: var(--gnome-bul) !important;
+	box-shadow: 0 0 15px #00000040 !important;
+}
+@keyframes slideIn {
+  from {
+    transform: translateY(-40px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.urlbarView {
+  animation: slideIn 0.2s ease forwards;
+}
+
+.urlbarView-body-outer {
+	--item-padding-start: 0 !important;
+	--item-padding-end: 0 !important;
+	max-height: 40vh !important;
+	overflow-x: auto;
+	padding: 0 8px !important;
+}
+
+.urlbarView-body-inner {
+	border: 0 !important;
+}
+
+.urlbarView-row-inner, .urlbarView-no-wrap  {
+	align-items: center !important;
+}
+
+.urlbarView-row-inner {
+	padding-block: 5px !important;
+	border-radius: 5px !important;
+}
+
+.urlbarView-action {
+	background: transparent !important;
+}
+
+/* Search engines buttons */
+.search-one-offs {
+	margin: 0 0 2px !important;
+	padding: 8px !important;
+	background: var(--gnome-bul) !important;
+	border-radius: 0 0 8px 8px !important;
+}
+
+.searchbar-engine-one-off-item {
+	--toolbarbutton-active-background: var(--gnome-headerbar-button-active-background) !important;
+	--toolbarbutton-hover-background: var(--gnome-headerbar-button-hover-background) !important;
+	-moz-appearance: none !important;
+	background: transparent !important;
+	box-shadow: none !important;
+	border: none !important;
+	padding: 0 0 !important;
+	min-height: 28px !important;
+	min-width: 28px !important;
+	margin: 0 !important;
+}
+
+.searchbar-engine-one-off-item:hover, .searchbar-engine-one-off-item[selected] {
+	background: var(--gnome-headerbar-button-hover-background) !important;
+	color: unset !important;
+}
+
+#urlbar-anon-search-settings-compact {
+	border: none !important;
+	border-radius: 5px;
+	margin-left: 6px !important;
+}
+
+/* URL bar and Search bar */
+#urlbar[focused] .urlbar-textbox-container {
+	margin: -1px !important;
+}
+
+#searchbar > .searchbar-textbox[focused] .searchbar-search-button {
+	margin-left: -1px !important;
+}
+
+#searchbar > .searchbar-textbox[focused] .search-go-button {
+	margin-right: -1px !important;
+}
+
+/* URL bar and Search bar's icons */
+.urlbar-icon-wrapper:hover,
+.urlbar-icon-wrapper[open],
+.urlbar-icon:hover:active,
+.urlbar-icon-wrapper:hover:active,
+.searchbar-search-button:hover .searchbar-search-icon,
+.searchbar-search-button[open] .searchbar-search-icon,
+.searchbar-search-button:hover:active .searchbar-search-icon {
+	background-color: transparent !important;
+	fill-opacity: 1 !important;
+}
+
+#identity-box {
+	margin: 3px 2px !important;
+	border-radius: 5px !important;
+}
+
+#notification-popup-box {
+	height: 22px !important;
+	border-radius: 5px !important;
+}
+
+#urlbar-go-button, .search-go-button {
+	width: 28px !important;
+	height: 22px !important;
+        margin: 3px 0 !important;
+	padding: 3px 6px !important;
+	border-radius: 5px !important;
+}
+
+.urlbar-page-action {
+	width: 28px !important;
+	height: 22px !important;
+	padding: 3px 6px !important;
+	border-radius: 5px !important;
+        margin-inline-end: calc(-16px - 2 * var(--urlbar-icon-padding));
+        opacity: 0;
+        transition: .2s;
+}
+
+#urlbar:hover .urlbar-page-action,
+.urlbar-page-action[open] {
+  opacity: 1;
+  margin-inline-end: 0px !important;
+}
+
+#page-action-buttons {
+  margin-right: 22px !important;
+}
+
+#tracking-protection-icon-container {
+  width: 28px !important;
+  height: 22px !important;
+  margin-top: 3px !important;
+  border-radius: 5px !important;
+}
+
+#identity-permission-box, #notification-popup-box, #tracking-protection-icon-container {
+  margin-inline-start: calc(-16px - 2 * var(--urlbar-icon-padding));
+  opacity: 0;
+  transition: .2s;
+}
+
+#urlbar:hover #identity-permission-box,
+#urlbar:hover #notification-popup-box,
+#urlbar:hover #tracking-protection-icon-container,
+#identity-permission-box[open],
+#notification-popup-box[open],
+#tracking-protection-icon-container[open] {
+  opacity: 1;
+  margin-inline-start: 0 !important;
+}
+
+#urlbar:-moz-window-inactive .urlbar-page-action,
+#urlbar:-moz-window-inactive #identity-permission-box,
+#urlbar:-moz-window-inactive #notification-popup-box {
+        opacity: 0 !important;
+}
+
+#urlbar:-moz-window-inactive:hover .urlbar-page-action,
+#urlbar:-moz-window-inactive:hover #identity-permission-box,
+#urlbar:-moz-window-inactive:hover #notification-popup-box {
+        opacity: unset !important;
+}
+
+#identity-box:hover {
+	background: light-dark(rgba(125, 125, 125, .2), rgba(195, 195, 195, .2)) !important;
+}
+
+#identity-box:active {
+	background: light-dark(rgba(125, 125, 125, .4), rgba(195, 195, 195, .4)) !important;
+}
+
+.identity-box-button {
+	border-radius: 5px !important;
+        background: none !important;
+}
+
+#identity-box.extensionPage #identity-icon-label {
+	visibility: collapse !important;
+}
+
+/* Search mode indicator */
+#urlbar-search-mode-indicator,
+#urlbar-label-box {
+	background: var(--gnome-headerbar-button-hover-background) !important;
+	border: none !important;
+	border-radius: 5px !important;
+	outline: 0 !important;
+	margin-top: 3px !important;
+	margin-bottom: 3px !important;
+}
+
+#urlbar-search-mode-indicator-title {
+	padding-inline: 4px !important;
+}
+
+#urlbar-search-mode-indicator-close {
+	background-size: 12px 12px !important;
+	border-radius: 3px !important;
+	opacity: 0.8 !important;
+	fill: var(--gnome-toolbar-color) !important;
+}
+
+/*translations-button*/
+#translations-button[translationsactive] > #translations-button-icon {
+  fill: var(--theme-primary-active-color) !important;
+  fill-opacity: 1;
+}
+
+#translations-button-circle-arrows {
+  height: 16px;
+  width: 16px;
+  list-style-image: url("chrome://browser/skin/sync.svg");
+  fill: var(--theme-primary-active-color) !important;
+  fill-opacity: 1;
+  margin-inline: 1px;
+}
+
+#translations-button-locale {
+  background-color: var(--theme-primary-active-color) !important;
+  color: white !important;
+  border-radius: 4px;
+  font-size: 0.8em;
+  height: 20px;
+  min-width: 20px;
+  text-align: center;
+  padding-top: 3px;
+  padding-inline: 1px;
+  box-sizing: border-box;
+  margin-inline: 2px -2px;
+  margin-block: -2px;
+}
+
+#translations-button[translationsactive="true"] {
+  width: auto !important;
+}
+
+/*bunch up toolbar buttons*/
+
+toolbarbutton {
+  margin-top: -6px !important;
+}
+
+#navigator-toolbox:not([inFullscreen]) #TabsToolbar .titlebar-buttonbox-container {
+  padding-top: 7px !important;
+}

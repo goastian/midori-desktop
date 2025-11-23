@@ -1,0 +1,135 @@
+/* Header bar */
+@namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+/* Headerbar */
+
+#firefox-view-button, #fxa-toolbar-menu-button, #userContext-label,
+#blocked-permissions-container, #picture-in-picture-button,
+#urlbar-go-button, #private-browsing-indicator-with-label,
+#reset-pbm-toolbar-button, #nav-bar toolbarspring {
+	display: none !important;
+}
+
+/* Headerbar buttons */
+#nav-bar toolbarbutton:not(#urlbar-zoom-button),
+toolbar .toolbaritem-combined-buttons > .toolbarbutton-1 {
+	border: none !important;
+	box-shadow: none !important;
+	background: none !important;
+	-moz-appearance: none !important;
+	border-radius: 8px !important;
+	padding: 0 10px !important;
+	max-height: 28px !important;
+	min-height: 28px !important;
+	min-width: 28px !important;
+	color: var(--gnome-toolbar-color) !important;
+	transition: background 200ms;
+	--toolbarbutton-inner-padding: 0 !important;
+}
+
+:root:-moz-window-inactive #nav-bar toolbarbutton:not(#urlbar-zoom-button) {
+	background: none !important;
+}
+
+#nav-bar .toolbaritem-combined-buttons {
+	margin: 0 !important;
+}
+
+/* Hover headerbar buttons */
+#nav-bar toolbarbutton:not(#urlbar-zoom-button):not([open]):not([disabled]):not([checked]):hover,
+#TabsToolbar .toolbarbutton-1:hover,
+#tabs-newtab-button:hover, #TabsToolbar #new-tab-button:hover {
+	outline: 0 !important;
+	background: var(--gnome-headerbar-button-hover-background) !important;
+}
+
+/* Active headerbar buttons */
+#nav-bar toolbarbutton:not(#urlbar-zoom-button):not([disabled]):not(#hack):active,
+#nav-bar toolbarbutton:not(#urlbar-zoom-button):not([disabled])[open],
+#nav-bar toolbarbutton:not(#urlbar-zoom-button):not([disabled])[checked],
+#TabsToolbar .toolbarbutton-1:active, #TabsToolbar .toolbarbutton-1[open],
+#tabs-newtab-button:active, #TabsToolbar #new-tab-button:active {
+	background: var(--gnome-headerbar-button-active-background) !important;
+}
+
+/* Disabled headerbar buttons */
+#nav-bar toolbarbutton:not(#urlbar-zoom-button)[disabled] {
+	background: transparent !important;
+	border-color: var(--gnome-button-disabled-border-color) !important;
+	box-shadow: none !important;
+	opacity: 1 !important;
+}
+
+/* Inactive window buttons */
+#nav-bar toolbarbutton:not(#urlbar-zoom-button):-moz-window-inactive {
+	background: var(--gnome-inactive-button-background) !important;
+	box-shadow: var(--gnome-inactive-button-box-shadow) !important;
+	border-color: var(--gnome-inactive-button-border-color) !important;
+}
+
+/* Buttons with margins */
+#nav-bar .toolbarbutton-1 {
+	margin: 0 2px !important;
+}
+
+#nav-bar #back-button:not(#hack),
+#nav-bar #forward-button:not(#hack) {
+	padding: 0 4px !important;
+	width: 34px !important;
+	min-width: 34px !important;
+}
+
+#nav-bar #forward-button:not(#hack) {
+	margin-left: 0 !important;
+}
+
+#nav-bar #back-button:not(#hack) {
+	margin-right: 1px !important;
+}
+#urlbar #urlbar-input-container {
+	border:1px solid var(--gnome-kose) !important;
+}
+/* Headerbar entries */
+#nav-bar #searchbar,
+#urlbar #urlbar-input-container {
+	-moz-appearance: none !important;
+	background: var(--gnome-urlbar-background) !important;
+	box-shadow: none !important;
+	color: var(--gnome-urlbar-color) !important;
+	transition: background .5s;
+}
+
+#urlbar[open] #urlbar-background,
+#urlbar #urlbar-input-container:hover, #nav-bar #searchbar:hover {
+        background: var(--gnome-tabbar-tab-hover-background) !important;
+        transition: background .5s;
+}
+
+@media (-moz-platform: macos) {
+#nav-bar #searchbar, #urlbar #urlbar-input-container {
+  background: var(--gnome-headerbar-button-hover-background) !important;
+}
+
+#urlbar[open] #urlbar-background,
+#urlbar #urlbar-input-container:hover, #nav-bar #searchbar:hover {
+  background: var(--gnome-headerbar-button-active-background) !important;
+}
+}
+
+#urlbar:-moz-window-inactive {
+  * { opacity: 78%; }
+}
+
+:root:-moz-window-inactive #nav-bar #searchbar,
+:root:-moz-window-inactive #urlbar #urlbar-input-container {
+	background: var(--gnome-inactive-urlbar-background) !important;
+        opacity: 1 !important;
+}
+
+#urlbar[breakout][breakout-extend] #urlbar-input-container,
+#urlbar[breakout][breakout-extend] #urlbar-input-container:hover {
+	background: none !important;
+	box-shadow: none !important;
+	padding: 0 3px !important;
+}
+

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="15.999875"
+   height="18"
+   version="1.1"
+   viewBox="0 0 4.2333001 4.7624998"
+   id="svg4"
+   sodipodi:docname="reader-mode.svg"
+   inkscape:version="1.3 (0e150ed, 2023-07-21)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="namedview4"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="px"
+     showgrid="true"
+     inkscape:zoom="37.625294"
+     inkscape:cx="7.9999374"
+     inkscape:cy="8.7441176"
+     inkscape:window-width="1408"
+     inkscape:window-height="747"
+     inkscape:window-x="308"
+     inkscape:window-y="25"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg4">
+    <inkscape:grid
+       id="grid4"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="0.26458332"
+       spacingy="0.26458332"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       dotted="false"
+       gridanglex="30"
+       gridanglez="30"
+       visible="true" />
+  </sodipodi:namedview>
+  <g
+     fill="#707070"
+     id="g4"
+     transform="translate(0.22502592,0.43598771)">
+    <path
+       d="M 0.26459,0.52917 C 0.26459,0.23601 0.5006,0 0.79376,0 h 2.6458 c 0.29316,0 0.52917,0.23601 0.52917,0.52917 v 3.175 c 0,0.29316 -0.23601,0.52917 -0.52917,0.52917 h -2.6458 c -0.29316,0 -0.52917,-0.23601 -0.52917,-0.52917 z m 0.26458,0 v 3.175 c 0,0.14658 0.118,0.26458 0.26458,0.26458 h 2.6458 c 0.14658,0 0.26458,-0.118 0.26458,-0.26458 v -3.175 c 0,-0.14658 -0.118,-0.26458 -0.26458,-0.26458 h -2.6458 c -0.14658,0 -0.26458,0.118 -0.26458,0.26458 z"
+       color="#707070"
+       stroke-width="0.26458"
+       id="path1" />
+    <g
+       stroke-linecap="square"
+       id="g3">
+      <g
+         stroke-width="0.5657"
+         id="g2">
+        <rect
+           x="1.0583"
+           y="1.0583"
+           width="2.1166999"
+           height="0.26458001"
+           ry="0.13229001"
+           id="rect1" />
+        <rect
+           x="1.0583"
+           y="1.8521"
+           width="2.1166999"
+           height="0.26458001"
+           ry="0.13229001"
+           id="rect2" />
+      </g>
+      <rect
+         x="1.0583"
+         y="2.6458001"
+         width="1.2095"
+         height="0.26458001"
+         ry="0.13229001"
+         stroke-width="0.42763"
+         id="rect3" />
+    </g>
+  </g>
+</svg>
