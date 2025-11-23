@@ -179,7 +179,7 @@ class Features extends Page {
       {
         l10nId: 'welcome-dialog-feature-sidebar-tabs',
         image: 'sidebar.vis.svg',
-        pref: 'midori.sidebar.enabled',
+        pref: 'midori.browser.sidebar.enable',
       },
     ]
 
