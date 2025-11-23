@@ -1,6 +1,6 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
-import { WorkspacesWindowIdUtils } from "resource://floorp/WorkspacesWindowIdUtils.mjs";
+import { WorkspacesWindowIdUtils } from "resource://browser/WorkspacesWindowIdUtils.mjs";
 
 export const EXPORTED_SYMBOLS = ["WorkspacesElementService"];
 
