@@ -162,6 +162,75 @@ class Themes extends Page {
   }
 }
 
+class Apps extends Page {
+  constructor(id) {
+    super(id)
+
+    /** @type {HTMLDivElement} */
+    this.appsList = document.getElementById('appsList')
+
+    /** @type {{ id: string; l10nId: string; l10nDescId: string; url: string; pref: string; required: boolean; }[]} */
+    this.apps = [
+      {
+        id: 'midorivpn@astian.org',
+        l10nId: 'welcome-dialog-app-vpn',
+        l10nDescId: 'welcome-dialog-app-vpn-description',
+        url: 'https://addons.mozilla.org/firefox/downloads/file/4522426/latest.xpi',
+        pref: 'midori.install.vpn',
+        required: true
+      },
+      {
+        id: 'midori-privacy@astian.org',
+        l10nId: 'welcome-dialog-app-privacy',
+        l10nDescId: 'welcome-dialog-app-privacy-description',
+        url: 'https://github.com/goastian/astian-privacy-protect/releases/download/v2.0.5/astian-firefox-2.0.5.xpi',
+        pref: 'midori.install.privacy',
+        required: false
+      },
+      {
+        id: 'midoriwallet@astian.org',
+        l10nId: 'welcome-dialog-app-wallet',
+        l10nDescId: 'welcome-dialog-app-wallet-description',
+        url: 'https://github.com/midoriwallet/midoriwallet/releases/download/v1.0.2/midori-wallet-firefox.xpi',
+        pref: 'midori.install.wallet',
+        required: false
+      },
+    ]
+
+    for (const app of this.apps) {
+      const container = document.createElement('div')
+      container.classList.add('card')
+      // Por defecto todas las aplicaciones están seleccionadas
+      const isSelected = Services.prefs.getBoolPref(app.pref, true)
+      if (isSelected) {
+        container.classList.add('selected')
+      }
+      Services.prefs.setBoolPref(app.pref, isSelected)
+
+      container.addEventListener('click', () => {
+        const newValue = !Services.prefs.getBoolPref(app.pref, false)
+        Services.prefs.setBoolPref(app.pref, newValue)
+
+        if (newValue) container.classList.add('selected')
+        else container.classList.remove('selected')
+      })
+
+      const name = document.createElement('h3')
+      name.setAttribute('data-l10n-id', app.l10nId)
+
+      const description = document.createElement('p')
+      description.setAttribute('data-l10n-id', app.l10nDescId)
+      description.style.fontSize = '0.9em'
+      description.style.color = 'var(--text-color-deemphasized)'
+
+      container.appendChild(name)
+      container.appendChild(description)
+
+      this.appsList.appendChild(container)
+    }
+  }
+}
+
 class Features extends Page {
   constructor(id) {
     super(id)
@@ -229,7 +298,21 @@ class Search extends Page {
 
     const searchElements = document.getElementById('searchList')
 
-    this.store.getEngine().forEach((search) => {
+    // Filtrar solo los motores de búsqueda deseados: AstianGO, Qwant y DuckDuckGo
+    // El orden de prioridad es: AstianGO, Qwant, DuckDuckGo
+    const allowedEngines = ['AstianGO', 'Qwant', 'DuckDuckGo']
+    const allEngines = this.store.getEngine()
+    
+    // Filtrar y ordenar según la prioridad definida
+    const filteredEngines = []
+    for (const engineName of allowedEngines) {
+      const engine = allEngines.find((e) => e.name === engineName)
+      if (engine) {
+        filteredEngines.push(engine)
+      }
+    }
+
+    filteredEngines.forEach((search) => {
       const container = this.loadSpecificSearch(search, defaultEngine)
 
       searchElements.appendChild(container)
@@ -262,6 +345,17 @@ class Search extends Page {
 
     container.appendChild(img)
     container.appendChild(name)
+
+    // Add "Recommended" badge for AstianGO
+    if (search.name === 'AstianGO' || search.id === 'astiango') {
+      const badge = document.createElement('p')
+      badge.setAttribute('data-l10n-id', 'welcome-dialog-search-recommended')
+      badge.style.fontSize = '0.85em'
+      badge.style.color = 'var(--button-primary-bgcolor, #115ec7)'
+      badge.style.fontWeight = '600'
+      badge.style.marginTop = '4px'
+      container.appendChild(badge)
+    }
 
     return container
   }
@@ -305,6 +399,10 @@ class Pages {
 
       Services.prefs.setBoolPref(welcomeSeenPref, true)
 
+      // Notify observers that welcome is completed
+      // This allows BrowserGlue to install selected extensions
+      Services.obs.notifyObservers(null, "welcome-completed", null)
+
       close()
       return
     }
@@ -326,5 +424,6 @@ const pages = new Pages([
   new Import('import'),
   new Themes('theme'),
   new Search('search'),
+  new Apps('apps'),
   new Features('features'),
 ])
