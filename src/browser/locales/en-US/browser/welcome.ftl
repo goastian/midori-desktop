@@ -17,6 +17,19 @@ welcome-dialog-theme-action = Continue
 
 welcome-dialog-search = Pick A Search Engine
 welcome-dialog-search-action = Next
+welcome-dialog-search-recommended = Recommended
+
+welcome-dialog-apps = Choose Applications to Install
+welcome-dialog-apps-subtext = Select which applications you want to install on your browser
+welcome-dialog-app-vpn = Midori VPN
+welcome-dialog-app-vpn-description = Secure your connection with VPN
+welcome-dialog-app-tabs = Midori Tabs
+welcome-dialog-app-tabs-description = Manage your tabs efficiently
+welcome-dialog-app-privacy = Midori Privacy
+welcome-dialog-app-privacy-description = Block trackers and protect your privacy with a powelful adblock
+welcome-dialog-app-wallet = Midori Wallet
+welcome-dialog-app-wallet-description = Wallet self custodial
+welcome-dialog-apps-action = Continue
 
 welcome-dialog-features = Enable Revolutionary Features
 welcome-dialog-feature-vertical-tabs = Vertical Tabs
