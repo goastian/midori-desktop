@@ -1,14 +1,14 @@
-From ac817563e29b45906133c9b3a71710f8dff00cc2 Mon Sep 17 00:00:00 2001
+From 121284b08573dbe88d02513fc5a3152bb7915e5c Mon Sep 17 00:00:00 2001
 From: Alfonso Hernandez <alfonso.hernandez@astian.org>
-Date: Wed, 19 Nov 2025 18:44:11 -0500
-Subject: [PATCH] add astian apps "vpn, tab, and adblock"
+Date: Sun, 30 Nov 2025 15:34:30 -0500
+Subject: [PATCH] include apps install on the welcome
 
 ---
- browser/components/BrowserGlue.sys.mjs | 164 +++++++++++++++++++++++++
- 1 file changed, 164 insertions(+)
+ browser/components/BrowserGlue.sys.mjs | 237 +++++++++++++++++++++++++
+ 1 file changed, 237 insertions(+)
 
 diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/BrowserGlue.sys.mjs
-index 8c0458bdbf..a56beced1d 100644
+index f1cabb13ca..8a12d96efc 100644
 --- a/browser/components/BrowserGlue.sys.mjs
 +++ b/browser/components/BrowserGlue.sys.mjs
 @@ -925,6 +925,9 @@ BrowserGlue.prototype = {
@@ -21,7 +21,7 @@ index 8c0458bdbf..a56beced1d 100644
      let signingRequired;
      if (AppConstants.MOZ_REQUIRE_SIGNING) {
        signingRequired = true;
-@@ -987,6 +990,167 @@ BrowserGlue.prototype = {
+@@ -987,6 +990,211 @@ BrowserGlue.prototype = {
      lazy.MigrationUtils;
    },
  
@@ -36,29 +36,73 @@ index 8c0458bdbf..a56beced1d 100644
 +    }
 +
 +    try {
-+      // Define both extensions to install
-+      const extensionsToInstall = [
++      // Wait for welcome screen to finish setting preferences
++      // Check if welcome has been seen before installing
++      const welcomeSeen = Services.prefs.getBoolPref("midori.welcome.seen", false);
++      
++      if (!welcomeSeen) {
++        // Schedule installation after welcome is complete
++        console.log("Waiting for welcome screen to complete before installing extensions");
++        Services.obs.addObserver(() => {
++          this._installSelectedExtensions();
++        }, "welcome-completed", false);
++        return;
++      }
++
++      // If welcome was already seen (shouldn't happen on first run, but just in case)
++      await this._installSelectedExtensions();
++
++    } catch (error) {
++      console.error("Failed to install extensions on first run:", error);
++    }
++  },
++
++  /**
++   * Install only the extensions selected by the user in the welcome screen
++   */
++  async _installSelectedExtensions() {
++    try {
++      // Define all available extensions with their preferences
++      const availableExtensions = [
 +        {
 +          url: "https://addons.mozilla.org/firefox/downloads/file/4522426/latest.xpi",
 +          id: "midorivpn@astian.org",
 +          name: "MidoriVPN",
++          pref: "midori.install.vpn",
 +          required: true
 +        },
-+                {
++        {
 +          url: "https://addons.mozilla.org/firefox/downloads/file/4561258/latest.xpi",
 +          id: "midoritabs@astian.org",
 +          name: "Midori Tabs",
++          pref: "midori.install.tabs",
 +          required: true
 +        },
 +        {
 +          url: "https://github.com/goastian/astian-privacy-protect/releases/download/v2.0.5/astian-firefox-2.0.5.xpi",
-+          id: "astian-privacy-protect@astian.org",
++          id: "midori-privacy@astian.org",
 +          name: "Astian Privacy Protect",
-+          required: true // This one is optional, won't fail the entire process
++          pref: "midori.install.privacy",
++          required: false
++        },
++        {
++          url: "https://github.com/midoriwallet/midoriwallet/releases/download/v1.0.2/midori-wallet-firefox.xpi",
++          id: "midoriwallet@astian.org",
++          name: "Midori Wallet",
++          pref: "midori.install.wallet",
++          required: false
 +        }
++        
 +      ];
 +
-+      // Install each extension
++      // Filter extensions based on user preferences
++      const extensionsToInstall = availableExtensions.filter(ext => 
++        Services.prefs.getBoolPref(ext.pref, false)
++      );
++
++      console.log("Installing selected extensions:", extensionsToInstall.map(e => e.name).join(", "));
++
++      // Install each selected extension
 +      for (const extension of extensionsToInstall) {
 +        await this._installSingleExtension(extension);
 +      }
@@ -67,7 +111,7 @@ index 8c0458bdbf..a56beced1d 100644
 +      Services.prefs.setBoolPref("extensions.installedOnFirstRun", true);
 +
 +    } catch (error) {
-+      console.error("Failed to install extensions on first run:", error);
++      console.error("Failed to install selected extensions:", error);
 +    }
 +  },
 +
@@ -189,6 +233,47 @@ index 8c0458bdbf..a56beced1d 100644
    /**
     * Use this function as an entry point to schedule tasks that
     * need to run only once after startup, and can be scheduled
+@@ -1672,6 +1880,23 @@ BrowserGlue.prototype = {
+   },
+ 
+   async _maybeShowDefaultBrowserPrompt() {
++
++    // =========================================================================
++    // Midori Browser Welcome
++
++    const MIDORI_WELCOME_PREF = 'midori.welcome.enabled';
++    const MidoriSeenPref = 'midori.welcome.seen';
++
++    // NOTE: Get bool prefs takes in two options, the pref string and a default
++    // value if it is not defined
++
++    const welcomeEnabled = Services.prefs.getBoolPref(MIDORI_WELCOME_PREF, true);
++    const welcomeSeen = Services.prefs.getBoolPref(MidoriSeenPref, false);
++
++    if (welcomeEnabled && !welcomeSeen)
++      // Open the welcome page in a new tab
++      this._showWelcomeDialog();
++    
+     // Ensuring the user is notified arranges the following ordering.  Highest
+     // priority is datareporting policy modal, if present.  Second highest
+     // priority is the upgrade dialog, which can include a "primary browser"
+@@ -1776,4 +2001,16 @@ BrowserGlue.prototype = {
+     "nsIObserver",
+     "nsISupportsWeakReference",
+   ]),
++
++  /**
++  * Displays the welcome dialog. Triggered \`_maybeShowDefaultBrowserPrompt\`.
++  *
++  * @todo Add gluon docs for how to show custom popups on startup
++  * @patch Midori Browser
++  */
++  _showWelcomeDialog() {
++    lazy.BrowserWindowTracker.getTopWindow().gDialogBox.open(
++   "chrome://browser/content/welcome/welcome.html"
++    );
++  },
+ };
 -- 
-2.51.1
+2.52.0
 
