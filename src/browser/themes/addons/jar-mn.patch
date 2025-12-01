@@ -1,17 +1,17 @@
-From 4826ca2b1a7b19bbcdfc535f208e82ad52fe4874 Mon Sep 17 00:00:00 2001
+From f07731ce43cf57bb1188543dfafe1b55fc6d77a1 Mon Sep 17 00:00:00 2001
 From: Alfonso Hernandez <alfonso.hernandez@astian.org>
-Date: Tue, 18 Nov 2025 15:12:35 -0500
-Subject: [PATCH] add theme light new of Midori Custom
+Date: Mon, 1 Dec 2025 00:57:04 -0500
+Subject: [PATCH] add themes
 
 ---
- browser/themes/addons/jar.mn | 8 ++++++++
- 1 file changed, 8 insertions(+)
+ browser/themes/addons/jar.mn | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
 
 diff --git a/browser/themes/addons/jar.mn b/browser/themes/addons/jar.mn
-index 1397afd8e2..06dcc319c4 100644
+index 1397afd8e2..76b0a9c46a 100644
 --- a/browser/themes/addons/jar.mn
 +++ b/browser/themes/addons/jar.mn
-@@ -15,3 +15,11 @@ browser.jar:
+@@ -15,3 +15,19 @@ browser.jar:
    content/builtin-themes/light/preview.svg         (firefox-light-dark/light-preview.svg)
    content/builtin-themes/light/icon.svg            (firefox-light-dark/light-icon.svg)
    content/builtin-themes/light/manifest.json       (light/manifest.json)
@@ -23,6 +23,15 @@ index 1397afd8e2..06dcc319c4 100644
 +  content/builtin-themes/midori/darknew                      (midori/darknew/*.svg)
 +  content/builtin-themes/midori/darknew/experiment.css       (midori/darknew/experiment.css)
 +  content/builtin-themes/midori/darknew/manifest.json        (midori/darknew/manifest.json)
++
++  content/builtin-themes/midori/light                        (midori/light/*.svg)
++  content/builtin-themes/midori/light/experiment.css         (midori/light/experiment.css)
++  content/builtin-themes/midori/light/manifest.json          (midori/light/manifest.json)
++
++  content/builtin-themes/midori/dark                         (midori/dark/*.svg)
++  content/builtin-themes/midori/dark/experiment.css          (midori/dark/experiment.css)
++  content/builtin-themes/midori/dark/manifest.json           (midori/dark/manifest.json)
+\ No newline at end of file
 -- 
-2.51.1
+2.52.0
 

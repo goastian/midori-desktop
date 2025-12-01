@@ -1,17 +1,17 @@
-From 4ed57e5794b59926db4c55383e9ca1d0d5be927c Mon Sep 17 00:00:00 2001
+From c01f48d56416c0ff553accb9209611a7d7c530ca Mon Sep 17 00:00:00 2001
 From: Alfonso Hernandez <alfonso.hernandez@astian.org>
-Date: Tue, 18 Nov 2025 23:11:39 -0500
-Subject: [PATCH] include themes custom for midori
+Date: Mon, 1 Dec 2025 00:37:02 -0500
+Subject: [PATCH] add new themes for Midori
 
 ---
- browser/themes/BuiltInThemeConfig.sys.mjs | 14 ++++++++++++++
- 1 file changed, 14 insertions(+)
+ browser/themes/BuiltInThemeConfig.sys.mjs | 28 +++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
 
 diff --git a/browser/themes/BuiltInThemeConfig.sys.mjs b/browser/themes/BuiltInThemeConfig.sys.mjs
-index 38a7726b7c..2206c3090e 100644
+index 38a7726b7c..264db05dba 100644
 --- a/browser/themes/BuiltInThemeConfig.sys.mjs
 +++ b/browser/themes/BuiltInThemeConfig.sys.mjs
-@@ -40,4 +40,18 @@ export const BuiltInThemeConfig = new Map([
+@@ -40,4 +40,32 @@ export const BuiltInThemeConfig = new Map([
        path: "resource://builtin-themes/alpenglow/",
      },
    ],
@@ -29,7 +29,21 @@ index 38a7726b7c..2206c3090e 100644
 +      path: "resource://builtin-themes/midori/darknew/",
 +    },
 +  ],
++    [
++    "midori-light@astian.org",
++  {
++      version: "1.2",
++      path: "resource://builtin-themes/midori/light/",
++  },
++  ],
++  [
++   "midori-dark@astian.org",
++    {
++      version: "1.2",
++      path: "resource://builtin-themes/midori/dark/",
++    },
++  ],
  ]);
 -- 
-2.51.1
+2.52.0
 
