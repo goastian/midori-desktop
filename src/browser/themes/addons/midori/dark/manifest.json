@@ -3,13 +3,13 @@
 
   "applications": {
     "gecko": {
-      "id": "pulse-dark@browser.fushra.com"
+      "id": "midori-dark@astian.org"
     }
   },
 
-  "name": "Jadua Classic Dark",
-  "description": "Jadua Go's dark theme",
-  "author": "Jadua Studios",
+  "name": "Midori Classic",
+  "description": "Midori dark theme",
+  "author": "Astian",
   "version": "1.2",
 
   "icons": { "32": "icon.svg" },

@@ -3,13 +3,13 @@
 
   "applications": {
     "gecko": {
-      "id": "pulse-light@browser.fushra.com"
+      "id": "midori-light@astian.org"
     }
   },
 
-  "name": "Jadua Classic Light",
-  "description": "Jadua Go's light theme",
-  "author": "Jadua Studios",
+  "name": "Midori Classic Light",
+  "description": "Midori light theme",
+  "author": "Astian",
   "version": "1.2",
 
   "icons": { "32": "icon.svg" },
