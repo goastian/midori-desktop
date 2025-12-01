@@ -21,6 +21,13 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
       rel="stylesheet"
       href="chrome://browser/content/welcome/welcome.css"
     />
+    <style>
+      /* Force the dialog container to be larger */
+      :root {
+        min-width: 80vw !important;
+        min-height: 80vh !important;
+      }
+    </style>
 
     <link rel="localization" href="branding/brand.ftl" />
     <link rel="localization" href="browser/welcome.ftl" />

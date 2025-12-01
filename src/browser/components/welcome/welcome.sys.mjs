@@ -427,3 +427,51 @@ const pages = new Pages([
   new Apps('apps'),
   new Features('features'),
 ])
+
+// Try to maximize the dialog window on load
+try {
+  // Wait a bit for the dialog to be fully rendered
+  setTimeout(() => {
+    // Method 1: Resize through frameElement (SubDialog)
+    if (window.frameElement) {
+      const frame = window.frameElement
+      frame.style.width = '80vw'
+      frame.style.height = '80vh'
+      frame.style.maxWidth = '80vw'
+      frame.style.maxHeight = '80vh'
+      
+      // Also try to resize the parent dialog
+      const parentDialog = frame.closest('dialog')
+      if (parentDialog) {
+        parentDialog.style.width = '80vw'
+        parentDialog.style.height = '80vh'
+        parentDialog.style.maxWidth = 'none'
+        parentDialog.style.maxHeight = 'none'
+      }
+    }
+    
+    // Method 2: Try through parent window
+    if (window.parent && window.parent !== window) {
+      try {
+        const parentDialog = window.parent.document.querySelector('#window-modal-dialog')
+        if (parentDialog) {
+          parentDialog.style.width = '80vw'
+          parentDialog.style.height = '80vh'
+          parentDialog.style.maxWidth = 'none'
+          parentDialog.style.maxHeight = 'none'
+        }
+        
+        // Also try the subdialog frame
+        const subdialogFrame = window.parent.document.querySelector('#window-modal-dialog-subdialog browser')
+        if (subdialogFrame) {
+          subdialogFrame.style.width = '80vw'
+          subdialogFrame.style.height = '80vh'
+        }
+      } catch (e) {
+        console.log('Could not access parent window:', e)
+      }
+    }
+  }, 100)
+} catch (e) {
+  console.log('Could not maximize welcome dialog:', e)
+}

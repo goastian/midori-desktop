@@ -4,16 +4,74 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
+/* Keyframe animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
 body {
-  width: 670px;
-  height: 504px;
+  width: 100%;
+  height: 100%;
+  min-width: 670px;
+  min-height: 504px;
+  max-width: 100%;
+  max-height: 100%;
 
   display: flex;
+  align-items: center;
+  justify-content: center;
   position: relative;
-  flex-flow: row nowrap;
-  height: 100%;
-  min-height: 500px;
-  overflow: scroll;
+  overflow: auto;
+  animation: fadeIn 0.5s ease-out;
+  margin: 0;
+  padding: 0;
 }
 
 .page {
@@ -25,8 +83,42 @@ body {
   align-items: center;
   align-content: center;
   width: 100%;
+  min-height: 100%;
+  max-width: 900px;
+  margin: auto;
+  padding: 40px 32px;
+  box-sizing: border-box;
+}
 
-  margin: 32px;
+.page[style*="display: flex"],
+.page[style=""] {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.page h2 {
+  animation: fadeInUp 0.7s ease-out 0.1s backwards;
+}
+
+.page p {
+  animation: fadeInUp 0.7s ease-out 0.2s backwards;
+}
+
+.page button {
+  animation: fadeInUp 0.7s ease-out 0.4s backwards;
+  transition: all 0.3s ease;
+  margin-top: 8px;
+}
+
+.page button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.page hbox {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 #enableFeatures .card {
@@ -42,13 +134,15 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 16px;
+  margin-bottom: 24px;
   justify-content: center;
+  animation: fadeIn 0.6s ease-out 0.3s backwards;
 }
 
 .cardGroup .card {
-  width: 140px;
+  width: 160px;
+  min-height: 140px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -56,29 +150,89 @@ body {
   border: 2px solid transparent;
   transition: all 250ms ease-in-out;
   margin: 0;
+  padding: 16px;
   border-radius: 16px;
+  cursor: pointer;
+  position: relative;
+  animation: fadeInUp 0.6s ease-out backwards;
+}
+
+.cardGroup .card:nth-child(1) { animation-delay: 0.4s; }
+.cardGroup .card:nth-child(2) { animation-delay: 0.5s; }
+.cardGroup .card:nth-child(3) { animation-delay: 0.6s; }
+.cardGroup .card:nth-child(4) { animation-delay: 0.7s; }
+.cardGroup .card:nth-child(5) { animation-delay: 0.8s; }
+.cardGroup .card:nth-child(6) { animation-delay: 0.9s; }
+
+.cardGroup .card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+
+.cardGroup .card img {
+  transition: transform 0.3s ease;
+}
+
+.cardGroup .card:hover img {
+  transform: scale(1.1);
 }
 
 .cardGroup .card.selected {
-  border: 2px solid var(--in-content-primary-button-background-hover);
+  border: 3px solid var(--in-content-primary-button-background-hover);
+  position: relative;
+  background-color: var(--in-content-primary-button-background-hover, rgba(0, 97, 224, 0.1));
+  opacity: 0.95;
 }
 
-h2,
+.cardGroup .card.selected::after {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  background-color: var(--in-content-primary-button-background);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 18px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), 0 0 0 2px white;
+  line-height: 1;
+  animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+h2 {
+  margin: 16px 0 12px 0;
+  font-size: 1.8em;
+  text-align: center;
+}
+
 p {
-  margin: 8px 0;
+  margin: 8px 0 20px 0;
+  font-size: 1.1em;
+  text-align: center;
+  max-width: 600px;
 }
 
 .icon {
   -moz-context-properties: fill;
   fill: currentColor;
   display: inline-block;
-  height: 82px;
-  width: 82px;
+  height: 96px;
+  width: 96px;
+  margin-bottom: 16px;
+  animation: scaleIn 0.8s ease-out;
 }
 
 .asset {
-  width: 500px;
-  padding-bottom: 32px;
+  width: 100%;
+  max-width: 500px;
+  height: auto;
+  margin-bottom: 24px;
+  animation: fadeInUp 0.8s ease-out 0.2s backwards;
 }
 
 @media (prefers-color-scheme: light) {
@@ -96,4 +250,61 @@ p {
 input[type='checkbox'] {
   display: inline-block;
   vertical-align: middle;
+}
+
+/* Responsive design */
+@media (max-height: 600px) {
+  .page {
+    padding: 24px 32px;
+  }
+  
+  .icon {
+    height: 72px;
+    width: 72px;
+  }
+  
+  h2 {
+    font-size: 1.5em;
+    margin: 12px 0 8px 0;
+  }
+  
+  p {
+    font-size: 1em;
+    margin: 6px 0 16px 0;
+  }
+  
+  .asset {
+    max-width: 400px;
+    margin-bottom: 16px;
+  }
+}
+
+@media (min-height: 700px) {
+  .page {
+    padding: 60px 32px;
+  }
+}
+
+@media (max-width: 800px) {
+  .page {
+    max-width: 100%;
+    padding: 32px 24px;
+  }
+  
+  .cardGroup .card {
+    width: 140px;
+    min-height: 120px;
+    padding: 12px;
+  }
+  
+  .cardGroup {
+    gap: 12px;
+  }
+}
+
+@media (min-width: 1000px) {
+  .cardGroup .card {
+    width: 180px;
+    min-height: 160px;
+  }
 }
