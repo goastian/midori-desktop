@@ -482,6 +482,14 @@ export class WebPanelController {
 
   /**
    *
+   * @returns {boolean}
+   */
+  getTemporary() {
+    return this.#settings.temporary;
+  }
+
+  /**
+   *
    * @param {boolean} value
    */
   setTemporary(value) {

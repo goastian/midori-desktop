@@ -60,14 +60,42 @@ export class WebPanelsBrowser extends Browser {
    * @param {string} topic
    */
   observe(subj, topic) {
+    console.log(`observe called: window.name=${this.window?.name}, subj.name=${subj?.name}, topic=${topic}`);
     if (this.window.name !== subj.name) {
+      console.log(`Window name mismatch, ignoring event ${topic}`);
       return;
     }
     console.log(`${this.window.name}: got event ${topic}`);
     if (topic === BEFORE_SHOW_EVENT) {
+      console.log("Processing BEFORE_SHOW_EVENT");
       ObserversWrapper.removeObserver(this, BEFORE_SHOW_EVENT);
-      this.initWindow();
+      ObserversWrapper.removeObserver(this, INITIALIZED_EVENT);
+      
+      try {
+        this.initWindow();
+        console.log("initWindow() completed");
+      } catch (error) {
+        console.error("Error in initWindow():", error);
+      }
+      
+      try {
+        this.#hackSessionStore();
+        console.log("hackSessionStore() completed");
+      } catch (error) {
+        console.error("Error in hackSessionStore():", error);
+      }
+      
+      try {
+        this.#hackCloseWindowCommand();
+        console.log("hackCloseWindowCommand() completed");
+      } catch (error) {
+        console.error("Error in hackCloseWindowCommand():", error);
+      }
+      
+      this.initialized = true;
+      console.log(`${this.window.name}: web panels browser initialized (after BEFORE_SHOW_EVENT)`);
     } else if (topic === INITIALIZED_EVENT) {
+      console.log("Processing INITIALIZED_EVENT");
       ObserversWrapper.removeObserver(this, INITIALIZED_EVENT);
       this.#hackSessionStore();
       this.#hackCloseWindowCommand();
@@ -315,8 +343,10 @@ export class WebPanelsBrowser extends Browser {
    */
   waitUntil(condition, callback, timeout = 10) {
     if (!condition()) {
+      console.log(`waitUntil: condition not met, waiting ${timeout}ms...`);
       window.setTimeout(() => this.waitUntil(condition, callback, timeout), timeout);
     } else {
+      console.log("waitUntil: condition met, calling callback");
       callback();
     }
   }

@@ -508,7 +508,8 @@ export class WebPanelsController {
     );
     this.add(webPanelController);
 
-    if (isActiveWindow) {
+    // Save settings for non-temporary panels
+    if (!temporary) {
       this.saveSettings();
     }
 
@@ -611,9 +612,9 @@ export class WebPanelsController {
    */
   dumpSettings() {
     return new WebPanelsSettings(
-      Array.from(this.webPanelControllers.values(), (webPanelController) =>
-        webPanelController.dumpSettings(),
-      ),
+      Array.from(this.webPanelControllers.values())
+        .filter((webPanelController) => !webPanelController.getTemporary())
+        .map((webPanelController) => webPanelController.dumpSettings()),
     );
   }
 
@@ -623,9 +624,9 @@ export class WebPanelsController {
 
   dumpState() {
     return new WebPanelsState(
-      Array.from(this.webPanelControllers.values(), (webPanelController) =>
-        webPanelController.dumpState(),
-      ),
+      Array.from(this.webPanelControllers.values())
+        .filter((webPanelController) => !webPanelController.getTemporary())
+        .map((webPanelController) => webPanelController.dumpState()),
     );
   }
 

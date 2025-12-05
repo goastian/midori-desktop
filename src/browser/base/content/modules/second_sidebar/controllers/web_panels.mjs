@@ -512,8 +512,14 @@ export class WebPanelsController {
     );
     this.add(webPanelController);
 
-    if (isActiveWindow) {
+    console.log(`createWebPanelController: Created panel with temporary=${temporary}, url=${url}`);
+    
+    // Save settings for non-temporary panels
+    if (!temporary) {
+      console.log("Calling saveSettings() for non-temporary panel");
       this.saveSettings();
+    } else {
+      console.log("Skipping saveSettings() for temporary panel");
     }
 
     return webPanelController;
@@ -575,11 +581,16 @@ export class WebPanelsController {
    */
   loadSettingsAndState(webPanelsSettings, webPanelsState) {
     console.log("Loading web panels...");
+    console.log(`webPanelsSettings has ${webPanelsSettings.webPanels.length} panels`);
 
     // Initialize web panels browser first
+    console.log("Initializing web panels browser...");
     SidebarElements.webPanelsBrowser.init();
+    console.log("Web panels browser init() called");
 
+    console.log("Waiting for browser initialization...");
     SidebarElements.webPanelsBrowser.waitInitialization(() => {
+      console.log("Browser initialization complete, loading panels...");
       // Relink docShell.treeOwner to the current window to fix status panel
       new WindowWrapper().relinkTreeOwner();
       // Setup web panels window listeners
@@ -616,22 +627,43 @@ export class WebPanelsController {
    * @returns {WebPanelsSettings}
    */
   dumpSettings() {
-    return new WebPanelsSettings(
-      Array.from(this.webPanelControllers.values(), (webPanelController) =>
-        webPanelController.dumpSettings(),
-      ),
-    );
+    console.log("dumpSettings: START");
+    try {
+      const allPanels = Array.from(this.webPanelControllers.values());
+      console.log(`dumpSettings: Got ${allPanels.length} panels from controller`);
+      
+      const nonTemporaryPanels = allPanels.filter((webPanelController) => !webPanelController.getTemporary());
+      console.log(`dumpSettings: Total panels: ${allPanels.length}, Non-temporary: ${nonTemporaryPanels.length}`);
+      
+      const settings = new WebPanelsSettings(
+        nonTemporaryPanels.map((webPanelController) => webPanelController.dumpSettings()),
+      );
+      console.log("dumpSettings: Created WebPanelsSettings object");
+      return settings;
+    } catch (error) {
+      console.error("dumpSettings: ERROR", error);
+      throw error;
+    }
   }
 
   saveSettings() {
-    this.dumpSettings().save();
+    console.log("saveSettings: START");
+    try {
+      const settings = this.dumpSettings();
+      console.log("saveSettings: Got settings, calling save()");
+      settings.save();
+      console.log("saveSettings: DONE");
+    } catch (error) {
+      console.error("saveSettings: ERROR", error);
+      throw error;
+    }
   }
 
   dumpState() {
     return new WebPanelsState(
-      Array.from(this.webPanelControllers.values(), (webPanelController) =>
-        webPanelController.dumpState(),
-      ),
+      Array.from(this.webPanelControllers.values())
+        .filter((webPanelController) => !webPanelController.getTemporary())
+        .map((webPanelController) => webPanelController.dumpState()),
     );
   }
 
