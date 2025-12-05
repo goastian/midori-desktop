@@ -1,0 +1,182 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+with Files("**"):
+    BUG_COMPONENT = ("Midori", "Second Sidebar")
+
+EXTRA_JS_MODULES.second_sidebar += [
+    "browser_elements.mjs",
+    "init.js",
+    "SecondSidebar.sys.mjs",
+    "sidebar_controllers.mjs",
+    "sidebar_decorator.mjs",
+    "sidebar_elements.mjs",
+    "sidebar_injector.mjs",
+]
+
+EXTRA_JS_MODULES.second_sidebar.controllers += [
+    "controllers/context_menu_items.mjs",
+    "controllers/events.mjs",
+    "controllers/shortcuts.mjs",
+    "controllers/sidebar.mjs",
+    "controllers/sidebar_geometry.mjs",
+    "controllers/sidebar_main.mjs",
+    "controllers/sidebar_main_collapser.mjs",
+    "controllers/sidebar_main_settings.mjs",
+    "controllers/sidebar_mover.mjs",
+    "controllers/sidebar_resizer.mjs",
+    "controllers/sidebar_splitter.mjs",
+    "controllers/sidebar_toolbar_collapser.mjs",
+    "controllers/web_panel.mjs",
+    "controllers/web_panel_delete.mjs",
+    "controllers/web_panel_edit.mjs",
+    "controllers/web_panel_more.mjs",
+    "controllers/web_panel_new.mjs",
+    "controllers/web_panel_tooltip.mjs",
+    "controllers/web_panels.mjs",
+]
+
+EXTRA_JS_MODULES.second_sidebar.css += [
+    "css/common.mjs",
+    "css/containers.mjs",
+    "css/context_item.mjs",
+    "css/customization.mjs",
+    "css/popups.mjs",
+    "css/sidebar_box.mjs",
+    "css/sidebar_main.mjs",
+    "css/sidebar_resizer.mjs",
+    "css/sidebar_wrapper.mjs",
+    "css/web_panel.mjs",
+    "css/web_panels_browser.mjs",
+]
+
+EXTRA_JS_MODULES.second_sidebar.patchers += [
+    "patchers/customize_mode_patcher.mjs",
+    "patchers/popup_notifications_patcher.mjs",
+    "patchers/sidebar_main_patcher.mjs",
+    "patchers/urlbar_input_patcher.mjs",
+]
+
+EXTRA_JS_MODULES.second_sidebar.settings += [
+    "settings/floating_web_panel_geometry_settings.mjs",
+    "settings/pinned_web_panel_geometry_settings.mjs",
+    "settings/settings.mjs",
+    "settings/sidebar_settings.mjs",
+    "settings/web_panel_settings.mjs",
+    "settings/web_panel_state.mjs",
+    "settings/web_panels_settings.mjs",
+    "settings/web_panels_state.mjs",
+]
+
+EXTRA_JS_MODULES.second_sidebar.utils += [
+    "utils/buttons.mjs",
+    "utils/containers.mjs",
+    "utils/files.mjs",
+    "utils/geometry_hint.mjs",
+    "utils/icons.mjs",
+    "utils/string.mjs",
+    "utils/url.mjs",
+    "utils/windows.mjs",
+    "utils/xul.mjs",
+]
+
+EXTRA_JS_MODULES.second_sidebar.wrappers += [
+    "wrappers/app_constants.mjs",
+    "wrappers/browser_commands.mjs",
+    "wrappers/chrome_registry.mjs",
+    "wrappers/chrome_utils.mjs",
+    "wrappers/clipboard_helper.mjs",
+    "wrappers/contextual_identity_service.mjs",
+    "wrappers/customizable_ui.mjs",
+    "wrappers/dialog_box.mjs",
+    "wrappers/favicons.mjs",
+    "wrappers/file_protocol_handler.mjs",
+    "wrappers/g_customize_mode.mjs",
+    "wrappers/g_nav_toolbox.mjs",
+    "wrappers/global.mjs",
+    "wrappers/io_utils.mjs",
+    "wrappers/net_utils.mjs",
+    "wrappers/observers.mjs",
+    "wrappers/path_utils.mjs",
+    "wrappers/preferences.mjs",
+    "wrappers/script_security_manager.mjs",
+    "wrappers/search.mjs",
+    "wrappers/session_store.mjs",
+    "wrappers/sidebar_controller.mjs",
+    "wrappers/tab_browser.mjs",
+    "wrappers/tab_panels.mjs",
+    "wrappers/window.mjs",
+    "wrappers/window_manager.mjs",
+    "wrappers/window_watcher.mjs",
+    "wrappers/zoom_manager.mjs",
+]
+
+EXTRA_JS_MODULES.second_sidebar.xul += [
+    "xul/after_splitter.mjs",
+    "xul/geometry_hint.mjs",
+    "xul/notification_badge.mjs",
+    "xul/open_link_as_temp_web_panel.mjs",
+    "xul/open_link_as_web_panel.mjs",
+    "xul/popup_body.mjs",
+    "xul/popup_footer.mjs",
+    "xul/popup_header.mjs",
+    "xul/search_in_web_panel.mjs",
+    "xul/sidebar_box.mjs",
+    "xul/sidebar_box_area.mjs",
+    "xul/sidebar_collapse_button.mjs",
+    "xul/sidebar_main.mjs",
+    "xul/sidebar_main_menupopup.mjs",
+    "xul/sidebar_main_popup_settings.mjs",
+    "xul/sidebar_resizer.mjs",
+    "xul/sidebar_splitter.mjs",
+    "xul/sidebar_toolbar.mjs",
+    "xul/sidebar_wrapper.mjs",
+    "xul/web_panel_browser.mjs",
+    "xul/web_panel_button.mjs",
+    "xul/web_panel_menupopup.mjs",
+    "xul/web_panel_new_button.mjs",
+    "xul/web_panel_popup_delete.mjs",
+    "xul/web_panel_popup_edit.mjs",
+    "xul/web_panel_popup_more.mjs",
+    "xul/web_panel_popup_new.mjs",
+    "xul/web_panel_sound_icon.mjs",
+    "xul/web_panel_tab.mjs",
+    "xul/web_panel_tooltip.mjs",
+    "xul/web_panels_browser.mjs",
+]
+
+EXTRA_JS_MODULES.second_sidebar.xul.base += [
+    "xul/base/box.mjs",
+    "xul/base/browser.mjs",
+    "xul/base/button.mjs",
+    "xul/base/div.mjs",
+    "xul/base/hbox.mjs",
+    "xul/base/header.mjs",
+    "xul/base/image.mjs",
+    "xul/base/img.mjs",
+    "xul/base/input.mjs",
+    "xul/base/label.mjs",
+    "xul/base/menu.mjs",
+    "xul/base/menuitem.mjs",
+    "xul/base/menulist.mjs",
+    "xul/base/menupopup.mjs",
+    "xul/base/menuseparator.mjs",
+    "xul/base/moz_button.mjs",
+    "xul/base/panel.mjs",
+    "xul/base/panel_multi_view.mjs",
+    "xul/base/span.mjs",
+    "xul/base/splitter.mjs",
+    "xul/base/style.mjs",
+    "xul/base/tab.mjs",
+    "xul/base/toggle.mjs",
+    "xul/base/toolbar.mjs",
+    "xul/base/toolbar_button.mjs",
+    "xul/base/toolbar_separator.mjs",
+    "xul/base/tooltip.mjs",
+    "xul/base/vbox.mjs",
+    "xul/base/widget.mjs",
+    "xul/base/xul_element.mjs",
+]
