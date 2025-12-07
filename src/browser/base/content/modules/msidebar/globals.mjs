@@ -10,12 +10,14 @@ export let gBrowser = null;
 export let AppConstants = null;
 export let CustomizableUI = null;
 export let gNavToolbox = null;
+export let SessionStore = null;
+export let NetUtil = null;
+export let ContextualIdentityService = null;
+export let Favicons = null;
 export let setInterval = null;
 export let clearInterval = null;
 export let setTimeout = null;
 export let clearTimeout = null;
-export let NetUtil = null;
-export let SessionStore = null;
 
 /**
  * Initialize the globals with values from the browser window
@@ -49,6 +51,15 @@ export function initGlobals(win) {
     "resource://gre/modules/NetUtil.sys.mjs"
   );
   NetUtil = NU;
+  
+  // Import ContextualIdentityService from system module
+  const { ContextualIdentityService: CIS } = ChromeUtils.importESModule(
+    "resource://gre/modules/ContextualIdentityService.sys.mjs"
+  );
+  ContextualIdentityService = CIS;
+  
+  // Favicons is a global in the browser window
+  Favicons = win.Favicons;
   
   // SessionStore is a global in the browser window
   SessionStore = win.SessionStore;

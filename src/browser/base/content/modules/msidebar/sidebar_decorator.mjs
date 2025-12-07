@@ -29,9 +29,17 @@ const STYLE =
 export class SidebarDecorator {
   static decorate() {
     const style = document.createElement("style");
+    style.id = "midori-sidebar-styles";
     style.innerHTML = STYLE;
     document.querySelector("head").appendChild(style);
     this.#collapse();
+  }
+
+  static undecorate() {
+    const style = document.getElementById("midori-sidebar-styles");
+    if (style) {
+      style.remove();
+    }
   }
 
   static #collapse() {
