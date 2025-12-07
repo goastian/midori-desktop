@@ -1,3 +1,5 @@
+import { Favicons } from "../globals.mjs";
+
 /**
  * @typedef {Object} URI
  * @property {string} scheme
