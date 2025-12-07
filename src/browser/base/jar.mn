@@ -4,6 +4,7 @@
 
 browser.jar:
 % content browser %content/ contentaccessible=yes
+% resource browser-content %content/
 
 # ES Modules (Not used directly modules)
 # content/modules/csk/CustomKeyboardShortcutUtils.mjs                (content/modules/csk/CustomKeyboardShortcutUtils.mjs)
