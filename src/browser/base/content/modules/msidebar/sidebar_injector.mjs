@@ -5,6 +5,7 @@ import { SidebarSettings } from "./settings/sidebar_settings.mjs";
 import { WebPanelsSettings } from "./settings/web_panels_settings.mjs";
 import { WebPanelsState } from "./settings/web_panels_state.mjs";
 import { isPopupWindow } from "./utils/windows.mjs";
+import { window as globalWindow } from "./globals.mjs";
 
 export class SidebarInjector {
   /**
@@ -12,6 +13,12 @@ export class SidebarInjector {
    * @returns {boolean}
    */
   static inject() {
+    // Check if sidebar already exists in the DOM using the global window's document
+    if (globalWindow?.document?.getElementById("sb2-wrapper")) {
+      console.log("Sidebar already initialized, skipping...");
+      return true;
+    }
+    
     if (isPopupWindow()) {
       console.log("Failed to load second sidebar because window is popup");
       return false;
@@ -31,9 +38,6 @@ export class SidebarInjector {
 
     console.log("Elements creation...");
     SidebarElements.create();
-    
-    console.log("Injecting CSS...");
-    SidebarDecorator.decorate();
 
     console.log("Building controllers...");
     SidebarControllers.create();
@@ -44,6 +48,9 @@ export class SidebarInjector {
       webPanelsSettings,
       webPanelsState,
     );
+    
+    console.log("Injecting CSS...");
+    SidebarDecorator.decorate();
 
     console.log("Second Sidebar loaded");
     return true;
@@ -64,6 +71,9 @@ export class SidebarInjector {
       if (SidebarControllers.sidebarController) {
         SidebarControllers.sidebarController.unload?.();
       }
+      
+      // Remove CSS styles
+      SidebarDecorator.undecorate();
       
       // Remove DOM elements
       if (SidebarElements.container) {
