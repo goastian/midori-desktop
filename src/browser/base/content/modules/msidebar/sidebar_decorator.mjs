@@ -1,4 +1,4 @@
-import { document } from "globals.mjs";
+import { document } from "./globals.mjs";
 
 import { COMMON_CSS } from "./css/common.mjs";
 import { CONTAINERS_CSS } from "./css/containers.mjs";

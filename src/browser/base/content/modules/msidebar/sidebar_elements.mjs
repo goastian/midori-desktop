@@ -1,4 +1,4 @@
-import { document } from "globals.mjs";
+import { document } from "./globals.mjs";
 
 import { AfterSplitter } from "./xul/after_splitter.mjs";
 import { CustomizableUIWrapper } from "./wrappers/customizable_ui.mjs";
