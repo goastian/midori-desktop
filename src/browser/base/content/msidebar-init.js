@@ -29,6 +29,7 @@
     const originalDocument = globalThis.document;
     const originalZoomManager = globalThis.ZoomManager;
     const originalGBrowser = globalThis.gBrowser;
+    const originalAppConstants = globalThis.AppConstants;
     
     let SidebarInjector;
     try {
@@ -44,6 +45,13 @@
       }
       if (!globalThis.gBrowser) {
         globalThis.gBrowser = window.gBrowser;
+      }
+      if (!globalThis.AppConstants) {
+        // AppConstants needs to be imported from a system module
+        const { AppConstants: AC } = ChromeUtils.importESModule(
+          "resource://gre/modules/AppConstants.sys.mjs"
+        );
+        globalThis.AppConstants = AC;
       }
       
       // Use resource://browser-content/ which is registered in jar.mn
@@ -66,6 +74,9 @@
       }
       if (originalGBrowser === undefined) {
         delete globalThis.gBrowser;
+      }
+      if (originalAppConstants === undefined) {
+        delete globalThis.AppConstants;
       }
     }
     

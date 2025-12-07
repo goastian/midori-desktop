@@ -1,4 +1,6 @@
 export class AppConstantsWrapper {
   /**@type {string} */
-  static BROWSER_CHROME_URL = AppConstants.BROWSER_CHROME_URL;
+  static get BROWSER_CHROME_URL() {
+    return AppConstants.BROWSER_CHROME_URL;
+  }
 }
