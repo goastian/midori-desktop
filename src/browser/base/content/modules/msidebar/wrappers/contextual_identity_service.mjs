@@ -1,3 +1,5 @@
+import { ContextualIdentityService } from "../globals.mjs";
+
 /**
  * @typedef {Object} PublicIdentity
  * @property {number} userContextId
