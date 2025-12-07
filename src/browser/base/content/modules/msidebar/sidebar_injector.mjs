@@ -1,4 +1,5 @@
 import { SidebarControllers } from "./sidebar_controllers.mjs";
+import { SidebarDecorator } from "./sidebar_decorator.mjs";
 import { SidebarElements } from "./sidebar_elements.mjs";
 import { SidebarSettings } from "./settings/sidebar_settings.mjs";
 import { WebPanelsSettings } from "./settings/web_panels_settings.mjs";
@@ -30,6 +31,9 @@ export class SidebarInjector {
 
     console.log("Elements creation...");
     SidebarElements.create();
+    
+    console.log("Injecting CSS...");
+    SidebarDecorator.decorate();
 
     console.log("Building controllers...");
     SidebarControllers.create();
