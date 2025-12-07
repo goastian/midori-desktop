@@ -28,7 +28,7 @@ export function initGlobals(win) {
   
   // Import CustomizableUI from system module
   const { CustomizableUI: CUI } = ChromeUtils.importESModule(
-    "resource:///modules/CustomizableUI.sys.mjs"
+    "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs"
   );
   CustomizableUI = CUI;
 }
