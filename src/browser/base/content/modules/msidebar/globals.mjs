@@ -8,6 +8,7 @@ export let document = null;
 export let ZoomManager = null;
 export let gBrowser = null;
 export let AppConstants = null;
+export let CustomizableUI = null;
 
 /**
  * Initialize the globals with values from the browser window
@@ -24,4 +25,10 @@ export function initGlobals(win) {
     "resource://gre/modules/AppConstants.sys.mjs"
   );
   AppConstants = AC;
+  
+  // Import CustomizableUI from system module
+  const { CustomizableUI: CUI } = ChromeUtils.importESModule(
+    "resource:///modules/CustomizableUI.sys.mjs"
+  );
+  CustomizableUI = CUI;
 }

@@ -1,3 +1,5 @@
+import { CustomizableUI } from "../globals.mjs";
+
 /**
  * @typedef {Object} WidgetInstance
  * @property {HTMLElement} node
