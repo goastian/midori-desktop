@@ -22,7 +22,8 @@
     
     // Import the sidebar injector
     const { SidebarInjector } = ChromeUtils.importESModule(
-      "chrome://browser/content/modules/msidebar/sidebar_injector.mjs"
+      "chrome://browser/content/modules/msidebar/sidebar_injector.mjs",
+      { global: "current" }
     );
     
     // Inject the sidebar into the window
