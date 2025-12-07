@@ -6,7 +6,7 @@
 engine/
 firefox-*/
 node_modules/
-.surfer/
+.amelia/
 
 __pycache__/
 dist/
