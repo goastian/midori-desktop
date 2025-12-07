@@ -1,3 +1,5 @@
+import { document } from "globals.mjs";
+
 import { COMMON_CSS } from "./css/common.mjs";
 import { CONTAINERS_CSS } from "./css/containers.mjs";
 import { CONTEXT_ITEM_CSS } from "./css/context_item.mjs";

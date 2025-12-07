@@ -1,3 +1,5 @@
+import { window } from "../globals.mjs";
+
 import { WindowWrapper } from "./window.mjs"; // eslint-disable-line no-unused-vars
 
 export class SessionStoreWrapper {

@@ -1,3 +1,5 @@
+import { document } from "../globals.mjs";
+
 import { removeFile, writeFile } from "../utils/files.mjs";
 
 const MODULE_URL = "resource://gre/modules/PopupNotifications.sys.mjs";

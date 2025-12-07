@@ -1,3 +1,5 @@
+import { document, window } from "../globals.mjs";
+
 import { BrowserElements } from "../browser_elements.mjs";
 import { SidebarControllers } from "../sidebar_controllers.mjs";
 import { SidebarElements } from "../sidebar_elements.mjs";

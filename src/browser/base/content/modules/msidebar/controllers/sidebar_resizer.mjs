@@ -1,3 +1,5 @@
+import { document } from "../globals.mjs";
+
 import { SidebarEvents, sendEvents } from "./events.mjs";
 import {
   hideGeometryHint,

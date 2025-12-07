@@ -1,4 +1,5 @@
 import { XULElement } from "../xul/base/xul_element.mjs";
+import { document } from "../globals.mjs";
 
 /**
  *
@@ -6,7 +7,7 @@ import { XULElement } from "../xul/base/xul_element.mjs";
  */
 export const isPopupWindow = () => {
   const mainWindow = new XULElement({
-    element: globalThis.document.getElementById("main-window"),
+    element: document.getElementById("main-window"),
   });
   return (
     mainWindow.hasAttribute("chromehidden") &&

@@ -1,3 +1,5 @@
+import { document } from "../../globals.mjs";
+
 export class XULElement {
   /**
    *

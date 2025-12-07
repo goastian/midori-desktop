@@ -1,3 +1,5 @@
+import { document, window } from "globals.mjs";
+
 import { XULElement } from "./xul/base/xul_element.mjs";
 
 export class BrowserElements {

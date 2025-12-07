@@ -1,3 +1,5 @@
+import { document, window } from "../globals.mjs";
+
 import { FALLBACK_ICON, fetchIconURL } from "../utils/icons.mjs";
 import { clearUrl, extractHostname } from "../utils/url.mjs";
 import { isLeftMouseButton, isMiddleMouseButton } from "../utils/buttons.mjs";

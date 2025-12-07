@@ -1,3 +1,5 @@
+import { window } from "../globals.mjs";
+
 import { DialogBoxWrapper } from "./dialog_box.mjs";
 import { TabBrowserWrapper } from "./tab_browser.mjs";
 import { XULElement } from "../xul/base/xul_element.mjs";

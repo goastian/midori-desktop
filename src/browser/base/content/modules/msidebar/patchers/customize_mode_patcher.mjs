@@ -1,3 +1,5 @@
+import { window } from "../globals.mjs";
+
 import { removeFile, writeFile } from "../utils/files.mjs";
 
 const MODULE_URLS = [

@@ -1,3 +1,5 @@
+import { document } from "../globals.mjs";
+
 import { ContextualIdentityServiceWrapper } from "../wrappers/contextual_identity_service.mjs";
 import { MenuList } from "../xul/base/menulist.mjs"; // eslint-disable-line no-unused-vars
 import { ScriptSecurityManagerWrapper } from "../wrappers/script_security_manager.mjs";

@@ -1,3 +1,5 @@
+import { ZoomManager } from "../globals.mjs";
+
 import { Browser } from "../xul/base/browser.mjs"; // eslint-disable-line no-unused-vars
 
 export class ZoomManagerWrapper {

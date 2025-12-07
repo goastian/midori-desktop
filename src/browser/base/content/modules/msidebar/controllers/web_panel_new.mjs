@@ -1,3 +1,5 @@
+import { window, gBrowser } from "../globals.mjs";
+
 import { WebPanelEvents, sendEvents } from "./events.mjs";
 
 import { SidebarElements } from "../sidebar_elements.mjs";

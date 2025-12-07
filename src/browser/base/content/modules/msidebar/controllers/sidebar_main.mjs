@@ -1,3 +1,5 @@
+import { document } from "../globals.mjs";
+
 import { BrowserElements } from "../browser_elements.mjs";
 import { ScriptSecurityManagerWrapper } from "../wrappers/script_security_manager.mjs";
 import { SidebarControllers } from "../sidebar_controllers.mjs";

@@ -1,3 +1,5 @@
+import { window } from "../globals.mjs";
+
 import {
   SidebarEvents,
   WebPanelEvents,

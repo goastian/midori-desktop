@@ -1,3 +1,5 @@
+import { document, window, gBrowser } from "../globals.mjs";
+
 import { AppConstantsWrapper } from "../wrappers/app_constants.mjs";
 import { Browser } from "./base/browser.mjs";
 import { BrowserCommandsWrapper } from "../wrappers/browser_commands.mjs";

@@ -1,3 +1,5 @@
+import { window } from "../globals.mjs";
+
 import { WindowManagerWrapper } from "../wrappers/window_manager.mjs";
 import { WindowWatcherWrapper } from "../wrappers/window_watcher.mjs";
 import { WindowWrapper } from "../wrappers/window.mjs";
