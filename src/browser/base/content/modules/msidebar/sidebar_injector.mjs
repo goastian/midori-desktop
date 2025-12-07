@@ -44,4 +44,33 @@ export class SidebarInjector {
     console.log("Second Sidebar loaded");
     return true;
   }
+
+  /**
+   * Remove the sidebar from the window
+   * @returns {boolean}
+   */
+  static remove() {
+    try {
+      console.log("Removing Midori Sidebar...");
+      
+      // Destroy controllers first
+      if (SidebarControllers.webPanelsController) {
+        SidebarControllers.webPanelsController.unload?.();
+      }
+      if (SidebarControllers.sidebarController) {
+        SidebarControllers.sidebarController.unload?.();
+      }
+      
+      // Remove DOM elements
+      if (SidebarElements.container) {
+        SidebarElements.container.remove();
+      }
+      
+      console.log("Midori Sidebar removed");
+      return true;
+    } catch (error) {
+      console.error("Error removing Midori Sidebar:", error);
+      return false;
+    }
+  }
 }

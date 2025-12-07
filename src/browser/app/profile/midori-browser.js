@@ -71,12 +71,12 @@ pref('browser.aboutwelcome.enabled', false);
 pref('midori.welcome.enabled', true);
 pref('midori.welcome.seen', false);
 
-// Sidebar pref
-pref('midori.sidebar.enabled', true);
-pref('midori.sidebar.extensions.enabled', true);
 // Note that this is causing state & performance issues. I am going to disable
 // it by default
 pref('midori.sidebar.keeptabsactive.enabled', false);
+
+// Midori Sidebar (msidebar) - New modular sidebar system
+pref('midori.msidebar.enabled', false);
 
 //PIP pref
 pref('media.videocontrols.picture-in-picture.audio-toggle.enabled', true);
