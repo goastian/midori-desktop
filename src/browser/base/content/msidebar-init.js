@@ -21,10 +21,23 @@
     console.log("[Midori Sidebar] Browser delayed startup complete");
     
     // Import the sidebar injector
-    const { SidebarInjector } = ChromeUtils.importESModule(
-      "chrome://browser/content/modules/msidebar/sidebar_injector.mjs",
-      { global: "current" }
-    );
+    console.log("[Midori Sidebar] Attempting to load module from: chrome://browser/content/modules/msidebar/sidebar_injector.mjs");
+    
+    let SidebarInjector;
+    try {
+      const module = ChromeUtils.importESModule(
+        "chrome://browser/content/modules/msidebar/sidebar_injector.mjs",
+        { global: "current" }
+      );
+      SidebarInjector = module.SidebarInjector;
+      console.log("[Midori Sidebar] Module loaded successfully:", SidebarInjector);
+    } catch (moduleError) {
+      console.error("[Midori Sidebar] Module load error details:", moduleError);
+      console.error("[Midori Sidebar] Error name:", moduleError.name);
+      console.error("[Midori Sidebar] Error message:", moduleError.message);
+      console.error("[Midori Sidebar] Error stack:", moduleError.stack);
+      throw moduleError;
+    }
     
     // Inject the sidebar into the window
     const success = SidebarInjector.inject();
