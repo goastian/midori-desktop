@@ -24,7 +24,7 @@ export class SidebarSettings {
    * @param {boolean} params.enableSidebarBoxHint
    */
   constructor({
-    position = "right",
+    position = "left",
     padding = "small",
     newWebPanelPosition = "before",
     defaultFloatingOffset = "small",
