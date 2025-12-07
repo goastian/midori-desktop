@@ -44,7 +44,7 @@ browser.jar:
   content/modules/msidebar/controllers/web_panel_edit.mjs           (content/modules/msidebar/controllers/web_panel_edit.mjs)
   content/modules/msidebar/controllers/web_panel_more.mjs           (content/modules/msidebar/controllers/web_panel_more.mjs)
   content/modules/msidebar/controllers/web_panel_new.mjs            (content/modules/msidebar/controllers/web_panel_new.mjs)
-  content/modules/msidebar/controllers/web_panel_tooltip.mjs        (content/modules/msidebar/controllers/web_panels_tooltip.mjs)
+  content/modules/msidebar/controllers/web_panel_tooltip.mjs        (content/modules/msidebar/controllers/web_panel_tooltip.mjs)
   content/modules/msidebar/controllers/web_panels.mjs               (content/modules/msidebar/controllers/web_panels.mjs)
   content/modules/msidebar/css/common.mjs                           (content/modules/msidebar/css/common.mjs)
   content/modules/msidebar/css/containers.mjs                       (content/modules/msidebar/css/containers.mjs)
