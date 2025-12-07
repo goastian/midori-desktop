@@ -23,12 +23,37 @@
     // Load Midori Sidebar using resource:// protocol
     console.log("[Midori Sidebar] Loading sidebar injector...");
     
-    // Use resource://browser-content/ which is registered in jar.mn
-    const { SidebarInjector } = ChromeUtils.importESModule(
-      "resource://browser-content/modules/msidebar/sidebar_injector.mjs"
-    );
+    // Inject window and document into globalThis for the module context
+    // This is needed because ESM modules don't have access to window by default
+    const originalWindow = globalThis.window;
+    const originalDocument = globalThis.document;
     
-    console.log("[Midori Sidebar] Module loaded successfully");
+    let SidebarInjector;
+    try {
+      // Temporarily inject window and document
+      if (!globalThis.window) {
+        globalThis.window = window;
+      }
+      if (!globalThis.document) {
+        globalThis.document = document;
+      }
+      
+      // Use resource://browser-content/ which is registered in jar.mn
+      const module = ChromeUtils.importESModule(
+        "resource://browser-content/modules/msidebar/sidebar_injector.mjs"
+      );
+      SidebarInjector = module.SidebarInjector;
+      
+      console.log("[Midori Sidebar] Module loaded successfully");
+    } finally {
+      // Restore original values
+      if (originalWindow === undefined) {
+        delete globalThis.window;
+      }
+      if (originalDocument === undefined) {
+        delete globalThis.document;
+      }
+    }
     
     // Inject the sidebar into the window
     const success = SidebarInjector.inject();
