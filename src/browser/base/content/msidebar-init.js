@@ -23,35 +23,17 @@
     // Load Midori Sidebar using resource:// protocol
     console.log("[Midori Sidebar] Loading sidebar injector...");
     
-    // Inject browser globals into globalThis for the module context
-    // This is needed because ESM modules don't have access to these by default
-    // Note: These stay in globalThis permanently as the sidebar needs them throughout its lifetime
+    // Initialize globals module first
+    const globalsModule = ChromeUtils.importESModule(
+      "resource://browser-content/modules/msidebar/globals.mjs"
+    );
+    globalsModule.initGlobals(window);
+    console.log("[Midori Sidebar] Globals initialized");
     
     let SidebarInjector;
     let success = false;
     try {
-      // Inject browser globals into globalThis
-      if (!globalThis.window) {
-        globalThis.window = window;
-      }
-      if (!globalThis.document) {
-        globalThis.document = document;
-      }
-      if (!globalThis.ZoomManager) {
-        globalThis.ZoomManager = window.ZoomManager;
-      }
-      if (!globalThis.gBrowser) {
-        globalThis.gBrowser = window.gBrowser;
-      }
-      if (!globalThis.AppConstants) {
-        // AppConstants needs to be imported from a system module
-        const { AppConstants: AC } = ChromeUtils.importESModule(
-          "resource://gre/modules/AppConstants.sys.mjs"
-        );
-        globalThis.AppConstants = AC;
-      }
-      
-      // Use resource://browser-content/ which is registered in jar.mn
+      // Load the sidebar injector module
       const module = ChromeUtils.importESModule(
         "resource://browser-content/modules/msidebar/sidebar_injector.mjs"
       );
