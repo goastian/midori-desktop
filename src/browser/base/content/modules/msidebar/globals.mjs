@@ -15,6 +15,7 @@ export let clearInterval = null;
 export let setTimeout = null;
 export let clearTimeout = null;
 export let NetUtil = null;
+export let SessionStore = null;
 
 /**
  * Initialize the globals with values from the browser window
@@ -48,4 +49,7 @@ export function initGlobals(win) {
     "resource://gre/modules/NetUtil.sys.mjs"
   );
   NetUtil = NU;
+  
+  // SessionStore is a global in the browser window
+  SessionStore = win.SessionStore;
 }
