@@ -15,8 +15,8 @@ index f7a3e8272f1f22286a26bf50d78b23aa82b49df8..a690732012331dfc40cc08fef4453c28
          ignoreQueryString || replaceQueryString,
          ignoreFragmentWhenComparing
        );
--      let browsers = aWindow.gBrowser.browsers;
-+      let browsers = aWindow.gZenWorkspaces.allUsedBrowsers;
+-      let browsers = aWindow.gZenWorkspaces?.allUsedBrowsers || aWindow.gBrowser.browsers;
++      let browsers = aWindow.gBrowser.browsers;
        for (let i = 0; i < browsers.length; i++) {
          let browser = browsers[i];
          let browserCompare = cleanURL(
@@ -25,7 +25,7 @@ index f7a3e8272f1f22286a26bf50d78b23aa82b49df8..a690732012331dfc40cc08fef4453c28
  
            if (!doAdopt) {
 -            aWindow.gBrowser.tabContainer.selectedIndex = i;
-+            aWindow.gZenWorkspaces.switchIfNeeded(browser);
++            aWindow.gBrowser.tabContainer.selectedIndex = i;
            }
  
            return true;
