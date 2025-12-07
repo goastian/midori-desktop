@@ -25,15 +25,12 @@
     
     // Inject browser globals into globalThis for the module context
     // This is needed because ESM modules don't have access to these by default
-    const originalWindow = globalThis.window;
-    const originalDocument = globalThis.document;
-    const originalZoomManager = globalThis.ZoomManager;
-    const originalGBrowser = globalThis.gBrowser;
-    const originalAppConstants = globalThis.AppConstants;
+    // Note: These stay in globalThis permanently as the sidebar needs them throughout its lifetime
     
     let SidebarInjector;
+    let success = false;
     try {
-      // Temporarily inject browser globals
+      // Inject browser globals into globalThis
       if (!globalThis.window) {
         globalThis.window = window;
       }
@@ -61,27 +58,15 @@
       SidebarInjector = module.SidebarInjector;
       
       console.log("[Midori Sidebar] Module loaded successfully");
-    } finally {
-      // Restore original values
-      if (originalWindow === undefined) {
-        delete globalThis.window;
-      }
-      if (originalDocument === undefined) {
-        delete globalThis.document;
-      }
-      if (originalZoomManager === undefined) {
-        delete globalThis.ZoomManager;
-      }
-      if (originalGBrowser === undefined) {
-        delete globalThis.gBrowser;
-      }
-      if (originalAppConstants === undefined) {
-        delete globalThis.AppConstants;
-      }
+      
+      // Inject the sidebar into the window
+      // Note: We keep these globals in globalThis permanently as the sidebar needs them
+      success = SidebarInjector.inject();
+    } catch (error) {
+      console.error("[Midori Sidebar] Initialization error:", error);
+      console.error(error.stack);
+      throw error;
     }
-    
-    // Inject the sidebar into the window
-    const success = SidebarInjector.inject();
     
     if (success) {
       console.log("[Midori Sidebar] Successfully initialized");
