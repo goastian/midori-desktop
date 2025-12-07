@@ -53,8 +53,8 @@ export const SIDEBAR_BOX_CSS = `
     }
 
     #sb2-toolbar {
-      background-color: inherit;
-      color: inherit;
+      background-color: var(--toolbar-bgcolor);
+      color: var(--toolbar-color);
       flex-direction: row;
       flex: 1;
       min-height: calc(2 * var(--toolbarbutton-inner-padding) + 16px);
