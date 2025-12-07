@@ -23,6 +23,7 @@ browser.jar:
 
 # Midori Sidebar (msidebar) modules
   content/modules/msidebar/browser_elements.mjs                     (content/modules/msidebar/browser_elements.mjs)
+  content/modules/msidebar/globals.mjs                              (content/modules/msidebar/globals.mjs)
   content/modules/msidebar/sidebar_controllers.mjs                  (content/modules/msidebar/sidebar_controllers.mjs)
   content/modules/msidebar/sidebar_decorator.mjs                    (content/modules/msidebar/sidebar_decorator.mjs)
   content/modules/msidebar/sidebar_elements.mjs                     (content/modules/msidebar/sidebar_elements.mjs)
