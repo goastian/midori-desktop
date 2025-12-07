@@ -1,4 +1,4 @@
-import { document } from "../globals.mjs";
+import { document, window } from "../globals.mjs";
 
 export class UrlbarInputPatcher {
   static patch() {
