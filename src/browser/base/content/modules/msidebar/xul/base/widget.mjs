@@ -1,3 +1,4 @@
+import { setInterval, clearInterval, window } from "../../globals.mjs";
 import { CustomizableUIWrapper } from "../../wrappers/customizable_ui.mjs";
 import { ToolbarButton } from "./toolbar_button.mjs";
 import { XULElement } from "./xul_element.mjs"; // eslint-disable-line no-unused-vars

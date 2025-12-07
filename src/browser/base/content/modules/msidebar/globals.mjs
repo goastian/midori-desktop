@@ -9,6 +9,12 @@ export let ZoomManager = null;
 export let gBrowser = null;
 export let AppConstants = null;
 export let CustomizableUI = null;
+export let gNavToolbox = null;
+export let setInterval = null;
+export let clearInterval = null;
+export let setTimeout = null;
+export let clearTimeout = null;
+export let NetUtil = null;
 
 /**
  * Initialize the globals with values from the browser window
@@ -19,6 +25,11 @@ export function initGlobals(win) {
   document = win.document;
   ZoomManager = win.ZoomManager;
   gBrowser = win.gBrowser;
+  gNavToolbox = win.gNavToolbox;
+  setInterval = win.setInterval.bind(win);
+  clearInterval = win.clearInterval.bind(win);
+  setTimeout = win.setTimeout.bind(win);
+  clearTimeout = win.clearTimeout.bind(win);
   
   // Import AppConstants from system module
   const { AppConstants: AC } = ChromeUtils.importESModule(
@@ -31,4 +42,10 @@ export function initGlobals(win) {
     "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs"
   );
   CustomizableUI = CUI;
+  
+  // Import NetUtil from system module
+  const { NetUtil: NU } = ChromeUtils.importESModule(
+    "resource://gre/modules/NetUtil.sys.mjs"
+  );
+  NetUtil = NU;
 }

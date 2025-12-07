@@ -1,3 +1,5 @@
+import { gNavToolbox } from "../globals.mjs";
+
 export class gNavToolboxWrapper {
   /**
    *

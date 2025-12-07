@@ -1,4 +1,4 @@
-import { document, window } from "../globals.mjs";
+import { document, window, setTimeout, clearTimeout } from "../globals.mjs";
 
 import { BrowserElements } from "../browser_elements.mjs";
 import { SidebarControllers } from "../sidebar_controllers.mjs";

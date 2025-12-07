@@ -1,4 +1,4 @@
-import { window } from "../globals.mjs";
+import { window, setTimeout, clearTimeout } from "../globals.mjs";
 
 import {
   SidebarEvents,

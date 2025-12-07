@@ -1,4 +1,4 @@
-import { document, window } from "../globals.mjs";
+import { document, window, setTimeout, clearTimeout } from "../globals.mjs";
 
 import { FALLBACK_ICON, fetchIconURL } from "../utils/icons.mjs";
 import { clearUrl, extractHostname } from "../utils/url.mjs";

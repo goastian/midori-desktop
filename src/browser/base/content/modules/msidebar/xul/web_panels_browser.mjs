@@ -1,4 +1,4 @@
-import { document, window, gBrowser } from "../globals.mjs";
+import { document, window, gBrowser, setTimeout } from "../globals.mjs";
 
 import { AppConstantsWrapper } from "../wrappers/app_constants.mjs";
 import { Browser } from "./base/browser.mjs";

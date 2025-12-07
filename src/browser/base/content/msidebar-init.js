@@ -9,7 +9,7 @@
   
   try {
     // Check if msidebar is enabled
-    const enabled = Services.prefs.getBoolPref("midori.msidebar.enabled", false);
+    const enabled = Services.prefs.getBoolPref("midori.msidebar.enabled", true);
     
     if (!enabled) {
       console.log("[Midori Sidebar] Disabled by preference");

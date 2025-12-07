@@ -1,3 +1,5 @@
+import { NetUtil } from "../globals.mjs";
+
 /**
  * @typedef {Object} URI
  * @property {string} scheme

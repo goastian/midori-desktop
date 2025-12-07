@@ -1,4 +1,4 @@
-import { document } from "../globals.mjs";
+import { document, setTimeout } from "../globals.mjs";
 
 import { SidebarEvents, sendEvents } from "./events.mjs";
 import {
