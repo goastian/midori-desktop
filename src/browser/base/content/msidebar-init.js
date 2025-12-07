@@ -23,19 +23,27 @@
     // Load Midori Sidebar using resource:// protocol
     console.log("[Midori Sidebar] Loading sidebar injector...");
     
-    // Inject window and document into globalThis for the module context
-    // This is needed because ESM modules don't have access to window by default
+    // Inject browser globals into globalThis for the module context
+    // This is needed because ESM modules don't have access to these by default
     const originalWindow = globalThis.window;
     const originalDocument = globalThis.document;
+    const originalZoomManager = globalThis.ZoomManager;
+    const originalGBrowser = globalThis.gBrowser;
     
     let SidebarInjector;
     try {
-      // Temporarily inject window and document
+      // Temporarily inject browser globals
       if (!globalThis.window) {
         globalThis.window = window;
       }
       if (!globalThis.document) {
         globalThis.document = document;
+      }
+      if (!globalThis.ZoomManager) {
+        globalThis.ZoomManager = window.ZoomManager;
+      }
+      if (!globalThis.gBrowser) {
+        globalThis.gBrowser = window.gBrowser;
       }
       
       // Use resource://browser-content/ which is registered in jar.mn
@@ -52,6 +60,12 @@
       }
       if (originalDocument === undefined) {
         delete globalThis.document;
+      }
+      if (originalZoomManager === undefined) {
+        delete globalThis.ZoomManager;
+      }
+      if (originalGBrowser === undefined) {
+        delete globalThis.gBrowser;
       }
     }
     
