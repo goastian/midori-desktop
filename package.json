@@ -10,7 +10,7 @@
     "build": "amelia build",
     "build:ui": "amelia build --ui",
     "start": "cd engine && python3 ./mach run --noprofile",
-    "import": "npm run ffprefs && amelia import",
+    "import": "npm run amelia import",
     "export": "amelia export",
     "init": "npm run download && npm run import && npm run bootstrap",
     "download": "amelia download",
@@ -31,6 +31,7 @@
     "ffprefs": "cd tools/ffprefs && cargo run --bin ffprefs -- ../../",
     "lc": "amelia license-check",
     "lc:fix": "amelia license-check --fix",
+    "brand": "amelia set brand release",
     "use-moz-src": "cd engine && ./mach use-moz-src",
     "ci": "amelia ci --brand release --display-version"
   },
@@ -49,7 +50,7 @@
   },
   "homepage": "https://github.com/goastian/midori-desktop#readme",
   "dependencies": {
-    "@goastian/amelia": "^1.11.26"
+    "@goastian/amelia": "^1.11.27"
   },
   "devDependencies": {
     "@babel/preset-typescript": "^7.27.0",
