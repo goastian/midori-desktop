@@ -2,9 +2,13 @@ import { Browser } from "../xul/base/browser.mjs"; // eslint-disable-line no-unu
 
 export class ZoomManagerWrapper {
   /**@type {number} */
-  static MIN = ZoomManager.MIN;
+  static get MIN() {
+    return ZoomManager.MIN;
+  }
   /**@type {number} */
-  static MAX = ZoomManager.MAX;
+  static get MAX() {
+    return ZoomManager.MAX;
+  }
 
   /**
    *
