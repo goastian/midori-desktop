@@ -39,6 +39,9 @@ export class SidebarMainCollapser {
     });
 
     gNavToolboxWrapper.addEventListener("aftercustomization", () => {
+      if (!SidebarControllers.sidebarController) {
+        return;
+      }
       const { autoHideSidebar, autoHideSidebarBehavior } =
         SidebarControllers.sidebarController;
       if (autoHideSidebar && autoHideSidebarBehavior === "overlay") {
@@ -116,6 +119,11 @@ export class SidebarMainCollapser {
    * @param {MouseEvent} event
    */
   handleEvent(event) {
+    // Verificar que los controladores existan antes de usarlos
+    if (!SidebarControllers.sidebarController) {
+      return;
+    }
+    
     const window = new WindowWrapper();
     if (
       (!window.fullScreen &&
@@ -286,5 +294,19 @@ export class SidebarMainCollapser {
         this.showSidebarTimer = null;
       }, delay);
     }
+  }
+
+  unload() {
+    clearTimeout(this.showSidebarTimer);
+    this.showSidebarTimer = null;
+    clearTimeout(this.hideSidebarTimer);
+    this.hideSidebarTimer = null;
+    
+    BrowserElements.root.removeEventListener("click", this);
+    BrowserElements.root.removeEventListener("mousemove", this);
+    BrowserElements.root.removeEventListener("dragover", this);
+    BrowserElements.root.removeEventListener("dragleave", this);
+    BrowserElements.root.removeEventListener("drop", this);
+    BrowserElements.root.removeEventListener("mouseleave", this);
   }
 }

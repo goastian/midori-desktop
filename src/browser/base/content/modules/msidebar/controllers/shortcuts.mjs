@@ -28,6 +28,9 @@ export class Shortcuts {
    * @param {KeyboardEvent} event
    */
   trySidebarWidgetShortcut(event) {
+    if (!SidebarControllers.sidebarController || !SidebarControllers.sidebarMainCollapser) {
+      return;
+    }
     const shortcut = SidebarControllers.sidebarController.sidebarWidgetShortcut;
     if (shortcut.length === 0) return;
 
@@ -45,6 +48,9 @@ export class Shortcuts {
    * @param {KeyboardEvent} event
    */
   tryWebPanelShortcuts(event) {
+    if (!SidebarControllers.webPanelsController) {
+      return;
+    }
     const webPanelControllers = SidebarControllers.webPanelsController.getAll();
     const eventParts = this.getShortcutPartsFromEvent(event);
 
@@ -68,6 +74,9 @@ export class Shortcuts {
    * @returns {boolean}
    */
   isSidebarWidgetShortcutBusy(shortcut) {
+    if (!SidebarControllers.webPanelsController) {
+      return false;
+    }
     const webPanelControllers = SidebarControllers.webPanelsController.getAll();
     return webPanelControllers.some(
       (webPanelController) => webPanelController.getShortcut() === shortcut,
@@ -81,6 +90,9 @@ export class Shortcuts {
    * @returns {boolean}
    */
   isWebPanelShortcutBusy(uuid, shortcut) {
+    if (!SidebarControllers.webPanelsController || !SidebarControllers.sidebarController) {
+      return false;
+    }
     const webPanelControllers = SidebarControllers.webPanelsController.getAll();
     return (
       webPanelControllers.some(
@@ -123,5 +135,10 @@ export class Shortcuts {
    */
   isEqual(lhs, rhs) {
     return JSON.stringify(lhs.sort()) == JSON.stringify(rhs.sort());
+  }
+
+  unload() {
+    this.enabled = false;
+    // Los event listeners se limpiarán cuando se destruya BrowserElements
   }
 }

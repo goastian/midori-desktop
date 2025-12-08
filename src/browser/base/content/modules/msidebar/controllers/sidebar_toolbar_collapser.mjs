@@ -21,6 +21,11 @@ export class SidebarToolbarCollapser {
    * @param {MouseEvent} event
    */
   handleEvent(event) {
+    // Verificar que los controladores existan antes de usarlos
+    if (!SidebarControllers.webPanelsController || !SidebarControllers.sidebarController) {
+      return;
+    }
+    
     const webPanelController =
       SidebarControllers.webPanelsController.getActive();
     if (!webPanelController || !webPanelController.getHideToolbar()) {
@@ -71,5 +76,11 @@ export class SidebarToolbarCollapser {
     this.showToolbarTimer = null;
     clearTimeout(this.hideToolbarTimer);
     this.hideToolbarTimer = null;
+  }
+
+  unload() {
+    this.clearTimers();
+    BrowserElements.root.removeEventListener("mousemove", this);
+    BrowserElements.root.removeEventListener("mousedown", this);
   }
 }
