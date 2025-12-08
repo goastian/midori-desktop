@@ -14,6 +14,7 @@ export let SessionStore = null;
 export let NetUtil = null;
 export let ContextualIdentityService = null;
 export let Favicons = null;
+export let BrowserCommands = null;
 export let setInterval = null;
 export let clearInterval = null;
 export let setTimeout = null;
@@ -63,4 +64,7 @@ export function initGlobals(win) {
   
   // SessionStore is a global in the browser window
   SessionStore = win.SessionStore;
+  
+  // BrowserCommands is a global in the browser window
+  BrowserCommands = win.BrowserCommands;
 }

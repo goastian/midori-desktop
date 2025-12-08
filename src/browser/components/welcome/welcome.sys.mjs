@@ -258,12 +258,79 @@ class Features extends Page {
       if (Services.prefs.getBoolPref(feature.pref, false))
         container.classList.add('selected')
 
-      container.addEventListener('click', () => {
+      container.addEventListener('click', async () => {
         const newValue = !Services.prefs.getBoolPref(feature.pref, false)
         Services.prefs.setBoolPref(feature.pref, newValue)
 
         if (newValue) container.classList.add('selected')
         else container.classList.remove('selected')
+
+        // Si es la preferencia de msidebar, aplicar cambios en las ventanas del navegador
+        if (feature.pref === 'midori.msidebar.enabled') {
+          try {
+            // Obtener todas las ventanas del navegador
+            const windowMediator = Services.wm
+            const browserWindows = windowMediator.getEnumerator('navigator:browser')
+            
+            while (browserWindows.hasMoreElements()) {
+              const win = browserWindows.getNext()
+              
+              // Verificar que sea una ventana válida del navegador
+              if (win && win.location && win.location.href === 'chrome://browser/content/browser.xhtml') {
+                try {
+                  if (newValue) {
+                    // Habilitar sidebar - inyectar si no existe
+                    const sidebarExists = win.document.getElementById('sb2-wrapper')
+                    
+                    if (!sidebarExists) {
+                      console.log('[Welcome] Injecting sidebar in window')
+                      
+                      // Cargar e inicializar el módulo globals
+                      const globalsModule = ChromeUtils.importESModule(
+                        'resource://browser-content/modules/msidebar/globals.mjs'
+                      )
+                      globalsModule.initGlobals(win)
+                      
+                      // Cargar e inyectar el sidebar
+                      const { SidebarInjector } = ChromeUtils.importESModule(
+                        'resource://browser-content/modules/msidebar/sidebar_injector.mjs'
+                      )
+                      
+                      const injected = SidebarInjector.inject()
+                      if (injected) {
+                        console.log('[Welcome] Sidebar successfully injected')
+                      } else {
+                        console.warn('[Welcome] Failed to inject sidebar')
+                      }
+                    }
+                  } else {
+                    // Deshabilitar sidebar - remover si existe
+                    const sidebarExists = win.document.getElementById('sb2-wrapper')
+                    
+                    if (sidebarExists) {
+                      console.log('[Welcome] Removing sidebar from window')
+                      
+                      const { SidebarInjector } = ChromeUtils.importESModule(
+                        'resource://browser-content/modules/msidebar/sidebar_injector.mjs'
+                      )
+                      
+                      const removed = SidebarInjector.remove()
+                      if (removed) {
+                        console.log('[Welcome] Sidebar successfully removed')
+                      } else {
+                        console.warn('[Welcome] Failed to remove sidebar')
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.error('[Welcome] Error handling sidebar in window:', error)
+                }
+              }
+            }
+          } catch (error) {
+            console.error('[Welcome] Error enumerating browser windows:', error)
+          }
+        }
       })
 
       const img = document.createElement('img')
