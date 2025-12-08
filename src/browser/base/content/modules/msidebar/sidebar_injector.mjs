@@ -4,6 +4,7 @@ import { SidebarElements } from "./sidebar_elements.mjs";
 import { SidebarSettings } from "./settings/sidebar_settings.mjs";
 import { WebPanelsSettings } from "./settings/web_panels_settings.mjs";
 import { WebPanelsState } from "./settings/web_panels_state.mjs";
+import { CustomizableUIWrapper } from "./wrappers/customizable_ui.mjs";
 import { isPopupWindow } from "./utils/windows.mjs";
 import { window as globalWindow } from "./globals.mjs";
 
@@ -64,26 +65,119 @@ export class SidebarInjector {
     try {
       console.log("Removing Midori Sidebar...");
       
-      // Destroy controllers first
-      if (SidebarControllers.webPanelsController) {
-        SidebarControllers.webPanelsController.unload?.();
+      // Check if sidebar exists
+      const sidebarElement = globalWindow?.document?.getElementById("sb2-wrapper");
+      if (!sidebarElement) {
+        console.log("Sidebar not found, nothing to remove");
+        return true;
       }
-      if (SidebarControllers.sidebarController) {
-        SidebarControllers.sidebarController.unload?.();
+      
+      // Destroy all controllers with unload methods
+      const controllersToUnload = [
+        'webPanelsController',
+        'sidebarController',
+        'sidebarMainController',
+        'sidebarMainCollapser',
+        'sidebarMainSettingsController',
+        'sidebarGeometry',
+        'sidebarToolbarCollapser',
+        'sidebarMover',
+        'sidebarResizer',
+        'sidebarSplitterController',
+        'webPanelTooltipController',
+        'webPanelsShortcuts',
+        'webPanelNewController',
+        'webPanelEditController',
+        'webPanelMoreController',
+        'webPanelDeleteController',
+        'contextMenuItemsController'
+      ];
+      
+      for (const controllerName of controllersToUnload) {
+        const controller = SidebarControllers[controllerName];
+        if (controller && typeof controller.unload === 'function') {
+          try {
+            controller.unload();
+          } catch (e) {
+            console.warn(`Error unloading ${controllerName}:`, e);
+          }
+        }
       }
       
       // Remove CSS styles
       SidebarDecorator.undecorate();
       
-      // Remove DOM elements
-      if (SidebarElements.container) {
-        SidebarElements.container.remove();
+      // Unregister CustomizableUI area
+      try {
+        if (SidebarElements.sidebarMain) {
+          CustomizableUIWrapper.unregisterArea(SidebarElements.sidebarMain.id);
+        }
+      } catch (e) {
+        console.warn("Error unregistering CustomizableUI area:", e);
       }
       
-      console.log("Midori Sidebar removed");
+      // Remove context menu items
+      const contextMenuItems = [
+        SidebarElements.openLinkAsWebPanelMenuItem,
+        SidebarElements.openLinkAsTempWebPanelMenuItem,
+        SidebarElements.searchInWebPanelMenuItem
+      ];
+      
+      for (const item of contextMenuItems) {
+        if (item && item.getXUL) {
+          try {
+            item.getXUL().remove();
+          } catch (e) {
+            console.warn("Error removing context menu item:", e);
+          }
+        }
+      }
+      
+      // Remove popups
+      const popups = [
+        SidebarElements.webPanelTooltip,
+        SidebarElements.webPanelMenuPopup,
+        SidebarElements.webPanelPopupNew,
+        SidebarElements.webPanelPopupEdit,
+        SidebarElements.webPanelPopupDelete,
+        SidebarElements.sidebarMainMenuPopup,
+        SidebarElements.sidebarMainPopupSettings,
+        SidebarElements.webPanelPopupMore
+      ];
+      
+      for (const popup of popups) {
+        if (popup && popup.getXUL) {
+          try {
+            popup.getXUL().remove();
+          } catch (e) {
+            console.warn("Error removing popup:", e);
+          }
+        }
+      }
+      
+      // Remove main sidebar DOM element
+      if (SidebarElements.sidebarWrapper && SidebarElements.sidebarWrapper.getXUL) {
+        SidebarElements.sidebarWrapper.getXUL().remove();
+      }
+      
+      // Clear all references
+      for (const key in SidebarElements) {
+        if (SidebarElements.hasOwnProperty(key) && key !== 'create') {
+          delete SidebarElements[key];
+        }
+      }
+      
+      for (const key in SidebarControllers) {
+        if (SidebarControllers.hasOwnProperty(key) && key !== 'create') {
+          delete SidebarControllers[key];
+        }
+      }
+      
+      console.log("Midori Sidebar removed successfully");
       return true;
     } catch (error) {
       console.error("Error removing Midori Sidebar:", error);
+      console.error(error.stack);
       return false;
     }
   }

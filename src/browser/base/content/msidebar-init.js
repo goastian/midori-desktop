@@ -92,11 +92,39 @@
           if (newValue) {
             // Re-inject if enabled
             console.log("[Midori Sidebar] Attempting to inject sidebar...");
-            SidebarInjector.inject();
+            
+            // Check if already exists before injecting
+            if (!window.document.getElementById("sb2-wrapper")) {
+              try {
+                // Reinitialize globals
+                globalsModule.initGlobals(window);
+                
+                // Inject the sidebar
+                const injected = SidebarInjector.inject();
+                if (injected) {
+                  console.log("[Midori Sidebar] Successfully re-injected");
+                } else {
+                  console.warn("[Midori Sidebar] Failed to re-inject");
+                }
+              } catch (error) {
+                console.error("[Midori Sidebar] Error re-injecting:", error);
+              }
+            } else {
+              console.log("[Midori Sidebar] Already injected, skipping...");
+            }
           } else {
             // Remove sidebar if disabled
             console.log("[Midori Sidebar] Attempting to remove sidebar...");
-            SidebarInjector.remove();
+            try {
+              const removed = SidebarInjector.remove();
+              if (removed) {
+                console.log("[Midori Sidebar] Successfully removed");
+              } else {
+                console.warn("[Midori Sidebar] Failed to remove");
+              }
+            } catch (error) {
+              console.error("[Midori Sidebar] Error removing:", error);
+            }
           }
         }
       }
@@ -107,6 +135,15 @@
     // Clean up observer on window unload
     window.addEventListener("unload", () => {
       Services.prefs.removeObserver("midori.msidebar.enabled", prefObserver);
+      
+      // Also clean up sidebar if still present
+      if (window.document.getElementById("sb2-wrapper")) {
+        try {
+          SidebarInjector.remove();
+        } catch (error) {
+          console.error("[Midori Sidebar] Error during cleanup:", error);
+        }
+      }
     });
   } catch (error) {
     console.error("[Midori Sidebar] Initialization error:", error);
