@@ -110,10 +110,10 @@ pref("extensions.systemAddon.update.url", "https://goupdate.jaduastudios.com/bro
 pref("extensions.systemAddon.update.enabled", true);
 
 //Update Routes (Download page for manual download and Temperoraliy Discord Invite Link for Release Notes)
-pref("app.update.url.manual", "https://www.jaduastudios.com/jadua-go", locked);
-pref("app.update.url.details", "https://github.com/JaduaStudios/JaduaGoBrowser/releases/latest", locked);
-pref("app.releaseNotesURL", "https://github.com/JaduaStudios/JaduaGoBrowser/commits/main", locked);
-pref("app.releaseNotesURL.aboutDialog", "https://github.com/JaduaStudios/JaduaGoBrowser/commits/main", locked);
+pref("app.update.url.manual", "https://astian.org/midori-browser/download", locked);
+pref("app.update.url.details", "https://github.com/goastian/midori-desktop/releases//latest", locked);
+pref("app.releaseNotesURL", "https://github.com/gooastian/midori-browser/commits/main", locked);
+pref("app.releaseNotesURL.aboutDialog", "https://github.com/goastian/midori-browser/commits/main", locked);
 
 // This pref needs to be here to not break context menus (GH#169)
 pref("extensions.pocket.enabled", false);
@@ -136,4 +136,8 @@ pref('midori.tabs.show.new', true);
 
 // Disable bookmark toolbar by default
 pref('browser.toolbars.bookmarks.visibility', 'never');
+
+// Midori Workspaces
+pref('midori.workspaces.enabled', true);
+pref('midori.workspaces.show-button', true);
 
