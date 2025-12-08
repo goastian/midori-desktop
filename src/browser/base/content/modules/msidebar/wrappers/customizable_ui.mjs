@@ -42,6 +42,18 @@ export class CustomizableUIWrapper {
 
   /**
    *
+   * @param {string} id
+   */
+  static unregisterArea(id) {
+    if (CustomizableUI && typeof CustomizableUI.unregisterArea === 'function') {
+      CustomizableUI.unregisterArea(id);
+    } else {
+      console.warn('CustomizableUI.unregisterArea is not available');
+    }
+  }
+
+  /**
+   *
    * @param {HTMLElement} node
    */
   static registerToolbarNode(node) {

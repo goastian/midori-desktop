@@ -159,7 +159,7 @@ export class WebPanelsBrowser extends Browser {
     PopupNotificationsPatcher.patch();
 
     // Patch #urlbar-input
-    UrlbarInputPatcher.patch();
+    UrlbarInputPatcher.patch(this.window);
   }
 
   #listenToFirstDialogAndClose() {
