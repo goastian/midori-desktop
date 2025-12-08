@@ -20,6 +20,8 @@ browser.jar:
   content/modules/workspace/WorkspacesIdUtils.mjs                   (content/modules/workspace/WorkspacesIdUtils.mjs)
   content/modules/workspace/WorkspacesMemoryManager.mjs             (content/modules/workspace/WorkspacesMemoryManager.mjs)
   content/modules/workspace/WorkspacesMigratorUtils.mjs             (content/modules/workspace/WorkspacesMigratorUtils.mjs)
+  content/modules/workspace/WorkspacesService.mjs                   (content/modules/workspace/WorkspacesService.mjs)
+  content/modules/workspace/WorkspacesWindowIdUtils.mjs             (content/modules/workspace/WorkspacesWindowIdUtils.mjs)
 
 # Midori Sidebar (msidebar) modules
   content/modules/msidebar/browser_elements.mjs                     (content/modules/msidebar/browser_elements.mjs)
