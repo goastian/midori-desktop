@@ -1,11 +1,26 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
-import { WorkspacesExternalFileService } from "chrome://browser/content/browser/workspaces/WorkspacesExternalFileService.mjs";
-import { WorkspacesService } from "./WorkspacesService.mjs";
+import { WorkspacesExternalFileService } from "resource://browser-content/modules/workspace/WorkspacesExternalFileService.mjs";
+import { WorkspacesService } from "resource://browser-content/modules/workspace/WorkspacesService.mjs";
 
 export const WorkspacesWindowIdUtils = {
   get _workspacesStoreFile() {
     return WorkspacesExternalFileService._workspacesStoreFile;
+  },
+
+  /**
+   * Get or generate a unique ID for the browser window
+   * @param {Window} window - The browser window object
+   * @returns {string} The window ID
+   */
+  getWindowId(window) {
+    // Use the window's outer window ID as a unique identifier
+    if (!window.__workspaceWindowId) {
+      const windowUtils = window.windowUtils;
+      const outerWindowID = windowUtils.outerWindowID;
+      window.__workspaceWindowId = `window-${outerWindowID}`;
+    }
+    return window.__workspaceWindowId;
   },
 
   async getAllWindowAndWorkspacesData() {

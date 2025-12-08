@@ -1,7 +1,7 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
-import { WorkspacesWindowIdUtils } from "resource://browser/WorkspacesWindowIdUtils.mjs";
-import { WorkspacesDataSaver } from "chrome://browser/content/modules/workspaces/WorkspacesDataSaver.mjs";
+import { WorkspacesWindowIdUtils } from "resource://browser-content/modules/workspace/WorkspacesWindowIdUtils.mjs";
+import { WorkspacesDataSaver } from "resource://browser-content/modules/workspace/WorkspacesDataSaver.mjs";
 
 function generateUuid() {
   return Services.uuid.generateUUID().toString();
