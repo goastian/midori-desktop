@@ -1,7 +1,7 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
 import { WorkspacesIdUtils } from "./WorkspacesIdUtils.mjs"
-import { WorkspacesService } from "resource://browser/WorkspacesService.mjs"
+import { WorkspacesService } from "resource://browser-content/modules/workspace/WorkspacesService.mjs"
 
 function getIconNameByWorkspaceName(workspaceName) {
   const settings = JSON.parse(

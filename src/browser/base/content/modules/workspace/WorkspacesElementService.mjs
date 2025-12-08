@@ -1,6 +1,6 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
-import { WorkspacesWindowIdUtils } from "resource://browser/WorkspacesWindowIdUtils.mjs";
+import { WorkspacesWindowIdUtils } from "resource://browser-content/modules/workspace/WorkspacesWindowIdUtils.mjs";
 
 export const EXPORTED_SYMBOLS = ["WorkspacesElementService"];
 
