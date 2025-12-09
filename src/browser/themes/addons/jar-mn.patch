@@ -1,19 +1,19 @@
-From f07731ce43cf57bb1188543dfafe1b55fc6d77a1 Mon Sep 17 00:00:00 2001
+From 64d5d2fd5a31c87048ae13cb3b5ffbbe19cb8cd5 Mon Sep 17 00:00:00 2001
 From: Alfonso Hernandez <alfonso.hernandez@astian.org>
-Date: Mon, 1 Dec 2025 00:57:04 -0500
-Subject: [PATCH] add themes
+Date: Tue, 9 Dec 2025 01:13:26 -0500
+Subject: [PATCH 2/2] update theme selector
 
 ---
  browser/themes/addons/jar.mn | 16 ++++++++++++++++
  1 file changed, 16 insertions(+)
 
 diff --git a/browser/themes/addons/jar.mn b/browser/themes/addons/jar.mn
-index 1397afd8e2..76b0a9c46a 100644
+index 6fdbc2c485..444241100e 100644
 --- a/browser/themes/addons/jar.mn
 +++ b/browser/themes/addons/jar.mn
 @@ -15,3 +15,19 @@ browser.jar:
-   content/builtin-themes/light/preview.svg         (firefox-light-dark/light-preview.svg)
-   content/builtin-themes/light/icon.svg            (firefox-light-dark/light-icon.svg)
+   content/builtin-themes/light/preview.svg         (light/preview.svg)
+   content/builtin-themes/light/icon.svg            (light/icon.svg)
    content/builtin-themes/light/manifest.json       (light/manifest.json)
 +
 +  content/builtin-themes/midori/lightnew                     (midori/lightnew/*.svg)
@@ -31,7 +31,6 @@ index 1397afd8e2..76b0a9c46a 100644
 +  content/builtin-themes/midori/dark                         (midori/dark/*.svg)
 +  content/builtin-themes/midori/dark/experiment.css          (midori/dark/experiment.css)
 +  content/builtin-themes/midori/dark/manifest.json           (midori/dark/manifest.json)
-\ No newline at end of file
 -- 
 2.52.0
 
