@@ -9,8 +9,8 @@
 #include Smoothfox.js
 #include Securefox.js
 
-// Jadua Browser Mods
-pref("app.support.baseURL", "https://www.jaduastudios.com/gosupport/firefox/%PLATFORMVERSION%/%OS%/%LOCALE%/");
+// Midori Browser Mods
+pref("app.support.baseURL", "https://astian.org/community");
 pref("extensions.install_origins.enabled", true);
 pref("browser.newtabpage.activity-stream.feeds.section.highlights", true);
 pref("browser.newtabpage.activity-stream.feeds.topsites", true);
@@ -106,7 +106,7 @@ pref("extensions.getAddons.search.browseURL", "https://addons.mozilla.org/%LOCAL
 pref("extensions.getAddons.langpacks.url", "https://services.addons.mozilla.org/api/v4/addons/language-tools/?app=firefox&type=language&appversion=%PLATFORMVERSION%");
 
 // Check for system add-on updates.
-pref("extensions.systemAddon.update.url", "https://goupdate.jaduastudios.com/browser/addons/%CHANNEL%/update.xml", locked);
+pref("extensions.systemAddon.update.url", "https://update.astian.org/browser/addons/%CHANNEL%/update.xml", locked);
 pref("extensions.systemAddon.update.enabled", true);
 
 //Update Routes (Download page for manual download and Temperoraliy Discord Invite Link for Release Notes)
@@ -141,3 +141,15 @@ pref('browser.toolbars.bookmarks.visibility', 'never');
 pref('midori.workspaces.enabled', true);
 pref('midori.workspaces.show-button', true);
 
+// ============================================================================
+// MIDORI MEMORY PROFILE
+// ============================================================================
+// Memory profile setting (0=Performance, 1=Balanced, 2=Low Memory)
+// Default: 1 (Balanced) - good compromise between RAM usage and performance
+pref('midori.memory.profile', 1);
+
+// Enable tab unloading when system memory is low
+pref('browser.tabs.unloadOnLowMemory', true);
+
+// Fork server for Linux - enables copy-on-write memory sharing
+pref('dom.ipc.forkserver.enable', true);
