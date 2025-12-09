@@ -1,0 +1,25 @@
+From 8e78d3065abc38e167c96265f13c10f98d73f753 Mon Sep 17 00:00:00 2001
+From: Alfonso Hernandez <alfonso.hernandez@astian.org>
+Date: Tue, 9 Dec 2025 00:36:58 -0500
+Subject: [PATCH] update theme dark
+
+---
+ browser/themes/addons/dark/manifest.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/browser/themes/addons/dark/manifest.json b/browser/themes/addons/dark/manifest.json
+index 974229eeef..f310154dee 100644
+--- a/browser/themes/addons/dark/manifest.json
++++ b/browser/themes/addons/dark/manifest.json
+@@ -7,7 +7,7 @@
+     }
+   },
+ 
+-  "name": "Dark",
++  "name": "Mozilla Dark",
+   "description": "A theme with a dark color scheme.",
+   "author": "Mozilla",
+   "version": "1.3.4",
+-- 
+2.52.0
+
