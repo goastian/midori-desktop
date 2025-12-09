@@ -1,0 +1,24 @@
+From cb51d6053d9ca1ae85699f7525faec57a8b75361 Mon Sep 17 00:00:00 2001
+From: Alfonso Hernandez <alfonso.hernandez@astian.org>
+Date: Mon, 8 Dec 2025 21:36:50 -0500
+Subject: [PATCH] init workspace
+
+---
+ browser/base/content/browser.xhtml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/browser/base/content/browser.xhtml b/browser/base/content/browser.xhtml
+index f43cb139d5..9103eb5cb4 100644
+--- a/browser/base/content/browser.xhtml
++++ b/browser/base/content/browser.xhtml
+@@ -101,6 +101,7 @@
+   <script src="chrome://browser/content/global-scripts.js"></script>
+   <script src="chrome://browser/content/browser-main.js"></script>
+   <script src="chrome://browser/content/msidebar-init.js"></script>
++  <script src="chrome://browser/content/browser-workspaces.js"></script>
+ </head>
+ <html:body xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+ # All sets except for popupsets (commands, keys, and stringbundles)
+-- 
+2.52.0
+
