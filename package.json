@@ -32,6 +32,7 @@
     "lc": "amelia license-check",
     "lc:fix": "amelia license-check --fix",
     "brand": "amelia set brand release",
+    "browser": "amelia run",
     "use-moz-src": "cd engine && ./mach use-moz-src",
     "ci": "amelia ci --brand release --display-version"
   },
