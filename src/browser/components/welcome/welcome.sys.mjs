@@ -61,10 +61,69 @@ class EngineStore {
   }
 
   async setDefaultEngine(engine) {
-    await Services.search.setDefault(
-      engine.originalEngine,
-      Ci.nsISearchService.CHANGE_REASON_USER
-    )
+    // Si es un motor personalizado, guardar la preferencia
+    if (engine.isCustom) {
+      try {
+        console.log(`Setting custom search engine: ${engine.name}`)
+        // Guardar la URL del motor personalizado en las preferencias
+        Services.prefs.setStringPref('midori.search.customEngine.name', engine.name)
+        Services.prefs.setStringPref('midori.search.customEngine.url', engine.searchURL)
+        Services.prefs.setStringPref('midori.search.customEngine.iconURL', engine.iconURL)
+        Services.prefs.setBoolPref('midori.search.useCustomEngine', true)
+        
+        // Obtener todos los motores disponibles
+        const allEngines = await Services.search.getEngines()
+        console.log('Available engines for matching:', allEngines.map(e => e.name))
+        
+        // Intentar encontrar un motor con nombre similar en los motores instalados
+        let matchingEngine = null
+        
+        // Búsqueda exacta primero
+        matchingEngine = allEngines.find(e => 
+          e.name.toLowerCase() === engine.name.toLowerCase()
+        )
+        
+        // Si no hay coincidencia exacta, buscar parcial
+        if (!matchingEngine) {
+          matchingEngine = allEngines.find(e => 
+            e.name.toLowerCase().includes(engine.name.toLowerCase()) ||
+            engine.name.toLowerCase().includes(e.name.toLowerCase())
+          )
+        }
+        
+        // Si no hay motor similar, usar DuckDuckGo como fallback
+        if (!matchingEngine) {
+          console.log(`No matching engine found for ${engine.name}, trying DuckDuckGo`)
+          matchingEngine = allEngines.find(e => e.name.toLowerCase().includes('duckduckgo') || e.name.toLowerCase().includes('duck'))
+        }
+        
+        // Si aún no hay motor, usar el primero disponible
+        if (!matchingEngine && allEngines.length > 0) {
+          console.log(`No DuckDuckGo found, using first available engine`)
+          matchingEngine = allEngines[0]
+        }
+        
+        if (matchingEngine) {
+          await Services.search.setDefault(
+            matchingEngine,
+            Ci.nsISearchService.CHANGE_REASON_USER
+          )
+          console.log(`✓ Set default engine to: ${matchingEngine.name} (preference saved for ${engine.name})`)
+        } else {
+          console.error(`No engines available to set as default`)
+        }
+      } catch (e) {
+        console.error(`Failed to set custom search engine ${engine.name}:`, e)
+      }
+    } else if (engine.originalEngine) {
+      // Motor estándar, limpiar preferencias personalizadas
+      Services.prefs.setBoolPref('midori.search.useCustomEngine', false)
+      await Services.search.setDefault(
+        engine.originalEngine,
+        Ci.nsISearchService.CHANGE_REASON_USER
+      )
+      console.log(`✓ Set default engine to: ${engine.originalEngine.name}`)
+    }
   }
 }
 
@@ -365,19 +424,70 @@ class Search extends Page {
 
     const searchElements = document.getElementById('searchList')
 
+    // Definir motores de búsqueda personalizados para Midori
+    const customEngines = [
+      {
+        name: 'AstianGO',
+        id: 'astiango',
+        iconURL: 'https://astiango.com/favicon.ico',
+        searchURL: 'https://astiango.com/?q=',
+        isCustom: true
+      },
+      {
+        name: 'Qwant',
+        id: 'qwant',
+        iconURL: 'https://www.qwant.com/favicon.ico',
+        searchURL: 'https://www.qwant.com/?q=',
+        isCustom: true
+      },
+      {
+        name: 'DuckDuckGo',
+        id: 'ddg',
+        iconURL: 'https://duckduckgo.com/favicon.ico',
+        searchURL: 'https://duckduckgo.com/?q=',
+        isCustom: true
+      }
+    ]
+
     // Filtrar solo los motores de búsqueda deseados: AstianGO, Qwant y DuckDuckGo
     // El orden de prioridad es: AstianGO, Qwant, DuckDuckGo
     const allowedEngines = ['AstianGO', 'Qwant', 'DuckDuckGo']
     const allEngines = this.store.getEngine()
     
+    // Debug: Log all available engines
+    console.log('Available search engines:', allEngines.map(e => ({ name: e.name, id: e.id })))
+    console.log('Full engine details:', allEngines)
+    
     // Filtrar y ordenar según la prioridad definida
+    // Usar búsqueda case-insensitive y parcial para mayor flexibilidad
     const filteredEngines = []
     for (const engineName of allowedEngines) {
-      const engine = allEngines.find((e) => e.name === engineName)
+      // Primero intentar encontrar el motor en los motores instalados
+      let engine = allEngines.find((e) => {
+        const nameLower = e.name.toLowerCase()
+        const searchLower = engineName.toLowerCase()
+        return nameLower === searchLower || nameLower.includes(searchLower)
+      })
+      
+      // Si no se encuentra, usar el motor personalizado
+      if (!engine) {
+        const customEngine = customEngines.find(e => e.name === engineName)
+        if (customEngine) {
+          console.log(`Using custom engine: ${customEngine.name}`)
+          engine = customEngine
+        }
+      } else {
+        console.log(`Found engine: ${engine.name} for search term: ${engineName}`)
+      }
+      
       if (engine) {
         filteredEngines.push(engine)
+      } else {
+        console.warn(`Engine not found: ${engineName}`)
       }
     }
+
+    console.log('Filtered engines:', filteredEngines.map(e => e.name))
 
     filteredEngines.forEach((search) => {
       const container = this.loadSpecificSearch(search, defaultEngine)
