@@ -227,7 +227,7 @@ export const MemoryProfileManager = {
    * @returns {number} The current profile index
    */
   getCurrentProfile() {
-    return Services.prefs.getIntPref(this.PREF_MEMORY_PROFILE, 1); // Default to balanced
+    return Services.prefs.getIntPref(this.PREF_MEMORY_PROFILE, 2); // Default to low memory
   },
 
   /**
