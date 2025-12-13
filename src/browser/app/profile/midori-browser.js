@@ -71,6 +71,12 @@ pref('browser.aboutwelcome.enabled', false);
 pref('midori.welcome.enabled', true);
 pref('midori.welcome.seen', false);
 
+// Custom search engine preferences
+pref('midori.search.useCustomEngine', false);
+pref('midori.search.customEngine.name', '');
+pref('midori.search.customEngine.url', '');
+pref('midori.search.customEngine.iconURL', '');
+
 // Note that this is causing state & performance issues. I am going to disable
 // it by default
 pref('midori.sidebar.keeptabsactive.enabled', false);
