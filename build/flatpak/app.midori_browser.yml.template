@@ -33,7 +33,7 @@ finish-args:
   - --talk-name=org.a11y.Bus
   - --talk-name=org.gtk.vfs.*
   - --own-name=org.mpris.MediaPlayer2.firefox.*
-  - --own-name=org.mozilla.midori.*
+  - --own-name=org.astian.midori.*
 cleanup:
   - /include
   - /lib/pkgconfig
@@ -88,7 +88,7 @@ modules:
           is-main-source: true
 
       - type: archive
-        url: https://github.com/goastian/flatpak/releases/download/{version}/archive.tar
+        url: https://github.com/goastian/midori-desktop/releases/download/{version}/flatpak-archive.tar
         sha256: {flatpak_sha256}
         strip-components: 0
         dest: metadata
