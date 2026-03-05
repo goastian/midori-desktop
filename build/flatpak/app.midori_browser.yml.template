@@ -1,4 +1,4 @@
-app-id: app.zen_browser.zen
+app-id: app.midori_browser.midori
 runtime: org.freedesktop.Platform
 runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
@@ -9,8 +9,8 @@ add-extensions:
     directory: lib/ffmpeg
     version: '24.08'
     add-ld-path: .
-  app.zen_browser.zen.systemconfig:
-    directory: etc/zen
+  app.midori_browser.midori.systemconfig:
+    directory: etc/midori
     no-autodownload: true
 command: launch-script.sh
 finish-args:
@@ -22,7 +22,7 @@ finish-args:
   - --socket=fallback-x11
   - --socket=pcsc
   - --socket=cups
-  - --persist=.zen
+  - --persist=.midori
   - --env=DICPATH=/usr/share/hunspell
   - --filesystem=xdg-download:rw
   - --filesystem=/run/.heim_org.h5l.kcm-socket
@@ -33,7 +33,7 @@ finish-args:
   - --talk-name=org.a11y.Bus
   - --talk-name=org.gtk.vfs.*
   - --own-name=org.mpris.MediaPlayer2.firefox.*
-  - --own-name=org.mozilla.zen.*
+  - --own-name=org.mozilla.midori.*
 cleanup:
   - /include
   - /lib/pkgconfig
@@ -47,12 +47,12 @@ cleanup:
   - '*.la'
   - '*.a'
 modules:
-  - name: zen_browser
+  - name: midori_browser
     buildsystem: simple
     build-commands:
-      - mv zen /app/
+      - mv midori /app/
       - mkdir -p /app/lib/ffmpeg
-      - mkdir -p /app/etc/zen
+      - mkdir -p /app/etc/midori
 
       - install -Dm0755 metadata/launch-script.sh ${{FLATPAK_DEST}}/bin/launch-script.sh
       - install -Dm0644 metadata/policies.json ${{FLATPAK_DEST}}/bin/distribution/policies.json
@@ -62,33 +62,33 @@ modules:
 
     sources:
       - type: archive
-        url: https://github.com/zen-browser/desktop/releases/download/{version}/zen.linux-x86_64.tar.xz
+        url: https://github.com/goastian/midori-desktop/releases/download/{version}/midori.linux-x86_64.tar.xz
         sha256: {linux_sha256}
         strip-components: 0
         only-arches:
           - x86_64
         x-checker-data:
           type: json
-          url: https://api.github.com/repos/zen-browser/desktop/releases/latest
+          url: https://api.github.com/repos/goastian/midori-desktop/releases/latest
           version-query: .tag_name
-          url-query: .assets[] | select(.name=="zen.linux-x86_64.tar.xz") | .browser_download_url
+          url-query: .assets[] | select(.name=="midori.linux-x86_64.tar.xz") | .browser_download_url
           is-main-source: true
 
       - type: archive
-        url: https://github.com/zen-browser/desktop/releases/download/{version}/zen.linux-aarch64.tar.xz
+        url: https://github.com/goastian/midori-desktop/releases/download/{version}/midori.linux-aarch64.tar.xz
         sha256: {linux_aarch64_sha256}
         strip-components: 0
         only-arches:
           - aarch64
         x-checker-data:
           type: json
-          url: https://api.github.com/repos/zen-browser/desktop/releases/latest
+          url: https://api.github.com/repos/goastian/midori-desktop/releases/latest
           version-query: .tag_name
-          url-query: .assets[] | select(.name=="zen.linux-aarch64.tar.xz") | .browser_download_url
+          url-query: .assets[] | select(.name=="midori.linux-aarch64.tar.xz") | .browser_download_url
           is-main-source: true
 
       - type: archive
-        url: https://github.com/zen-browser/flatpak/releases/download/{version}/archive.tar
+        url: https://github.com/goastian/flatpak/releases/download/{version}/archive.tar
         sha256: {flatpak_sha256}
         strip-components: 0
         dest: metadata

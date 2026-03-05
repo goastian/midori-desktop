@@ -41,7 +41,7 @@ Start-Job -Name "SurferInit" -ScriptBlock {
 } -Verbose -ArgumentList $PWD -Debug
 
 echo "Downloading artifacts info"
-$artifactsInfo=gh api repos/zen-browser/desktop/actions/runs/$GithubRunId/artifacts
+$artifactsInfo=gh api repos/goastian/midori-desktop/actions/runs/$GithubRunId/artifacts
 $token = gh auth token
 
 function New-TemporaryDirectory {
