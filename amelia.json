@@ -5,8 +5,8 @@
   "binaryName": "midori",
   "version": {
     "product": "firefox",
-    "version": "146.0",
-    "candidate": "146.0"
+    "version": "147.0",
+    "candidate": "147.0"
   },
   "buildOptions": {
     "generateBranding": true
@@ -19,7 +19,7 @@
       "brandShortName": "Midori",
       "brandFullName": "Midori Browser",
       "release": {
-        "displayVersion": "12.0",
+        "displayVersion": "11.6.1",
         "github": {
           "repo": "goastian/midori-desktop"
         },
@@ -39,7 +39,7 @@
       "brandShortName": "Dawn",
       "brandFullName": "Midori Dawn",
       "release": {
-        "displayVersion": "12.1",
+        "displayVersion": "11.6.2",
         "github": {
           "repo": "goastian/midori-desktop"
         }
