@@ -76,20 +76,32 @@ jobs:
 
       - name: Create PR if updated
         if: steps.changes.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(upstream): update Firefox to ${{ steps.changes.outputs.new_version }}"
-          title: "chore(upstream): update Firefox to ${{ steps.changes.outputs.new_version }}"
-          body: |
-            Automated Firefox upstream update detected.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="automation/firefox-update"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "chore(upstream): update Firefox to ${{ steps.changes.outputs.new_version }}"
+          git push -f origin "$BRANCH"
 
-            - **Previous version:** ${{ steps.before.outputs.version }}
-            - **New version:** ${{ steps.changes.outputs.new_version }}
-            - **RC version:** ${{ steps.changes.outputs.new_rc }}
+          # Create or update PR
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' || true)
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "PR #$EXISTING_PR already exists, updated branch."
+          else
+            gh pr create \
+              --title "chore(upstream): update Firefox to ${{ steps.changes.outputs.new_version }}" \
+              --body "Automated Firefox upstream update detected.
 
-            This PR was generated automatically by the Update Firefox Upstream workflow.
-            Please review and test before merging.
-          branch: automation/firefox-update
-          delete-branch: true
-          labels: upstream,automated
+          - **Previous version:** ${{ steps.before.outputs.version }}
+          - **New version:** ${{ steps.changes.outputs.new_version }}
+          - **RC version:** ${{ steps.changes.outputs.new_rc }}
+
+          This PR was generated automatically by the Update Firefox Upstream workflow.
+          Please review and test before merging." \
+              --head "$BRANCH" \
+              --label "upstream,automated" || true
+          fi

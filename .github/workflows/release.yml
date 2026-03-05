@@ -148,16 +148,35 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.prepare.outputs.version }}
-          name: Midori Browser v${{ needs.prepare.outputs.display_version }}
-          draft: ${{ github.event.inputs.draft == 'true' || github.event_name == 'push' }}
-          prerelease: ${{ needs.prepare.outputs.build_type == 'dawn' }}
-          generate_release_notes: true
-          files: |
-            release-output/midori-*
-            release-output/SHA256SUMS.txt
-            release-output/org.astian.midori.yml
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ needs.prepare.outputs.version }}"
+          TITLE="Midori Browser v${{ needs.prepare.outputs.display_version }}"
+
+          FLAGS="--generate-notes"
+
+          # Draft flag
+          if [ "${{ github.event.inputs.draft }}" = "true" ] || [ "${{ github.event_name }}" = "push" ]; then
+            FLAGS="$FLAGS --draft"
+          fi
+
+          # Prerelease flag
+          if [ "${{ needs.prepare.outputs.build_type }}" = "dawn" ]; then
+            FLAGS="$FLAGS --prerelease"
+          fi
+
+          # Create tag if it doesn't exist yet (workflow_dispatch case)
+          git tag "$TAG" 2>/dev/null || true
+
+          # Collect files to upload
+          FILES=""
+          for f in release-output/midori-* release-output/SHA256SUMS.txt; do
+            [ -f "$f" ] && FILES="$FILES $f"
+          done
+          [ -f "release-output/org.astian.midori.yml" ] && FILES="$FILES release-output/org.astian.midori.yml"
+
+          gh release create "$TAG" $FILES \
+            --title "$TITLE" \
+            --repo "${{ github.repository }}" \
+            $FLAGS

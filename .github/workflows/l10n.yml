@@ -44,42 +44,45 @@ jobs:
       - name: Download Firefox language packs
         run: bash scripts/download-language-packs.sh
 
-      - name: Create PR if changes detected
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(l10n): update language packs from mozilla-l10n"
-          title: "chore(l10n): update language packs"
-          body: |
-            Automated update of Firefox language packs from [mozilla-l10n/firefox-l10n](https://github.com/mozilla-l10n/firefox-l10n).
-
-            This PR was generated automatically by the Localization Sync workflow.
-          branch: automation/l10n-update
-          delete-branch: true
-          labels: l10n,automated
-
-  sync-crowdin:
-    name: Sync Crowdin Translations
-    runs-on: ubuntu-latest
-    needs: sync-l10n
-    if: ${{ secrets.CROWDIN_TOKEN != '' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: automation/l10n-update
-          fetch-depth: 0
-
-      - name: Crowdin Sync
-        uses: crowdin/github-action@v2
-        with:
-          upload_sources: true
-          upload_translations: false
-          download_translations: true
-          create_pull_request: false
-          localization_branch_name: automation/l10n-update
-          config: crowdin.yml
+      - name: Sync Crowdin translations
+        if: ${{ env.HAS_CROWDIN == 'true' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CROWDIN_PROJECT_ID: ${{ vars.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_TOKEN }}
+          HAS_CROWDIN: ${{ secrets.CROWDIN_TOKEN != '' }}
+        run: |
+          # Install Crowdin CLI
+          npm install -g @crowdin/cli
+          crowdin upload sources --config crowdin.yml
+          crowdin download --config crowdin.yml
+
+      - name: Create PR if changes detected
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No l10n changes detected, skipping PR."
+            exit 0
+          fi
+
+          BRANCH="automation/l10n-update"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "chore(l10n): update language packs from mozilla-l10n"
+          git push -f origin "$BRANCH"
+
+          # Create or update PR
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' || true)
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "PR #$EXISTING_PR already exists, updated branch."
+          else
+            gh pr create \
+              --title "chore(l10n): update language packs" \
+              --body "Automated update of Firefox language packs from [mozilla-l10n/firefox-l10n](https://github.com/mozilla-l10n/firefox-l10n).
+
+          This PR was generated automatically by the Localization Sync workflow." \
+              --head "$BRANCH" \
+              --label "l10n,automated" || true
+          fi
