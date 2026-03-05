@@ -1,0 +1,85 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Localization Sync
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync-l10n:
+    name: Sync Language Packs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Update l10n commit hash
+        run: npm run update-ff:l10n
+
+      - name: Download Firefox language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Create PR if changes detected
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(l10n): update language packs from mozilla-l10n"
+          title: "chore(l10n): update language packs"
+          body: |
+            Automated update of Firefox language packs from [mozilla-l10n/firefox-l10n](https://github.com/mozilla-l10n/firefox-l10n).
+
+            This PR was generated automatically by the Localization Sync workflow.
+          branch: automation/l10n-update
+          delete-branch: true
+          labels: l10n,automated
+
+  sync-crowdin:
+    name: Sync Crowdin Translations
+    runs-on: ubuntu-latest
+    needs: sync-l10n
+    if: ${{ secrets.CROWDIN_TOKEN != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: automation/l10n-update
+          fetch-depth: 0
+
+      - name: Crowdin Sync
+        uses: crowdin/github-action@v2
+        with:
+          upload_sources: true
+          upload_translations: false
+          download_translations: true
+          create_pull_request: false
+          localization_branch_name: automation/l10n-update
+          config: crowdin.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CROWDIN_PROJECT_ID: ${{ vars.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_TOKEN }}

@@ -1,0 +1,479 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      display_version:
+        description: "Display version for the build (e.g. 12.0)"
+        required: true
+        type: string
+      build_type:
+        description: "Build type"
+        required: true
+        type: choice
+        options:
+          - release
+          - dawn
+        default: release
+  workflow_call:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: false
+        type: string
+        default: release
+
+concurrency:
+  group: build-${{ github.ref }}-${{ inputs.build_type }}
+  cancel-in-progress: true
+
+env:
+  MIDORI_RELEASE: "true"
+  MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
+  SCCACHE_GHA_ENABLED: "true"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Linux builds
+  # ---------------------------------------------------------------------------
+  linux-x86_64:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+    env:
+      SURFER_COMPAT: x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.83"
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgtk-3-dev \
+            libdbus-glib-1-dev \
+            libxt-dev \
+            libasound2-dev \
+            libpulse-dev \
+            nasm \
+            yasm \
+            clang \
+            lld
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Initialize (download + import + bootstrap)
+        run: npm run init
+
+      - name: Download language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Build release
+        run: npm run ci -- ${{ inputs.display_version }}
+
+      - name: Package
+        run: npm run package -- --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: |
+            dist/*.tar.xz
+            dist/*.mar
+            dist/update/
+          retention-days: 5
+
+  linux-aarch64:
+    name: Linux aarch64
+    runs-on: ubuntu-latest
+    env:
+      SURFER_COMPAT: aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.83"
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgtk-3-dev \
+            libdbus-glib-1-dev \
+            libxt-dev \
+            libasound2-dev \
+            libpulse-dev \
+            nasm \
+            yasm \
+            clang \
+            lld \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Initialize (download + import + bootstrap)
+        run: npm run init
+
+      - name: Download language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Build release
+        run: npm run ci -- ${{ inputs.display_version }}
+
+      - name: Package
+        run: npm run package -- --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-aarch64
+          path: |
+            dist/*.tar.xz
+            dist/*.mar
+            dist/update/
+          retention-days: 5
+
+  # ---------------------------------------------------------------------------
+  # macOS builds
+  # ---------------------------------------------------------------------------
+  macos-x86_64:
+    name: macOS x86_64
+    runs-on: macos-13
+    env:
+      SURFER_COMPAT: x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.83"
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Initialize (download + import + bootstrap)
+        run: npm run init
+
+      - name: Download language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Build release
+        run: npm run ci -- ${{ inputs.display_version }}
+
+      - name: Package
+        run: npm run package -- --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x86_64
+          path: |
+            dist/*.dmg
+            dist/*.mar
+            dist/update/
+          retention-days: 5
+
+  macos-aarch64:
+    name: macOS aarch64
+    runs-on: macos-14
+    env:
+      SURFER_COMPAT: aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.83"
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Initialize (download + import + bootstrap)
+        run: npm run init
+
+      - name: Download language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Build release
+        run: npm run ci -- ${{ inputs.display_version }}
+
+      - name: Package
+        run: npm run package -- --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-aarch64
+          path: |
+            dist/*.dmg
+            dist/*.mar
+            dist/update/
+          retention-days: 5
+
+  # ---------------------------------------------------------------------------
+  # Windows builds (cross-compiled from Linux)
+  # ---------------------------------------------------------------------------
+  windows-x86_64:
+    name: Windows x86_64
+    runs-on: ubuntu-latest
+    env:
+      AMELIA_COMPAT: x86_64
+      SURFER_COMPAT: x86_64
+      MIDORI_CROSS_COMPILING: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.83"
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgtk-3-dev \
+            libdbus-glib-1-dev \
+            libxt-dev \
+            nasm \
+            yasm \
+            clang \
+            lld \
+            msitools \
+            wine64
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Initialize (download + import + bootstrap)
+        run: npm run init
+
+      - name: Download language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Build release
+        run: npm run ci -- ${{ inputs.display_version }}
+
+      - name: Package
+        run: npm run package -- --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: |
+            dist/*.exe
+            dist/*.mar
+            dist/update/
+          retention-days: 5
+
+  windows-aarch64:
+    name: Windows aarch64
+    runs-on: ubuntu-latest
+    env:
+      AMELIA_COMPAT: aarch64
+      SURFER_COMPAT: aarch64
+      MIDORI_CROSS_COMPILING: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.83"
+          targets: aarch64-pc-windows-msvc
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgtk-3-dev \
+            libdbus-glib-1-dev \
+            libxt-dev \
+            nasm \
+            yasm \
+            clang \
+            lld \
+            msitools
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Initialize (download + import + bootstrap)
+        run: npm run init
+
+      - name: Download language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Build release
+        run: npm run ci -- ${{ inputs.display_version }}
+
+      - name: Package
+        run: npm run package -- --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-aarch64
+          path: |
+            dist/*.exe
+            dist/*.mar
+            dist/update/
+          retention-days: 5
