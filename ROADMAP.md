@@ -51,23 +51,23 @@
 
 **Tasks:**
 
-- [ ] Fork latest Firefox via the Amelia packaging pipeline into `midori-desktop`
-- [ ] Configure `mozconfig` build environment for Windows, macOS, and Linux
-- [ ] Verify successful compilation on all 3 platforms
+- [x] Fork latest Firefox via the Amelia packaging pipeline into `midori-desktop`
+- [x] Configure `mozconfig` build environment for Windows, macOS, and Linux
+- [x] Verify successful compilation on all 3 platforms
 - [ ] Rename product from Firefox to Midori in configuration files
-- [ ] Replace icons and splash screen with Midori assets
+- [x] Replace icons and splash screen with Midori assets
 - [ ] Set up CI/CD pipeline for automated builds
-- [ ] Document build process and environment setup
-- [ ] First installable internal test build
-- [ ] Design and implement the Welcome Screen (first-run experience)
-- [ ] Welcome Screen step: default search engine selection
-- [ ] Welcome Screen step: import data from another browser
-- [ ] Welcome Screen step: basic privacy configuration
-- [ ] Replace all Firefox branding assets with Midori/Astian equivalents
-- [ ] Configure Midori-specific `about:config` defaults
+- [x] Document build process and environment setup
+- [x] First installable internal test build
+- [x] Design and implement the Welcome Screen (first-run experience)
+- [x] Welcome Screen step: default search engine selection
+- [x] Welcome Screen step: import data from another browser
+- [x] Welcome Screen step: basic privacy configuration
+- [x] Replace all Firefox branding assets with Midori/Astian equivalents
+- [x] Configure Midori-specific `about:config` defaults
 - [ ] Update `about:credits` and `about:rights` with Astian information
 - [ ] Create `about:midori` page with browser details
-- [ ] Profile Performance.
+- [x] Profile Performance.
 
 **Acceptance criteria:** Browser compiles and runs on all 3 platforms with the Midori name and branding.
 
