@@ -1,17 +1,7 @@
-From f6c1f671327318cd7e3423e8659435224e866eac Mon Sep 17 00:00:00 2001
-From: Alfonso Hernandez <alfonso.hernandez@astian.org>
-Date: Sun, 16 Nov 2025 22:44:59 -0500
-Subject: [PATCH] include midori-browser.js in firefox.js (Midori)
-
----
- browser/app/profile/firefox.js | 2 ++
- 1 file changed, 2 insertions(+)
-
 diff --git a/browser/app/profile/firefox.js b/browser/app/profile/firefox.js
-index f74481f014..ce9be79947 100644
 --- a/browser/app/profile/firefox.js
 +++ b/browser/app/profile/firefox.js
-@@ -3483,6 +3483,8 @@ pref("toolkit.contentRelevancy.ingestEnabled", false);
+@@ -3553,6 +3553,8 @@
  // Pref to enable extra logging for the content relevancy feature
  pref("toolkit.contentRelevancy.log", false);
  
@@ -19,7 +9,5 @@ index f74481f014..ce9be79947 100644
 +
  // The number of days after which to rotate the context ID. 0 means to disable
  // rotation altogether.
- pref("browser.contextual-services.contextId.rotation-in-days", 7);
--- 
-2.51.1
+ pref("browser.contextual-services.contextId.rotation-in-days", 3);
 

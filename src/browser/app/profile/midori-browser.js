@@ -8,6 +8,7 @@
 #include Fastfox.js
 #include Smoothfox.js
 #include Securefox.js
+#include Memoryfox.js
 
 // Midori Browser Mods
 pref("app.support.baseURL", "https://astian.org/community");
@@ -152,7 +153,7 @@ pref('midori.workspaces.show-button', true);
 // ============================================================================
 // Memory profile setting (0=Performance, 1=Balanced, 2=Low Memory)
 // Default: 1 (Balanced) - good compromise between RAM usage and performance
-pref('midori.memory.profile', 1);
+pref('midori.memory.profile', 2);
 
 // Enable tab unloading when system memory is low
 pref('browser.tabs.unloadOnLowMemory', true);
