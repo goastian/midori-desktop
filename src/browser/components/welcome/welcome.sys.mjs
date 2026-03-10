@@ -1,16 +1,12 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
-const { XPCOMUtils } = ChromeUtils.importESModule(
-  'resource://gre/modules/XPCOMUtils.sys.mjs'
-)
-
-const lazy = {};
+const lazy = {}
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: 'resource://gre/modules/AddonManager.sys.mjs',
   MigrationUtils: 'resource:///modules/MigrationUtils.sys.mjs',
+  ExtensionSettingsStore: 'resource://gre/modules/ExtensionSettingsStore.sys.mjs',
 })
 
 const welcomeSeenPref = 'midori.welcome.seen'
@@ -25,16 +21,16 @@ class EngineStore {
 
   async init() {
     const visibleEngines = await Services.search.getVisibleEngines()
-    this.initSpecificEngine(visibleEngines)
+    await this.initSpecificEngine(visibleEngines)
   }
 
   getEngine() {
     return this._engines
   }
 
-  initSpecificEngine(engines) {
+  async initSpecificEngine(engines) {
     for (const engine of engines) {
-      this._engines.push(this._cloneEngine(engine))
+      this._engines.push(await this._cloneEngine(engine))
     }
   }
 
@@ -42,9 +38,9 @@ class EngineStore {
     return this._engines.find((engine) => engine.name == name)
   }
 
-  _cloneEngine(aEngine) {
+  async _cloneEngine(aEngine) {
     var clonedObj = {
-      iconURL: aEngine.getIconURL(),
+      iconURL: await aEngine.getIconURL(),
     };
     for (let i of ["id", "name", "alias", "hidden"]) {
       clonedObj[i] = aEngine[i]
@@ -61,69 +57,10 @@ class EngineStore {
   }
 
   async setDefaultEngine(engine) {
-    // Si es un motor personalizado, guardar la preferencia
-    if (engine.isCustom) {
-      try {
-        console.log(`Setting custom search engine: ${engine.name}`)
-        // Guardar la URL del motor personalizado en las preferencias
-        Services.prefs.setStringPref('midori.search.customEngine.name', engine.name)
-        Services.prefs.setStringPref('midori.search.customEngine.url', engine.searchURL)
-        Services.prefs.setStringPref('midori.search.customEngine.iconURL', engine.iconURL)
-        Services.prefs.setBoolPref('midori.search.useCustomEngine', true)
-        
-        // Obtener todos los motores disponibles
-        const allEngines = await Services.search.getEngines()
-        console.log('Available engines for matching:', allEngines.map(e => e.name))
-        
-        // Intentar encontrar un motor con nombre similar en los motores instalados
-        let matchingEngine = null
-        
-        // Búsqueda exacta primero
-        matchingEngine = allEngines.find(e => 
-          e.name.toLowerCase() === engine.name.toLowerCase()
-        )
-        
-        // Si no hay coincidencia exacta, buscar parcial
-        if (!matchingEngine) {
-          matchingEngine = allEngines.find(e => 
-            e.name.toLowerCase().includes(engine.name.toLowerCase()) ||
-            engine.name.toLowerCase().includes(e.name.toLowerCase())
-          )
-        }
-        
-        // Si no hay motor similar, usar DuckDuckGo como fallback
-        if (!matchingEngine) {
-          console.log(`No matching engine found for ${engine.name}, trying DuckDuckGo`)
-          matchingEngine = allEngines.find(e => e.name.toLowerCase().includes('duckduckgo') || e.name.toLowerCase().includes('duck'))
-        }
-        
-        // Si aún no hay motor, usar el primero disponible
-        if (!matchingEngine && allEngines.length > 0) {
-          console.log(`No DuckDuckGo found, using first available engine`)
-          matchingEngine = allEngines[0]
-        }
-        
-        if (matchingEngine) {
-          await Services.search.setDefault(
-            matchingEngine,
-            Ci.nsISearchService.CHANGE_REASON_USER
-          )
-          console.log(`✓ Set default engine to: ${matchingEngine.name} (preference saved for ${engine.name})`)
-        } else {
-          console.error(`No engines available to set as default`)
-        }
-      } catch (e) {
-        console.error(`Failed to set custom search engine ${engine.name}:`, e)
-      }
-    } else if (engine.originalEngine) {
-      // Motor estándar, limpiar preferencias personalizadas
-      Services.prefs.setBoolPref('midori.search.useCustomEngine', false)
-      await Services.search.setDefault(
-        engine.originalEngine,
-        Ci.nsISearchService.CHANGE_REASON_USER
-      )
-      console.log(`✓ Set default engine to: ${engine.originalEngine.name}`)
-    }
+    await Services.search.setDefault(
+      engine.originalEngine,
+      Ci.nsISearchService.CHANGE_REASON_USER
+    )
   }
 }
 
@@ -155,11 +92,11 @@ class Page {
   }
 
   hide() {
-    this.element.style.display = 'none'
+    this.element.classList.remove('visible')
   }
 
   show() {
-    this.element.style.display = ''
+    this.element.classList.add('visible')
   }
 }
 
@@ -221,191 +158,6 @@ class Themes extends Page {
   }
 }
 
-class Apps extends Page {
-  constructor(id) {
-    super(id)
-
-    /** @type {HTMLDivElement} */
-    this.appsList = document.getElementById('appsList')
-
-    /** @type {{ id: string; l10nId: string; l10nDescId: string; url: string; pref: string; required: boolean; }[]} */
-    this.apps = [
-      {
-        id: 'midorivpn@astian.org',
-        l10nId: 'welcome-dialog-app-vpn',
-        l10nDescId: 'welcome-dialog-app-vpn-description',
-        url: 'https://addons.mozilla.org/firefox/downloads/file/4522426/latest.xpi',
-        pref: 'midori.install.vpn',
-        required: true
-      },
-      {
-        id: 'midori-privacy@astian.org',
-        l10nId: 'welcome-dialog-app-privacy',
-        l10nDescId: 'welcome-dialog-app-privacy-description',
-        url: 'https://github.com/goastian/astian-privacy-protect/releases/download/v2.0.5/astian-firefox-2.0.5.xpi',
-        pref: 'midori.install.privacy',
-        required: false
-      },
-      {
-        id: 'midoriwallet@astian.org',
-        l10nId: 'welcome-dialog-app-wallet',
-        l10nDescId: 'welcome-dialog-app-wallet-description',
-        url: 'https://github.com/midoriwallet/midoriwallet/releases/download/v1.0.2/midori-wallet-firefox.xpi',
-        pref: 'midori.install.wallet',
-        required: false
-      },
-    ]
-
-    for (const app of this.apps) {
-      const container = document.createElement('div')
-      container.classList.add('card')
-      // Por defecto todas las aplicaciones están seleccionadas
-      const isSelected = Services.prefs.getBoolPref(app.pref, true)
-      if (isSelected) {
-        container.classList.add('selected')
-      }
-      Services.prefs.setBoolPref(app.pref, isSelected)
-
-      container.addEventListener('click', () => {
-        const newValue = !Services.prefs.getBoolPref(app.pref, false)
-        Services.prefs.setBoolPref(app.pref, newValue)
-
-        if (newValue) container.classList.add('selected')
-        else container.classList.remove('selected')
-      })
-
-      const name = document.createElement('h3')
-      name.setAttribute('data-l10n-id', app.l10nId)
-
-      const description = document.createElement('p')
-      description.setAttribute('data-l10n-id', app.l10nDescId)
-      description.style.fontSize = '0.9em'
-      description.style.color = 'var(--text-color-deemphasized)'
-
-      container.appendChild(name)
-      container.appendChild(description)
-
-      this.appsList.appendChild(container)
-    }
-  }
-}
-
-class Features extends Page {
-  constructor(id) {
-    super(id)
-
-    /** @type {HTMLDivElement} */
-    this.enableFeatures = document.getElementById('enableFeatures')
-
-    /** @type {{ l10nId: string; image: string; pref: string; }[]} */
-    this.features = [
-      {
-        l10nId: 'welcome-dialog-feature-vertical-tabs',
-        image: 'vertical.vis.svg',
-        pref: 'midori.tabs.vertical',
-      },
-      {
-        l10nId: 'welcome-dialog-feature-sidebar-tabs',
-        image: 'sidebar.vis.svg',
-        pref: 'midori.msidebar.enabled',
-      },
-    ]
-
-    for (const feature of this.features) {
-      const container = document.createElement('div')
-      container.classList.add('card')
-      if (Services.prefs.getBoolPref(feature.pref, false))
-        container.classList.add('selected')
-
-      container.addEventListener('click', async () => {
-        const newValue = !Services.prefs.getBoolPref(feature.pref, false)
-        Services.prefs.setBoolPref(feature.pref, newValue)
-
-        if (newValue) container.classList.add('selected')
-        else container.classList.remove('selected')
-
-        // Si es la preferencia de msidebar, aplicar cambios en las ventanas del navegador
-        if (feature.pref === 'midori.msidebar.enabled') {
-          try {
-            // Obtener todas las ventanas del navegador
-            const windowMediator = Services.wm
-            const browserWindows = windowMediator.getEnumerator('navigator:browser')
-            
-            while (browserWindows.hasMoreElements()) {
-              const win = browserWindows.getNext()
-              
-              // Verificar que sea una ventana válida del navegador
-              if (win && win.location && win.location.href === 'chrome://browser/content/browser.xhtml') {
-                try {
-                  if (newValue) {
-                    // Habilitar sidebar - inyectar si no existe
-                    const sidebarExists = win.document.getElementById('sb2-wrapper')
-                    
-                    if (!sidebarExists) {
-                      console.log('[Welcome] Injecting sidebar in window')
-                      
-                      // Cargar e inicializar el módulo globals
-                      const globalsModule = ChromeUtils.importESModule(
-                        'resource://browser-content/modules/msidebar/globals.mjs'
-                      )
-                      globalsModule.initGlobals(win)
-                      
-                      // Cargar e inyectar el sidebar
-                      const { SidebarInjector } = ChromeUtils.importESModule(
-                        'resource://browser-content/modules/msidebar/sidebar_injector.mjs'
-                      )
-                      
-                      const injected = SidebarInjector.inject()
-                      if (injected) {
-                        console.log('[Welcome] Sidebar successfully injected')
-                      } else {
-                        console.warn('[Welcome] Failed to inject sidebar')
-                      }
-                    }
-                  } else {
-                    // Deshabilitar sidebar - remover si existe
-                    const sidebarExists = win.document.getElementById('sb2-wrapper')
-                    
-                    if (sidebarExists) {
-                      console.log('[Welcome] Removing sidebar from window')
-                      
-                      const { SidebarInjector } = ChromeUtils.importESModule(
-                        'resource://browser-content/modules/msidebar/sidebar_injector.mjs'
-                      )
-                      
-                      const removed = SidebarInjector.remove()
-                      if (removed) {
-                        console.log('[Welcome] Sidebar successfully removed')
-                      } else {
-                        console.warn('[Welcome] Failed to remove sidebar')
-                      }
-                    }
-                  }
-                } catch (error) {
-                  console.error('[Welcome] Error handling sidebar in window:', error)
-                }
-              }
-            }
-          } catch (error) {
-            console.error('[Welcome] Error enumerating browser windows:', error)
-          }
-        }
-      })
-
-      const img = document.createElement('img')
-      img.src = feature.image
-
-      const name = document.createElement('h3')
-      name.setAttribute('data-l10n-id', feature.l10nId)
-
-      container.appendChild(img)
-      container.appendChild(name)
-
-      this.enableFeatures.appendChild(container)
-    }
-  }
-}
-
 class Search extends Page {
   constructor(id) {
     super(id)
@@ -424,72 +176,19 @@ class Search extends Page {
 
     const searchElements = document.getElementById('searchList')
 
-    // Definir motores de búsqueda personalizados para Midori
-    const customEngines = [
-      {
-        name: 'AstianGO',
-        id: 'astiango',
-        iconURL: 'https://astiango.com/favicon.ico',
-        searchURL: 'https://astiango.com/?q=',
-        isCustom: true
-      },
-      {
-        name: 'Qwant',
-        id: 'qwant',
-        iconURL: 'https://www.qwant.com/favicon.ico',
-        searchURL: 'https://www.qwant.com/?q=',
-        isCustom: true
-      },
-      {
-        name: 'DuckDuckGo',
-        id: 'ddg',
-        iconURL: 'https://duckduckgo.com/favicon.ico',
-        searchURL: 'https://duckduckgo.com/?q=',
-        isCustom: true
-      }
-    ]
+    const allowedEngines = ['AstianGO', 'Wikipedia (en)', 'Qwant']
 
-    // Filtrar solo los motores de búsqueda deseados: AstianGO, Qwant y DuckDuckGo
-    // El orden de prioridad es: AstianGO, Qwant, DuckDuckGo
-    const allowedEngines = ['AstianGO', 'Qwant', 'DuckDuckGo']
-    const allEngines = this.store.getEngine()
-    
-    // Debug: Log all available engines
-    console.log('Available search engines:', allEngines.map(e => ({ name: e.name, id: e.id })))
-    console.log('Full engine details:', allEngines)
-    
-    // Filtrar y ordenar según la prioridad definida
-    // Usar búsqueda case-insensitive y parcial para mayor flexibilidad
-    const filteredEngines = []
-    for (const engineName of allowedEngines) {
-      // Primero intentar encontrar el motor en los motores instalados
-      let engine = allEngines.find((e) => {
-        const nameLower = e.name.toLowerCase()
-        const searchLower = engineName.toLowerCase()
-        return nameLower === searchLower || nameLower.includes(searchLower)
-      })
-      
-      // Si no se encuentra, usar el motor personalizado
-      if (!engine) {
-        const customEngine = customEngines.find(e => e.name === engineName)
-        if (customEngine) {
-          console.log(`Using custom engine: ${customEngine.name}`)
-          engine = customEngine
-        }
-      } else {
-        console.log(`Found engine: ${engine.name} for search term: ${engineName}`)
-      }
-      
-      if (engine) {
-        filteredEngines.push(engine)
-      } else {
-        console.warn(`Engine not found: ${engineName}`)
-      }
-    }
+    const engines = this.store.getEngine().filter((engine) =>
+      allowedEngines.some((name) => engine.name.startsWith(name.split(' ')[0]))
+    )
 
-    console.log('Filtered engines:', filteredEngines.map(e => e.name))
+    engines.sort((a, b) => {
+      const aIdx = allowedEngines.findIndex((name) => a.name.startsWith(name.split(' ')[0]))
+      const bIdx = allowedEngines.findIndex((name) => b.name.startsWith(name.split(' ')[0]))
+      return aIdx - bIdx
+    })
 
-    filteredEngines.forEach((search) => {
+    engines.forEach((search) => {
       const container = this.loadSpecificSearch(search, defaultEngine)
 
       searchElements.appendChild(container)
@@ -523,17 +222,6 @@ class Search extends Page {
     container.appendChild(img)
     container.appendChild(name)
 
-    // Add "Recommended" badge for AstianGO
-    if (search.name === 'AstianGO' || search.id === 'astiango') {
-      const badge = document.createElement('p')
-      badge.setAttribute('data-l10n-id', 'welcome-dialog-search-recommended')
-      badge.style.fontSize = '0.85em'
-      badge.style.color = 'var(--button-primary-bgcolor, #115ec7)'
-      badge.style.fontWeight = '600'
-      badge.style.marginTop = '4px'
-      container.appendChild(badge)
-    }
-
     return container
   }
 }
@@ -561,6 +249,7 @@ class Pages {
   constructor(pages) {
     this.pages = pages
     this.currentPage = 0
+    this.stepDots = document.querySelectorAll('.step-dot')
 
     this.pages.forEach((page) => page.setPages(this))
 
@@ -576,10 +265,6 @@ class Pages {
 
       Services.prefs.setBoolPref(welcomeSeenPref, true)
 
-      // Notify observers that welcome is completed
-      // This allows BrowserGlue to install selected extensions
-      Services.obs.notifyObservers(null, "welcome-completed", null)
-
       close()
       return
     }
@@ -593,6 +278,15 @@ class Pages {
     }
 
     this.pages[this.currentPage].show()
+
+    this.stepDots.forEach((dot, i) => {
+      dot.classList.remove('active', 'done')
+      if (i < this.currentPage) {
+        dot.classList.add('done')
+      } else if (i === this.currentPage) {
+        dot.classList.add('active')
+      }
+    })
   }
 }
 
@@ -601,54 +295,4 @@ const pages = new Pages([
   new Import('import'),
   new Themes('theme'),
   new Search('search'),
-  new Apps('apps'),
-  new Features('features'),
 ])
-
-// Try to maximize the dialog window on load
-try {
-  // Wait a bit for the dialog to be fully rendered
-  setTimeout(() => {
-    // Method 1: Resize through frameElement (SubDialog)
-    if (window.frameElement) {
-      const frame = window.frameElement
-      frame.style.width = '80vw'
-      frame.style.height = '80vh'
-      frame.style.maxWidth = '80vw'
-      frame.style.maxHeight = '80vh'
-      
-      // Also try to resize the parent dialog
-      const parentDialog = frame.closest('dialog')
-      if (parentDialog) {
-        parentDialog.style.width = '80vw'
-        parentDialog.style.height = '80vh'
-        parentDialog.style.maxWidth = 'none'
-        parentDialog.style.maxHeight = 'none'
-      }
-    }
-    
-    // Method 2: Try through parent window
-    if (window.parent && window.parent !== window) {
-      try {
-        const parentDialog = window.parent.document.querySelector('#window-modal-dialog')
-        if (parentDialog) {
-          parentDialog.style.width = '80vw'
-          parentDialog.style.height = '80vh'
-          parentDialog.style.maxWidth = 'none'
-          parentDialog.style.maxHeight = 'none'
-        }
-        
-        // Also try the subdialog frame
-        const subdialogFrame = window.parent.document.querySelector('#window-modal-dialog-subdialog browser')
-        if (subdialogFrame) {
-          subdialogFrame.style.width = '80vw'
-          subdialogFrame.style.height = '80vh'
-        }
-      } catch (e) {
-        console.log('Could not access parent window:', e)
-      }
-    }
-  }, 100)
-} catch (e) {
-  console.log('Could not maximize welcome dialog:', e)
-}
