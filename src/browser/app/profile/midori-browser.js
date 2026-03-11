@@ -160,3 +160,13 @@ pref('browser.tabs.unloadOnLowMemory', true);
 
 // Fork server for Linux - enables copy-on-write memory sharing
 pref('dom.ipc.forkserver.enable', true);
+
+// ============================================================================
+// MIDORI GLASSMORPHISM THEMES
+// ============================================================================
+// Set Jade Mist as the default active theme
+pref('extensions.activeThemeID', 'midori-theme-jade-mist@midori.astian.org');
+
+// Enable backdrop-filter for glassmorphism effects
+pref('layout.css.backdrop-filter.enabled', true);
+pref('gfx.webrender.all', true);
