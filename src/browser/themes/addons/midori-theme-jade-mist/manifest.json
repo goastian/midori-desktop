@@ -1,0 +1,65 @@
+{
+  "manifest_version": 2,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "midori-theme-jade-mist@midori.astian.org",
+      "strict_min_version": "120.0"
+    }
+  },
+  "version": "1.0.0",
+  "name": "Midori — Jade Mist",
+  "description": "Verde claro con efecto Glassmorphism. Frosted glass, acento verde y alta legibilidad.",
+  "author": "Astian, Inc.",
+  "icons": {
+    "32": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "theme": {
+    "colors": {
+      "frame": "#e8f5e9",
+      "frame_inactive": "#dcedc8",
+      "tab_background_text": "#1b5e20",
+      "tab_text": "#1b5e20",
+      "tab_loading": "#43a047",
+      "tab_line": "#66bb6a",
+      "toolbar": "rgba(200, 230, 201, 0.72)",
+      "toolbar_text": "#2e7d32",
+      "toolbar_field": "rgba(255, 255, 255, 0.68)",
+      "toolbar_field_text": "#1b5e20",
+      "toolbar_field_border": "rgba(102, 187, 106, 0.30)",
+      "toolbar_field_focus": "rgba(255, 255, 255, 0.88)",
+      "toolbar_field_text_focus": "#1b5e20",
+      "toolbar_field_border_focus": "rgba(76, 175, 80, 0.50)",
+      "toolbar_field_highlight": "rgba(76, 175, 80, 0.18)",
+      "toolbar_field_highlight_text": "#1b5e20",
+      "toolbar_top_separator": "transparent",
+      "toolbar_bottom_separator": "rgba(76, 175, 80, 0.15)",
+      "ntp_background": "#f1f8e9",
+      "ntp_card_background": "rgba(255, 255, 255, 0.78)",
+      "ntp_text": "#2e7d32",
+      "popup": "rgba(232, 245, 233, 0.92)",
+      "popup_text": "#1b5e20",
+      "popup_border": "rgba(102, 187, 106, 0.25)",
+      "popup_highlight": "rgba(76, 175, 80, 0.18)",
+      "popup_highlight_text": "#1b5e20",
+      "sidebar": "rgba(232, 245, 233, 0.78)",
+      "sidebar_text": "#2e7d32",
+      "sidebar_highlight": "rgba(76, 175, 80, 0.22)",
+      "sidebar_highlight_text": "#1b5e20",
+      "sidebar_border": "rgba(76, 175, 80, 0.12)",
+      "icons": "#43a047",
+      "icons_attention": "#2e7d32",
+      "button_background_hover": "rgba(76, 175, 80, 0.15)",
+      "button_background_active": "rgba(76, 175, 80, 0.28)"
+    },
+    "properties": {
+      "color_scheme": "light",
+      "content_color_scheme": "auto"
+    }
+  },
+  "theme_experiment": {
+    "colors": {},
+    "properties": {}
+  }
+}

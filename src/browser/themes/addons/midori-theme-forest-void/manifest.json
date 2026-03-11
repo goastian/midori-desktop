@@ -1,0 +1,65 @@
+{
+  "manifest_version": 2,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "midori-theme-forest-void@midori.astian.org",
+      "strict_min_version": "120.0"
+    }
+  },
+  "version": "1.0.0",
+  "name": "Midori — Forest Void",
+  "description": "Verde oscuro con efecto Glassmorphism. Elegante y sofisticado, con tonos esmeralda profundos.",
+  "author": "Astian, Inc.",
+  "icons": {
+    "32": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "theme": {
+    "colors": {
+      "frame": "#0d1f12",
+      "frame_inactive": "#0a1a0e",
+      "tab_background_text": "#a8d5ab",
+      "tab_text": "#c8e6c9",
+      "tab_loading": "#66bb6a",
+      "tab_line": "#4caf50",
+      "toolbar": "rgba(18, 42, 22, 0.82)",
+      "toolbar_text": "#b9debb",
+      "toolbar_field": "rgba(20, 48, 25, 0.75)",
+      "toolbar_field_text": "#c8e6c9",
+      "toolbar_field_border": "rgba(76, 175, 80, 0.22)",
+      "toolbar_field_focus": "rgba(20, 48, 25, 0.90)",
+      "toolbar_field_text_focus": "#e8f5e9",
+      "toolbar_field_border_focus": "rgba(76, 175, 80, 0.45)",
+      "toolbar_field_highlight": "rgba(76, 175, 80, 0.25)",
+      "toolbar_field_highlight_text": "#e8f5e9",
+      "toolbar_top_separator": "transparent",
+      "toolbar_bottom_separator": "rgba(76, 175, 80, 0.12)",
+      "ntp_background": "#0d1f12",
+      "ntp_card_background": "rgba(18, 42, 22, 0.85)",
+      "ntp_text": "#a8d5ab",
+      "popup": "rgba(13, 31, 18, 0.94)",
+      "popup_text": "#b9debb",
+      "popup_border": "rgba(76, 175, 80, 0.20)",
+      "popup_highlight": "rgba(76, 175, 80, 0.22)",
+      "popup_highlight_text": "#e8f5e9",
+      "sidebar": "rgba(13, 31, 18, 0.85)",
+      "sidebar_text": "#a8d5ab",
+      "sidebar_highlight": "rgba(76, 175, 80, 0.25)",
+      "sidebar_highlight_text": "#e8f5e9",
+      "sidebar_border": "rgba(76, 175, 80, 0.10)",
+      "icons": "#81c784",
+      "icons_attention": "#66bb6a",
+      "button_background_hover": "rgba(76, 175, 80, 0.15)",
+      "button_background_active": "rgba(76, 175, 80, 0.28)"
+    },
+    "properties": {
+      "color_scheme": "dark",
+      "content_color_scheme": "auto"
+    }
+  },
+  "theme_experiment": {
+    "colors": {},
+    "properties": {}
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "manifest_version": 2,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "midori-theme-volcanic-sunset@midori.astian.org",
+      "strict_min_version": "120.0"
+    }
+  },
+  "version": "1.0.0",
+  "name": "Midori — Volcanic Sunset",
+  "description": "Naranja oscuro con efecto Glassmorphism. Dramático, tonos de brasa y neón volcánico.",
+  "author": "Astian, Inc.",
+  "icons": {
+    "32": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "theme": {
+    "colors": {
+      "frame": "#1a0a04",
+      "frame_inactive": "#140800",
+      "tab_background_text": "#ffab91",
+      "tab_text": "#ffccbc",
+      "tab_loading": "#ff7043",
+      "tab_line": "#ff5722",
+      "toolbar": "rgba(38, 16, 6, 0.82)",
+      "toolbar_text": "#ffab91",
+      "toolbar_field": "rgba(44, 20, 8, 0.75)",
+      "toolbar_field_text": "#ffccbc",
+      "toolbar_field_border": "rgba(255, 112, 67, 0.22)",
+      "toolbar_field_focus": "rgba(44, 20, 8, 0.90)",
+      "toolbar_field_text_focus": "#fff3e0",
+      "toolbar_field_border_focus": "rgba(255, 87, 34, 0.50)",
+      "toolbar_field_highlight": "rgba(255, 87, 34, 0.25)",
+      "toolbar_field_highlight_text": "#fff3e0",
+      "toolbar_top_separator": "transparent",
+      "toolbar_bottom_separator": "rgba(255, 87, 34, 0.12)",
+      "ntp_background": "#1a0a04",
+      "ntp_card_background": "rgba(38, 16, 6, 0.85)",
+      "ntp_text": "#ffab91",
+      "popup": "rgba(26, 10, 4, 0.94)",
+      "popup_text": "#ffab91",
+      "popup_border": "rgba(255, 112, 67, 0.20)",
+      "popup_highlight": "rgba(255, 87, 34, 0.22)",
+      "popup_highlight_text": "#fff3e0",
+      "sidebar": "rgba(26, 10, 4, 0.85)",
+      "sidebar_text": "#ffab91",
+      "sidebar_highlight": "rgba(255, 87, 34, 0.25)",
+      "sidebar_highlight_text": "#fff3e0",
+      "sidebar_border": "rgba(255, 87, 34, 0.10)",
+      "icons": "#ff8a65",
+      "icons_attention": "#ff7043",
+      "button_background_hover": "rgba(255, 87, 34, 0.15)",
+      "button_background_active": "rgba(255, 87, 34, 0.28)"
+    },
+    "properties": {
+      "color_scheme": "dark",
+      "content_color_scheme": "auto"
+    }
+  },
+  "theme_experiment": {
+    "colors": {},
+    "properties": {}
+  }
+}

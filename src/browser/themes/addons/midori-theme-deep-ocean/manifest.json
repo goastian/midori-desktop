@@ -1,0 +1,65 @@
+{
+  "manifest_version": 2,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "midori-theme-deep-ocean@midori.astian.org",
+      "strict_min_version": "120.0"
+    }
+  },
+  "version": "1.0.0",
+  "name": "Midori — Deep Ocean",
+  "description": "Azul oscuro con efecto Glassmorphism. Modo oscuro profundo con acentos eléctricos.",
+  "author": "Astian, Inc.",
+  "icons": {
+    "32": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "theme": {
+    "colors": {
+      "frame": "#0a1628",
+      "frame_inactive": "#081220",
+      "tab_background_text": "#90caf9",
+      "tab_text": "#bbdefb",
+      "tab_loading": "#42a5f5",
+      "tab_line": "#2196f3",
+      "toolbar": "rgba(14, 28, 52, 0.82)",
+      "toolbar_text": "#90caf9",
+      "toolbar_field": "rgba(16, 34, 62, 0.75)",
+      "toolbar_field_text": "#bbdefb",
+      "toolbar_field_border": "rgba(66, 165, 245, 0.22)",
+      "toolbar_field_focus": "rgba(16, 34, 62, 0.90)",
+      "toolbar_field_text_focus": "#e3f2fd",
+      "toolbar_field_border_focus": "rgba(66, 165, 245, 0.50)",
+      "toolbar_field_highlight": "rgba(66, 165, 245, 0.25)",
+      "toolbar_field_highlight_text": "#e3f2fd",
+      "toolbar_top_separator": "transparent",
+      "toolbar_bottom_separator": "rgba(33, 150, 243, 0.12)",
+      "ntp_background": "#0a1628",
+      "ntp_card_background": "rgba(14, 28, 52, 0.85)",
+      "ntp_text": "#90caf9",
+      "popup": "rgba(10, 22, 40, 0.94)",
+      "popup_text": "#90caf9",
+      "popup_border": "rgba(66, 165, 245, 0.20)",
+      "popup_highlight": "rgba(33, 150, 243, 0.22)",
+      "popup_highlight_text": "#e3f2fd",
+      "sidebar": "rgba(10, 22, 40, 0.85)",
+      "sidebar_text": "#90caf9",
+      "sidebar_highlight": "rgba(33, 150, 243, 0.25)",
+      "sidebar_highlight_text": "#e3f2fd",
+      "sidebar_border": "rgba(33, 150, 243, 0.10)",
+      "icons": "#64b5f6",
+      "icons_attention": "#42a5f5",
+      "button_background_hover": "rgba(33, 150, 243, 0.15)",
+      "button_background_active": "rgba(33, 150, 243, 0.28)"
+    },
+    "properties": {
+      "color_scheme": "dark",
+      "content_color_scheme": "auto"
+    }
+  },
+  "theme_experiment": {
+    "colors": {},
+    "properties": {}
+  }
+}
