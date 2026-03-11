@@ -175,7 +175,7 @@ jobs:
 
       - name: Bootstrap
         run: |
-          export SURFER_PLATFORM="win32"
+          export AMELIA_PLATFORM="win32"
           export MIDORI_CROSS_COMPILING=1
           npm run bootstrap
           if [ -d ~/win-cross/wine ]; then
@@ -184,7 +184,7 @@ jobs:
 
       - name: Build
         env:
-          SURFER_PLATFORM: win32
+          AMELIA_PLATFORM: win32
         run: |
           . "$HOME/.cargo/env"
           dos2unix configs/windows/mozconfig 2>/dev/null || true
@@ -197,7 +197,7 @@ jobs:
 
       - name: Package
         env:
-          SURFER_PLATFORM: win32
+          AMELIA_PLATFORM: win32
         run: |
           export MIDORI_CROSS_COMPILING=1
           export MIDORI_RELEASE=1

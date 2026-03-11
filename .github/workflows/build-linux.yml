@@ -145,7 +145,7 @@ jobs:
 
       - name: Build
         env:
-          SURFER_PLATFORM: linux
+          AMELIA_PLATFORM: linux
         run: |
           . "$HOME/.cargo/env"
           if [ -n "${{ inputs.build_id }}" ]; then
@@ -156,7 +156,7 @@ jobs:
 
       - name: Package
         env:
-          SURFER_PLATFORM: linux
+          AMELIA_PLATFORM: linux
         run: |
           export MIDORI_RELEASE=1
           npm run package -- --verbose

@@ -137,8 +137,8 @@ jobs:
       - name: Import patches
         run: npm run import
 
-      - name: Download language packs
-        run: bash scripts/download-language-packs.sh
+      - name: Prepare language packs
+        run: python3 scripts/prepare_l10n.py --no-cleanup
 
       - name: Compress prepared source
         run: |

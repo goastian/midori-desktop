@@ -42,7 +42,7 @@ jobs:
         run: npm run update-ff:l10n
 
       - name: Download Firefox language packs
-        run: bash scripts/download-language-packs.sh
+        run: python3 scripts/prepare_l10n.py --download-only --force
 
       - name: Sync Crowdin translations
         if: ${{ env.HAS_CROWDIN == 'true' }}

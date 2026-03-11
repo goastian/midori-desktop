@@ -125,13 +125,13 @@ jobs:
       - name: Bootstrap
         run: |
           cd engine
-          export SURFER_PLATFORM="darwin"
+          export AMELIA_PLATFORM="darwin"
           ./mach --no-interactive bootstrap --application-choice browser --exclude macos-sdk || true
           cd ..
 
       - name: Build
         env:
-          SURFER_PLATFORM: darwin
+          AMELIA_PLATFORM: darwin
         run: |
           . "$HOME/.cargo/env"
           if [ -n "${{ inputs.build_id }}" ]; then
@@ -142,7 +142,7 @@ jobs:
 
       - name: Package
         env:
-          SURFER_PLATFORM: darwin
+          AMELIA_PLATFORM: darwin
         run: |
           export MIDORI_RELEASE=1
           npm run package -- --verbose
