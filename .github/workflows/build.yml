@@ -29,6 +29,11 @@ on:
           - macos
           - windows
         default: all
+      use_sccache:
+        description: "Use sccache for compilation caching"
+        required: false
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       display_version:
@@ -42,6 +47,10 @@ on:
         required: false
         type: string
         default: all
+      use_sccache:
+        required: false
+        type: boolean
+        default: true
 
 concurrency:
   group: build-${{ github.ref }}-${{ inputs.build_type }}
@@ -49,15 +58,112 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # Generate build metadata (build ID, version, timestamps)
+  # ---------------------------------------------------------------------------
+  build-metadata:
+    name: Generate Build Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      build_id: ${{ steps.meta.outputs.build_id }}
+      build_date: ${{ steps.meta.outputs.build_date }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate metadata
+        id: meta
+        run: |
+          echo "build_id=$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "version=${{ inputs.display_version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Debug info
+        run: |
+          echo "Build ID: ${{ steps.meta.outputs.build_id }}"
+          echo "Build date: ${{ steps.meta.outputs.build_date }}"
+          echo "Version: ${{ steps.meta.outputs.version }}"
+          echo "Build type: ${{ inputs.build_type }}"
+          echo "Platforms: ${{ inputs.platforms }}"
+          echo "Use sccache: ${{ inputs.use_sccache }}"
+
+  # ---------------------------------------------------------------------------
+  # Prepare source: download Firefox, import patches, build language packs
+  # This runs ONCE and uploads the prepared source as an artifact so each
+  # platform build doesn't have to re-download and re-import (~15 min saved).
+  # ---------------------------------------------------------------------------
+  prepare-source:
+    name: Prepare Source
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: build-metadata
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          large-packages: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Set brand
+        run: npm run brand
+
+      - name: Activate CI configuration
+        run: npm run ci -- --display-version ${{ inputs.display_version }}
+
+      - name: Download Firefox source
+        run: npm run download
+
+      - name: Import patches
+        run: npm run import
+
+      - name: Download language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Compress prepared source
+        run: |
+          tar \
+            --exclude='./.git' \
+            --use-compress-program=zstd \
+            -hcf midori.source.tar.zst \
+            -C engine .
+
+      - name: Upload prepared source
+        uses: actions/upload-artifact@v4
+        with:
+          name: midori.source.tar.zst
+          path: ./midori.source.tar.zst
+          retention-days: 2
+
+  # ---------------------------------------------------------------------------
   # Linux builds
   # ---------------------------------------------------------------------------
   build-linux:
     name: Linux
     if: inputs.platforms == 'all' || inputs.platforms == 'linux'
+    needs: [build-metadata, prepare-source]
     uses: ./.github/workflows/build-linux.yml
     with:
       display_version: ${{ inputs.display_version }}
       build_type: ${{ inputs.build_type }}
+      build_id: ${{ needs.build-metadata.outputs.build_id }}
+      use_sccache: ${{ inputs.use_sccache }}
     secrets: inherit
 
   # ---------------------------------------------------------------------------
@@ -66,10 +172,13 @@ jobs:
   build-macos:
     name: macOS
     if: inputs.platforms == 'all' || inputs.platforms == 'macos'
+    needs: [build-metadata, prepare-source]
     uses: ./.github/workflows/build-macos.yml
     with:
       display_version: ${{ inputs.display_version }}
       build_type: ${{ inputs.build_type }}
+      build_id: ${{ needs.build-metadata.outputs.build_id }}
+      use_sccache: ${{ inputs.use_sccache }}
     secrets: inherit
 
   # ---------------------------------------------------------------------------
@@ -78,8 +187,11 @@ jobs:
   build-windows:
     name: Windows
     if: inputs.platforms == 'all' || inputs.platforms == 'windows'
+    needs: [build-metadata, prepare-source]
     uses: ./.github/workflows/build-windows.yml
     with:
       display_version: ${{ inputs.display_version }}
       build_type: ${{ inputs.build_type }}
+      build_id: ${{ needs.build-metadata.outputs.build_id }}
+      use_sccache: ${{ inputs.use_sccache }}
     secrets: inherit

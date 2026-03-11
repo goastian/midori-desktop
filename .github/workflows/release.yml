@@ -77,6 +77,7 @@ jobs:
     with:
       display_version: ${{ needs.prepare.outputs.display_version }}
       build_type: ${{ needs.prepare.outputs.build_type }}
+      use_sccache: true
     secrets: inherit
 
   # ---------------------------------------------------------------------------

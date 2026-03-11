@@ -40,21 +40,21 @@ jobs:
   build-check:
     name: Build Check (Linux x86_64)
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     needs: lint
     env:
-      MIDORI_RELEASE: ""
       SURFER_COMPAT: x86_64
       SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: sccache
+      CARGO_INCREMENTAL: 0
     steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force || true
-          sudo swapoff -a && sudo rm -f /swapfile || true
-          df -h
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -67,18 +67,28 @@ jobs:
         with:
           python-version-file: .python-version
 
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@main
+        with:
+          disable_annotations: true
+
+      - name: Expose actions cache variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env['ACTIONS_CACHE_URL'])
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env['ACTIONS_RUNTIME_TOKEN'])
+
       - name: Setup Rust
         run: |
-          rustup toolchain install 1.83 --profile minimal
-          rustup default 1.83
+          if [ -f .rust-toolchain ]; then
+            RUST_VERSION=$(cat .rust-toolchain)
+          else
+            RUST_VERSION="1.83"
+          fi
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$RUST_VERSION"
+          . "$HOME/.cargo/env"
           rustc --version
-
-      - name: Setup sccache
-        run: |
-          SCCACHE_VERSION="v0.8.1"
-          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
-          sudo mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/
-          sccache --version
 
       - name: Install system dependencies
         run: |
@@ -90,16 +100,27 @@ jobs:
             libxt-dev \
             libasound2-dev \
             libpulse-dev \
+            libpython3-dev \
+            libdrm-dev \
+            libcurl4-openssl-dev \
+            libx11-xcb-dev \
             nasm \
             yasm \
             clang \
-            lld
+            lld \
+            llvm \
+            xvfb
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Set brand
+        run: npm run brand
 
       - name: Initialize Amelia (download + import + bootstrap)
         run: npm run init
 
       - name: Build check (dev mode)
-        run: npm run build
+        run: |
+          . "$HOME/.cargo/env"
+          npm run build

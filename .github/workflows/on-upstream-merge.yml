@@ -52,4 +52,5 @@ jobs:
     with:
       display_version: ${{ needs.check-trigger.outputs.display_version }}
       build_type: ${{ needs.check-trigger.outputs.build_type }}
+      use_sccache: true
     secrets: inherit
