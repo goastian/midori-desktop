@@ -1,0 +1,26 @@
+diff --git a/services/settings/dumps/main/search-config-icons.json b/services/settings/dumps/main/search-config-icons.json
+index 3249024a839387130f15a0d66b72bf7c6c4e5f85..18cd3bc9ab3fb0d7c0b6f79d3dacb1b58b338dd2 100644
+--- a/services/settings/dumps/main/search-config-icons.json
++++ b/services/settings/dumps/main/search-config-icons.json
+@@ -1,5 +1,21 @@
+ {
+   "data": [
++    {
++      "schema": 1770000000000,
++      "imageSize": 16,
++      "attachment": {
++        "hash": "4a7b4c47da25e07ce65e7c865e44228273b70ebf421d559056aeef53c80c26cb",
++        "size": 268,
++        "filename": "astiango-icon.svg",
++        "location": "main-workspace/search-config-icons/astiango-icon.svg",
++        "mimetype": "image/svg+xml"
++      },
++      "engineIdentifiers": [
++        "astiango"
++      ],
++      "id": "b1c2d3e4-f5a6-7890-bcde-fa1234567890",
++      "last_modified": 1770000000000
++    },
+     {
+       "schema": 1771977606099,
+       "imageSize": 96,
