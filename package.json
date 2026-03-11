@@ -35,7 +35,7 @@
     "recalculate-patches": "bash scripts/recalculate-patches.sh",
     "browser": "amelia run",
     "use-moz-src": "cd engine && ./mach use-moz-src",
-    "ci": "amelia ci --brand release --display-version"
+    "ci": "amelia ci --brand release"
   },
   "repository": {
     "type": "git",
