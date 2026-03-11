@@ -170,3 +170,12 @@ pref('extensions.activeThemeID', 'midori-theme-jade-mist@midori.astian.org');
 // Enable backdrop-filter for glassmorphism effects
 pref('layout.css.backdrop-filter.enabled', true);
 pref('gfx.webrender.all', true);
+
+pref('toolkit.legacyUserProfileCustomizations.stylesheets', true);
+
+// ============================================================================
+// MIDORI AUTO-HIDE TOOLBAR
+// ============================================================================
+// Hide the toolbar when scrolling down to maximize content area
+// The toolbar reappears when scrolling up or moving the mouse to the top
+pref('midori.autohide.toolbar', true);
