@@ -1,49 +1,67 @@
-From c01f48d56416c0ff553accb9209611a7d7c530ca Mon Sep 17 00:00:00 2001
-From: Alfonso Hernandez <alfonso.hernandez@astian.org>
-Date: Mon, 1 Dec 2025 00:37:02 -0500
-Subject: [PATCH] add new themes for Midori
-
----
- browser/themes/BuiltInThemeConfig.sys.mjs | 28 +++++++++++++++++++++++
- 1 file changed, 28 insertions(+)
-
 diff --git a/browser/themes/BuiltInThemeConfig.sys.mjs b/browser/themes/BuiltInThemeConfig.sys.mjs
-index 38a7726b7c..264db05dba 100644
+index e05847bd9f..17786f2bb4 100644
 --- a/browser/themes/BuiltInThemeConfig.sys.mjs
 +++ b/browser/themes/BuiltInThemeConfig.sys.mjs
-@@ -40,4 +40,32 @@ export const BuiltInThemeConfig = new Map([
-       path: "resource://builtin-themes/alpenglow/",
+@@ -20,30 +20,49 @@
+  *   non-native appearance. See Document.forceNonNativeTheme and the
+  *   (-moz-native-theme) media query.
+  */
++// Midori Browser — Glassmorphism Theme Collection
++// Replaces Firefox default themes (Light, Dark, Alpenglow)
+ export const BuiltInThemeConfig = new Map([
+   [
+-    "firefox-compact-light@mozilla.org",
++    "midori-theme-jade-mist@midori.astian.org",
+     {
+-      version: "1.3.4",
+-      path: "resource://builtin-themes/light/",
+-      inApp: true,
+-      nonNative: true,
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-jade-mist/",
      },
    ],
-+  [
-+    "midori-light-new@astian.org",
-+  {
-+      version: "1.2",
-+      path: "resource://builtin-themes/midori/lightnew/",
-+  },
-+  ],
-+  [
-+   "midori-dark-new@astian.org",
-+    {
-+      version: "1.2",
-+      path: "resource://builtin-themes/midori/darknew/",
+   [
+-    "firefox-compact-dark@mozilla.org",
++    "midori-theme-forest-void@midori.astian.org",
+     {
+-      version: "1.3.4",
+-      path: "resource://builtin-themes/dark/",
+-      inApp: true,
+-      nonNative: true,
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-forest-void/",
+     },
+   ],
+   [
+-    "firefox-alpenglow@mozilla.org",
++    "midori-theme-sky-crystal@midori.astian.org",
+     {
+-      version: "1.5.1",
+-      path: "resource://builtin-themes/alpenglow/",
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-sky-crystal/",
 +    },
 +  ],
-+    [
-+    "midori-light@astian.org",
-+  {
-+      version: "1.2",
-+      path: "resource://builtin-themes/midori/light/",
-+  },
-+  ],
 +  [
-+   "midori-dark@astian.org",
++    "midori-theme-deep-ocean@midori.astian.org",
 +    {
-+      version: "1.2",
-+      path: "resource://builtin-themes/midori/dark/",
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-deep-ocean/",
 +    },
 +  ],
++  [
++    "midori-theme-citrus-dawn@midori.astian.org",
++    {
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-citrus-dawn/",
++    },
++  ],
++  [
++    "midori-theme-volcanic-sunset@midori.astian.org",
++    {
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-volcanic-sunset/",
+     },
+   ],
  ]);
--- 
-2.52.0
-

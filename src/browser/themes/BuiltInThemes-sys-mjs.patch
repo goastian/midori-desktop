@@ -1,0 +1,13 @@
+diff --git a/browser/themes/BuiltInThemes.sys.mjs b/browser/themes/BuiltInThemes.sys.mjs
+index ffad3aa4c7..b087662e7b 100644
+--- a/browser/themes/BuiltInThemes.sys.mjs
++++ b/browser/themes/BuiltInThemes.sys.mjs
+@@ -40,7 +40,7 @@ class _BuiltInThemes {
+   maybeInstallActiveBuiltInTheme() {
+     const activeThemeID = Services.prefs.getStringPref(
+       kActiveThemePref,
+-      "default-theme@mozilla.org"
++      "midori-theme-jade-mist@midori.astian.org"
+     );
+     let activeBuiltInTheme = this.builtInThemeMap.get(activeThemeID);
+ 
