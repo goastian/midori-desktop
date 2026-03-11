@@ -1,0 +1,13 @@
+diff --git a/browser/app/profile/firefox.js b/browser/app/profile/firefox.js
+index e85e7c1c78b9cfcafa3a0c9b49ecc5886e9ce240..316e8b77abb077d10aac636698a6349125c5832a 100644
+--- a/browser/app/profile/firefox.js
++++ b/browser/app/profile/firefox.js
+@@ -3556,6 +3556,8 @@ pref("toolkit.contentRelevancy.ingestEnabled", false);
+ // Pref to enable extra logging for the content relevancy feature
+ pref("toolkit.contentRelevancy.log", false);
+ 
++#include midori-browser.js
++
+ // The number of days after which to rotate the context ID. 0 means to disable
+ // rotation altogether.
+ pref("browser.contextual-services.contextId.rotation-in-days", 3);
