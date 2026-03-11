@@ -1,5 +1,5 @@
 diff --git a/browser/locales/en-US/installer/custom.properties b/browser/locales/en-US/installer/custom.properties
-index 8c33192e589de1d819cbb21c31cec0480ed4c85e..9db296363303c153dc05ad9e85493f1197bb1efd 100644
+index 8c33192e589de1d819cbb21c31cec0480ed4c85e..7e7edc447db5b629e89bfff14aed5944cc19fc16 100644
 --- a/browser/locales/en-US/installer/custom.properties
 +++ b/browser/locales/en-US/installer/custom.properties
 @@ -73,7 +73,7 @@ STATUS_INSTALL_APP=Installing $BrandShortName…
