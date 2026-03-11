@@ -160,37 +160,56 @@ jobs:
 
       - name: Create pull request
         if: steps.changes.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(upstream): sync Firefox to ${{ steps.changes.outputs.new_version }}"
-          branch: automation/firefox-update
-          title: "chore(upstream): update Firefox to ${{ steps.changes.outputs.new_version }}"
-          body: |
-            ## Automated Firefox Upstream Update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="automation/firefox-update"
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "chore(upstream): sync Firefox to ${{ steps.changes.outputs.new_version }}"
+          git push -f origin "$BRANCH"
 
-            | Field | Value |
-            |-------|-------|
-            | **Previous version** | ${{ steps.before.outputs.version }} |
-            | **New version** | ${{ steps.changes.outputs.new_version }} |
-            | **RC version** | ${{ steps.changes.outputs.new_rc }} |
-            | **Update type** | ${{ steps.update-type.outputs.type }} |
-            | **Patches** | ${{ steps.check-patches.outcome == 'success' && '✅ All patches applied cleanly' || '⚠️ Some patches did not apply cleanly — please review' }} |
+          # Determine patch status text
+          if [ "${{ steps.check-patches.outcome }}" = "success" ]; then
+            PATCH_STATUS="✅ All patches applied cleanly"
+            PATCH_NEXT="Patches applied cleanly ✅"
+          else
+            PATCH_STATUS="⚠️ Some patches did not apply cleanly — please review"
+            PATCH_NEXT="⚠️ Review patches that did not apply cleanly"
+          fi
 
-            ### What changed
-            - Firefox upstream has released version **${{ steps.changes.outputs.new_version }}**
-            - This PR updates `amelia.json` and related files to track the new upstream
+          # Create or update PR
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "PR #$EXISTING_PR already exists, updated branch."
+          else
+            gh pr create \
+              --title "chore(upstream): update Firefox to ${{ steps.changes.outputs.new_version }}" \
+              --body "## Automated Firefox Upstream Update
 
-            ### Next steps
-            1. Review the [Firefox release notes](https://www.mozilla.org/en-US/firefox/${{ steps.changes.outputs.new_version }}/releasenotes/)
-            2. ${{ steps.check-patches.outcome == 'success' && 'Patches applied cleanly ✅' || '⚠️ Review patches that did not apply cleanly' }}
-            3. Merge to trigger automated builds
+          | Field | Value |
+          |-------|-------|
+          | **Previous version** | ${{ steps.before.outputs.version }} |
+          | **New version** | ${{ steps.changes.outputs.new_version }} |
+          | **RC version** | ${{ steps.changes.outputs.new_rc }} |
+          | **Update type** | ${{ steps.update-type.outputs.type }} |
+          | **Patches** | ${PATCH_STATUS} |
 
-            ---
-            *This PR was generated automatically by the Update Firefox Upstream workflow.*
-          labels: upstream,automated,${{ steps.update-type.outputs.type }}-update
-          delete-branch: true
-          base: main
+          ### What changed
+          - Firefox upstream has released version **${{ steps.changes.outputs.new_version }}**
+          - This PR updates \`amelia.json\` and related files to track the new upstream
+
+          ### Next steps
+          1. Review the [Firefox release notes](https://www.mozilla.org/en-US/firefox/${{ steps.changes.outputs.new_version }}/releasenotes/)
+          2. ${PATCH_NEXT}
+          3. Merge to trigger automated builds
+
+          ---
+          *This PR was generated automatically by the Update Firefox Upstream workflow.*" \
+              --head "$BRANCH" \
+              --base main \
+              --label "upstream,automated,${{ steps.update-type.outputs.type }}-update" || true
+          fi
 
   # ---------------------------------------------------------------------------
   # Auto-build on upstream change (when explicitly enabled)

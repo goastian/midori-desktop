@@ -36,7 +36,7 @@ jobs:
       MIDORI_RELEASE: "true"
       MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
       SURFER_COMPAT: ${{ matrix.arch }}
-      SCCACHE_GHA_ENABLED: ${{ inputs.use_sccache && 'true' || 'false' }}
+      SCCACHE_DIR: ~/Library/Caches/Mozilla.sccache
       RUSTC_WRAPPER: ${{ inputs.use_sccache && 'sccache' || '' }}
       CARGO_INCREMENTAL: 0
 
@@ -55,18 +55,27 @@ jobs:
         with:
           python-version-file: .python-version
 
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@main
+      - name: Setup sccache
         if: ${{ inputs.use_sccache }}
-        with:
-          disable_annotations: true
+        run: |
+          SCCACHE_VERSION="v0.8.1"
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            SCCACHE_ARCH="aarch64-apple-darwin"
+          else
+            SCCACHE_ARCH="x86_64-apple-darwin"
+          fi
+          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}.tar.gz" | tar xz
+          sudo mv sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}/sccache /usr/local/bin/
+          sccache --version
 
-      - name: Expose actions cache variables
-        uses: actions/github-script@v6
+      - name: Restore sccache cache
+        if: ${{ inputs.use_sccache }}
+        uses: actions/cache@v4
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env['ACTIONS_CACHE_URL'])
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env['ACTIONS_RUNTIME_TOKEN'])
+          path: ~/Library/Caches/Mozilla.sccache
+          key: sccache-macos-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            sccache-macos-${{ matrix.arch }}-
 
       - name: Install system dependencies
         run: |

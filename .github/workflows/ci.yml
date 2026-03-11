@@ -44,14 +44,19 @@ jobs:
     needs: lint
     env:
       SURFER_COMPAT: x86_64
-      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_DIR: ~/.cache/sccache
       RUSTC_WRAPPER: sccache
       CARGO_INCREMENTAL: 0
     steps:
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
+            /usr/share/swift /usr/local/.ghcup || true
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get autoremove -y 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          df -h
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,17 +72,20 @@ jobs:
         with:
           python-version-file: .python-version
 
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@main
-        with:
-          disable_annotations: true
+      - name: Setup sccache
+        run: |
+          SCCACHE_VERSION="v0.8.1"
+          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          sudo mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/
+          sccache --version
 
-      - name: Expose actions cache variables
-        uses: actions/github-script@v6
+      - name: Restore sccache cache
+        uses: actions/cache@v4
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env['ACTIONS_CACHE_URL'])
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env['ACTIONS_RUNTIME_TOKEN'])
+          path: ~/.cache/sccache
+          key: sccache-ci-x86_64-${{ github.sha }}
+          restore-keys: |
+            sccache-ci-x86_64-
 
       - name: Setup Rust
         run: |
