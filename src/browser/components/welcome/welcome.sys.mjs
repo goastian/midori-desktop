@@ -111,18 +111,19 @@ class Themes extends Page {
     await sleep(1000)
 
     const themes = (await lazy.AddonManager.getAddonsByTypes(['theme']))
-    .filter(theme => !theme.id.includes('colorway') && !theme.id.includes('default-theme'))
+    .filter(theme => theme.id.includes('midori-theme-'))
     .sort((a, b) => {
-        const aHasJadua = a.id.includes('midori');
-        const bHasJadua = b.id.includes('midori');
-
-        if (aHasJadua && !bHasJadua) {
-            return -1; // a comes before b
-        } else if (!aHasJadua && bHasJadua) {
-            return 1; // b comes before a
-        } else {
-            return 0; // maintain the original order
-        }
+        const order = [
+            'midori-theme-jade-mist',
+            'midori-theme-forest-void',
+            'midori-theme-sky-crystal',
+            'midori-theme-deep-ocean',
+            'midori-theme-citrus-dawn',
+            'midori-theme-volcanic-sunset',
+        ];
+        const aIdx = order.findIndex(id => a.id.includes(id));
+        const bIdx = order.findIndex(id => b.id.includes(id));
+        return aIdx - bIdx;
     })
 	
     const themeList = document.getElementById('themeList')
@@ -144,7 +145,7 @@ class Themes extends Page {
       })
 
       const img = document.createElement('img')
-      img.src = theme.icons['32']
+      img.src = theme.icons?.['32'] || theme.iconURL || 'chrome://mozapps/skin/extensions/extensionGeneric.svg'
 
       const name = document.createElement('h3')
       name.textContent = theme.name
