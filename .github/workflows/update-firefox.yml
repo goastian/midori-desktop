@@ -6,12 +6,17 @@ name: Update Firefox Upstream
 
 on:
   schedule:
-    # Every day at 04:00 UTC
-    - cron: "0 4 * * *"
+    # Check every 6 hours for upstream changes
+    - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       check_rc:
         description: "Check for Release Candidate too"
+        required: false
+        type: boolean
+        default: false
+      auto_build:
+        description: "Trigger build automatically if update found"
         required: false
         type: boolean
         default: false
@@ -21,9 +26,19 @@ permissions:
   pull-requests: write
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Detect upstream Firefox changes
+  # ---------------------------------------------------------------------------
   check-update:
     name: Check for Firefox Updates
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+      new_version: ${{ steps.changes.outputs.new_version }}
+      new_rc: ${{ steps.changes.outputs.new_rc }}
+      previous_version: ${{ steps.before.outputs.version }}
+      is_major_update: ${{ steps.changes.outputs.is_major_update }}
+      is_security_update: ${{ steps.changes.outputs.is_security_update }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,11 +80,31 @@ jobs:
         run: |
           NEW_VERSION=$(jq -r '.version.version' amelia.json)
           NEW_RC=$(jq -r '.version.candidate' amelia.json)
-          if [ "$NEW_VERSION" != "${{ steps.before.outputs.version }}" ] || \
+          OLD_VERSION="${{ steps.before.outputs.version }}"
+
+          if [ "$NEW_VERSION" != "$OLD_VERSION" ] || \
              [ "$NEW_RC" != "${{ steps.before.outputs.rc_version }}" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
             echo "new_rc=$NEW_RC" >> "$GITHUB_OUTPUT"
+
+            # Detect update type (major vs patch/security)
+            OLD_MAJOR=$(echo "$OLD_VERSION" | cut -d. -f1)
+            NEW_MAJOR=$(echo "$NEW_VERSION" | cut -d. -f1)
+            if [ "$OLD_MAJOR" != "$NEW_MAJOR" ]; then
+              echo "is_major_update=true" >> "$GITHUB_OUTPUT"
+              echo "is_security_update=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_major_update=false" >> "$GITHUB_OUTPUT"
+              # Patch updates (e.g. 148.0.1 -> 148.0.2) are typically security updates
+              OLD_MINOR=$(echo "$OLD_VERSION" | cut -d. -f2)
+              NEW_MINOR=$(echo "$NEW_VERSION" | cut -d. -f2)
+              if [ "$OLD_MINOR" = "$NEW_MINOR" ]; then
+                echo "is_security_update=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "is_security_update=false" >> "$GITHUB_OUTPUT"
+              fi
+            fi
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
@@ -87,6 +122,14 @@ jobs:
           git commit -m "chore(upstream): update Firefox to ${{ steps.changes.outputs.new_version }}"
           git push -f origin "$BRANCH"
 
+          # Determine update type label
+          UPDATE_TYPE="patch"
+          if [ "${{ steps.changes.outputs.is_major_update }}" = "true" ]; then
+            UPDATE_TYPE="major"
+          elif [ "${{ steps.changes.outputs.is_security_update }}" = "true" ]; then
+            UPDATE_TYPE="security"
+          fi
+
           # Create or update PR
           EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' || true)
           if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
@@ -94,14 +137,41 @@ jobs:
           else
             gh pr create \
               --title "chore(upstream): update Firefox to ${{ steps.changes.outputs.new_version }}" \
-              --body "Automated Firefox upstream update detected.
+              --body "## Automated Firefox Upstream Update
 
-          - **Previous version:** ${{ steps.before.outputs.version }}
-          - **New version:** ${{ steps.changes.outputs.new_version }}
-          - **RC version:** ${{ steps.changes.outputs.new_rc }}
+          | Field | Value |
+          |-------|-------|
+          | **Previous version** | ${{ steps.before.outputs.version }} |
+          | **New version** | ${{ steps.changes.outputs.new_version }} |
+          | **RC version** | ${{ steps.changes.outputs.new_rc }} |
+          | **Update type** | ${UPDATE_TYPE} |
 
-          This PR was generated automatically by the Update Firefox Upstream workflow.
-          Please review and test before merging." \
+          ### What changed
+          - Firefox upstream has released version **${{ steps.changes.outputs.new_version }}**
+          - This PR updates \`amelia.json\` and related files to track the new upstream
+
+          ### Next steps
+          1. Review the [Firefox release notes](https://www.mozilla.org/en-US/firefox/${{ steps.changes.outputs.new_version }}/releasenotes/)
+          2. Verify patches still apply cleanly
+          3. Merge to trigger automated builds
+
+          ---
+          *This PR was generated automatically by the Update Firefox Upstream workflow.*" \
               --head "$BRANCH" \
-              --label "upstream,automated" || true
+              --label "upstream,automated,${UPDATE_TYPE}-update" || true
           fi
+
+  # ---------------------------------------------------------------------------
+  # Auto-build on upstream change (when explicitly enabled)
+  # ---------------------------------------------------------------------------
+  trigger-build:
+    name: Trigger Builds
+    needs: check-update
+    if: >-
+      needs.check-update.outputs.changed == 'true' &&
+      inputs.auto_build == true
+    uses: ./.github/workflows/build.yml
+    with:
+      display_version: ${{ needs.check-update.outputs.new_version }}
+      build_type: release
+    secrets: inherit

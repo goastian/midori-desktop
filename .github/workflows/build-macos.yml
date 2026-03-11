@@ -1,0 +1,138 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Build macOS
+
+on:
+  workflow_call:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: false
+        type: string
+        default: release
+
+env:
+  MIDORI_RELEASE: "true"
+  MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
+  SCCACHE_GHA_ENABLED: "true"
+
+jobs:
+  macos-x86_64:
+    name: macOS x86_64
+    runs-on: macos-13
+    env:
+      SURFER_COMPAT: x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup Rust
+        run: |
+          rustup toolchain install 1.83 --profile minimal
+          rustup default 1.83
+          rustc --version
+
+      - name: Setup sccache
+        run: |
+          SCCACHE_VERSION="v0.8.1"
+          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz" | tar xz
+          sudo mv sccache-${SCCACHE_VERSION}-x86_64-apple-darwin/sccache /usr/local/bin/
+          sccache --version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Initialize (download + import + bootstrap)
+        run: npm run init
+
+      - name: Download language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Build release
+        run: npm run ci -- ${{ inputs.display_version }}
+
+      - name: Package
+        run: npm run package -- --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x86_64
+          path: |
+            dist/*.dmg
+            dist/*.mar
+            dist/update/
+          retention-days: 5
+
+  macos-aarch64:
+    name: macOS aarch64
+    runs-on: macos-14
+    env:
+      SURFER_COMPAT: aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup Rust
+        run: |
+          rustup toolchain install 1.83 --profile minimal
+          rustup default 1.83
+          rustc --version
+
+      - name: Setup sccache
+        run: |
+          SCCACHE_VERSION="v0.8.1"
+          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-aarch64-apple-darwin.tar.gz" | tar xz
+          sudo mv sccache-${SCCACHE_VERSION}-aarch64-apple-darwin/sccache /usr/local/bin/
+          sccache --version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Initialize (download + import + bootstrap)
+        run: npm run init
+
+      - name: Download language packs
+        run: bash scripts/download-language-packs.sh
+
+      - name: Build release
+        run: npm run ci -- ${{ inputs.display_version }}
+
+      - name: Package
+        run: npm run package -- --verbose
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-aarch64
+          path: |
+            dist/*.dmg
+            dist/*.mar
+            dist/update/
+          retention-days: 5

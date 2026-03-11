@@ -27,6 +27,11 @@ on:
         required: false
         type: boolean
         default: true
+      deploy_updates:
+        description: "Deploy updates to update server after release"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -180,3 +185,18 @@ jobs:
             --title "$TITLE" \
             --repo "${{ github.repository }}" \
             $FLAGS
+
+  # ---------------------------------------------------------------------------
+  # Deploy updates to update server (optional)
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy Updates
+    needs: [prepare, publish]
+    if: inputs.deploy_updates == true
+    uses: ./.github/workflows/deploy.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      display_version: ${{ needs.prepare.outputs.display_version }}
+      build_type: ${{ needs.prepare.outputs.build_type }}
+      dry_run: false
+    secrets: inherit
