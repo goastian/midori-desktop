@@ -174,6 +174,17 @@ pref('gfx.webrender.all', true);
 pref('toolkit.legacyUserProfileCustomizations.stylesheets', true);
 
 // ============================================================================
+// MIDORI CUSTOM GRADIENT SYSTEM
+// ============================================================================
+// Allow users to define custom gradients for the browser chrome
+pref('midori.gradient.enabled', false);
+pref('midori.gradient.type', 'linear');
+pref('midori.gradient.angle', 135);
+pref('midori.gradient.stops', '[{"color":"#2d8659","position":0},{"color":"#1a5c3a","position":100}]');
+pref('midori.gradient.texture', 'none');
+pref('midori.gradient.texture.opacity', 50);
+
+// ============================================================================
 // MIDORI AUTO-HIDE TOOLBAR
 // ============================================================================
 // Hide the toolbar when scrolling down to maximize content area
