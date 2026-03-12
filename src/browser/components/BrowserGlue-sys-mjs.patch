@@ -2,16 +2,17 @@ diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/Browser
 index 33a0f6b7e5..08047d9724 100644
 --- a/browser/components/BrowserGlue.sys.mjs
 +++ b/browser/components/BrowserGlue.sys.mjs
-@@ -74,6 +74,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
+@@ -74,6 +74,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
      "resource:///modules/WebProtocolHandlerRegistrar.sys.mjs",
    WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
    setTimeout: "resource://gre/modules/Timer.sys.mjs",
 +  AutoHideToolbar: "resource:///modules/AutoHideToolbar.sys.mjs",
 +  MemoryProfileManager: "resource:///modules/MemoryProfileManager.sys.mjs",
++  MidoriGradient: "resource:///modules/MidoriGradient.sys.mjs",
  });
  
  XPCOMUtils.defineLazyServiceGetters(lazy, {
-@@ -1675,6 +1677,42 @@ BrowserGlue.prototype = {
+@@ -1675,6 +1678,51 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
@@ -51,10 +52,19 @@ index 33a0f6b7e5..08047d9724 100644
 +    }
 +    // =========================================================================
 +
++    // =========================================================================
++    // Midori Gradient System - Initialize on startup
++    try {
++      lazy.MidoriGradient.init();
++    } catch (e) {
++      console.error("Midori: Failed to initialize MidoriGradient", e);
++    }
++    // =========================================================================
++
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1781,4 +1819,17 @@ BrowserGlue.prototype = {
+@@ -1781,4 +1829,17 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
