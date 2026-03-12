@@ -11,11 +11,26 @@ else
     export CXX=clang++
 fi
 
+# Target selection (always applied when SURFER_COMPAT is set)
+if test "$SURFER_COMPAT" = "x86_64"; then
+    ac_add_options --target=x86_64-pc-linux
+    ac_add_options --enable-eme=widevine
+elif test "$SURFER_COMPAT" = "aarch64"; then
+    ac_add_options --target=aarch64-linux-gnu
+    # EME/Widevine is not available for Linux aarch64 (only x86/x86_64)
+
+    # override LTO settings for cross-compilation
+    export MOZ_LTO=cross,thin
+    ac_add_options --enable-lto=cross,thin
+
+    # Use aarch64 sysroot if available (for cross-compilation from x86_64)
+    if test -d "$HOME/.mozbuild/sysroot-aarch64-linux-gnu"; then
+        ac_add_options --with-sysroot="$HOME/.mozbuild/sysroot-aarch64-linux-gnu"
+    fi
+fi
+
 if test "$MIDORI_RELEASE"; then
     if test "$SURFER_COMPAT" = "x86_64"; then
-        ac_add_options --target=x86_64-pc-linux
-        ac_add_options --enable-eme=widevine
-
         # Enable Profile Guided Optimization
         if test "$MIDORI_GA_DISABLE_PGO"; then
         export MIDORI_DUMMY=1
@@ -24,18 +39,12 @@ if test "$MIDORI_RELEASE"; then
         ac_add_options MOZ_PGO=1
         fi
 
-        # Optimization flags for SURFER_COMPAT
+        # Optimization flags for x86_64
         ac_add_options --enable-optimize="-O3 -w -ftree-vectorize -mfpmath=sse -mprfchw -msse3 -mcx16 -msahf"
 
         export LDFLAGS="$LDFLAGS -Wl,-O3"
     elif test "$SURFER_COMPAT" = "aarch64"; then
-        ac_add_options --target=aarch64-linux-gnu
-
         ac_add_options --enable-optimize="-O3"
-
-        # override LTO settings
-        export MOZ_LTO=cross,thin
-        ac_add_options --enable-lto=cross,thin
 
         export CFLAGS="$CFLAGS -O3"
         export CPPFLAGS="$CPPFLAGS -O3"
