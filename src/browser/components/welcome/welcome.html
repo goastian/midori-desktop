@@ -85,6 +85,80 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
       ></button>
     </div>
 
+    <div class="page" id="gradient">
+      <h2 data-l10n-id="welcome-dialog-gradient"></h2>
+      <p data-l10n-id="welcome-dialog-gradient-subtext"></p>
+
+      <!-- Preset gradient cards -->
+      <div id="gradientPresets" class="gradientPresetsGrid"></div>
+
+      <!-- Custom gradient editor (collapsed by default) -->
+      <details id="gradientCustomizer" class="gradient-customizer">
+        <summary data-l10n-id="welcome-dialog-gradient-customize"></summary>
+
+        <div class="gradient-editor">
+          <!-- Live preview -->
+          <div id="gradientPreview" class="gradient-preview"></div>
+
+          <!-- Gradient type selector -->
+          <div class="gradient-controls">
+            <div class="control-row">
+              <label data-l10n-id="welcome-dialog-gradient-type"></label>
+              <select id="gradientType">
+                <option value="linear">Linear</option>
+                <option value="radial">Radial</option>
+                <option value="conic">Conic</option>
+              </select>
+            </div>
+
+            <!-- Angle control -->
+            <div class="control-row" id="angleRow">
+              <label data-l10n-id="welcome-dialog-gradient-angle"></label>
+              <input
+                type="range"
+                id="gradientAngle"
+                min="0"
+                max="360"
+                value="135"
+              />
+              <span id="angleValue">135°</span>
+            </div>
+
+            <!-- Color stops -->
+            <div class="control-row">
+              <label data-l10n-id="welcome-dialog-gradient-colors"></label>
+              <div id="colorStops" class="color-stops"></div>
+              <button id="addColorStop" class="icon-btn" title="Add color">+</button>
+            </div>
+
+            <!-- Texture overlay -->
+            <div class="control-row">
+              <label data-l10n-id="welcome-dialog-gradient-texture"></label>
+              <select id="gradientTexture">
+                <option value="none">None</option>
+                <option value="noise">Noise</option>
+                <option value="dots">Dots</option>
+                <option value="grid">Grid</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <hbox>
+        <button
+          id="gradientNext"
+          class="primary"
+          data-l10n-id="welcome-dialog-gradient-action"
+        ></button>
+        <button
+          class="text-link"
+          id="gradientSkip"
+          data-l10n-id="welcome-dialog-skip"
+        ></button>
+      </hbox>
+    </div>
+
     <div class="page" id="search">
       <h2 data-l10n-id="welcome-dialog-search"></h2>
       <div id="searchList" class="cardGroup"></div>

@@ -7,6 +7,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: 'resource://gre/modules/AddonManager.sys.mjs',
   MigrationUtils: 'resource:///modules/MigrationUtils.sys.mjs',
   ExtensionSettingsStore: 'resource://gre/modules/ExtensionSettingsStore.sys.mjs',
+  MidoriGradient: 'resource:///modules/MidoriGradient.sys.mjs',
 })
 
 const welcomeSeenPref = 'midori.welcome.seen'
@@ -242,6 +243,236 @@ class Import extends Page {
   }
 }
 
+class Gradient extends Page {
+  constructor(id) {
+    super(id)
+
+    // The "skip" button also advances
+    const skipBtn = document.getElementById('gradientSkip')
+    if (skipBtn) {
+      skipBtn.addEventListener('click', () => {
+        // Disable gradient if user skips
+        lazy.MidoriGradient.setConfig({ enabled: false })
+        this.pages.next()
+      })
+    }
+
+    this._selectedPresetIdx = -1 // -1 = no gradient
+    this._customStops = [
+      { color: '#2d8659', position: 0 },
+      { color: '#1a5c3a', position: 100 },
+    ]
+    this._customType = 'linear'
+    this._customAngle = 135
+    this._customTexture = 'none'
+
+    this._buildPresets()
+    this._setupCustomEditor()
+  }
+
+  _buildPresets() {
+    const container = document.getElementById('gradientPresets')
+    if (!container) return
+
+    const presets = lazy.MidoriGradient.presets
+    this._presetCards = []
+
+    // "No gradient" card
+    const noCard = document.createElement('div')
+    noCard.classList.add('gradient-preset-card', 'no-gradient', 'selected')
+    const noLabel = document.createElement('span')
+    noLabel.classList.add('gradient-preset-name')
+    noLabel.textContent = 'None'
+    noCard.appendChild(noLabel)
+    noCard.addEventListener('click', () => this._selectPreset(-1, noCard))
+    container.appendChild(noCard)
+    this._presetCards.push(noCard)
+
+    // Preset cards
+    presets.forEach((preset, idx) => {
+      const card = document.createElement('div')
+      card.classList.add('gradient-preset-card')
+
+      // Build the gradient CSS for the preview
+      const gradCSS = lazy.MidoriGradient.buildGradientCSS({
+        type: preset.type,
+        angle: preset.angle,
+        stops: preset.stops,
+      })
+      card.style.background = gradCSS
+
+      const label = document.createElement('span')
+      label.classList.add('gradient-preset-name')
+      label.textContent = preset.name
+      card.appendChild(label)
+
+      card.addEventListener('click', () => this._selectPreset(idx, card))
+      container.appendChild(card)
+      this._presetCards.push(card)
+    })
+  }
+
+  _selectPreset(idx, cardEl) {
+    this._selectedPresetIdx = idx
+    this._presetCards.forEach(c => c.classList.remove('selected'))
+    cardEl.classList.add('selected')
+
+    if (idx === -1) {
+      // Disable gradient
+      lazy.MidoriGradient.setConfig({ enabled: false })
+      this._updatePreview(null)
+    } else {
+      // Apply preset
+      lazy.MidoriGradient.applyPreset(idx)
+      const preset = lazy.MidoriGradient.presets[idx]
+      // Sync custom editor with preset values
+      this._customType = preset.type
+      this._customAngle = preset.angle
+      this._customStops = [...preset.stops]
+      this._customTexture = preset.texture
+      this._syncEditorUI()
+      this._updatePreview(preset)
+    }
+  }
+
+  _setupCustomEditor() {
+    const typeSelect = document.getElementById('gradientType')
+    const angleSlider = document.getElementById('gradientAngle')
+    const angleValue = document.getElementById('angleValue')
+    const textureSelect = document.getElementById('gradientTexture')
+    const addBtn = document.getElementById('addColorStop')
+
+    if (typeSelect) {
+      typeSelect.addEventListener('change', () => {
+        this._customType = typeSelect.value
+        this._applyCustom()
+      })
+    }
+
+    if (angleSlider) {
+      angleSlider.addEventListener('input', () => {
+        this._customAngle = parseInt(angleSlider.value)
+        if (angleValue) angleValue.textContent = `${this._customAngle}\u00B0`
+        this._applyCustom()
+      })
+    }
+
+    if (textureSelect) {
+      textureSelect.addEventListener('change', () => {
+        this._customTexture = textureSelect.value
+        this._applyCustom()
+      })
+    }
+
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        if (this._customStops.length >= 6) return
+        // Add a new stop with a random-ish color at midpoint
+        const lastPos = this._customStops[this._customStops.length - 1]?.position || 100
+        const newPos = Math.min(lastPos, 100)
+        const colors = ['#4caf50', '#2196f3', '#ff9800', '#9c27b0', '#e91e63', '#00bcd4']
+        const color = colors[this._customStops.length % colors.length]
+        this._customStops.push({ color, position: newPos })
+        // Redistribute positions evenly
+        this._redistributeStops()
+        this._renderColorStops()
+        this._applyCustom()
+      })
+    }
+
+    this._renderColorStops()
+  }
+
+  _redistributeStops() {
+    const count = this._customStops.length
+    this._customStops.forEach((stop, i) => {
+      stop.position = Math.round((i / (count - 1)) * 100)
+    })
+  }
+
+  _renderColorStops() {
+    const container = document.getElementById('colorStops')
+    if (!container) return
+    container.innerHTML = ''
+
+    this._customStops.forEach((stop, idx) => {
+      const el = document.createElement('div')
+      el.classList.add('color-stop')
+
+      const colorInput = document.createElement('input')
+      colorInput.type = 'color'
+      colorInput.value = stop.color
+      colorInput.addEventListener('input', () => {
+        this._customStops[idx].color = colorInput.value
+        this._applyCustom()
+      })
+
+      el.appendChild(colorInput)
+
+      // Remove button (only if > 2 stops)
+      if (this._customStops.length > 2) {
+        const removeBtn = document.createElement('button')
+        removeBtn.classList.add('remove-stop')
+        removeBtn.textContent = '\u00D7'
+        removeBtn.addEventListener('click', () => {
+          this._customStops.splice(idx, 1)
+          this._redistributeStops()
+          this._renderColorStops()
+          this._applyCustom()
+        })
+        el.appendChild(removeBtn)
+      }
+
+      container.appendChild(el)
+    })
+  }
+
+  _syncEditorUI() {
+    const typeSelect = document.getElementById('gradientType')
+    const angleSlider = document.getElementById('gradientAngle')
+    const angleValue = document.getElementById('angleValue')
+    const textureSelect = document.getElementById('gradientTexture')
+
+    if (typeSelect) typeSelect.value = this._customType
+    if (angleSlider) angleSlider.value = this._customAngle
+    if (angleValue) angleValue.textContent = `${this._customAngle}\u00B0`
+    if (textureSelect) textureSelect.value = this._customTexture
+
+    this._renderColorStops()
+  }
+
+  _applyCustom() {
+    // Deselect preset cards, mark as "custom"
+    this._presetCards.forEach(c => c.classList.remove('selected'))
+    this._selectedPresetIdx = -2 // custom
+
+    const config = {
+      enabled: true,
+      type: this._customType,
+      angle: this._customAngle,
+      stops: this._customStops,
+      texture: this._customTexture,
+    }
+    lazy.MidoriGradient.setConfig(config)
+    this._updatePreview(config)
+  }
+
+  _updatePreview(config) {
+    const preview = document.getElementById('gradientPreview')
+    if (!preview) return
+
+    if (!config) {
+      preview.style.background = 'var(--in-content-box-background, #f0f0f0)'
+      return
+    }
+
+    const gradCSS = lazy.MidoriGradient.buildGradientCSS(config)
+    if (gradCSS) {
+      preview.style.background = gradCSS
+    }
+  }
+}
+
 class Pages {
   /**
    * A wrapper around all pages
@@ -295,5 +526,6 @@ const pages = new Pages([
   new Page('welcome'),
   new Import('import'),
   new Themes('theme'),
+  new Gradient('gradient'),
   new Search('search'),
 ])
