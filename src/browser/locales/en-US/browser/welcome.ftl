@@ -15,6 +15,15 @@ welcome-dialog-import-action = Import
 welcome-dialog-theme = Pick A Theme
 welcome-dialog-theme-action = Continue
 
+welcome-dialog-gradient = Customize Your Toolbar
+welcome-dialog-gradient-subtext = Add a custom gradient to make your browser truly yours
+welcome-dialog-gradient-customize = Create your own gradient...
+welcome-dialog-gradient-type = Type
+welcome-dialog-gradient-angle = Angle
+welcome-dialog-gradient-colors = Colors
+welcome-dialog-gradient-texture = Texture
+welcome-dialog-gradient-action = Apply & Continue
+
 welcome-dialog-search = Pick A Search Engine
 welcome-dialog-search-action = Next
 welcome-dialog-search-recommended = Recommended
