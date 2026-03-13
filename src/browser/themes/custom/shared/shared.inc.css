@@ -210,3 +210,34 @@ panelview {
 #sidebar-box {
   transition: var(--midori-transition) !important;
 }
+
+/* ====================================================================
+   AUTO-HIDE TOOLBAR — Maximize content area on scroll
+   Controlled by pref: midori.autohide.toolbar
+   JS sets attribute [midori-autohide-hidden] on #navigator-toolbox
+   and CSS variable --midori-toolbox-height on :root
+   ==================================================================== */
+
+#navigator-toolbox[midori-autohide] {
+  transition: margin-top 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.25s ease,
+    background-color 0.2s ease,
+    backdrop-filter 0.2s ease,
+    box-shadow 0.2s ease !important;
+  z-index: 1;
+  position: relative;
+}
+
+#navigator-toolbox[midori-autohide-hidden="true"] {
+  margin-top: calc(-1 * var(--midori-toolbox-height, 0px)) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Never auto-hide in fullscreen (Firefox handles that) or customize mode */
+:root[inFullscreen] #navigator-toolbox[midori-autohide-hidden="true"],
+:root[customizing] #navigator-toolbox[midori-autohide-hidden="true"] {
+  margin-top: 0 !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
