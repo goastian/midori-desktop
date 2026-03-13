@@ -316,8 +316,8 @@ setup_linux_arm64() {
   ensure_rust_target "aarch64-unknown-linux-gnu"
   echo ""
 
-  echo "→ Dependencias del sistema:"
-  check_system_deps gcc-aarch64-linux-gnu g++-aarch64-linux-gnu || true
+  echo "→ Compilador cross:"
+  echo "  ✔ Clang de Mozilla soporta aarch64 nativamente (no se requiere gcc/g++ cross)"
   echo ""
 
   # Bootstrap will download the aarch64 sysroot automatically via --enable-bootstrap
@@ -347,6 +347,17 @@ setup_linux_arm64() {
     echo "      AMELIA_PLATFORM=linux AMELIA_COMPAT=aarch64 npm run bootstrap"
   }
 
+  # mach artifact toolchain downloads to engine/, move to ~/.mozbuild/
+  local ENGINE_SYSROOT="$ENGINE_DIR/sysroot-aarch64-linux-gnu"
+  if [[ -d "$ENGINE_SYSROOT" && ! -d "$SYSROOT" ]]; then
+    echo "→ Moviendo sysroot a $SYSROOT..."
+    mv "$ENGINE_SYSROOT" "$SYSROOT"
+  elif [[ -d "$ENGINE_SYSROOT" && -d "$SYSROOT" ]]; then
+    echo "→ Actualizando sysroot en $SYSROOT..."
+    rm -rf "$SYSROOT"
+    mv "$ENGINE_SYSROOT" "$SYSROOT"
+  fi
+
   if [[ -d "$SYSROOT" ]]; then
     echo "✔ Linux aarch64 sysroot instalado en $SYSROOT"
   else
@@ -354,7 +365,6 @@ setup_linux_arm64() {
   fi
 }
 
-<
 # ═══════════════════════════════════════════════════════════════
 # Main dispatch
 # ═══════════════════════════════════════════════════════════════
