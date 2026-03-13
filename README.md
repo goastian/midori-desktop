@@ -19,7 +19,7 @@
   <h3 align="center">Midori Browser </h3>
 
   <p align="center">
-       Midori initially uses the Gecko/Firefox code under the Floorp Browser project. Both Midori and Floorp projects are collaborating to improve and offer an exceptional user experience, with significant differences. Later, as updates are released, the original code will be differentiated. , but both projects will continue to collaborate
+       Midori Browser is a lightweight, fast and secure browser that promotes privacy and user choice. Midori includes tools such as workspace, its own search engine, New Tab, ad blocker, among other impressive features.
     <br />
     <br />
     <a href="https://astian.org/midori-browser">Official Site</a>
@@ -28,7 +28,9 @@
     ・
     <a href="https://astian.org/midori-en">Blog & Release Notes</a>
     ・
-    <a href="https://help.astian.org">Official Support Site & Send feedback</a>
+    <a href="https://astian.org/community/">Official Support Site</a>
+    ・
+    <a href="https://astian.org/feedback/">Send Feedback </a>
   </p>
 </div>
 
