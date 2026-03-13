@@ -24,8 +24,11 @@ elif test "$SURFER_COMPAT" = "aarch64"; then
     ac_add_options --enable-lto=cross,thin
 
     # Use aarch64 sysroot if available (for cross-compilation from x86_64)
+    # Check ~/.mozbuild/ first (setup script moves it here), then engine/ (where mach downloads it)
     if test -d "$HOME/.mozbuild/sysroot-aarch64-linux-gnu"; then
         ac_add_options --with-sysroot="$HOME/.mozbuild/sysroot-aarch64-linux-gnu"
+    elif test -d "$topsrcdir/sysroot-aarch64-linux-gnu"; then
+        ac_add_options --with-sysroot="$topsrcdir/sysroot-aarch64-linux-gnu"
     fi
 fi
 
