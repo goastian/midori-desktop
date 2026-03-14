@@ -27,6 +27,13 @@ if test "$MIDORI_CROSS_COMPILING"; then
     export PATH="$HOME/.mozbuild/nsis/bin:$PATH"
   fi
 
+  # Windows App SDK (required for mica titlebar support)
+  if test "$AMELIA_COMPAT" = "aarch64" -a -d "$HOME/.mozbuild/winappsdk-aarch64-pc-windows-msvc"; then
+    export MOZ_WINDOWS_APP_SDK_DIR="$HOME/.mozbuild/winappsdk-aarch64-pc-windows-msvc"
+  elif test "$AMELIA_COMPAT" = "x86_64" -a -d "$HOME/.mozbuild/winappsdk-x86_64-pc-windows-msvc"; then
+    export MOZ_WINDOWS_APP_SDK_DIR="$HOME/.mozbuild/winappsdk-x86_64-pc-windows-msvc"
+  fi
+
   # Use a dedicated WINEPREFIX for cross-compilation builds.
   # mk_add_options ensures these are available during make (not just configure).
   export WINEPREFIX="$HOME/.mozbuild/wineprefix"
