@@ -241,3 +241,99 @@ panelview {
   opacity: 1 !important;
   pointer-events: auto !important;
 }
+
+/* ====================================================================
+   MIDORI WORKSPACES — Selector button & popup glassmorphism
+   Positioned to the left of the URL bar in #nav-bar
+   ==================================================================== */
+
+#midori-workspace-selector {
+  -moz-appearance: none !important;
+  appearance: none !important;
+  margin-inline: 2px 4px !important;
+  padding: 4px 10px !important;
+  border-radius: var(--midori-border-radius, 8px) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 55%,
+    transparent
+  ) !important;
+  backdrop-filter: blur(8px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(1.2) !important;
+  border: 1px solid
+    color-mix(in srgb, currentColor 8%, transparent) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease,
+    border-color 0.15s ease !important;
+  max-width: 200px !important;
+  min-width: 0 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1.3 !important;
+  cursor: default !important;
+}
+
+#midori-workspace-selector:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 75%,
+    transparent
+  ) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10) !important;
+  border-color: color-mix(in srgb, currentColor 14%, transparent) !important;
+}
+
+#midori-workspace-selector:active,
+#midori-workspace-selector[open="true"] {
+  background-color: color-mix(
+    in srgb,
+    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 88%,
+    transparent
+  ) !important;
+  box-shadow: 0 0 0 2px color-mix(
+    in srgb, var(--focus-outline-color, AccentColor) 35%, transparent
+  ) !important;
+}
+
+#midori-workspace-selector > .toolbarbutton-text {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+#midori-workspace-selector > dropmarker,
+#midori-workspace-selector > .toolbarbutton-menu-dropmarker {
+  margin-inline-start: 2px !important;
+  opacity: 0.5 !important;
+}
+
+/* Workspace popup panel glassmorphism */
+#midori-workspace-popup {
+  backdrop-filter: blur(var(--midori-glass-blur, 12px))
+    saturate(var(--midori-glass-saturation, 1.2)) !important;
+  -webkit-backdrop-filter: blur(var(--midori-glass-blur, 12px))
+    saturate(var(--midori-glass-saturation, 1.2)) !important;
+}
+
+/* Active workspace item highlight */
+.midori-workspace-item-active {
+  font-weight: 700 !important;
+  background-color: color-mix(
+    in srgb,
+    var(--focus-outline-color, AccentColor) 12%,
+    transparent
+  ) !important;
+  border-radius: 4px !important;
+}
+
+/* New Workspace action item */
+.midori-workspace-new-item {
+  font-weight: 600 !important;
+  opacity: 0.85 !important;
+}
+
+/* Manage item — subtle */
+.midori-workspace-manage-item {
+  font-size: 12px !important;
+  opacity: 0.65 !important;
+}

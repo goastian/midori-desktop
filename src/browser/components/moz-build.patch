@@ -7,7 +7,7 @@ index 913558d43c..a323c7de0a 100644
  ]
  
 +# Pulse: Custom components
-+DIRS += ["autohide", "gradient", "memory", "welcome"]
++DIRS += ["autohide", "gradient", "memory", "welcome", "workspace"]
 +
  DIRS += ["build"]
  
