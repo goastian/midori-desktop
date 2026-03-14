@@ -19,9 +19,9 @@
 const PREF_AUTOHIDE = "midori.autohide.toolbar";
 const TOOLBOX_HIDDEN_ATTR = "midori-autohide-hidden";
 const MOUSE_REVEAL_ZONE_PX = 10;
-const WHEEL_HIDE_THRESHOLD = 80;
-const WHEEL_SHOW_THRESHOLD = -60;
-const IDLE_SHOW_DELAY_MS = 600;
+const WHEEL_HIDE_THRESHOLD = 40;
+const WHEEL_SHOW_THRESHOLD = -30;
+const IDLE_RESET_MS = 300;
 
 export const AutoHideToolbar = {
   _initialized: false,
@@ -107,6 +107,7 @@ export const AutoHideToolbar = {
       popupOpen: false,
       accumulatedDelta: 0,
       resetTimer: null,
+      rafPending: false,
     };
 
     const show = () => {
@@ -140,12 +141,19 @@ export const AutoHideToolbar = {
       }
       state.resetTimer = win.setTimeout(() => {
         state.accumulatedDelta = 0;
-      }, IDLE_SHOW_DELAY_MS);
+      }, IDLE_RESET_MS);
 
-      if (state.accumulatedDelta > WHEEL_HIDE_THRESHOLD) {
-        hide();
-      } else if (state.accumulatedDelta < WHEEL_SHOW_THRESHOLD) {
-        show();
+      // Use rAF to batch visual updates for smoothness
+      if (!state.rafPending) {
+        state.rafPending = true;
+        win.requestAnimationFrame(() => {
+          state.rafPending = false;
+          if (state.accumulatedDelta > WHEEL_HIDE_THRESHOLD) {
+            hide();
+          } else if (state.accumulatedDelta < WHEEL_SHOW_THRESHOLD) {
+            show();
+          }
+        });
       }
     };
 
