@@ -403,9 +403,15 @@ panelview {
 }
 
 #midori-workspace-selector > .toolbarbutton-text {
+  display: -moz-inline-box !important;
+  visibility: visible !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
+}
+
+#midori-workspace-selector > .toolbarbutton-icon {
+  display: none !important;
 }
 
 #midori-workspace-selector > dropmarker,
