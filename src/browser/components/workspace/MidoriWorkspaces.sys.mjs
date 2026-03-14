@@ -8,7 +8,7 @@
  * Allows users to organize tabs into named workspaces. Each workspace has a
  * name, icon, and a set of tabs. Switching workspaces shows/hides the
  * corresponding tabs. The active workspace selector is injected into the
- * nav-bar, to the left of the urlbar-container.
+ * TabsToolbar, in the position where Firefox View used to be.
  *
  * Persists workspace data per-profile via JSON in the profile directory.
  *
@@ -322,11 +322,9 @@ export const MidoriWorkspaces = {
 
     if (!this.showButton()) return;
 
-    // Create the workspace selector button
-    const navBarTarget = doc.getElementById("nav-bar-customization-target");
-    if (!navBarTarget) return;
-
-    const urlbarContainer = doc.getElementById("urlbar-container");
+    // Create the workspace selector button in TabsToolbar (where Firefox View was)
+    const tabsTarget = doc.getElementById("TabsToolbar-customization-target");
+    if (!tabsTarget) return;
 
     // Build the selector button
     const selector = doc.createXULElement("toolbarbutton");
@@ -348,12 +346,8 @@ export const MidoriWorkspaces = {
     popup.setAttribute("position", "after_start");
     selector.appendChild(popup);
 
-    // Insert before urlbar-container (left side)
-    if (urlbarContainer) {
-      navBarTarget.insertBefore(selector, urlbarContainer);
-    } else {
-      navBarTarget.appendChild(selector);
-    }
+    // Insert as first child in TabsToolbar (where Firefox View button used to be)
+    tabsTarget.insertBefore(selector, tabsTarget.firstChild);
 
     // Initial render
     this._updateSelectorLabel(doc, state);
@@ -380,7 +374,8 @@ export const MidoriWorkspaces = {
     );
     if (current) {
       const emoji = getEmojiForIcon(current.icon);
-      selector.setAttribute("label", `${emoji} ${current.name}`);
+      selector.setAttribute("label", `${emoji} Workspaces`);
+      selector.setAttribute("tooltiptext", `Current: ${current.name}`);
     }
   },
 
