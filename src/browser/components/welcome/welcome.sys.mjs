@@ -8,6 +8,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MigrationUtils: 'resource:///modules/MigrationUtils.sys.mjs',
   ExtensionSettingsStore: 'resource://gre/modules/ExtensionSettingsStore.sys.mjs',
   MidoriGradient: 'resource:///modules/MidoriGradient.sys.mjs',
+  MidoriVerticalTabs: 'resource:///modules/MidoriVerticalTabs.sys.mjs',
 })
 
 const welcomeSeenPref = 'midori.welcome.seen'
@@ -473,6 +474,25 @@ class Gradient extends Page {
   }
 }
 
+class TabLayout extends Page {
+  constructor(id) {
+    super(id)
+    this._horizontalCard = document.getElementById('tablayoutHorizontal')
+    this._verticalCard = document.getElementById('tablayoutVertical')
+    this._isVertical = false
+
+    this._horizontalCard.addEventListener('click', () => this._select(false))
+    this._verticalCard.addEventListener('click', () => this._select(true))
+  }
+
+  _select(vertical) {
+    this._isVertical = vertical
+    this._horizontalCard.classList.toggle('selected', !vertical)
+    this._verticalCard.classList.toggle('selected', vertical)
+    lazy.MidoriVerticalTabs.setEnabled(vertical)
+  }
+}
+
 class Pages {
   /**
    * A wrapper around all pages
@@ -527,5 +547,6 @@ const pages = new Pages([
   new Import('import'),
   new Themes('theme'),
   new Gradient('gradient'),
+  new TabLayout('tablayout'),
   new Search('search'),
 ])

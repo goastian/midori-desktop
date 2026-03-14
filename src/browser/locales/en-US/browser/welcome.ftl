@@ -24,6 +24,14 @@ welcome-dialog-gradient-colors = Colors
 welcome-dialog-gradient-texture = Texture
 welcome-dialog-gradient-action = Apply & Continue
 
+welcome-dialog-tablayout = Choose Your Tab Layout
+welcome-dialog-tablayout-subtext = Pick how you want your tabs organized — you can change this anytime in settings
+welcome-dialog-tablayout-horizontal = Horizontal
+welcome-dialog-tablayout-horizontal-desc = Classic tabs across the top
+welcome-dialog-tablayout-vertical = Vertical
+welcome-dialog-tablayout-vertical-desc = Modern sidebar with floating URL bar
+welcome-dialog-tablayout-action = Continue
+
 welcome-dialog-search = Pick A Search Engine
 welcome-dialog-search-action = Next
 welcome-dialog-search-recommended = Recommended
