@@ -402,14 +402,24 @@ panelview {
   ) !important;
 }
 
-#midori-workspace-selector > .toolbarbutton-text {
-  display: -moz-inline-box !important;
+/* Explicit workspace label — always visible */
+#midori-workspace-selector-label,
+.midori-workspace-label {
+  display: inline !important;
   visibility: visible !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
+  margin: 0 2px !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  line-height: 1.3 !important;
 }
 
+/* Hide default toolbarbutton internals — we use our own label */
+#midori-workspace-selector > .toolbarbutton-text,
 #midori-workspace-selector > .toolbarbutton-icon {
   display: none !important;
 }

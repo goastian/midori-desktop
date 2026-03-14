@@ -339,6 +339,13 @@ export const MidoriWorkspaces = {
       "Workspaces — Click to switch workspace"
     );
 
+    // Add explicit label element (TabsToolbar hides .toolbarbutton-text)
+    const labelEl = doc.createXULElement("label");
+    labelEl.id = "midori-workspace-selector-label";
+    labelEl.className = "midori-workspace-label";
+    labelEl.setAttribute("value", "\uD83C\uDFE0 Workspaces");
+    selector.appendChild(labelEl);
+
     // Build popup panel
     const popup = doc.createXULElement("menupopup");
     popup.id = POPUP_ID;
@@ -376,6 +383,12 @@ export const MidoriWorkspaces = {
       const emoji = getEmojiForIcon(current.icon);
       selector.setAttribute("label", `${emoji} Workspaces`);
       selector.setAttribute("tooltiptext", `Current: ${current.name}`);
+
+      // Update explicit label element
+      const labelEl = doc.getElementById("midori-workspace-selector-label");
+      if (labelEl) {
+        labelEl.setAttribute("value", `${emoji} Workspaces`);
+      }
     }
   },
 
