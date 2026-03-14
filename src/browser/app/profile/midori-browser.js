@@ -11,6 +11,10 @@
 #include Memoryfox.js
 
 // Midori Browser Mods
+// Include "Firefox/x.y" in User-Agent for site compatibility (Netflix, Gmail, Mozilla Addons, etc.)
+// Result: Mozilla/5.0 (...) Gecko/20100101 Firefox/148.0 Midori/11.6.2
+pref("general.useragent.compatMode.firefox", true);
+
 pref("app.support.baseURL", "https://astian.org/community");
 pref("extensions.install_origins.enabled", true);
 pref("browser.newtabpage.activity-stream.feeds.section.highlights", true);
