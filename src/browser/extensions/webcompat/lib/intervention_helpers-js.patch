@@ -1,0 +1,14 @@
+diff --git a/browser/extensions/webcompat/lib/intervention_helpers.js b/browser/extensions/webcompat/lib/intervention_helpers.js
+index 3a24711221af4d92553ca2bbd84ed0dcd585a05a..bb82b1917f50c963ccaa1e931a4313a8da674846 100644
+--- a/browser/extensions/webcompat/lib/intervention_helpers.js
++++ b/browser/extensions/webcompat/lib/intervention_helpers.js
+@@ -292,6 +292,9 @@ var InterventionHelpers = {
+       config.withFxQuantum = true;
+       return UAHelpers.safari(config);
+     },
++    remove_non_Firefox_app_token: ua => {
++      return ua.replace(/ Midori\/[\d.]+/, "");
++    },
+   },
+ 
+   valid_platforms: [

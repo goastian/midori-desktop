@@ -12,7 +12,9 @@
 
 // Midori Browser Mods
 // Include "Firefox/x.y" in User-Agent for site compatibility (Netflix, Gmail, Mozilla Addons, etc.)
-// Result: Mozilla/5.0 (...) Gecko/20100101 Firefox/148.0 Midori/11.6.2
+// Result: Mozilla/5.0 (...) Gecko/20100101 Firefox/148.0 Midori/11.6.x
+// Note: The "Midori/x.x.x" token is stripped for strict UA-sniffing sites
+// (WhatsApp, Netflix, etc.) via webcompat interventions in interventions.json
 pref("general.useragent.compatMode.firefox", true);
 
 // Disable the "Your default search engine has been changed" notification bar
@@ -187,6 +189,14 @@ pref('midori.gradient.angle', 135);
 pref('midori.gradient.stops', '[{"color":"#2d8659","position":0},{"color":"#1a5c3a","position":100}]');
 pref('midori.gradient.texture', 'none');
 pref('midori.gradient.texture.opacity', 50);
+
+// ============================================================================
+// MIDORI VERTICAL TABS (Natsumi-style)
+// ============================================================================
+// Enable Natsumi-inspired vertical tab layout with floating URL bar, rounded
+// content area, and modern sidebar. When disabled, horizontal tabs are used
+// with light visual refinements.
+pref('midori.verticaltabs.enabled', false);
 
 // ============================================================================
 // MIDORI AUTO-HIDE TOOLBAR
