@@ -317,6 +317,18 @@ toolbar .toolbarbutton-1 {
     margin-block: calc(var(--tab-block-margin, 2px) - 2px) !important;
     min-height: calc(var(--tab-min-height) + 3px) !important;
   }
+
+  /* Selected tab accent glow (Natsumi Material-inspired) */
+  & .tabbrowser-tab[selected] .tab-background,
+  & .tabbrowser-tab[visuallyselected] .tab-background {
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.25),
+      inset 0 0 0 1px color-mix(in srgb, var(--focus-outline-color, AccentColor) 12%, transparent) !important;
+  }
+
+  /* Unselected tabs — subtle border on hover */
+  & .tabbrowser-tab:hover:not([selected]):not([visuallyselected]) .tab-background {
+    box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 6%, transparent) !important;
+  }
 }
 
 /* Pinned tabs */
@@ -355,8 +367,21 @@ toolbar .toolbarbutton-1 {
 #tabbrowser-tabs[orient="vertical"] .tab-close-button {
   margin-inline-end: calc(-1 * var(--tab-close-button-padding, 6px) + 3px) !important;
   scale: 0.8;
-  border-radius: 10px !important;
-  transition: 0.2s ease !important;
+  border-radius: 50% !important;
+  transition: background-color 0.2s ease, opacity 0.2s ease !important;
+  opacity: 0;
+}
+
+#tabbrowser-tabs[orient="vertical"] .tabbrowser-tab:hover .tab-close-button {
+  opacity: 1;
+}
+
+#tabbrowser-tabs[orient="vertical"] .tabbrowser-tab[selected] .tab-close-button {
+  opacity: 0.6;
+}
+
+#tabbrowser-tabs[orient="vertical"] .tabbrowser-tab[selected]:hover .tab-close-button {
+  opacity: 1;
 }
 
 /* Hide separator below New Tab button */
@@ -398,11 +423,13 @@ toolbar .toolbarbutton-1 {
   outline: 0.01px solid var(--toolbar-bgcolor);
   box-shadow: var(--content-area-shadow, 0 1px 4px rgba(0,0,0,0.08)) !important;
   background-color: var(--toolbar-bgcolor) !important;
+  transition: background-color 0.2s ease !important;
 }
 
 #sidebar-box {
   padding-inline-end: 0 !important;
   border: none !important;
+  transition: background-color 0.2s ease !important;
 }
 
 /* Remove sidebar styling in fullscreen */
