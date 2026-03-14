@@ -1,0 +1,391 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Midori Browser — Modern PDF Viewer Enhancements
+ * Inspired by Natsumi Browser's PDF viewer design
+ * Floating toolbar, animated sidebar, rounded controls, glassmorphism
+ */
+
+/* ====================================================================
+   ANIMATIONS
+   ==================================================================== */
+
+@keyframes midori-sidebar-appear {
+  0% { inset-inline-start: -20px; }
+  70% { inset-inline-start: 15px; }
+  100% { inset-inline-start: 10px; }
+}
+
+@keyframes midori-pdf-dialog-appear {
+  0% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ====================================================================
+   VARIABLES
+   ==================================================================== */
+
+:root {
+  --midori-pdf-glass-bg: rgba(255, 255, 255, 0.72);
+  --midori-pdf-glass-backdrop: blur(12px) saturate(1.2);
+  --midori-pdf-glass-border: 1px solid rgba(20, 20, 20, 0.10);
+  --midori-pdf-glass-border-thin: 1px solid rgba(20, 20, 20, 0.06);
+  --midori-pdf-glass-shadow: 0 2px 12px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
+  --midori-pdf-hover-bg: rgba(0, 0, 0, 0.06);
+  --midori-pdf-active-bg: rgba(0, 0, 0, 0.12);
+  --midori-pdf-accent: AccentColor;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --midori-pdf-glass-bg: rgba(30, 30, 30, 0.78);
+    --midori-pdf-glass-border: 1px solid rgba(235, 235, 235, 0.10);
+    --midori-pdf-glass-border-thin: 1px solid rgba(235, 235, 235, 0.06);
+    --midori-pdf-hover-bg: rgba(255, 255, 255, 0.08);
+    --midori-pdf-active-bg: rgba(255, 255, 255, 0.15);
+  }
+}
+
+/* ====================================================================
+   BODY
+   ==================================================================== */
+
+body {
+  overflow-x: hidden !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #1a1a1a !important;
+  }
+}
+
+/* ====================================================================
+   TOOLBAR — Floating, compact, rounded
+   ==================================================================== */
+
+.toolbar {
+  height: 60px !important;
+}
+
+#toolbarContainer {
+  left: 10px !important;
+  top: 10px;
+  width: calc(100% - 20px) !important;
+  height: 36px !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  text-align: right !important;
+  padding: 0 !important;
+  transition: top 0.2s ease, opacity 0.2s ease;
+}
+
+/* Sidebar toggle — circular floating button */
+#toolbarViewerLeft {
+  position: absolute;
+  left: 46px !important;
+}
+
+#toolbarViewerLeft #sidebarToggleButton {
+  appearance: none !important;
+  position: absolute !important;
+  border-radius: 50% !important;
+  left: -46px !important;
+  width: 36px !important;
+  height: 36px !important;
+  background: var(--midori-pdf-glass-bg) !important;
+  backdrop-filter: var(--midori-pdf-glass-backdrop);
+  box-shadow: var(--midori-pdf-glass-shadow) !important;
+  border: var(--midori-pdf-glass-border) !important;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#toolbarViewerLeft #sidebarToggleButton:hover {
+  background-color: var(--midori-pdf-hover-bg) !important;
+}
+
+#toolbarViewerLeft #sidebarToggleButton:active,
+#toolbarViewerLeft #sidebarToggleButton[aria-expanded="true"] {
+  background-color: var(--midori-pdf-active-bg) !important;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Toolbar sections — pill-shaped glassmorphism */
+#toolbarViewerLeft,
+#toolbarViewerMiddle,
+#toolbarViewerRight {
+  border-radius: 18px;
+  position: relative;
+}
+
+#toolbarViewerLeft::before,
+#toolbarViewerMiddle::before,
+#toolbarViewerRight::before {
+  content: "";
+  width: 100%;
+  height: 32px;
+  position: absolute;
+  border-radius: 18px;
+  margin-left: -2px;
+  background: var(--midori-pdf-glass-bg) !important;
+  box-shadow: var(--midori-pdf-glass-shadow) !important;
+  border: var(--midori-pdf-glass-border) !important;
+  backdrop-filter: var(--midori-pdf-glass-backdrop);
+  z-index: -1;
+}
+
+#toolbarViewerLeft .toolbarButtonWithContainer:first-of-type button,
+#toolbarViewerMiddle #zoomOutButton,
+#toolbarViewerMiddle #viewFindButton {
+  border-start-start-radius: 50% !important;
+  border-end-start-radius: 50% !important;
+}
+
+#toolbarViewerLeft .toolbarButtonWithContainer:last-of-type button,
+#toolbarViewerMiddle .toolbarButtonWithContainer:last-of-type button {
+  border-start-end-radius: 50% !important;
+  border-end-end-radius: 50% !important;
+}
+
+#secondaryToolbarToggleButton {
+  border-start-end-radius: 50% !important;
+  border-end-end-radius: 50% !important;
+}
+
+#toolbarViewerMiddle {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+}
+
+#toolbarViewerMiddle #scaleSelectContainer,
+#toolbarViewerMiddle #scaleSelect {
+  height: 32px !important;
+}
+
+#toolbarViewerMiddle #scaleSelectContainer {
+  background: transparent !important;
+}
+
+#toolbarViewerMiddle #scaleSelect {
+  background: transparent !important;
+  border-radius: 4px !important;
+  border-start-end-radius: 16px !important;
+  border-end-end-radius: 16px !important;
+  transition: background-color 0.2s ease;
+}
+
+#toolbarViewerMiddle #scaleSelect:hover {
+  background-color: var(--midori-pdf-hover-bg) !important;
+}
+
+#toolbarViewer {
+  width: fit-content !important;
+  gap: 10px !important;
+}
+
+.toolbarButtonSpacer {
+  display: none !important;
+}
+
+#numPages {
+  margin-right: 10px !important;
+}
+
+/* ====================================================================
+   TOOLBAR BUTTONS — Rounded, smooth
+   ==================================================================== */
+
+.toolbarButton {
+  border-radius: 6px !important;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.toolbarButton:hover {
+  background-color: var(--midori-pdf-hover-bg) !important;
+}
+
+.toolbarButton.toggled,
+.toolbarButton:active {
+  background-color: var(--midori-pdf-active-bg) !important;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
+}
+
+.toolbarButtonWithContainer {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+/* Separators — subtle */
+.splitToolbarButtonSeparator,
+.verticalToolbarSeparator,
+.horizontalToolbarSeparator {
+  border-color: rgba(128, 128, 128, 0.15) !important;
+}
+
+/* Page number input */
+#pageNumber {
+  border-color: transparent !important;
+  background-color: rgba(128, 128, 128, 0.1) !important;
+  border-radius: 6px !important;
+}
+
+#pageNumber:focus {
+  border-color: var(--midori-pdf-accent) !important;
+}
+
+/* ====================================================================
+   VIEWER CONTENT — Adjust for floating toolbar
+   ==================================================================== */
+
+#viewerContainer {
+  inset: 0 !important;
+}
+
+#viewerContainer #viewer > .page:first-of-type,
+#viewerContainer #viewer .spread:first-of-type .page {
+  margin-top: 46px !important;
+  transition: margin-top 0.2s ease;
+}
+
+/* ====================================================================
+   LOADING BAR — Accent-colored, rounded
+   ==================================================================== */
+
+#loadingBar {
+  display: block !important;
+  left: 0 !important;
+  top: 41px !important;
+  background: var(--midori-pdf-glass-bg) !important;
+  backdrop-filter: var(--midori-pdf-glass-backdrop);
+  box-shadow: var(--midori-pdf-glass-shadow) !important;
+  border: var(--midori-pdf-glass-border) !important;
+  border-radius: 4px !important;
+  overflow: hidden;
+  transition-property: inset-inline-start, opacity !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+}
+
+#loadingBar.hidden {
+  opacity: 0 !important;
+}
+
+#loadingBar .progress {
+  border-radius: 2px !important;
+  background-color: var(--midori-pdf-accent) !important;
+}
+
+/* ====================================================================
+   SIDEBAR — Floating, glassmorphism, animated
+   ==================================================================== */
+
+#sidebarContainer {
+  top: 56px !important;
+  bottom: 10px !important;
+  background: var(--midori-pdf-glass-bg) !important;
+  backdrop-filter: var(--midori-pdf-glass-backdrop);
+  box-shadow: var(--midori-pdf-glass-shadow) !important;
+  border: var(--midori-pdf-glass-border) !important;
+  border-radius: 10px !important;
+  opacity: 0;
+}
+
+#sidebarContainer #toolbarSidebar,
+#sidebarContainer #sidebarContent {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+#sidebarContainer #toolbarSidebar {
+  margin: 5px !important;
+  width: calc(100% - 10px) !important;
+}
+
+#sidebarContainer #sidebarContent {
+  top: 46px !important;
+}
+
+#sidebarContainer .thumbnail {
+  margin-bottom: 22px !important;
+  transition: border-color 0.2s ease;
+}
+
+#outerContainer:not(.sidebarOpen) #sidebarContainer {
+  inset-inline-start: -30px !important;
+  transition: opacity 0.2s ease, inset 0.2s ease !important;
+  pointer-events: none !important;
+}
+
+#outerContainer.sidebarOpen #sidebarContainer {
+  opacity: 1 !important;
+  animation: midori-sidebar-appear 0.3s ease;
+  animation-fill-mode: forwards;
+  transition: opacity 0.3s ease !important;
+}
+
+/* ====================================================================
+   POPUPS / MENUS — Floating glassmorphism
+   ==================================================================== */
+
+.toolbarButtonWithContainer .doorHangerRight {
+  background: var(--midori-pdf-glass-bg) !important;
+  backdrop-filter: var(--midori-pdf-glass-backdrop);
+  box-shadow: var(--midori-pdf-glass-shadow) !important;
+  border: var(--midori-pdf-glass-border) !important;
+  border-radius: 10px !important;
+  top: 44px !important;
+  right: 0 !important;
+  padding: 4px !important;
+  display: block !important;
+  transition: top 0.2s ease, opacity 0.2s ease;
+  opacity: 1;
+}
+
+.toolbarButtonWithContainer .doorHangerRight.hidden {
+  top: 24px !important;
+  opacity: 0;
+  pointer-events: none !important;
+}
+
+.toolbarButtonWithContainer .doorHangerRight::before,
+.toolbarButtonWithContainer .doorHangerRight::after {
+  display: none !important;
+}
+
+.toolbarButtonWithContainer .doorHangerRight .menuContainer {
+  overflow: visible !important;
+}
+
+/* ====================================================================
+   DOCUMENT PROPERTIES — Rounded, glassmorphism
+   ==================================================================== */
+
+#documentPropertiesDialog {
+  border-radius: 10px !important;
+  border: var(--midori-pdf-glass-border-thin) !important;
+  background: var(--midori-pdf-glass-bg) !important;
+  backdrop-filter: var(--midori-pdf-glass-backdrop);
+  box-shadow: var(--midori-pdf-glass-shadow) !important;
+}
+
+#documentPropertiesDialog[open] {
+  animation: midori-pdf-dialog-appear 0.3s ease !important;
+}
+
+#documentPropertiesDialog #documentPropertiesClose {
+  border-radius: 5px !important;
+}
+
+@media (prefers-color-scheme: light) {
+  #documentPropertiesDialog #documentPropertiesClose {
+    background-color: #f1f1f1 !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  #documentPropertiesDialog #documentPropertiesClose {
+    background-color: #363636 !important;
+  }
+}

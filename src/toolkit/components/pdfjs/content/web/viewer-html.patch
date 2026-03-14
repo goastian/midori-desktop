@@ -1,0 +1,12 @@
+diff --git a/toolkit/components/pdfjs/content/web/viewer.html b/toolkit/components/pdfjs/content/web/viewer.html
+index 2a37b96a27..01297501fc 100644
+--- a/toolkit/components/pdfjs/content/web/viewer.html
++++ b/toolkit/components/pdfjs/content/web/viewer.html
+@@ -30,6 +30,7 @@ See https://github.com/adobe-type-tools/cmap-resources
+ <script src="resource://pdf.js/build/pdf.mjs" type="module"></script>
+ 
+   <link rel="stylesheet" href="resource://pdf.js/web/viewer.css">
++  <link rel="stylesheet" href="resource://pdf.js/web/midori-pdfjs.css">
+   <link rel="localization" href="toolkit/pdfviewer/viewer.ftl"/>
+ 
+   <script src="resource://pdf.js/web/viewer.mjs" type="module"></script>
