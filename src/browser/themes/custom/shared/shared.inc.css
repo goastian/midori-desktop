@@ -82,23 +82,84 @@
 }
 
 /* ====================================================================
+   NATSUMI-INSPIRED TAB ENHANCEMENTS — Blade-style interactions
+   ==================================================================== */
+
+/* Tab scale-on-press (Natsumi Blade signature effect) */
+.tabbrowser-tab > .tab-stack {
+  transition: scale 0.2s ease !important;
+}
+
+.tabbrowser-tab:active:not([style*="transform"]):not(:has(.tab-close-button:hover)) > .tab-stack {
+  scale: 0.95 !important;
+}
+
+/* Tab background — smooth transitions */
+.tabbrowser-tab > .tab-stack > .tab-background {
+  transition: background-color 0.2s ease, box-shadow 0.2s ease,
+    backdrop-filter 0.2s ease !important;
+  overflow: visible !important;
+}
+
+/* Close button red highlight on hover (Natsumi Blade) */
+.tabbrowser-tab:has(.tab-close-button:hover) {
+  transition: opacity 0.2s ease !important;
+}
+
+.tabbrowser-tab:has(.tab-close-button:active) {
+  opacity: 0.5 !important;
+}
+
+/* Tab close button refinement */
+.tabbrowser-tab .tab-close-button {
+  border-radius: 50% !important;
+  transition: background-color 0.2s ease !important;
+}
+
+/* Tab text sizing */
+.tabbrowser-tab .tab-text {
+  font-size: 12px !important;
+}
+
+/* New tab button enhancement */
+#tabs-newtab-button,
+#vertical-tabs-newtab-button {
+  transition: background-color 0.2s ease !important;
+  border-radius: var(--midori-border-radius) !important;
+}
+
+/* ====================================================================
    GLASSMORPHISM — TABS (Horizontal Mode)
    ==================================================================== */
 
 @media not (-moz-pref: "sidebar.verticalTabs") {
-  .tabbrowser-tab .tab-background[selected="true"] {
+  .tabbrowser-tab[selected] > .tab-stack > .tab-background,
+  .tabbrowser-tab[visuallyselected] > .tab-stack > .tab-background {
     backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.5))
       saturate(var(--midori-glass-saturation)) !important;
     -webkit-backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.5))
       saturate(var(--midori-glass-saturation)) !important;
     border-radius: var(--midori-border-radius) var(--midori-border-radius) 0 0 !important;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08) !important;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.3) !important;
+    background-color: color-mix(in srgb,
+      var(--toolbar-bgcolor) 65%, transparent) !important;
   }
 
-  .tabbrowser-tab:hover:not([selected]) .tab-background {
+  .tabbrowser-tab:hover:not([selected]):not([visuallyselected]) > .tab-stack > .tab-background {
     backdrop-filter: blur(4px) saturate(1.1) !important;
     -webkit-backdrop-filter: blur(4px) saturate(1.1) !important;
     border-radius: var(--midori-border-radius) var(--midori-border-radius) 0 0 !important;
+    background-color: color-mix(in srgb,
+      var(--toolbar-bgcolor) 35%, transparent) !important;
+  }
+
+  /* Pinned tabs — scale animation */
+  #pinned-tabs-container .tabbrowser-tab > .tab-stack {
+    transition: scale 0.2s ease !important;
+  }
+
+  #pinned-tabs-container .tabbrowser-tab:active:not([style*="transform"]) > .tab-stack {
+    scale: 0.95 !important;
   }
 }
 
@@ -120,16 +181,36 @@
     ) !important;
   }
 
-  .tabbrowser-tab .tab-background[selected="true"] {
+  .tabbrowser-tab[selected] > .tab-stack > .tab-background,
+  .tabbrowser-tab[visuallyselected] > .tab-stack > .tab-background {
     backdrop-filter: blur(6px) saturate(1.15) !important;
     -webkit-backdrop-filter: blur(6px) saturate(1.15) !important;
     border-radius: var(--midori-border-radius) !important;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.3) !important;
+    background-color: color-mix(in srgb,
+      var(--toolbar-bgcolor) 55%, transparent) !important;
   }
 
-  .tabbrowser-tab:hover:not([selected]) .tab-background {
+  .tabbrowser-tab:hover:not([selected]):not([visuallyselected]) > .tab-stack > .tab-background {
     backdrop-filter: blur(4px) saturate(1.05) !important;
     -webkit-backdrop-filter: blur(4px) saturate(1.05) !important;
     border-radius: var(--midori-border-radius) !important;
+    background-color: color-mix(in srgb,
+      var(--toolbar-bgcolor) 30%, transparent) !important;
+  }
+
+  /* Vertical pinned tabs — scale */
+  #vertical-pinned-tabs-container .tabbrowser-tab > .tab-stack {
+    transition: scale 0.2s ease !important;
+  }
+
+  #vertical-pinned-tabs-container .tabbrowser-tab:active:not([style*="transform"]) > .tab-stack {
+    scale: 0.95 !important;
+  }
+
+  /* Ensure backdrop filters work in vertical tabs */
+  #vertical-tabs, #TabsToolbar {
+    will-change: unset !important;
   }
 }
 
