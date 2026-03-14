@@ -228,7 +228,37 @@ setup_windows() {
     fi
   fi
 
-  # ── 8. Mozilla wine (build custom para cross-compilación) ──
+  # ── 8. Windows App SDK (requerido para mica titlebar) ──
+  local WINAPPSDK_X64="$MOZBUILD/winappsdk-x86_64-pc-windows-msvc"
+  local WINAPPSDK_ARM64="$MOZBUILD/winappsdk-aarch64-pc-windows-msvc"
+  if [[ -d "$WINAPPSDK_X64" && "$FORCE" -eq 0 ]]; then
+    echo "✔ Windows App SDK (x64) ya existe"
+  else
+    echo "→ Descargando Windows App SDK (x64)..."
+    cd "$MOZBUILD"
+    "$ENGINE_DIR/mach" artifact toolchain --from-build winappsdk-x86_64-pc-windows-msvc 2>&1 || {
+      echo "  ⚠ No se pudo descargar Windows App SDK (x64)."
+    }
+    if [[ -d "$ENGINE_DIR/winappsdk-x86_64-pc-windows-msvc" && ! -d "$WINAPPSDK_X64" ]]; then
+      mv "$ENGINE_DIR/winappsdk-x86_64-pc-windows-msvc" "$WINAPPSDK_X64"
+    fi
+    [[ -d "$WINAPPSDK_X64" ]] && echo "✔ Windows App SDK (x64) instalado" || echo "  ⚠ Windows App SDK (x64) no disponible."
+  fi
+  if [[ -d "$WINAPPSDK_ARM64" && "$FORCE" -eq 0 ]]; then
+    echo "✔ Windows App SDK (arm64) ya existe"
+  else
+    echo "→ Descargando Windows App SDK (arm64)..."
+    cd "$MOZBUILD"
+    "$ENGINE_DIR/mach" artifact toolchain --from-build winappsdk-aarch64-pc-windows-msvc 2>&1 || {
+      echo "  ⚠ No se pudo descargar Windows App SDK (arm64)."
+    }
+    if [[ -d "$ENGINE_DIR/winappsdk-aarch64-pc-windows-msvc" && ! -d "$WINAPPSDK_ARM64" ]]; then
+      mv "$ENGINE_DIR/winappsdk-aarch64-pc-windows-msvc" "$WINAPPSDK_ARM64"
+    fi
+    [[ -d "$WINAPPSDK_ARM64" ]] && echo "✔ Windows App SDK (arm64) instalado" || echo "  ⚠ Windows App SDK (arm64) no disponible."
+  fi
+
+  # ── 9. Mozilla wine (build custom para cross-compilación) ──
   local WINE_DIR="$MOZBUILD/wine"
   if [[ -d "$WINE_DIR/bin/wine" && "$FORCE" -eq 0 ]]; then
     echo "✔ Mozilla wine ya existe en $WINE_DIR"
@@ -249,7 +279,7 @@ setup_windows() {
     fi
   fi
 
-  # ── 9. SELinux: permitir que wine cargue DLLs de Windows ──
+  # ── 10. SELinux: permitir que wine cargue DLLs de Windows ──
   if command -v getenforce &>/dev/null || command -v /usr/sbin/getenforce &>/dev/null; then
     local SELINUX_MODE
     SELINUX_MODE=$(/usr/sbin/getenforce 2>/dev/null || getenforce 2>/dev/null || echo "Disabled")
@@ -264,7 +294,7 @@ setup_windows() {
     fi
   fi
 
-  # ── 10. Inicializar WINEPREFIX ──
+  # ── 11. Inicializar WINEPREFIX ──
   local WINEPREFIX_DIR="$MOZBUILD/wineprefix"
   local WINE_BIN="${WINE_DIR}/bin/wine"
   if [[ ! -x "$WINE_BIN" ]]; then
