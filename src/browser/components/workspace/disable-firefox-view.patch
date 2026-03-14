@@ -1,0 +1,100 @@
+diff --git a/browser/base/content/navigator-toolbox.inc.xhtml b/browser/base/content/navigator-toolbox.inc.xhtml
+index 4d4223c508..fcebf06132 100644
+--- a/browser/base/content/navigator-toolbox.inc.xhtml
++++ b/browser/base/content/navigator-toolbox.inc.xhtml
+@@ -36,14 +36,6 @@
+     <hbox flex="1" align="end" class="toolbar-items">
+       <toolbartabstop/>
+       <hbox id="TabsToolbar-customization-target" flex="1">
+-        <toolbarbutton id="firefox-view-button"
+-                       class="toolbarbutton-1 chromeclass-toolbar-additional"
+-                       data-l10n-id="toolbar-button-firefox-view-2"
+-                       role="button"
+-                       aria-pressed="false"
+-                       cui-areatype="toolbar"
+-                       removable="true"/>
+-
+         <tabs id="tabbrowser-tabs"
+               is="tabbrowser-tabs"
+               aria-multiselectable="true"
+diff --git a/browser/base/content/navigator-toolbox.js b/browser/base/content/navigator-toolbox.js
+index 15469e9d9b..ff22baa5b8 100644
+--- a/browser/base/content/navigator-toolbox.js
++++ b/browser/base/content/navigator-toolbox.js
+@@ -40,7 +40,6 @@ document.addEventListener(
+ 
+     function onCommand(event) {
+       let element = event.target.closest(`
+-        #firefox-view-button,
+         .content-analysis-indicator,
+         #bookmarks-toolbar-button,
+         #PlacesToolbar,
+@@ -55,10 +54,6 @@ document.addEventListener(
+       }
+ 
+       switch (element.id) {
+-        case "firefox-view-button":
+-          FirefoxViewHandler.openTab();
+-          break;
+-
+         case "bookmarks-toolbar-button":
+           PlacesToolbarHelper.onPlaceholderCommand();
+           break;
+@@ -103,7 +98,6 @@ document.addEventListener(
+ 
+     function onMouseDown(event) {
+       let element = event.target.closest(`
+-        #firefox-view-button,
+         #alltabs-button,
+         #pageActionButton,
+         #downloads-button,
+@@ -116,10 +110,6 @@ document.addEventListener(
+       }
+ 
+       switch (element.id) {
+-        case "firefox-view-button":
+-          FirefoxViewHandler.openToolbarMouseEvent(event);
+-          break;
+-
+         case "alltabs-button":
+           gTabsPanel.showAllTabsPanel(event, "alltabs-button");
+           break;
+diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
+index 9a98f56d83..2421925bec 100644
+--- a/browser/components/customizableui/CustomizableUI.sys.mjs
++++ b/browser/components/customizableui/CustomizableUI.sys.mjs
+@@ -356,7 +356,6 @@ var CustomizableUIInternal = {
+         overflowable: true,
+         defaultPlacements: navbarPlacements,
+         verticalTabsDefaultPlacements: [
+-          "firefox-view-button",
+           "alltabs-button",
+         ],
+         defaultCollapsed: false,
+@@ -381,7 +380,6 @@ var CustomizableUIInternal = {
+       {
+         type: CustomizableUI.TYPE_TOOLBAR,
+         defaultPlacements: [
+-          "firefox-view-button",
+           "tabbrowser-tabs",
+           "new-tab-button",
+           "alltabs-button",
+@@ -734,18 +732,6 @@ var CustomizableUIInternal = {
+       }
+     }
+ 
+-    // Add firefox-view if not present
+-    if (currentVersion < 18) {
+-      let tabstripPlacements =
+-        gSavedState.placements[CustomizableUI.AREA_TABSTRIP];
+-      if (
+-        tabstripPlacements &&
+-        !tabstripPlacements.includes("firefox-view-button")
+-      ) {
+-        tabstripPlacements.unshift("firefox-view-button");
+-      }
+-    }
+-
+     // Unified Extensions addon button migration, which puts any browser action
+     // buttons in the overflow menu into the addons panel instead.
+     if (currentVersion < 19) {
