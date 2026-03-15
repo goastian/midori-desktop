@@ -12,21 +12,42 @@
    ==================================================================== */
 
 :root {
-  /* Glass effect intensities */
+  /* ── Natsumi Starlight-inspired glass intensities ── */
   --midori-glass-blur: 12px;
-  --midori-glass-saturation: 1.2;
+  --midori-glass-saturation: 1.8;
+  --midori-glass-contrast: 1.1;
   --midori-glass-brightness: 1.05;
   --midori-glass-opacity-pct: 72%;
   --midori-glass-border-opacity-pct: 12%;
   --midori-border-radius: 8px;
 
-  /* Soft shadows for depth */
+  /* ── Haze material (Natsumi SDL) ── */
+  --midori-haze-backdrop: blur(var(--midori-glass-blur))
+    saturate(var(--midori-glass-saturation))
+    contrast(var(--midori-glass-contrast));
+  --midori-haze-bg: color-mix(in srgb,
+    var(--toolbar-bgcolor) var(--midori-glass-opacity-pct), transparent);
+  --midori-haze-border: 1px solid
+    color-mix(in srgb, currentColor var(--midori-glass-border-opacity-pct), transparent);
+
+  /* ── Tinted Haze — accent color blended into glass (Natsumi SDL) ── */
+  --midori-tinted-haze-bg: color-mix(in srgb,
+    var(--focus-outline-color, AccentColor) 8%,
+    var(--midori-haze-bg));
+
+  /* ── Soft shadows for depth ── */
   --midori-glass-shadow: 0 2px 16px 0 rgba(0, 0, 0, 0.10),
     0 1.5px 6px 0 rgba(0, 0, 0, 0.06);
   --midori-glass-shadow-elevated: 0 8px 32px 0 rgba(0, 0, 0, 0.18),
     0 2px 8px 0 rgba(0, 0, 0, 0.10);
 
-  /* Transition for smooth theme switching */
+  /* ── SDL2 Button colors ── */
+  --midori-btn-hover: color-mix(in srgb, currentColor 8%, transparent);
+  --midori-btn-active: color-mix(in srgb,
+    var(--focus-outline-color, AccentColor) 18%, transparent);
+  --midori-btn-active-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
+
+  /* ── Transition for smooth theme switching ── */
   --midori-transition: background-color 0.2s ease, backdrop-filter 0.2s ease,
     box-shadow 0.2s ease;
 }
@@ -35,21 +56,12 @@
    GLASSMORPHISM — TOOLBAR & NAVIGATION
    ==================================================================== */
 
-/* Main toolbar glass effect */
+/* Main toolbar glass effect — Natsumi Haze material */
 #navigator-toolbox {
-  backdrop-filter: blur(var(--midori-glass-blur))
-    saturate(var(--midori-glass-saturation))
-    brightness(var(--midori-glass-brightness)) !important;
-  -webkit-backdrop-filter: blur(var(--midori-glass-blur))
-    saturate(var(--midori-glass-saturation))
-    brightness(var(--midori-glass-brightness)) !important;
-  background-color: color-mix(
-    in srgb,
-    var(--toolbar-bgcolor) var(--midori-glass-opacity-pct),
-    transparent
-  ) !important;
-  border-bottom: 1px solid
-    color-mix(in srgb, currentColor var(--midori-glass-border-opacity-pct), transparent) !important;
+  backdrop-filter: var(--midori-haze-backdrop) !important;
+  -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
+  background-color: var(--midori-tinted-haze-bg) !important;
+  border-bottom: var(--midori-haze-border) !important;
   box-shadow: var(--midori-glass-shadow) !important;
 }
 
@@ -65,61 +77,24 @@
 #urlbar:not([focused]) .urlbar-input-container,
 #urlbar .urlbar-background {
   backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.6))
-    saturate(var(--midori-glass-saturation)) !important;
+    saturate(var(--midori-glass-saturation))
+    contrast(var(--midori-glass-contrast)) !important;
   -webkit-backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.6))
-    saturate(var(--midori-glass-saturation)) !important;
+    saturate(var(--midori-glass-saturation))
+    contrast(var(--midori-glass-contrast)) !important;
 }
 
 #urlbar[breakout][breakout-extend][open] > .urlbar-background {
-  backdrop-filter: blur(var(--midori-glass-blur))
-    saturate(var(--midori-glass-saturation)) !important;
-  -webkit-backdrop-filter: blur(var(--midori-glass-blur))
-    saturate(var(--midori-glass-saturation)) !important;
+  backdrop-filter: var(--midori-haze-backdrop) !important;
+  -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
   box-shadow: var(--midori-glass-shadow-elevated) !important;
-  border: 1px solid
-    color-mix(in srgb, currentColor 10%, transparent) !important;
+  border: var(--midori-haze-border) !important;
   border-radius: var(--midori-border-radius) !important;
 }
 
 /* ====================================================================
-   NATSUMI-INSPIRED TAB ENHANCEMENTS — Blade-style interactions
+   TAB ENHANCEMENTS — Minimal, non-intrusive refinements
    ==================================================================== */
-
-/* Tab scale-on-press (Natsumi Blade signature effect) */
-.tabbrowser-tab > .tab-stack {
-  transition: scale 0.2s ease !important;
-}
-
-.tabbrowser-tab:active:not([style*="transform"]):not(:has(.tab-close-button:hover)) > .tab-stack {
-  scale: 0.95 !important;
-}
-
-/* Tab background — smooth transitions */
-.tabbrowser-tab > .tab-stack > .tab-background {
-  transition: background-color 0.2s ease, box-shadow 0.2s ease,
-    backdrop-filter 0.2s ease !important;
-  overflow: visible !important;
-}
-
-/* Close button red highlight on hover (Natsumi Blade) */
-.tabbrowser-tab:has(.tab-close-button:hover) {
-  transition: opacity 0.2s ease !important;
-}
-
-.tabbrowser-tab:has(.tab-close-button:active) {
-  opacity: 0.5 !important;
-}
-
-/* Tab close button refinement */
-.tabbrowser-tab .tab-close-button {
-  border-radius: 50% !important;
-  transition: background-color 0.2s ease !important;
-}
-
-/* Tab text sizing */
-.tabbrowser-tab .tab-text {
-  font-size: 12px !important;
-}
 
 /* New tab button enhancement */
 #tabs-newtab-button,
@@ -128,84 +103,23 @@
   border-radius: var(--midori-border-radius) !important;
 }
 
-/* ====================================================================
-   GLASSMORPHISM — TABS (Horizontal Mode)
-   ==================================================================== */
-
-@media not (-moz-pref: "sidebar.verticalTabs") {
-  .tabbrowser-tab[selected] > .tab-stack > .tab-background,
-  .tabbrowser-tab[visuallyselected] > .tab-stack > .tab-background {
-    backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.5))
-      saturate(var(--midori-glass-saturation)) !important;
-    -webkit-backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.5))
-      saturate(var(--midori-glass-saturation)) !important;
-    border-radius: var(--midori-border-radius) var(--midori-border-radius) 0 0 !important;
-    box-shadow: 0 0 3px rgba(0, 0, 0, 0.3) !important;
-    background-color: color-mix(in srgb,
-      var(--toolbar-bgcolor) 65%, transparent) !important;
-  }
-
-  .tabbrowser-tab:hover:not([selected]):not([visuallyselected]) > .tab-stack > .tab-background {
-    backdrop-filter: blur(4px) saturate(1.1) !important;
-    -webkit-backdrop-filter: blur(4px) saturate(1.1) !important;
-    border-radius: var(--midori-border-radius) var(--midori-border-radius) 0 0 !important;
-    background-color: color-mix(in srgb,
-      var(--toolbar-bgcolor) 35%, transparent) !important;
-  }
-
-  /* Pinned tabs — scale animation */
-  #pinned-tabs-container .tabbrowser-tab > .tab-stack {
-    transition: scale 0.2s ease !important;
-  }
-
-  #pinned-tabs-container .tabbrowser-tab:active:not([style*="transform"]) > .tab-stack {
-    scale: 0.95 !important;
-  }
-}
 
 /* ====================================================================
-   GLASSMORPHISM — VERTICAL TABS
+   GLASSMORPHISM — VERTICAL SIDEBAR
    ==================================================================== */
 
 @media (-moz-pref: "sidebar.verticalTabs") {
   #sidebar-box {
-    backdrop-filter: blur(var(--midori-glass-blur))
-      saturate(var(--midori-glass-saturation)) !important;
-    -webkit-backdrop-filter: blur(var(--midori-glass-blur))
-      saturate(var(--midori-glass-saturation)) !important;
-    background-color: color-mix(
-      in srgb,
-      var(--lwt-sidebar-background-color, var(--toolbar-bgcolor))
-        var(--midori-glass-opacity-pct),
-      transparent
+    backdrop-filter: var(--midori-haze-backdrop) !important;
+    -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
+    background-color: color-mix(in srgb,
+      var(--focus-outline-color, AccentColor) 5%,
+      color-mix(in srgb,
+        var(--lwt-sidebar-background-color, var(--toolbar-bgcolor))
+          var(--midori-glass-opacity-pct),
+        transparent
+      )
     ) !important;
-  }
-
-  .tabbrowser-tab[selected] > .tab-stack > .tab-background,
-  .tabbrowser-tab[visuallyselected] > .tab-stack > .tab-background {
-    backdrop-filter: blur(6px) saturate(1.15) !important;
-    -webkit-backdrop-filter: blur(6px) saturate(1.15) !important;
-    border-radius: var(--midori-border-radius) !important;
-    box-shadow: 0 0 3px rgba(0, 0, 0, 0.3) !important;
-    background-color: color-mix(in srgb,
-      var(--toolbar-bgcolor) 55%, transparent) !important;
-  }
-
-  .tabbrowser-tab:hover:not([selected]):not([visuallyselected]) > .tab-stack > .tab-background {
-    backdrop-filter: blur(4px) saturate(1.05) !important;
-    -webkit-backdrop-filter: blur(4px) saturate(1.05) !important;
-    border-radius: var(--midori-border-radius) !important;
-    background-color: color-mix(in srgb,
-      var(--toolbar-bgcolor) 30%, transparent) !important;
-  }
-
-  /* Vertical pinned tabs — scale */
-  #vertical-pinned-tabs-container .tabbrowser-tab > .tab-stack {
-    transition: scale 0.2s ease !important;
-  }
-
-  #vertical-pinned-tabs-container .tabbrowser-tab:active:not([style*="transform"]) > .tab-stack {
-    scale: 0.95 !important;
   }
 
   /* Ensure backdrop filters work in vertical tabs */
@@ -223,22 +137,31 @@ menupopup,
 #appMenu-popup,
 #customizationui-widget-panel,
 #widget-overflow {
-  backdrop-filter: blur(var(--midori-glass-blur))
-    saturate(var(--midori-glass-saturation))
-    brightness(var(--midori-glass-brightness)) !important;
-  -webkit-backdrop-filter: blur(var(--midori-glass-blur))
-    saturate(var(--midori-glass-saturation))
-    brightness(var(--midori-glass-brightness)) !important;
+  backdrop-filter: var(--midori-haze-backdrop) !important;
+  -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
 }
 
-/* Panel backgrounds — semi-transparent */
+/* Panel backgrounds — Tinted Haze (accent-infused) */
 .panel-arrowcontent,
 panelview {
-  background-color: color-mix(
-    in srgb,
-    var(--arrowpanel-background, var(--toolbar-bgcolor)) 82%,
-    transparent
+  background-color: color-mix(in srgb,
+    var(--focus-outline-color, AccentColor) 5%,
+    color-mix(in srgb,
+      var(--arrowpanel-background, var(--toolbar-bgcolor)) 82%,
+      transparent
+    )
   ) !important;
+}
+
+/* Popup animation — slide-in from top */
+@keyframes midori-popup-appear {
+  0% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+panel[type="arrow"][animate],
+menupopup:not([position]) {
+  animation: midori-popup-appear 0.15s ease !important;
 }
 
 /* ====================================================================
@@ -247,9 +170,11 @@ panelview {
 
 #PersonalToolbar {
   backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.5))
-    saturate(var(--midori-glass-saturation)) !important;
+    saturate(var(--midori-glass-saturation))
+    contrast(var(--midori-glass-contrast)) !important;
   -webkit-backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.5))
-    saturate(var(--midori-glass-saturation)) !important;
+    saturate(var(--midori-glass-saturation))
+    contrast(var(--midori-glass-contrast)) !important;
   background-color: transparent !important;
 }
 
@@ -258,18 +183,11 @@ panelview {
    ==================================================================== */
 
 .browserContainer > findbar {
-  backdrop-filter: blur(var(--midori-glass-blur))
-    saturate(var(--midori-glass-saturation)) !important;
-  -webkit-backdrop-filter: blur(var(--midori-glass-blur))
-    saturate(var(--midori-glass-saturation)) !important;
+  backdrop-filter: var(--midori-haze-backdrop) !important;
+  -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
   background-image: none !important;
-  background-color: color-mix(
-    in srgb,
-    var(--toolbar-bgcolor) 78%,
-    transparent
-  ) !important;
-  border-top: 1px solid
-    color-mix(in srgb, currentColor 10%, transparent) !important;
+  background-color: var(--midori-tinted-haze-bg) !important;
+  border-top: var(--midori-haze-border) !important;
 }
 
 /* ====================================================================
@@ -286,7 +204,6 @@ panelview {
 
 #navigator-toolbox,
 #PersonalToolbar,
-.tabbrowser-tab .tab-background,
 #urlbar .urlbar-background,
 #sidebar-box {
   transition: var(--midori-transition) !important;
@@ -349,10 +266,29 @@ panelview {
 }
 
 /* ====================================================================
-   MIDORI WORKSPACES — Selector button & popup glassmorphism
-   Positioned in TabsToolbar (where Firefox View used to be)
+   MIDORI WORKSPACES — Selector, indicator & animations
    ==================================================================== */
 
+/* --- Workspace switch animations (Natsumi-inspired slide) --- */
+@keyframes midori-ws-slide-right {
+  from { opacity: 0; translate: 40px 0; }
+  to   { opacity: 1; translate: 0; }
+}
+
+@keyframes midori-ws-slide-left {
+  from { opacity: 0; translate: -40px 0; }
+  to   { opacity: 1; translate: 0; }
+}
+
+#tabbrowser-tabs[midori-workspace-anim] {
+  animation: midori-ws-slide-right 0.3s ease !important;
+}
+
+#tabbrowser-tabs[midori-workspace-anim][midori-workspace-anim-left] {
+  animation-name: midori-ws-slide-left !important;
+}
+
+/* --- Horizontal mode: selector button in TabsToolbar --- */
 #midori-workspace-selector {
   -moz-appearance: none !important;
   appearance: none !important;
@@ -366,8 +302,8 @@ panelview {
   ) !important;
   backdrop-filter: blur(8px) saturate(1.2) !important;
   -webkit-backdrop-filter: blur(8px) saturate(1.2) !important;
-  border: 1px solid
-    color-mix(in srgb, currentColor 8%, transparent) !important;
+  border: var(--midori-haze-border,
+    1px solid color-mix(in srgb, currentColor 8%, transparent)) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
   transition: background-color 0.15s ease, box-shadow 0.15s ease,
     border-color 0.15s ease !important;
@@ -381,22 +317,15 @@ panelview {
 }
 
 #midori-workspace-selector:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 75%,
-    transparent
-  ) !important;
+  background-color: var(--midori-btn-hover,
+    color-mix(in srgb, currentColor 8%, transparent)) !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10) !important;
-  border-color: color-mix(in srgb, currentColor 14%, transparent) !important;
 }
 
 #midori-workspace-selector:active,
 #midori-workspace-selector[open="true"] {
-  background-color: color-mix(
-    in srgb,
-    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 88%,
-    transparent
-  ) !important;
+  background-color: var(--midori-btn-active,
+    color-mix(in srgb, AccentColor 18%, transparent)) !important;
   box-shadow: 0 0 0 2px color-mix(
     in srgb, var(--focus-outline-color, AccentColor) 35%, transparent
   ) !important;
@@ -430,12 +359,114 @@ panelview {
   opacity: 0.5 !important;
 }
 
+/* --- Vertical mode: workspace icon strip above tabs in sidebar --- */
+
+/* Force #vertical-tabs to column layout so workspace strip appears above tabs */
+#vertical-tabs:has(#midori-workspace-quick-icons) {
+  flex-direction: column !important;
+}
+
+/* Ensure tabs fill the remaining space below workspace strip */
+#vertical-tabs:has(#midori-workspace-quick-icons) > #tabbrowser-tabs {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+#midori-workspace-quick-icons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 4px !important;
+  margin: 0 !important;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+  -moz-window-dragging: no-drag;
+  min-height: 30px;
+  flex-shrink: 0;
+  /* Force this to appear first in the flex order */
+  order: -1 !important;
+  /* Prevent this from stretching the sidebar width */
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.midori-workspace-quick-btn {
+  -moz-appearance: none !important;
+  appearance: none !important;
+  min-width: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  margin: 1px !important;
+  border-radius: 6px !important;
+  border: none !important;
+  background-color: transparent !important;
+  font-size: 12px !important;
+  cursor: default !important;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease !important;
+  position: relative;
+}
+
+.midori-workspace-quick-btn:hover {
+  background-color: color-mix(in srgb, currentColor 10%, transparent) !important;
+}
+
+.midori-workspace-quick-btn:active {
+  background-color: color-mix(in srgb, currentColor 16%, transparent) !important;
+}
+
+/* Active workspace — accent background + left bar indicator */
+.midori-workspace-quick-btn[data-active="true"] {
+  background-color: color-mix(in srgb,
+    var(--focus-outline-color, AccentColor) 15%, transparent) !important;
+  box-shadow: inset 2px 0 0 var(--focus-outline-color, AccentColor) !important;
+}
+
+/* Add (+) button */
+.midori-workspace-add-btn {
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  opacity: 0.4 !important;
+}
+
+.midori-workspace-add-btn:hover {
+  opacity: 1 !important;
+}
+
+/* Hide .toolbarbutton-text and .toolbarbutton-icon for quick btns */
+.midori-workspace-quick-btn > .toolbarbutton-icon {
+  display: none !important;
+}
+
+/* When sidebar is collapsed, stack workspace icons vertically */
+#tabbrowser-tabs[orient="vertical"]:not([expanded]) ~ #midori-workspace-quick-icons,
+#tabbrowser-tabs[orient="vertical"]:not([expanded]) + #midori-workspace-quick-icons {
+  flex-direction: column;
+  padding: 2px !important;
+  gap: 1px;
+}
+
+/* Also handle the case where quick-icons is a sibling at the same level */
+#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-quick-icons {
+  flex-direction: column;
+  padding: 2px !important;
+  gap: 1px;
+}
+
+#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-quick-btn {
+  min-width: 28px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+}
+
 /* Workspace popup panel glassmorphism */
 #midori-workspace-popup {
-  backdrop-filter: blur(var(--midori-glass-blur, 12px))
-    saturate(var(--midori-glass-saturation, 1.2)) !important;
-  -webkit-backdrop-filter: blur(var(--midori-glass-blur, 12px))
-    saturate(var(--midori-glass-saturation, 1.2)) !important;
+  backdrop-filter: var(--midori-haze-backdrop,
+    blur(12px) saturate(1.8) contrast(1.1)) !important;
+  -webkit-backdrop-filter: var(--midori-haze-backdrop,
+    blur(12px) saturate(1.8) contrast(1.1)) !important;
 }
 
 /* Active workspace item highlight */

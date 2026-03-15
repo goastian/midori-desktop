@@ -99,6 +99,82 @@ export const MidoriVerticalTabs = {
       ? this._buildVerticalCSS()
       : this._buildBaseCSS();
     doc.documentElement.appendChild(style);
+
+    // --- Pinned tabs icon feature (Natsumi-inspired) ---
+    this._initPinnedTabsIcon(win);
+
+    // --- Auto-select URL bar content on open (Natsumi urlbar.uc.mjs) ---
+    this._initUrlbarAutoSelect(win);
+  },
+
+  /**
+   * Copies each pinned tab's favicon into a CSS custom property
+   * (--midori-tab-icon) so CSS can reference it for decorative purposes.
+   * Inspired by Natsumi's pinned-tabs-icon.uc.mjs.
+   */
+  _initPinnedTabsIcon(win) {
+    const doc = win.document;
+    if (doc._midoriPinnedIconInit) return;
+    doc._midoriPinnedIconInit = true;
+
+    const copyTabIcon = (tab) => {
+      const image = tab.getAttribute("image");
+      tab.style.setProperty(
+        "--midori-tab-icon",
+        image ? `url("${image}")` : `url("chrome://global/skin/icons/defaultFavicon.svg")`
+      );
+    };
+
+    const observeTab = (tab) => {
+      const obs = new win.MutationObserver(() => copyTabIcon(tab));
+      obs.observe(tab, { attributes: true, attributeFilter: ["image"] });
+    };
+
+    // Process existing pinned tabs
+    for (const container of [
+      doc.getElementById("pinned-tabs-container"),
+      doc.getElementById("vertical-pinned-tabs-container"),
+    ]) {
+      if (!container) continue;
+      for (const tab of container.querySelectorAll("tab")) {
+        copyTabIcon(tab);
+        observeTab(tab);
+      }
+      // Watch for newly pinned tabs
+      new win.MutationObserver((mutations) => {
+        for (const m of mutations) {
+          for (const node of m.addedNodes) {
+            if (node.nodeName === "tab") {
+              copyTabIcon(node);
+              observeTab(node);
+            }
+          }
+        }
+      }).observe(container, { childList: true });
+    }
+  },
+
+  /**
+   * Auto-selects the URL bar text when the floating URL bar opens.
+   * Inspired by Natsumi's urlbar.uc.mjs.
+   */
+  _initUrlbarAutoSelect(win) {
+    const doc = win.document;
+    if (doc._midoriUrlbarAutoSelectInit) return;
+    doc._midoriUrlbarAutoSelectInit = true;
+
+    const urlbar = doc.getElementById("urlbar");
+    if (!urlbar) return;
+
+    let wasOpen = false;
+    new win.MutationObserver(() => {
+      const isOpen = urlbar.hasAttribute("open");
+      if (isOpen && !wasOpen) {
+        const input = doc.getElementById("urlbar-input");
+        if (input) input.select();
+      }
+      wasOpen = isOpen;
+    }).observe(urlbar, { attributes: true, attributeFilter: ["open"] });
   },
 
   _refreshAllWindows() {
@@ -136,7 +212,7 @@ export const MidoriVerticalTabs = {
   100% { translate: 0; opacity: 1; }
 }
 
-/* --- Rounder toolbar buttons --- */
+/* --- SDL2-style toolbar buttons (Natsumi Starlight) --- */
 toolbar .toolbarbutton-1 {
   & > .toolbarbutton-icon,
   & > .toolbarbutton-badge-stack {
@@ -145,9 +221,15 @@ toolbar .toolbarbutton-1 {
   }
 }
 
-/* --- Smooth button hovers --- */
 .toolbarbutton-1:hover > .toolbarbutton-icon {
+  background-color: var(--midori-btn-hover, color-mix(in srgb, currentColor 8%, transparent)) !important;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.08) !important;
+}
+
+.toolbarbutton-1:active > .toolbarbutton-icon,
+.toolbarbutton-1[open] > .toolbarbutton-icon {
+  background-color: var(--midori-btn-active, color-mix(in srgb, AccentColor 18%, transparent)) !important;
+  box-shadow: var(--midori-btn-active-shadow, 0 0 4px rgba(0, 0, 0, 0.2)) !important;
 }
 
 /* --- Better unloaded tabs indicator --- */
@@ -164,9 +246,6 @@ toolbar .toolbarbutton-1 {
   ) !important;
 }
 
-/* --- Remove tab outline --- */
-.tab-background { outline: none !important; }
-
 /* --- URL bar page actions: rounder --- */
 .urlbar-page-action, .urlbar-revert-button {
   border-radius: 14px !important;
@@ -180,7 +259,7 @@ toolbar .toolbarbutton-1 {
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.12) !important;
 }
 
-/* --- Floating findbar (Natsumi-style) --- */
+/* --- Floating findbar (Natsumi Haze material) --- */
 .browserContainer > findbar {
   display: flex !important;
   position: absolute !important;
@@ -192,11 +271,16 @@ toolbar .toolbarbutton-1 {
   height: auto !important;
   flex-wrap: wrap;
   border-radius: 15px !important;
-  background: color-mix(in srgb, var(--toolbar-bgcolor) 85%, transparent) !important;
-  backdrop-filter: blur(12px) saturate(1.2) !important;
-  -webkit-backdrop-filter: blur(12px) saturate(1.2) !important;
-  border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  background: var(--midori-tinted-haze-bg,
+    color-mix(in srgb, var(--toolbar-bgcolor) 85%, transparent)) !important;
+  backdrop-filter: var(--midori-haze-backdrop,
+    blur(12px) saturate(1.8) contrast(1.1)) !important;
+  -webkit-backdrop-filter: var(--midori-haze-backdrop,
+    blur(12px) saturate(1.8) contrast(1.1)) !important;
+  border: var(--midori-haze-border,
+    1px solid color-mix(in srgb, currentColor 12%, transparent)) !important;
+  box-shadow: var(--midori-glass-shadow-elevated,
+    0 8px 32px rgba(0, 0, 0, 0.15)) !important;
   animation: midori-findbar-appear 0.2s ease !important;
   z-index: 10;
   transition: opacity 0.2s ease, top 0.2s ease, filter 0.2s ease !important;
@@ -213,18 +297,22 @@ toolbar .toolbarbutton-1 {
   border-radius: 8px !important;
 }
 
-/* --- Status panel pill (Natsumi-style) --- */
+/* --- Status panel pill (Natsumi Haze material) --- */
 #statuspanel {
   max-width: calc(100% - 20px) !important;
   margin: 10px !important;
 }
 
 #statuspanel-label {
-  border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
+  border: var(--midori-haze-border,
+    1px solid color-mix(in srgb, currentColor 12%, transparent)) !important;
   border-radius: 13px !important;
-  background-color: color-mix(in srgb, var(--toolbar-bgcolor) 90%, transparent) !important;
-  backdrop-filter: blur(8px) saturate(1.1) !important;
-  -webkit-backdrop-filter: blur(8px) saturate(1.1) !important;
+  background-color: var(--midori-tinted-haze-bg,
+    color-mix(in srgb, var(--toolbar-bgcolor) 90%, transparent)) !important;
+  backdrop-filter: var(--midori-haze-backdrop,
+    blur(12px) saturate(1.8) contrast(1.1)) !important;
+  -webkit-backdrop-filter: var(--midori-haze-backdrop,
+    blur(12px) saturate(1.8) contrast(1.1)) !important;
   padding: 2px 12px !important;
 }
 
@@ -300,94 +388,12 @@ toolbar .toolbarbutton-1 {
 /* Hide private browsing label */
 .private-browsing-indicator-label { display: none !important; }
 
-/* --- Vertical tabs spacing & style --- */
-#tabbrowser-tabs[orient="vertical"]:not([collapsed]) {
-  grid-gap: var(--space-xsmall) !important;
-
-  & .tabbrowser-tab {
-    padding-block: 3px !important;
-    &:nth-child(1 of :not([hidden], [pinned])) {
-      padding-block-start: 3px !important;
-    }
-    &[pinned] { padding-block-start: 1px !important; }
-  }
-
-  & :not([pinned="true"]) .tab-background {
-    margin-inline: calc(var(--tab-inner-inline-margin, 4px) - 2px) !important;
-    margin-block: calc(var(--tab-block-margin, 2px) - 2px) !important;
-    min-height: calc(var(--tab-min-height) + 3px) !important;
-  }
-
-  /* Selected tab accent glow (Natsumi Material-inspired) */
-  & .tabbrowser-tab[selected] .tab-background,
-  & .tabbrowser-tab[visuallyselected] .tab-background {
-    box-shadow: 0 0 3px rgba(0, 0, 0, 0.25),
-      inset 0 0 0 1px color-mix(in srgb, var(--focus-outline-color, AccentColor) 12%, transparent) !important;
-  }
-
-  /* Unselected tabs — subtle border on hover */
-  & .tabbrowser-tab:hover:not([selected]):not([visuallyselected]) .tab-background {
-    box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 6%, transparent) !important;
-  }
-}
-
-/* Pinned tabs */
-#vertical-pinned-tabs-container {
-  #tabbrowser-tabs[expanded] > & {
-    padding-inline: calc(
-      var(--tab-pinned-container-margin-inline-expanded, 8px) - 1px
-    ) !important;
-    & .tab-background {
-      margin-inline: calc(var(--space-xsmall, 4px) * 1.1) !important;
-    }
-  }
-  .tab-background {
-    min-height: calc(var(--tab-min-height) + 10px) !important;
-  }
-}
-
-#tabbrowser-tabs[orient="vertical"]:not([expanded]) .tab-background {
-  min-height: var(--tab-min-height) !important;
-}
-
-/* Fullscreen pinned-tab top padding */
-#main-window[inFullscreen="true"] #vertical-pinned-tabs-container {
-  #tabbrowser-tabs[expanded] > & { padding-block-start: 8px; }
-}
-
 /* Sidebar tools — horizontal row, show/hide on hover */
 .tools-and-extensions[orientation="horizontal"] {
   display: flex !important;
   flex-wrap: initial !important;
   flex-direction: row !important;
   opacity: 0.4 !important;
-}
-
-/* Tab close button — scale down, only visible on row hover */
-#tabbrowser-tabs[orient="vertical"] .tab-close-button {
-  margin-inline-end: calc(-1 * var(--tab-close-button-padding, 6px) + 3px) !important;
-  scale: 0.8;
-  border-radius: 50% !important;
-  transition: background-color 0.2s ease, opacity 0.2s ease !important;
-  opacity: 0;
-}
-
-#tabbrowser-tabs[orient="vertical"] .tabbrowser-tab:hover .tab-close-button {
-  opacity: 1;
-}
-
-#tabbrowser-tabs[orient="vertical"] .tabbrowser-tab[selected] .tab-close-button {
-  opacity: 0.6;
-}
-
-#tabbrowser-tabs[orient="vertical"] .tabbrowser-tab[selected]:hover .tab-close-button {
-  opacity: 1;
-}
-
-/* Hide separator below New Tab button */
-#tabbrowser-tabs[orient="vertical"][overflow]::after {
-  border-bottom: none !important;
-  padding-bottom: calc(var(--toolbarbutton-border-radius, 4px) - 1px) !important;
 }
 
 /* Sidebar tools hover visibility */

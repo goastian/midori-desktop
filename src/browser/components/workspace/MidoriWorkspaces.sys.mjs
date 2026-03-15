@@ -34,11 +34,17 @@
 
 const PREF_ENABLED = "midori.workspaces.enabled";
 const PREF_SHOW_BUTTON = "midori.workspaces.show-button";
+const PREF_VERTICAL = "midori.verticaltabs.enabled";
+const PREF_SIDEBAR_VERTICAL = "sidebar.verticalTabs";
 
 const WORKSPACE_ATTR = "midori-workspace-id";
 const STYLE_ID = "midori-workspaces-style";
 const SELECTOR_ID = "midori-workspace-selector";
 const POPUP_ID = "midori-workspace-popup";
+const INDICATOR_ID = "midori-workspace-indicator";
+const INDICATOR_ICON_ID = "midori-workspace-indicator-icon";
+const INDICATOR_NAME_ID = "midori-workspace-indicator-name";
+const QUICK_ICONS_ID = "midori-workspace-quick-icons";
 const MAX_WORKSPACES = 25;
 const MAX_NAME_LENGTH = 32;
 const SAVE_DEBOUNCE_MS = 500;
@@ -160,6 +166,8 @@ export const MidoriWorkspaces = {
 
     Services.prefs.addObserver(PREF_ENABLED, this);
     Services.prefs.addObserver(PREF_SHOW_BUTTON, this);
+    Services.prefs.addObserver(PREF_VERTICAL, this);
+    Services.prefs.addObserver(PREF_SIDEBAR_VERTICAL, this);
 
     Services.obs.addObserver(this, "browser-delayed-startup-finished");
     Services.obs.addObserver(this, "domwindowclosed");
@@ -296,6 +304,17 @@ export const MidoriWorkspaces = {
     };
     this._windowStates.set(win, state);
 
+    // In vertical mode, wait for sidebar to be fully initialized
+    if (this._isVerticalMode()) {
+      try {
+        if (win.SidebarController?.promiseInitialized) {
+          await win.SidebarController.promiseInitialized;
+        }
+      } catch (e) {
+        console.warn("MidoriWorkspaces: SidebarController init error", e);
+      }
+    }
+
     this._injectUI(win, state);
     this._applyWorkspace(win, state, data.selectedId);
     this._attachTabListeners(win, state);
@@ -314,6 +333,14 @@ export const MidoriWorkspaces = {
   // UI Injection — Workspace selector button + popup
   // =========================================================================
 
+  _isVerticalMode() {
+    // Check both Midori's pref and Firefox's native sidebar.verticalTabs
+    return (
+      Services.prefs.getBoolPref(PREF_VERTICAL, false) ||
+      Services.prefs.getBoolPref(PREF_SIDEBAR_VERTICAL, false)
+    );
+  },
+
   _injectUI(win, state) {
     const doc = win.document;
 
@@ -322,21 +349,108 @@ export const MidoriWorkspaces = {
 
     if (!this.showButton()) return;
 
-    // Create the workspace selector button in TabsToolbar (where Firefox View was)
+    const isVertical = this._isVerticalMode();
+    console.log(`MidoriWorkspaces: _injectUI (vertical=${isVertical})`);
+
+    if (isVertical) {
+      this._injectVerticalWithRetry(win, state, 0);
+    } else {
+      this._injectHorizontalUI(win, state);
+    }
+  },
+
+  /**
+   * Retry vertical UI injection with increasing delays.
+   * The sidebar DOM takes time to initialize in vertical mode.
+   */
+  _injectVerticalWithRetry(win, state, attempt) {
+    const doc = win.document;
+    const MAX_ATTEMPTS = 6;
+    const DELAYS = [0, 300, 600, 1200, 2000, 3000];
+
+    // Already injected?
+    if (doc.getElementById(QUICK_ICONS_ID) || doc.getElementById(SELECTOR_ID)) return;
+    // Window closed?
+    if (win.closed) return;
+
+    const success = this._injectVerticalUI(win, state);
+    if (success) return;
+
+    if (attempt < MAX_ATTEMPTS - 1) {
+      const delay = DELAYS[attempt + 1] || 1000;
+      console.log(
+        `MidoriWorkspaces: Vertical DOM not ready (attempt ${attempt + 1}/${MAX_ATTEMPTS}), retrying in ${delay}ms...`
+      );
+      win.setTimeout(() => {
+        this._injectVerticalWithRetry(win, state, attempt + 1);
+      }, delay);
+    } else {
+      // All retries exhausted — fallback to nav-bar button
+      console.warn("MidoriWorkspaces: Vertical DOM never ready, injecting fallback in nav-bar");
+      this._injectNavBarFallback(win, state);
+    }
+  },
+
+  /**
+   * Fallback: inject a workspace button in nav-bar when vertical-tabs DOM isn't available.
+   */
+  _injectNavBarFallback(win, state) {
+    const doc = win.document;
+    const navTarget = doc.getElementById("nav-bar-customization-target");
+    if (!navTarget) return;
+
+    const btn = doc.createXULElement("toolbarbutton");
+    btn.id = SELECTOR_ID;
+    btn.className = "toolbarbutton-1 midori-workspace-btn";
+    btn.setAttribute("tooltiptext", "Workspaces");
+    btn.setAttribute("label", "\uD83C\uDFE0 Workspaces");
+
+    const labelEl = doc.createXULElement("label");
+    labelEl.id = "midori-workspace-selector-label";
+    labelEl.className = "midori-workspace-label";
+    labelEl.setAttribute("value", "\uD83C\uDFE0 Workspaces");
+    btn.appendChild(labelEl);
+
+    navTarget.insertBefore(btn, navTarget.firstChild);
+
+    const popup = doc.createXULElement("menupopup");
+    popup.id = POPUP_ID;
+    popup.className = "midori-workspace-popup";
+    popup.setAttribute("position", "after_start");
+    doc.getElementById("mainPopupSet").appendChild(popup);
+
+    btn.addEventListener("click", (e) => {
+      if (e.button !== 0) return;
+      this._populatePopup(win, state);
+      popup.openPopup(btn, "after_start", 0, 0, false, false);
+    });
+
+    popup.addEventListener("popupshowing", () => {
+      this._populatePopup(win, state);
+    });
+
+    this._updateSelectorLabel(doc, state);
+    this._populatePopup(win, state);
+  },
+
+  /**
+   * Horizontal mode: selector button in TabsToolbar (where Firefox View was)
+   */
+  _injectHorizontalUI(win, state) {
+    const doc = win.document;
     const tabsTarget = doc.getElementById("TabsToolbar-customization-target");
     if (!tabsTarget) return;
 
-    // Build the selector button
+    // Build the selector button (no type="menu" — we open popup manually)
     const selector = doc.createXULElement("toolbarbutton");
     selector.id = SELECTOR_ID;
     selector.className =
       "toolbarbutton-1 chromeclass-toolbar-additional midori-workspace-btn";
-    selector.setAttribute("type", "menu");
     selector.setAttribute("removable", "false");
     selector.setAttribute("overflows", "false");
     selector.setAttribute(
       "tooltiptext",
-      "Workspaces — Click to switch workspace"
+      "Workspaces \u2014 Click to switch workspace"
     );
 
     // Add explicit label element (TabsToolbar hides .toolbarbutton-text)
@@ -346,50 +460,211 @@ export const MidoriWorkspaces = {
     labelEl.setAttribute("value", "\uD83C\uDFE0 Workspaces");
     selector.appendChild(labelEl);
 
-    // Build popup panel
+    // Insert as first child in TabsToolbar
+    tabsTarget.insertBefore(selector, tabsTarget.firstChild);
+
+    // Pre-create popup in mainPopupSet (not inside toolbarbutton)
     const popup = doc.createXULElement("menupopup");
     popup.id = POPUP_ID;
     popup.className = "midori-workspace-popup";
     popup.setAttribute("position", "after_start");
-    selector.appendChild(popup);
+    doc.getElementById("mainPopupSet").appendChild(popup);
 
-    // Insert as first child in TabsToolbar (where Firefox View button used to be)
-    tabsTarget.insertBefore(selector, tabsTarget.firstChild);
+    // Click handler to open popup manually
+    selector.addEventListener("click", (e) => {
+      if (e.button !== 0) return;
+      this._populatePopup(win, state);
+      popup.openPopup(selector, "after_start", 0, 0, false, false);
+    });
+
+    // Also refresh when popup opens (e.g. via keyboard)
+    popup.addEventListener("popupshowing", () => {
+      this._populatePopup(win, state);
+    });
 
     // Initial render
     this._updateSelectorLabel(doc, state);
     this._populatePopup(win, state);
+  },
 
-    // Listen for popup showing to refresh
-    popup.addEventListener("popupshowing", () => {
-      this._populatePopup(win, state);
-    });
+  /**
+   * Vertical mode: workspace icon strip ABOVE tabs in the sidebar.
+   * Inserted as first child of #vertical-tabs so it doesn't interfere
+   * with the native tab layout (flex-direction: column).
+   * @returns {boolean} true if vertical UI was successfully injected
+   */
+  _injectVerticalUI(win, state) {
+    const doc = win.document;
+
+    const verticalTabs = doc.getElementById("vertical-tabs");
+
+    console.log(
+      `MidoriWorkspaces: _injectVerticalUI — vertical-tabs=${!!verticalTabs}`
+    );
+
+    if (!verticalTabs) {
+      return false;
+    }
+
+    // Create workspace strip container — inserted as FIRST child of #vertical-tabs
+    // so it appears above the tabs, not below them.
+    const container = doc.createXULElement("hbox");
+    container.id = QUICK_ICONS_ID;
+    container.className = "midori-workspace-quick-icons";
+
+    // Insert before first child (above tabs)
+    verticalTabs.insertBefore(container, verticalTabs.firstChild);
+
+    this._updateQuickIcons(win, state);
+
+    // --- Pre-create popup attached to mainPopupSet for reuse ---
+    const popupSet = doc.getElementById("mainPopupSet");
+    if (popupSet) {
+      const popup = doc.createXULElement("menupopup");
+      popup.id = POPUP_ID;
+      popup.className = "midori-workspace-popup";
+      popup.setAttribute("position", "after_start");
+      popupSet.appendChild(popup);
+
+      popup.addEventListener("popupshowing", () => {
+        this._populatePopup(win, state);
+      });
+    }
+
+    console.log("MidoriWorkspaces: Vertical UI injected successfully");
+    return true;
+  },
+
+  /**
+   * Show the workspace popup anchored to a node (used by quick icon "manage" btn).
+   */
+  _showIndicatorPopup(win, state, anchorNode) {
+    const doc = win.document;
+    let popup = doc.getElementById(POPUP_ID);
+    if (!popup) {
+      popup = doc.createXULElement("menupopup");
+      popup.id = POPUP_ID;
+      popup.className = "midori-workspace-popup";
+      doc.getElementById("mainPopupSet").appendChild(popup);
+      popup.addEventListener("popupshowing", () => {
+        this._populatePopup(win, state);
+      });
+    }
+    this._populatePopup(win, state);
+    popup.openPopup(anchorNode, "before_start", 0, 0, false, false);
+  },
+
+  /**
+   * Update the workspace indicator (vertical mode) with current workspace info.
+   */
+  _updateIndicator(doc, state) {
+    const indicator = doc.getElementById(INDICATOR_ID);
+    if (!indicator) return;
+
+    const current = state.data.workspaces.find(
+      ws => ws.id === state.data.selectedId
+    );
+    if (!current) return;
+
+    const emoji = getEmojiForIcon(current.icon);
+
+    const nameEl = doc.getElementById(INDICATOR_NAME_ID);
+    if (nameEl) nameEl.setAttribute("value", current.name);
+
+    const iconEl = doc.getElementById(INDICATOR_ICON_ID);
+    if (iconEl) {
+      iconEl.setAttribute("label", emoji);
+      // Store current icon data as CSS variable for potential styling
+      indicator.style.setProperty("--midori-workspace-emoji", `"${emoji}"`);
+    }
+  },
+
+  /**
+   * Update the quick workspace icon buttons (vertical mode, bottom of sidebar).
+   * Like Natsumi/Floorp: one icon per workspace + a "+" button to add.
+   */
+  _updateQuickIcons(win, state) {
+    const doc = win.document;
+    const container = doc.getElementById(QUICK_ICONS_ID);
+    if (!container) return;
+
+    // Clear existing buttons
+    while (container.firstChild) container.firstChild.remove();
+
+    const { workspaces, selectedId } = state.data;
+
+    // One button per workspace
+    for (const ws of workspaces) {
+      const btn = doc.createXULElement("toolbarbutton");
+      btn.className = "midori-workspace-quick-btn toolbarbutton-1";
+      btn.setAttribute("tooltiptext", ws.name);
+      btn.setAttribute("label", getEmojiForIcon(ws.icon));
+
+      if (ws.id === selectedId) {
+        btn.setAttribute("data-active", "true");
+      }
+
+      // Left click → switch workspace
+      btn.addEventListener("command", () => {
+        this.switchWorkspace(win, ws.id);
+      });
+
+      // Right click → context popup for this workspace
+      btn.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this._showIndicatorPopup(win, state, btn);
+      });
+
+      container.appendChild(btn);
+    }
+
+    // "+" button to create new workspace
+    if (workspaces.length < MAX_WORKSPACES) {
+      const addBtn = doc.createXULElement("toolbarbutton");
+      addBtn.className = "midori-workspace-quick-btn midori-workspace-add-btn toolbarbutton-1";
+      addBtn.setAttribute("tooltiptext", "New Workspace");
+      addBtn.setAttribute("label", "+");
+      addBtn.addEventListener("command", () => {
+        this._showCreateDialog(win, state);
+      });
+      container.appendChild(addBtn);
+    }
   },
 
   _removeUI(win) {
     const doc = win.document;
     const selector = doc.getElementById(SELECTOR_ID);
     if (selector) selector.remove();
+    const indicator = doc.getElementById(INDICATOR_ID);
+    if (indicator) indicator.remove();
+    const quickIcons = doc.getElementById(QUICK_ICONS_ID);
+    if (quickIcons) quickIcons.remove();
+    const popup = doc.getElementById(POPUP_ID);
+    if (popup) popup.remove();
   },
 
   _updateSelectorLabel(doc, state) {
+    // Update horizontal mode selector
     const selector = doc.getElementById(SELECTOR_ID);
-    if (!selector) return;
+    if (selector) {
+      const current = state.data.workspaces.find(
+        ws => ws.id === state.data.selectedId
+      );
+      if (current) {
+        const emoji = getEmojiForIcon(current.icon);
+        selector.setAttribute("label", `${emoji} Workspaces`);
+        selector.setAttribute("tooltiptext", `Current: ${current.name}`);
 
-    const current = state.data.workspaces.find(
-      ws => ws.id === state.data.selectedId
-    );
-    if (current) {
-      const emoji = getEmojiForIcon(current.icon);
-      selector.setAttribute("label", `${emoji} Workspaces`);
-      selector.setAttribute("tooltiptext", `Current: ${current.name}`);
-
-      // Update explicit label element
-      const labelEl = doc.getElementById("midori-workspace-selector-label");
-      if (labelEl) {
-        labelEl.setAttribute("value", `${emoji} Workspaces`);
+        const labelEl = doc.getElementById("midori-workspace-selector-label");
+        if (labelEl) {
+          labelEl.setAttribute("value", `${emoji} Workspaces`);
+        }
       }
     }
+
+    // Update vertical mode indicator + quick icons
+    this._updateIndicator(doc, state);
   },
 
   _populatePopup(win, state) {
@@ -464,8 +739,18 @@ export const MidoriWorkspaces = {
     const gBrowser = win.gBrowser;
     if (!gBrowser) return;
 
+    // --- Natsumi-style transition animation ---
+    const oldId = state.data.selectedId;
+    const oldIndex = state.data.workspaces.findIndex(ws => ws.id === oldId);
+    const newIndex = state.data.workspaces.findIndex(ws => ws.id === workspaceId);
+
     state.data.selectedId = workspaceId;
     this._scheduleSave();
+
+    // Trigger slide animation if switching between different workspaces
+    if (oldId !== workspaceId && oldIndex !== -1 && newIndex !== -1) {
+      this._animateWorkspaceSwitch(win, newIndex < oldIndex);
+    }
 
     const tabs = gBrowser.tabs;
     let hasVisibleTab = false;
@@ -522,8 +807,50 @@ export const MidoriWorkspaces = {
       }
     }
 
-    // Update UI
+    // Update UI (both horizontal selector label and vertical indicator)
     this._updateSelectorLabel(win.document, state);
+    this._updateQuickIcons(win, state);
+
+    // Dispatch custom event (Natsumi-style)
+    try {
+      const event = new win.CustomEvent("midoriWorkspaceChanged", {
+        bubbles: true,
+        cancelable: false,
+        detail: { workspaceId },
+      });
+      win.document.dispatchEvent(event);
+    } catch (e) {}
+  },
+
+  /**
+   * Natsumi-inspired workspace switch animation.
+   * Applies a slide-in from left or right on the tabs list.
+   */
+  _animateWorkspaceSwitch(win, slideLeft) {
+    const doc = win.document;
+    const tabsList = doc.getElementById("tabbrowser-tabs");
+    if (!tabsList) return;
+
+    // Remove any existing animation attributes
+    tabsList.removeAttribute("midori-workspace-anim");
+    tabsList.removeAttribute("midori-workspace-anim-left");
+
+    // Force reflow to restart animation
+    void tabsList.offsetWidth;
+
+    if (slideLeft) {
+      tabsList.setAttribute("midori-workspace-anim-left", "");
+    }
+    tabsList.setAttribute("midori-workspace-anim", "");
+
+    // Clear animation after it completes
+    if (win.__midoriWsAnimTimeout) {
+      win.clearTimeout(win.__midoriWsAnimTimeout);
+    }
+    win.__midoriWsAnimTimeout = win.setTimeout(() => {
+      tabsList.removeAttribute("midori-workspace-anim");
+      tabsList.removeAttribute("midori-workspace-anim-left");
+    }, 300);
   },
 
   _countTabsInWorkspace(win, workspaceId) {
@@ -658,6 +985,10 @@ export const MidoriWorkspaces = {
     // If deleted workspace was selected, switch to default
     if (state.data.selectedId === workspaceId) {
       this._applyWorkspace(win, state, targetId);
+    } else {
+      // Even if not selected, update the UI to reflect the removal
+      this._updateSelectorLabel(win.document, state);
+      this._updateQuickIcons(win, state);
     }
 
     this._scheduleSave();
@@ -674,6 +1005,7 @@ export const MidoriWorkspaces = {
     ws.name = sanitizeName(newName);
     this._scheduleSave();
     this._updateSelectorLabel(win.document, state);
+    this._updateQuickIcons(win, state);
     return true;
   },
 
@@ -687,6 +1019,7 @@ export const MidoriWorkspaces = {
     ws.icon = validateIconId(iconId);
     this._scheduleSave();
     this._updateSelectorLabel(win.document, state);
+    this._updateQuickIcons(win, state);
     return true;
   },
 
@@ -801,7 +1134,12 @@ export const MidoriWorkspaces = {
               this._destroyWindow(win);
             }
           }
-        } else if (data === PREF_SHOW_BUTTON) {
+        } else if (
+          data === PREF_SHOW_BUTTON ||
+          data === PREF_VERTICAL ||
+          data === PREF_SIDEBAR_VERTICAL
+        ) {
+          // Re-inject UI when tab layout or button visibility changes
           for (const win of Services.wm.getEnumerator("navigator:browser")) {
             const state = this._getWindowState(win);
             if (state) {
@@ -843,6 +1181,8 @@ export const MidoriWorkspaces = {
   uninit() {
     Services.prefs.removeObserver(PREF_ENABLED, this);
     Services.prefs.removeObserver(PREF_SHOW_BUTTON, this);
+    Services.prefs.removeObserver(PREF_VERTICAL, this);
+    Services.prefs.removeObserver(PREF_SIDEBAR_VERTICAL, this);
 
     try {
       Services.obs.removeObserver(this, "browser-delayed-startup-finished");
