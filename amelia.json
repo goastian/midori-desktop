@@ -19,7 +19,7 @@
       "brandShortName": "Midori",
       "brandFullName": "Midori Browser",
       "release": {
-        "displayVersion": "11.6.1",
+        "displayVersion": "11.6.2",
         "github": {
           "repo": "goastian/midori-desktop"
         },
@@ -39,7 +39,7 @@
       "brandShortName": "Dawn",
       "brandFullName": "Midori Dawn",
       "release": {
-        "displayVersion": "11.6.2",
+        "displayVersion": "11.6.3",
         "github": {
           "repo": "goastian/midori-desktop"
         }
