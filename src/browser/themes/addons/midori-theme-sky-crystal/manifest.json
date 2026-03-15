@@ -23,7 +23,7 @@
       "tab_text": "#0a2540",
       "tab_loading": "#1976d2",
       "tab_line": "#42a5f5",
-      "toolbar": "rgba(187, 222, 251, 0.60)",
+      "toolbar": "rgba(187, 222, 251, 0.65)",
       "toolbar_text": "#0a2540",
       "toolbar_field": "rgba(255, 255, 255, 0.52)",
       "toolbar_field_text": "#0a2540",
@@ -48,10 +48,10 @@
       "sidebar_highlight": "rgba(25, 118, 210, 0.24)",
       "sidebar_highlight_text": "#0a2540",
       "sidebar_border": "rgba(66, 165, 245, 0.10)",
-      "icons": "#1565c0",
+      "icons": "#1976d2",
       "icons_attention": "#0d47a1",
       "button_background_hover": "rgba(66, 165, 245, 0.14)",
-      "button_background_active": "rgba(25, 118, 210, 0.30)"
+      "button_background_active": "rgba(25, 118, 210, 0.35)"
     },
     "properties": {
       "color_scheme": "light",
