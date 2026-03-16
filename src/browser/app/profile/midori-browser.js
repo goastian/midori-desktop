@@ -168,13 +168,12 @@ pref('browser.tabs.unloadOnLowMemory', true);
 pref('dom.ipc.forkserver.enable', true);
 
 // ============================================================================
-// MIDORI GLASSMORPHISM THEMES
+// MIDORI FLAT DESIGN THEMES
 // ============================================================================
-// Set Jade Mist as the default active theme
+// Set Midori Breeze as the default active theme
 pref('extensions.activeThemeID', 'midori-theme-jade-mist@midori.astian.org');
 
-// Enable backdrop-filter for glassmorphism effects
-pref('layout.css.backdrop-filter.enabled', true);
+// GPU-accelerated rendering for smooth UI
 pref('gfx.webrender.all', true);
 
 pref('toolkit.legacyUserProfileCustomizations.stylesheets', true);
