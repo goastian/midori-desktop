@@ -3,19 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * MidoriVerticalTabs — Natsumi-inspired modern UI system for Midori Browser.
+ * MidoriVerticalTabs — Flat Design UI system for Midori Browser.
  *
  * When enabled (vertical mode), this module:
  *   1. Activates Firefox 148's native sidebar.verticalTabs
- *   2. Injects Natsumi-inspired CSS: floating URL bar, rounded content area,
- *      modern findbar, enhanced PiP, improved tab styling
+ *   2. Injects flat, minimal CSS: floating URL bar, rounded content area,
+ *      modern findbar, improved tab styling — zero backdrop-filter/blur
  *   3. Configures the sidebar for optimal vertical-tab UX
  *
  * When disabled (horizontal mode), standard horizontal tabs are used with
  * light visual refinements (rounded buttons, smooth transitions).
- *
- * Inspired by Natsumi Browser (github.com/greeeen-dev/natsumi-browser)
- * and ArcWTF (github.com/KiKaraage/ArcWTF), adapted for Firefox 148.
  *
  * Preferences:
  *   - midori.verticaltabs.enabled  (bool, default: false)
@@ -192,8 +189,8 @@ export const MidoriVerticalTabs = {
   _buildBaseCSS() {
     return `
 /* =====================================================================
-   MIDORI BASE — Light visual refinements for horizontal mode
-   Inspired by Natsumi Browser
+   MIDORI BASE — Flat Design refinements for horizontal mode
+   Lightweight, no backdrop-filter, no blur
    ===================================================================== */
 
 /* --- Animations --- */
@@ -203,8 +200,8 @@ export const MidoriVerticalTabs = {
 }
 
 @keyframes midori-findbar-appear {
-  from { top: 0; opacity: 0; filter: blur(5px); }
-  to { top: 20px; opacity: 1; filter: blur(0); }
+  from { top: 0; opacity: 0; }
+  to { top: 20px; opacity: 1; }
 }
 
 @keyframes midori-dialog-popup {
@@ -212,24 +209,22 @@ export const MidoriVerticalTabs = {
   100% { translate: 0; opacity: 1; }
 }
 
-/* --- SDL2-style toolbar buttons (Natsumi Starlight) --- */
+/* --- Flat toolbar buttons --- */
 toolbar .toolbarbutton-1 {
   & > .toolbarbutton-icon,
   & > .toolbarbutton-badge-stack {
     border-radius: 10px !important;
-    transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
+    transition: background-color 0.15s ease !important;
   }
 }
 
 .toolbarbutton-1:hover > .toolbarbutton-icon {
   background-color: var(--midori-btn-hover, color-mix(in srgb, currentColor 8%, transparent)) !important;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.08) !important;
 }
 
 .toolbarbutton-1:active > .toolbarbutton-icon,
 .toolbarbutton-1[open] > .toolbarbutton-icon {
   background-color: var(--midori-btn-active, color-mix(in srgb, AccentColor 18%, transparent)) !important;
-  box-shadow: var(--midori-btn-active-shadow, 0 0 4px rgba(0, 0, 0, 0.2)) !important;
 }
 
 /* --- Better unloaded tabs indicator --- */
@@ -252,14 +247,10 @@ toolbar .toolbarbutton-1 {
   width: 26px !important;
   height: 26px !important;
   padding: 5px !important;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
+  transition: background-color 0.15s ease !important;
 }
 
-.urlbar-page-action:hover, .urlbar-revert-button:hover {
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.12) !important;
-}
-
-/* --- Floating findbar (Natsumi Haze material) --- */
+/* --- Floating findbar (flat) --- */
 .browserContainer > findbar {
   display: flex !important;
   position: absolute !important;
@@ -270,49 +261,35 @@ toolbar .toolbarbutton-1 {
   min-height: 70px;
   height: auto !important;
   flex-wrap: wrap;
-  border-radius: 15px !important;
-  background: var(--midori-tinted-haze-bg,
-    color-mix(in srgb, var(--toolbar-bgcolor) 85%, transparent)) !important;
-  backdrop-filter: var(--midori-haze-backdrop,
-    blur(12px) saturate(1.8) contrast(1.1)) !important;
-  -webkit-backdrop-filter: var(--midori-haze-backdrop,
-    blur(12px) saturate(1.8) contrast(1.1)) !important;
-  border: var(--midori-haze-border,
-    1px solid color-mix(in srgb, currentColor 12%, transparent)) !important;
-  box-shadow: var(--midori-glass-shadow-elevated,
-    0 8px 32px rgba(0, 0, 0, 0.15)) !important;
+  border-radius: 12px !important;
+  background: var(--toolbar-bgcolor) !important;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
   animation: midori-findbar-appear 0.2s ease !important;
   z-index: 10;
-  transition: opacity 0.2s ease, top 0.2s ease, filter 0.2s ease !important;
+  transition: opacity 0.15s ease, top 0.15s ease !important;
 }
 
 .browserContainer > findbar[hidden] {
   opacity: 0 !important;
   top: 0 !important;
   pointer-events: none !important;
-  filter: blur(5px);
 }
 
 .browserContainer > findbar .findbar-textbox {
   border-radius: 8px !important;
 }
 
-/* --- Status panel pill (Natsumi Haze material) --- */
+/* --- Status panel pill (flat) --- */
 #statuspanel {
   max-width: calc(100% - 20px) !important;
   margin: 10px !important;
 }
 
 #statuspanel-label {
-  border: var(--midori-haze-border,
-    1px solid color-mix(in srgb, currentColor 12%, transparent)) !important;
+  border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
   border-radius: 13px !important;
-  background-color: var(--midori-tinted-haze-bg,
-    color-mix(in srgb, var(--toolbar-bgcolor) 90%, transparent)) !important;
-  backdrop-filter: var(--midori-haze-backdrop,
-    blur(12px) saturate(1.8) contrast(1.1)) !important;
-  -webkit-backdrop-filter: var(--midori-haze-backdrop,
-    blur(12px) saturate(1.8) contrast(1.1)) !important;
+  background-color: var(--toolbar-bgcolor) !important;
   padding: 2px 12px !important;
 }
 
@@ -324,17 +301,17 @@ toolbar .toolbarbutton-1 {
   },
 
   // =========================================================================
-  // CSS — Vertical tabs mode (Natsumi + Arc inspired)
+  // CSS — Vertical tabs mode (Flat Design)
   // =========================================================================
 
   _buildVerticalCSS() {
     return this._buildBaseCSS() + `
 
 /* =====================================================================
-   MIDORI VERTICAL TABS — Natsumi + Arc-inspired layout
+   MIDORI VERTICAL TABS — Flat Design layout
    ===================================================================== */
 
-/* --- Natsumi-style content area separation --- */
+/* --- Content area separation (flat border, no glass) --- */
 :root:not([inDOMFullscreen="true"]):not([customizing]) {
   #tabbrowser-tabbox {
     margin-right: 6px !important;
@@ -379,7 +356,7 @@ toolbar .toolbarbutton-1 {
 /* Hide unified extensions until hover */
 #nav-bar:not([customizing]) #unified-extensions-button {
   opacity: 0 !important;
-  transition: opacity 0.2s ease !important;
+  transition: opacity 0.15s ease !important;
 }
 #nav-bar:not([customizing]) #unified-extensions-button:hover {
   opacity: 1 !important;
@@ -400,7 +377,7 @@ toolbar .toolbarbutton-1 {
 .wrapper:hover {
   .tools-and-extensions:hover { opacity: 1 !important; }
   .tools-and-extensions[orientation="vertical"] {
-    transition: 0.2s ease !important;
+    transition: 0.15s ease !important;
     display: flex !important;
     visibility: inherit !important;
     opacity: 0.4 !important;
@@ -410,7 +387,7 @@ toolbar .toolbarbutton-1 {
     overflow: scroll !important;
     scrollbar-width: thin;
     scrollbar-color: var(--lwt-accent-color) transparent;
-    transition: 0.2s ease !important;
+    transition: 0.15s ease !important;
     margin-top: 0 !important;
     &:hover { opacity: 1 !important; }
   }
@@ -422,20 +399,18 @@ toolbar .toolbarbutton-1 {
   margin-top: -12px !important;
 }
 
-/* --- Sidebar styling (Natsumi-inspired) --- */
+/* --- Sidebar styling (flat) --- */
 #sidebar {
   border-radius: 10px !important;
-  border: 0 solid transparent !important;
-  outline: 0.01px solid var(--toolbar-bgcolor);
-  box-shadow: var(--content-area-shadow, 0 1px 4px rgba(0,0,0,0.08)) !important;
+  border: 1px solid color-mix(in srgb, currentColor 6%, transparent) !important;
   background-color: var(--toolbar-bgcolor) !important;
-  transition: background-color 0.2s ease !important;
+  transition: background-color 0.15s ease !important;
 }
 
 #sidebar-box {
   padding-inline-end: 0 !important;
   border: none !important;
-  transition: background-color 0.2s ease !important;
+  transition: background-color 0.15s ease !important;
 }
 
 /* Remove sidebar styling in fullscreen */
@@ -449,7 +424,7 @@ toolbar .toolbarbutton-1 {
   border-radius: 10px !important;
 }
 
-/* --- URL bar — Natsumi-style (compact when idle, floating when active) --- */
+/* --- URL bar — compact when idle, floating when active (flat) --- */
 
 #urlbar-container {
   --urlbar-container-height: 40px !important;
@@ -460,17 +435,14 @@ toolbar .toolbarbutton-1 {
   height: 32px !important;
   border-radius: 16px !important;
   border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
-  transition: border 0.2s ease !important;
+  transition: border 0.15s ease !important;
 }
 
 #urlbar:not([open]) #urlbar-background,
 #urlbar:not([open]) .urlbar-background {
   border-radius: 16px !important;
-  background-color: color-mix(in srgb,
-    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 60%,
-    transparent
-  ) !important;
-  transition: background-color 0.2s ease !important;
+  background-color: var(--toolbar-field-background-color, var(--toolbar-bgcolor)) !important;
+  transition: background-color 0.15s ease !important;
   border-color: transparent !important;
 }
 
@@ -488,7 +460,7 @@ toolbar .toolbarbutton-1 {
 #urlbar:not([open]) #identity-icon-box {
   background-color: color-mix(in srgb, var(--toolbar-field-background-color) 40%, transparent) !important;
   border-radius: 13px !important;
-  transition: background-color 0.2s ease !important;
+  transition: background-color 0.15s ease !important;
 }
 
 #urlbar:not([open]) .urlbar-page-action {
@@ -496,7 +468,7 @@ toolbar .toolbarbutton-1 {
   width: 0 !important;
   padding: 0 !important;
   overflow: hidden;
-  transition: opacity 0.2s ease, width 0.2s ease, padding 0.2s ease !important;
+  transition: opacity 0.15s ease, width 0.15s ease, padding 0.15s ease !important;
 }
 
 #urlbar:not([open]):hover .urlbar-page-action {
@@ -509,7 +481,7 @@ toolbar .toolbarbutton-1 {
   background-color: color-mix(in srgb, var(--toolbar-field-background-color) 70%, transparent) !important;
 }
 
-/* Expanded: Natsumi floating overlay */
+/* Expanded: floating overlay (flat, no blur) */
 #urlbar[open] {
   top: 25vh !important;
   width: 60% !important;
@@ -543,12 +515,10 @@ toolbar .toolbarbutton-1 {
 
 #urlbar[open] #urlbar-background,
 #urlbar[open] .urlbar-background {
-  background-color: color-mix(in srgb, var(--toolbar-bgcolor) 95%, transparent) !important;
-  backdrop-filter: blur(16px) saturate(1.3) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(1.3) !important;
+  background-color: var(--toolbar-bgcolor) !important;
   border-radius: 12px !important;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-  border: 1px solid color-mix(in srgb, currentColor 8%, transparent) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
 }
 
 #urlbar[open] #tracking-protection-icon-container,
@@ -562,11 +532,7 @@ toolbar .toolbarbutton-1 {
   height: 28px !important;
   margin-block: auto !important;
   border-radius: 8px !important;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
-}
-
-#urlbar[open] #urlbar-go-button:hover {
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.15) !important;
+  transition: background-color 0.15s ease !important;
 }
 
 /* Search engine color hints in floating urlbar */
@@ -591,11 +557,11 @@ toolbar .toolbarbutton-1 {
   ) !important;
 }
 
-/* --- Tab groups (Arc folder style) --- */
+/* --- Tab groups --- */
 tab-group .tab-group-label-container label {
   background: transparent !important;
   color: var(--lwt-text-color, currentColor) !important;
-  transition: background-color 0.2s ease, color 0.2s ease !important;
+  transition: background-color 0.15s ease, color 0.15s ease !important;
 }
 
 tab-group .tab-group-label-container label:hover {

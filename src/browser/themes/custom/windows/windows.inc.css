@@ -2,17 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
- * Midori Browser — Windows-specific Glassmorphism adjustments
+ * Midori Browser — Windows-specific Flat Design adjustments
  */
-
-/* Windows Mica/Acrylic integration hints */
-@media (-moz-windows-compositor) {
-  :root[tabsintitlebar] #navigator-toolbox {
-    /* Slightly reduced blur on Windows where DWM provides compositing */
-    --midori-glass-blur: 10px;
-    --midori-glass-brightness: 1.08;
-  }
-}
 
 /* Windows 10/11 snap layout hover fix */
 :root[tabsintitlebar] .titlebar-buttonbox-container {

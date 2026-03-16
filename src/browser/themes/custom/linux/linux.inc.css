@@ -2,21 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
- * Midori Browser — Linux-specific Glassmorphism adjustments
+ * Midori Browser — Linux-specific Flat Design adjustments
  */
-
-/* GTK titlebar integration — ensure glass effect works with CSD */
-:root[tabsintitlebar] #navigator-toolbox {
-  /* Slightly stronger blur on Linux to compensate for GTK rendering */
-  --midori-glass-blur: 14px;
-}
 
 /* Fix for GTK3/4 client-side decorations */
 :root[tabsintitlebar] .titlebar-buttonbox-container {
   margin-top: 1px;
 }
 
-/* Linux-specific scrollbar styling to match glassmorphism */
+/* Linux-specific scrollbar styling */
 * {
   scrollbar-color: color-mix(in srgb, currentColor 30%, transparent)
     transparent;

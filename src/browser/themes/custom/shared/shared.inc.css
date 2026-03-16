@@ -2,158 +2,53 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
- * Midori Browser — Glassmorphism Theme System
- * Inspired by datguypiko/Firefox-Mod-Blur
- * Implements frosted glass UI with backdrop-filter blur effects
+ * Midori Browser — Flat Design System
+ * Minimalist, lightweight, high-performance UI
+ * No backdrop-filter, no blur, no glassmorphism — pure flat colors
  */
 
 /* ====================================================================
-   GLASSMORPHISM BASE VARIABLES
+   FLAT DESIGN BASE VARIABLES
    ==================================================================== */
 
 :root {
-  /* ── Natsumi Starlight-inspired glass intensities ── */
-  --midori-glass-blur: 12px;
-  --midori-glass-saturation: 1.8;
-  --midori-glass-contrast: 1.1;
-  --midori-glass-brightness: 1.05;
-  --midori-glass-opacity-pct: 72%;
-  --midori-glass-border-opacity-pct: 12%;
   --midori-border-radius: 8px;
+  --midori-border-subtle: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+  --midori-border-medium: 1px solid color-mix(in srgb, currentColor 12%, transparent);
 
-  /* ── Haze material (Natsumi SDL) ── */
-  --midori-haze-backdrop: blur(var(--midori-glass-blur))
-    saturate(var(--midori-glass-saturation))
-    contrast(var(--midori-glass-contrast));
-  --midori-haze-bg: color-mix(in srgb,
-    var(--toolbar-bgcolor) var(--midori-glass-opacity-pct), transparent);
-  --midori-haze-border: 1px solid
-    color-mix(in srgb, currentColor var(--midori-glass-border-opacity-pct), transparent);
-
-  /* ── Tinted Haze — accent color blended into glass (Natsumi SDL) ── */
-  --midori-tinted-haze-bg: color-mix(in srgb,
-    var(--focus-outline-color, AccentColor) 8%,
-    var(--midori-haze-bg));
-
-  /* ── Soft shadows for depth ── */
-  --midori-glass-shadow: 0 2px 16px 0 rgba(0, 0, 0, 0.10),
-    0 1.5px 6px 0 rgba(0, 0, 0, 0.06);
-  --midori-glass-shadow-elevated: 0 8px 32px 0 rgba(0, 0, 0, 0.18),
-    0 2px 8px 0 rgba(0, 0, 0, 0.10);
-
-  /* ── SDL2 Button colors ── */
   --midori-btn-hover: color-mix(in srgb, currentColor 8%, transparent);
   --midori-btn-active: color-mix(in srgb,
     var(--focus-outline-color, AccentColor) 18%, transparent);
-  --midori-btn-active-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
 
-  /* ── Transition for smooth theme switching ── */
-  --midori-transition: background-color 0.2s ease, backdrop-filter 0.2s ease,
-    box-shadow 0.2s ease;
+  --midori-transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 /* ====================================================================
-   GLASSMORPHISM — TOOLBAR & NAVIGATION
+   FLAT — TOOLBAR & NAVIGATION
    ==================================================================== */
 
-/* Main toolbar glass effect — Natsumi Haze material */
 #navigator-toolbox {
-  backdrop-filter: var(--midori-haze-backdrop) !important;
-  -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
-  background-color: var(--midori-tinted-haze-bg) !important;
-  border-bottom: var(--midori-haze-border) !important;
-  box-shadow: var(--midori-glass-shadow) !important;
+  border-bottom: var(--midori-border-subtle) !important;
 }
 
-/* Nav bar transparent over glass toolbar */
 #navigator-toolbox #nav-bar {
   background-color: transparent !important;
-}
-
-/* ====================================================================
-   GLASSMORPHISM — URL BAR
-   ==================================================================== */
-
-#urlbar:not([focused]) .urlbar-input-container,
-#urlbar .urlbar-background {
-  backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.6))
-    saturate(var(--midori-glass-saturation))
-    contrast(var(--midori-glass-contrast)) !important;
-  -webkit-backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.6))
-    saturate(var(--midori-glass-saturation))
-    contrast(var(--midori-glass-contrast)) !important;
-}
-
-#urlbar[breakout][breakout-extend][open] > .urlbar-background {
-  backdrop-filter: var(--midori-haze-backdrop) !important;
-  -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
-  box-shadow: var(--midori-glass-shadow-elevated) !important;
-  border: var(--midori-haze-border) !important;
-  border-radius: var(--midori-border-radius) !important;
 }
 
 /* ====================================================================
    TAB ENHANCEMENTS — Minimal, non-intrusive refinements
    ==================================================================== */
 
-/* New tab button enhancement */
 #tabs-newtab-button,
 #vertical-tabs-newtab-button {
-  transition: background-color 0.2s ease !important;
+  transition: background-color 0.15s ease !important;
   border-radius: var(--midori-border-radius) !important;
 }
 
-
 /* ====================================================================
-   GLASSMORPHISM — VERTICAL SIDEBAR
+   FLAT — POPUPS, PANELS & CONTEXT MENUS
    ==================================================================== */
 
-@media (-moz-pref: "sidebar.verticalTabs") {
-  #sidebar-box {
-    backdrop-filter: var(--midori-haze-backdrop) !important;
-    -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
-    background-color: color-mix(in srgb,
-      var(--focus-outline-color, AccentColor) 5%,
-      color-mix(in srgb,
-        var(--lwt-sidebar-background-color, var(--toolbar-bgcolor))
-          var(--midori-glass-opacity-pct),
-        transparent
-      )
-    ) !important;
-  }
-
-  /* Ensure backdrop filters work in vertical tabs */
-  #vertical-tabs, #TabsToolbar {
-    will-change: unset !important;
-  }
-}
-
-/* ====================================================================
-   GLASSMORPHISM — POPUPS, PANELS & CONTEXT MENUS
-   ==================================================================== */
-
-panel[type="arrow"],
-menupopup,
-#appMenu-popup,
-#customizationui-widget-panel,
-#widget-overflow {
-  backdrop-filter: var(--midori-haze-backdrop) !important;
-  -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
-}
-
-/* Panel backgrounds — Tinted Haze (accent-infused) */
-.panel-arrowcontent,
-panelview {
-  background-color: color-mix(in srgb,
-    var(--focus-outline-color, AccentColor) 5%,
-    color-mix(in srgb,
-      var(--arrowpanel-background, var(--toolbar-bgcolor)) 82%,
-      transparent
-    )
-  ) !important;
-}
-
-/* Popup animation — slide-in from top */
 @keyframes midori-popup-appear {
   0% { opacity: 0; transform: translateY(-4px); }
   100% { opacity: 1; transform: translateY(0); }
@@ -165,33 +60,7 @@ menupopup:not([position]) {
 }
 
 /* ====================================================================
-   GLASSMORPHISM — BOOKMARKS BAR
-   ==================================================================== */
-
-#PersonalToolbar {
-  backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.5))
-    saturate(var(--midori-glass-saturation))
-    contrast(var(--midori-glass-contrast)) !important;
-  -webkit-backdrop-filter: blur(calc(var(--midori-glass-blur) * 0.5))
-    saturate(var(--midori-glass-saturation))
-    contrast(var(--midori-glass-contrast)) !important;
-  background-color: transparent !important;
-}
-
-/* ====================================================================
-   GLASSMORPHISM — FINDBAR
-   ==================================================================== */
-
-.browserContainer > findbar {
-  backdrop-filter: var(--midori-haze-backdrop) !important;
-  -webkit-backdrop-filter: var(--midori-haze-backdrop) !important;
-  background-image: none !important;
-  background-color: var(--midori-tinted-haze-bg) !important;
-  border-top: var(--midori-haze-border) !important;
-}
-
-/* ====================================================================
-   GLASSMORPHISM — ANTI-BRIGHT-FLASH
+   FLAT — ANTI-BRIGHT-FLASH
    ==================================================================== */
 
 #tabbrowser-tabpanels .browserContainer {
@@ -199,7 +68,7 @@ menupopup:not([position]) {
 }
 
 /* ====================================================================
-   GLASSMORPHISM — SMOOTH TRANSITIONS
+   FLAT — SMOOTH TRANSITIONS
    ==================================================================== */
 
 #navigator-toolbox,
@@ -220,7 +89,6 @@ menupopup:not([position]) {
   transition: margin-top 0.2s cubic-bezier(0.2, 0, 0, 1),
     opacity 0.15s ease,
     background-color 0.15s ease,
-    backdrop-filter 0.15s ease,
     box-shadow 0.15s ease !important;
   z-index: 1;
   position: relative;
@@ -297,15 +165,12 @@ menupopup:not([position]) {
   border-radius: var(--midori-border-radius, 8px) !important;
   background-color: color-mix(
     in srgb,
-    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 45%,
+    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 50%,
     transparent
   ) !important;
-  backdrop-filter: blur(8px) saturate(1.2) !important;
-  -webkit-backdrop-filter: blur(8px) saturate(1.2) !important;
-  border: var(--midori-haze-border,
+  border: var(--midori-border-subtle,
     1px solid color-mix(in srgb, currentColor 8%, transparent)) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease,
+  transition: background-color 0.15s ease,
     border-color 0.15s ease !important;
   max-width: 180px !important;
   min-width: 0 !important;
@@ -319,16 +184,12 @@ menupopup:not([position]) {
 #midori-workspace-selector:hover {
   background-color: var(--midori-btn-hover,
     color-mix(in srgb, currentColor 8%, transparent)) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10) !important;
 }
 
 #midori-workspace-selector:active,
 #midori-workspace-selector[open="true"] {
   background-color: var(--midori-btn-active,
     color-mix(in srgb, AccentColor 18%, transparent)) !important;
-  box-shadow: 0 0 0 2px color-mix(
-    in srgb, var(--focus-outline-color, AccentColor) 35%, transparent
-  ) !important;
 }
 
 /* Explicit workspace label — always visible */
@@ -461,12 +322,10 @@ menupopup:not([position]) {
   border-radius: 6px !important;
 }
 
-/* Workspace popup panel glassmorphism */
+/* Workspace popup panel — flat */
 #midori-workspace-popup {
-  backdrop-filter: var(--midori-haze-backdrop,
-    blur(12px) saturate(1.8) contrast(1.1)) !important;
-  -webkit-backdrop-filter: var(--midori-haze-backdrop,
-    blur(12px) saturate(1.8) contrast(1.1)) !important;
+  border: var(--midori-border-medium,
+    1px solid color-mix(in srgb, currentColor 12%, transparent)) !important;
 }
 
 /* Active workspace item highlight */

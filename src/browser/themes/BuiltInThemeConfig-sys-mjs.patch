@@ -6,7 +6,7 @@ index e05847bd9f..17786f2bb4 100644
   *   non-native appearance. See Document.forceNonNativeTheme and the
   *   (-moz-native-theme) media query.
   */
-+// Midori Browser — Glassmorphism Theme Collection
++// Midori Browser — Flat Design Theme Collection
 +// Replaces Firefox default themes (Light, Dark, Alpenglow)
  export const BuiltInThemeConfig = new Map([
    [

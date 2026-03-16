@@ -116,12 +116,12 @@ class Themes extends Page {
     .filter(theme => theme.id.includes('midori-theme-'))
     .sort((a, b) => {
         const order = [
-            'midori-theme-jade-mist',
-            'midori-theme-forest-void',
-            'midori-theme-sky-crystal',
-            'midori-theme-deep-ocean',
-            'midori-theme-citrus-dawn',
-            'midori-theme-volcanic-sunset',
+            'midori-theme-jade-mist',       // Midori Breeze (light, primary)
+            'midori-theme-forest-void',      // Midnight Sage (dark, primary)
+            'midori-theme-sky-crystal',      // Slate Tide (light)
+            'midori-theme-deep-ocean',       // Onyx & Jade (dark)
+            'midori-theme-citrus-dawn',      // Sand & Sage (light)
+            'midori-theme-volcanic-sunset',  // Ink & Mint (light, high contrast)
         ];
         const aIdx = order.findIndex(id => a.id.includes(id));
         const bIdx = order.findIndex(id => b.id.includes(id));
