@@ -333,8 +333,7 @@ export const MidoriGradient = {
 
 /* Selected tab contrast */
 .tabbrowser-tab .tab-background[selected="true"] {
-  background-color: rgba(255, 255, 255, 0.15) !important;
-  backdrop-filter: blur(8px) !important;
+  background-color: rgba(255, 255, 255, 0.20) !important;
 }
 
 .tabbrowser-tab:hover:not([selected]) .tab-background {
@@ -343,8 +342,7 @@ export const MidoriGradient = {
 
 /* URL bar over gradient */
 #urlbar:not([focused]) .urlbar-background {
-  background-color: rgba(255, 255, 255, 0.12) !important;
-  backdrop-filter: blur(6px) !important;
+  background-color: rgba(255, 255, 255, 0.18) !important;
 }
 
 #urlbar[focused] .urlbar-background {
