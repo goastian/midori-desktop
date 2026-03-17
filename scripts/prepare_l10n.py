@@ -73,7 +73,11 @@ def get_l10n_commit() -> str:
 
 
 def is_cache_valid(commit: str) -> bool:
-    """Verifica si la cache de locales ya tiene el commit correcto."""
+    """Verifica si la cache de locales ya tiene el commit correcto.
+
+    Ademas de verificar el marker, comprueba que al menos un locale
+    tenga archivos reales (no solo directorios vacios que deja cleanup).
+    """
     if not os.path.isfile(L10N_MARKER_FILE):
         return False
     with open(L10N_MARKER_FILE, "r") as f:
@@ -83,6 +87,18 @@ def is_cache_valid(commit: str) -> bool:
     # Verificar que ademas existan archivos de idiomas (no solo el marker)
     if not os.path.isfile(SUPPORTED_LANGUAGES_FILE):
         return False
+    # Verificar que al menos un locale tenga archivos reales
+    # (cleanup puede haber dejado solo directorios vacios)
+    langs = get_supported_languages()
+    if langs:
+        sample = langs[0]
+        sample_dir = os.path.join(LOCALES_DIR, sample)
+        if os.path.isdir(sample_dir):
+            has_files = any(
+                files for _, _, files in os.walk(sample_dir)
+            )
+            if not has_files:
+                return False
     return True
 
 
@@ -227,11 +243,17 @@ def download_l10n(force: bool = False):
 # Paso 2: Copiar paquetes de idiomas a engine/browser/locales/
 # ---------------------------------------------------------------------------
 def copy_files(source: str, destination: str):
-    """Copia recursivamente todos los archivos de source a destination."""
+    """Copia recursivamente todos los archivos de source a destination.
+
+    Solo crea directorios de destino cuando realmente contienen archivos,
+    evitando directorios vacios que rompen l10n.mk (ej. hunspell/ vacio).
+    """
     if not os.path.exists(source):
         raise FileNotFoundError(f"Ruta de origen '{source}' no existe.")
 
     for root, dirs, files in os.walk(source):
+        if not files:
+            continue
         relative_path = os.path.relpath(root, source)
         destination_root = os.path.join(destination, relative_path)
         os.makedirs(destination_root, exist_ok=True)
@@ -317,6 +339,27 @@ def copy_all_l10n():
     if skipped:
         log(f"  ⚠ {len(skipped)} idiomas sin datos locales (saltados): {', '.join(skipped[:10])}{'...' if len(skipped) > 10 else ''}")
 
+    # Limpiar directorios spellcheck/hunspell vacios que rompen l10n.mk.
+    # l10n.mk hace `test -d spellcheck` y luego `cp hunspell/*.*`, que falla
+    # si hunspell/ existe pero esta vacio.
+    cleaned = 0
+    for lang in langs:
+        hunspell_dir = os.path.join(BROWSER_LOCALES_DIR, lang, "extensions", "spellcheck", "hunspell")
+        spellcheck_dir = os.path.join(BROWSER_LOCALES_DIR, lang, "extensions", "spellcheck")
+        extensions_dir = os.path.join(BROWSER_LOCALES_DIR, lang, "extensions")
+        # Eliminar hunspell/ si esta vacio
+        if os.path.isdir(hunspell_dir) and not os.listdir(hunspell_dir):
+            shutil.rmtree(hunspell_dir)
+            cleaned += 1
+        # Eliminar spellcheck/ si quedo vacio
+        if os.path.isdir(spellcheck_dir) and not os.listdir(spellcheck_dir):
+            shutil.rmtree(spellcheck_dir)
+        # Eliminar extensions/ si quedo vacio
+        if os.path.isdir(extensions_dir) and not os.listdir(extensions_dir):
+            shutil.rmtree(extensions_dir)
+    if cleaned:
+        log(f"  🧹 {cleaned} directorios hunspell vacios eliminados (evita error en l10n.mk).")
+
     # Validar que la estructura sea correcta para mach package-multi-locale
     validate_l10n_structure(langs)
 
@@ -390,22 +433,16 @@ def print_l10n_report():
 # Paso 3: Limpieza
 # ---------------------------------------------------------------------------
 def cleanup():
-    """Elimina archivos temporales despues de la copia."""
+    """Elimina archivos temporales despues de la copia.
+
+    Solo elimina el repo clonado de firefox-l10n (que ocupa ~200 MB).
+    Los archivos extraidos en locales/{lang}/ se conservan para que
+    posteriores ejecuciones (ej. npm run package) puedan re-copiarlos
+    a engine/browser/locales/ sin necesidad de re-descargar.
+    """
     log("Limpiando archivos temporales...")
 
-    # Eliminar archivos upstream completos de locales/{lang}/, dejando solo src*
-    if os.path.isfile(SUPPORTED_LANGUAGES_FILE):
-        langs = get_supported_languages()
-        for lang in langs:
-            lang_dir = os.path.join(LOCALES_DIR, lang)
-            if not os.path.isdir(lang_dir):
-                continue
-            for root, dirs, files in os.walk(lang_dir):
-                for file in files:
-                    if not file.startswith("src"):
-                        os.remove(os.path.join(root, file))
-
-    # Eliminar el repo clonado de firefox-l10n
+    # Eliminar el repo clonado de firefox-l10n (ocupa mucho espacio)
     if os.path.isdir(FIREFOX_L10N_DIR):
         shutil.rmtree(FIREFOX_L10N_DIR)
 
