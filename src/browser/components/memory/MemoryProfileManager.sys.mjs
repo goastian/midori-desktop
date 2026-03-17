@@ -206,7 +206,6 @@ const COMMON_OPTIMIZATIONS = {
   "privacy.trackingprotection.socialtracking.enabled": true,
   
   // Rendering efficiency
-  "layout.css.backdrop-filter.enabled": true,
   "layout.css.grid-template-masonry-value.enabled": true,
   "gfx.webrender.compositor": true,
   "gfx.webrender.compositor.force-enabled": true,
