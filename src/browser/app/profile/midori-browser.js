@@ -11,14 +11,21 @@
 #include Memoryfox.js
 
 // Midori Browser Mods
-// Include "Firefox/x.y" in User-Agent for site compatibility (Netflix, Gmail, Mozilla Addons, etc.)
-// Result: Mozilla/5.0 (...) Gecko/20100101 Firefox/148.0 Midori/11.6.x
-// Note: The "Midori/x.x.x" token is stripped for strict UA-sniffing sites
-// (WhatsApp, Netflix, etc.) via webcompat interventions in interventions.json
+// Produce a pure Firefox User-Agent for full web compatibility.
+// With compatMode.firefox enabled, nsHttpHandler.cpp suppresses the
+// "Midori/x.x.x" app token entirely, resulting in:
+//   Mozilla/5.0 (...) Gecko/20100101 Firefox/148.0
+// This avoids UA-sniffing breakage on Netflix, reCAPTCHA, and all
+// subdomains/CDNs/APIs without needing per-site interventions.
 pref("general.useragent.compatMode.firefox", true);
 
+// ============================================================================
+// MIDORI SEARCH ENGINE PROTECTION
+// ============================================================================
 // Disable the "Your default search engine has been changed" notification bar
 pref("browser.search.removeEngineInfobar.enabled", false);
+// Prevent search engine updates via OpenSearch (stops re-adding removed engines)
+pref("browser.search.update", false);
 
 pref("app.support.baseURL", "https://astian.org/community");
 pref("extensions.install_origins.enabled", true);
@@ -203,3 +210,13 @@ pref('midori.verticaltabs.enabled', false);
 // Hide the toolbar when scrolling down to maximize content area
 // The toolbar reappears when scrolling up or moving the mouse to the top
 pref('midori.autohide.toolbar', true);
+
+// ============================================================================
+// MIDORI TOR INTEGRATION
+// ============================================================================
+// Embedded Tor proxy for private browsing with network anonymity.
+// When enabled, users can open "Tor Windows" (private + SOCKS5 via Tor).
+pref('midori.tor.enabled', true);
+pref('midori.tor.socks_port', 9150);
+pref('midori.tor.bridges.enabled', false);
+pref('midori.tor.bridges.list', '');
