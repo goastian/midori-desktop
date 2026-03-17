@@ -11,7 +11,15 @@
   "buildOptions": {
     "generateBranding": true
   },
-  "addons": {},
+  "addons": {
+    "midori-privacy": {
+      "id": "midori-privacy-blocker",
+      "repo": "goastian/midori-privacy",
+      "version": "v2.0.10",
+      "platform": "github",
+      "fileGlob": "midori-privacy-2.0.10-firefox.zip"
+    }
+  },
   "brands": {
     "release": {
       "backgroundColor": "#282A33",
