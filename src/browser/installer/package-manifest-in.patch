@@ -24,3 +24,11 @@ index b884f0167e5de87a45cf523436ceaceb710d35ae..eedc80278a5c93f81ce90c0d61989245
  #if defined(XP_WIN)
  @BINPATH@/@DLL_PREFIX@mozwer@DLL_SUFFIX@
  #endif
+@@ -444,3 +444,7 @@ bin/libfreebl_64int_3.so
+ #if defined(DESKTOP_LAUNCHER_ENABLED)
+ @BINPATH@/desktop-launcher/desktop-launcher@BIN_SUFFIX@
+ #endif
++
++; [Tor]
++; Embedded Tor binary and supporting files for Midori Tor windows
++@BINPATH@/tor/*
