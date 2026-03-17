@@ -1,0 +1,12 @@
+diff --git a/browser/base/content/browser-sets.inc b/browser/base/content/browser-sets.inc
+index df768aaa77..fc59954c0a 100644
+--- a/browser/base/content/browser-sets.inc
++++ b/browser/base/content/browser-sets.inc
+@@ -102,6 +102,7 @@
+     <command id="Tools:ClassicWindow" />
+     <command id="Tools:Sanitize" />
+     <command id="Tools:PrivateBrowsing" />
++    <command id="Tools:TorBrowsing" />
+     <command id="Browser:Screenshot" />
+     <command id="History:UndoCloseTab" data-l10n-args='{"tabCount": 1}' />
+     <command id="History:UndoCloseWindow" />

@@ -1,0 +1,23 @@
+diff --git a/browser/base/content/browser-sets.js b/browser/base/content/browser-sets.js
+index 50845ebd92..a0ecfe1bba 100644
+--- a/browser/base/content/browser-sets.js
++++ b/browser/base/content/browser-sets.js
+@@ -240,6 +240,18 @@ document.addEventListener(
+           case "Tools:PrivateBrowsing":
+             OpenBrowserWindow({ private: true });
+             break;
++          case "Tools:TorBrowsing":
++            (async () => {
++              try {
++                const { MidoriTor } = ChromeUtils.importESModule(
++                  "resource:///modules/MidoriTor.sys.mjs"
++                );
++                await MidoriTor.openTorWindow(window);
++              } catch (e) {
++                console.error("Midori: Failed to open Tor window", e);
++              }
++            })();
++            break;
+           case "Browser:Screenshot":
+             ScreenshotsUtils.notify(window, "Shortcut");
+             break;
