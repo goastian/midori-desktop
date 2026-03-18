@@ -190,14 +190,14 @@
 
 **Tasks:**
 
-- [ ] Design and implement official Midori Light theme
-- [ ] Design and implement official Midori Dark theme
-- [ ] Design and implement High Contrast theme (accessibility)
-- [ ] Implement CSS variable system for dynamic theming
-- [ ] Theme selection UI in Settings
-- [ ] Support for user themes (`.xpi` compatible or Midori-native format)
-- [ ] Fully decouple Midori theme from the Firefox base theme
-- [ ] Developer documentation for community theme creation
+- [x] Design and implement official Midori Light theme
+- [x] Design and implement official Midori Dark theme
+- [x] Design and implement High Contrast theme (accessibility)
+- [x] Implement CSS variable system for dynamic theming
+- [x] Theme selection UI in Settings
+- [x] Support for user themes (`.xpi` compatible or Midori-native format)
+- [x] Fully decouple Midori theme from the Firefox base theme
+- [x] Developer documentation for community theme creation
 
 ---
 
