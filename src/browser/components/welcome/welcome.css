@@ -17,8 +17,12 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes scaleIn {
@@ -75,7 +79,7 @@ body {
   margin: 0;
   padding: 0;
   animation: fadeIn 0.4s ease-out;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* ===== Step indicator ===== */
@@ -237,12 +241,24 @@ p {
   user-select: none;
 }
 
-.cardGroup .card:nth-child(1) { animation-delay: 0.3s; }
-.cardGroup .card:nth-child(2) { animation-delay: 0.38s; }
-.cardGroup .card:nth-child(3) { animation-delay: 0.46s; }
-.cardGroup .card:nth-child(4) { animation-delay: 0.54s; }
-.cardGroup .card:nth-child(5) { animation-delay: 0.62s; }
-.cardGroup .card:nth-child(6) { animation-delay: 0.70s; }
+.cardGroup .card:nth-child(1) {
+  animation-delay: 0.3s;
+}
+.cardGroup .card:nth-child(2) {
+  animation-delay: 0.38s;
+}
+.cardGroup .card:nth-child(3) {
+  animation-delay: 0.46s;
+}
+.cardGroup .card:nth-child(4) {
+  animation-delay: 0.54s;
+}
+.cardGroup .card:nth-child(5) {
+  animation-delay: 0.62s;
+}
+.cardGroup .card:nth-child(6) {
+  animation-delay: 0.7s;
+}
 
 .cardGroup .card:hover {
   transform: translateY(-3px);
@@ -272,9 +288,14 @@ p {
 /* ===== Selected card state ===== */
 .cardGroup .card.selected {
   border-color: var(--in-content-primary-button-background, #0061e0);
-  background: color-mix(in srgb, var(--in-content-primary-button-background, #0061e0) 8%, transparent);
-  box-shadow: 0 0 0 1px var(--in-content-primary-button-background, #0061e0),
-              0 4px 12px rgba(0, 97, 224, 0.15);
+  background: color-mix(
+    in srgb,
+    var(--in-content-primary-button-background, #0061e0) 8%,
+    transparent
+  );
+  box-shadow:
+    0 0 0 1px var(--in-content-primary-button-background, #0061e0),
+    0 4px 12px rgba(0, 97, 224, 0.15);
 }
 
 .cardGroup .card.selected::after {
@@ -323,12 +344,16 @@ p {
 }
 
 @media (prefers-color-scheme: light) {
-  .dark-only { display: none; }
+  .dark-only {
+    display: none;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
-  .light-only { display: none; }
-  
+  .light-only {
+    display: none;
+  }
+
   .cardGroup .card {
     background: var(--in-content-box-background, rgba(255, 255, 255, 0.05));
   }
@@ -439,15 +464,33 @@ input[type='checkbox'] {
   animation: fadeInUp 0.5s ease-out backwards;
 }
 
-.gradient-preset-card:nth-child(1) { animation-delay: 0.15s; }
-.gradient-preset-card:nth-child(2) { animation-delay: 0.20s; }
-.gradient-preset-card:nth-child(3) { animation-delay: 0.25s; }
-.gradient-preset-card:nth-child(4) { animation-delay: 0.30s; }
-.gradient-preset-card:nth-child(5) { animation-delay: 0.35s; }
-.gradient-preset-card:nth-child(6) { animation-delay: 0.40s; }
-.gradient-preset-card:nth-child(7) { animation-delay: 0.45s; }
-.gradient-preset-card:nth-child(8) { animation-delay: 0.50s; }
-.gradient-preset-card:nth-child(9) { animation-delay: 0.55s; }
+.gradient-preset-card:nth-child(1) {
+  animation-delay: 0.15s;
+}
+.gradient-preset-card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.gradient-preset-card:nth-child(3) {
+  animation-delay: 0.25s;
+}
+.gradient-preset-card:nth-child(4) {
+  animation-delay: 0.3s;
+}
+.gradient-preset-card:nth-child(5) {
+  animation-delay: 0.35s;
+}
+.gradient-preset-card:nth-child(6) {
+  animation-delay: 0.4s;
+}
+.gradient-preset-card:nth-child(7) {
+  animation-delay: 0.45s;
+}
+.gradient-preset-card:nth-child(8) {
+  animation-delay: 0.5s;
+}
+.gradient-preset-card:nth-child(9) {
+  animation-delay: 0.55s;
+}
 
 .gradient-preset-card:hover {
   transform: translateY(-2px) scale(1.03);
@@ -456,8 +499,9 @@ input[type='checkbox'] {
 
 .gradient-preset-card.selected {
   border-color: #ffffff;
-  box-shadow: 0 0 0 2px var(--in-content-primary-button-background, #0061e0),
-              0 4px 16px rgba(0, 0, 0, 0.25);
+  box-shadow:
+    0 0 0 2px var(--in-content-primary-button-background, #0061e0),
+    0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 .gradient-preset-card.selected::after {
@@ -585,7 +629,7 @@ input[type='checkbox'] {
   min-width: 90px;
 }
 
-.control-row input[type="range"] {
+.control-row input[type='range'] {
   flex: 1;
   min-width: 100px;
   accent-color: var(--in-content-primary-button-background, #0061e0);
@@ -621,7 +665,7 @@ input[type='checkbox'] {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.color-stop input[type="color"] {
+.color-stop input[type='color'] {
   width: 28px;
   height: 28px;
   border: none;
@@ -631,7 +675,7 @@ input[type='checkbox'] {
   background: none;
 }
 
-.color-stop input[type="color"]::-moz-color-swatch {
+.color-stop input[type='color']::-moz-color-swatch {
   border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 5px;
 }
@@ -673,7 +717,11 @@ input[type='checkbox'] {
 .icon-btn:hover {
   border-color: var(--in-content-primary-button-background, #0061e0);
   color: var(--in-content-primary-button-background, #0061e0);
-  background: color-mix(in srgb, var(--in-content-primary-button-background, #0061e0) 8%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--in-content-primary-button-background, #0061e0) 8%,
+    transparent
+  );
 }
 
 /* Responsive for gradient page */
@@ -743,7 +791,10 @@ input[type='checkbox'] {
   border: 2px solid color-mix(in srgb, currentColor 12%, transparent);
   background: var(--in-content-box-background, #f9f9f9);
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
   text-align: center;
 }
 

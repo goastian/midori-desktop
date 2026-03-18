@@ -7,15 +7,15 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
     inputs:
       display_version:
-        description: "Display version (e.g. 12.0)"
+        description: 'Display version (e.g. 12.0)'
         required: true
         type: string
       build_type:
-        description: "Build type"
+        description: 'Build type'
         required: true
         type: choice
         options:
@@ -23,12 +23,12 @@ on:
           - dawn
         default: release
       draft:
-        description: "Create as draft release"
+        description: 'Create as draft release'
         required: false
         type: boolean
         default: true
       deploy_updates:
-        description: "Deploy updates to update server after release"
+        description: 'Deploy updates to update server after release'
         required: false
         type: boolean
         default: false

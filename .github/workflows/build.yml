@@ -8,11 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       display_version:
-        description: "Display version for the build (e.g. 12.0)"
+        description: 'Display version for the build (e.g. 12.0)'
         required: true
         type: string
       build_type:
-        description: "Build type"
+        description: 'Build type'
         required: true
         type: choice
         options:
@@ -20,7 +20,7 @@ on:
           - dawn
         default: release
       platforms:
-        description: "Platforms to build"
+        description: 'Platforms to build'
         required: true
         type: choice
         options:
@@ -30,7 +30,7 @@ on:
           - windows
         default: all
       use_sccache:
-        description: "Use sccache for compilation caching"
+        description: 'Use sccache for compilation caching'
         required: false
         type: boolean
         default: true

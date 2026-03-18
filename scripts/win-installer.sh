@@ -49,7 +49,7 @@ import zipfile, sys
 with zipfile.ZipFile('$ZIP_FILE') as z:
     top = set(n.split('/')[0] for n in z.namelist() if '/' in n)
     print(top.pop() if len(top) == 1 else 'midori')
-" 2>/dev/null || echo "midori")
+" 2> /dev/null || echo "midori")
 echo "  Nombre del paquete: $PKG_NAME"
 
 # ── 2. Generate uninstaller (helper.exe) if missing ──
@@ -125,5 +125,5 @@ echo ""
 echo "══════════════════════════════════════════"
 echo " Instaladores Windows generados"
 echo "══════════════════════════════════════════"
-ls -lh "$PROJECT_DIST"/*.exe 2>/dev/null || echo "  (ninguno)"
+ls -lh "$PROJECT_DIST"/*.exe 2> /dev/null || echo "  (ninguno)"
 echo ""

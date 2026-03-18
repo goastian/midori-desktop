@@ -24,15 +24,15 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version tag (e.g. 11.6.1)"
+        description: 'Version tag (e.g. 11.6.1)'
         required: true
         type: string
       display_version:
-        description: "Display version (e.g. 11.6.1)"
+        description: 'Display version (e.g. 11.6.1)'
         required: true
         type: string
       build_type:
-        description: "Build type"
+        description: 'Build type'
         required: true
         type: choice
         options:
@@ -40,7 +40,7 @@ on:
           - dawn
         default: release
       dry_run:
-        description: "Dry run (validate without deploying)"
+        description: 'Dry run (validate without deploying)'
         required: false
         type: boolean
         default: true

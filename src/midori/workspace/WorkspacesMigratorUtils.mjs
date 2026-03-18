@@ -1,31 +1,27 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
-import { WorkspacesIdUtils } from "./WorkspacesIdUtils.mjs"
-import { WorkspacesService } from "resource://browser-content/modules/workspace/WorkspacesService.mjs"
+import { WorkspacesIdUtils } from './WorkspacesIdUtils.mjs';
+import { WorkspacesService } from 'resource://browser-content/modules/workspace/WorkspacesService.mjs';
 
 function getIconNameByWorkspaceName(workspaceName) {
-  const settings = JSON.parse(
-    Services.prefs.getStringPref("midori.browser.workspace.info"),
-  );
+  const settings = JSON.parse(Services.prefs.getStringPref('midori.browser.workspace.info'));
 
   const targetWorkspaceNumber = checkWorkspaceInfoExist(workspaceName);
   if (
     targetWorkspaceNumber === false ||
-    settings[targetWorkspaceNumber][workspaceName].icon == "" ||
+    settings[targetWorkspaceNumber][workspaceName].icon == '' ||
     settings[targetWorkspaceNumber][workspaceName].icon == undefined
   ) {
     return null;
   }
   let iconURL = settings[targetWorkspaceNumber][workspaceName].icon;
-  let removeSVG = iconURL.replace("chrome://browser/skin/workspace-icons/", "");
-  let result = removeSVG.replace(".svg", "");
+  let removeSVG = iconURL.replace('chrome://browser/skin/workspace-icons/', '');
+  let result = removeSVG.replace('.svg', '');
   return result;
 }
 
 function checkWorkspaceInfoExist(workspaceName) {
-  const data = JSON.parse(
-    Services.prefs.getStringPref("midori.browser.workspace.info"),
-  );
+  const data = JSON.parse(Services.prefs.getStringPref('midori.browser.workspace.info'));
   for (let i = 0; i < data.length; i++) {
     const obj = data[i];
     const keys = Object.keys(obj);
@@ -40,13 +36,11 @@ function checkWorkspaceInfoExist(workspaceName) {
 }
 
 function getWorkspaceUserContextId(workspaceName) {
-  const settings = JSON.parse(
-    Services.prefs.getStringPref("midori.browser.workspace.info"),
-  );
+  const settings = JSON.parse(Services.prefs.getStringPref('midori.browser.workspace.info'));
   const targetWorkspaceNumber = checkWorkspaceInfoExist(workspaceName);
   if (
     targetWorkspaceNumber === false ||
-    settings[targetWorkspaceNumber][workspaceName].container == "" ||
+    settings[targetWorkspaceNumber][workspaceName].container == '' ||
     settings[targetWorkspaceNumber][workspaceName].container == undefined
   ) {
     // return string "0".
@@ -57,17 +51,11 @@ function getWorkspaceUserContextId(workspaceName) {
 
 export const WorkspacesMigratorUtils = {
   get IsLegacyWorkspaceEnabled() {
-    return Services.prefs.getBoolPref(
-      "midori.browser.workspace.tab.enabled",
-      true,
-    );
+    return Services.prefs.getBoolPref('midori.browser.workspace.tab.enabled', true);
   },
 
   get migrated() {
-    return Services.prefs.getBoolPref(
-      "midori.browser.workspace.migrated",
-      false,
-    );
+    return Services.prefs.getBoolPref('midori.browser.workspace.migrated', false);
   },
 
   get LegacyWorkspacesData() {
@@ -75,30 +63,28 @@ export const WorkspacesMigratorUtils = {
   },
 
   get legacySelectedWorkspace() {
-    return Services.prefs.getStringPref("midori.browser.workspace.current");
+    return Services.prefs.getStringPref('midori.browser.workspace.current');
   },
 
   get legacyWorkspacesAreExist() {
-    return Services.prefs.getStringPref("midori.browser.workspace.all") !== "";
+    return Services.prefs.getStringPref('midori.browser.workspace.all') !== '';
   },
 
   get legacyDefaultWorkspace() {
-    return Services.prefs
-      .getStringPref("midori.browser.workspace.all")
-      .split(",")[0];
+    return Services.prefs.getStringPref('midori.browser.workspace.all').split(',')[0];
   },
 
   get LegacyWorkspacesAllNamesPref() {
-    let pref = Services.prefs.getStringPref("midori.browser.workspace.all");
-    let result = pref.split(",");
+    let pref = Services.prefs.getStringPref('midori.browser.workspace.all');
+    let result = pref.split(',');
     return result;
   },
 
   cleanupLegacyWorkspaces() {
-    Services.prefs.clearUserPref("midori.browser.workspace.tabs.state");
-    Services.prefs.clearUserPref("midori.browser.workspace.current");
-    Services.prefs.setBoolPref("midori.browser.workspace.tab.enabled", false);
-    Services.prefs.clearUserPref("midori.browser.workspace.all");
+    Services.prefs.clearUserPref('midori.browser.workspace.tabs.state');
+    Services.prefs.clearUserPref('midori.browser.workspace.current');
+    Services.prefs.setBoolPref('midori.browser.workspace.tab.enabled', false);
+    Services.prefs.clearUserPref('midori.browser.workspace.all');
   },
 
   async importDataFromLegacyWorkspaces(tabs, windowId) {
@@ -111,7 +97,7 @@ export const WorkspacesMigratorUtils = {
     }
 
     // Set migrated flag
-    Services.prefs.setBoolPref("midori.browser.workspace.migrated", true);
+    Services.prefs.setBoolPref('midori.browser.workspace.migrated', true);
 
     const allWorkspacesName = this.LegacyWorkspacesAllNamesPref;
 
@@ -120,14 +106,10 @@ export const WorkspacesMigratorUtils = {
       const workspaceId = await WorkspacesService.createWorkspace(
         workspaceName,
         windowId,
-        this.legacyDefaultWorkspace === workspaceName,
+        this.legacyDefaultWorkspace === workspaceName
       );
 
-      const workspace =
-        await WorkspacesIdUtils.getWorkspaceByIdAndWindowId(
-          workspaceId,
-          windowId,
-        );
+      const workspace = await WorkspacesIdUtils.getWorkspaceByIdAndWindowId(workspaceId, windowId);
 
       if (this.legacySelectedWorkspace === workspaceName) {
         await WorkspacesService.setSelectWorkspace(workspace.id, windowId);
@@ -140,18 +122,15 @@ export const WorkspacesMigratorUtils = {
         await WorkspacesService.setWorkspaceContainerUserContextIdAndIcon(
           workspace.id,
           userContextId || 0,
-          iconName || "fingerprint",
-          windowId,
+          iconName || 'fingerprint',
+          windowId
         );
       }
 
       // Add Tabs to Workspace
       for (const tab of tabs) {
-        if (tab.getAttribute("midoriWorkspace") === workspaceName) {
-          tab.setAttribute(
-            WorkspacesService.workspacesTabAttributionId,
-            workspace.id,
-          );
+        if (tab.getAttribute('midoriWorkspace') === workspaceName) {
+          tab.setAttribute(WorkspacesService.workspacesTabAttributionId, workspace.id);
         }
       }
     }

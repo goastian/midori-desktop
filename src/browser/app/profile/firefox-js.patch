@@ -1,8 +1,16 @@
 diff --git a/browser/app/profile/firefox.js b/browser/app/profile/firefox.js
-index e85e7c1c78b9cfcafa3a0c9b49ecc5886e9ce240..316e8b77abb077d10aac636698a6349125c5832a 100644
 --- a/browser/app/profile/firefox.js
 +++ b/browser/app/profile/firefox.js
-@@ -3556,6 +3556,8 @@ pref("toolkit.contentRelevancy.ingestEnabled", false);
+@@ -1370,7 +1370,7 @@
+ // Whether we show the "More from Mozilla" section.
+ pref("browser.preferences.moreFromMozilla", true);
+ // Whether we show the "AI Controls" pane.
+-pref("browser.preferences.aiControls", true);
++pref("browser.preferences.aiControls", false);
+ 
+ // Used by settings to track whether the user customized advanced
+ // performance settings. Not used directly elsewhere.
+@@ -3556,6 +3556,8 @@
  // Pref to enable extra logging for the content relevancy feature
  pref("toolkit.contentRelevancy.log", false);
  

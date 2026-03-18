@@ -17,7 +17,7 @@ on:
       build_id:
         required: false
         type: string
-        default: ""
+        default: ''
       use_sccache:
         required: false
         type: boolean
@@ -33,7 +33,7 @@ jobs:
       matrix:
         arch: [x86_64, aarch64]
     env:
-      MIDORI_RELEASE: "true"
+      MIDORI_RELEASE: 'true'
       MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
       SURFER_COMPAT: ${{ matrix.arch }}
       SCCACHE_DIR: ~/Library/Caches/Mozilla.sccache

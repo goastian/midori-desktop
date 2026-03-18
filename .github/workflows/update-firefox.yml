@@ -7,16 +7,16 @@ name: Update Firefox Upstream
 on:
   schedule:
     # Check every 6 hours for upstream changes
-    - cron: "0 */6 * * *"
+    - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
       check_rc:
-        description: "Check for Release Candidate too"
+        description: 'Check for Release Candidate too'
         required: false
         type: boolean
         default: false
       auto_build:
-        description: "Trigger build automatically if update found"
+        description: 'Trigger build automatically if update found'
         required: false
         type: boolean
         default: false

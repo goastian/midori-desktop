@@ -34,9 +34,7 @@
   </p>
 </div>
 
-
 ## ⚡ Get Started
-
 
 ### 💻 Supported Operating Systems & Requirements
 
@@ -50,8 +48,7 @@ Midori Browser is available for Windows, macOS, and Linux. You can install it by
 
 - Midori provides "exe" installer & "Winget" install.
 
-**Midori is in the process of obtaining a license to sign  Certum Open Source Code Signing Certificate. The official Midori installer is signed by "Open Source Developer, Astian, Inc". However, the installer for the Daylight build is not signed.**
-
+**Midori is in the process of obtaining a license to sign Certum Open Source Code Signing Certificate. The official Midori installer is signed by "Open Source Developer, Astian, Inc". However, the installer for the Daylight build is not signed.**
 
 #### macOS
 
@@ -69,15 +66,15 @@ Midori Browser is available for Windows, macOS, and Linux. You can install it by
 
 - Midori Browser Requirements: ["Firefox Linux Requirements"](https://www.mozilla.org/en-US/firefox/115.0beta/system-requirements/#gnulinux)
 
-
 ### 📥 Download & 📦 Install
 
 You can download the latest version of Midori Browser from the official website: [Astian.org](https://astian.org/midori-browser/download) or from the [Gitlab Releases](https://gitlab.com/midori-web/midori-desktop/-/releases) page.
 
 Linux (Debian, xUbuntu, Mint)
 sudo wget -O /etc/apt/trusted.gpg.d/midori-archive-keyring.gpg http://repo.astian.org/midori-archive-keyring.gpg && echo "deb http://repo.astian.org midori main" | sudo tee /etc/apt/sources.list.d/midori.list
-  - sudo apt update
-  - Run: sudo apt install ./midori_<version>_amd64.deb
+
+- sudo apt update
+- Run: sudo apt install ./midori\_<version>\_amd64.deb
 
 ---
 
@@ -102,6 +99,7 @@ sudo wget -O /etc/apt/trusted.gpg.d/midori-archive-keyring.gpg http://repo.astia
 ### Contribute
 
 You can contribute through a donation on our website. We recommend that you first read our manifesto and then donate here we leave you the links
+
 - [Manifest](https://astian.org/community/midori-browser/donations-for-midori-please/)
 - [Donate](https://astian.org/midori-browser/donate-to-midori/)
 - Midori on Open collective(https://opencollective.com/midori-browser)
@@ -111,11 +109,13 @@ You can contribute through a donation on our website. We recommend that you firs
 - [Astian Privacy Policy](https://astian.org/astian-privacy-policies/)
 
 ---
+
 ## Support
 
 [Midori Desktop](https://ads.fund/token/0xadf874910516cffb6c3317f94392ae11887b23f0) project is supported by ADS.FUND
 
 ---
+
 ## 🌟 Contributing
 
 ### 🧰 Writing Code
@@ -133,7 +133,6 @@ See [Development](https://gitlab.com/midori-web/midori-desktop/-/wikis/home)
 ### 🐛 Reporting Bugs
 
 - If you find a bug, please report it to the [Issues](https://gitlab.com/midori-web/midori-desktop/-/issues) page or using [Official Support Site](https://astian.org/community/midori-browser).
-
 
 ## Star History
 

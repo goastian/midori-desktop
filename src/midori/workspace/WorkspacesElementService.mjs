@@ -1,8 +1,8 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
-import { WorkspacesWindowIdUtils } from "resource://browser-content/modules/workspace/WorkspacesWindowIdUtils.mjs";
+import { WorkspacesWindowIdUtils } from 'resource://browser-content/modules/workspace/WorkspacesWindowIdUtils.mjs';
 
-export const EXPORTED_SYMBOLS = ["WorkspacesElementService"];
+export const EXPORTED_SYMBOLS = ['WorkspacesElementService'];
 
 export const WorkspacesElementService = {
   panelElement: `<panel id="workspacesToolbarButtonPanel" type="arrow" position="bottom top">
@@ -70,37 +70,21 @@ export const WorkspacesElementService = {
     }
      `,
 
-  workspaceBlockElement(
-    workspaceId,
-    workspaceName,
-    selected,
-    workspaceManageOnBMSMode
-  ) {
+  workspaceBlockElement(workspaceId, workspaceName, selected, workspaceManageOnBMSMode) {
     return `<toolbarbutton id="workspace-${workspaceId}" context="workspaces-toolbar-item-context-menu"
                                class="toolbarbutton-1 chromeclass-toolbar-additional workspaceButton ${
-                                 workspaceManageOnBMSMode
-                                   ? "sidepanel-icon"
-                                   : ""
+                                 workspaceManageOnBMSMode ? 'sidepanel-icon' : ''
                                }"
-                               ${
-                                 selected ? 'selected="true"' : ""
-                               } workspaceId="${workspaceId}"
+                               ${selected ? 'selected="true"' : ''} workspaceId="${workspaceId}"
                                oncommand="gWorkspaces.changeWorkspace('${workspaceId}');" />
                `;
   },
 
-  async getWorkspaceBlockElement(
-    workspaceId,
-    windowId,
-    workspaceManageOnBMSMode
-  ) {
+  async getWorkspaceBlockElement(workspaceId, windowId, workspaceManageOnBMSMode) {
     let workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesDataWithoutPreferences(
-        windowId
-      );
+      await WorkspacesWindowIdUtils.getWindowWorkspacesDataWithoutPreferences(windowId);
     let workspace = workspacesData[workspaceId];
-    let selectedWorkspaceId =
-      await WorkspacesWindowIdUtils.getSelectedWorkspaceId(windowId);
+    let selectedWorkspaceId = await WorkspacesWindowIdUtils.getSelectedWorkspaceId(windowId);
     let selected = workspaceId == selectedWorkspaceId;
     return this.workspaceBlockElement(
       workspaceId,
@@ -112,23 +96,15 @@ export const WorkspacesElementService = {
 
   async getAllWorkspacesBlockElements(windowId, workspaceManageOnBMSMode) {
     let workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesDataWithoutPreferences(
-        windowId
-      );
-    let selectedWorkspaceId =
-      await WorkspacesWindowIdUtils.getSelectedWorkspaceId(windowId);
+      await WorkspacesWindowIdUtils.getWindowWorkspacesDataWithoutPreferences(windowId);
+    let selectedWorkspaceId = await WorkspacesWindowIdUtils.getSelectedWorkspaceId(windowId);
 
     let workspaceBlockElements = [];
     for (let workspaceId in workspacesData) {
       let workspace = workspacesData[workspaceId];
       let selected = workspaceId == selectedWorkspaceId;
       workspaceBlockElements.push(
-        this.workspaceBlockElement(
-          workspaceId,
-          workspace.name,
-          selected,
-          workspaceManageOnBMSMode
-        )
+        this.workspaceBlockElement(workspaceId, workspace.name, selected, workspaceManageOnBMSMode)
       );
     }
     return workspaceBlockElements;

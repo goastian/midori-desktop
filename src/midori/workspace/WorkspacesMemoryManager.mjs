@@ -5,7 +5,7 @@
  * @module WorkspacesMemoryManager
  */
 
-export const EXPORTED_SYMBOLS = ["WorkspacesMemoryManager"];
+export const EXPORTED_SYMBOLS = ['WorkspacesMemoryManager'];
 
 export const WorkspacesMemoryManager = {
   _isEnabled: false,
@@ -21,9 +21,9 @@ export const WorkspacesMemoryManager = {
     try {
       this._isEnabled = true;
       this._startMemoryMonitoring();
-      console.log("WorkspacesMemoryManager: Initialized successfully");
+      console.log('WorkspacesMemoryManager: Initialized successfully');
     } catch (error) {
-      console.error("WorkspacesMemoryManager: Error initializing:", error);
+      console.error('WorkspacesMemoryManager: Error initializing:', error);
     }
   },
 
@@ -57,18 +57,21 @@ export const WorkspacesMemoryManager = {
       if (performance && performance.memory) {
         const usedMemory = performance.memory.usedJSHeapSize;
         const currentTime = Date.now();
-        
+
         // Only cleanup if enough time has passed since last cleanup
-        if (usedMemory > this._memoryThreshold && 
-            (currentTime - this._lastCleanupTime) > this._cleanupCooldown) {
-          
-          console.warn(`Workspaces: High memory usage detected (${Math.round(usedMemory / 1024 / 1024)}MB)`);
+        if (
+          usedMemory > this._memoryThreshold &&
+          currentTime - this._lastCleanupTime > this._cleanupCooldown
+        ) {
+          console.warn(
+            `Workspaces: High memory usage detected (${Math.round(usedMemory / 1024 / 1024)}MB)`
+          );
           this.optimizeMemory();
           this._lastCleanupTime = currentTime;
         }
       }
     } catch (error) {
-      console.error("WorkspacesMemoryManager: Error checking memory usage:", error);
+      console.error('WorkspacesMemoryManager: Error checking memory usage:', error);
     }
   },
 
@@ -81,16 +84,16 @@ export const WorkspacesMemoryManager = {
       if (window.gc) {
         window.gc();
       }
-      
+
       // Clear any cached data
       this.clearCachedData();
-      
+
       // Clear DOM references that might be holding memory
       this.clearDOMReferences();
-      
-      console.log("WorkspacesMemoryManager: Memory optimization completed");
+
+      console.log('WorkspacesMemoryManager: Memory optimization completed');
     } catch (error) {
-      console.error("WorkspacesMemoryManager: Error optimizing memory:", error);
+      console.error('WorkspacesMemoryManager: Error optimizing memory:', error);
     }
   },
 
@@ -105,14 +108,14 @@ export const WorkspacesMemoryManager = {
         if (window.gWorkspaces._cachedWorkspacesData) {
           window.gWorkspaces._cachedWorkspacesData = null;
         }
-        
+
         // Clear any cached DOM queries
         if (window.gWorkspaces._cachedElements) {
           window.gWorkspaces._cachedElements = null;
         }
       }
     } catch (error) {
-      console.error("WorkspacesMemoryManager: Error clearing cached data:", error);
+      console.error('WorkspacesMemoryManager: Error clearing cached data:', error);
     }
   },
 
@@ -123,11 +126,11 @@ export const WorkspacesMemoryManager = {
     try {
       // Clear any stale DOM references
       const staleElements = document.querySelectorAll('.workspaceButton[data-stale="true"]');
-      staleElements.forEach(element => {
+      staleElements.forEach((element) => {
         element.remove();
       });
     } catch (error) {
-      console.error("WorkspacesMemoryManager: Error clearing DOM references:", error);
+      console.error('WorkspacesMemoryManager: Error clearing DOM references:', error);
     }
   },
 
@@ -140,9 +143,9 @@ export const WorkspacesMemoryManager = {
       this._stopMemoryMonitoring();
       this.clearCachedData();
       this.clearDOMReferences();
-      console.log("WorkspacesMemoryManager: Disabled");
+      console.log('WorkspacesMemoryManager: Disabled');
     } catch (error) {
-      console.error("WorkspacesMemoryManager: Error disabling:", error);
+      console.error('WorkspacesMemoryManager: Error disabling:', error);
     }
   },
 
@@ -153,9 +156,9 @@ export const WorkspacesMemoryManager = {
     try {
       this._isEnabled = true;
       this._startMemoryMonitoring();
-      console.log("WorkspacesMemoryManager: Enabled");
+      console.log('WorkspacesMemoryManager: Enabled');
     } catch (error) {
-      console.error("WorkspacesMemoryManager: Error enabling:", error);
+      console.error('WorkspacesMemoryManager: Error enabling:', error);
     }
   },
 
@@ -173,12 +176,14 @@ export const WorkspacesMemoryManager = {
           usedMB: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
           totalMB: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),
           limitMB: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024),
-          percentage: Math.round((performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) * 100)
+          percentage: Math.round(
+            (performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit) * 100
+          ),
         };
       }
       return null;
     } catch (error) {
-      console.error("WorkspacesMemoryManager: Error getting memory stats:", error);
+      console.error('WorkspacesMemoryManager: Error getting memory stats:', error);
       return null;
     }
   },
@@ -197,5 +202,5 @@ export const WorkspacesMemoryManager = {
    */
   getMemoryThreshold() {
     return this._memoryThreshold;
-  }
-}; 
+  },
+};

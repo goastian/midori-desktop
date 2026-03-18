@@ -32,7 +32,7 @@ done
 
 # ── Helpers ──
 ensure_rustup() {
-  if ! command -v rustup &>/dev/null; then
+  if ! command -v rustup &> /dev/null; then
     echo "  ✘ rustup no encontrado. Instala Rust primero:"
     echo "    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
     exit 1
@@ -42,7 +42,7 @@ ensure_rustup() {
 ensure_rust_target() {
   local target="$1"
   local installed
-  installed=$(rustup target list --installed 2>/dev/null)
+  installed=$(rustup target list --installed 2> /dev/null)
   if ! echo "$installed" | grep -q "$target"; then
     echo "  Instalando Rust target: $target"
     rustup target add "$target"
@@ -62,12 +62,12 @@ ensure_engine() {
 check_system_deps() {
   local missing=()
   for dep in "$@"; do
-    if ! command -v "$dep" &>/dev/null; then
+    if ! command -v "$dep" &> /dev/null; then
       # Check via package manager
-      if command -v rpm &>/dev/null; then
-        rpm -q "$dep" &>/dev/null 2>&1 || missing+=("$dep")
-      elif command -v dpkg &>/dev/null; then
-        dpkg -s "$dep" &>/dev/null 2>&1 || missing+=("$dep")
+      if command -v rpm &> /dev/null; then
+        rpm -q "$dep" &> /dev/null 2>&1 || missing+=("$dep")
+      elif command -v dpkg &> /dev/null; then
+        dpkg -s "$dep" &> /dev/null 2>&1 || missing+=("$dep")
       else
         missing+=("$dep")
       fi
@@ -75,11 +75,11 @@ check_system_deps() {
   done
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "  ⚠ Faltan paquetes: ${missing[*]}"
-    if command -v zypper &>/dev/null; then
+    if command -v zypper &> /dev/null; then
       echo "    sudo zypper install ${missing[*]}"
-    elif command -v apt-get &>/dev/null; then
+    elif command -v apt-get &> /dev/null; then
       echo "    sudo apt-get install -y ${missing[*]}"
-    elif command -v dnf &>/dev/null; then
+    elif command -v dnf &> /dev/null; then
       echo "    sudo dnf install ${missing[*]}"
     fi
     return 1
@@ -222,7 +222,7 @@ setup_windows() {
       mv "$ENGINE_DIR/nsis" "$NSIS_DIR"
     fi
     if [[ -x "$NSIS_DIR/bin/makensis" ]]; then
-      echo "✔ NSIS instalado ($($NSIS_DIR/bin/makensis -version 2>/dev/null))"
+      echo "✔ NSIS instalado ($($NSIS_DIR/bin/makensis -version 2> /dev/null))"
     else
       echo "  ⚠ NSIS no disponible. No se podrá generar el instalador .exe."
     fi
@@ -280,15 +280,15 @@ setup_windows() {
   fi
 
   # ── 10. SELinux: permitir que wine cargue DLLs de Windows ──
-  if command -v getenforce &>/dev/null || command -v /usr/sbin/getenforce &>/dev/null; then
+  if command -v getenforce &> /dev/null || command -v /usr/sbin/getenforce &> /dev/null; then
     local SELINUX_MODE
-    SELINUX_MODE=$(/usr/sbin/getenforce 2>/dev/null || getenforce 2>/dev/null || echo "Disabled")
+    SELINUX_MODE=$(/usr/sbin/getenforce 2> /dev/null || getenforce 2> /dev/null || echo "Disabled")
     if [[ "$SELINUX_MODE" == "Enforcing" || "$SELINUX_MODE" == "Permissive" ]]; then
       echo "→ SELinux detectado ($SELINUX_MODE). Ajustando contexto para wine..."
-      if command -v chcon &>/dev/null || command -v /usr/bin/chcon &>/dev/null; then
-        sudo chcon -R -t textrel_shlib_t "$WINSYSROOT" 2>/dev/null && \
-          echo "✔ Contexto SELinux ajustado en $WINSYSROOT" || \
-          echo "  ⚠ No se pudo ajustar SELinux. Si fxc.exe falla, ejecuta:"
+      if command -v chcon &> /dev/null || command -v /usr/bin/chcon &> /dev/null; then
+        sudo chcon -R -t textrel_shlib_t "$WINSYSROOT" 2> /dev/null \
+          && echo "✔ Contexto SELinux ajustado en $WINSYSROOT" \
+          || echo "  ⚠ No se pudo ajustar SELinux. Si fxc.exe falla, ejecuta:"
         echo "    sudo chcon -R -t textrel_shlib_t $WINSYSROOT"
       fi
     fi
@@ -298,12 +298,12 @@ setup_windows() {
   local WINEPREFIX_DIR="$MOZBUILD/wineprefix"
   local WINE_BIN="${WINE_DIR}/bin/wine"
   if [[ ! -x "$WINE_BIN" ]]; then
-    WINE_BIN="$(which wine 2>/dev/null || true)"
+    WINE_BIN="$(which wine 2> /dev/null || true)"
   fi
   if [[ -n "$WINE_BIN" && ! -d "$WINEPREFIX_DIR/drive_c" ]]; then
     echo "→ Inicializando WINEPREFIX..."
-    WINEPREFIX="$WINEPREFIX_DIR" WINEDEBUG=-all "$WINE_DIR/bin/wineboot" --init 2>/dev/null || \
-      WINEPREFIX="$WINEPREFIX_DIR" WINEDEBUG=-all wineboot --init 2>/dev/null || true
+    WINEPREFIX="$WINEPREFIX_DIR" WINEDEBUG=-all "$WINE_DIR/bin/wineboot" --init 2> /dev/null \
+      || WINEPREFIX="$WINEPREFIX_DIR" WINEDEBUG=-all wineboot --init 2> /dev/null || true
     if [[ -d "$WINEPREFIX_DIR/drive_c" ]]; then
       echo "✔ WINEPREFIX inicializado en $WINEPREFIX_DIR"
     fi
@@ -317,7 +317,7 @@ setup_windows() {
   echo " Setup Windows cross-compilation completo"
   echo "══════════════════════════════════════════"
   echo "  WINSYSROOT:    $WINSYSROOT"
-  echo "  Windows SDK:   $(ls "$WINSYSROOT/Windows Kits/10/bin/" 2>/dev/null | head -1)"
+  echo "  Windows SDK:   $(ls "$WINSYSROOT/Windows Kits/10/bin/" 2> /dev/null | head -1)"
   echo "  App SDK:       $MOZBUILD/winappsdk-x86_64-pc-windows-msvc"
   echo "  DXC:           $MOZBUILD/dxc-x86_64-pc-windows-msvc"
   echo "  windows-rs:    $MOZBUILD/windows-rs"
@@ -325,7 +325,7 @@ setup_windows() {
   if [[ -x "$WINE_DIR/bin/wine" ]]; then
     echo "  Wine:          $WINE_DIR/bin/wine (Mozilla)"
   else
-    echo "  Wine:          $(which wine 2>/dev/null || echo 'NO ENCONTRADO')"
+    echo "  Wine:          $(which wine 2> /dev/null || echo 'NO ENCONTRADO')"
   fi
   echo ""
   echo "Usa: npm run build:win-x64  para compilar."
@@ -367,7 +367,7 @@ setup_linux_arm64() {
   # --enable-bootstrap is set and the target is aarch64-linux-gnu.
   # We trigger it by running a configure with the right target.
   AMELIA_PLATFORM=linux AMELIA_COMPAT=aarch64 SURFER_COMPAT=aarch64 \
-    "$ENGINE_DIR/mach" artifact toolchain --from-build toolchain-sysroot-aarch64-linux-gnu 2>/dev/null || {
+    "$ENGINE_DIR/mach" artifact toolchain --from-build toolchain-sysroot-aarch64-linux-gnu 2> /dev/null || {
     echo ""
     echo "  ⚠ No se pudo descargar el sysroot automáticamente."
     echo "    El bootstrap lo descargará durante la primera compilación"
@@ -401,13 +401,13 @@ setup_linux_arm64() {
 echo "=== Midori Browser — Setup de Cross-Compilación ==="
 
 case "$TARGET" in
-  windows|win)
+  windows | win)
     setup_windows
     ;;
-  linux-arm64|linux-aarch64)
+  linux-arm64 | linux-aarch64)
     setup_linux_arm64
     ;;
-  macos|mac|darwin)
+  macos | mac | darwin)
     setup_macos
     ;;
   all)

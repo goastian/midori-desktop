@@ -16,8 +16,8 @@
  * @patch Midori Browser
  */
 
-const PREF_AUTOHIDE = "midori.autohide.toolbar";
-const TOOLBOX_HIDDEN_ATTR = "midori-autohide-hidden";
+const PREF_AUTOHIDE = 'midori.autohide.toolbar';
+const TOOLBOX_HIDDEN_ATTR = 'midori-autohide-hidden';
 const MOUSE_REVEAL_ZONE_PX = 10;
 const WHEEL_HIDE_THRESHOLD = 40;
 const WHEEL_SHOW_THRESHOLD = -30;
@@ -37,11 +37,11 @@ export const AutoHideToolbar = {
     this._enabled = Services.prefs.getBoolPref(PREF_AUTOHIDE, true);
     Services.prefs.addObserver(PREF_AUTOHIDE, this);
 
-    Services.obs.addObserver(this, "browser-delayed-startup-finished");
-    Services.obs.addObserver(this, "domwindowclosed");
+    Services.obs.addObserver(this, 'browser-delayed-startup-finished');
+    Services.obs.addObserver(this, 'domwindowclosed');
 
-    for (const win of Services.wm.getEnumerator("navigator:browser")) {
-      if (win.document.readyState === "complete") {
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
+      if (win.document.readyState === 'complete') {
         this._attachToWindow(win);
       }
     }
@@ -51,10 +51,10 @@ export const AutoHideToolbar = {
 
   observe(subject, topic, data) {
     switch (topic) {
-      case "nsPref:changed":
+      case 'nsPref:changed':
         if (data === PREF_AUTOHIDE) {
           this._enabled = Services.prefs.getBoolPref(PREF_AUTOHIDE, true);
-          for (const win of Services.wm.getEnumerator("navigator:browser")) {
+          for (const win of Services.wm.getEnumerator('navigator:browser')) {
             if (this._enabled) {
               this._attachToWindow(win);
             } else {
@@ -64,13 +64,13 @@ export const AutoHideToolbar = {
         }
         break;
 
-      case "browser-delayed-startup-finished":
+      case 'browser-delayed-startup-finished':
         if (this._enabled) {
           this._attachToWindow(subject);
         }
         break;
 
-      case "domwindowclosed":
+      case 'domwindowclosed':
         this._detachFromWindow(subject);
         break;
     }
@@ -82,19 +82,19 @@ export const AutoHideToolbar = {
     }
 
     const doc = win.document;
-    const toolbox = doc.getElementById("navigator-toolbox");
+    const toolbox = doc.getElementById('navigator-toolbox');
     if (!toolbox) {
       return;
     }
 
     // Mark as auto-hide enabled (CSS uses this for transitions)
-    toolbox.setAttribute("midori-autohide", "true");
+    toolbox.setAttribute('midori-autohide', 'true');
 
     // Measure and set the toolbox height as a CSS variable
     const updateToolboxHeight = () => {
       const height = toolbox.getBoundingClientRect().height;
       if (height > 0) {
-        doc.documentElement.style.setProperty("--midori-toolbox-height", height + "px");
+        doc.documentElement.style.setProperty('--midori-toolbox-height', height + 'px');
       }
     };
     // Initial measurement (defer to let layout settle)
@@ -121,12 +121,12 @@ export const AutoHideToolbar = {
       if (state.isHidden) return;
       if (state.mouseNearTop || state.urlbarFocused || state.popupOpen) return;
       if (win.fullScreen) return;
-      const urlbar = doc.getElementById("urlbar");
-      if (urlbar?.hasAttribute("focused")) return;
+      const urlbar = doc.getElementById('urlbar');
+      if (urlbar?.hasAttribute('focused')) return;
       // Re-measure height before hiding (may have changed)
       updateToolboxHeight();
       state.isHidden = true;
-      toolbox.setAttribute(TOOLBOX_HIDDEN_ATTR, "true");
+      toolbox.setAttribute(TOOLBOX_HIDDEN_ATTR, 'true');
     };
 
     // --- Wheel event on the browser panel detects scroll direction ---
@@ -157,9 +157,9 @@ export const AutoHideToolbar = {
       }
     };
 
-    const browserPanel = doc.getElementById("browser") || doc.getElementById("appcontent");
+    const browserPanel = doc.getElementById('browser') || doc.getElementById('appcontent');
     if (browserPanel) {
-      browserPanel.addEventListener("wheel", onWheel, { passive: true, capture: true });
+      browserPanel.addEventListener('wheel', onWheel, { passive: true, capture: true });
     }
 
     // --- Mouse near top edge reveals toolbar ---
@@ -173,35 +173,50 @@ export const AutoHideToolbar = {
         state.mouseNearTop = false;
       }
     };
-    doc.addEventListener("mousemove", onMouseMove, { passive: true });
+    doc.addEventListener('mousemove', onMouseMove, { passive: true });
 
     // --- Urlbar focus prevents hiding ---
-    const onUrlbarFocus = () => { state.urlbarFocused = true; show(); };
-    const onUrlbarBlur = () => { state.urlbarFocused = false; };
-    const urlbar = doc.getElementById("urlbar");
+    const onUrlbarFocus = () => {
+      state.urlbarFocused = true;
+      show();
+    };
+    const onUrlbarBlur = () => {
+      state.urlbarFocused = false;
+    };
+    const urlbar = doc.getElementById('urlbar');
     if (urlbar) {
-      urlbar.addEventListener("focus", onUrlbarFocus, true);
-      urlbar.addEventListener("blur", onUrlbarBlur, true);
+      urlbar.addEventListener('focus', onUrlbarFocus, true);
+      urlbar.addEventListener('blur', onUrlbarBlur, true);
     }
 
     // --- Popup open prevents hiding ---
-    const onPopupShown = () => { state.popupOpen = true; show(); };
-    const onPopupHidden = () => { state.popupOpen = false; };
-    doc.addEventListener("popupshown", onPopupShown, true);
-    doc.addEventListener("popuphidden", onPopupHidden, true);
+    const onPopupShown = () => {
+      state.popupOpen = true;
+      show();
+    };
+    const onPopupHidden = () => {
+      state.popupOpen = false;
+    };
+    doc.addEventListener('popupshown', onPopupShown, true);
+    doc.addEventListener('popuphidden', onPopupHidden, true);
 
     // --- Tab switch: always show toolbar ---
-    const onTabSelect = () => { show(); updateToolboxHeight(); };
-    win.gBrowser?.tabContainer?.addEventListener("TabSelect", onTabSelect);
+    const onTabSelect = () => {
+      show();
+      updateToolboxHeight();
+    };
+    win.gBrowser?.tabContainer?.addEventListener('TabSelect', onTabSelect);
 
     // --- Window resize: re-measure height ---
-    const onResize = () => { updateToolboxHeight(); };
-    win.addEventListener("resize", onResize, { passive: true });
+    const onResize = () => {
+      updateToolboxHeight();
+    };
+    win.addEventListener('resize', onResize, { passive: true });
 
     // --- Keyboard shortcut: Shift+F11 toggles ---
     const onKeyDown = (e) => {
       if (!this._enabled) return;
-      if (e.shiftKey && e.key === "F11") {
+      if (e.shiftKey && e.key === 'F11') {
         e.preventDefault();
         if (state.isHidden) {
           show();
@@ -210,12 +225,20 @@ export const AutoHideToolbar = {
         }
       }
     };
-    doc.addEventListener("keydown", onKeyDown, true);
+    doc.addEventListener('keydown', onKeyDown, true);
 
     this._windowListeners.set(win, {
-      onWheel, onMouseMove, onUrlbarFocus, onUrlbarBlur,
-      onPopupShown, onPopupHidden, onTabSelect, onKeyDown,
-      onResize, show, browserPanel,
+      onWheel,
+      onMouseMove,
+      onUrlbarFocus,
+      onUrlbarBlur,
+      onPopupShown,
+      onPopupHidden,
+      onTabSelect,
+      onKeyDown,
+      onResize,
+      show,
+      browserPanel,
     });
   },
 
@@ -224,44 +247,47 @@ export const AutoHideToolbar = {
     if (!listeners) return;
 
     const doc = win.document;
-    const toolbox = doc?.getElementById("navigator-toolbox");
+    const toolbox = doc?.getElementById('navigator-toolbox');
     if (toolbox) {
       toolbox.removeAttribute(TOOLBOX_HIDDEN_ATTR);
-      toolbox.removeAttribute("midori-autohide");
+      toolbox.removeAttribute('midori-autohide');
     }
-    doc?.documentElement?.style?.removeProperty("--midori-toolbox-height");
+    doc?.documentElement?.style?.removeProperty('--midori-toolbox-height');
 
     if (listeners.browserPanel) {
-      listeners.browserPanel.removeEventListener("wheel", listeners.onWheel, { passive: true, capture: true });
+      listeners.browserPanel.removeEventListener('wheel', listeners.onWheel, {
+        passive: true,
+        capture: true,
+      });
     }
 
     if (doc) {
-      doc.removeEventListener("mousemove", listeners.onMouseMove, { passive: true });
-      doc.removeEventListener("popupshown", listeners.onPopupShown, true);
-      doc.removeEventListener("popuphidden", listeners.onPopupHidden, true);
-      doc.removeEventListener("keydown", listeners.onKeyDown, true);
+      doc.removeEventListener('mousemove', listeners.onMouseMove, { passive: true });
+      doc.removeEventListener('popupshown', listeners.onPopupShown, true);
+      doc.removeEventListener('popuphidden', listeners.onPopupHidden, true);
+      doc.removeEventListener('keydown', listeners.onKeyDown, true);
     }
 
-    win?.removeEventListener("resize", listeners.onResize, { passive: true });
+    win?.removeEventListener('resize', listeners.onResize, { passive: true });
 
-    const urlbar = doc?.getElementById("urlbar");
+    const urlbar = doc?.getElementById('urlbar');
     if (urlbar) {
-      urlbar.removeEventListener("focus", listeners.onUrlbarFocus, true);
-      urlbar.removeEventListener("blur", listeners.onUrlbarBlur, true);
+      urlbar.removeEventListener('focus', listeners.onUrlbarFocus, true);
+      urlbar.removeEventListener('blur', listeners.onUrlbarBlur, true);
     }
 
-    win.gBrowser?.tabContainer?.removeEventListener("TabSelect", listeners.onTabSelect);
+    win.gBrowser?.tabContainer?.removeEventListener('TabSelect', listeners.onTabSelect);
     this._windowListeners.delete(win);
   },
 
   uninit() {
     Services.prefs.removeObserver(PREF_AUTOHIDE, this);
     try {
-      Services.obs.removeObserver(this, "browser-delayed-startup-finished");
-      Services.obs.removeObserver(this, "domwindowclosed");
+      Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
+      Services.obs.removeObserver(this, 'domwindowclosed');
     } catch (e) {}
 
-    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
       this._detachFromWindow(win);
     }
     this._initialized = false;

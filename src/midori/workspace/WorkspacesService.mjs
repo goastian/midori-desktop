@@ -1,7 +1,7 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
-import { WorkspacesWindowIdUtils } from "resource://browser-content/modules/workspace/WorkspacesWindowIdUtils.mjs";
-import { WorkspacesDataSaver } from "resource://browser-content/modules/workspace/WorkspacesDataSaver.mjs";
+import { WorkspacesWindowIdUtils } from 'resource://browser-content/modules/workspace/WorkspacesWindowIdUtils.mjs';
+import { WorkspacesDataSaver } from 'resource://browser-content/modules/workspace/WorkspacesDataSaver.mjs';
 
 function generateUuid() {
   return Services.uuid.generateUUID().toString();
@@ -14,7 +14,7 @@ export const WorkspacesService = {
    * @returns {string} The attribution ID for the workspaces tab.
    */
   get workspacesTabAttributionId() {
-    return "midoriWorkspaceId";
+    return 'midoriWorkspaceId';
   },
 
   /**
@@ -23,7 +23,7 @@ export const WorkspacesService = {
    * @returns {string} The last show ID for the workspace.
    */
   get workspaceLastShowId() {
-    return "midoriWorkspaceLastShowId";
+    return 'midoriWorkspaceLastShowId';
   },
 
   /**
@@ -32,10 +32,7 @@ export const WorkspacesService = {
    * @returns {boolean} Whether workspaces are enabled.
    */
   get workspaceEnabled() {
-    return Services.prefs.getBoolPref(
-      workspacesPreferences.WORKSPACES_ENABLED_PREF,
-      false
-    );
+    return Services.prefs.getBoolPref(workspacesPreferences.WORKSPACES_ENABLED_PREF, false);
   },
 
   /**
@@ -48,15 +45,8 @@ export const WorkspacesService = {
    * @param {boolean} setSelected - Whether the workspace is selected.
    * @returns {Promise<string>} A promise that resolves with the ID of the created workspace.
    */
-  async createWorkspace(
-    workspaceName,
-    windowId,
-    defaultWorkspace,
-    icon,
-    setSelected
-  ) {
-    const workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
+  async createWorkspace(workspaceName, windowId, defaultWorkspace, icon, setSelected) {
+    const workspacesData = await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
     const workspaceId = generateUuid();
     const workspaceData = {
       name: workspaceName,
@@ -85,8 +75,7 @@ export const WorkspacesService = {
    * @returns {Promise<void>} A promise that resolves when the workspace is deleted.
    */
   async deleteWorkspace(workspaceId, windowId) {
-    const workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
+    const workspacesData = await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
     delete workspacesData[workspaceId];
     await WorkspacesDataSaver.saveWorkspacesData(workspacesData, windowId);
   },
@@ -100,8 +89,7 @@ export const WorkspacesService = {
    * @returns {Promise<void>} A promise that resolves when the workspace is renamed.
    */
   async renameWorkspace(workspaceId, newName, windowId) {
-    const workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
+    const workspacesData = await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
     workspacesData[workspaceId].name = newName;
     await WorkspacesDataSaver.saveWorkspacesData(workspacesData, windowId);
   },
@@ -114,8 +102,7 @@ export const WorkspacesService = {
    * @returns {Promise<void>} A promise that resolves when the default workspace is set.
    */
   async setDefaultWorkspace(workspaceId, windowId) {
-    const workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
+    const workspacesData = await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
     workspacesData.preferences = {
       defaultWorkspace: workspaceId,
     };
@@ -130,8 +117,7 @@ export const WorkspacesService = {
    * @returns {Promise<void>} A promise that resolves when the selected workspace is set.
    */
   async setSelectWorkspace(workspaceId, windowId) {
-    const workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
+    const workspacesData = await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
 
     if (!workspacesData.preferences) {
       workspacesData.preferences = {};
@@ -151,21 +137,14 @@ export const WorkspacesService = {
    * @param {number} windowId - The ID of the window.
    * @returns {Promise<void>} A promise that resolves when the user context ID and icon are set.
    */
-  async setWorkspaceContainerUserContextIdAndIcon(
-    workspaceId,
-    userContextId,
-    icon,
-    windowId
-  ) {
-    const workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
+  async setWorkspaceContainerUserContextIdAndIcon(workspaceId, userContextId, icon, windowId) {
+    const workspacesData = await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
     workspacesData[workspaceId].userContextId = userContextId;
     workspacesData[workspaceId].icon = icon;
     workspacesData[workspaceId].isPrivateContainerWorkspace = false;
 
     // Check selected container is private container
-    const privateContainerId =
-      window.gFloorpPrivateContainer.getPrivateContainerUserContextId();
+    const privateContainerId = window.gFloorpPrivateContainer.getPrivateContainerUserContextId();
     if (privateContainerId && userContextId == privateContainerId) {
       workspacesData[workspaceId].isPrivateContainerWorkspace = true;
     }
@@ -182,8 +161,7 @@ export const WorkspacesService = {
    * @returns {Promise<void>} A promise that resolves when the icon is set.
    */
   async setWorkspaceIcon(workspaceId, icon, windowId) {
-    const workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
+    const workspacesData = await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
     workspacesData[workspaceId].icon = icon;
     await WorkspacesDataSaver.saveWorkspacesData(workspacesData, windowId);
   },
@@ -196,13 +174,8 @@ export const WorkspacesService = {
    * @param {number} windowId - The ID of the window.
    * @returns {Promise<void>} A promise that resolves when the user context ID is set.
    */
-  async setWorkspaceContainerUserContextId(
-    workspaceId,
-    userContextId,
-    windowId
-  ) {
-    const workspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
+  async setWorkspaceContainerUserContextId(workspaceId, userContextId, windowId) {
+    const workspacesData = await WorkspacesWindowIdUtils.getWindowWorkspacesData(windowId);
     workspacesData[workspaceId].userContextId = userContextId;
     await WorkspacesDataSaver.saveWorkspacesData(workspacesData, windowId);
   },
@@ -224,9 +197,7 @@ export const WorkspacesReorderService = {
    */
   async reorderWorkspaceUp(workspaceId, windowId) {
     const currentWorkspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesDataWithoutPreferences(
-        windowId
-      );
+      await WorkspacesWindowIdUtils.getWindowWorkspacesDataWithoutPreferences(windowId);
     const keys = Object.keys(currentWorkspacesData);
     const index = keys.indexOf(workspaceId);
 
@@ -235,7 +206,7 @@ export const WorkspacesReorderService = {
       keys.splice(index - 1, 0, workspaceId);
 
       const newWorkspacesData = {};
-      keys.forEach(key => {
+      keys.forEach((key) => {
         newWorkspacesData[key] = currentWorkspacesData[key];
       });
 
@@ -244,7 +215,7 @@ export const WorkspacesReorderService = {
         windowId
       );
     } else {
-      console.error("Cannot move the first workspace before.");
+      console.error('Cannot move the first workspace before.');
     }
   },
 
@@ -257,9 +228,7 @@ export const WorkspacesReorderService = {
 
   async reorderWorkspaceDown(workspaceId, windowId) {
     const currentWorkspacesData =
-      await WorkspacesWindowIdUtils.getWindowWorkspacesDataWithoutPreferences(
-        windowId
-      );
+      await WorkspacesWindowIdUtils.getWindowWorkspacesDataWithoutPreferences(windowId);
     const keys = Object.keys(currentWorkspacesData);
     const index = keys.indexOf(workspaceId);
 
@@ -268,7 +237,7 @@ export const WorkspacesReorderService = {
       keys.splice(index + 1, 0, workspaceId);
 
       const newWorkspacesData = {};
-      keys.forEach(key => {
+      keys.forEach((key) => {
         newWorkspacesData[key] = currentWorkspacesData[key];
       });
       await WorkspacesDataSaver.saveWorkspacesDataWithoutOverwritingPreferences(
@@ -276,70 +245,65 @@ export const WorkspacesReorderService = {
         windowId
       );
     } else {
-      console.error("Cannot move the first workspace after.");
+      console.error('Cannot move the first workspace after.');
     }
   },
 };
 
 export const workspaceIcons = new Set([
-  "article",
-  "book",
-  "briefcase",
-  "cart",
-  "chat",
-  "chill",
-  "circle",
-  "compass",
-  "code",
-  "dollar",
-  "fence",
-  "fingerprint",
-  "food",
-  "fruit",
-  "game",
-  "gear",
-  "gift",
-  "key",
-  "lightning",
-  "network",
-  "notes",
-  "paint",
-  "photo",
-  "pin",
-  "pet",
-  "question",
-  "smartphone",
-  "star",
-  "tree",
-  "vacation",
-  "love",
-  "moon",
-  "music",
-  "user",
+  'article',
+  'book',
+  'briefcase',
+  'cart',
+  'chat',
+  'chill',
+  'circle',
+  'compass',
+  'code',
+  'dollar',
+  'fence',
+  'fingerprint',
+  'food',
+  'fruit',
+  'game',
+  'gear',
+  'gift',
+  'key',
+  'lightning',
+  'network',
+  'notes',
+  'paint',
+  'photo',
+  'pin',
+  'pet',
+  'question',
+  'smartphone',
+  'star',
+  'tree',
+  'vacation',
+  'love',
+  'moon',
+  'music',
+  'user',
 ]);
 
 export function getWorkspaceIconUrl(icon) {
   if (!workspaceIcons.has(icon) || icon == undefined) {
-    return "chrome://floorp/skin/workspace-icons/fingerprint.svg";
+    return 'chrome://floorp/skin/workspace-icons/fingerprint.svg';
   }
   return `chrome://floorp/skin/workspace-icons/${icon}.svg`;
 }
 
 export const workspacesPreferences = {
   workspacesIsFirstRun() {
-    const result = Services.prefs.getBoolPref(
-      "floorp.browser.workspaces.isFirstRun",
-      true
-    );
-    Services.prefs.setBoolPref("floorp.browser.workspaces.isFirstRun", false);
+    const result = Services.prefs.getBoolPref('floorp.browser.workspaces.isFirstRun', true);
+    Services.prefs.setBoolPref('floorp.browser.workspaces.isFirstRun', false);
     return result;
   },
-  WORKSPACES_ENABLED_PREF: "floorp.browser.workspaces.enabled",
-  WORKSPACES_CLOSE_POPUP_AFTER_CLICK_PREF:
-    "floorp.browser.workspace.closePopupAfterClick",
-  WORKSPACES_MANAGE_ON_BMS_PREF: "floorp.browser.workspace.manageOnBMS",
-  WORKSPACE_SHOW_WORKSPACE_NAME_PREF:
-    "floorp.browser.workspace.showWorkspaceName",
+  WORKSPACES_ENABLED_PREF: 'floorp.browser.workspaces.enabled',
+  WORKSPACES_CLOSE_POPUP_AFTER_CLICK_PREF: 'floorp.browser.workspace.closePopupAfterClick',
+  WORKSPACES_MANAGE_ON_BMS_PREF: 'floorp.browser.workspace.manageOnBMS',
+  WORKSPACE_SHOW_WORKSPACE_NAME_PREF: 'floorp.browser.workspace.showWorkspaceName',
 };
 
 export const WorkspacesWindowUuidService = {

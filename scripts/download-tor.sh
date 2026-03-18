@@ -35,17 +35,20 @@ if [ -n "${1:-}" ]; then
   PLATFORM="$1"
 elif [ -n "${AMELIA_PLATFORM:-}" ]; then
   case "$AMELIA_PLATFORM" in
-    win32)  PLATFORM="windows" ;;
+    win32) PLATFORM="windows" ;;
     darwin) PLATFORM="macos" ;;
-    linux)  PLATFORM="linux" ;;
-    *)      PLATFORM="$AMELIA_PLATFORM" ;;
+    linux) PLATFORM="linux" ;;
+    *) PLATFORM="$AMELIA_PLATFORM" ;;
   esac
 else
   case "$(uname -s)" in
-    Linux*)  PLATFORM="linux" ;;
+    Linux*) PLATFORM="linux" ;;
     Darwin*) PLATFORM="macos" ;;
-    MINGW*|MSYS*|CYGWIN*) PLATFORM="windows" ;;
-    *)       echo "ERROR: Cannot auto-detect platform. Pass it as argument."; exit 1 ;;
+    MINGW* | MSYS* | CYGWIN*) PLATFORM="windows" ;;
+    *)
+      echo "ERROR: Cannot auto-detect platform. Pass it as argument."
+      exit 1
+      ;;
   esac
 fi
 
@@ -56,18 +59,21 @@ elif [ -n "${AMELIA_COMPAT:-}" ]; then
   ARCH="$AMELIA_COMPAT"
 else
   case "$(uname -m)" in
-    x86_64|amd64) ARCH="x86_64" ;;
-    aarch64|arm64) ARCH="aarch64" ;;
-    *)             echo "ERROR: Cannot auto-detect arch. Pass it as argument."; exit 1 ;;
+    x86_64 | amd64) ARCH="x86_64" ;;
+    aarch64 | arm64) ARCH="aarch64" ;;
+    *)
+      echo "ERROR: Cannot auto-detect arch. Pass it as argument."
+      exit 1
+      ;;
   esac
 fi
 
 # ── Find obj-* directory (platform-aware for cross-compilation) ──
 # Determine the expected obj-* suffix for the target platform
 case "$PLATFORM" in
-  linux)   OBJ_SUFFIX="${ARCH}-pc-linux-gnu" ;;
+  linux) OBJ_SUFFIX="${ARCH}-pc-linux-gnu" ;;
   windows) OBJ_SUFFIX="${ARCH}-pc-windows-msvc" ;;
-  macos)   OBJ_SUFFIX="${ARCH}-apple-darwin" ;;
+  macos) OBJ_SUFFIX="${ARCH}-apple-darwin" ;;
 esac
 
 OBJ_DIR="$ENGINE_DIR/obj-${OBJ_SUFFIX}"
@@ -102,24 +108,33 @@ echo ""
 case "$PLATFORM" in
   linux)
     case "$ARCH" in
-      x86_64)  ARCHIVE="tor-expert-bundle-linux-x86_64-${TOR_VERSION}.tar.gz" ;;
+      x86_64) ARCHIVE="tor-expert-bundle-linux-x86_64-${TOR_VERSION}.tar.gz" ;;
       aarch64) ARCHIVE="tor-expert-bundle-linux-aarch64-${TOR_VERSION}.tar.gz" ;;
-      *)       echo "ERROR: Unsupported arch '$ARCH' for Linux"; exit 1 ;;
+      *)
+        echo "ERROR: Unsupported arch '$ARCH' for Linux"
+        exit 1
+        ;;
     esac
     ;;
-  windows|win32)
+  windows | win32)
     case "$ARCH" in
-      x86_64)  ARCHIVE="tor-expert-bundle-windows-x86_64-${TOR_VERSION}.tar.gz" ;;
-      i686)    ARCHIVE="tor-expert-bundle-windows-i686-${TOR_VERSION}.tar.gz" ;;
+      x86_64) ARCHIVE="tor-expert-bundle-windows-x86_64-${TOR_VERSION}.tar.gz" ;;
+      i686) ARCHIVE="tor-expert-bundle-windows-i686-${TOR_VERSION}.tar.gz" ;;
       aarch64) ARCHIVE="tor-expert-bundle-windows-x86_64-${TOR_VERSION}.tar.gz" ;;
-      *)       echo "ERROR: Unsupported arch '$ARCH' for Windows"; exit 1 ;;
+      *)
+        echo "ERROR: Unsupported arch '$ARCH' for Windows"
+        exit 1
+        ;;
     esac
     ;;
-  macos|darwin)
+  macos | darwin)
     case "$ARCH" in
-      x86_64)  ARCHIVE="tor-expert-bundle-macos-x86_64-${TOR_VERSION}.tar.gz" ;;
+      x86_64) ARCHIVE="tor-expert-bundle-macos-x86_64-${TOR_VERSION}.tar.gz" ;;
       aarch64) ARCHIVE="tor-expert-bundle-macos-aarch64-${TOR_VERSION}.tar.gz" ;;
-      *)       echo "ERROR: Unsupported arch '$ARCH' for macOS"; exit 1 ;;
+      *)
+        echo "ERROR: Unsupported arch '$ARCH' for macOS"
+        exit 1
+        ;;
     esac
     ;;
   *)
@@ -134,9 +149,9 @@ TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
 echo "[1/4] Downloading $ARCHIVE..."
-if command -v wget &>/dev/null; then
+if command -v wget &> /dev/null; then
   wget -q --show-progress -O "$TEMP_DIR/$ARCHIVE" "$DOWNLOAD_URL"
-elif command -v curl &>/dev/null; then
+elif command -v curl &> /dev/null; then
   curl -L --progress-bar -o "$TEMP_DIR/$ARCHIVE" "$DOWNLOAD_URL"
 else
   echo "ERROR: Neither wget nor curl found. Install one of them."
@@ -187,9 +202,9 @@ if [ -d "$TEMP_DIR/extracted/data" ]; then
 fi
 
 # Make binaries executable
-chmod +x "$OUTPUT_DIR/tor" 2>/dev/null || true
-chmod +x "$OUTPUT_DIR/tor.exe" 2>/dev/null || true
-chmod +x "$OUTPUT_DIR/pluggable_transports/"* 2>/dev/null || true
+chmod +x "$OUTPUT_DIR/tor" 2> /dev/null || true
+chmod +x "$OUTPUT_DIR/tor.exe" 2> /dev/null || true
+chmod +x "$OUTPUT_DIR/pluggable_transports/"* 2> /dev/null || true
 
 echo ""
 echo "=== Tor $TOR_VERSION binaries installed ==="

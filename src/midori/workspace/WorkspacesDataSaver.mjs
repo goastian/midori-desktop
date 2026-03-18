@@ -1,6 +1,6 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 
-import { WorkspacesExternalFileService } from "./WorkspacesExternalFileService.mjs"
+import { WorkspacesExternalFileService } from './WorkspacesExternalFileService.mjs';
 
 /**
  * @description Overview This file contains the implementation of the WorkspacesDataSaver module.
@@ -12,7 +12,7 @@ import { WorkspacesExternalFileService } from "./WorkspacesExternalFileService.m
  *
  * @type {Array<string>}
  */
-export const EXPORTED_SYMBOLS = ["WorkspacesDataSaver"];
+export const EXPORTED_SYMBOLS = ['WorkspacesDataSaver'];
 
 /**
  * The WorkspacesDataSaver module.
@@ -68,10 +68,7 @@ export const WorkspacesDataSaver = {
    * @param {number} windowId - The ID of the window.
    * @returns {Promise<void>} A promise that resolves when the data is saved.
    */
-  async saveWorkspacesDataWithoutOverwritingPreferences(
-    workspacesData,
-    windowId,
-  ) {
+  async saveWorkspacesDataWithoutOverwritingPreferences(workspacesData, windowId) {
     let json = await IOUtils.readJSON(this._workspacesStoreFile);
     let preferences = json.windows[windowId].preferences;
     json.windows[windowId] = workspacesData;

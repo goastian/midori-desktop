@@ -9,22 +9,22 @@
 
 ## 📋 Overview
 
-| Version | Focus | Difficulty | Status |
-|---------|-------|------------|--------|
-| [v11.6.1](#v1161--clean-fork--latest-firefox-via-amelia) | Clean fork — Latest Firefox via Amelia | 🟢 Low | Planned |
-| [v11.6.2](#v1162--branding--welcome-screen) | Branding & Welcome Screen | 🟢 Low | Planned |
-| [v11.6.3](#v1163--astian-go-as-default-search-engine) | AstianGO as default search engine | 🟢 Low | Planned |
-| [v11.6.4](#v1164--disable-mozilla-ai-telemetry--pocket) | Disable Mozilla AI, Telemetry & Pocket | 🟡 Low–Medium | Planned |
-| [v11.6.5](#v1165--midorivpn-basic-integration) | MidoriVPN basic integration | 🟡 Medium | Planned |
-| [v11.7.0](#v1170--custom-new-tab) | Custom New Tab | 🟡 Medium | Planned |
-| [v11.7.1](#v1171--native-ad--tracker-blocker) | Native Ad & Tracker Blocker | 🟡 Medium | Planned |
-| [v11.7.2](#v1172--themes-for-midori) | Themes for Midori | 🟡 Medium | Planned |
-| [v11.8.0](#v1180--vertical-sidebar) | Vertical Sidebar | 🟠 Medium–High | Planned |
-| [v11.8.1](#v1181--performance-profiles) | Performance Profiles | 🟠 Medium–High | Planned |
-| [v11.9.0](#v1190--workspaces) | Workspaces | 🔴 High | Planned |
-| [v11.9.1](#v1191--ui-redesign--advanced-ux) | UI Redesign & Advanced UX | 🔴 High | Planned |
-| [v11.9.2](#v1192--native-extension-support) | Native Extension Support | 🔴 High | Planned |
-| [v12.0](#v120--final-optimizations-qa--stable-release) | Final Optimizations, QA & Stable Release | 🔴 High — Major Milestone | Planned |
+| Version                                                  | Focus                                    | Difficulty                | Status  |
+| -------------------------------------------------------- | ---------------------------------------- | ------------------------- | ------- |
+| [v11.6.1](#v1161--clean-fork--latest-firefox-via-amelia) | Clean fork — Latest Firefox via Amelia   | 🟢 Low                    | Planned |
+| [v11.6.2](#v1162--branding--welcome-screen)              | Branding & Welcome Screen                | 🟢 Low                    | Planned |
+| [v11.6.3](#v1163--astian-go-as-default-search-engine)    | AstianGO as default search engine        | 🟢 Low                    | Planned |
+| [v11.6.4](#v1164--disable-mozilla-ai-telemetry--pocket)  | Disable Mozilla AI, Telemetry & Pocket   | 🟡 Low–Medium             | Planned |
+| [v11.6.5](#v1165--midorivpn-basic-integration)           | MidoriVPN basic integration              | 🟡 Medium                 | Planned |
+| [v11.7.0](#v1170--custom-new-tab)                        | Custom New Tab                           | 🟡 Medium                 | Planned |
+| [v11.7.1](#v1171--native-ad--tracker-blocker)            | Native Ad & Tracker Blocker              | 🟡 Medium                 | Planned |
+| [v11.7.2](#v1172--themes-for-midori)                     | Themes for Midori                        | 🟡 Medium                 | Planned |
+| [v11.8.0](#v1180--vertical-sidebar)                      | Vertical Sidebar                         | 🟠 Medium–High            | Planned |
+| [v11.8.1](#v1181--performance-profiles)                  | Performance Profiles                     | 🟠 Medium–High            | Planned |
+| [v11.9.0](#v1190--workspaces)                            | Workspaces                               | 🔴 High                   | Planned |
+| [v11.9.1](#v1191--ui-redesign--advanced-ux)              | UI Redesign & Advanced UX                | 🔴 High                   | Planned |
+| [v11.9.2](#v1192--native-extension-support)              | Native Extension Support                 | 🔴 High                   | Planned |
+| [v12.0](#v120--final-optimizations-qa--stable-release)   | Final Optimizations, QA & Stable Release | 🔴 High — Major Milestone | Planned |
 
 ---
 
@@ -332,22 +332,22 @@
 
 ## ⏱ Timeline Estimate
 
-| Version | Estimated Duration | Quarter |
-|---------|-------------------|---------|
-| v11.6.1 | 2–3 weeks | Q1 2025 |
-| v11.6.2 | 3–4 weeks | Q1 2025 |
-| v11.6.3 | 2 weeks | Q1 2025 |
-| v11.6.4 | 3 weeks | Q2 2025 |
-| v11.6.5 | 3–4 weeks | Q2 2025 |
-| v11.7.0 | 3–4 weeks | Q2 2025 |
-| v11.7.1 | 4–5 weeks | Q3 2025 |
-| v11.7.2 | 3 weeks | Q3 2025 |
-| v11.8.0 | 5–6 weeks | Q3–Q4 2025 |
-| v11.8.1 | 4 weeks | Q4 2025 |
-| v11.9.0 | 5–6 weeks | Q4 2025 |
-| v11.9.1 | 7–8 weeks | Q1 2026 |
-| v11.9.2 | 8–10 weeks | Q1–Q2 2026 |
-| v12.0 | 6–8 weeks | Q2–Q3 2026 |
+| Version | Estimated Duration | Quarter    |
+| ------- | ------------------ | ---------- |
+| v11.6.1 | 2–3 weeks          | Q1 2025    |
+| v11.6.2 | 3–4 weeks          | Q1 2025    |
+| v11.6.3 | 2 weeks            | Q1 2025    |
+| v11.6.4 | 3 weeks            | Q2 2025    |
+| v11.6.5 | 3–4 weeks          | Q2 2025    |
+| v11.7.0 | 3–4 weeks          | Q2 2025    |
+| v11.7.1 | 4–5 weeks          | Q3 2025    |
+| v11.7.2 | 3 weeks            | Q3 2025    |
+| v11.8.0 | 5–6 weeks          | Q3–Q4 2025 |
+| v11.8.1 | 4 weeks            | Q4 2025    |
+| v11.9.0 | 5–6 weeks          | Q4 2025    |
+| v11.9.1 | 7–8 weeks          | Q1 2026    |
+| v11.9.2 | 8–10 weeks         | Q1–Q2 2026 |
+| v12.0   | 6–8 weeks          | Q2–Q3 2026 |
 
 ---
 
@@ -364,4 +364,4 @@ We welcome contributions from the community! Please check the individual version
 
 ---
 
-> *Midori Browser is developed by [Astian Inc.](https://astian.org) — Building a more private and open web.*
+> _Midori Browser is developed by [Astian Inc.](https://astian.org) — Building a more private and open web._

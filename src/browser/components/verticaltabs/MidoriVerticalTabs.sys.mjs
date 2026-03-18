@@ -20,8 +20,8 @@
  * @patch Midori Browser
  */
 
-const PREF_ENABLED = "midori.verticaltabs.enabled";
-const STYLE_ID = "midori-verticaltabs-style";
+const PREF_ENABLED = 'midori.verticaltabs.enabled';
+const STYLE_ID = 'midori-verticaltabs-style';
 
 export const MidoriVerticalTabs = {
   _initialized: false,
@@ -31,18 +31,16 @@ export const MidoriVerticalTabs = {
     this._initialized = true;
 
     Services.prefs.addObserver(PREF_ENABLED, this);
-    Services.obs.addObserver(this, "browser-delayed-startup-finished");
+    Services.obs.addObserver(this, 'browser-delayed-startup-finished');
 
     this._syncFirefoxPrefs();
-    for (const win of Services.wm.getEnumerator("navigator:browser")) {
-      if (win.document.readyState === "complete") {
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
+      if (win.document.readyState === 'complete') {
         this._applyToWindow(win);
       }
     }
 
-    console.log(
-      `MidoriVerticalTabs: Initialized (enabled=${this.isEnabled()})`
-    );
+    console.log(`MidoriVerticalTabs: Initialized (enabled=${this.isEnabled()})`);
   },
 
   isEnabled() {
@@ -58,10 +56,10 @@ export const MidoriVerticalTabs = {
   // =========================================================================
 
   observe(subject, topic, data) {
-    if (topic === "nsPref:changed" && data === PREF_ENABLED) {
+    if (topic === 'nsPref:changed' && data === PREF_ENABLED) {
       this._syncFirefoxPrefs();
       this._refreshAllWindows();
-    } else if (topic === "browser-delayed-startup-finished") {
+    } else if (topic === 'browser-delayed-startup-finished') {
       this._applyToWindow(subject);
     }
   },
@@ -72,11 +70,11 @@ export const MidoriVerticalTabs = {
 
   _syncFirefoxPrefs() {
     const enabled = this.isEnabled();
-    Services.prefs.setBoolPref("sidebar.verticalTabs", enabled);
-    Services.prefs.setBoolPref("sidebar.revamp", enabled);
+    Services.prefs.setBoolPref('sidebar.verticalTabs', enabled);
+    Services.prefs.setBoolPref('sidebar.revamp', enabled);
     if (enabled) {
-      Services.prefs.setCharPref("sidebar.visibility", "always-show");
-      Services.prefs.setBoolPref("sidebar.position_start", true);
+      Services.prefs.setCharPref('sidebar.visibility', 'always-show');
+      Services.prefs.setBoolPref('sidebar.position_start', true);
     }
   },
 
@@ -90,11 +88,9 @@ export const MidoriVerticalTabs = {
     const existing = doc.getElementById(STYLE_ID);
     if (existing) existing.remove();
 
-    const style = doc.createElement("style");
+    const style = doc.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = this.isEnabled()
-      ? this._buildVerticalCSS()
-      : this._buildBaseCSS();
+    style.textContent = this.isEnabled() ? this._buildVerticalCSS() : this._buildBaseCSS();
     doc.documentElement.appendChild(style);
 
     // --- Pinned tabs icon feature (Natsumi-inspired) ---
@@ -115,25 +111,25 @@ export const MidoriVerticalTabs = {
     doc._midoriPinnedIconInit = true;
 
     const copyTabIcon = (tab) => {
-      const image = tab.getAttribute("image");
+      const image = tab.getAttribute('image');
       tab.style.setProperty(
-        "--midori-tab-icon",
+        '--midori-tab-icon',
         image ? `url("${image}")` : `url("chrome://global/skin/icons/defaultFavicon.svg")`
       );
     };
 
     const observeTab = (tab) => {
       const obs = new win.MutationObserver(() => copyTabIcon(tab));
-      obs.observe(tab, { attributes: true, attributeFilter: ["image"] });
+      obs.observe(tab, { attributes: true, attributeFilter: ['image'] });
     };
 
     // Process existing pinned tabs
     for (const container of [
-      doc.getElementById("pinned-tabs-container"),
-      doc.getElementById("vertical-pinned-tabs-container"),
+      doc.getElementById('pinned-tabs-container'),
+      doc.getElementById('vertical-pinned-tabs-container'),
     ]) {
       if (!container) continue;
-      for (const tab of container.querySelectorAll("tab")) {
+      for (const tab of container.querySelectorAll('tab')) {
         copyTabIcon(tab);
         observeTab(tab);
       }
@@ -141,7 +137,7 @@ export const MidoriVerticalTabs = {
       new win.MutationObserver((mutations) => {
         for (const m of mutations) {
           for (const node of m.addedNodes) {
-            if (node.nodeName === "tab") {
+            if (node.nodeName === 'tab') {
               copyTabIcon(node);
               observeTab(node);
             }
@@ -160,23 +156,23 @@ export const MidoriVerticalTabs = {
     if (doc._midoriUrlbarAutoSelectInit) return;
     doc._midoriUrlbarAutoSelectInit = true;
 
-    const urlbar = doc.getElementById("urlbar");
+    const urlbar = doc.getElementById('urlbar');
     if (!urlbar) return;
 
     let wasOpen = false;
     new win.MutationObserver(() => {
-      const isOpen = urlbar.hasAttribute("open");
+      const isOpen = urlbar.hasAttribute('open');
       if (isOpen && !wasOpen) {
-        const input = doc.getElementById("urlbar-input");
+        const input = doc.getElementById('urlbar-input');
         if (input) input.select();
       }
       wasOpen = isOpen;
-    }).observe(urlbar, { attributes: true, attributeFilter: ["open"] });
+    }).observe(urlbar, { attributes: true, attributeFilter: ['open'] });
   },
 
   _refreshAllWindows() {
-    for (const win of Services.wm.getEnumerator("navigator:browser")) {
-      if (win.document.readyState === "complete") {
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
+      if (win.document.readyState === 'complete') {
         this._applyToWindow(win);
       }
     }
@@ -305,7 +301,9 @@ toolbar .toolbarbutton-1 {
   // =========================================================================
 
   _buildVerticalCSS() {
-    return this._buildBaseCSS() + `
+    return (
+      this._buildBaseCSS() +
+      `
 
 /* =====================================================================
    MIDORI VERTICAL TABS — Flat Design layout
@@ -584,6 +582,7 @@ sidebar-main:not([expanded]) tab-group {
   margin-block: 0 !important;
   transition: 0.3s ease !important;
 }
-`;
+`
+    );
   },
 };

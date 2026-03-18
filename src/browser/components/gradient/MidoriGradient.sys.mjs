@@ -21,22 +21,22 @@
  * @patch Midori Browser
  */
 
-const PREF_ENABLED = "midori.gradient.enabled";
-const PREF_TYPE = "midori.gradient.type";
-const PREF_ANGLE = "midori.gradient.angle";
-const PREF_STOPS = "midori.gradient.stops";
-const PREF_TEXTURE = "midori.gradient.texture";
-const PREF_TEXTURE_OPACITY = "midori.gradient.texture.opacity";
+const PREF_ENABLED = 'midori.gradient.enabled';
+const PREF_TYPE = 'midori.gradient.type';
+const PREF_ANGLE = 'midori.gradient.angle';
+const PREF_STOPS = 'midori.gradient.stops';
+const PREF_TEXTURE = 'midori.gradient.texture';
+const PREF_TEXTURE_OPACITY = 'midori.gradient.texture.opacity';
 
-const STYLE_SHEET_ID = "midori-gradient-style";
+const STYLE_SHEET_ID = 'midori-gradient-style';
 
 const DEFAULT_STOPS = [
-  { color: "#2d8659", position: 0 },
-  { color: "#1a5c3a", position: 100 },
+  { color: '#2d8659', position: 0 },
+  { color: '#1a5c3a', position: 100 },
 ];
 
 const TEXTURE_PATTERNS = {
-  none: "",
+  none: '',
   noise: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E")`,
   dots: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Ccircle cx='2' cy='2' r='1' fill='white' opacity='0.15'/%3E%3C/svg%3E")`,
   grid: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Cpath d='M 20 0 L 0 0 0 20' fill='none' stroke='white' stroke-width='0.5' opacity='0.1'/%3E%3C/svg%3E")`,
@@ -44,92 +44,92 @@ const TEXTURE_PATTERNS = {
 
 const PRESET_GRADIENTS = [
   {
-    name: "Jade Forest",
-    type: "linear",
+    name: 'Jade Forest',
+    type: 'linear',
     angle: 135,
     stops: [
-      { color: "#2d8659", position: 0 },
-      { color: "#1a5c3a", position: 100 },
+      { color: '#2d8659', position: 0 },
+      { color: '#1a5c3a', position: 100 },
     ],
-    texture: "none",
+    texture: 'none',
   },
   {
-    name: "Ocean Depths",
-    type: "linear",
+    name: 'Ocean Depths',
+    type: 'linear',
     angle: 180,
     stops: [
-      { color: "#0a2540", position: 0 },
-      { color: "#1565c0", position: 50 },
-      { color: "#0d47a1", position: 100 },
+      { color: '#0a2540', position: 0 },
+      { color: '#1565c0', position: 50 },
+      { color: '#0d47a1', position: 100 },
     ],
-    texture: "none",
+    texture: 'none',
   },
   {
-    name: "Sunset Blaze",
-    type: "linear",
+    name: 'Sunset Blaze',
+    type: 'linear',
     angle: 135,
     stops: [
-      { color: "#ff6f00", position: 0 },
-      { color: "#e65100", position: 50 },
-      { color: "#bf360c", position: 100 },
+      { color: '#ff6f00', position: 0 },
+      { color: '#e65100', position: 50 },
+      { color: '#bf360c', position: 100 },
     ],
-    texture: "none",
+    texture: 'none',
   },
   {
-    name: "Aurora",
-    type: "linear",
+    name: 'Aurora',
+    type: 'linear',
     angle: 120,
     stops: [
-      { color: "#1b5e20", position: 0 },
-      { color: "#00897b", position: 40 },
-      { color: "#0277bd", position: 70 },
-      { color: "#4a148c", position: 100 },
+      { color: '#1b5e20', position: 0 },
+      { color: '#00897b', position: 40 },
+      { color: '#0277bd', position: 70 },
+      { color: '#4a148c', position: 100 },
     ],
-    texture: "noise",
+    texture: 'noise',
   },
   {
-    name: "Midnight",
-    type: "linear",
+    name: 'Midnight',
+    type: 'linear',
     angle: 180,
     stops: [
-      { color: "#0d0d0d", position: 0 },
-      { color: "#1a1a2e", position: 50 },
-      { color: "#16213e", position: 100 },
+      { color: '#0d0d0d', position: 0 },
+      { color: '#1a1a2e', position: 50 },
+      { color: '#16213e', position: 100 },
     ],
-    texture: "none",
+    texture: 'none',
   },
   {
-    name: "Cherry Blossom",
-    type: "linear",
+    name: 'Cherry Blossom',
+    type: 'linear',
     angle: 135,
     stops: [
-      { color: "#880e4f", position: 0 },
-      { color: "#c2185b", position: 50 },
-      { color: "#e91e63", position: 100 },
+      { color: '#880e4f', position: 0 },
+      { color: '#c2185b', position: 50 },
+      { color: '#e91e63', position: 100 },
     ],
-    texture: "dots",
+    texture: 'dots',
   },
   {
-    name: "Nebula",
-    type: "radial",
+    name: 'Nebula',
+    type: 'radial',
     angle: 0,
     stops: [
-      { color: "#4a148c", position: 0 },
-      { color: "#1a237e", position: 40 },
-      { color: "#0d0d0d", position: 100 },
+      { color: '#4a148c', position: 0 },
+      { color: '#1a237e', position: 40 },
+      { color: '#0d0d0d', position: 100 },
     ],
-    texture: "noise",
+    texture: 'noise',
   },
   {
-    name: "Copper",
-    type: "linear",
+    name: 'Copper',
+    type: 'linear',
     angle: 135,
     stops: [
-      { color: "#4e342e", position: 0 },
-      { color: "#795548", position: 50 },
-      { color: "#a1887f", position: 100 },
+      { color: '#4e342e', position: 0 },
+      { color: '#795548', position: 50 },
+      { color: '#a1887f', position: 100 },
     ],
-    texture: "grid",
+    texture: 'grid',
   },
 ];
 
@@ -156,18 +156,16 @@ export const MidoriGradient = {
     Services.prefs.addObserver(PREF_TEXTURE, this);
     Services.prefs.addObserver(PREF_TEXTURE_OPACITY, this);
 
-    Services.obs.addObserver(this, "browser-delayed-startup-finished");
-    Services.obs.addObserver(this, "domwindowclosed");
+    Services.obs.addObserver(this, 'browser-delayed-startup-finished');
+    Services.obs.addObserver(this, 'domwindowclosed');
 
-    for (const win of Services.wm.getEnumerator("navigator:browser")) {
-      if (win.document.readyState === "complete") {
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
+      if (win.document.readyState === 'complete') {
         this._applyToWindow(win);
       }
     }
 
-    console.log(
-      `MidoriGradient: Initialized (enabled=${this.isEnabled()})`
-    );
+    console.log(`MidoriGradient: Initialized (enabled=${this.isEnabled()})`);
   },
 
   isEnabled() {
@@ -177,19 +175,17 @@ export const MidoriGradient = {
   getConfig() {
     let stops;
     try {
-      stops = JSON.parse(
-        Services.prefs.getStringPref(PREF_STOPS, JSON.stringify(DEFAULT_STOPS))
-      );
+      stops = JSON.parse(Services.prefs.getStringPref(PREF_STOPS, JSON.stringify(DEFAULT_STOPS)));
     } catch (e) {
       stops = DEFAULT_STOPS;
     }
 
     return {
       enabled: this.isEnabled(),
-      type: Services.prefs.getStringPref(PREF_TYPE, "linear"),
+      type: Services.prefs.getStringPref(PREF_TYPE, 'linear'),
       angle: Services.prefs.getIntPref(PREF_ANGLE, 135),
       stops,
-      texture: Services.prefs.getStringPref(PREF_TEXTURE, "none"),
+      texture: Services.prefs.getStringPref(PREF_TEXTURE, 'none'),
       textureOpacity: Services.prefs.getIntPref(PREF_TEXTURE_OPACITY, 50),
     };
   },
@@ -230,22 +226,20 @@ export const MidoriGradient = {
 
   buildGradientCSS(config) {
     if (!config || !config.stops || config.stops.length < 2) {
-      return "";
+      return '';
     }
 
-    const stopsStr = config.stops
-      .map((s) => `${s.color} ${s.position}%`)
-      .join(", ");
+    const stopsStr = config.stops.map((s) => `${s.color} ${s.position}%`).join(', ');
 
     let gradient;
     switch (config.type) {
-      case "radial":
+      case 'radial':
         gradient = `radial-gradient(ellipse at center, ${stopsStr})`;
         break;
-      case "conic":
+      case 'conic':
         gradient = `conic-gradient(from ${config.angle}deg, ${stopsStr})`;
         break;
-      case "linear":
+      case 'linear':
       default:
         gradient = `linear-gradient(${config.angle}deg, ${stopsStr})`;
         break;
@@ -256,17 +250,17 @@ export const MidoriGradient = {
 
   _buildStyleSheet(config) {
     if (!config.enabled) {
-      return "";
+      return '';
     }
 
     const gradient = this.buildGradientCSS(config);
-    if (!gradient) return "";
+    if (!gradient) return '';
 
-    const texturePattern = TEXTURE_PATTERNS[config.texture] || "";
+    const texturePattern = TEXTURE_PATTERNS[config.texture] || '';
     const textureOpacity = (config.textureOpacity || 50) / 100;
 
-    let textureLayer = "";
-    if (texturePattern && config.texture !== "none") {
+    let textureLayer = '';
+    if (texturePattern && config.texture !== 'none') {
       textureLayer = `
 /* Texture overlay */
 #navigator-toolbox::before {
@@ -377,32 +371,32 @@ ${textureLayer}
     const css = this._buildStyleSheet(config);
     if (!css) return;
 
-    const style = doc.createElement("style");
+    const style = doc.createElement('style');
     style.id = STYLE_SHEET_ID;
-    style.setAttribute("type", "text/css");
+    style.setAttribute('type', 'text/css');
     style.textContent = css;
     doc.documentElement.appendChild(style);
   },
 
   _refreshAllWindows() {
-    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
       this._applyToWindow(win);
     }
   },
 
   observe(subject, topic, data) {
     switch (topic) {
-      case "nsPref:changed":
-        if (data?.startsWith("midori.gradient.")) {
+      case 'nsPref:changed':
+        if (data?.startsWith('midori.gradient.')) {
           this._refreshAllWindows();
         }
         break;
 
-      case "browser-delayed-startup-finished":
+      case 'browser-delayed-startup-finished':
         this._applyToWindow(subject);
         break;
 
-      case "domwindowclosed":
+      case 'domwindowclosed':
         // Cleanup not strictly needed since the window goes away
         break;
     }
@@ -417,12 +411,12 @@ ${textureLayer}
     Services.prefs.removeObserver(PREF_TEXTURE_OPACITY, this);
 
     try {
-      Services.obs.removeObserver(this, "browser-delayed-startup-finished");
-      Services.obs.removeObserver(this, "domwindowclosed");
+      Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
+      Services.obs.removeObserver(this, 'domwindowclosed');
     } catch (e) {}
 
     // Remove injected style sheets
-    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
       const existing = win.document?.getElementById(STYLE_SHEET_ID);
       if (existing) existing.remove();
     }

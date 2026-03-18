@@ -29,33 +29,31 @@
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
-  BrowserWindowTracker:
-    "resource:///modules/BrowserWindowTracker.sys.mjs",
-  PrivateBrowsingUtils:
-    "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  BrowserWindowTracker: 'resource:///modules/BrowserWindowTracker.sys.mjs',
+  PrivateBrowsingUtils: 'resource://gre/modules/PrivateBrowsingUtils.sys.mjs',
 });
 
-const PREF_ENABLED = "midori.tor.enabled";
-const PREF_SOCKS_PORT = "midori.tor.socks_port";
-const PREF_BRIDGES_ENABLED = "midori.tor.bridges.enabled";
-const PREF_BRIDGES_LIST = "midori.tor.bridges.list";
+const PREF_ENABLED = 'midori.tor.enabled';
+const PREF_SOCKS_PORT = 'midori.tor.socks_port';
+const PREF_BRIDGES_ENABLED = 'midori.tor.bridges.enabled';
+const PREF_BRIDGES_LIST = 'midori.tor.bridges.list';
 
-const TOR_SOCKS_HOST = "127.0.0.1";
+const TOR_SOCKS_HOST = '127.0.0.1';
 const TOR_DEFAULT_PORT = 9150;
 const TOR_CONTROL_PORT = 9151;
 const BOOTSTRAP_TIMEOUT_MS = 120000; // 2 minutes max bootstrap time
 const BOOTSTRAP_POLL_MS = 500;
 
 // Tor process states
-const STATE_DISCONNECTED = "disconnected";
-const STATE_STARTING = "starting";
-const STATE_BOOTSTRAPPING = "bootstrapping";
-const STATE_CONNECTED = "connected";
-const STATE_ERROR = "error";
-const STATE_STOPPING = "stopping";
+const STATE_DISCONNECTED = 'disconnected';
+const STATE_STARTING = 'starting';
+const STATE_BOOTSTRAPPING = 'bootstrapping';
+const STATE_CONNECTED = 'connected';
+const STATE_ERROR = 'error';
+const STATE_STOPPING = 'stopping';
 
-const STYLE_SHEET_ID = "midori-tor-indicator-style";
-const LOG_PREFIX = "MidoriTor";
+const STYLE_SHEET_ID = 'midori-tor-indicator-style';
+const LOG_PREFIX = 'MidoriTor';
 
 function log(...args) {
   console.log(`[${LOG_PREFIX}]`, ...args);
@@ -85,7 +83,7 @@ export const MidoriTor = {
       return;
     }
     this._initialized = true;
-    log("Initializing MidoriTor module...");
+    log('Initializing MidoriTor module...');
 
     // Generate a random control password for this session
     this._controlPassword = this._generatePassword(32);
@@ -94,18 +92,19 @@ export const MidoriTor = {
     const torBin = this._getTorBinaryPath();
     this._torBinaryAvailable = !!(torBin && torBin.exists());
     if (this._torBinaryAvailable) {
-      log("Tor binary found at:", torBin.path);
+      log('Tor binary found at:', torBin.path);
     } else {
       warn(
-        "Tor binary NOT found. Tor windows will open as private windows without proxy.",
-        "Expected at:", torBin ? torBin.path : "(unknown)"
+        'Tor binary NOT found. Tor windows will open as private windows without proxy.',
+        'Expected at:',
+        torBin ? torBin.path : '(unknown)'
       );
     }
 
     // Watch for window open/close to inject Tor indicator CSS
-    Services.obs.addObserver(this, "browser-delayed-startup-finished");
-    Services.obs.addObserver(this, "domwindowclosed");
-    log("MidoriTor initialized successfully. Tor binary available:", this._torBinaryAvailable);
+    Services.obs.addObserver(this, 'browser-delayed-startup-finished');
+    Services.obs.addObserver(this, 'domwindowclosed');
+    log('MidoriTor initialized successfully. Tor binary available:', this._torBinaryAvailable);
   },
 
   /**
@@ -149,14 +148,14 @@ export const MidoriTor = {
    * @returns {Promise<boolean>} true if Tor started/is running successfully
    */
   async start() {
-    log("start() called, current state:", this._state);
+    log('start() called, current state:', this._state);
 
     if (
       this._state === STATE_CONNECTED ||
       this._state === STATE_BOOTSTRAPPING ||
       this._state === STATE_STARTING
     ) {
-      log("Tor already in state:", this._state);
+      log('Tor already in state:', this._state);
       return this._state === STATE_CONNECTED;
     }
 
@@ -166,43 +165,34 @@ export const MidoriTor = {
     try {
       const torBinary = this._getTorBinaryPath();
       if (!torBinary || !torBinary.exists()) {
-        error("Tor binary not found at:", torBinary ? torBinary.path : "(null)");
+        error('Tor binary not found at:', torBinary ? torBinary.path : '(null)');
         this._setState(STATE_ERROR);
         return false;
       }
-      log("Starting Tor binary:", torBinary.path);
+      log('Starting Tor binary:', torBinary.path);
 
       // Set LD_LIBRARY_PATH so Tor finds its bundled shared libraries
       // (libssl, libcrypto, libevent) instead of system or Firefox ones
       const torDir = torBinary.parent.path;
-      const env = Cc["@mozilla.org/process/environment;1"].getService(
-        Ci.nsIEnvironment
-      );
-      const origLdPath = env.get("LD_LIBRARY_PATH") || "";
-      const newLdPath = origLdPath
-        ? `${torDir}:${origLdPath}`
-        : torDir;
-      env.set("LD_LIBRARY_PATH", newLdPath);
-      log("Set LD_LIBRARY_PATH to:", newLdPath);
+      const env = Cc['@mozilla.org/process/environment;1'].getService(Ci.nsIEnvironment);
+      const origLdPath = env.get('LD_LIBRARY_PATH') || '';
+      const newLdPath = origLdPath ? `${torDir}:${origLdPath}` : torDir;
+      env.set('LD_LIBRARY_PATH', newLdPath);
+      log('Set LD_LIBRARY_PATH to:', newLdPath);
 
       // Write torrc configuration
       const torrcFile = this._writeTorrc();
 
       // Launch tor process
-      const process = Cc["@mozilla.org/process/util;1"].createInstance(
-        Ci.nsIProcess
-      );
+      const process = Cc['@mozilla.org/process/util;1'].createInstance(Ci.nsIProcess);
       process.init(torBinary);
 
-      const args = ["-f", torrcFile.path];
+      const args = ['-f', torrcFile.path];
       process.runAsync(args, args.length, {
         observe: (_subject, topic) => {
-          if (topic === "process-finished" || topic === "process-failed") {
+          if (topic === 'process-finished' || topic === 'process-failed') {
             if (this._state !== STATE_STOPPING) {
-              console.warn(
-                "MidoriTor: Tor process exited unexpectedly, topic:",
-                topic
-              );
+              console.warn('MidoriTor: Tor process exited unexpectedly, topic:', topic);
               this._setState(STATE_DISCONNECTED);
               this._process = null;
             }
@@ -221,12 +211,12 @@ export const MidoriTor = {
         return true;
       }
 
-      console.error("MidoriTor: Bootstrap timed out");
+      console.error('MidoriTor: Bootstrap timed out');
       this.stop();
       this._setState(STATE_ERROR);
       return false;
     } catch (e) {
-      console.error("MidoriTor: Failed to start Tor process", e);
+      console.error('MidoriTor: Failed to start Tor process', e);
       this._setState(STATE_ERROR);
       return false;
     }
@@ -263,9 +253,9 @@ export const MidoriTor = {
     }
 
     try {
-      return await this._sendControlCommand("SIGNAL NEWNYM");
+      return await this._sendControlCommand('SIGNAL NEWNYM');
     } catch (e) {
-      console.error("MidoriTor: Failed to request new circuit", e);
+      console.error('MidoriTor: Failed to request new circuit', e);
       return false;
     }
   },
@@ -283,21 +273,21 @@ export const MidoriTor = {
    * @returns {Promise<Window>}
    */
   async openTorWindow(openerWindow) {
-    log("openTorWindow called");
+    log('openTorWindow called');
 
     // Try to start Tor if binary is available
     if (this._torBinaryAvailable && !this.isConnected) {
-      log("Tor binary available, attempting to start...");
+      log('Tor binary available, attempting to start...');
       const started = await this.start();
       if (!started) {
-        warn("Tor failed to start, opening window without proxy");
+        warn('Tor failed to start, opening window without proxy');
       }
     } else if (!this._torBinaryAvailable) {
-      log("Tor binary not available, opening private window with Tor indicators only");
+      log('Tor binary not available, opening private window with Tor indicators only');
     }
 
     // Open a private window using BrowserWindowTracker
-    log("Opening new private window...");
+    log('Opening new private window...');
     let win;
     try {
       win = lazy.BrowserWindowTracker.openWindow({
@@ -305,25 +295,25 @@ export const MidoriTor = {
         openerWindow,
       });
     } catch (e) {
-      error("Failed to open private window:", e);
+      error('Failed to open private window:', e);
       return null;
     }
 
     if (!win) {
-      error("BrowserWindowTracker.openWindow returned null");
+      error('BrowserWindowTracker.openWindow returned null');
       return null;
     }
 
     // Mark this window as a Tor window
     this._torWindows.add(win);
-    log("Tor window opened, total Tor windows:", this._torWindows.size);
+    log('Tor window opened, total Tor windows:', this._torWindows.size);
 
     // Wait for window to be ready, then configure it
     await new Promise((resolve) => {
       win.addEventListener(
-        "DOMContentLoaded",
+        'DOMContentLoaded',
         () => {
-          log("Tor window DOMContentLoaded, configuring...");
+          log('Tor window DOMContentLoaded, configuring...');
           this._configureTorWindow(win);
           resolve();
         },
@@ -340,18 +330,18 @@ export const MidoriTor = {
    * @param {Window} win
    */
   _configureTorWindow(win) {
-    log("Configuring Tor window...");
+    log('Configuring Tor window...');
 
     // Mark the window as a Tor window via attribute
-    win.document.documentElement.setAttribute("midori-tor-window", "true");
+    win.document.documentElement.setAttribute('midori-tor-window', 'true');
 
     // Only apply proxy settings if Tor is actually connected
     if (this.isConnected) {
       const port = Services.prefs.getIntPref(PREF_SOCKS_PORT, TOR_DEFAULT_PORT);
       this._setWindowProxyPrefs(win, port);
-      log("Proxy settings applied (SOCKS5 port:", port, ")");
+      log('Proxy settings applied (SOCKS5 port:', port, ')');
     } else {
-      log("Tor not connected — skipping proxy configuration");
+      log('Tor not connected — skipping proxy configuration');
     }
 
     // Always apply network hardening for Tor windows
@@ -359,23 +349,23 @@ export const MidoriTor = {
 
     // Inject Tor indicator CSS
     this._injectTorIndicator(win);
-    log("Tor indicator injected");
+    log('Tor indicator injected');
 
     // Handle window close to cleanup
-    win.addEventListener("unload", () => {
-      log("Tor window closing, remaining:", this._torWindows.size - 1);
+    win.addEventListener('unload', () => {
+      log('Tor window closing, remaining:', this._torWindows.size - 1);
       this._torWindows.delete(win);
       // If no more Tor windows, optionally stop Tor
       if (this._torWindows.size === 0) {
-        log("Last Tor window closed, scheduling cleanup in 30s...");
+        log('Last Tor window closed, scheduling cleanup in 30s...');
         this._restoreProxyPrefs();
         // Keep Tor running for a bit in case user opens another window
         if (this._process) {
-          const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+          const timer = Cc['@mozilla.org/timer;1'].createInstance(Ci.nsITimer);
           timer.initWithCallback(
             () => {
               if (this._torWindows.size === 0) {
-                log("No Tor windows after grace period, stopping Tor");
+                log('No Tor windows after grace period, stopping Tor');
                 this.stop();
               }
             },
@@ -400,31 +390,22 @@ export const MidoriTor = {
     // Store original proxy settings to restore later
     if (!this._originalProxyPrefs) {
       this._originalProxyPrefs = {
-        type: Services.prefs.getIntPref("network.proxy.type", 0),
-        socks: Services.prefs.getCharPref("network.proxy.socks", ""),
-        socks_port: Services.prefs.getIntPref("network.proxy.socks_port", 0),
-        socks_remote_dns: Services.prefs.getBoolPref(
-          "network.proxy.socks_remote_dns",
-          false
-        ),
-        socks_version: Services.prefs.getIntPref(
-          "network.proxy.socks_version",
-          5
-        ),
+        type: Services.prefs.getIntPref('network.proxy.type', 0),
+        socks: Services.prefs.getCharPref('network.proxy.socks', ''),
+        socks_port: Services.prefs.getIntPref('network.proxy.socks_port', 0),
+        socks_remote_dns: Services.prefs.getBoolPref('network.proxy.socks_remote_dns', false),
+        socks_version: Services.prefs.getIntPref('network.proxy.socks_version', 5),
       };
     }
 
     // Configure SOCKS5 proxy pointing to our Tor instance
-    Services.prefs.setIntPref("network.proxy.type", 1); // Manual proxy
-    Services.prefs.setCharPref("network.proxy.socks", TOR_SOCKS_HOST);
-    Services.prefs.setIntPref("network.proxy.socks_port", port);
-    Services.prefs.setBoolPref("network.proxy.socks_remote_dns", true);
-    Services.prefs.setIntPref("network.proxy.socks_version", 5);
+    Services.prefs.setIntPref('network.proxy.type', 1); // Manual proxy
+    Services.prefs.setCharPref('network.proxy.socks', TOR_SOCKS_HOST);
+    Services.prefs.setIntPref('network.proxy.socks_port', port);
+    Services.prefs.setBoolPref('network.proxy.socks_remote_dns', true);
+    Services.prefs.setIntPref('network.proxy.socks_version', 5);
     // Don't use proxy for localhost
-    Services.prefs.setCharPref(
-      "network.proxy.no_proxies_on",
-      "localhost, 127.0.0.1"
-    );
+    Services.prefs.setCharPref('network.proxy.no_proxies_on', 'localhost, 127.0.0.1');
 
     // Apply network hardening for Tor windows
     this._applyTorHardening();
@@ -438,24 +419,15 @@ export const MidoriTor = {
       return;
     }
 
-    Services.prefs.setIntPref(
-      "network.proxy.type",
-      this._originalProxyPrefs.type
-    );
-    Services.prefs.setCharPref(
-      "network.proxy.socks",
-      this._originalProxyPrefs.socks
-    );
-    Services.prefs.setIntPref(
-      "network.proxy.socks_port",
-      this._originalProxyPrefs.socks_port
-    );
+    Services.prefs.setIntPref('network.proxy.type', this._originalProxyPrefs.type);
+    Services.prefs.setCharPref('network.proxy.socks', this._originalProxyPrefs.socks);
+    Services.prefs.setIntPref('network.proxy.socks_port', this._originalProxyPrefs.socks_port);
     Services.prefs.setBoolPref(
-      "network.proxy.socks_remote_dns",
+      'network.proxy.socks_remote_dns',
       this._originalProxyPrefs.socks_remote_dns
     );
     Services.prefs.setIntPref(
-      "network.proxy.socks_version",
+      'network.proxy.socks_version',
       this._originalProxyPrefs.socks_version
     );
 
@@ -472,36 +444,24 @@ export const MidoriTor = {
     // Store originals for restoration
     if (!this._originalHardeningPrefs) {
       this._originalHardeningPrefs = {
-        webrtc: Services.prefs.getBoolPref(
-          "media.peerconnection.enabled",
-          true
-        ),
-        geolocation: Services.prefs.getBoolPref("geo.enabled", true),
-        prefetch: Services.prefs.getBoolPref("network.prefetch-next", true),
-        speculative: Services.prefs.getBoolPref(
-          "network.http.speculative-parallel-limit",
-          true
-        ),
-        predictor: Services.prefs.getBoolPref(
-          "network.predictor.enabled",
-          true
-        ),
-        dns_prefetch: Services.prefs.getBoolPref(
-          "network.dns.disablePrefetch",
-          false
-        ),
+        webrtc: Services.prefs.getBoolPref('media.peerconnection.enabled', true),
+        geolocation: Services.prefs.getBoolPref('geo.enabled', true),
+        prefetch: Services.prefs.getBoolPref('network.prefetch-next', true),
+        speculative: Services.prefs.getBoolPref('network.http.speculative-parallel-limit', true),
+        predictor: Services.prefs.getBoolPref('network.predictor.enabled', true),
+        dns_prefetch: Services.prefs.getBoolPref('network.dns.disablePrefetch', false),
       };
     }
 
     // Disable WebRTC (IP leak vector)
-    Services.prefs.setBoolPref("media.peerconnection.enabled", false);
+    Services.prefs.setBoolPref('media.peerconnection.enabled', false);
     // Disable geolocation
-    Services.prefs.setBoolPref("geo.enabled", false);
+    Services.prefs.setBoolPref('geo.enabled', false);
     // Disable DNS/link prefetch (info leak)
-    Services.prefs.setBoolPref("network.prefetch-next", false);
-    Services.prefs.setIntPref("network.http.speculative-parallel-limit", 0);
-    Services.prefs.setBoolPref("network.predictor.enabled", false);
-    Services.prefs.setBoolPref("network.dns.disablePrefetch", true);
+    Services.prefs.setBoolPref('network.prefetch-next', false);
+    Services.prefs.setIntPref('network.http.speculative-parallel-limit', 0);
+    Services.prefs.setBoolPref('network.predictor.enabled', false);
+    Services.prefs.setBoolPref('network.dns.disablePrefetch', true);
   },
 
   /**
@@ -511,24 +471,12 @@ export const MidoriTor = {
     if (!this._originalHardeningPrefs) {
       return;
     }
+    Services.prefs.setBoolPref('media.peerconnection.enabled', this._originalHardeningPrefs.webrtc);
+    Services.prefs.setBoolPref('geo.enabled', this._originalHardeningPrefs.geolocation);
+    Services.prefs.setBoolPref('network.prefetch-next', this._originalHardeningPrefs.prefetch);
+    Services.prefs.setBoolPref('network.predictor.enabled', this._originalHardeningPrefs.predictor);
     Services.prefs.setBoolPref(
-      "media.peerconnection.enabled",
-      this._originalHardeningPrefs.webrtc
-    );
-    Services.prefs.setBoolPref(
-      "geo.enabled",
-      this._originalHardeningPrefs.geolocation
-    );
-    Services.prefs.setBoolPref(
-      "network.prefetch-next",
-      this._originalHardeningPrefs.prefetch
-    );
-    Services.prefs.setBoolPref(
-      "network.predictor.enabled",
-      this._originalHardeningPrefs.predictor
-    );
-    Services.prefs.setBoolPref(
-      "network.dns.disablePrefetch",
+      'network.dns.disablePrefetch',
       this._originalHardeningPrefs.dns_prefetch
     );
     this._originalHardeningPrefs = null;
@@ -548,34 +496,29 @@ export const MidoriTor = {
       return;
     }
 
-    const style = doc.createElement("style");
+    const style = doc.createElement('style');
     style.id = STYLE_SHEET_ID;
     style.textContent = this._buildIndicatorCSS();
     doc.head.appendChild(style);
 
     // Add Tor badge to the navbar
-    const navbar = doc.getElementById("nav-bar");
+    const navbar = doc.getElementById('nav-bar');
     if (navbar) {
-      const badge = doc.createXULElement("toolbarbutton");
-      badge.id = "midori-tor-badge";
-      badge.setAttribute("label", "Tor");
-      badge.setAttribute(
-        "tooltiptext",
-        "Connected via Tor network — Click for new identity"
-      );
-      badge.classList.add("toolbarbutton-1", "chromeclass-toolbar-additional");
-      badge.addEventListener("click", () => {
+      const badge = doc.createXULElement('toolbarbutton');
+      badge.id = 'midori-tor-badge';
+      badge.setAttribute('label', 'Tor');
+      badge.setAttribute('tooltiptext', 'Connected via Tor network — Click for new identity');
+      badge.classList.add('toolbarbutton-1', 'chromeclass-toolbar-additional');
+      badge.addEventListener('click', () => {
         this.newCircuit().then((success) => {
           if (success) {
-            badge.setAttribute("tooltiptext", "New Tor circuit requested");
-            const timer = Cc["@mozilla.org/timer;1"].createInstance(
-              Ci.nsITimer
-            );
+            badge.setAttribute('tooltiptext', 'New Tor circuit requested');
+            const timer = Cc['@mozilla.org/timer;1'].createInstance(Ci.nsITimer);
             timer.initWithCallback(
               () => {
                 badge.setAttribute(
-                  "tooltiptext",
-                  "Connected via Tor network — Click for new identity"
+                  'tooltiptext',
+                  'Connected via Tor network — Click for new identity'
                 );
               },
               3000,
@@ -586,9 +529,7 @@ export const MidoriTor = {
       });
 
       // Insert before the first flexible space or at the start
-      const firstItem = navbar.querySelector(
-        "#nav-bar-customization-target"
-      );
+      const firstItem = navbar.querySelector('#nav-bar-customization-target');
       if (firstItem) {
         firstItem.prepend(badge);
       } else {
@@ -664,19 +605,19 @@ export const MidoriTor = {
   _getTorBinaryPath() {
     try {
       // Get the application directory
-      const appDir = Services.dirsvc.get("GreBinD", Ci.nsIFile);
+      const appDir = Services.dirsvc.get('GreBinD', Ci.nsIFile);
       const torDir = appDir.clone();
-      torDir.append("tor");
+      torDir.append('tor');
 
       const torBin = torDir.clone();
-      if (Services.appinfo.OS === "WINNT") {
-        torBin.append("tor.exe");
+      if (Services.appinfo.OS === 'WINNT') {
+        torBin.append('tor.exe');
       } else {
-        torBin.append("tor");
+        torBin.append('tor');
       }
       return torBin;
     } catch (e) {
-      console.error("MidoriTor: Failed to resolve tor binary path", e);
+      console.error('MidoriTor: Failed to resolve tor binary path', e);
       return null;
     }
   },
@@ -686,16 +627,16 @@ export const MidoriTor = {
    * @returns {nsIFile}
    */
   _writeTorrc() {
-    const profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile);
+    const profileDir = Services.dirsvc.get('ProfD', Ci.nsIFile);
     const torDataDir = profileDir.clone();
-    torDataDir.append("tor-data");
+    torDataDir.append('tor-data');
     if (!torDataDir.exists()) {
       torDataDir.create(Ci.nsIFile.DIRECTORY_TYPE, 0o700);
     }
 
     // Cookie auth file for control port
     const cookieAuthFile = torDataDir.clone();
-    cookieAuthFile.append("control_auth_cookie");
+    cookieAuthFile.append('control_auth_cookie');
 
     const port = Services.prefs.getIntPref(PREF_SOCKS_PORT, TOR_DEFAULT_PORT);
 
@@ -707,27 +648,21 @@ export const MidoriTor = {
       `CookieAuthentication 1`,
       `CookieAuthFile ${cookieAuthFile.path}`,
       `DataDirectory ${torDataDir.path}`,
-      `GeoIPFile ${this._getGeoIPPath("geoip")}`,
-      `GeoIPv6File ${this._getGeoIPPath("geoip6")}`,
+      `GeoIPFile ${this._getGeoIPPath('geoip')}`,
+      `GeoIPv6File ${this._getGeoIPPath('geoip6')}`,
       // Logging
       `Log notice stderr`,
     ];
-    log("Generated torrc with SocksPort", port, "ControlPort", TOR_CONTROL_PORT);
+    log('Generated torrc with SocksPort', port, 'ControlPort', TOR_CONTROL_PORT);
 
     // Add bridges if enabled
-    const bridgesEnabled = Services.prefs.getBoolPref(
-      PREF_BRIDGES_ENABLED,
-      false
-    );
+    const bridgesEnabled = Services.prefs.getBoolPref(PREF_BRIDGES_ENABLED, false);
     if (bridgesEnabled) {
-      const bridges = Services.prefs.getCharPref(PREF_BRIDGES_LIST, "");
+      const bridges = Services.prefs.getCharPref(PREF_BRIDGES_LIST, '');
       if (bridges.trim()) {
-        torrcContent.push("UseBridges 1");
-        torrcContent.push(
-          "ClientTransportPlugin obfs4 exec " +
-            this._getObfs4ProxyPath()
-        );
-        for (const bridge of bridges.split("\n")) {
+        torrcContent.push('UseBridges 1');
+        torrcContent.push('ClientTransportPlugin obfs4 exec ' + this._getObfs4ProxyPath());
+        for (const bridge of bridges.split('\n')) {
           const line = bridge.trim();
           if (line) {
             torrcContent.push(`Bridge ${line}`);
@@ -737,14 +672,14 @@ export const MidoriTor = {
     }
 
     const torrcFile = profileDir.clone();
-    torrcFile.append("midori-torrc");
+    torrcFile.append('midori-torrc');
 
-    const outputStream = Cc[
-      "@mozilla.org/network/file-output-stream;1"
-    ].createInstance(Ci.nsIFileOutputStream);
+    const outputStream = Cc['@mozilla.org/network/file-output-stream;1'].createInstance(
+      Ci.nsIFileOutputStream
+    );
     outputStream.init(torrcFile, 0x02 | 0x08 | 0x20, 0o600, 0);
 
-    const content = torrcContent.join("\n") + "\n";
+    const content = torrcContent.join('\n') + '\n';
     outputStream.write(content, content.length);
     outputStream.close();
 
@@ -758,9 +693,9 @@ export const MidoriTor = {
    */
   _getGeoIPPath(filename) {
     try {
-      const appDir = Services.dirsvc.get("GreBinD", Ci.nsIFile);
+      const appDir = Services.dirsvc.get('GreBinD', Ci.nsIFile);
       const geoipFile = appDir.clone();
-      geoipFile.append("tor");
+      geoipFile.append('tor');
       geoipFile.append(filename);
       if (geoipFile.exists()) {
         return geoipFile.path;
@@ -768,7 +703,7 @@ export const MidoriTor = {
     } catch (e) {
       // fallback
     }
-    return "";
+    return '';
   },
 
   /**
@@ -777,17 +712,17 @@ export const MidoriTor = {
    */
   _getObfs4ProxyPath() {
     try {
-      const appDir = Services.dirsvc.get("GreBinD", Ci.nsIFile);
+      const appDir = Services.dirsvc.get('GreBinD', Ci.nsIFile);
       const bin = appDir.clone();
-      bin.append("tor");
-      if (Services.appinfo.OS === "WINNT") {
-        bin.append("obfs4proxy.exe");
+      bin.append('tor');
+      if (Services.appinfo.OS === 'WINNT') {
+        bin.append('obfs4proxy.exe');
       } else {
-        bin.append("obfs4proxy");
+        bin.append('obfs4proxy');
       }
       return bin.path;
     } catch (e) {
-      return "obfs4proxy";
+      return 'obfs4proxy';
     }
   },
 
@@ -804,7 +739,7 @@ export const MidoriTor = {
 
     // Give tor a moment to start the control port
     await new Promise((r) =>
-      Cc["@mozilla.org/timer;1"]
+      Cc['@mozilla.org/timer;1']
         .createInstance(Ci.nsITimer)
         .initWithCallback(r, 2000, Ci.nsITimer.TYPE_ONE_SHOT)
     );
@@ -824,7 +759,7 @@ export const MidoriTor = {
       }
 
       await new Promise((r) =>
-        Cc["@mozilla.org/timer;1"]
+        Cc['@mozilla.org/timer;1']
           .createInstance(Ci.nsITimer)
           .initWithCallback(r, BOOTSTRAP_POLL_MS, Ci.nsITimer.TYPE_ONE_SHOT)
       );
@@ -839,9 +774,7 @@ export const MidoriTor = {
    */
   async _getBootstrapStatus() {
     try {
-      const response = await this._sendControlCommand(
-        "GETINFO status/bootstrap-phase"
-      );
+      const response = await this._sendControlCommand('GETINFO status/bootstrap-phase');
       if (response) {
         const match = response.match(/PROGRESS=(\d+)/);
         if (match) {
@@ -863,40 +796,29 @@ export const MidoriTor = {
   _sendControlCommand(command) {
     return new Promise((resolve, reject) => {
       try {
-        const sts = Cc[
-          "@mozilla.org/network/socket-transport-service;1"
-        ].getService(Ci.nsISocketTransportService);
+        const sts = Cc['@mozilla.org/network/socket-transport-service;1'].getService(
+          Ci.nsISocketTransportService
+        );
 
-        const transport = sts.createTransport(
-          [],
-          TOR_SOCKS_HOST,
-          TOR_CONTROL_PORT,
-          null,
-          null
-        );
-        transport.setTimeout(
-          Ci.nsISocketTransport.TIMEOUT_READ_WRITE,
-          5
-        );
+        const transport = sts.createTransport([], TOR_SOCKS_HOST, TOR_CONTROL_PORT, null, null);
+        transport.setTimeout(Ci.nsISocketTransport.TIMEOUT_READ_WRITE, 5);
 
         const outStream = transport.openOutputStream(0, 0, 0);
         const inStream = transport.openInputStream(0, 0, 0);
 
-        const scriptableIn = Cc[
-          "@mozilla.org/scriptableinputstream;1"
-        ].createInstance(Ci.nsIScriptableInputStream);
+        const scriptableIn = Cc['@mozilla.org/scriptableinputstream;1'].createInstance(
+          Ci.nsIScriptableInputStream
+        );
         scriptableIn.init(inStream);
 
         // Authenticate using cookie auth
         const cookie = this._readCookieAuth();
-        const authCmd = cookie
-          ? `AUTHENTICATE ${cookie}\r\n`
-          : `AUTHENTICATE\r\n`;
-        const fullCmd = authCmd + command + "\r\n";
+        const authCmd = cookie ? `AUTHENTICATE ${cookie}\r\n` : `AUTHENTICATE\r\n`;
+        const fullCmd = authCmd + command + '\r\n';
         outStream.write(fullCmd, fullCmd.length);
 
         // Read response after a brief delay
-        const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+        const timer = Cc['@mozilla.org/timer;1'].createInstance(Ci.nsITimer);
         timer.initWithCallback(
           () => {
             try {
@@ -938,11 +860,10 @@ export const MidoriTor = {
    * @returns {string}
    */
   _generatePassword(length) {
-    const chars =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const array = new Uint8Array(length);
     crypto.getRandomValues(array);
-    return Array.from(array, (b) => chars[b % chars.length]).join("");
+    return Array.from(array, (b) => chars[b % chars.length]).join('');
   },
 
   /**
@@ -951,32 +872,30 @@ export const MidoriTor = {
    */
   _readCookieAuth() {
     try {
-      const profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile);
+      const profileDir = Services.dirsvc.get('ProfD', Ci.nsIFile);
       const cookieFile = profileDir.clone();
-      cookieFile.append("tor-data");
-      cookieFile.append("control_auth_cookie");
+      cookieFile.append('tor-data');
+      cookieFile.append('control_auth_cookie');
       if (!cookieFile.exists()) {
-        warn("Cookie auth file not found:", cookieFile.path);
+        warn('Cookie auth file not found:', cookieFile.path);
         return null;
       }
       // Read binary cookie file
-      const stream = Cc[
-        "@mozilla.org/network/file-input-stream;1"
-      ].createInstance(Ci.nsIFileInputStream);
+      const stream = Cc['@mozilla.org/network/file-input-stream;1'].createInstance(
+        Ci.nsIFileInputStream
+      );
       stream.init(cookieFile, 0x01, 0, 0);
-      const binaryStream = Cc[
-        "@mozilla.org/binaryinputstream;1"
-      ].createInstance(Ci.nsIBinaryInputStream);
+      const binaryStream = Cc['@mozilla.org/binaryinputstream;1'].createInstance(
+        Ci.nsIBinaryInputStream
+      );
       binaryStream.setInputStream(stream);
       const bytes = binaryStream.readBytes(binaryStream.available());
       binaryStream.close();
       stream.close();
       // Convert to hex
-      return Array.from(bytes, (c) =>
-        ("0" + c.charCodeAt(0).toString(16)).slice(-2)
-      ).join("");
+      return Array.from(bytes, (c) => ('0' + c.charCodeAt(0).toString(16)).slice(-2)).join('');
     } catch (e) {
-      error("Failed to read cookie auth:", e);
+      error('Failed to read cookie auth:', e);
       return null;
     }
   },
@@ -991,7 +910,7 @@ export const MidoriTor = {
     if (oldState !== newState) {
       Services.obs.notifyObservers(
         null,
-        "midori-tor-state-change",
+        'midori-tor-state-change',
         JSON.stringify({
           state: newState,
           progress: this._bootstrapProgress,
@@ -1006,15 +925,12 @@ export const MidoriTor = {
   _notifyWindows() {
     for (const win of this._torWindows) {
       if (!win.closed) {
-        const badge = win.document.getElementById("midori-tor-badge");
+        const badge = win.document.getElementById('midori-tor-badge');
         if (badge) {
           if (this._state === STATE_BOOTSTRAPPING) {
-            badge.setAttribute(
-              "label",
-              `Tor ${this._bootstrapProgress}%`
-            );
+            badge.setAttribute('label', `Tor ${this._bootstrapProgress}%`);
           } else if (this._state === STATE_CONNECTED) {
-            badge.setAttribute("label", "Tor");
+            badge.setAttribute('label', 'Tor');
           }
         }
       }
@@ -1027,22 +943,20 @@ export const MidoriTor = {
    */
   _showTorError(win) {
     try {
-      const notificationBox =
-        win.gBrowser?.getNotificationBox() ||
-        win.gNotificationBox;
+      const notificationBox = win.gBrowser?.getNotificationBox() || win.gNotificationBox;
       if (notificationBox) {
         notificationBox.appendNotification(
-          "midori-tor-error",
+          'midori-tor-error',
           {
             label:
-              "Tor could not connect. Please check that the Tor binary is installed correctly.",
+              'Tor could not connect. Please check that the Tor binary is installed correctly.',
             priority: notificationBox.PRIORITY_CRITICAL_HIGH,
           },
           []
         );
       }
     } catch (e) {
-      console.error("MidoriTor: Failed to show error notification", e);
+      console.error('MidoriTor: Failed to show error notification', e);
     }
   },
 
@@ -1052,10 +966,10 @@ export const MidoriTor = {
 
   observe(subject, topic) {
     switch (topic) {
-      case "browser-delayed-startup-finished":
+      case 'browser-delayed-startup-finished':
         // Nothing to inject unless it's a Tor window
         break;
-      case "domwindowclosed":
+      case 'domwindowclosed':
         if (subject && this._torWindows.has(subject)) {
           this._torWindows.delete(subject);
           if (this._torWindows.size === 0) {
