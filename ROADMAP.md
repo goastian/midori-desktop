@@ -170,15 +170,15 @@
 
 **Tasks:**
 
-- [ ] Evaluate and select blocking engine (e.g. adblock-rust, uBlock Origin core)
-- [ ] Integrate the blocking engine natively into the browser
-- [ ] Configure default block lists (EasyList, EasyPrivacy, regional lists)
-- [ ] Implement automatic block list updates
-- [ ] Design blocker control panel (stats, per-site toggle)
-- [ ] Toolbar indicator with blocked elements counter
-- [ ] Per-domain whitelist (allow list) option
-- [ ] Strict privacy mode (fingerprinting protection, third-party cookie blocking)
-- [ ] Performance and site compatibility tests
+- [x] Evaluate and select blocking engine (e.g. adblock-rust, uBlock Origin core)
+- [x] Integrate the blocking engine natively into the browser
+- [x] Configure default block lists (EasyList, EasyPrivacy, regional lists)
+- [x] Implement automatic block list updates
+- [x] Design blocker control panel (stats, per-site toggle)
+- [x] Toolbar indicator with blocked elements counter
+- [x] Per-domain whitelist (allow list) option
+- [x] Strict privacy mode (fingerprinting protection, third-party cookie blocking)
+- [x] Performance and site compatibility tests
 
 ---
 
