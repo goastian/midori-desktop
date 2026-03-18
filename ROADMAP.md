@@ -250,16 +250,16 @@
 
 **Tasks:**
 
-- [ ] Design Workspaces architecture (storage, tab management, persistence)
-- [ ] Implement the Workspaces engine in the browser core
-- [ ] Workspace management UI (create, rename, delete, set icon/color)
+- [x] Design Workspaces architecture (storage, tab management, persistence)
+- [x] Implement the Workspaces engine in the browser core
+- [x] Workspace management UI (create, rename, delete, set icon/color)
 - [ ] Integrate Workspaces with the vertical sidebar
 - [ ] Quick workspace switcher (keyboard shortcut + button)
-- [ ] Persist Workspaces across sessions
+- [x] Persist Workspaces across sessions
 - [ ] Open workspace in new window or same window option
 - [ ] Optional sync of Workspaces with Astian account
 - [ ] Export / import workspace configuration
-- [ ] Stability tests with multiple workspaces and many tabs
+- [x] Stability tests with multiple workspaces and many tabs
 
 ---
 
