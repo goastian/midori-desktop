@@ -1,0 +1,31 @@
+diff --git a/browser/base/content/browser-init.js b/browser/base/content/browser-init.js
+index 0186e3a650..a4d788a4ce 100644
+--- a/browser/base/content/browser-init.js
++++ b/browser/base/content/browser-init.js
+@@ -500,6 +500,26 @@ var gBrowserInit = {
+     gProtectionsHandler.init();
+     gTrustPanelHandler.init();
+ 
++    // Midori: Move midori-privacy extension icon into URL bar
++    {
++      let attempts = 0;
++      let moveWidget = () => {
++        let widget = document.getElementById(
++          "midori-protection_astian_org-browser-action"
++        );
++        let urlbarContainer = document.querySelector(".urlbar-input-container");
++        if (widget && urlbarContainer) {
++          widget.querySelector(".toolbarbutton-text")?.setAttribute("hidden", "true");
++          widget.setAttribute("cui-areatype", "toolbar");
++          urlbarContainer.insertAdjacentElement("afterbegin", widget);
++        } else if (attempts < 50) {
++          attempts++;
++          setTimeout(moveWidget, 100);
++        }
++      };
++      moveWidget();
++    }
++
+     let safeMode = document.getElementById("helpSafeMode");
+     if (Services.appinfo.inSafeMode) {
+       document.l10n.setAttributes(safeMode, "menu-help-exit-troubleshoot-mode");

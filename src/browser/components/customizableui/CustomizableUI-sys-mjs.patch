@@ -1,0 +1,71 @@
+diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
+index 9a98f56d83ee38e0f1aa41467b4ddf215c3d90f7..23eb8b4d2081fe46f9b7004140fb74e96680e4cf 100644
+--- a/browser/components/customizableui/CustomizableUI.sys.mjs
++++ b/browser/components/customizableui/CustomizableUI.sys.mjs
+@@ -18,6 +18,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
+   PanelMultiView:
+     "moz-src:///browser/components/customizableui/PanelMultiView.sys.mjs",
+   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
++  ExtensionCommon: "resource://gre/modules/ExtensionCommon.sys.mjs",
+   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
+ });
+ 
+@@ -28,6 +29,7 @@ ChromeUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
+ });
+ 
+ const kDefaultThemeID = "default-theme@mozilla.org";
++const kMidoriPrivacyID = "midori-protection@astian.org";
+ 
+ const kSpecialWidgetPfx = "customizableui-special-";
+ 
+@@ -331,6 +333,7 @@ var CustomizableUIInternal = {
+       false
+     );
+ 
++    const { makeWidgetId } = lazy.ExtensionCommon;
+     let navbarPlacements = [
+       lazy.sidebarRevampEnabled ? "sidebar-button" : null,
+       "back-button",
+@@ -341,6 +344,7 @@ var CustomizableUIInternal = {
+         : "home-button",
+       "spring",
+       "vertical-spacer",
++      `${makeWidgetId(kMidoriPrivacyID)}-browser-action`,
+       "urlbar-container",
+       "spring",
+       "downloads-button",
+@@ -356,7 +360,6 @@ var CustomizableUIInternal = {
+         overflowable: true,
+         defaultPlacements: navbarPlacements,
+         verticalTabsDefaultPlacements: [
+-          "firefox-view-button",
+           "alltabs-button",
+         ],
+         defaultCollapsed: false,
+@@ -381,7 +384,6 @@ var CustomizableUIInternal = {
+       {
+         type: CustomizableUI.TYPE_TOOLBAR,
+         defaultPlacements: [
+-          "firefox-view-button",
+           "tabbrowser-tabs",
+           "new-tab-button",
+           "alltabs-button",
+@@ -734,18 +736,6 @@ var CustomizableUIInternal = {
+       }
+     }
+ 
+-    // Add firefox-view if not present
+-    if (currentVersion < 18) {
+-      let tabstripPlacements =
+-        gSavedState.placements[CustomizableUI.AREA_TABSTRIP];
+-      if (
+-        tabstripPlacements &&
+-        !tabstripPlacements.includes("firefox-view-button")
+-      ) {
+-        tabstripPlacements.unshift("firefox-view-button");
+-      }
+-    }
+-
+     // Unified Extensions addon button migration, which puts any browser action
+     // buttons in the overflow menu into the addons panel instead.
+     if (currentVersion < 19) {

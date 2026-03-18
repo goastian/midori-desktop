@@ -1,0 +1,22 @@
+diff --git a/browser/base/content/browser-siteIdentity.js b/browser/base/content/browser-siteIdentity.js
+index 6d2052e060..096eaa0671 100644
+--- a/browser/base/content/browser-siteIdentity.js
++++ b/browser/base/content/browser-siteIdentity.js
+@@ -968,10 +968,13 @@ var gIdentityHandler = {
+     }
+ 
+     // Hide the shield icon if it is a chrome page.
+-    gProtectionsHandler._trackingProtectionIconContainer.classList.toggle(
+-      "chromeUI",
+-      this._isSecureInternalUI
+-    );
++    // Midori: Safe access — container may be hidden by Midori Privacy extension
++    if (gProtectionsHandler._trackingProtectionIconContainer) {
++      gProtectionsHandler._trackingProtectionIconContainer.classList.toggle(
++        "chromeUI",
++        this._isSecureInternalUI
++      );
++    }
+   },
+ 
+   /**

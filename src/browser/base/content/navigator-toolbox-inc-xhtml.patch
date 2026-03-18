@@ -1,0 +1,19 @@
+diff --git a/browser/base/content/navigator-toolbox.inc.xhtml b/browser/base/content/navigator-toolbox.inc.xhtml
+index 4d4223c508560136aba220adb18528aac913a188..fcebf06132667ed2b9ebc7a227ddcfabda777029 100644
+--- a/browser/base/content/navigator-toolbox.inc.xhtml
++++ b/browser/base/content/navigator-toolbox.inc.xhtml
+@@ -36,14 +36,6 @@
+     <hbox flex="1" align="end" class="toolbar-items">
+       <toolbartabstop/>
+       <hbox id="TabsToolbar-customization-target" flex="1">
+-        <toolbarbutton id="firefox-view-button"
+-                       class="toolbarbutton-1 chromeclass-toolbar-additional"
+-                       data-l10n-id="toolbar-button-firefox-view-2"
+-                       role="button"
+-                       aria-pressed="false"
+-                       cui-areatype="toolbar"
+-                       removable="true"/>
+-
+         <tabs id="tabbrowser-tabs"
+               is="tabbrowser-tabs"
+               aria-multiselectable="true"
