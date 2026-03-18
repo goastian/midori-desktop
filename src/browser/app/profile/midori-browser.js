@@ -276,13 +276,13 @@ pref('privacy.trackingprotection.emailtracking.data_collection.enabled', false, 
 // ============================================================================
 // DISABLE FIREFOX SUGGEST & MOZILLA AI FEATURES
 // ============================================================================
-pref('browser.urlbar.quicksuggest.enabled', false, locked);
-pref('browser.urlbar.suggest.quicksuggest.sponsored', false, locked);
-pref('browser.urlbar.suggest.quicksuggest.nonsponsored', false, locked);
-pref('browser.urlbar.groupLabels.enabled', false, locked);
-pref('browser.ml.enable', false, locked);
-pref('browser.ml.chat.enabled', false, locked);
-pref('browser.ml.chat.menu', false, locked);
+pref('browser.urlbar.quicksuggest.enabled', false);
+pref('browser.urlbar.suggest.quicksuggest.sponsored', false);
+pref('browser.urlbar.suggest.quicksuggest.nonsponsored', false);
+pref('browser.urlbar.groupLabels.enabled');
+pref('browser.ml.enable', false);
+pref('browser.ml.chat.enabled', false);
+pref('browser.ml.chat.menu', false);
 pref('browser.preferences.aiControls', false, locked);
 
 // ============================================================================
