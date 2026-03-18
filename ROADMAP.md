@@ -230,15 +230,15 @@
 
 **Tasks:**
 
-- [ ] Define configuration parameters for each profile (Performance, Balanced, Eco)
-- [ ] `High Performance` profile: maximize processes, cache, and pre-rendering
-- [ ] `Balanced` profile: optimal configuration for general use
-- [ ] `Eco / Battery Saver` profile: tab suspension, process limits
-- [ ] Dynamic profile application system (no browser restart required)
-- [ ] Profile selector UI in toolbar or Settings
-- [ ] Optional real-time resource monitor (CPU, RAM)
-- [ ] Hardware detection to suggest the appropriate profile
-- [ ] Performance benchmarks per profile on all platforms
+- [x] Define configuration parameters for each profile (Performance, Balanced, Eco)
+- [x] `High Performance` profile: maximize processes, cache, and pre-rendering
+- [x] `Balanced` profile: optimal configuration for general use
+- [x] `Eco / Battery Saver` profile: tab suspension, process limits
+- [x] Dynamic profile application system (no browser restart required)
+- [x] Profile selector UI in toolbar or Settings
+- [x] Optional real-time resource monitor (CPU, RAM)
+- [x] Hardware detection to suggest the appropriate profile
+- [x] Performance benchmarks per profile on all platforms
 
 ---
 
