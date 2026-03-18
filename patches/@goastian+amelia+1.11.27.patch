@@ -1,0 +1,46 @@
+diff --git a/node_modules/@goastian/amelia/dist/commands/package.js b/node_modules/@goastian/amelia/dist/commands/package.js
+index ab56825..67c5307 100644
+--- a/node_modules/@goastian/amelia/dist/commands/package.js
++++ b/node_modules/@goastian/amelia/dist/commands/package.js
+@@ -19,7 +19,7 @@ async function getLocales() {
+     // open the file and split it by newlines
+     const localesText = await (0, fs_extra_1.readFile)('locales/supported-languages', 'utf-8');
+     log_1.log.info(`Found locales:\n${localesText}`);
+-    return localesText.split('\n');
++    return localesText.split('\n').filter((l) => l.trim().length > 0);
+ }
+ const ameliaPackage = async () => {
+     const brandingKey = utils_1.dynamicConfig.get('brand');
+diff --git a/node_modules/@goastian/amelia/dist/constants/index.js b/node_modules/@goastian/amelia/dist/constants/index.js
+index 15a614d..9f13f2f 100644
+--- a/node_modules/@goastian/amelia/dist/constants/index.js
++++ b/node_modules/@goastian/amelia/dist/constants/index.js
+@@ -52,8 +52,26 @@ if ((0, node_fs_1.existsSync)(exports.ENGINE_DIR)) {
+     else if (possibleFolders.length === 1)
+         CONFIG_GUESS = possibleFolders[0];
+     else {
+-        log_1.log.warning(`There are multiple obj-* folders. Defaulting to obj-${possibleFolders[0]}`);
+-        CONFIG_GUESS = possibleFolders[0];
++        // Try to select the correct obj-* folder based on AMELIA_PLATFORM and AMELIA_COMPAT
++        const ameliaPlatform = process.env.AMELIA_PLATFORM;
++        const ameliaCompat = process.env.AMELIA_COMPAT;
++        let filtered = possibleFolders;
++        if (ameliaPlatform) {
++            const platformMap = { 'win32': 'windows', 'darwin': 'darwin', 'linux': 'linux' };
++            const osKey = platformMap[ameliaPlatform] || ameliaPlatform;
++            filtered = filtered.filter((f) => f.includes(osKey));
++        }
++        if (ameliaCompat && filtered.length > 1) {
++            filtered = filtered.filter((f) => f.startsWith(ameliaCompat));
++        }
++        if (filtered.length >= 1) {
++            CONFIG_GUESS = filtered[0];
++        } else {
++            CONFIG_GUESS = possibleFolders[0];
++        }
++        if (possibleFolders.length > 1) {
++            log_1.log.warning(`There are multiple obj-* folders. Defaulting to obj-${CONFIG_GUESS}`);
++        }
+     }
+ }
+ exports.OBJ_DIR = (0, node_path_1.resolve)(exports.ENGINE_DIR, `obj-${CONFIG_GUESS}`);
