@@ -66,7 +66,7 @@ pref("app.update.badgeWaitTime", 0);
 pref("devtools.selfxss.count", 5);
 
 // Betterfox overrides:
-pref('identity.fxaccounts.enabled', true); // Enable firefox sync
+pref('identity.fxaccounts.enabled', true); // Disable Firefox Accounts (replaced by Astian Account)
 
 // Enable importers for other browsers
 pref('browser.migrate.vivaldi.enabled', true);
@@ -110,11 +110,8 @@ pref('xpinstall.signatures.required', false);
 // Allow the usage of theme experiments
 pref('extensions.experiments.enabled', true);
 
-// Disable VPN promos
-pref('browser.vpn_promo.enabled', false, locked);
-pref("browser.promo.focus.enabled", false, locked);
-pref("browser.preferences.moreFromMozilla", false, locked);
-pref('browser.contentblocking.report.hide_vpn_banner', true, locked);
+// VPN promos, Focus promo, and More from Mozilla are now disabled
+// in the locked prefs section at the bottom of this file.
 
 // Enable WebMIDI. This is still currently in testing inside of Firefox, but
 // will also provide us with the benefit of more features
@@ -135,8 +132,7 @@ pref("app.update.url.details", "https://github.com/goastian/midori-desktop/relea
 pref("app.releaseNotesURL", "https://github.com/gooastian/midori-browser/commits/main", locked);
 pref("app.releaseNotesURL.aboutDialog", "https://github.com/goastian/midori-browser/commits/main", locked);
 
-// This pref needs to be here to not break context menus (GH#169)
-pref("extensions.pocket.enabled", false);
+// Pocket is now fully disabled in the locked prefs section at the bottom of this file.
 
 // Reenable accessability. Should have a low enough performance impact with the
 // changes in 113
@@ -212,6 +208,16 @@ pref('midori.verticaltabs.enabled', false);
 pref('midori.autohide.toolbar', true);
 
 // ============================================================================
+// MIDORI PRIVACY (replaces Firefox Enhanced Tracking Protection)
+// ============================================================================
+// Disable Firefox's built-in tracking protection UI - midori-privacy extension
+// handles all content blocking and ad filtering.
+pref('privacy.trackingprotection.enabled', false);
+pref('privacy.trackingprotection.pbmode.enabled', false);
+pref('browser.contentblocking.category', 'custom');
+pref('browser.protections_panel.enabled', false);
+
+// ============================================================================
 // MIDORI TOR INTEGRATION
 // ============================================================================
 // Embedded Tor proxy for private browsing with network anonymity.
@@ -220,3 +226,143 @@ pref('midori.tor.enabled', true);
 pref('midori.tor.socks_port', 9150);
 pref('midori.tor.bridges.enabled', false);
 pref('midori.tor.bridges.list', '');
+
+// ============================================================================
+// DISABLE POCKET (reinforce)
+// ============================================================================
+pref('extensions.pocket.enabled', false, locked);
+pref('extensions.pocket.api', '', locked);
+pref('extensions.pocket.oAuthConsumerKey', '', locked);
+pref('extensions.pocket.site', '', locked);
+pref('extensions.pocket.showHome', false, locked);
+
+// ============================================================================
+// DISABLE TELEMETRY, DATA REPORTING & CRASH REPORTER
+// ============================================================================
+// (Securefox.js handles most, but we reinforce with locked prefs)
+pref('datareporting.policy.dataSubmissionEnabled', false, locked);
+pref('datareporting.healthreport.uploadEnabled', false, locked);
+pref('datareporting.usage.uploadEnabled', false, locked);
+pref('toolkit.telemetry.unified', false, locked);
+pref('toolkit.telemetry.enabled', false, locked);
+pref('toolkit.telemetry.server', 'data:,', locked);
+pref('toolkit.telemetry.archive.enabled', false, locked);
+pref('toolkit.telemetry.newProfilePing.enabled', false, locked);
+pref('toolkit.telemetry.shutdownPingSender.enabled', false, locked);
+pref('toolkit.telemetry.updatePing.enabled', false, locked);
+pref('toolkit.telemetry.bhrPing.enabled', false, locked);
+pref('toolkit.telemetry.firstShutdownPing.enabled', false, locked);
+pref('toolkit.telemetry.dap_enabled', false, locked);
+pref('toolkit.telemetry.coverage.opt-out', true, locked);
+pref('toolkit.coverage.opt-out', true, locked);
+pref('toolkit.coverage.endpoint.base', '', locked);
+pref('browser.newtabpage.activity-stream.feeds.telemetry', false, locked);
+pref('browser.newtabpage.activity-stream.telemetry', false, locked);
+pref('breakpad.reportURL', '', locked);
+pref('browser.tabs.crashReporting.sendReport', false, locked);
+pref('browser.crashReports.unsubmittedCheck.autoSubmit2', false, locked);
+// Privacy-Preserving Attribution
+pref('dom.private-attribution.submission.enabled', false, locked);
+// SERP telemetry
+pref('browser.search.serpEventTelemetryCategorization.enabled', false, locked);
+// Assorted telemetry
+pref('dom.security.unexpected_system_load_telemetry_enabled', false, locked);
+pref('network.trr.confirmation_telemetry_enabled', false, locked);
+pref('security.app_menu.recordEventTelemetry', false, locked);
+pref('security.certerrors.recordEventTelemetry', false, locked);
+pref('security.protectionspopup.recordEventTelemetry', false, locked);
+pref('privacy.trackingprotection.emailtracking.data_collection.enabled', false, locked);
+
+// ============================================================================
+// DISABLE FIREFOX SUGGEST & MOZILLA AI FEATURES
+// ============================================================================
+pref('browser.urlbar.quicksuggest.enabled', false, locked);
+pref('browser.urlbar.suggest.quicksuggest.sponsored', false, locked);
+pref('browser.urlbar.suggest.quicksuggest.nonsponsored', false, locked);
+pref('browser.urlbar.groupLabels.enabled', false, locked);
+pref('browser.ml.enable', false, locked);
+pref('browser.ml.chat.enabled', false, locked);
+pref('browser.ml.chat.menu', false, locked);
+
+// ============================================================================
+// DISABLE MOZILLA VPN INTEGRATION
+// ============================================================================
+pref('browser.vpn_promo.enabled', false, locked);
+pref('browser.contentblocking.report.hide_vpn_banner', true, locked);
+pref('browser.contentblocking.report.vpn_platforms', '', locked);
+pref('browser.contentblocking.report.vpn-promo.url', '', locked);
+pref('browser.contentblocking.report.vpn-android.url', '', locked);
+pref('browser.contentblocking.report.vpn-ios.url', '', locked);
+pref('browser.privatebrowsing.vpnpromourl', '', locked);
+
+// ============================================================================
+// DISABLE FIREFOX RELAY & FIREFOX ACCOUNTS
+// ============================================================================
+pref('identity.fxaccounts.autoconfig.uri', '', locked);
+pref('identity.fxaccounts.auth.uri', '', locked);
+pref('identity.fxaccounts.remote.root', '', locked);
+pref('identity.fxaccounts.commands.enabled', false, locked);
+pref('identity.fxaccounts.pairing.enabled', false, locked);
+pref('identity.fxaccounts.toolbar.enabled', false, locked);
+pref('identity.fxaccounts.toolbar.accessed', false, locked);
+pref('signon.firefoxRelay.feature', '', locked);
+pref('signon.firefoxRelay.base_url', '', locked);
+
+// ============================================================================
+// DISABLE AUTOMATIC UPDATES POINTING TO MOZILLA SERVERS
+// ============================================================================
+pref('app.update.enabled', false, locked);
+pref('app.update.auto', false, locked);
+pref('app.update.staging.enabled', false, locked);
+pref('app.update.background.scheduling.enabled', false, locked);
+pref('app.update.BITS.enabled', false, locked);
+pref('extensions.update.autoUpdateDefault', true); // keep extension auto-updates
+pref('extensions.getAddons.cache.enabled', false, locked);
+
+// ============================================================================
+// DISABLE STUDIES & REMOTE EXPERIMENTS (SHIELD / NORMANDY)
+// ============================================================================
+pref('app.shield.optoutstudies.enabled', false, locked);
+pref('app.normandy.enabled', false, locked);
+pref('app.normandy.api_url', '', locked);
+pref('app.normandy.first_run', false, locked);
+pref('messaging-system.rsexperimentloader.enabled', false, locked);
+
+// ============================================================================
+// DISABLE FIREFOX LABS
+// ============================================================================
+pref('browser.preferences.experimental', false, locked);
+pref('browser.preferences.experimental.hidden', true, locked);
+
+// ============================================================================
+// OUTBOUND CONNECTION AUDIT — block unnecessary Mozilla connections
+// ============================================================================
+// Disable captive portal detection (phones home to Mozilla)
+pref('network.captive-portal-service.enabled', false, locked);
+pref('captivedetect.canonicalURL', '', locked);
+// Disable network connectivity checks
+pref('network.connectivity-service.enabled', false, locked);
+// Disable DoH rollout heuristics
+pref('doh-rollout.disable-heuristics', true, locked);
+// Disable region updates
+pref('browser.region.update.enabled', false, locked);
+pref('browser.region.network.url', '', locked);
+// Disable default browser agent reporting (Windows)
+pref('default-browser-agent.enabled', false, locked);
+// Disable extension abuse reports to Mozilla
+pref('extensions.abuseReport.enabled', false, locked);
+// Disable remote recipe fetching for sign-on
+pref('signon.recipes.remoteRecipes.enabled', false, locked);
+// Disable push notifications service (Mozilla servers)
+pref('dom.push.serverURL', '', locked);
+// Disable What's New panel
+pref('browser.messaging-system.whatsNewPanel.enabled', false, locked);
+// Disable Contextual Feature Recommender (reinforce Peskyfox)
+pref('browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons', false, locked);
+pref('browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features', false, locked);
+// Disable Focus promo
+pref('browser.promo.focus.enabled', false, locked);
+// Disable Mozilla recommendations
+pref('browser.discovery.enabled', false, locked);
+pref('extensions.htmlaboutaddons.recommendations.enabled', false, locked);
+pref('extensions.getAddons.showPane', false, locked);

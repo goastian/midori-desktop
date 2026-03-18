@@ -54,9 +54,9 @@
 - [x] Fork latest Firefox via the Amelia packaging pipeline into `midori-desktop`
 - [x] Configure `mozconfig` build environment for Windows, macOS, and Linux
 - [x] Verify successful compilation on all 3 platforms
-- [ ] Rename product from Firefox to Midori in configuration files
+- [x] Rename product from Firefox to Midori in configuration files
 - [x] Replace icons and splash screen with Midori assets
-- [ ] Set up CI/CD pipeline for automated builds
+- [x] Set up CI/CD pipeline for automated builds
 - [x] Document build process and environment setup
 - [x] First installable internal test build
 - [x] Design and implement the Welcome Screen (first-run experience)
@@ -81,10 +81,10 @@
 
 **Tasks:**
 
-- [ ] Register AstianGO as a search engine in the browser codebase
-- [ ] Set AstianGO as the default engine in `about:config`
-- [ ] Integrate AstianGO search suggestions in the address bar (Awesome Bar)
-- [ ] Remove or demote unwanted default search engines (Google, Bing as default)
+- [x] Register AstianGO as a search engine in the browser codebase
+- [x] Set AstianGO as the default engine in `about:config`
+- [x] Integrate AstianGO search suggestions in the address bar (Awesome Bar)
+- [x] Remove or demote unwanted default search engines (Google, Bing as default)
 
 ---
 
@@ -96,9 +96,9 @@
 
 **Tasks:**
 
-- [ ] Add option to switch search engines in Settings
-- [ ] Configure New Tab search bar to point to AstianGO
-- [ ] Integration tests against the AstianGO API
+- [x] Add option to switch search engines in Settings
+- [] Configure New Tab search bar to point to AstianGO
+- [x] Integration tests against the AstianGO API
 
 ---
 
@@ -110,15 +110,15 @@
 
 **Tasks:**
 
-- [ ] Disable and remove Pocket integration
-- [ ] Disable telemetry and data reporting (Telemetry, Health Report, Crash Reporter to Mozilla)
-- [ ] Disable Firefox Suggest and Mozilla-native AI features
-- [ ] Disable Mozilla VPN integration (to be replaced by MidoriVPN)
-- [ ] Disable Firefox Relay and Firefox Accounts (or redirect to Astian services)
-- [ ] Disable automatic updates pointing to Mozilla servers
-- [ ] Disable studies and remote experiments (SHIELD / Normandy)
-- [ ] Full audit of outbound network connections
-- [ ] Verify all disablements persist across upgrades
+- [x] Disable and remove Pocket integration
+- [x] Disable telemetry and data reporting (Telemetry, Health Report, Crash Reporter to Mozilla)
+- [x] Disable Firefox Suggest and Mozilla-native AI features
+- [x] Disable Mozilla VPN integration (to be replaced by MidoriVPN)
+- [x] Disable Firefox Relay and Firefox Accounts (or redirect to Astian services)
+- [x] Disable automatic updates pointing to Mozilla servers
+- [x] Disable studies and remote experiments (SHIELD / Normandy)
+- [x] Full audit of outbound network connections
+- [x] Verify all disablements persist across upgrades
 
 > ⚠️ **Security note:** This step requires careful auditing to avoid breaking essential browser functions such as certificate list updates or Safe Browsing.
 
