@@ -283,6 +283,7 @@ pref('browser.urlbar.groupLabels.enabled', false, locked);
 pref('browser.ml.enable', false, locked);
 pref('browser.ml.chat.enabled', false, locked);
 pref('browser.ml.chat.menu', false, locked);
+pref('browser.preferences.aiControls', false, locked);
 
 // ============================================================================
 // DISABLE MOZILLA VPN INTEGRATION
