@@ -50,7 +50,7 @@
     "package:mac-x64": "python3 scripts/prepare_l10n.py && AMELIA_PLATFORM=darwin AMELIA_COMPAT=x86_64 bash scripts/download-tor.sh && cross-env AMELIA_PLATFORM=darwin AMELIA_COMPAT=x86_64 SURFER_COMPAT=x86_64 amelia package",
     "package:mac-arm64": "python3 scripts/prepare_l10n.py && AMELIA_PLATFORM=darwin AMELIA_COMPAT=aarch64 bash scripts/download-tor.sh && cross-env AMELIA_PLATFORM=darwin AMELIA_COMPAT=aarch64 SURFER_COMPAT=aarch64 amelia package",
     "package:linux-x64": "python3 scripts/prepare_l10n.py && AMELIA_PLATFORM=linux AMELIA_COMPAT=x86_64 bash scripts/download-tor.sh && cross-env AMELIA_PLATFORM=linux AMELIA_COMPAT=x86_64 SURFER_COMPAT=x86_64 amelia package",
-    "package:linux-arm64": "python3 scripts/prepare_l10n.py && AMELIA_PLATFORM=linux AMELIA_COMPAT=aarch64 bash scripts/download-tor.sh && cross-env AMELIA_PLATFORM=linux AMELIA_COMPAT=aarch64 SURFER_COMPAT=aarch64 amelia package",
+    "package:linux-arm64": "python3 scripts/prepare_l10n.py && AMELIA_PLATFORM=linux AMELIA_COMPAT=aarch64 && cross-env AMELIA_PLATFORM=linux AMELIA_COMPAT=aarch64 SURFER_COMPAT=aarch64 amelia package",
     "setup:windows": "bash scripts/setup-winsysroot.sh windows",
     "setup:linux-arm64": "bash scripts/setup-winsysroot.sh linux-arm64",
     "setup:all": "bash scripts/setup-winsysroot.sh all",
