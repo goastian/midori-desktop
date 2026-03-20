@@ -149,7 +149,9 @@ export const MidoriVerticalTabs = {
 
   /**
    * Auto-selects the URL bar text when the floating URL bar opens.
-   * Inspired by Natsumi's urlbar.uc.mjs.
+   * Only selects on the initial open (before the user starts typing).
+   * Once the user presses a key, auto-select is suppressed until the
+   * urlbar fully closes and re-opens.
    */
   _initUrlbarAutoSelect(win) {
     const doc = win.document;
@@ -160,11 +162,23 @@ export const MidoriVerticalTabs = {
     if (!urlbar) return;
 
     let wasOpen = false;
+    let userTyping = false;
+
+    const input = doc.getElementById('urlbar-input');
+    if (!input) return;
+
+    // Suppress auto-select once the user starts typing
+    input.addEventListener('keydown', () => { userTyping = true; }, true);
+
     new win.MutationObserver(() => {
       const isOpen = urlbar.hasAttribute('open');
-      if (isOpen && !wasOpen) {
-        const input = doc.getElementById('urlbar-input');
-        if (input) input.select();
+      if (isOpen && !wasOpen && !userTyping) {
+        // Only select on fresh open before any keystrokes
+        input.select();
+      }
+      if (!isOpen) {
+        // Reset typing flag when urlbar closes
+        userTyping = false;
       }
       wasOpen = isOpen;
     }).observe(urlbar, { attributes: true, attributeFilter: ['open'] });
