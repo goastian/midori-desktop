@@ -18,7 +18,15 @@
       "version": "v2.0.10",
       "platform": "github",
       "fileGlob": "midori-privacy-2.0.10-firefox.zip"
+    },
+    "midori-newtab": {
+      "id": "midori-newtab",
+      "repo": "goastian/midori-tab",
+      "version": "v1.0.9",
+      "platform": "github",
+      "fileGlob": "midori-tab-1.0.9-firefox.zip"
     }
+
   },
   "brands": {
     "release": {
