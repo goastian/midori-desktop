@@ -1,0 +1,1 @@
+import{_ as s,a as e,o as t,b as c}from"../index.js";const a="/assets/midori-D9ZSa_Fo.png",n={},r={class:"containerLogo"};function _(i,o){return t(),e("div",r,o[0]||(o[0]=[c("img",{src:a,class:"logo"},null,-1)]))}const l=s(n,[["render",_],["__scopeId","data-v-1c97c096"]]);export{l as default};
