@@ -90,9 +90,13 @@ fi
 
 OUTPUT_DIR="$OBJ_DIR/dist/bin/tor"
 
-# ── Skip if already downloaded ──
+# ── Skip if already downloaded or placeholder exists ──
 if [ -f "$OUTPUT_DIR/tor" ] || [ -f "$OUTPUT_DIR/tor.exe" ]; then
   echo "=== Tor $TOR_VERSION already present in $OUTPUT_DIR, skipping download ==="
+  exit 0
+fi
+if [ -f "$OUTPUT_DIR/NO_TOR_AVAILABLE.txt" ]; then
+  echo "=== Tor placeholder already present (arch not supported), skipping ==="
   exit 0
 fi
 
@@ -104,12 +108,19 @@ echo "Obj dir:  $OBJ_DIR"
 echo "Output:   $OUTPUT_DIR"
 echo ""
 
-# ── Determine archive filename ──
+# ── Check availability and determine archive filename ──
+# Tor Expert Bundle is NOT available for every platform+arch combination.
+# Available: linux-x86_64, linux-i686, macos-x86_64, macos-aarch64,
+#            windows-x86_64, windows-i686
+# NOT available: linux-aarch64, windows-aarch64
+TOR_AVAILABLE=true
+
 case "$PLATFORM" in
   linux)
     case "$ARCH" in
       x86_64) ARCHIVE="tor-expert-bundle-linux-x86_64-${TOR_VERSION}.tar.gz" ;;
-      aarch64) ARCHIVE="tor-expert-bundle-linux-aarch64-${TOR_VERSION}.tar.gz" ;;
+      i686) ARCHIVE="tor-expert-bundle-linux-i686-${TOR_VERSION}.tar.gz" ;;
+      aarch64) TOR_AVAILABLE=false ;;
       *)
         echo "ERROR: Unsupported arch '$ARCH' for Linux"
         exit 1
@@ -120,7 +131,7 @@ case "$PLATFORM" in
     case "$ARCH" in
       x86_64) ARCHIVE="tor-expert-bundle-windows-x86_64-${TOR_VERSION}.tar.gz" ;;
       i686) ARCHIVE="tor-expert-bundle-windows-i686-${TOR_VERSION}.tar.gz" ;;
-      aarch64) ARCHIVE="tor-expert-bundle-windows-x86_64-${TOR_VERSION}.tar.gz" ;;
+      aarch64) TOR_AVAILABLE=false ;;
       *)
         echo "ERROR: Unsupported arch '$ARCH' for Windows"
         exit 1
@@ -143,6 +154,17 @@ case "$PLATFORM" in
     exit 1
     ;;
 esac
+
+# If Tor is not available for this platform+arch, create a placeholder
+# so that package-manifest.in's bin/tor/* glob does not fail.
+if [ "$TOR_AVAILABLE" = false ]; then
+  echo "=== WARNING: Tor Expert Bundle is not available for ${PLATFORM}-${ARCH} ==="
+  echo "Creating placeholder in $OUTPUT_DIR so packaging does not fail."
+  echo "Tor features will be disabled at runtime on this architecture."
+  mkdir -p "$OUTPUT_DIR"
+  echo "Tor Expert Bundle not available for ${PLATFORM}-${ARCH}" > "$OUTPUT_DIR/NO_TOR_AVAILABLE.txt"
+  exit 0
+fi
 
 DOWNLOAD_URL="${BASE_URL}/${ARCHIVE}"
 TEMP_DIR=$(mktemp -d)
