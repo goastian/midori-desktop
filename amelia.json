@@ -35,7 +35,7 @@
       "brandShortName": "Midori",
       "brandFullName": "Midori Browser",
       "release": {
-        "displayVersion": "11.6.3",
+        "displayVersion": "11.6.4",
         "github": {
           "repo": "goastian/midori-desktop"
         },
