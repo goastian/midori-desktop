@@ -27,6 +27,11 @@ pref("browser.search.removeEngineInfobar.enabled", false);
 // Prevent search engine updates via OpenSearch (stops re-adding removed engines)
 pref("browser.search.update", false);
 
+// MIDORI NEW TAB & HOME PAGE
+// Home page uses about:newtab so it resolves to midori-newtab extension
+pref("browser.startup.homepage", "about:newtab");
+pref("browser.startup.homepage.abouthome_cache.enabled", false);
+
 pref("app.support.baseURL", "https://astian.org/community");
 pref("extensions.install_origins.enabled", true);
 pref("browser.newtabpage.activity-stream.feeds.section.highlights", true);
