@@ -5,8 +5,8 @@
   "binaryName": "midori",
   "version": {
     "product": "firefox",
-    "version": "148.0.3",
-    "candidate": "148.0.3"
+    "version": "148.0.2",
+    "candidate": "148.0.2"
   },
   "buildOptions": {
     "generateBranding": true
@@ -15,9 +15,9 @@
     "midori-privacy": {
       "id": "midori-privacy-blocker",
       "repo": "goastian/midori-privacy",
-      "version": "v2.0.10",
+      "version": "v2.0.11",
       "platform": "github",
-      "fileGlob": "midori-privacy-2.0.10-firefox.zip"
+      "fileGlob": "midori-privacy-2.0.11-firefox.zip"
     },
     "midori-newtab": {
       "id": "midori-newtab",
@@ -26,7 +26,6 @@
       "platform": "github",
       "fileGlob": "midori-tab-1.0.9-firefox.zip"
     }
-
   },
   "brands": {
     "release": {
@@ -63,7 +62,9 @@
     }
   },
   "license": {
-    "ignoredFiles": [".*\\.json"],
+    "ignoredFiles": [
+      ".*\\.json"
+    ],
     "licenseType": "MPL-2.0"
   },
   "updateHostname": "update.astian.org"
