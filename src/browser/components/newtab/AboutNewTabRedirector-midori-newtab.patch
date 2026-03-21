@@ -1,0 +1,24 @@
+diff --git a/browser/components/newtab/AboutNewTabRedirector.sys.mjs b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
+index adf3fb810b..7628597f03 100644
+--- a/browser/components/newtab/AboutNewTabRedirector.sys.mjs
++++ b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
+@@ -416,10 +416,15 @@ class BaseAboutNewTabRedirector {
+    * the newtab page has no effect on the result of this function.
+    */
+   get defaultURL() {
+-    // Generate the desired activity stream resource depending on state, e.g.,
+-    // "resource://newtab/prerendered/activity-stream.html"
+-    // "resource://newtab/prerendered/activity-stream-debug.html"
+-    // "resource://newtab/prerendered/activity-stream-noscripts.html"
++    // Midori: resolve midori-newtab extension URL if available
++    try {
++      let dominated = Cu.getGlobalForObject(Services);
++      let policy = dominated.WebExtensionPolicy.getByID("midoritabs@astian.org");
++      if (policy) {
++        return policy.getURL("index.html");
++      }
++    } catch (e) {}
++    // Fallback to Activity Stream
+     return [
+       "resource://newtab/prerendered/",
+       "activity-stream",

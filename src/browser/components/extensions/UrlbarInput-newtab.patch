@@ -1,0 +1,30 @@
+diff --git a/browser/components/urlbar/content/UrlbarInput.mjs b/browser/components/urlbar/content/UrlbarInput.mjs
+index 2e6e2be9d7..4db857a26b 100644
+--- a/browser/components/urlbar/content/UrlbarInput.mjs
++++ b/browser/components/urlbar/content/UrlbarInput.mjs
+@@ -802,11 +802,20 @@ export class UrlbarInput extends HTMLElement {
+       // If we update the URI while restoring a session, set the proxyState to
+       // invalid, because we don't have a valid security state to show via site
+       // identity yet. See Bug 1746383.
+-      valid =
+-        !dueToSessionRestore &&
+-        (!this.#canHandleAsBlankPage(uri.spec) ||
+-          lazy.ExtensionUtils.isExtensionUrl(uri) ||
+-          isInitialPageControlledByWebContent);
++      try {
++        const policy = Cu.getGlobalForObject(Services).WebExtensionPolicy.getByURI(uri);
++        if (policy && policy.id === 'midoritabs@astian.org') {
++          value = "";
++          valid = false;
++        }
++      } catch (e) {}
++      if (valid !== false) {
++        valid =
++          !dueToSessionRestore &&
++          (!this.#canHandleAsBlankPage(uri.spec) ||
++            lazy.ExtensionUtils.isExtensionUrl(uri) ||
++            isInitialPageControlledByWebContent);
++      }
+     } else if (
+       this.window.isInitialPage(value) &&
+       lazy.BrowserUIUtils.checkEmptyPageOrigin(

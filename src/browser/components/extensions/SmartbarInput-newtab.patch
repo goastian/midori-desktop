@@ -1,0 +1,30 @@
+diff --git a/browser/components/urlbar/content/SmartbarInput.mjs b/browser/components/urlbar/content/SmartbarInput.mjs
+index bfe7a6957e..c9acc72c20 100644
+--- a/browser/components/urlbar/content/SmartbarInput.mjs
++++ b/browser/components/urlbar/content/SmartbarInput.mjs
+@@ -913,11 +913,20 @@ export class SmartbarInput extends HTMLElement {
+       // If we update the URI while restoring a session, set the proxyState to
+       // invalid, because we don't have a valid security state to show via site
+       // identity yet. See Bug 1746383.
+-      valid =
+-        !dueToSessionRestore &&
+-        (!this.window.isBlankPageURL(uri.spec) ||
+-          lazy.ExtensionUtils.isExtensionUrl(uri) ||
+-          isInitialPageControlledByWebContent);
++      try {
++        const policy = Cu.getGlobalForObject(Services).WebExtensionPolicy.getByURI(uri);
++        if (policy && policy.id === 'midoritabs@astian.org') {
++          value = "";
++          valid = false;
++        }
++      } catch (e) {}
++      if (valid !== false) {
++        valid =
++          !dueToSessionRestore &&
++          (!this.window.isBlankPageURL(uri.spec) ||
++            lazy.ExtensionUtils.isExtensionUrl(uri) ||
++            isInitialPageControlledByWebContent);
++      }
+     } else if (
+       this.window.isInitialPage(value) &&
+       lazy.BrowserUIUtils.checkEmptyPageOrigin(
