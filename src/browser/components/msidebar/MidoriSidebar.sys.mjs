@@ -22,6 +22,7 @@ export const MidoriSidebar = {
   init() {
     if (this._initialized) return;
     this._initialized = true;
+    this._log('init');
 
     Services.prefs.addObserver(Prefs.PREF_ENABLED, this);
     Services.prefs.addObserver(Prefs.PREF_POSITION, this);
@@ -29,6 +30,18 @@ export const MidoriSidebar = {
     Services.prefs.addObserver(Prefs.PREF_AUTOHIDE_ENABLED, this);
     Services.prefs.addObserver(Prefs.PREF_AUTOHIDE_MODE, this);
     Services.prefs.addObserver(Prefs.PREF_ANIMATIONS_ENABLED, this);
+    Services.prefs.addObserver(Prefs.PREF_HIDE_PANEL_WHEN_HIDDEN, this);
+    Services.prefs.addObserver(Prefs.PREF_NEW_PANEL_BUTTON_POSITION, this);
+    Services.prefs.addObserver(Prefs.PREF_GEOMETRY_HINT, this);
+    Services.prefs.addObserver(Prefs.PREF_CONTAINER_INDICATOR, this);
+    Services.prefs.addObserver(Prefs.PREF_TOOLTIP_MODE, this);
+    Services.prefs.addObserver(Prefs.PREF_TOOLTIP_FULL_URL, this);
+    Services.prefs.addObserver(Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE, this);
+    Services.prefs.addObserver(Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE_BACK, this);
+    Services.prefs.addObserver(Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE_FORWARD, this);
+    Services.prefs.addObserver(Prefs.PREF_DEBUG, this);
+    Services.prefs.addObserver(Prefs.PREF_SHORTCUT_TOGGLE_SIDEBAR, this);
+    Services.prefs.addObserver(Prefs.PREF_SHORTCUT_TOGGLE_PANEL, this);
 
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
@@ -45,12 +58,14 @@ export const MidoriSidebar = {
 
   observe(subject, topic) {
     if (topic === 'nsPref:changed') {
+      this._log('pref-changed');
       this._applyFirefoxSidebarDefaults();
       this._refreshAllWindows();
       return;
     }
 
     if (topic === 'browser-delayed-startup-finished') {
+      this._log('window-startup');
       this._applyToWindow(subject);
       return;
     }
@@ -82,6 +97,7 @@ export const MidoriSidebar = {
       });
 
       if (!ui || !ui.root) {
+        this._log('ui-not-ready');
         this._scheduleRetry(win);
         return;
       }
@@ -91,7 +107,10 @@ export const MidoriSidebar = {
 
       ui.setStore(store);
       this._syncWindowUI(win);
+      this._log('ui-ready');
+      this._ensureShortcuts(win);
     } catch {
+      this._log('ui-error');
       this._scheduleRetry(win);
     }
   },
@@ -116,6 +135,8 @@ export const MidoriSidebar = {
     ui.setAutohideMode?.(autohideMode);
     ui.setAutohide(autohideEnabled);
     ui.setVisible(enabled);
+    ui.refresh?.();
+    this._ensureShortcuts(win);
   },
 
   _scheduleSave(win, nextStore) {
@@ -162,6 +183,10 @@ export const MidoriSidebar = {
       } catch {}
     }
     this._retryTimers.delete(win);
+    try {
+      const ks = win.document.getElementById('midori-msidebar-keyset');
+      ks?.remove?.();
+    } catch {}
   },
 
   _scheduleRetry(win) {
@@ -173,6 +198,84 @@ export const MidoriSidebar = {
       this._applyToWindow(win);
     }, 750);
     this._retryTimers.set(win, timer);
+  },
+
+  _log(msg) {
+    try {
+      if (!Prefs.getDebugEnabled()) return;
+      Services.console.logStringMessage(`MidoriSidebar: ${msg}`);
+    } catch {}
+  },
+
+  _ensureShortcuts(win) {
+    try {
+      const doc = win.document;
+      const keysetId = 'midori-msidebar-keyset';
+      doc.getElementById(keysetId)?.remove?.();
+
+      const toggleSidebar = Prefs.getShortcutToggleSidebar();
+      const togglePanel = Prefs.getShortcutTogglePanel();
+      if (!toggleSidebar && !togglePanel) return;
+
+      const keyset = doc.createXULElement('keyset');
+      keyset.id = keysetId;
+
+      const { key, modifiers } = this._parseShortcut(toggleSidebar);
+      if (key) {
+        const k = doc.createXULElement('key');
+        k.id = 'midori-msidebar-key-toggle';
+        k.setAttribute('key', key);
+        if (modifiers) k.setAttribute('modifiers', modifiers);
+        k.addEventListener(
+          'command',
+          () => {
+            const enabled = Services.prefs.getBoolPref(Prefs.PREF_ENABLED, false);
+            Services.prefs.setBoolPref(Prefs.PREF_ENABLED, !enabled);
+          },
+          true
+        );
+        keyset.appendChild(k);
+      }
+
+      const p = this._parseShortcut(togglePanel);
+      if (p.key) {
+        const k = doc.createXULElement('key');
+        k.id = 'midori-msidebar-key-toggle-panel';
+        k.setAttribute('key', p.key);
+        if (p.modifiers) k.setAttribute('modifiers', p.modifiers);
+        k.addEventListener(
+          'command',
+          () => {
+            const enabled = Services.prefs.getBoolPref(Prefs.PREF_ENABLED, false);
+            Services.prefs.setBoolPref(Prefs.PREF_ENABLED, !enabled);
+          },
+          true
+        );
+        keyset.appendChild(k);
+      }
+
+      if (!keyset.childNodes.length) return;
+      const mainKeyset = doc.getElementById('mainKeyset') || doc.documentElement;
+      mainKeyset.appendChild(keyset);
+    } catch {}
+  },
+
+  _parseShortcut(str) {
+    if (!str || typeof str !== 'string') return { key: '', modifiers: '' };
+    const parts = str
+      .split('+')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (!parts.length) return { key: '', modifiers: '' };
+    const key = parts[parts.length - 1];
+    const mods = parts
+      .slice(0, -1)
+      .map((m) => m.toLowerCase())
+      .map((m) => (m === 'ctrl' ? 'control' : m === 'cmd' ? 'meta' : m === 'command' ? 'meta' : m));
+    const allowed = new Set(['accel', 'alt', 'shift', 'control', 'meta']);
+    const filtered = mods.filter((m) => allowed.has(m));
+    const normalizedKey = key.length === 1 ? key.toUpperCase() : key;
+    return { key: normalizedKey, modifiers: filtered.join(' ') };
   },
 
   _ensureToolbarWidget() {

@@ -1,5 +1,11 @@
 import { createPanel, sanitizeUrl } from './SidebarModel.mjs';
 import { createPanelBrowser, destroyBrowser } from './SidebarPanelHost.mjs';
+import * as Prefs from './SidebarPrefs.mjs';
+
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  ContextualIdentityService: 'resource://gre/modules/ContextualIdentityService.sys.mjs',
+});
 
 function createXul(doc, tag) {
   if (doc.createXULElement) return doc.createXULElement(tag);
@@ -20,6 +26,17 @@ function ensureStyle(doc) {
 #midori-msidebar-main[animated='true']{transition:opacity var(--midori-msidebar-anim) ease, min-width var(--midori-msidebar-anim) ease, padding var(--midori-msidebar-anim) ease;}
 #midori-msidebar-main .toolbarbutton-1{padding:0 !important;}
 .midori-msidebar-icon{min-width:calc(var(--midori-msidebar-main-width) - 8px);min-height:34px;padding:0;margin:0;}
+#midori-msidebar-main .toolbarbutton-1{border-radius:var(--border-radius-medium);background:transparent;}
+#midori-msidebar-main .toolbarbutton-1:hover{background:color-mix(in srgb, currentColor 8%, transparent);}
+#midori-msidebar-main .toolbarbutton-1:active{background:color-mix(in srgb, currentColor 12%, transparent);}
+
+#midori-msidebar-toggle{list-style-image:url("chrome://browser/skin/sidebars.svg");}
+#midori-msidebar-add{list-style-image:url("chrome://global/skin/icons/plus.svg");}
+#midori-msidebar-settings{list-style-image:url("chrome://global/skin/icons/settings.svg");}
+#midori-msidebar-nav-back{list-style-image:url("chrome://browser/skin/back.svg");}
+#midori-msidebar-nav-forward{list-style-image:url("chrome://browser/skin/forward.svg");}
+#midori-msidebar-nav-reload{list-style-image:url("chrome://global/skin/icons/reload.svg");}
+#midori-msidebar-nav-home{list-style-image:url("chrome://browser/skin/home.svg");}
 #midori-msidebar-box-area{display:flex;height:100%;width:var(--midori-msidebar-width);min-width:200px;box-sizing:border-box;}
 #midori-msidebar-box-area[collapsed='true']{width:0;min-width:0;pointer-events:none;opacity:0;}
 #midori-msidebar-box-area[overlay='true']{position:absolute;top:0;bottom:0;z-index:30;box-shadow:var(--content-area-shadow);}
@@ -32,6 +49,8 @@ function ensureStyle(doc) {
 #midori-msidebar-box-title label{margin:0;min-width:0;max-width:100%;}
 #midori-msidebar-box-toolbar{display:flex;gap:4px;}
 #midori-msidebar-box-toolbar .toolbarbutton-1{min-width:28px;min-height:28px;}
+#midori-msidebar-box-toolbar[autohide='true']{opacity:0;pointer-events:none;transition:opacity var(--midori-msidebar-anim) ease;}
+#midori-msidebar-box-header:hover #midori-msidebar-box-toolbar[autohide='true']{opacity:1;pointer-events:auto;}
 #midori-msidebar-browser-stack{flex:1;min-height:0;}
 #midori-msidebar-splitter{cursor:e-resize;min-width:6px;width:6px;background:transparent;transition:background-color var(--midori-msidebar-anim) ease;}
 #midori-msidebar-splitter:hover{background:var(--focus-outline-color);}
@@ -49,6 +68,12 @@ function ensureStyle(doc) {
 .midori-msidebar-float-resizer[type='topright']{top:-12px;right:-12px;cursor:nesw-resize;}
 .midori-msidebar-float-resizer[type='bottomleft']{bottom:-12px;left:-12px;cursor:nesw-resize;}
 .midori-msidebar-float-resizer[type='bottomright']{bottom:-12px;right:-12px;cursor:nwse-resize;}
+
+.midori-msidebar-panel-btn[container-indicator='left']{box-shadow:inset 3px 0 0 var(--midori-msidebar-container-color, transparent);}
+.midori-msidebar-panel-btn[container-indicator='right']{box-shadow:inset -3px 0 0 var(--midori-msidebar-container-color, transparent);}
+.midori-msidebar-panel-btn[container-indicator='top']{box-shadow:inset 0 3px 0 var(--midori-msidebar-container-color, transparent);}
+.midori-msidebar-panel-btn[container-indicator='bottom']{box-shadow:inset 0 -3px 0 var(--midori-msidebar-container-color, transparent);}
+.midori-msidebar-panel-btn[container-indicator='around']{outline:2px solid var(--midori-msidebar-container-color, transparent);outline-offset:-2px;}
 `;
   doc.documentElement.appendChild(style);
 }
@@ -65,6 +90,42 @@ function safeHostname(url) {
     return new URL(url).hostname;
   } catch {
     return '';
+  }
+}
+
+function tooltipTextForPanel(panel) {
+  const mode = Prefs.getTooltipMode();
+  if (mode === Prefs.TOOLTIP_OFF) return '';
+  const title = (panel?.title || '').trim();
+  const fullUrl = Prefs.getTooltipFullUrl();
+  const url = fullUrl ? panel?.url || '' : safeHostname(panel?.url || '') || panel?.url || '';
+  if (mode === Prefs.TOOLTIP_TITLE) return title || url || 'Panel';
+  if (mode === Prefs.TOOLTIP_URL) return url || title || 'Panel';
+  if (!title) return url || 'Panel';
+  if (!url) return title;
+  return `${title}\n${url}`;
+}
+
+function containerColorForUserContext(userContextId) {
+  if (!userContextId) return null;
+  try {
+    const ident = lazy.ContextualIdentityService.getPublicIdentityFromId(userContextId);
+    const color = ident?.color;
+    if (!color) return null;
+    const map = {
+      blue: '#37adff',
+      turquoise: '#00c79a',
+      green: '#51cd00',
+      yellow: '#ffcb00',
+      orange: '#ff9f00',
+      red: '#ff613d',
+      pink: '#ff4bda',
+      purple: '#af51f5',
+      toolbar: 'currentColor',
+    };
+    return map[color] || null;
+  } catch {
+    return null;
   }
 }
 
@@ -97,20 +158,26 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const btnToggle = createXul(doc, 'toolbarbutton');
   btnToggle.id = 'midori-msidebar-toggle';
   btnToggle.classList.add('toolbarbutton-1', 'midori-msidebar-icon');
-  btnToggle.setAttribute('label', '≡');
+  btnToggle.setAttribute('label', 'Sidebar');
   btnToggle.setAttribute('tooltiptext', 'Sidebar');
   main.appendChild(btnToggle);
 
   const btnAdd = createXul(doc, 'toolbarbutton');
   btnAdd.id = 'midori-msidebar-add';
   btnAdd.classList.add('toolbarbutton-1', 'midori-msidebar-icon');
-  btnAdd.setAttribute('label', '+');
+  btnAdd.setAttribute('label', 'Agregar panel');
   btnAdd.setAttribute('tooltiptext', 'Agregar panel');
-  main.appendChild(btnAdd);
 
   const buttonsBox = createXul(doc, 'vbox');
   buttonsBox.id = 'midori-msidebar-buttons';
-  main.appendChild(buttonsBox);
+  const newBtnPos = Prefs.getNewPanelButtonPosition();
+  if (newBtnPos === Prefs.NEW_PANEL_BUTTON_AFTER) {
+    main.appendChild(buttonsBox);
+    main.appendChild(btnAdd);
+  } else {
+    main.appendChild(btnAdd);
+    main.appendChild(buttonsBox);
+  }
 
   const spring = createXul(doc, 'spacer');
   spring.setAttribute('flex', '1');
@@ -119,7 +186,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const btnSettings = createXul(doc, 'toolbarbutton');
   btnSettings.id = 'midori-msidebar-settings';
   btnSettings.classList.add('toolbarbutton-1', 'midori-msidebar-icon');
-  btnSettings.setAttribute('label', '⚙');
+  btnSettings.setAttribute('label', 'Configuración');
   btnSettings.setAttribute('tooltiptext', 'Configuración');
   main.appendChild(btnSettings);
 
@@ -203,6 +270,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   let floatingResize = null;
   let currentPanelFloating = false;
   let floatResizers = null;
+  let titleBaseText = '';
+  let hidePanelWhenHidden = Prefs.getHidePanelWhenHidden();
 
   function setCssWidth(px) {
     const width = Math.min(800, Math.max(200, px));
@@ -298,6 +367,26 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     while (stack.firstChild) stack.firstChild.remove();
   }
 
+  function syncToolbarPrefs() {
+    hidePanelWhenHidden = Prefs.getHidePanelWhenHidden();
+    setBoolAttr(toolbar, 'autohide', Prefs.getWebPanelToolbarAutohide());
+  }
+
+  function syncNavButtons() {
+    const autoBack = Prefs.getWebPanelToolbarAutohideBack();
+    const autoForward = Prefs.getWebPanelToolbarAutohideForward();
+    let canBack = true;
+    let canForward = true;
+    try {
+      canBack = !!activeBrowser?.canGoBack;
+    } catch {}
+    try {
+      canForward = !!activeBrowser?.canGoForward;
+    } catch {}
+    setBoolAttr(btnBack, 'hidden', autoBack && !canBack);
+    setBoolAttr(btnForward, 'hidden', autoForward && !canForward);
+  }
+
   function setActivePanel(panelId) {
     const panel = store.panels.find((p) => p.id === panelId);
     if (!panel) return;
@@ -308,8 +397,21 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     clearBrowser();
     const browserEl = createPanelBrowser(win, panel);
     activeBrowser = browserEl;
+    activeBrowser.addEventListener('load', () => syncNavButtons(), true);
+    try {
+      activeBrowser.audioMuted = !!panel.muted;
+    } catch {}
+    try {
+      const z = typeof panel.zoom === 'number' ? panel.zoom : 1;
+      if (win.ZoomManager?.setZoomForBrowser) {
+        win.ZoomManager.setZoomForBrowser(activeBrowser, Math.max(0.3, Math.min(3, z)));
+      } else if ('fullZoom' in activeBrowser) {
+        activeBrowser.fullZoom = Math.max(0.3, Math.min(3, z));
+      }
+    } catch {}
     stack.appendChild(browserEl);
-    titleLabel.setAttribute('value', panel.title || safeHostname(panel.url) || panel.url);
+    titleBaseText = panel.title || safeHostname(panel.url) || panel.url;
+    titleLabel.setAttribute('value', titleBaseText);
     if (currentPanelFloating) {
       boxArea.setAttribute('overlay', 'true');
       setBoolAttr(boxArea, 'collapsed', visible && autohideEnabled);
@@ -326,6 +428,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       setCssWidth(Services.prefs.getIntPref('midori.msidebar.width', 320));
     }
     renderButtons();
+    syncToolbarPrefs();
+    syncNavButtons();
     onStoreChanged?.(store);
   }
 
@@ -347,13 +451,18 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function renderButtons() {
     while (buttonsBox.firstChild) buttonsBox.firstChild.remove();
     const selected = store.last?.selectedPanelId;
+    const indicator = Prefs.getContainerIndicator();
     for (const panel of store.panels) {
       const label = (panel.title || safeHostname(panel.url) || 'Panel').slice(0, 2);
       const btn = createXul(doc, 'toolbarbutton');
-      btn.classList.add('toolbarbutton-1', 'midori-msidebar-icon');
+      btn.classList.add('toolbarbutton-1', 'midori-msidebar-icon', 'midori-msidebar-panel-btn');
       btn.setAttribute('label', label);
-      btn.setAttribute('tooltiptext', panel.title || panel.url);
+      const tt = tooltipTextForPanel(panel);
+      if (tt) btn.setAttribute('tooltiptext', tt);
       btn.setAttribute('midori-msidebar-panel-id', panel.id);
+      btn.setAttribute('container-indicator', indicator);
+      const cc = containerColorForUserContext(panel.userContextId);
+      if (cc) btn.style.setProperty('--midori-msidebar-container-color', cc);
       btn.addEventListener(
         'contextmenu',
         (e) => {
@@ -380,6 +489,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function setVisible(nextVisible) {
     visible = !!nextVisible;
     if (!visible) {
+      if (hidePanelWhenHidden) {
+        clearBrowser();
+      }
       setBoolAttr(main, 'collapsed', true);
       setBoolAttr(boxArea, 'collapsed', true);
       setBoolAttr(splitter, 'hidden', true);
@@ -388,6 +500,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     setBoolAttr(main, 'collapsed', false);
     setBoolAttr(boxArea, 'collapsed', autohideEnabled);
     setBoolAttr(splitter, 'hidden', autohideMode === 'overlay' && autohideEnabled);
+    if (hidePanelWhenHidden && !activeBrowser) {
+      const selected = store.last?.selectedPanelId;
+      if (selected) setActivePanel(selected);
+    }
   }
 
   function applyOrder() {
@@ -477,6 +593,15 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.style.right = `${right}px`;
       boxArea.style.left = 'unset';
     }
+    if (Prefs.getGeometryHintEnabled()) {
+      try {
+        const r = boxArea.getBoundingClientRect();
+        titleLabel.setAttribute(
+          'value',
+          `${titleBaseText}  ${Math.round(r.width)}×${Math.round(r.height)}  ${Math.round(r.left)},${Math.round(r.top)}`
+        );
+      } catch {}
+    }
   }
 
   function onFloatingDragUp() {
@@ -496,6 +621,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       return p;
     });
     floatingDrag = null;
+    try {
+      titleLabel.setAttribute('value', titleBaseText);
+    } catch {}
   }
 
   function startFloatingResize(type, e) {
@@ -539,6 +667,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.style.right = `${Math.round(win.innerWidth - right)}px`;
       boxArea.style.left = 'unset';
     }
+    if (Prefs.getGeometryHintEnabled()) {
+      try {
+        titleLabel.setAttribute('value', `${titleBaseText}  ${width}×${height}`);
+      } catch {}
+    }
   }
 
   function onFloatingResizeUp() {
@@ -560,6 +693,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       return p;
     });
     floatingResize = null;
+    try {
+      titleLabel.setAttribute('value', titleBaseText);
+    } catch {}
   }
 
   const popupSet = doc.getElementById('mainPopupSet') || doc.documentElement;
@@ -583,9 +719,15 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     return item;
   }
 
+  function menuSeparator() {
+    const sep = createXul(doc, 'menuseparator');
+    return sep;
+  }
+
   function openPanelMenu(panelId, e) {
     panelMenuTargetId = panelId;
     while (panelMenu.firstChild) panelMenu.firstChild.remove();
+    const target = store.panels.find((x) => x.id === panelMenuTargetId);
     panelMenu.appendChild(
       menuItem('Editar URL', () => {
         const p = store.panels.find((x) => x.id === panelMenuTargetId);
@@ -603,7 +745,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       })
     );
     panelMenu.appendChild(
-      menuItem('Alternar flotante', () => {
+      menuItem(target?.floating ? 'Fijar (Pinned)' : 'Flotante', () => {
         const next = updatePanel(panelMenuTargetId, (p) => {
           p.floating = !p.floating;
           p.pinned = !p.floating;
@@ -612,6 +754,70 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         if (next && panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
       })
     );
+    panelMenu.appendChild(
+      menuItem(target?.muted ? 'Unmute' : 'Mute', () => {
+        const next = updatePanel(panelMenuTargetId, (p) => {
+          p.muted = !p.muted;
+          return p;
+        });
+        if (panelMenuTargetId === activePanelId && activeBrowser) {
+          try {
+            activeBrowser.audioMuted = !!next?.muted;
+          } catch {}
+        }
+      })
+    );
+    panelMenu.appendChild(
+      menuItem('Unload', () => {
+        if (panelMenuTargetId !== activePanelId) return;
+        clearBrowser();
+        syncNavButtons();
+      })
+    );
+    panelMenu.appendChild(menuSeparator());
+    panelMenu.appendChild(
+      menuItem('Zoom +', () => {
+        const p = store.panels.find((x) => x.id === panelMenuTargetId);
+        if (!p) return;
+        const nextZoom = Math.min(3, Math.round(((p.zoom || 1) + 0.1) * 100) / 100);
+        updatePanel(panelMenuTargetId, (pp) => {
+          pp.zoom = nextZoom;
+          return pp;
+        });
+        if (panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
+      })
+    );
+    panelMenu.appendChild(
+      menuItem('Zoom -', () => {
+        const p = store.panels.find((x) => x.id === panelMenuTargetId);
+        if (!p) return;
+        const nextZoom = Math.max(0.3, Math.round(((p.zoom || 1) - 0.1) * 100) / 100);
+        updatePanel(panelMenuTargetId, (pp) => {
+          pp.zoom = nextZoom;
+          return pp;
+        });
+        if (panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
+      })
+    );
+    panelMenu.appendChild(
+      menuItem('Zoom reset', () => {
+        updatePanel(panelMenuTargetId, (pp) => {
+          pp.zoom = 1;
+          return pp;
+        });
+        if (panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
+      })
+    );
+    panelMenu.appendChild(
+      menuItem('Reset posición/tamaño', () => {
+        updatePanel(panelMenuTargetId, (pp) => {
+          pp.geometry = { width: 480, height: 640, offsetX: 12, offsetY: 12 };
+          return pp;
+        });
+        if (panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
+      })
+    );
+    panelMenu.appendChild(menuSeparator());
     panelMenu.appendChild(
       menuItem('Eliminar', () => {
         const idx = store.panels.findIndex((p) => p.id === panelMenuTargetId);
@@ -697,8 +903,20 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     return menulist;
   }
 
-  const cbAutohide = checkboxRow('Auto-hide sidebar', 'midori.msidebar.autohide.enabled');
-  const cbAnimations = checkboxRow('Animaciones', 'midori.msidebar.animations.enabled');
+  checkboxRow('Auto-hide sidebar', 'midori.msidebar.autohide.enabled');
+  selectRow(
+    'Auto-hide modo',
+    [
+      { value: 'overlay', label: 'Overlay' },
+      { value: 'inline', label: 'Inline' },
+    ],
+    () => Services.prefs.getStringPref('midori.msidebar.autohide.mode', 'overlay'),
+    (v) => Services.prefs.setStringPref('midori.msidebar.autohide.mode', v)
+  );
+
+  checkboxRow('Ocultar panel al ocultar sidebar', 'midori.msidebar.hidePanelWhenHidden');
+  checkboxRow('Animaciones', 'midori.msidebar.animations.enabled');
+  checkboxRow('Hints de geometría', 'midori.msidebar.geometryHint.enabled');
   selectRow(
     'Posición',
     [
@@ -709,14 +927,60 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     (v) => Services.prefs.setStringPref('midori.msidebar.position', v)
   );
   selectRow(
-    'Auto-hide modo',
+    'Botón “+”',
     [
-      { value: 'overlay', label: 'Overlay' },
-      { value: 'inline', label: 'Inline' },
+      { value: 'before', label: 'Antes' },
+      { value: 'after', label: 'Después' },
     ],
-    () => Services.prefs.getStringPref('midori.msidebar.autohide.mode', 'overlay'),
-    (v) => Services.prefs.setStringPref('midori.msidebar.autohide.mode', v)
+    () => Services.prefs.getStringPref('midori.msidebar.newPanelButton.position', 'before'),
+    (v) => Services.prefs.setStringPref('midori.msidebar.newPanelButton.position', v)
   );
+
+  selectRow(
+    'Indicador de container',
+    [
+      { value: 'off', label: 'Off' },
+      { value: 'left', label: 'Left' },
+      { value: 'right', label: 'Right' },
+      { value: 'top', label: 'Top' },
+      { value: 'bottom', label: 'Bottom' },
+      { value: 'around', label: 'Around' },
+    ],
+    () => Services.prefs.getStringPref('midori.msidebar.containerIndicator', 'left'),
+    (v) => Services.prefs.setStringPref('midori.msidebar.containerIndicator', v)
+  );
+
+  selectRow(
+    'Tooltip',
+    [
+      { value: 'off', label: 'Off' },
+      { value: 'title', label: 'Title' },
+      { value: 'url', label: 'URL' },
+      { value: 'title-url', label: 'Title+URL' },
+    ],
+    () => Services.prefs.getStringPref('midori.msidebar.tooltip.mode', 'title-url'),
+    (v) => Services.prefs.setStringPref('midori.msidebar.tooltip.mode', v)
+  );
+
+  checkboxRow('Tooltip: URL completa', 'midori.msidebar.tooltip.fullUrl');
+
+  checkboxRow('Toolbar panel: auto-hide', 'midori.msidebar.webPanelToolbar.autohide');
+  checkboxRow('Toolbar panel: auto-hide back', 'midori.msidebar.webPanelToolbar.autohideBack');
+  checkboxRow('Toolbar panel: auto-hide forward', 'midori.msidebar.webPanelToolbar.autohideForward');
+
+  const customizeBtn = createXul(doc, 'button');
+  customizeBtn.setAttribute('label', 'Customize Toolbar…');
+  customizeBtn.setAttribute('style', 'margin-top: 8px;');
+  customizeBtn.addEventListener(
+    'command',
+    () => {
+      try {
+        win.gCustomizeMode?.enter?.();
+      } catch {}
+    },
+    true
+  );
+  settingsBox.appendChild(customizeBtn);
 
   btnSettings.addEventListener(
     'command',
@@ -800,9 +1064,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     } catch {}
   }
 
-  btnBack.addEventListener('command', () => tryNav('goBack'), true);
-  btnForward.addEventListener('command', () => tryNav('goForward'), true);
-  btnReload.addEventListener('command', () => tryNav('reload'), true);
+  btnBack.addEventListener('command', () => (tryNav('goBack'), syncNavButtons()), true);
+  btnForward.addEventListener('command', () => (tryNav('goForward'), syncNavButtons()), true);
+  btnReload.addEventListener('command', () => (tryNav('reload'), syncNavButtons()), true);
   btnHome.addEventListener(
     'command',
     () => {
@@ -811,12 +1075,14 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       try {
         activeBrowser?.setAttribute?.('src', panel.url);
       } catch {}
+      syncNavButtons();
     },
     true
   );
 
   function setStore(next) {
     store = next || { panels: [], last: {} };
+    syncToolbarPrefs();
     renderButtons();
     const selected = store.last?.selectedPanelId;
     if (selected) {
@@ -844,6 +1110,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     } catch {}
   }
 
+  function refresh() {
+    syncToolbarPrefs();
+    renderButtons();
+    syncNavButtons();
+  }
+
   return {
     root: wrapper,
     setStore,
@@ -853,6 +1125,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     setAutohideMode,
     setAnimated,
     setCssWidth,
+    refresh,
     destroy,
     get settingsAnchor() {
       return btnSettings;
