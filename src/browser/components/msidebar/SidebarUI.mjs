@@ -5,6 +5,7 @@ import * as Prefs from './SidebarPrefs.mjs';
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   ContextualIdentityService: 'resource://gre/modules/ContextualIdentityService.sys.mjs',
+  PlacesUtils: 'resource://gre/modules/PlacesUtils.sys.mjs',
 });
 
 function createXul(doc, tag) {
@@ -29,6 +30,11 @@ function ensureStyle(doc) {
 #midori-msidebar-main .toolbarbutton-1{border-radius:var(--border-radius-medium);background:transparent;}
 #midori-msidebar-main .toolbarbutton-1:hover{background:color-mix(in srgb, currentColor 8%, transparent);}
 #midori-msidebar-main .toolbarbutton-1:active{background:color-mix(in srgb, currentColor 12%, transparent);}
+#midori-msidebar-main .toolbarbutton-text{display:none;}
+.midori-msidebar-panel-btn .toolbarbutton-text{display:none;}
+.midori-msidebar-panel-btn .toolbarbutton-icon{width:18px;height:18px;}
+.midori-msidebar-panel-btn{list-style-image:var(--midori-msidebar-panel-icon,url("chrome://global/skin/icons/defaultFavicon.svg"));}
+.midori-msidebar-panel-btn[checked='true']{background:color-mix(in srgb, currentColor 10%, transparent);}
 
 #midori-msidebar-toggle{list-style-image:url("chrome://browser/skin/sidebars.svg");}
 #midori-msidebar-add{list-style-image:url("chrome://global/skin/icons/plus.svg");}
@@ -129,6 +135,27 @@ function containerColorForUserContext(userContextId) {
   }
 }
 
+function escapeCssUrl(url) {
+  if (typeof url !== 'string') return '';
+  return url.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+}
+
+function defaultFaviconSpec() {
+  return 'chrome://global/skin/icons/defaultFavicon.svg';
+}
+
+function faviconFallbackForPanel(panel) {
+  try {
+    const u = new URL(panel?.url || '');
+    if (u.protocol === 'http:' || u.protocol === 'https:') return `page-icon:${u.toString()}`;
+  } catch {}
+  return defaultFaviconSpec();
+}
+
+function clampZoom(z) {
+  return Math.max(0.3, Math.min(3, typeof z === 'number' ? z : 1));
+}
+
 export function createSidebarUI(win, { onStoreChanged } = {}) {
   const doc = win.document;
   ensureStyle(doc);
@@ -158,14 +185,16 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const btnToggle = createXul(doc, 'toolbarbutton');
   btnToggle.id = 'midori-msidebar-toggle';
   btnToggle.classList.add('toolbarbutton-1', 'midori-msidebar-icon');
-  btnToggle.setAttribute('label', 'Sidebar');
+  btnToggle.setAttribute('label', '');
+  btnToggle.setAttribute('aria-label', 'Sidebar');
   btnToggle.setAttribute('tooltiptext', 'Sidebar');
   main.appendChild(btnToggle);
 
   const btnAdd = createXul(doc, 'toolbarbutton');
   btnAdd.id = 'midori-msidebar-add';
   btnAdd.classList.add('toolbarbutton-1', 'midori-msidebar-icon');
-  btnAdd.setAttribute('label', 'Agregar panel');
+  btnAdd.setAttribute('label', '');
+  btnAdd.setAttribute('aria-label', 'Agregar panel');
   btnAdd.setAttribute('tooltiptext', 'Agregar panel');
 
   const buttonsBox = createXul(doc, 'vbox');
@@ -186,7 +215,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const btnSettings = createXul(doc, 'toolbarbutton');
   btnSettings.id = 'midori-msidebar-settings';
   btnSettings.classList.add('toolbarbutton-1', 'midori-msidebar-icon');
-  btnSettings.setAttribute('label', 'Configuración');
+  btnSettings.setAttribute('label', '');
+  btnSettings.setAttribute('aria-label', 'Configuración');
   btnSettings.setAttribute('tooltiptext', 'Configuración');
   main.appendChild(btnSettings);
 
@@ -221,7 +251,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const b = createXul(doc, 'toolbarbutton');
     b.id = id;
     b.classList.add('toolbarbutton-1');
-    b.setAttribute('label', label);
+    b.setAttribute('label', '');
+    b.setAttribute('aria-label', label);
     b.setAttribute('tooltiptext', label);
     toolbar.appendChild(b);
     return b;
@@ -272,6 +303,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   let floatResizers = null;
   let titleBaseText = '';
   let hidePanelWhenHidden = Prefs.getHidePanelWhenHidden();
+  let panelAreaHiddenByUser = false;
+  const faviconCache = new Map();
+  const faviconPending = new Set();
 
   function setCssWidth(px) {
     const width = Math.min(800, Math.max(200, px));
@@ -290,8 +324,54 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const next = updater({ ...prev });
     if (!next) return null;
     store.panels[idx] = next;
+    try {
+      if (prev.url !== next.url) faviconCache.delete(panelId);
+    } catch {}
     onStoreChanged?.(store);
     return next;
+  }
+
+  function applyZoomToBrowser(browserEl, zoom) {
+    const z = clampZoom(zoom);
+    try {
+      if ('fullZoom' in browserEl) browserEl.fullZoom = z;
+    } catch {}
+    try {
+      if (win.ZoomManager?.setZoomForBrowser) win.ZoomManager.setZoomForBrowser(browserEl, z);
+    } catch {}
+  }
+
+  async function resolveFaviconSpecForPanel(panel) {
+    try {
+      const pageUri = Services.io.newURI(panel.url);
+      const uri = await lazy.PlacesUtils?.favicons?.getFaviconURLForPage?.(pageUri);
+      const spec = uri?.spec;
+      if (spec) return spec;
+    } catch {}
+    return faviconFallbackForPanel(panel);
+  }
+
+  function setPanelButtonIcon(btn, spec) {
+    const safe = escapeCssUrl(spec || defaultFaviconSpec());
+    try {
+      btn.style.setProperty('--midori-msidebar-panel-icon', `url("${safe}")`);
+    } catch {}
+    try {
+      btn.setAttribute('image', spec || defaultFaviconSpec());
+    } catch {}
+  }
+
+  function ensureFavicon(panel) {
+    const pid = panel?.id;
+    if (!pid) return;
+    if (faviconCache.has(pid) || faviconPending.has(pid)) return;
+    faviconPending.add(pid);
+    resolveFaviconSpecForPanel(panel).then((spec) => {
+      faviconPending.delete(pid);
+      faviconCache.set(pid, spec || defaultFaviconSpec());
+      const btn = buttonsBox.querySelector(`[midori-msidebar-panel-id="${pid}"]`);
+      if (btn) setPanelButtonIcon(btn, faviconCache.get(pid));
+    });
   }
 
   function applyFloatingGeometry(panel) {
@@ -327,6 +407,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     try {
       header.removeEventListener('mousedown', onFloatingHeaderMouseDown, true);
     } catch {}
+    boxArea.style.width = '';
     boxArea.style.height = '';
     boxArea.style.top = '';
     boxArea.style.left = '';
@@ -390,6 +471,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function setActivePanel(panelId) {
     const panel = store.panels.find((p) => p.id === panelId);
     if (!panel) return;
+    panelAreaHiddenByUser = false;
     activePanelId = panel.id;
     currentPanelFloating = !!panel.floating;
     store.last = store.last || {};
@@ -397,39 +479,46 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     clearBrowser();
     const browserEl = createPanelBrowser(win, panel);
     activeBrowser = browserEl;
-    activeBrowser.addEventListener('load', () => syncNavButtons(), true);
+    activeBrowser.addEventListener(
+      'load',
+      () => {
+        syncNavButtons();
+        applyZoomToBrowser(activeBrowser, panel.zoom);
+        ensureFavicon(panel);
+      },
+      true
+    );
     try {
       activeBrowser.audioMuted = !!panel.muted;
     } catch {}
     try {
-      const z = typeof panel.zoom === 'number' ? panel.zoom : 1;
-      if (win.ZoomManager?.setZoomForBrowser) {
-        win.ZoomManager.setZoomForBrowser(activeBrowser, Math.max(0.3, Math.min(3, z)));
-      } else if ('fullZoom' in activeBrowser) {
-        activeBrowser.fullZoom = Math.max(0.3, Math.min(3, z));
-      }
+      applyZoomToBrowser(activeBrowser, panel.zoom);
     } catch {}
     stack.appendChild(browserEl);
     titleBaseText = panel.title || safeHostname(panel.url) || panel.url;
     titleLabel.setAttribute('value', titleBaseText);
     if (currentPanelFloating) {
       boxArea.setAttribute('overlay', 'true');
-      setBoolAttr(boxArea, 'collapsed', visible && autohideEnabled);
+      boxArea.style.display = '';
+      setBoolAttr(boxArea, 'collapsed', !visible);
       ensureFloatingChrome();
       applyFloatingGeometry(panel);
     } else {
       clearFloatingChrome();
+      boxArea.style.display = '';
       boxArea.setAttribute('overlay', autohideEnabled && autohideMode === 'overlay' ? 'true' : 'false');
       boxArea.style.height = '';
       boxArea.style.top = '';
       boxArea.style.bottom = '';
       boxArea.style.left = '';
       boxArea.style.right = '';
+      if (!autohideEnabled && visible) setBoolAttr(boxArea, 'collapsed', false);
       setCssWidth(Services.prefs.getIntPref('midori.msidebar.width', 320));
     }
     renderButtons();
     syncToolbarPrefs();
     syncNavButtons();
+    ensureFavicon(panel);
     onStoreChanged?.(store);
   }
 
@@ -453,16 +542,17 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const selected = store.last?.selectedPanelId;
     const indicator = Prefs.getContainerIndicator();
     for (const panel of store.panels) {
-      const label = (panel.title || safeHostname(panel.url) || 'Panel').slice(0, 2);
       const btn = createXul(doc, 'toolbarbutton');
       btn.classList.add('toolbarbutton-1', 'midori-msidebar-icon', 'midori-msidebar-panel-btn');
-      btn.setAttribute('label', label);
+      btn.setAttribute('label', '');
+      btn.setAttribute('aria-label', panel.title || safeHostname(panel.url) || panel.url || 'Panel');
       const tt = tooltipTextForPanel(panel);
       if (tt) btn.setAttribute('tooltiptext', tt);
       btn.setAttribute('midori-msidebar-panel-id', panel.id);
       btn.setAttribute('container-indicator', indicator);
       const cc = containerColorForUserContext(panel.userContextId);
       if (cc) btn.style.setProperty('--midori-msidebar-container-color', cc);
+      setPanelButtonIcon(btn, faviconCache.get(panel.id) || faviconFallbackForPanel(panel));
       btn.addEventListener(
         'contextmenu',
         (e) => {
@@ -477,12 +567,34 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (activePanelId === panel.id && !panelAreaHiddenByUser) {
+            panelAreaHiddenByUser = true;
+            store.last = store.last || {};
+            store.last.selectedPanelId = null;
+            activePanelId = null;
+            currentPanelFloating = false;
+            clearBrowser();
+            clearFloatingChrome();
+            titleLabel.setAttribute('value', '');
+            setBoolAttr(boxArea, 'collapsed', true);
+            boxArea.style.display = '';
+            setBoolAttr(splitter, 'hidden', true);
+            renderButtons();
+            onStoreChanged?.(store);
+            return;
+          }
+          panelAreaHiddenByUser = false;
+          if (!autohideEnabled && visible) {
+            setBoolAttr(boxArea, 'collapsed', false);
+            setBoolAttr(splitter, 'hidden', false);
+          }
           setActivePanel(panel.id);
         },
         true
       );
       if (panel.id === selected) btn.setAttribute('checked', 'true');
       buttonsBox.appendChild(btn);
+      ensureFavicon(panel);
     }
   }
 
@@ -494,11 +606,18 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
       setBoolAttr(main, 'collapsed', true);
       setBoolAttr(boxArea, 'collapsed', true);
+      boxArea.style.display = '';
       setBoolAttr(splitter, 'hidden', true);
       return;
     }
     setBoolAttr(main, 'collapsed', false);
-    setBoolAttr(boxArea, 'collapsed', autohideEnabled);
+    if (currentPanelFloating) {
+      boxArea.style.display = panelAreaHiddenByUser ? 'none' : '';
+      setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser);
+    } else {
+      setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || autohideEnabled);
+      boxArea.style.display = '';
+    }
     setBoolAttr(splitter, 'hidden', autohideMode === 'overlay' && autohideEnabled);
     if (hidePanelWhenHidden && !activeBrowser) {
       const selected = store.last?.selectedPanelId;
@@ -541,8 +660,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   function setAutohide(enabled) {
     autohideEnabled = !!enabled;
+    if (currentPanelFloating) return;
     if (!autohideEnabled) {
-      setBoolAttr(boxArea, 'collapsed', !visible);
+      setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !visible);
       boxArea.setAttribute('overlay', 'false');
       setBoolAttr(splitter, 'hidden', !visible);
       return;
@@ -554,6 +674,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   function setAutohideMode(mode) {
     autohideMode = mode === 'inline' ? 'inline' : 'overlay';
+    if (currentPanelFloating) return;
     boxArea.setAttribute('overlay', autohideEnabled && autohideMode === 'overlay' ? 'true' : 'false');
     setBoolAttr(splitter, 'hidden', autohideEnabled && autohideMode === 'overlay' ? true : !visible);
   }
@@ -741,11 +862,17 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           pp.url = url;
           return pp;
         });
-        if (panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
+        if (panelMenuTargetId === activePanelId) {
+          setActivePanel(activePanelId);
+        } else {
+          renderButtons();
+          const next = store.panels.find((x) => x.id === panelMenuTargetId);
+          if (next) ensureFavicon(next);
+        }
       })
     );
     panelMenu.appendChild(
-      menuItem(target?.floating ? 'Fijar (Pinned)' : 'Flotante', () => {
+      menuItem(target?.floating ? 'Acoplar' : 'Flotante', () => {
         const next = updatePanel(panelMenuTargetId, (p) => {
           p.floating = !p.floating;
           p.pinned = !p.floating;
@@ -784,7 +911,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           pp.zoom = nextZoom;
           return pp;
         });
-        if (panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
+        if (panelMenuTargetId === activePanelId && activeBrowser) applyZoomToBrowser(activeBrowser, nextZoom);
       })
     );
     panelMenu.appendChild(
@@ -796,7 +923,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           pp.zoom = nextZoom;
           return pp;
         });
-        if (panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
+        if (panelMenuTargetId === activePanelId && activeBrowser) applyZoomToBrowser(activeBrowser, nextZoom);
       })
     );
     panelMenu.appendChild(
@@ -805,7 +932,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           pp.zoom = 1;
           return pp;
         });
-        if (panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
+        if (panelMenuTargetId === activePanelId && activeBrowser) applyZoomToBrowser(activeBrowser, 1);
       })
     );
     panelMenu.appendChild(
@@ -1001,11 +1128,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function onEnter() {
-    if (!autohideEnabled || !visible) return;
+    if (!autohideEnabled || !visible || panelAreaHiddenByUser || currentPanelFloating) return;
     setBoolAttr(boxArea, 'collapsed', false);
   }
   function onLeave() {
-    if (!autohideEnabled || !visible) return;
+    if (!autohideEnabled || !visible || panelAreaHiddenByUser || currentPanelFloating) return;
     setBoolAttr(boxArea, 'collapsed', true);
   }
 
