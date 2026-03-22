@@ -1,6 +1,6 @@
 import * as Prefs from 'resource:///modules/msidebar/SidebarPrefs.mjs';
 import { loadStore, saveStore } from 'resource:///modules/msidebar/SidebarStore.mjs';
-import { validateStore } from 'resource:///modules/msidebar/SidebarModel.mjs';
+import { createPanel, validateStore } from 'resource:///modules/msidebar/SidebarModel.mjs';
 import { createSidebarUI } from 'resource:///modules/msidebar/SidebarUI.mjs';
 
 const lazy = {};
@@ -11,6 +11,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const PREF_VERTICAL_TABS = 'midori.verticaltabs.enabled';
+const PREF_SEEDED_DEFAULT_PANELS = 'midori.msidebar.seededDefaultPanels';
 
 export const MidoriSidebar = {
   _initialized: false,
@@ -129,6 +130,7 @@ export const MidoriSidebar = {
     const autohideMode = Prefs.getAutohideMode();
     const animationsEnabled = Prefs.getAnimationsEnabled();
 
+    if (enabled) this._ensureSeededDefaultPanels(win);
     ui.setPosition(position);
     ui.setCssWidth(width);
     ui.setAnimated?.(animationsEnabled);
@@ -137,6 +139,47 @@ export const MidoriSidebar = {
     ui.setVisible(enabled);
     ui.refresh?.();
     this._ensureShortcuts(win);
+  },
+
+  _ensureSeededDefaultPanels(win) {
+    try {
+      if (Services.prefs.getBoolPref(PREF_SEEDED_DEFAULT_PANELS, false)) return;
+    } catch {}
+
+    const store = this._stores.get(win);
+    const ui = this._uis.get(win);
+    if (!store || !ui) return;
+
+    try {
+      Services.prefs.setBoolPref(PREF_SEEDED_DEFAULT_PANELS, true);
+    } catch {}
+
+    try {
+      if (Array.isArray(store.panels) && store.panels.length) return;
+    } catch {}
+
+    const defaults = [
+      { url: 'https://wallet.astian.org', title: 'Midori Wallet' },
+      { url: 'https://cloud2.astian.org', title: 'Astian Cloud' },
+      { url: 'https://astian.org/community', title: 'Astian Community' },
+      { url: 'https://notes.astian.org', title: 'Astian Notes' },
+    ];
+
+    const seeded = { ...store, panels: Array.isArray(store.panels) ? [...store.panels] : [], last: { ...(store.last || {}) } };
+    for (const d of defaults) {
+      const p = createPanel({ url: d.url, title: d.title });
+      if (!p) continue;
+      p.loadOnStartup = true;
+      seeded.panels.push(p);
+    }
+    if (!seeded.last.selectedPanelId) {
+      seeded.last.selectedPanelId = seeded.panels[0]?.id;
+    }
+
+    const validated = validateStore(seeded);
+    this._stores.set(win, validated);
+    ui.setStore(validated);
+    this._scheduleSave(win, validated);
   },
 
   _scheduleSave(win, nextStore) {
