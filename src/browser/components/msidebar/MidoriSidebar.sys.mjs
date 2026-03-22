@@ -17,6 +17,7 @@ export const MidoriSidebar = {
   _uis: new WeakMap(),
   _stores: new WeakMap(),
   _saveTimers: new WeakMap(),
+  _retryTimers: new WeakMap(),
 
   init() {
     if (this._initialized) return;
@@ -27,6 +28,7 @@ export const MidoriSidebar = {
     Services.prefs.addObserver(Prefs.PREF_WIDTH, this);
     Services.prefs.addObserver(Prefs.PREF_AUTOHIDE_ENABLED, this);
     Services.prefs.addObserver(Prefs.PREF_AUTOHIDE_MODE, this);
+    Services.prefs.addObserver(Prefs.PREF_ANIMATIONS_ENABLED, this);
 
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
@@ -73,29 +75,45 @@ export const MidoriSidebar = {
       return;
     }
 
-    const store = await loadStore();
-    const ui = createSidebarUI(win, {
-      onStoreChanged: (nextStore) => this._scheduleSave(win, nextStore),
-    });
+    try {
+      const store = await loadStore();
+      const ui = createSidebarUI(win, {
+        onStoreChanged: (nextStore) => this._scheduleSave(win, nextStore),
+      });
 
-    this._uis.set(win, ui);
-    this._stores.set(win, store);
+      if (!ui || !ui.root) {
+        this._scheduleRetry(win);
+        return;
+      }
 
-    ui.setStore(store);
-    this._syncWindowUI(win);
+      this._uis.set(win, ui);
+      this._stores.set(win, store);
+
+      ui.setStore(store);
+      this._syncWindowUI(win);
+    } catch {
+      this._scheduleRetry(win);
+    }
   },
 
   _syncWindowUI(win) {
     const ui = this._uis.get(win);
-    if (!ui) return;
+    if (!ui || !ui.root) {
+      this._scheduleRetry(win);
+      return;
+    }
 
     const enabled = Prefs.getEnabled();
     const position = Prefs.getPosition();
     const width = Prefs.getWidth();
     const autohideEnabled = Prefs.getAutohideEnabled();
+    const autohideMode = Prefs.getAutohideMode();
+    const animationsEnabled = Prefs.getAnimationsEnabled();
 
     ui.setPosition(position);
     ui.setCssWidth(width);
+    ui.setAnimated?.(animationsEnabled);
+    ui.setAutohideMode?.(autohideMode);
     ui.setAutohide(autohideEnabled);
     ui.setVisible(enabled);
   },
@@ -137,6 +155,24 @@ export const MidoriSidebar = {
       } catch {}
     }
     this._saveTimers.delete(win);
+    const r = this._retryTimers.get(win);
+    if (r) {
+      try {
+        lazy.clearTimeout(r);
+      } catch {}
+    }
+    this._retryTimers.delete(win);
+  },
+
+  _scheduleRetry(win) {
+    if (!win || !win.document) return;
+    const existing = this._retryTimers.get(win);
+    if (existing) return;
+    const timer = lazy.setTimeout(() => {
+      this._retryTimers.delete(win);
+      this._applyToWindow(win);
+    }, 750);
+    this._retryTimers.set(win, timer);
   },
 
   _ensureToolbarWidget() {
