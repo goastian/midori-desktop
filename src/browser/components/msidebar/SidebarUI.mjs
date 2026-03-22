@@ -335,6 +335,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   let preferredDockWidth = 320;
   const faviconCache = new Map();
   const faviconPending = new Set();
+  let splitterDrag = null;
 
   function applyDockWidth() {
     if (currentPanelFloating) return;
@@ -398,8 +399,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     try {
       const pageUri = Services.io.newURI(panel.url);
       const uri = await lazy.PlacesUtils?.favicons?.getFaviconURLForPage?.(pageUri);
-      const spec = uri?.spec;
-      if (spec) return spec;
+      const iconUri = uri?.spec ? uri : null;
+      if (iconUri?.spec && iconUri.spec !== defaultFaviconSpec()) {
+        const link = lazy.PlacesUtils?.favicons?.getFaviconLinkForIcon?.(iconUri);
+        const spec = link?.spec || iconUri.spec;
+        if (spec && spec !== defaultFaviconSpec()) return spec;
+      }
     } catch {}
     return faviconFallbackForPanel(panel);
   }
@@ -417,7 +422,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function ensureFavicon(panel) {
     const pid = panel?.id;
     if (!pid) return;
-    if (faviconCache.has(pid) || faviconPending.has(pid)) return;
+    const cached = faviconCache.get(pid);
+    if (cached && cached !== defaultFaviconSpec()) return;
+    if (faviconPending.has(pid)) return;
     faviconPending.add(pid);
     resolveFaviconSpecForPanel(panel).then((spec) => {
       faviconPending.delete(pid);
@@ -537,6 +544,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       () => {
         syncNavButtons();
         applyZoomToBrowser(activeBrowser, panel.zoom);
+        try {
+          faviconCache.delete(panel.id);
+        } catch {}
         ensureFavicon(panel);
       },
       true
@@ -671,11 +681,24 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || autohideEnabled);
       boxArea.style.display = '';
     }
-    setBoolAttr(splitter, 'hidden', autohideMode === 'overlay' && autohideEnabled);
+    syncSplitterVisibility();
     if (hidePanelWhenHidden && !activeBrowser) {
       const selected = store.last?.selectedPanelId;
       if (selected) setActivePanel(selected);
     }
+  }
+
+  function syncSplitterVisibility() {
+    if (!visible || currentPanelFloating || panelAreaHiddenByUser) {
+      setBoolAttr(splitter, 'hidden', true);
+      return;
+    }
+    if (autohideEnabled && autohideMode === 'overlay') {
+      const collapsed = boxArea.getAttribute('collapsed') === 'true';
+      setBoolAttr(splitter, 'hidden', collapsed);
+      return;
+    }
+    setBoolAttr(splitter, 'hidden', false);
   }
 
   function applyOrder() {
@@ -717,22 +740,22 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (!autohideEnabled) {
       setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !visible);
       boxArea.setAttribute('overlay', 'false');
-      setBoolAttr(splitter, 'hidden', !visible);
       applyDockWidth();
+      syncSplitterVisibility();
       return;
     }
     if (visible) setBoolAttr(boxArea, 'collapsed', true);
     boxArea.setAttribute('overlay', autohideMode === 'overlay' ? 'true' : 'false');
-    setBoolAttr(splitter, 'hidden', autohideMode === 'overlay' ? true : !visible);
     applyDockWidth();
+    syncSplitterVisibility();
   }
 
   function setAutohideMode(mode) {
     autohideMode = mode === 'inline' ? 'inline' : 'overlay';
     if (currentPanelFloating) return;
     boxArea.setAttribute('overlay', autohideEnabled && autohideMode === 'overlay' ? 'true' : 'false');
-    setBoolAttr(splitter, 'hidden', autohideEnabled && autohideMode === 'overlay' ? true : !visible);
     applyDockWidth();
+    syncSplitterVisibility();
   }
 
   function onFloatingHeaderMouseDown(e) {
@@ -1188,11 +1211,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (!autohideEnabled || !visible || panelAreaHiddenByUser || currentPanelFloating) return;
     if (isAutohideExcludedTarget(e?.target)) return;
     setBoolAttr(boxArea, 'collapsed', false);
+    syncSplitterVisibility();
   }
   function onLeave() {
     if (!autohideEnabled || !visible || panelAreaHiddenByUser || currentPanelFloating) return;
     if (sizing || floatingResize || floatingDrag) return;
     setBoolAttr(boxArea, 'collapsed', true);
+    syncSplitterVisibility();
   }
 
   main.addEventListener('mouseenter', onEnter, true);
@@ -1220,14 +1245,41 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     true
   );
 
+  function onSplitterMouseMove(e) {
+    if (!sizing || !splitterDrag || currentPanelFloating) return;
+    try {
+      const dx = e.clientX - splitterDrag.startX;
+      const dir = splitterDrag.position === 'right' ? -1 : 1;
+      const width = Math.min(800, Math.max(200, Math.round(splitterDrag.startWidth + dx * dir)));
+      doc.documentElement.style.setProperty('--midori-msidebar-width', `${width}px`);
+      if (autohideMode !== 'overlay') {
+        try {
+          boxArea.style.width = `${width}px`;
+        } catch {}
+      }
+    } catch {}
+  }
+
   splitter.addEventListener(
     'mousedown',
     (e) => {
       if (e.button !== 0) return;
       sizing = true;
+      try {
+        splitterDrag = {
+          startX: e.clientX,
+          startWidth: boxArea.getBoundingClientRect().width || preferredDockWidth,
+          position,
+          panelId: activePanelId,
+        };
+      } catch {
+        splitterDrag = { startX: e.clientX, startWidth: preferredDockWidth, position, panelId: activePanelId };
+      }
+      win.addEventListener('mousemove', onSplitterMouseMove, true);
       if (autohideEnabled && visible && !currentPanelFloating) {
         setBoolAttr(boxArea, 'collapsed', false);
       }
+      syncSplitterVisibility();
     },
     true
   );
@@ -1236,13 +1288,19 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     () => {
       if (!sizing) return;
       sizing = false;
+      const splitterPanelId = splitterDrag?.panelId;
+      splitterDrag = null;
+      try {
+        win.removeEventListener('mousemove', onSplitterMouseMove, true);
+      } catch {}
       try {
         const w = Math.round(boxArea.getBoundingClientRect().width);
         if (w >= 200 && w <= 800) {
           Services.prefs.setIntPref('midori.msidebar.width', w);
           preferredDockWidth = w;
-          if (activePanelId && !currentPanelFloating) {
-            updatePanel(activePanelId, (p) => {
+          const pid = activePanelId || splitterPanelId;
+          if (pid && !currentPanelFloating) {
+            updatePanel(pid, (p) => {
               p.dockWidth = w;
               return p;
             });
@@ -1251,6 +1309,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           }
         }
       } catch {}
+      syncSplitterVisibility();
     },
     true
   );
