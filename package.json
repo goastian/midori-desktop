@@ -10,7 +10,7 @@
     "build": "amelia build",
     "build:ui": "amelia build --ui",
     "start": "cd engine && python3 ./mach run --noprofile",
-    "import": "npm run amelia import",
+    "import": "npm run amelia import && echo \"finish apply\"",
     "export": "amelia export",
     "init": "npm run download && npm run import && npm run bootstrap",
     "download": "amelia download",
@@ -74,7 +74,7 @@
   },
   "homepage": "https://github.com/goastian/midori-desktop#readme",
   "dependencies": {
-    "@goastian/amelia": "^1.11.27"
+    "@goastian/amelia": "^1.11.28"
   },
   "devDependencies": {
     "@babel/preset-typescript": "^7.27.0",
