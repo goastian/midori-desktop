@@ -28,9 +28,19 @@ welcome-dialog-tablayout = Choose Your Tab Layout
 welcome-dialog-tablayout-subtext = Pick how you want your tabs organized — you can change this anytime in settings
 welcome-dialog-tablayout-horizontal = Horizontal
 welcome-dialog-tablayout-horizontal-desc = Classic tabs across the top
+welcome-dialog-tablayout-horizontal-bottom = Horizontal (Bottom)
+welcome-dialog-tablayout-horizontal-bottom-desc = Tabs across the bottom
 welcome-dialog-tablayout-vertical = Vertical
 welcome-dialog-tablayout-vertical-desc = Modern sidebar with floating URL bar
+welcome-dialog-tablayout-vertical-right = Vertical (Right)
+welcome-dialog-tablayout-vertical-right-desc = Vertical tabs on the right
 welcome-dialog-tablayout-action = Continue
+
+welcome-dialog-msidebar = Enable Sidebar
+welcome-dialog-msidebar-subtext = Enable a second sidebar with web panels
+welcome-dialog-msidebar-enable = Enable
+welcome-dialog-msidebar-disable = Disable
+welcome-dialog-msidebar-action = Continue
 
 welcome-dialog-search = Pick A Search Engine
 welcome-dialog-search-action = Next

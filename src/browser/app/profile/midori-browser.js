@@ -45,6 +45,9 @@ pref("browser.urlbar.update2.engineAliasRefresh", true);
 // Disable Languages (as most of them break the branding)
 pref("intl.multilingual.enabled", false);
 
+// Disable sidebar firefox default
+pref("browser.sidebar.enabled", false);
+
 pref("browser.newtabpage.activity-stream.go.background.image", false);
 
 // MacOS translucency preference (disabled for testing only) 
@@ -204,6 +207,31 @@ pref('midori.gradient.texture.opacity', 50);
 // content area, and modern sidebar. When disabled, horizontal tabs are used
 // with light visual refinements.
 pref('midori.verticaltabs.enabled', false);
+pref('midori.verticaltabs.position', 'left');
+pref('midori.horizontaltabs.position', 'top');
+
+pref('midori.msidebar.enabled', false);
+pref('midori.msidebar.position', 'left');
+pref('midori.msidebar.width', 320);
+pref('midori.msidebar.autohide.enabled', false);
+pref('midori.msidebar.autohide.mode', 'overlay');
+pref('midori.msidebar.animations.enabled', true);
+pref('midori.msidebar.debug', false);
+pref('midori.msidebar.hidePanelWhenHidden', true);
+pref('midori.msidebar.newPanelButton.position', 'before');
+pref('midori.msidebar.geometryHint.enabled', true);
+pref('midori.msidebar.containerIndicator', 'left');
+pref('midori.msidebar.tooltip.mode', 'title-url');
+pref('midori.msidebar.tooltip.fullUrl', false);
+pref('midori.msidebar.webPanelToolbar.autohide', true);
+pref('midori.msidebar.webPanelToolbar.autohideBack', true);
+pref('midori.msidebar.webPanelToolbar.autohideForward', true);
+pref('midori.msidebar.shortcut.toggleSidebar', '');
+pref('midori.msidebar.shortcut.togglePanel', '');
+
+pref('sidebar.revamp', false);
+pref('sidebar.verticalTabs', false);
+pref('sidebar.visibility', 'hide');
 
 // ============================================================================
 // MIDORI AUTO-HIDE TOOLBAR
