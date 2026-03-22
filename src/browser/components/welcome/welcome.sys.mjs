@@ -478,19 +478,54 @@ class Gradient extends Page {
 class TabLayout extends Page {
   constructor(id) {
     super(id);
-    this._horizontalCard = document.getElementById('tablayoutHorizontal');
-    this._verticalCard = document.getElementById('tablayoutVertical');
-    this._isVertical = false;
+    this._horizontalTopCard = document.getElementById('tablayoutHorizontal');
+    this._horizontalBottomCard = document.getElementById('tablayoutHorizontalBottom');
+    this._verticalLeftCard = document.getElementById('tablayoutVertical');
+    this._verticalRightCard = document.getElementById('tablayoutVerticalRight');
 
-    this._horizontalCard.addEventListener('click', () => this._select(false));
-    this._verticalCard.addEventListener('click', () => this._select(true));
+    this._horizontalTopCard.addEventListener('click', () => this._select('horizontal-top'));
+    this._horizontalBottomCard.addEventListener('click', () => this._select('horizontal-bottom'));
+    this._verticalLeftCard.addEventListener('click', () => this._select('vertical-left'));
+    this._verticalRightCard.addEventListener('click', () => this._select('vertical-right'));
   }
 
-  _select(vertical) {
-    this._isVertical = vertical;
-    this._horizontalCard.classList.toggle('selected', !vertical);
-    this._verticalCard.classList.toggle('selected', vertical);
+  _select(mode) {
+    const vertical = mode === 'vertical-left' || mode === 'vertical-right';
+    this._horizontalTopCard.classList.toggle('selected', mode === 'horizontal-top');
+    this._horizontalBottomCard.classList.toggle('selected', mode === 'horizontal-bottom');
+    this._verticalLeftCard.classList.toggle('selected', mode === 'vertical-left');
+    this._verticalRightCard.classList.toggle('selected', mode === 'vertical-right');
+
     lazy.MidoriVerticalTabs.setEnabled(vertical);
+
+    if (vertical) {
+      Services.prefs.setCharPref('midori.verticaltabs.position', mode === 'vertical-right' ? 'right' : 'left');
+    } else {
+      Services.prefs.setCharPref(
+        'midori.horizontaltabs.position',
+        mode === 'horizontal-bottom' ? 'bottom' : 'top'
+      );
+    }
+  }
+}
+
+class MSidebar extends Page {
+  constructor(id) {
+    super(id);
+    this._enableCard = document.getElementById('msidebarEnable');
+    this._disableCard = document.getElementById('msidebarDisable');
+
+    this._enableCard.addEventListener('click', () => this._select(true));
+    this._disableCard.addEventListener('click', () => this._select(false));
+
+    const enabled = Services.prefs.getBoolPref('midori.msidebar.enabled', false);
+    this._select(enabled);
+  }
+
+  _select(enabled) {
+    this._enableCard.classList.toggle('selected', !!enabled);
+    this._disableCard.classList.toggle('selected', !enabled);
+    Services.prefs.setBoolPref('midori.msidebar.enabled', !!enabled);
   }
 }
 
@@ -549,5 +584,6 @@ const pages = new Pages([
   new Themes('theme'),
   new Gradient('gradient'),
   new TabLayout('tablayout'),
+  new MSidebar('msidebar'),
   new Search('search'),
 ]);

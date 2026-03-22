@@ -838,6 +838,16 @@ input[type='checkbox'] {
   flex-direction: column;
 }
 
+.tablayout-horizontal-bottom-preview {
+  display: flex;
+  flex-direction: column;
+}
+
+.tablayout-horizontal-bottom-preview .preview-toolbar {
+  border-bottom: 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+}
+
 .preview-toolbar {
   display: flex;
   gap: 4px;
@@ -866,6 +876,11 @@ input[type='checkbox'] {
 
 /* Vertical preview */
 .tablayout-vertical-preview {
+  display: flex;
+  flex-direction: row;
+}
+
+.tablayout-vertical-right-preview {
   display: flex;
   flex-direction: row;
 }

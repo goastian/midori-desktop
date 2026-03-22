@@ -21,6 +21,8 @@
  */
 
 const PREF_ENABLED = 'midori.verticaltabs.enabled';
+const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
+const PREF_HORIZONTAL_POSITION = 'midori.horizontaltabs.position';
 const STYLE_ID = 'midori-verticaltabs-style';
 
 export const MidoriVerticalTabs = {
@@ -31,6 +33,8 @@ export const MidoriVerticalTabs = {
     this._initialized = true;
 
     Services.prefs.addObserver(PREF_ENABLED, this);
+    Services.prefs.addObserver(PREF_VERTICAL_POSITION, this);
+    Services.prefs.addObserver(PREF_HORIZONTAL_POSITION, this);
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
 
     this._syncFirefoxPrefs();
@@ -51,12 +55,25 @@ export const MidoriVerticalTabs = {
     Services.prefs.setBoolPref(PREF_ENABLED, !!enabled);
   },
 
+  _getVerticalSide() {
+    const side = Services.prefs.getStringPref(PREF_VERTICAL_POSITION, 'left');
+    return side === 'right' ? 'right' : 'left';
+  },
+
+  _getHorizontalPosition() {
+    const pos = Services.prefs.getStringPref(PREF_HORIZONTAL_POSITION, 'top');
+    return pos === 'bottom' ? 'bottom' : 'top';
+  },
+
   // =========================================================================
   // Observer
   // =========================================================================
 
   observe(subject, topic, data) {
-    if (topic === 'nsPref:changed' && data === PREF_ENABLED) {
+    if (
+      topic === 'nsPref:changed' &&
+      (data === PREF_ENABLED || data === PREF_VERTICAL_POSITION || data === PREF_HORIZONTAL_POSITION)
+    ) {
       this._syncFirefoxPrefs();
       this._refreshAllWindows();
     } else if (topic === 'browser-delayed-startup-finished') {
@@ -74,7 +91,7 @@ export const MidoriVerticalTabs = {
     Services.prefs.setBoolPref('sidebar.revamp', enabled);
     if (enabled) {
       Services.prefs.setCharPref('sidebar.visibility', 'always-show');
-      Services.prefs.setBoolPref('sidebar.position_start', true);
+      Services.prefs.setBoolPref('sidebar.position_start', this._getVerticalSide() === 'left');
     }
   },
 
@@ -92,6 +109,14 @@ export const MidoriVerticalTabs = {
     style.id = STYLE_ID;
     style.textContent = this.isEnabled() ? this._buildVerticalCSS() : this._buildBaseCSS();
     doc.documentElement.appendChild(style);
+
+    if (this.isEnabled()) {
+      doc.documentElement.removeAttribute('midori-horizontal-tabs');
+      doc.documentElement.setAttribute('midori-vertical-tabs', this._getVerticalSide());
+    } else {
+      doc.documentElement.removeAttribute('midori-vertical-tabs');
+      doc.documentElement.setAttribute('midori-horizontal-tabs', this._getHorizontalPosition());
+    }
 
     // --- Pinned tabs icon feature (Natsumi-inspired) ---
     this._initPinnedTabsIcon(win);
@@ -202,6 +227,18 @@ export const MidoriVerticalTabs = {
    MIDORI BASE — Flat Design refinements for horizontal mode
    Lightweight, no backdrop-filter, no blur
    ===================================================================== */
+
+:root[midori-horizontal-tabs='bottom'] #TabsToolbar {
+  -moz-box-ordinal-group: 40 !important;
+}
+
+:root[midori-horizontal-tabs='bottom'] #nav-bar {
+  -moz-box-ordinal-group: 10 !important;
+}
+
+:root[midori-horizontal-tabs='bottom'] #PersonalToolbar {
+  -moz-box-ordinal-group: 20 !important;
+}
 
 /* --- Animations --- */
 @keyframes midori-floating-urlbar-appear {
