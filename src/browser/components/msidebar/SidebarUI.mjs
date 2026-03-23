@@ -171,10 +171,6 @@ function defaultFaviconSpec() {
 }
 
 function faviconFallbackForPanel(panel) {
-  try {
-    const u = new URL(panel?.url || '');
-    if (u.protocol === 'http:' || u.protocol === 'https:') return `page-icon:${u.toString()}`;
-  } catch {}
   return defaultFaviconSpec();
 }
 
@@ -335,6 +331,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   let preferredDockWidth = 320;
   const faviconCache = new Map();
   const faviconPending = new Set();
+  const faviconRetryAt = new Map();
   let splitterDrag = null;
 
   function applyDockWidth() {
@@ -365,7 +362,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (!next) return null;
     store.panels[idx] = next;
     try {
-      if (prev.url !== next.url) faviconCache.delete(panelId);
+      if (prev.url !== next.url) {
+        faviconCache.delete(panelId);
+        faviconRetryAt.delete(panelId);
+      }
     } catch {}
     onStoreChanged?.(store);
     return next;
@@ -395,6 +395,61 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     } catch {}
   }
 
+  function faviconCandidatesForHost(host) {
+    const h = (host || '').trim().toLowerCase();
+    if (!h) return [];
+    return [
+      `https://www.google.com/s2/favicons?domain=${encodeURIComponent(h)}&sz=32`,
+      `https://icons.duckduckgo.com/ip3/${encodeURIComponent(h)}.ico`,
+      `https://favicon.yandex.net/favicon/${encodeURIComponent(h)}/`,
+      `https://${h}/favicon.ico`,
+    ];
+  }
+
+  function loadImageUrl(url, timeoutMs = 3500) {
+    return new Promise((resolve, reject) => {
+      const ImageCtor = win.Image || doc.defaultView?.Image;
+      if (!ImageCtor || typeof url !== 'string' || !url) {
+        reject(new Error('no-image'));
+        return;
+      }
+
+      const img = new ImageCtor();
+      let done = false;
+      const timer = win.setTimeout(() => {
+        if (done) return;
+        done = true;
+        try {
+          img.onload = null;
+          img.onerror = null;
+          img.src = '';
+        } catch {}
+        reject(new Error('timeout'));
+      }, timeoutMs);
+
+      img.onload = () => {
+        if (done) return;
+        done = true;
+        try {
+          win.clearTimeout(timer);
+        } catch {}
+        resolve(url);
+      };
+      img.onerror = () => {
+        if (done) return;
+        done = true;
+        try {
+          win.clearTimeout(timer);
+        } catch {}
+        reject(new Error('error'));
+      };
+      try {
+        img.referrerPolicy = 'no-referrer';
+      } catch {}
+      img.src = url;
+    });
+  }
+
   async function resolveFaviconSpecForPanel(panel) {
     try {
       const pageUri = Services.io.newURI(panel.url);
@@ -406,6 +461,19 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         if (spec && spec !== defaultFaviconSpec()) return spec;
       }
     } catch {}
+    let host = '';
+    try {
+      host = new URL(panel?.url || '').hostname || '';
+    } catch {
+      host = safeHostname(panel?.url || '');
+    }
+    const candidates = faviconCandidatesForHost(host);
+    for (const u of candidates) {
+      try {
+        await loadImageUrl(u);
+        return u;
+      } catch {}
+    }
     return faviconFallbackForPanel(panel);
   }
 
@@ -422,15 +490,24 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function ensureFavicon(panel) {
     const pid = panel?.id;
     if (!pid) return;
+    const now = Date.now();
+    const nextAt = faviconRetryAt.get(pid) || 0;
+    if (now < nextAt) return;
     const cached = faviconCache.get(pid);
     if (cached && cached !== defaultFaviconSpec()) return;
     if (faviconPending.has(pid)) return;
     faviconPending.add(pid);
     resolveFaviconSpecForPanel(panel).then((spec) => {
       faviconPending.delete(pid);
-      faviconCache.set(pid, spec || defaultFaviconSpec());
+      const resolved = spec || defaultFaviconSpec();
+      faviconCache.set(pid, resolved);
       const btn = buttonsBox.querySelector(`[midori-msidebar-panel-id="${pid}"]`);
-      if (btn) setPanelButtonIcon(btn, faviconCache.get(pid));
+      if (btn) setPanelButtonIcon(btn, resolved);
+      if (!spec || resolved === defaultFaviconSpec()) {
+        faviconRetryAt.set(pid, Date.now() + 30_000);
+      } else {
+        faviconRetryAt.delete(pid);
+      }
     });
   }
 
@@ -1198,18 +1275,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     boxArea.setAttribute('animated', animated ? 'true' : 'false');
   }
 
-  function isAutohideExcludedTarget(t) {
-    try {
-      if (t === btnAdd || t === btnToggle || t === btnSettings) return true;
-      return !!t?.closest?.('#midori-msidebar-add, #midori-msidebar-toggle, #midori-msidebar-settings');
-    } catch {
-      return false;
-    }
-  }
-
   function onEnter(e) {
     if (!autohideEnabled || !visible || panelAreaHiddenByUser || currentPanelFloating) return;
-    if (isAutohideExcludedTarget(e?.target)) return;
     setBoolAttr(boxArea, 'collapsed', false);
     syncSplitterVisibility();
   }
