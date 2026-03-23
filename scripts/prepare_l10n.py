@@ -34,6 +34,7 @@ import sys
 # ---------------------------------------------------------------------------
 LOCALES_DIR = "locales"
 SUPPORTED_LANGUAGES_FILE = os.path.join(LOCALES_DIR, "supported-languages")
+LANGUAGE_MAPS_FILE = os.path.join(LOCALES_DIR, "language-maps")
 FIREFOX_L10N_DIR = os.path.join(LOCALES_DIR, "firefox-l10n")
 L10N_COMMIT_FILE = "build/firefox-cache/l10n-last-commit-hash"
 L10N_MARKER_FILE = os.path.join(LOCALES_DIR, ".l10n-commit")
@@ -107,6 +108,15 @@ def write_cache_marker(commit: str):
     os.makedirs(LOCALES_DIR, exist_ok=True)
     with open(L10N_MARKER_FILE, "w") as f:
         f.write(commit)
+
+def ensure_language_maps_file():
+    os.makedirs(LOCALES_DIR, exist_ok=True)
+    if os.path.isfile(LANGUAGE_MAPS_FILE):
+        return
+    with open(LANGUAGE_MAPS_FILE, "w") as f:
+        f.write("nb:nb-NO\n")
+        f.write("nn:nn-NO\n")
+        f.write("ga:ga-IE\n")
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +497,7 @@ def main():
     log("=" * 60)
     log("Midori Browser — Preparacion de Paquetes de Idiomas")
     log("=" * 60)
+    ensure_language_maps_file()
 
     # Modo validacion: solo reportar estado
     if args.validate:
