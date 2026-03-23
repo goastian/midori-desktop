@@ -63,6 +63,10 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
       <hbox>
         <button
+          id="importBack"
+          data-l10n-id="welcome-dialog-back"
+        ></button>
+        <button
           class="primary"
           id="importBrowser"
           data-l10n-id="welcome-dialog-import-action"
@@ -78,11 +82,17 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
     <div class="page" id="theme">
       <h2 data-l10n-id="welcome-dialog-theme"></h2>
       <div id="themeList" class="cardGroup"></div>
-      <button
-        id="themeNext"
-        class="primary"
-        data-l10n-id="welcome-dialog-theme-action"
-      ></button>
+      <hbox>
+        <button
+          id="themeBack"
+          data-l10n-id="welcome-dialog-back"
+        ></button>
+        <button
+          id="themeNext"
+          class="primary"
+          data-l10n-id="welcome-dialog-theme-action"
+        ></button>
+      </hbox>
     </div>
 
     <div class="page" id="gradient">
@@ -146,6 +156,10 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
       </details>
 
       <hbox>
+        <button
+          id="gradientBack"
+          data-l10n-id="welcome-dialog-back"
+        ></button>
         <button
           id="gradientNext"
           class="primary"
@@ -217,11 +231,17 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         </div>
       </div>
 
-      <button
-        id="tablayoutNext"
-        class="primary"
-        data-l10n-id="welcome-dialog-tablayout-action"
-      ></button>
+      <hbox>
+        <button
+          id="tablayoutBack"
+          data-l10n-id="welcome-dialog-back"
+        ></button>
+        <button
+          id="tablayoutNext"
+          class="primary"
+          data-l10n-id="welcome-dialog-tablayout-action"
+        ></button>
+      </hbox>
     </div>
 
     <div class="page" id="msidebar">
@@ -237,21 +257,33 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         </div>
       </div>
 
-      <button
-        id="msidebarNext"
-        class="primary"
-        data-l10n-id="welcome-dialog-msidebar-action"
-      ></button>
+      <hbox>
+        <button
+          id="msidebarBack"
+          data-l10n-id="welcome-dialog-back"
+        ></button>
+        <button
+          id="msidebarNext"
+          class="primary"
+          data-l10n-id="welcome-dialog-msidebar-action"
+        ></button>
+      </hbox>
     </div>
 
     <div class="page" id="search">
       <h2 data-l10n-id="welcome-dialog-search"></h2>
       <div id="searchList" class="cardGroup"></div>
-      <button
-        id="searchNext"
-        class="primary"
-        data-l10n-id="welcome-dialog-search-action"
-      ></button>
+      <hbox>
+        <button
+          id="searchBack"
+          data-l10n-id="welcome-dialog-back"
+        ></button>
+        <button
+          id="searchNext"
+          class="primary"
+          data-l10n-id="welcome-dialog-search-action"
+        ></button>
+      </hbox>
     </div>
 
     <div class="page" id="apps">
@@ -260,11 +292,17 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
       <div class="cardGroup" id="appsList"></div>
 
-      <button
-        id="appsNext"
-        class="primary"
-        data-l10n-id="welcome-dialog-apps-action"
-      ></button>
+      <hbox>
+        <button
+          id="appsBack"
+          data-l10n-id="welcome-dialog-back"
+        ></button>
+        <button
+          id="appsNext"
+          class="primary"
+          data-l10n-id="welcome-dialog-apps-action"
+        ></button>
+      </hbox>
     </div>
 
     <script type="module" src="chrome://browser/content/welcome/welcome.sys.mjs"></script>

@@ -75,10 +75,17 @@ class Page {
   constructor(id) {
     this.element = document.getElementById(id);
     this.nextEl = document.getElementById(`${id}Next`);
+    this.backEl = document.getElementById(`${id}Back`);
 
     this.nextEl.addEventListener('click', () => {
       this.pages.next();
     });
+
+    if (this.backEl) {
+      this.backEl.addEventListener('click', () => {
+        this.pages.back();
+      });
+    }
   }
 
   /**
@@ -557,6 +564,12 @@ class Pages {
       return;
     }
 
+    this._displayCurrentPage();
+  }
+
+  back() {
+    if (this.currentPage <= 0) return;
+    this.currentPage--;
     this._displayCurrentPage();
   }
 

@@ -7,6 +7,7 @@ welcome-dialog-welcome-subtext = Let's get you setup
 welcome-dialog-get-started = Get started
 
 welcome-dialog-skip = Not Now
+welcome-dialog-back = Back
 
 welcome-dialog-import = Import Information
 welcome-dialog-import-subtext = Pick up where you left off in your last browser
