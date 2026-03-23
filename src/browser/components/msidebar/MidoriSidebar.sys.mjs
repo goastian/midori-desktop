@@ -347,7 +347,22 @@ export const MidoriSidebar = {
   _applyFirefoxSidebarDefaults() {
     const verticalTabs = Services.prefs.getBoolPref(PREF_VERTICAL_TABS, false);
     const enabled = Services.prefs.getBoolPref(Prefs.PREF_ENABLED, false);
-    if (verticalTabs || enabled) return;
+    // When vertical tabs are active, defer to MidoriVerticalTabs for sidebar prefs
+    if (verticalTabs) return;
+    if (enabled) {
+      // msidebar is active but vertical tabs are not — hide Firefox native sidebar
+      try {
+        Services.prefs.setBoolPref('sidebar.revamp', false);
+      } catch {}
+      try {
+        Services.prefs.setBoolPref('sidebar.verticalTabs', false);
+      } catch {}
+      try {
+        Services.prefs.setCharPref('sidebar.visibility', 'hide');
+      } catch {}
+      return;
+    }
+    // Neither is active
     try {
       Services.prefs.setBoolPref('sidebar.revamp', false);
     } catch {}
