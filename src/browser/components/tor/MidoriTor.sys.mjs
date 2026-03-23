@@ -406,9 +406,6 @@ export const MidoriTor = {
     Services.prefs.setIntPref('network.proxy.socks_version', 5);
     // Don't use proxy for localhost
     Services.prefs.setCharPref('network.proxy.no_proxies_on', 'localhost, 127.0.0.1');
-
-    // Apply network hardening for Tor windows
-    this._applyTorHardening();
   },
 
   /**
@@ -438,48 +435,202 @@ export const MidoriTor = {
   },
 
   /**
-   * Apply network hardening prefs for Tor privacy.
+   * Apply Tor Browser-level anti-fingerprinting and network hardening.
+   *
+   * This enables privacy.resistFingerprinting (RFP) and a comprehensive set
+   * of prefs that reduce the digital fingerprint surface to match Tor Browser's
+   * protection level. All original values are stored for restoration when the
+   * last Tor window is closed.
+   *
+   * Categories covered:
+   *   - Resist Fingerprinting (RFP) + letterboxing
+   *   - Canvas / WebGL protection
+   *   - Font enumeration protection
+   *   - Timezone / Locale spoofing
+   *   - Performance timing APIs
+   *   - Dangerous device APIs (battery, gamepad, sensors, VR)
+   *   - Cache / Storage isolation
+   *   - Network hardening (referer, WebSocket, Alt-Svc, IPv6)
+   *   - Prefetch / Speculative connections
    */
   _applyTorHardening() {
-    // Store originals for restoration
-    if (!this._originalHardeningPrefs) {
-      this._originalHardeningPrefs = {
-        webrtc: Services.prefs.getBoolPref('media.peerconnection.enabled', true),
-        geolocation: Services.prefs.getBoolPref('geo.enabled', true),
-        prefetch: Services.prefs.getBoolPref('network.prefetch-next', true),
-        speculative: Services.prefs.getBoolPref('network.http.speculative-parallel-limit', true),
-        predictor: Services.prefs.getBoolPref('network.predictor.enabled', true),
-        dns_prefetch: Services.prefs.getBoolPref('network.dns.disablePrefetch', false),
-      };
+    if (this._originalHardeningPrefs) {
+      // Already applied — avoid overwriting stored originals
+      return;
     }
 
-    // Disable WebRTC (IP leak vector)
+    // ── Store original values for every pref we modify ──
+    // Helper: safely read a pref with fallback
+    const gBool = (k, d) => { try { return Services.prefs.getBoolPref(k, d); } catch { return d; } };
+    const gInt  = (k, d) => { try { return Services.prefs.getIntPref(k, d);  } catch { return d; } };
+    const gStr  = (k, d) => { try { return Services.prefs.getCharPref(k, d); } catch { return d; } };
+
+    this._originalHardeningPrefs = {
+      // RFP
+      rfp:                    gBool('privacy.resistFingerprinting', false),
+      rfp_letterboxing:       gBool('privacy.resistFingerprinting.letterboxing', false),
+      rfp_block_addon_mgr:    gBool('privacy.resistFingerprinting.block_mozAddonManager', false),
+      // Canvas / WebGL
+      webgl_disabled:         gBool('webgl.disabled', false),
+      rfp_canvas_prompt:      gBool('privacy.resistFingerprinting.autoDeclineNoUserInputCanvasPrompts', false),
+      // Font enumeration
+      use_doc_fonts:          gInt('browser.display.use_document_fonts', 1),
+      // Timezone / Locale
+      use_us_english:         gBool('javascript.use_us_english_locale', false),
+      accept_languages:       gStr('intl.accept_languages', ''),
+      spoof_english:          gInt('privacy.spoof_english', 0),
+      // Performance timing
+      enable_performance:     gBool('dom.enable_performance', true),
+      enable_resource_timing: gBool('dom.enable_resource_timing', true),
+      // Dangerous device APIs
+      battery:                gBool('dom.battery.enabled', true),
+      gamepad:                gBool('dom.gamepad.enabled', true),
+      vr:                     gBool('dom.vr.enabled', true),
+      sensors:                gBool('device.sensors.enabled', true),
+      netinfo:                gBool('dom.netinfo.enabled', false),
+      webaudio:               gBool('dom.webaudio.enabled', true),
+      // Original hardening (network basics)
+      webrtc:                 gBool('media.peerconnection.enabled', true),
+      geolocation:            gBool('geo.enabled', true),
+      prefetch:               gBool('network.prefetch-next', true),
+      speculative:            gInt('network.http.speculative-parallel-limit', 6),
+      predictor:              gBool('network.predictor.enabled', true),
+      dns_prefetch:           gBool('network.dns.disablePrefetch', false),
+      // Cache / Storage isolation
+      partition_storage:      gBool('privacy.partition.always_partition_third_party_non_cookie_storage', true),
+      partition_ss_exempt:    gBool('privacy.partition.always_partition_third_party_non_cookie_storage.exempt_sessionstorage', true),
+      memory_cache:           gBool('browser.cache.memory.enable', true),
+      // Network hardening
+      referer_xorigin:        gInt('network.http.referer.XOrigin', 0),
+      referer_trimming:       gInt('network.http.referer.trimmingPolicy', 0),
+      referer_send:           gInt('network.http.sendRefererHeader', 2),
+      websocket:              gBool('network.websocket.enabled', true),
+      altsvc:                 gBool('network.http.altsvc.enabled', true),
+      altsvc_oe:              gBool('network.http.altsvc.oe', true),
+      ssl_session_ids:        gBool('security.ssl.disable_session_identifiers', false),
+      cookie_behavior:        gInt('network.cookie.cookieBehavior', 0),
+      dns_ipv6:               gBool('network.dns.disableIPv6', false),
+      proxy_failover:         gBool('network.proxy.failover_direct', true),
+    };
+
+    log('Applying Tor Browser-level anti-fingerprinting hardening...');
+
+    // ── RFP (Resist Fingerprinting) ──
+    Services.prefs.setBoolPref('privacy.resistFingerprinting', true);
+    Services.prefs.setBoolPref('privacy.resistFingerprinting.letterboxing', true);
+    Services.prefs.setBoolPref('privacy.resistFingerprinting.block_mozAddonManager', true);
+
+    // ── Canvas / WebGL ──
+    Services.prefs.setBoolPref('webgl.disabled', true);
+    Services.prefs.setBoolPref('privacy.resistFingerprinting.autoDeclineNoUserInputCanvasPrompts', true);
+
+    // ── Font enumeration ──
+    Services.prefs.setIntPref('browser.display.use_document_fonts', 0);
+
+    // ── Timezone / Locale spoofing (RFP covers most, but reinforce) ──
+    Services.prefs.setBoolPref('javascript.use_us_english_locale', true);
+    Services.prefs.setCharPref('intl.accept_languages', 'en-US, en');
+    Services.prefs.setIntPref('privacy.spoof_english', 2);
+
+    // ── Performance timing ──
+    Services.prefs.setBoolPref('dom.enable_performance', false);
+    Services.prefs.setBoolPref('dom.enable_resource_timing', false);
+
+    // ── Dangerous device APIs ──
+    Services.prefs.setBoolPref('dom.battery.enabled', false);
+    Services.prefs.setBoolPref('dom.gamepad.enabled', false);
+    Services.prefs.setBoolPref('dom.vr.enabled', false);
+    Services.prefs.setBoolPref('device.sensors.enabled', false);
+    Services.prefs.setBoolPref('dom.netinfo.enabled', false);
+    Services.prefs.setBoolPref('dom.webaudio.enabled', false);
+
+    // ── Network basics (original hardening, now with correct types) ──
     Services.prefs.setBoolPref('media.peerconnection.enabled', false);
-    // Disable geolocation
     Services.prefs.setBoolPref('geo.enabled', false);
-    // Disable DNS/link prefetch (info leak)
     Services.prefs.setBoolPref('network.prefetch-next', false);
     Services.prefs.setIntPref('network.http.speculative-parallel-limit', 0);
     Services.prefs.setBoolPref('network.predictor.enabled', false);
     Services.prefs.setBoolPref('network.dns.disablePrefetch', true);
+
+    // ── Cache / Storage isolation ──
+    Services.prefs.setBoolPref('privacy.partition.always_partition_third_party_non_cookie_storage', true);
+    Services.prefs.setBoolPref('privacy.partition.always_partition_third_party_non_cookie_storage.exempt_sessionstorage', false);
+    Services.prefs.setBoolPref('browser.cache.memory.enable', false);
+
+    // ── Network hardening ──
+    Services.prefs.setIntPref('network.http.referer.XOrigin', 2);
+    Services.prefs.setIntPref('network.http.referer.trimmingPolicy', 2);
+    Services.prefs.setIntPref('network.http.sendRefererHeader', 0);
+    Services.prefs.setBoolPref('network.websocket.enabled', false);
+    Services.prefs.setBoolPref('network.http.altsvc.enabled', false);
+    Services.prefs.setBoolPref('network.http.altsvc.oe', false);
+    Services.prefs.setBoolPref('security.ssl.disable_session_identifiers', true);
+    Services.prefs.setIntPref('network.cookie.cookieBehavior', 2);
+    Services.prefs.setBoolPref('network.dns.disableIPv6', true);
+    Services.prefs.setBoolPref('network.proxy.failover_direct', false);
+
+    log('Tor hardening applied: RFP + letterboxing + WebGL off + font protection + locale spoofing + device API off + network isolation');
   },
 
   /**
-   * Remove Tor hardening, restoring original values.
+   * Remove Tor hardening, restoring all prefs to their original values.
    */
   _removeTorHardening() {
     if (!this._originalHardeningPrefs) {
       return;
     }
-    Services.prefs.setBoolPref('media.peerconnection.enabled', this._originalHardeningPrefs.webrtc);
-    Services.prefs.setBoolPref('geo.enabled', this._originalHardeningPrefs.geolocation);
-    Services.prefs.setBoolPref('network.prefetch-next', this._originalHardeningPrefs.prefetch);
-    Services.prefs.setBoolPref('network.predictor.enabled', this._originalHardeningPrefs.predictor);
-    Services.prefs.setBoolPref(
-      'network.dns.disablePrefetch',
-      this._originalHardeningPrefs.dns_prefetch
-    );
+    const o = this._originalHardeningPrefs;
+
+    log('Removing Tor hardening, restoring original prefs...');
+
+    // RFP
+    Services.prefs.setBoolPref('privacy.resistFingerprinting', o.rfp);
+    Services.prefs.setBoolPref('privacy.resistFingerprinting.letterboxing', o.rfp_letterboxing);
+    Services.prefs.setBoolPref('privacy.resistFingerprinting.block_mozAddonManager', o.rfp_block_addon_mgr);
+    // Canvas / WebGL
+    Services.prefs.setBoolPref('webgl.disabled', o.webgl_disabled);
+    Services.prefs.setBoolPref('privacy.resistFingerprinting.autoDeclineNoUserInputCanvasPrompts', o.rfp_canvas_prompt);
+    // Font enumeration
+    Services.prefs.setIntPref('browser.display.use_document_fonts', o.use_doc_fonts);
+    // Timezone / Locale
+    Services.prefs.setBoolPref('javascript.use_us_english_locale', o.use_us_english);
+    Services.prefs.setCharPref('intl.accept_languages', o.accept_languages);
+    Services.prefs.setIntPref('privacy.spoof_english', o.spoof_english);
+    // Performance timing
+    Services.prefs.setBoolPref('dom.enable_performance', o.enable_performance);
+    Services.prefs.setBoolPref('dom.enable_resource_timing', o.enable_resource_timing);
+    // Dangerous device APIs
+    Services.prefs.setBoolPref('dom.battery.enabled', o.battery);
+    Services.prefs.setBoolPref('dom.gamepad.enabled', o.gamepad);
+    Services.prefs.setBoolPref('dom.vr.enabled', o.vr);
+    Services.prefs.setBoolPref('device.sensors.enabled', o.sensors);
+    Services.prefs.setBoolPref('dom.netinfo.enabled', o.netinfo);
+    Services.prefs.setBoolPref('dom.webaudio.enabled', o.webaudio);
+    // Network basics
+    Services.prefs.setBoolPref('media.peerconnection.enabled', o.webrtc);
+    Services.prefs.setBoolPref('geo.enabled', o.geolocation);
+    Services.prefs.setBoolPref('network.prefetch-next', o.prefetch);
+    Services.prefs.setIntPref('network.http.speculative-parallel-limit', o.speculative);
+    Services.prefs.setBoolPref('network.predictor.enabled', o.predictor);
+    Services.prefs.setBoolPref('network.dns.disablePrefetch', o.dns_prefetch);
+    // Cache / Storage isolation
+    Services.prefs.setBoolPref('privacy.partition.always_partition_third_party_non_cookie_storage', o.partition_storage);
+    Services.prefs.setBoolPref('privacy.partition.always_partition_third_party_non_cookie_storage.exempt_sessionstorage', o.partition_ss_exempt);
+    Services.prefs.setBoolPref('browser.cache.memory.enable', o.memory_cache);
+    // Network hardening
+    Services.prefs.setIntPref('network.http.referer.XOrigin', o.referer_xorigin);
+    Services.prefs.setIntPref('network.http.referer.trimmingPolicy', o.referer_trimming);
+    Services.prefs.setIntPref('network.http.sendRefererHeader', o.referer_send);
+    Services.prefs.setBoolPref('network.websocket.enabled', o.websocket);
+    Services.prefs.setBoolPref('network.http.altsvc.enabled', o.altsvc);
+    Services.prefs.setBoolPref('network.http.altsvc.oe', o.altsvc_oe);
+    Services.prefs.setBoolPref('security.ssl.disable_session_identifiers', o.ssl_session_ids);
+    Services.prefs.setIntPref('network.cookie.cookieBehavior', o.cookie_behavior);
+    Services.prefs.setBoolPref('network.dns.disableIPv6', o.dns_ipv6);
+    Services.prefs.setBoolPref('network.proxy.failover_direct', o.proxy_failover);
+
     this._originalHardeningPrefs = null;
+    log('Tor hardening removed, original prefs restored');
   },
 
   // ===========================================================================
