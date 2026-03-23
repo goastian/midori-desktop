@@ -526,8 +526,6 @@ class MSidebar extends Page {
     this._enableCard.classList.toggle('selected', !!enabled);
     this._disableCard.classList.toggle('selected', !enabled);
     Services.prefs.setBoolPref('midori.msidebar.enabled', !!enabled);
-    Services.prefs.setBoolPref('midori.msidebar.autohide.enabled', !!enabled);
-    Services.prefs.setBoolPref('midori.msidebar.autohide', !!enabled);
   }
 }
 
