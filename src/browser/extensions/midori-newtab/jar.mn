@@ -1,0 +1,10 @@
+browser.jar:
+    builtin-addons/midori-newtab/manifest.json (manifest.json)
+    builtin-addons/midori-newtab/background.js (background.js)
+    builtin-addons/midori-newtab/content-script.js (content-script.js)
+    builtin-addons/midori-newtab/content-script-palette.js (content-script-palette.js)
+    builtin-addons/midori-newtab/index.html (index.html)
+    builtin-addons/midori-newtab/index.js (index.js)
+    builtin-addons/midori-newtab/vite.svg (vite.svg)
+    builtin-addons/midori-newtab/icons/ (icons/*)
+    builtin-addons/midori-newtab/assets/ (assets/*)
