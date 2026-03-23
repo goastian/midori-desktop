@@ -1,0 +1,13 @@
+diff --git a/browser/extensions/moz.build b/browser/extensions/moz.build
+index 1d90db803e..f6007590bc 100644
+--- a/browser/extensions/moz.build
++++ b/browser/extensions/moz.build
+@@ -12,6 +12,8 @@ DIRS += [
+     "pictureinpicture",
+     "search-detection",
+     "newtab",
++    "midori-privacy",
++    "midori-newtab",
+ ]
+ 
+ JAR_MANIFESTS += ["jar.mn"]
