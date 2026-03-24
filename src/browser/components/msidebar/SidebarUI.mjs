@@ -360,13 +360,24 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     edgeTrigger.setAttribute('position', position);
   }
 
+  function hidePanelArea() {
+    activePanelId = null;
+    currentPanelFloating = false;
+    clearBrowser();
+    clearFloatingChrome();
+    titleLabel.setAttribute('value', '');
+    boxArea.style.display = '';
+    setBoolAttr(boxArea, 'collapsed', true);
+    setBoolAttr(splitter, 'hidden', true);
+  }
+
   function applyAutohideCollapsedState(open) {
     if (!autohideEnabled || currentPanelFloating) {
       return;
     }
     _ahOpen = !!open;
     setBoolAttr(main, 'collapsed', !_ahOpen);
-    setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !_ahOpen);
+    setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !activePanelId || !_ahOpen);
     syncSplitterVisibility();
     syncEdgeTriggerVisibility();
   }
@@ -724,7 +735,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   function renderButtons() {
     while (buttonsBox.firstChild) buttonsBox.firstChild.remove();
-    const selected = store.last?.selectedPanelId;
+    const selected = activePanelId;
     const indicator = Prefs.getContainerIndicator();
     for (const panel of store.panels) {
       const btn = createXul(doc, 'toolbarbutton');
@@ -797,8 +808,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     }
     if (currentPanelFloating) {
       setBoolAttr(main, 'collapsed', false);
-      boxArea.style.display = panelAreaHiddenByUser ? 'none' : '';
-      setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser);
+      boxArea.style.display = panelAreaHiddenByUser || !activePanelId ? 'none' : '';
+      setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !activePanelId);
     } else {
       if (autohideEnabled) {
         boxArea.setAttribute('autohide-target', 'true');
@@ -806,7 +817,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
       if (!autohideEnabled) {
         setBoolAttr(main, 'collapsed', false);
-        setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser);
+        setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !activePanelId);
       }
       boxArea.style.display = '';
     }
@@ -815,7 +826,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function syncSplitterVisibility() {
-    if (!visible || currentPanelFloating || panelAreaHiddenByUser) {
+    if (!visible || currentPanelFloating || panelAreaHiddenByUser || !activePanelId) {
       setBoolAttr(splitter, 'hidden', true);
       return;
     }
@@ -1587,16 +1598,14 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   btnZoomReset.addEventListener('command', () => setZoomForActivePanel(1), true);
 
   function setStore(next) {
+    const previousActivePanelId = activePanelId;
     store = next || { panels: [], last: {} };
     syncToolbarPrefs();
-    renderButtons();
-    const selected = store.last?.selectedPanelId;
-    if (selected) {
-      setActivePanel(selected);
+    if (previousActivePanelId && store.panels.some((panel) => panel.id === previousActivePanelId)) {
+      setActivePanel(previousActivePanelId);
     } else {
-      activePanelId = null;
-      titleLabel.setAttribute('value', '');
-      clearBrowser();
+      hidePanelArea();
+      renderButtons();
     }
   }
 

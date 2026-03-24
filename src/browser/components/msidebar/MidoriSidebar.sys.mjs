@@ -175,9 +175,6 @@ export const MidoriSidebar = {
       p.loadOnStartup = true;
       seeded.panels.push(p);
     }
-    if (!seeded.last.selectedPanelId) {
-      seeded.last.selectedPanelId = seeded.panels[0]?.id;
-    }
 
     const validated = validateStore(seeded);
     this._stores.set(win, validated);

@@ -93,7 +93,7 @@ export function validateStore(store) {
   const selectedPanelId =
     typeof last.selectedPanelId === 'string' && seen.has(last.selectedPanelId)
       ? last.selectedPanelId
-      : fixedPanels[0]?.id;
+      : null;
 
   return {
     version,
