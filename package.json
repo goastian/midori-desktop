@@ -10,7 +10,7 @@
     "build": "amelia build",
     "build:ui": "amelia build --ui",
     "start": "cd engine && python3 ./mach run --noprofile",
-    "import": "npm run amelia import && echo \"finish apply\"",
+    "import": "npm run amelia import && bash scripts/download-addons.sh && echo \"finish apply\"",
     "export": "amelia export",
     "init": "npm run download && npm run import && npm run bootstrap",
     "download": "amelia download",
