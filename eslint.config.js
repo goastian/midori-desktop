@@ -11,6 +11,8 @@ export default [
   {
     ignores: [
       'engine/**',
+      'build/**',
+      'locales/**',
       'node_modules/**',
       'dist/**',
       'obj-*/**',

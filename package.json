@@ -2,11 +2,9 @@
   "name": "midori-desktop",
   "version": "1.0.0",
   "description": "[![build result](https://build.opensuse.org/projects/home:astian-inc/packages/midori-browser/badge.svg?type=default)](https://build.opensuse.org/package/show/home:astian-inc/midori-browser) [![Telegram](https://img.shields.io/badge/Telegram-Chat-gray.svg?style=flat&logo=telegram&colorA=5583a4&logoColor=fff)](https://t.me/midoriweb) [![Twitter](https://img.shields.io/twitter/follow/midoriweb.svg?style=social&label=Follow)](https://twitter.com/grupoastian) [![Donate](https://img.shields.io/badge/Stripe-Donate-gray.svg?style=flat&logo=stripe&colorA=0071bb&logoColor=fff)](https://donate.stripe.com/00g6s675Xawl6ZO9AH) [![Patreon](https://img.shields.io/badge/PATREON-Pledge-red.svg)](https://www.patreon.com/midori_browser)",
-  "lint-staged": {
-    "**/*": ""
-  },
   "type": "module",
   "scripts": {
+    "ci": "node scripts/ci-config.mjs",
     "build": "amelia build",
     "build:ui": "amelia build --ui",
     "start": "cd engine && python3 ./mach run --noprofile",
@@ -23,9 +21,6 @@
     "update-ff:raw": "amelia update",
     "update-ff:rc": "python3.11 scripts/update_ff.py --rc",
     "update-ff:l10n": "python3.11 scripts/update_ff.py --just-l10n",
-    "pretty": "prettier . --write --cache && autopep8 -r --in-place scripts/ src/",
-    "lint": "npx eslint src/ && prettier . --check --cache",
-    "lint:fix": "npm run pretty && npx eslint src/ --fix",
     "postinstall": "bash scripts/patch-amelia.sh",
     "prepare": "husky",
     "reset-ff": "amelia reset",
@@ -33,8 +28,6 @@
     "test": "python3.11 scripts/run_tests.py",
     "test:dbg": "python3.11 scripts/run_tests.py --jsdebugger --debug-on-failure",
     "ffprefs": "cd tools/ffprefs && cargo run --bin ffprefs -- ../../",
-    "lc": "amelia license-check",
-    "lc:fix": "amelia license-check --fix",
     "brand": "amelia set brand release",
     "recalculate-patches": "bash scripts/recalculate-patches.sh",
     "browser": "amelia run",
@@ -57,7 +50,10 @@
     "l10n:validate": "python3 scripts/prepare_l10n.py --validate",
     "bootstrap:win": "cross-env AMELIA_PLATFORM=win32 MIDORI_CROSS_COMPILING=true amelia bootstrap",
     "bootstrap:mac": "cross-env AMELIA_PLATFORM=darwin amelia bootstrap",
-    "bootstrap:linux": "amelia bootstrap"
+    "bootstrap:linux": "amelia bootstrap",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lc": "node scripts/license-check.mjs"
   },
   "repository": {
     "type": "git",
@@ -79,20 +75,11 @@
   "devDependencies": {
     "@babel/preset-typescript": "^7.27.0",
     "@eslint/js": "^9.32.0",
-    "@microsoft/eslint-plugin-sdl": "^1.1.0",
     "cross-env": "^10.1.0",
     "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-html": "^8.1.3",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-json": "^4.0.1",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "formal-git": "^1.2.9",
     "globals": "^16.3.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^15.3.0",
-    "prettier": "^3.4.2",
-    "prettier-plugin-sh": "^0.14.0"
+    "husky": "^9.1.7"
   },
   "main": "index.js",
   "directories": {

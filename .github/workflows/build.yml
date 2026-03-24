@@ -199,3 +199,54 @@ jobs:
       build_id: ${{ needs.build-metadata.outputs.build_id }}
       use_sccache: ${{ inputs.use_sccache }}
     secrets: inherit
+
+  verify-artifacts:
+    name: Verify Build Artifacts
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-macos, build-windows]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts/
+
+      - name: Verify expected platform artifacts
+        run: |
+          set -e
+
+          expect_artifact() {
+            local name="$1"
+            if [ ! -d "all-artifacts/${name}" ]; then
+              echo "Missing artifact directory: ${name}"
+              exit 1
+            fi
+            local count
+            count=$(find "all-artifacts/${name}" -type f | wc -l)
+            if [ "$count" -eq 0 ]; then
+              echo "Artifact directory is empty: ${name}"
+              exit 1
+            fi
+            echo "${name}: ${count} files"
+          }
+
+          if [ "${{ inputs.platforms }}" = "all" ] || [ "${{ inputs.platforms }}" = "linux" ]; then
+            expect_artifact "linux-x86_64"
+            expect_artifact "linux-aarch64"
+          fi
+
+          if [ "${{ inputs.platforms }}" = "all" ] || [ "${{ inputs.platforms }}" = "macos" ]; then
+            expect_artifact "macos-x86_64"
+            expect_artifact "macos-aarch64"
+          fi
+
+          if [ "${{ inputs.platforms }}" = "all" ] || [ "${{ inputs.platforms }}" = "windows" ]; then
+            expect_artifact "windows-x86_64"
+            expect_artifact "windows-aarch64"
+          fi
+
+      - name: Build summary
+        run: |
+          echo "## Build Artifact Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          find all-artifacts -maxdepth 2 -type f | sort >> "$GITHUB_STEP_SUMMARY"

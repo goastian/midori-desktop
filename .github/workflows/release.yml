@@ -112,8 +112,8 @@ jobs:
             -name "*.exe" -o \
             -name "*.mar" \
           \) | while read -r file; do
-            # Prefix with platform name from parent directory
-            PLATFORM=$(basename "$(dirname "$file")")
+            # Prefix with artifact name (linux-x86_64, macos-aarch64, windows-x86_64, etc.)
+            PLATFORM=$(echo "$file" | cut -d'/' -f2)
             FILENAME=$(basename "$file")
             TARGET="release-output/midori-${{ needs.prepare.outputs.display_version }}-${PLATFORM}-${FILENAME}"
             cp "$file" "$TARGET"
@@ -163,7 +163,7 @@ jobs:
           FLAGS="--generate-notes"
 
           # Draft flag
-          if [ "${{ github.event.inputs.draft }}" = "true" ] || [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.draft }}" = "true" ]; then
             FLAGS="$FLAGS --draft"
           fi
 
@@ -172,9 +172,6 @@ jobs:
             FLAGS="$FLAGS --prerelease"
           fi
 
-          # Create tag if it doesn't exist yet (workflow_dispatch case)
-          git tag "$TAG" 2>/dev/null || true
-
           # Collect files to upload
           FILES=""
           for f in release-output/midori-* release-output/SHA256SUMS.txt; do
@@ -182,10 +179,14 @@ jobs:
           done
           [ -f "release-output/org.astian.midori.yml" ] && FILES="$FILES release-output/org.astian.midori.yml"
 
-          gh release create "$TAG" $FILES \
-            --title "$TITLE" \
-            --repo "${{ github.repository }}" \
-            $FLAGS
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" $FILES --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "$TAG" $FILES \
+              --title "$TITLE" \
+              --repo "${{ github.repository }}" \
+              $FLAGS
+          fi
 
   # ---------------------------------------------------------------------------
   # Deploy updates to update server (optional)

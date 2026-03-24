@@ -20,6 +20,11 @@ on:
         required: false
         type: boolean
         default: false
+      recalculate_patches:
+        description: 'Recalculate patch set when patch import fails'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -139,7 +144,16 @@ jobs:
         continue-on-error: true
         run: |
           echo "Checking if patches apply cleanly..."
-          npm run import || true
+          npm run import
+
+      - name: Recalculate patches if needed
+        if: >-
+          steps.changes.outputs.changed == 'true' &&
+          steps.check-patches.outcome != 'success' &&
+          (github.event_name == 'schedule' || inputs.recalculate_patches == true)
+        run: |
+          echo "Patch import failed, attempting patch recalculation..."
+          npm run recalculate-patches
 
       - name: Run formatter
         if: steps.changes.outputs.changed == 'true'
@@ -219,6 +233,7 @@ jobs:
     needs: check-update
     if: >-
       needs.check-update.outputs.changed == 'true' &&
+      github.event_name == 'workflow_dispatch' &&
       inputs.auto_build == true
     uses: ./.github/workflows/build.yml
     with:
