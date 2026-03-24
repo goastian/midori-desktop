@@ -24,7 +24,7 @@ function ensureStyle(doc) {
 #midori-msidebar-wrapper{display:flex;flex-direction:row;height:100%;}
 #midori-msidebar-main{display:flex;flex-direction:column;gap:var(--space-small,8px);padding:var(--space-small,8px) calc(var(--space-small,8px)/2);background:var(--toolbox-bgcolor);color:var(--toolbox-color);min-width:var(--midori-msidebar-main-width);box-sizing:border-box;}
 #midori-msidebar-main[collapsed='true']{pointer-events:none;opacity:0;min-width:0;padding:0;margin:0;}
-#midori-msidebar-main[animated='true']{transition:opacity var(--midori-msidebar-anim) ease, min-width var(--midori-msidebar-anim) ease, padding var(--midori-msidebar-anim) ease;}
+#midori-msidebar-main[animated='true']:not([initializing]){transition:opacity var(--midori-msidebar-anim) ease, min-width var(--midori-msidebar-anim) ease, padding var(--midori-msidebar-anim) ease;}
 #midori-msidebar-main .toolbarbutton-1{padding:0 !important;}
 .midori-msidebar-icon{min-width:calc(var(--midori-msidebar-main-width) - 8px);min-height:34px;padding:0;margin:0;}
 #midori-msidebar-main .toolbarbutton-1{border-radius:var(--border-radius-medium);background:transparent;}
@@ -45,11 +45,12 @@ function ensureStyle(doc) {
 #midori-msidebar-nav-reload{list-style-image:url("chrome://global/skin/icons/reload.svg");}
 #midori-msidebar-nav-home{list-style-image:url("chrome://browser/skin/home.svg");}
 #midori-msidebar-box-area{display:flex;height:100%;width:var(--midori-msidebar-width);min-width:200px;box-sizing:border-box;}
-#midori-msidebar-box-area[collapsed='true']{width:0;min-width:0;pointer-events:none;opacity:0;}
+#midori-msidebar-box-area[collapsed='true']{width:0;min-width:0;opacity:0;overflow:hidden;}
+#midori-msidebar-box-area[collapsed='true']:not([autohide-target='true']){pointer-events:none;}
 #midori-msidebar-box-area[overlay='true']{position:absolute;top:0;bottom:0;z-index:30;box-shadow:var(--content-area-shadow);}
 #midori-msidebar-box-area[overlay='true'][position='left']{left:var(--midori-msidebar-main-width);}
 #midori-msidebar-box-area[overlay='true'][position='right']{right:var(--midori-msidebar-main-width);}
-#midori-msidebar-box-area[animated='true']{transition:width var(--midori-msidebar-anim) ease, opacity var(--midori-msidebar-anim) ease;}
+#midori-msidebar-box-area[animated='true']:not([initializing]){transition:width var(--midori-msidebar-anim) ease, opacity var(--midori-msidebar-anim) ease;}
 #midori-msidebar-box{flex:1;display:flex;flex-direction:column;background:var(--sidebar-background-color);color:var(--sidebar-text-color);border:0.5px solid var(--sidebar-border-color);border-radius:var(--border-radius-medium);overflow:hidden;box-sizing:border-box;}
 #midori-msidebar-box-header{display:flex;align-items:center;gap:6px;padding:6px 8px;background:color-mix(in srgb, var(--sidebar-background-color) 92%, var(--toolbar-bgcolor));border-bottom:1px solid color-mix(in srgb, var(--sidebar-border-color) 60%, transparent);}
 #midori-msidebar-box-title{flex:1;min-width:0;}
@@ -203,6 +204,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const main = createXul(doc, 'vbox');
   main.id = 'midori-msidebar-main';
   main.setAttribute('animated', 'true');
+  main.setAttribute('initializing', 'true');
 
   const btnToggle = createXul(doc, 'toolbarbutton');
   btnToggle.id = 'midori-msidebar-toggle';
@@ -239,6 +241,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const boxArea = createXul(doc, 'hbox');
   boxArea.id = 'midori-msidebar-box-area';
   boxArea.setAttribute('animated', 'true');
+  boxArea.setAttribute('initializing', 'true');
   boxArea.setAttribute('overlay', 'false');
   boxArea.setAttribute('position', 'left');
 
@@ -303,6 +306,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   try {
     doc.documentElement.setAttribute('midori-msidebar-injected', 'true');
   } catch {}
+  // Remove initializing flag after first paint to enable transitions
+  win.requestAnimationFrame(() => {
+    win.requestAnimationFrame(() => {
+      main.removeAttribute('initializing');
+      boxArea.removeAttribute('initializing');
+    });
+  });
 
   function setBoolAttr(el, name, enabled) {
     if (!el) return;
@@ -652,7 +662,16 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.style.bottom = '';
       boxArea.style.left = '';
       boxArea.style.right = '';
-      if (!autohideEnabled && visible) setBoolAttr(boxArea, 'collapsed', false);
+      if (autohideEnabled) {
+        boxArea.setAttribute('autohide-target', 'true');
+        // Show panel on click, autohide will hide on mouse-leave
+        if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
+        setBoolAttr(boxArea, 'collapsed', false);
+        _ahOpen = true;
+      } else if (visible) {
+        boxArea.removeAttribute('autohide-target');
+        setBoolAttr(boxArea, 'collapsed', false);
+      }
       applyDockWidth();
     }
     renderButtons();
@@ -709,6 +728,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           e.stopPropagation();
           if (activePanelId === panel.id && !panelAreaHiddenByUser) {
             panelAreaHiddenByUser = true;
+            _ahOpen = false;
+            if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
             store.last = store.last || {};
             store.last.selectedPanelId = null;
             activePanelId = null;
@@ -724,10 +745,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
             return;
           }
           panelAreaHiddenByUser = false;
-          if (!autohideEnabled && visible) {
-            setBoolAttr(boxArea, 'collapsed', false);
-            setBoolAttr(splitter, 'hidden', false);
-          }
+          if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
           setActivePanel(panel.id);
         },
         true
@@ -755,6 +773,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.style.display = panelAreaHiddenByUser ? 'none' : '';
       setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser);
     } else {
+      if (autohideEnabled) {
+        boxArea.setAttribute('autohide-target', 'true');
+        _ahOpen = false;
+      }
       setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || autohideEnabled);
       boxArea.style.display = '';
     }
@@ -813,14 +835,19 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   function setAutohide(enabled) {
     autohideEnabled = !!enabled;
+    // Reset autohide hover state
+    _ahOpen = false;
+    if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
     if (currentPanelFloating) return;
     if (!autohideEnabled) {
+      boxArea.removeAttribute('autohide-target');
       setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !visible);
       boxArea.setAttribute('overlay', 'false');
       applyDockWidth();
       syncSplitterVisibility();
       return;
     }
+    boxArea.setAttribute('autohide-target', 'true');
     if (visible) setBoolAttr(boxArea, 'collapsed', true);
     boxArea.setAttribute('overlay', autohideMode === 'overlay' ? 'true' : 'false');
     applyDockWidth();
@@ -829,7 +856,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   function setAutohideMode(mode) {
     autohideMode = mode === 'inline' ? 'inline' : 'overlay';
+    // Reset autohide hover state on mode change
+    _ahOpen = false;
+    if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
     if (currentPanelFloating) return;
+    if (autohideEnabled && visible) setBoolAttr(boxArea, 'collapsed', true);
     boxArea.setAttribute('overlay', autohideEnabled && autohideMode === 'overlay' ? 'true' : 'false');
     applyDockWidth();
     syncSplitterVisibility();
@@ -1269,28 +1300,92 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     true
   );
 
+  // Prevent autohide from closing while settings popup is open
+  try {
+    settingsPanel.addEventListener('popupshowing', () => { _ahPopupOpen = true; });
+    settingsPanel.addEventListener('popuphidden', () => { _ahPopupOpen = false; });
+  } catch {}
+
   function setAnimated(next) {
     animated = !!next;
     main.setAttribute('animated', animated ? 'true' : 'false');
     boxArea.setAttribute('animated', animated ? 'true' : 'false');
   }
 
-  function onEnter(e) {
-    if (!autohideEnabled || !visible || panelAreaHiddenByUser || currentPanelFloating) return;
+  // ── Autohide hover logic ──────────────────────────────────────────
+  // main = icon column (always visible), boxArea = panel (hidden when autohide)
+  // Entering main → show boxArea; leaving both main AND boxArea → hide after delay
+  let _ahTimer = null;
+  let _ahOpen = false;
+
+  let _ahPopupOpen = false;
+
+  function _ahGuard() {
+    return autohideEnabled && visible && !currentPanelFloating;
+  }
+
+  function _ahShow() {
+    if (!_ahGuard() || panelAreaHiddenByUser) return;
+    if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
+    _ahOpen = true;
     setBoolAttr(boxArea, 'collapsed', false);
     syncSplitterVisibility();
   }
-  function onLeave() {
-    if (!autohideEnabled || !visible || panelAreaHiddenByUser || currentPanelFloating) return;
+
+  function _ahScheduleHide() {
+    if (!_ahGuard()) return;
     if (sizing || floatingResize || floatingDrag) return;
-    setBoolAttr(boxArea, 'collapsed', true);
-    syncSplitterVisibility();
+    if (_ahPopupOpen) return;
+    if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} }
+    _ahTimer = win.setTimeout(() => {
+      _ahTimer = null;
+      if (!_ahGuard()) return;
+      if (sizing || floatingResize || floatingDrag) return;
+      if (_ahPopupOpen) return;
+      _ahOpen = false;
+      setBoolAttr(boxArea, 'collapsed', true);
+      syncSplitterVisibility();
+    }, 200);
   }
 
-  main.addEventListener('mouseenter', onEnter, true);
-  boxArea.addEventListener('mouseenter', onEnter, true);
-  main.addEventListener('mouseleave', onLeave, true);
-  boxArea.addEventListener('mouseleave', onLeave, true);
+  function _ahCancelHide() {
+    if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
+  }
+
+  // main: entering shows, leaving schedules hide
+  function onMainEnter() { _ahShow(); }
+  function onMainLeave(e) {
+    if (!_ahGuard()) return;
+    // If mouse moved into boxArea, don't hide
+    const rel = e.relatedTarget;
+    if (rel && (boxArea.contains(rel) || rel === boxArea || splitter.contains(rel) || rel === splitter)) return;
+    _ahScheduleHide();
+  }
+
+  // boxArea: entering cancels hide, leaving schedules hide
+  function onBoxEnter() { _ahCancelHide(); }
+  function onBoxLeave(e) {
+    if (!_ahGuard()) return;
+    const rel = e.relatedTarget;
+    if (rel && (main.contains(rel) || rel === main || splitter.contains(rel) || rel === splitter)) return;
+    _ahScheduleHide();
+  }
+
+  // splitter: same logic — cancel hide on enter, schedule on leave
+  function onSplitterEnter() { _ahCancelHide(); }
+  function onSplitterLeave(e) {
+    if (!_ahGuard()) return;
+    const rel = e.relatedTarget;
+    if (rel && (main.contains(rel) || rel === main || boxArea.contains(rel) || rel === boxArea)) return;
+    _ahScheduleHide();
+  }
+
+  main.addEventListener('mouseenter', onMainEnter);
+  main.addEventListener('mouseleave', onMainLeave);
+  boxArea.addEventListener('mouseenter', onBoxEnter);
+  boxArea.addEventListener('mouseleave', onBoxLeave);
+  splitter.addEventListener('mouseenter', onSplitterEnter);
+  splitter.addEventListener('mouseleave', onSplitterLeave);
 
   btnToggle.addEventListener(
     'command',
@@ -1332,6 +1427,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     (e) => {
       if (e.button !== 0) return;
       sizing = true;
+      // Disable transitions during drag to prevent browser flicker
+      boxArea.setAttribute('animated', 'false');
       try {
         splitterDrag = {
           startX: e.clientX,
@@ -1355,6 +1452,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     () => {
       if (!sizing) return;
       sizing = false;
+      // Re-enable transitions after drag ends (double-rAF to avoid flash)
+      win.requestAnimationFrame(() => {
+        win.requestAnimationFrame(() => {
+          if (animated) boxArea.setAttribute('animated', 'true');
+        });
+      });
       const splitterPanelId = splitterDrag?.panelId;
       splitterDrag = null;
       try {
@@ -1442,11 +1545,17 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   function destroy() {
     try {
-      main.removeEventListener('mouseenter', onEnter, true);
-      boxArea.removeEventListener('mouseenter', onEnter, true);
-      main.removeEventListener('mouseleave', onLeave, true);
-      boxArea.removeEventListener('mouseleave', onLeave, true);
+      main.removeEventListener('mouseenter', onMainEnter);
+      main.removeEventListener('mouseleave', onMainLeave);
+      boxArea.removeEventListener('mouseenter', onBoxEnter);
+      boxArea.removeEventListener('mouseleave', onBoxLeave);
+      splitter.removeEventListener('mouseenter', onSplitterEnter);
+      splitter.removeEventListener('mouseleave', onSplitterLeave);
     } catch {}
+    if (_ahTimer) {
+      try { win.clearTimeout(_ahTimer); } catch {}
+      _ahTimer = null;
+    }
     clearBrowser();
     try {
       wrapper.remove();
