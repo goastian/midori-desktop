@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-sets.inc b/browser/base/content/browser-sets.inc
-index df768aaa77..fc59954c0a 100644
+index 8871fc984acccfd9c54c7aef9f91934d81ba00c0..b55054f3b3b8936b468691fc2dfb516a5c95fb7b 100644
 --- a/browser/base/content/browser-sets.inc
 +++ b/browser/base/content/browser-sets.inc
-@@ -102,6 +102,7 @@
+@@ -103,6 +103,7 @@
      <command id="Tools:ClassicWindow" />
      <command id="Tools:Sanitize" />
      <command id="Tools:PrivateBrowsing" />

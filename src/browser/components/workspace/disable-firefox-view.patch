@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/navigator-toolbox.js b/browser/base/content/navigator-toolbox.js
-index 15469e9d9b..ff22baa5b8 100644
+index 362a85c20d8f0633fa78f85578e4cf015fdd0e44..5ecffb8b6683169d78cf26e9599bce83325e2525 100644
 --- a/browser/base/content/navigator-toolbox.js
 +++ b/browser/base/content/navigator-toolbox.js
-@@ -40,7 +40,6 @@ document.addEventListener(
+@@ -45,7 +45,6 @@ document.addEventListener(
  
      function onCommand(event) {
        let element = event.target.closest(`
@@ -10,7 +10,7 @@ index 15469e9d9b..ff22baa5b8 100644
          .content-analysis-indicator,
          #bookmarks-toolbar-button,
          #PlacesToolbar,
-@@ -55,10 +54,6 @@ document.addEventListener(
+@@ -60,10 +59,6 @@ document.addEventListener(
        }
  
        switch (element.id) {
@@ -21,7 +21,7 @@ index 15469e9d9b..ff22baa5b8 100644
          case "bookmarks-toolbar-button":
            PlacesToolbarHelper.onPlaceholderCommand();
            break;
-@@ -103,7 +98,6 @@ document.addEventListener(
+@@ -108,7 +103,6 @@ document.addEventListener(
  
      function onMouseDown(event) {
        let element = event.target.closest(`
@@ -29,7 +29,7 @@ index 15469e9d9b..ff22baa5b8 100644
          #alltabs-button,
          #pageActionButton,
          #downloads-button,
-@@ -116,10 +110,6 @@ document.addEventListener(
+@@ -121,10 +115,6 @@ document.addEventListener(
        }
  
        switch (element.id) {

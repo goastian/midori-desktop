@@ -1,5 +1,5 @@
 diff --git a/browser/extensions/moz.build b/browser/extensions/moz.build
-index 1d90db803e..f6007590bc 100644
+index 1d90db803e83e0dbf6da08b98e04e8511f861ba6..f6007590bcdf5867171008a48c47d30cdbb11346 100644
 --- a/browser/extensions/moz.build
 +++ b/browser/extensions/moz.build
 @@ -12,6 +12,8 @@ DIRS += [

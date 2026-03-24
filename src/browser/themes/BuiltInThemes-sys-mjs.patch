@@ -1,5 +1,5 @@
 diff --git a/browser/themes/BuiltInThemes.sys.mjs b/browser/themes/BuiltInThemes.sys.mjs
-index ffad3aa4c7..b087662e7b 100644
+index ffad3aa4c7d5d78549dbde3effe69b15cbd1f6b2..b087662e7b6d2d132ee8ae168279a88973e440f8 100644
 --- a/browser/themes/BuiltInThemes.sys.mjs
 +++ b/browser/themes/BuiltInThemes.sys.mjs
 @@ -40,7 +40,7 @@ class _BuiltInThemes {

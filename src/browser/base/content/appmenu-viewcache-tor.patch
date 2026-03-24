@@ -1,5 +1,5 @@
 diff --git a/browser/base/content/appmenu-viewcache.inc.xhtml b/browser/base/content/appmenu-viewcache.inc.xhtml
-index 00c4b3b071..3509b8e98d 100644
+index df6b11e9c195d3feaa469daa20c132ffeb9cd67c..3b3ec06ee45d106cfc591e987be57f66d0531dc2 100644
 --- a/browser/base/content/appmenu-viewcache.inc.xhtml
 +++ b/browser/base/content/appmenu-viewcache.inc.xhtml
 @@ -62,6 +62,10 @@

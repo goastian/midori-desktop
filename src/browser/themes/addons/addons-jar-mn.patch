@@ -1,5 +1,5 @@
 diff --git a/browser/themes/addons/jar.mn b/browser/themes/addons/jar.mn
-index de6187a6b4..c8bb6d03c2 100644
+index de6187a6b49605ab1cc9f15fa2761e19e2bed739..c8bb6d03c23fc22a44785d4c90a59d4c061fbe59 100644
 --- a/browser/themes/addons/jar.mn
 +++ b/browser/themes/addons/jar.mn
 @@ -18,3 +18,21 @@ browser.jar:

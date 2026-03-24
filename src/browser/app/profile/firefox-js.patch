@@ -1,16 +1,17 @@
 diff --git a/browser/app/profile/firefox.js b/browser/app/profile/firefox.js
+index 141c9a037016814d404eec94c06ea741368650ff..025a66107797476f0a3e1c2a4fa58cf1d2c2687c 100644
 --- a/browser/app/profile/firefox.js
 +++ b/browser/app/profile/firefox.js
-@@ -1370,7 +1370,7 @@
+@@ -1392,7 +1392,7 @@ pref("browser.preferences.experimental.hidden", false);
  // Whether we show the "More from Mozilla" section.
  pref("browser.preferences.moreFromMozilla", true);
  // Whether we show the "AI Controls" pane.
 -pref("browser.preferences.aiControls", true);
 +pref("browser.preferences.aiControls", false);
- 
- // Used by settings to track whether the user customized advanced
- // performance settings. Not used directly elsewhere.
-@@ -3556,6 +3556,8 @@
+ // Whether to show unavailable AI controls regardless of region/locale
+ // restrictions. This is intended for localizers to be able to see the strings.
+ pref("browser.preferences.aiControls.showUnavailable", false);
+@@ -3565,6 +3565,8 @@ pref("toolkit.contentRelevancy.ingestEnabled", false);
  // Pref to enable extra logging for the content relevancy feature
  pref("toolkit.contentRelevancy.log", false);
  

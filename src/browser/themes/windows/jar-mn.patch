@@ -1,11 +1,11 @@
 diff --git a/browser/themes/windows/jar.mn b/browser/themes/windows/jar.mn
-index b28fdb786e63ac9ed1bbc22aca843cb2e513158c..96f5d8deb3e7fe51c8a762ae4591bba5e2dd3e7a 100644
+index 7d44c52adf89a1a91e3a351d02f117f6d2dd24eb..c75ec7edbb35271cf887061e6f41926ff2d5715c 100644
 --- a/browser/themes/windows/jar.mn
 +++ b/browser/themes/windows/jar.mn
-@@ -6,7 +6,7 @@ browser.jar:
+@@ -5,7 +5,7 @@
+ browser.jar:
  % skin browser classic/1.0 %skin/classic/browser/
  #include ../shared/jar.inc.mn
-   skin/classic/browser/sanitizeDialog.css
 -  skin/classic/browser/browser.css
 +* skin/classic/browser/browser.css
    skin/classic/browser/contextmenu.css            (../shared/contextmenu.css)

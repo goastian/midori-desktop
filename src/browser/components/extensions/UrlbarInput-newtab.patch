@@ -1,8 +1,8 @@
 diff --git a/browser/components/urlbar/content/UrlbarInput.mjs b/browser/components/urlbar/content/UrlbarInput.mjs
-index 2e6e2be9d7..4db857a26b 100644
+index 24ad0ee89191831c67442b31973f4ecbff445043..beb27a236056f5d083eb7d107d88b8753399b740 100644
 --- a/browser/components/urlbar/content/UrlbarInput.mjs
 +++ b/browser/components/urlbar/content/UrlbarInput.mjs
-@@ -802,11 +802,20 @@ export class UrlbarInput extends HTMLElement {
+@@ -849,11 +849,20 @@ export class UrlbarInput extends HTMLElement {
        // If we update the URI while restoring a session, set the proxyState to
        // invalid, because we don't have a valid security state to show via site
        // identity yet. See Bug 1746383.

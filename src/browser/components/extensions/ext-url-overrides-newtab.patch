@@ -1,5 +1,5 @@
 diff --git a/browser/components/extensions/parent/ext-url-overrides.js b/browser/components/extensions/parent/ext-url-overrides.js
-index 5be610a637..d670d606ce 100644
+index 5be610a63750e9444cca4a2005ecb9d09df220e8..d670d606ceb68b1d3934cd196413b2679e832f93 100644
 --- a/browser/components/extensions/parent/ext-url-overrides.js
 +++ b/browser/components/extensions/parent/ext-url-overrides.js
 @@ -72,7 +72,9 @@ ChromeUtils.defineLazyGetter(this, "newTabPopup", () => {
