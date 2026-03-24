@@ -812,10 +812,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     }
     syncSplitterVisibility();
     syncEdgeTriggerVisibility();
-    if (hidePanelWhenHidden && !activeBrowser) {
-      const selected = store.last?.selectedPanelId;
-      if (selected) setActivePanel(selected);
-    }
   }
 
   function syncSplitterVisibility() {
@@ -1368,7 +1364,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function _ahShow() {
-    if (!_ahGuard() || panelAreaHiddenByUser) return;
+    if (!_ahGuard()) return;
     if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
     applyAutohideCollapsedState(true);
   }
@@ -1428,7 +1424,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function onBrowserEdgeMove(e) {
-    if (!_ahGuard() || panelAreaHiddenByUser || _ahPopupOpen) return;
+    if (!_ahGuard() || _ahPopupOpen) return;
     const rect = browser.getBoundingClientRect();
     const threshold = 10;
     const nearLeft = e.clientX <= rect.left + threshold;
