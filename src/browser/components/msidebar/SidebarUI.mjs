@@ -22,6 +22,10 @@ function ensureStyle(doc) {
 :root{--midori-msidebar-width:320px;--midori-msidebar-main-width:44px;--midori-msidebar-anim:160ms;}
 #browser{position:relative;}
 #midori-msidebar-wrapper{display:flex;flex-direction:row;height:100%;}
+#midori-msidebar-edge-trigger{position:absolute;top:0;bottom:0;width:8px;z-index:29;background:transparent;pointer-events:auto;}
+#midori-msidebar-edge-trigger[position='left']{left:0;}
+#midori-msidebar-edge-trigger[position='right']{right:0;}
+#midori-msidebar-edge-trigger[hidden='true']{display:none;pointer-events:none;}
 #midori-msidebar-main{display:flex;flex-direction:column;gap:var(--space-small,8px);padding:var(--space-small,8px) calc(var(--space-small,8px)/2);background:var(--toolbox-bgcolor);color:var(--toolbox-color);min-width:var(--midori-msidebar-main-width);box-sizing:border-box;}
 #midori-msidebar-main[collapsed='true']{pointer-events:none;opacity:0;min-width:0;padding:0;margin:0;}
 #midori-msidebar-main[animated='true']:not([initializing]){transition:opacity var(--midori-msidebar-anim) ease, min-width var(--midori-msidebar-anim) ease, padding var(--midori-msidebar-anim) ease;}
@@ -299,10 +303,16 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   splitter.id = 'midori-msidebar-splitter';
   splitter.classList.add('chromeclass-extrachrome', 'sidebar-splitter');
 
+  const edgeTrigger = createXul(doc, 'box');
+  edgeTrigger.id = 'midori-msidebar-edge-trigger';
+  edgeTrigger.setAttribute('position', 'left');
+  edgeTrigger.setAttribute('hidden', 'true');
+
   wrapper.appendChild(main);
   wrapper.appendChild(boxArea);
   wrapper.appendChild(splitter);
   browser.insertBefore(wrapper, tabbox);
+  browser.appendChild(edgeTrigger);
   try {
     doc.documentElement.setAttribute('midori-msidebar-injected', 'true');
   } catch {}
@@ -343,6 +353,23 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const faviconPending = new Set();
   const faviconRetryAt = new Map();
   let splitterDrag = null;
+
+  function syncEdgeTriggerVisibility() {
+    const shouldShow = autohideEnabled && visible && !currentPanelFloating;
+    setBoolAttr(edgeTrigger, 'hidden', !shouldShow);
+    edgeTrigger.setAttribute('position', position);
+  }
+
+  function applyAutohideCollapsedState(open) {
+    if (!autohideEnabled || currentPanelFloating) {
+      return;
+    }
+    _ahOpen = !!open;
+    setBoolAttr(main, 'collapsed', !_ahOpen);
+    setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !_ahOpen);
+    syncSplitterVisibility();
+    syncEdgeTriggerVisibility();
+  }
 
   function applyDockWidth() {
     if (currentPanelFloating) return;
@@ -664,12 +691,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.style.right = '';
       if (autohideEnabled) {
         boxArea.setAttribute('autohide-target', 'true');
-        // Show panel on click, autohide will hide on mouse-leave
         if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
-        setBoolAttr(boxArea, 'collapsed', false);
-        _ahOpen = true;
+        applyAutohideCollapsedState(true);
       } else if (visible) {
         boxArea.removeAttribute('autohide-target');
+        setBoolAttr(main, 'collapsed', false);
         setBoolAttr(boxArea, 'collapsed', false);
       }
       applyDockWidth();
@@ -766,21 +792,26 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       setBoolAttr(boxArea, 'collapsed', true);
       boxArea.style.display = '';
       setBoolAttr(splitter, 'hidden', true);
+      syncEdgeTriggerVisibility();
       return;
     }
-    setBoolAttr(main, 'collapsed', false);
     if (currentPanelFloating) {
+      setBoolAttr(main, 'collapsed', false);
       boxArea.style.display = panelAreaHiddenByUser ? 'none' : '';
       setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser);
     } else {
       if (autohideEnabled) {
         boxArea.setAttribute('autohide-target', 'true');
-        _ahOpen = false;
+        applyAutohideCollapsedState(false);
       }
-      setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || autohideEnabled);
+      if (!autohideEnabled) {
+        setBoolAttr(main, 'collapsed', false);
+        setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser);
+      }
       boxArea.style.display = '';
     }
     syncSplitterVisibility();
+    syncEdgeTriggerVisibility();
     if (hidePanelWhenHidden && !activeBrowser) {
       const selected = store.last?.selectedPanelId;
       if (selected) setActivePanel(selected);
@@ -789,6 +820,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   function syncSplitterVisibility() {
     if (!visible || currentPanelFloating || panelAreaHiddenByUser) {
+      setBoolAttr(splitter, 'hidden', true);
+      return;
+    }
+    if (autohideEnabled && !_ahOpen) {
       setBoolAttr(splitter, 'hidden', true);
       return;
     }
@@ -821,12 +856,16 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       const aiSplitter = doc.getElementById('ai-window-splitter');
       parent.insertBefore(wrapper, aiSplitter || null);
     }
+    edgeTrigger.setAttribute('position', position);
   }
 
   function setPosition(next) {
     position = next === 'right' ? 'right' : 'left';
     boxArea.setAttribute('position', position);
+    main.setAttribute('position', position);
+    splitter.setAttribute('position', position);
     applyOrder();
+    syncEdgeTriggerVisibility();
     if (currentPanelFloating && activePanelId) {
       const panel = store.panels.find((p) => p.id === activePanelId);
       if (panel) applyFloatingGeometry(panel);
@@ -841,17 +880,20 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (currentPanelFloating) return;
     if (!autohideEnabled) {
       boxArea.removeAttribute('autohide-target');
+      setBoolAttr(main, 'collapsed', !visible);
       setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !visible);
       boxArea.setAttribute('overlay', 'false');
       applyDockWidth();
       syncSplitterVisibility();
+      syncEdgeTriggerVisibility();
       return;
     }
     boxArea.setAttribute('autohide-target', 'true');
-    if (visible) setBoolAttr(boxArea, 'collapsed', true);
+    if (visible) applyAutohideCollapsedState(false);
     boxArea.setAttribute('overlay', autohideMode === 'overlay' ? 'true' : 'false');
     applyDockWidth();
     syncSplitterVisibility();
+    syncEdgeTriggerVisibility();
   }
 
   function setAutohideMode(mode) {
@@ -860,10 +902,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     _ahOpen = false;
     if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
     if (currentPanelFloating) return;
-    if (autohideEnabled && visible) setBoolAttr(boxArea, 'collapsed', true);
+    if (autohideEnabled && visible) applyAutohideCollapsedState(false);
     boxArea.setAttribute('overlay', autohideEnabled && autohideMode === 'overlay' ? 'true' : 'false');
     applyDockWidth();
     syncSplitterVisibility();
+    syncEdgeTriggerVisibility();
   }
 
   function onFloatingHeaderMouseDown(e) {
@@ -1327,9 +1370,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function _ahShow() {
     if (!_ahGuard() || panelAreaHiddenByUser) return;
     if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
-    _ahOpen = true;
-    setBoolAttr(boxArea, 'collapsed', false);
-    syncSplitterVisibility();
+    applyAutohideCollapsedState(true);
   }
 
   function _ahScheduleHide() {
@@ -1342,9 +1383,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       if (!_ahGuard()) return;
       if (sizing || floatingResize || floatingDrag) return;
       if (_ahPopupOpen) return;
-      _ahOpen = false;
-      setBoolAttr(boxArea, 'collapsed', true);
-      syncSplitterVisibility();
+      applyAutohideCollapsedState(false);
     }, 200);
   }
 
@@ -1380,12 +1419,34 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     _ahScheduleHide();
   }
 
+  function onEdgeTriggerEnter() { _ahShow(); }
+  function onEdgeTriggerLeave(e) {
+    if (!_ahGuard()) return;
+    const rel = e.relatedTarget;
+    if (rel && (main.contains(rel) || rel === main || boxArea.contains(rel) || rel === boxArea || splitter.contains(rel) || rel === splitter)) return;
+    _ahScheduleHide();
+  }
+
+  function onBrowserEdgeMove(e) {
+    if (!_ahGuard() || panelAreaHiddenByUser || _ahPopupOpen) return;
+    const rect = browser.getBoundingClientRect();
+    const threshold = 10;
+    const nearLeft = e.clientX <= rect.left + threshold;
+    const nearRight = e.clientX >= rect.right - threshold;
+    if ((position === 'left' && nearLeft) || (position === 'right' && nearRight)) {
+      _ahShow();
+    }
+  }
+
   main.addEventListener('mouseenter', onMainEnter);
   main.addEventListener('mouseleave', onMainLeave);
   boxArea.addEventListener('mouseenter', onBoxEnter);
   boxArea.addEventListener('mouseleave', onBoxLeave);
   splitter.addEventListener('mouseenter', onSplitterEnter);
   splitter.addEventListener('mouseleave', onSplitterLeave);
+  edgeTrigger.addEventListener('mouseenter', onEdgeTriggerEnter);
+  edgeTrigger.addEventListener('mouseleave', onEdgeTriggerLeave);
+  browser.addEventListener('mousemove', onBrowserEdgeMove, true);
 
   btnToggle.addEventListener(
     'command',
@@ -1551,6 +1612,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.removeEventListener('mouseleave', onBoxLeave);
       splitter.removeEventListener('mouseenter', onSplitterEnter);
       splitter.removeEventListener('mouseleave', onSplitterLeave);
+      edgeTrigger.removeEventListener('mouseenter', onEdgeTriggerEnter);
+      edgeTrigger.removeEventListener('mouseleave', onEdgeTriggerLeave);
+      browser.removeEventListener('mousemove', onBrowserEdgeMove, true);
     } catch {}
     if (_ahTimer) {
       try { win.clearTimeout(_ahTimer); } catch {}
@@ -1559,6 +1623,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     clearBrowser();
     try {
       wrapper.remove();
+    } catch {}
+    try {
+      edgeTrigger.remove();
     } catch {}
     try {
       doc.documentElement.removeAttribute('midori-msidebar-injected');

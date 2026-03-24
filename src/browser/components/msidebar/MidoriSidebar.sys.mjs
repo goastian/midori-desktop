@@ -11,6 +11,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const PREF_VERTICAL_TABS = 'midori.verticaltabs.enabled';
+const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
 const PREF_SEEDED_DEFAULT_PANELS = 'midori.msidebar.seededDefaultPanels';
 
 export const MidoriSidebar = {
@@ -43,6 +44,8 @@ export const MidoriSidebar = {
     Services.prefs.addObserver(Prefs.PREF_DEBUG, this);
     Services.prefs.addObserver(Prefs.PREF_SHORTCUT_TOGGLE_SIDEBAR, this);
     Services.prefs.addObserver(Prefs.PREF_SHORTCUT_TOGGLE_PANEL, this);
+    Services.prefs.addObserver(PREF_VERTICAL_TABS, this);
+    Services.prefs.addObserver(PREF_VERTICAL_POSITION, this);
 
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
@@ -124,7 +127,7 @@ export const MidoriSidebar = {
     }
 
     const enabled = Prefs.getEnabled();
-    const position = Prefs.getPosition();
+    const position = this._getEffectiveSidebarPosition(win);
     const width = Prefs.getWidth();
     const autohideEnabled = Prefs.getAutohideEnabled();
     const autohideMode = Prefs.getAutohideMode();
@@ -372,5 +375,31 @@ export const MidoriSidebar = {
     try {
       Services.prefs.setCharPref('sidebar.visibility', 'hide');
     } catch {}
+  },
+
+  _getVerticalTabsEnabled() {
+    return Services.prefs.getBoolPref(PREF_VERTICAL_TABS, false);
+  },
+
+  _getVerticalTabsSide(win = null) {
+    try {
+      const attr = win?.document?.documentElement?.getAttribute?.('midori-vertical-tabs');
+      if (attr === 'left' || attr === 'right') {
+        return attr;
+      }
+    } catch {}
+    try {
+      return Services.prefs.getBoolPref('sidebar.position_start', true) ? 'left' : 'right';
+    } catch {}
+    const side = Services.prefs.getStringPref(PREF_VERTICAL_POSITION, 'left');
+    return side === 'right' ? 'right' : 'left';
+  },
+
+  _getEffectiveSidebarPosition(win = null) {
+    const preferred = Prefs.getPosition();
+    if (!this._getVerticalTabsEnabled()) {
+      return preferred;
+    }
+    return this._getVerticalTabsSide(win) === 'left' ? 'right' : 'left';
   },
 };
