@@ -125,6 +125,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Apply Amelia patches
+        run: bash scripts/patch-amelia.sh
+
       - name: Set brand
         run: npm run brand
 

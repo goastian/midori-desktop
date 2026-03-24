@@ -8,7 +8,7 @@
     "build": "amelia build",
     "build:ui": "amelia build --ui",
     "start": "cd engine && python3 ./mach run --noprofile",
-    "import": "npm run amelia import && bash scripts/download-addons.sh && echo \"finish apply\"",
+    "import": "bash scripts/patch-amelia.sh && npm run amelia import && bash scripts/download-addons.sh && echo \"finish apply\"",
     "export": "amelia export",
     "init": "npm run download && npm run import && npm run bootstrap",
     "download": "GIT_AUTHOR_NAME=github-actions[bot] GIT_AUTHOR_EMAIL=github-actions[bot]@users.noreply.github.com GIT_COMMITTER_NAME=github-actions[bot] GIT_COMMITTER_EMAIL=github-actions[bot]@users.noreply.github.com amelia download",

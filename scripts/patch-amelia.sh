@@ -10,6 +10,7 @@ set -e
 
 AMELIA_PKG="node_modules/@goastian/amelia/dist/commands/package.js"
 AMELIA_ADDON="node_modules/@goastian/amelia/dist/commands/download/addon.js"
+AMELIA_BRANDING="node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js"
 
 if [ -f "$AMELIA_PKG" ]; then
   if grep -q "split('\\\\n').filter(Boolean)" "$AMELIA_PKG"; then
@@ -20,6 +21,38 @@ if [ -f "$AMELIA_PKG" ]; then
       echo "[patch-amelia] Patched package.js locale parsing."
     else
       echo "[patch-amelia] WARNING: Could not patch package.js locale parsing."
+    fi
+  fi
+fi
+
+if [ -f "$AMELIA_BRANDING" ]; then
+  if grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING"; then
+    echo "[patch-amelia] branding-patch.js fallback already applied."
+  else
+    node <<'NODE'
+const fs = require('node:fs');
+
+const file = 'node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js';
+if (!fs.existsSync(file)) {
+  process.exit(0);
+}
+
+let content = fs.readFileSync(file, 'utf8');
+
+const source = "const BRANDING_FF = (0, node_path_1.join)(BRANDING_STORE, 'unofficial');";
+const replacement = "const BRANDING_FF = (0, node_fs_1.existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ? (0, node_path_1.join)(BRANDING_STORE, 'unofficial') : (0, node_path_1.join)(BRANDING_STORE, 'official');";
+
+if (content.includes(source) && !content.includes("existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?")) {
+  content = content.replace(source, replacement);
+}
+
+fs.writeFileSync(file, content, 'utf8');
+NODE
+
+    if grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING"; then
+      echo "[patch-amelia] Patched branding-patch.js with unofficial->official fallback."
+    else
+      echo "[patch-amelia] WARNING: Could not patch branding-patch.js fallback."
     fi
   fi
 fi
