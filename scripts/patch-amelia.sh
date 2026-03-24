@@ -25,10 +25,7 @@ if [ -f "$AMELIA_PKG" ]; then
 fi
 
 if [ -f "$AMELIA_ADDON" ]; then
-  if grep -q "Initializing addon... (skip git commit)" "$AMELIA_ADDON"; then
-    echo "[patch-amelia] addon.js CI fixes already applied."
-  else
-    node <<'NODE'
+  node <<'NODE'
 const fs = require('node:fs');
 
 const file = 'node_modules/@goastian/amelia/dist/commands/download/addon.js';
@@ -44,19 +41,37 @@ if (content.includes(initLine) && !content.includes('Initializing addon... (skip
   content = content.replace(initLine, initReplacement);
 }
 
-const mozbuildSnippet = "    await (0, discard_1.discard)('browser/extensions/moz.build');\n    const path = (0, node_path_1.join)(constants_1.ENGINE_DIR, 'browser', 'extensions', 'moz.build');";
-const mozbuildReplacement = "    const mozbuildPath = (0, node_path_1.join)(constants_1.ENGINE_DIR, 'browser', 'extensions', 'moz.build');\n    const appMozbuildPath = (0, node_path_1.join)(constants_1.ENGINE_DIR, 'browser', 'extensions', 'app.mozbuild');\n    const path = (0, node_fs_1.existsSync)(mozbuildPath) ? mozbuildPath : appMozbuildPath;\n    if ((0, node_fs_1.existsSync)(mozbuildPath)) {\n        await (0, discard_1.discard)('browser/extensions/moz.build');\n    }";
-if (content.includes(mozbuildSnippet) && !content.includes('appMozbuildPath')) {
-  content = content.replace(mozbuildSnippet, mozbuildReplacement);
+const oldMozbuildSnippet = "    await (0, discard_1.discard)('browser/extensions/moz.build');\n    const path = (0, node_path_1.join)(constants_1.ENGINE_DIR, 'browser', 'extensions', 'moz.build');";
+const firstPatchedMozbuildSnippet = "    const mozbuildPath = (0, node_path_1.join)(constants_1.ENGINE_DIR, 'browser', 'extensions', 'moz.build');\n    const appMozbuildPath = (0, node_path_1.join)(constants_1.ENGINE_DIR, 'browser', 'extensions', 'app.mozbuild');\n    const path = (0, node_fs_1.existsSync)(mozbuildPath) ? mozbuildPath : appMozbuildPath;\n    if ((0, node_fs_1.existsSync)(mozbuildPath)) {\n        await (0, discard_1.discard)('browser/extensions/moz.build');\n    }";
+const robustMozbuildBlock = "    const mozbuildPath = (0, node_path_1.join)(constants_1.ENGINE_DIR, 'browser', 'extensions', 'moz.build');\n    const appMozbuildPath = (0, node_path_1.join)(constants_1.ENGINE_DIR, 'browser', 'extensions', 'app.mozbuild');\n    if ((0, node_fs_1.existsSync)(mozbuildPath)) {\n        await (0, discard_1.discard)('browser/extensions/moz.build');\n    }\n    const targetMozbuildPath = (0, node_fs_1.existsSync)(mozbuildPath)\n        ? mozbuildPath\n        : ((0, node_fs_1.existsSync)(appMozbuildPath) ? appMozbuildPath : mozbuildPath);\n    if (!(0, node_fs_1.existsSync)(targetMozbuildPath)) {\n        (0, node_fs_1.writeFileSync)(targetMozbuildPath, 'DIRS += []\\n');\n    }";
+
+if (content.includes(oldMozbuildSnippet)) {
+  content = content.replace(oldMozbuildSnippet, robustMozbuildBlock);
+} else if (content.includes(firstPatchedMozbuildSnippet)) {
+  content = content.replace(firstPatchedMozbuildSnippet, robustMozbuildBlock);
 }
+
+content = content.replace(
+  /const mozbuildPath = \(0, node_path_1\.join\)\(constants_1\.ENGINE_DIR, 'browser', 'extensions', 'moz\.build'\);[\s\S]*?\/\/ Append all the files to the bottom/m,
+  `${robustMozbuildBlock}\n    // Append all the files to the bottom`
+);
+
+content = content.replace(
+  "    // Append all the files to the bottom\\n    (0, node_fs_1.writeFileSync)(path, `${(0, node_fs_1.readFileSync)(path).toString()}\\nDIRS += [${addons",
+  "    // Append all the files to the bottom\\n    (0, node_fs_1.writeFileSync)(targetMozbuildPath, `${(0, node_fs_1.readFileSync)(targetMozbuildPath).toString()}\\nDIRS += [${addons"
+);
+
+content = content.replace(
+  "    (0, node_fs_1.writeFileSync)(path, `${(0, node_fs_1.readFileSync)(path).toString()}\\nDIRS += [${addons",
+  "    (0, node_fs_1.writeFileSync)(targetMozbuildPath, `${(0, node_fs_1.readFileSync)(targetMozbuildPath).toString()}\\nDIRS += [${addons"
+);
 
 fs.writeFileSync(file, content, 'utf8');
 NODE
 
-    if grep -q "Initializing addon... (skip git commit)" "$AMELIA_ADDON" && grep -q "app.mozbuild" "$AMELIA_ADDON"; then
-      echo "[patch-amelia] Patched addon.js for CI-safe addon initialization and mozbuild fallback."
-    else
-      echo "[patch-amelia] WARNING: Could not fully patch addon.js."
-    fi
+  if grep -q "Initializing addon... (skip git commit)" "$AMELIA_ADDON" && grep -q "targetMozbuildPath" "$AMELIA_ADDON"; then
+    echo "[patch-amelia] Patched addon.js for CI-safe addon initialization and robust mozbuild fallback."
+  else
+    echo "[patch-amelia] WARNING: Could not fully patch addon.js."
   fi
 fi

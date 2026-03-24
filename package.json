@@ -11,7 +11,7 @@
     "import": "npm run amelia import && bash scripts/download-addons.sh && echo \"finish apply\"",
     "export": "amelia export",
     "init": "npm run download && npm run import && npm run bootstrap",
-    "download": "amelia download",
+    "download": "GIT_AUTHOR_NAME=github-actions[bot] GIT_AUTHOR_EMAIL=github-actions[bot]@users.noreply.github.com GIT_COMMITTER_NAME=github-actions[bot] GIT_COMMITTER_EMAIL=github-actions[bot]@users.noreply.github.com amelia download",
     "bootstrap": "amelia bootstrap",
     "l10n": "python3 scripts/prepare_l10n.py --no-cleanup",
     "l10n:copy": "python3 scripts/prepare_l10n.py --copy-only --no-cleanup",
