@@ -2,16 +2,19 @@
   "name": "midori-desktop",
   "version": "1.0.0",
   "description": "[![build result](https://build.opensuse.org/projects/home:astian-inc/packages/midori-browser/badge.svg?type=default)](https://build.opensuse.org/package/show/home:astian-inc/midori-browser) [![Telegram](https://img.shields.io/badge/Telegram-Chat-gray.svg?style=flat&logo=telegram&colorA=5583a4&logoColor=fff)](https://t.me/midoriweb) [![Twitter](https://img.shields.io/twitter/follow/midoriweb.svg?style=social&label=Follow)](https://twitter.com/grupoastian) [![Donate](https://img.shields.io/badge/Stripe-Donate-gray.svg?style=flat&logo=stripe&colorA=0071bb&logoColor=fff)](https://donate.stripe.com/00g6s675Xawl6ZO9AH) [![Patreon](https://img.shields.io/badge/PATREON-Pledge-red.svg)](https://www.patreon.com/midori_browser)",
+  "lint-staged": {
+    "**/*": ""
+  },
   "type": "module",
   "scripts": {
     "ci": "node scripts/ci-config.mjs",
     "build": "amelia build",
     "build:ui": "amelia build --ui",
     "start": "cd engine && python3 ./mach run --noprofile",
-    "import": "bash scripts/patch-amelia.sh && bash scripts/ensure-branding-base.sh && npm run amelia import && bash scripts/download-addons.sh && echo \"finish apply\"",
+    "import": "npm run amelia import && bash scripts/download-addons.sh && echo \"finish apply\"",
     "export": "amelia export",
     "init": "npm run download && npm run import && npm run bootstrap",
-    "download": "GIT_AUTHOR_NAME=github-actions[bot] GIT_AUTHOR_EMAIL=github-actions[bot]@users.noreply.github.com GIT_COMMITTER_NAME=github-actions[bot] GIT_COMMITTER_EMAIL=github-actions[bot]@users.noreply.github.com amelia download",
+    "download": "amelia download",
     "bootstrap": "amelia bootstrap",
     "l10n": "python3 scripts/prepare_l10n.py --no-cleanup",
     "l10n:copy": "python3 scripts/prepare_l10n.py --copy-only --no-cleanup",
