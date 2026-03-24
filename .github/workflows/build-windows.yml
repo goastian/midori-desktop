@@ -193,7 +193,11 @@ jobs:
           if [ -n "${{ inputs.build_id }}" ]; then
             export MOZ_BUILD_DATE="${{ inputs.build_id }}"
           fi
-          npm run build
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            npm run build:win-arm64
+          else
+            npm run build:win-x64
+          fi
 
       - name: Package
         env:
@@ -201,7 +205,11 @@ jobs:
         run: |
           export MIDORI_CROSS_COMPILING=1
           export MIDORI_RELEASE=1
-          npm run package -- --verbose
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            npm run package:win-arm64 -- --verbose
+          else
+            npm run package:win-x64 -- --verbose
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -212,3 +220,4 @@ jobs:
             dist/*.mar
             dist/update/
           retention-days: 5
+          if-no-files-found: error

@@ -152,14 +152,22 @@ jobs:
             export MOZ_BUILD_DATE="${{ inputs.build_id }}"
           fi
           export MIDORI_RELEASE=1
-          npm run build
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            npm run build:linux-arm64
+          else
+            npm run build:linux-x64
+          fi
 
       - name: Package
         env:
           AMELIA_PLATFORM: linux
         run: |
           export MIDORI_RELEASE=1
-          npm run package -- --verbose
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            npm run package:linux-arm64 -- --verbose
+          else
+            npm run package:linux-x64 -- --verbose
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -170,3 +178,4 @@ jobs:
             dist/*.mar
             dist/update/
           retention-days: 5
+          if-no-files-found: error
