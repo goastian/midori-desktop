@@ -318,7 +318,7 @@ pref('privacy.trackingprotection.emailtracking.data_collection.enabled', false, 
 pref('browser.urlbar.quicksuggest.enabled', false);
 pref('browser.urlbar.suggest.quicksuggest.sponsored', false);
 pref('browser.urlbar.suggest.quicksuggest.nonsponsored', false);
-pref('browser.urlbar.groupLabels.enabled');
+pref('browser.urlbar.groupLabels.enabled', false);
 pref('browser.ml.enable', false);
 pref('browser.ml.chat.enabled', false);
 pref('browser.ml.chat.menu', false);
