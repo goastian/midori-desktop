@@ -23,6 +23,49 @@ if [ -f "$AMELIA_PKG" ]; then
       echo "[patch-amelia] WARNING: Could not patch package.js locale parsing."
     fi
   fi
+
+  node <<'NODE'
+const fs = require('node:fs');
+
+const file = 'node_modules/@goastian/amelia/dist/commands/package.js';
+if (!fs.existsSync(file)) {
+  process.exit(0);
+}
+
+let content = fs.readFileSync(file, 'utf8');
+
+if (!content.includes("const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');")) {
+  const packageArgsLine = "        const arguments_ = ['package'];";
+  const torPreflightBlock = "        const arguments_ = ['package'];\n        const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');\n        const torBinaryPath = process.ameliaPlatform == 'win32'\n            ? (0, node_path_1.join)(torDir, 'tor.exe')\n            : (0, node_path_1.join)(torDir, 'tor');\n        const torGeoIpPath = (0, node_path_1.join)(torDir, 'geoip');\n        const torGeoIp6Path = (0, node_path_1.join)(torDir, 'geoip6');\n        if (!(0, node_fs_1.existsSync)(torBinaryPath) || !(0, node_fs_1.existsSync)(torGeoIpPath) || !(0, node_fs_1.existsSync)(torGeoIp6Path)) {\n            log_1.log.error(`Tor runtime files are missing in ${torDir}. Run scripts/download-tor.sh for the target platform before packaging.`);\n        }";
+  if (content.includes(packageArgsLine)) {
+    content = content.replace(packageArgsLine, torPreflightBlock);
+  }
+}
+
+if (!content.includes('mach package` failed. Aborting to avoid shipping stale artifacts.')) {
+  const packageCall = "        await (0, utils_1.dispatch)(machPath, arguments_, constants_1.ENGINE_DIR, true);";
+  const packageReplacement = "        const packageResult = await (0, utils_1.dispatch)(machPath, arguments_, constants_1.ENGINE_DIR, true);\n        if (!packageResult.success) {\n            log_1.log.error('`mach package` failed. Aborting to avoid shipping stale artifacts.');\n        }";
+  if (content.includes(packageCall)) {
+    content = content.replace(packageCall, packageReplacement);
+  }
+}
+
+if (!content.includes('mach package-multi-locale` failed. Multi-language packaging was not applied.')) {
+  const multiLocaleCall = "        await (0, utils_1.dispatch)(machPath, ['package-multi-locale', '--locales', ...(await getLocales())], constants_1.ENGINE_DIR, true);";
+  const multiLocaleReplacement = "        const multiLocaleResult = await (0, utils_1.dispatch)(machPath, ['package-multi-locale', '--locales', ...(await getLocales())], constants_1.ENGINE_DIR, true);\n        if (!multiLocaleResult.success) {\n            log_1.log.error('`mach package-multi-locale` failed. Multi-language packaging was not applied.');\n        }";
+  if (content.includes(multiLocaleCall)) {
+    content = content.replace(multiLocaleCall, multiLocaleReplacement);
+  }
+}
+
+fs.writeFileSync(file, content, 'utf8');
+NODE
+
+  if grep -Fq "Tor runtime files are missing" "$AMELIA_PKG" && grep -Fq '`mach package-multi-locale` failed. Multi-language packaging was not applied.' "$AMELIA_PKG"; then
+    echo "[patch-amelia] Added hard-fail checks for package and package-multi-locale."
+  else
+    echo "[patch-amelia] WARNING: Could not verify package.js hard-fail checks."
+  fi
 fi
 
 if [ -f "$AMELIA_BRANDING" ]; then

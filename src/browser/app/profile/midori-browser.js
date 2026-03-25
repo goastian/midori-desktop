@@ -42,8 +42,13 @@ pref("browser.tabs.cardPreview.delayMs", 400);
 pref("cookiebanners.service.mode.privateBrowsing", 2);
 pref("browser.urlbar.update2.engineAliasRefresh", true);
 
-// Disable Languages (as most of them break the branding)
-pref("intl.multilingual.enabled", false);
+// Force-enable bundled multi-language support in packaged builds.
+// Locking avoids old profile user prefs forcing multilingual support off.
+pref("intl.multilingual.enabled", true, locked);
+pref("intl.multilingual.downloadEnabled", true, locked);
+pref("intl.multilingual.liveReload", true, locked);
+pref("intl.multilingual.liveReloadBidirectional", false, locked);
+pref("app.update.langpack.enabled", true, locked);
 
 // Disable sidebar firefox default
 pref("browser.sidebar.enabled", false);

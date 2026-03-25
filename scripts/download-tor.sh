@@ -78,25 +78,20 @@ esac
 
 OBJ_DIR="$ENGINE_DIR/obj-${OBJ_SUFFIX}"
 
-# If the platform-specific obj dir doesn't exist, try to find any obj-* dir
+# If the target obj dir does not exist, fail fast instead of falling back.
+# Falling back can place Tor in the wrong obj-* and produce packages without Tor.
 if [ ! -d "$OBJ_DIR" ]; then
-  for d in "$ENGINE_DIR"/obj-*; do
-    if [ -d "$d" ]; then
-      OBJ_DIR="$d"
-      break
-    fi
-  done
+  echo "ERROR: Target objdir not found: $OBJ_DIR"
+  echo "Run the target build first so Tor is copied into the correct package tree."
+  echo "Expected target: platform=$PLATFORM arch=$ARCH"
+  exit 1
 fi
 
 OUTPUT_DIR="$OBJ_DIR/dist/bin/tor"
 
-# ── Skip if already downloaded or placeholder exists ──
+# ── Skip if already downloaded ──
 if [ -f "$OUTPUT_DIR/tor" ] || [ -f "$OUTPUT_DIR/tor.exe" ]; then
   echo "=== Tor $TOR_VERSION already present in $OUTPUT_DIR, skipping download ==="
-  exit 0
-fi
-if [ -f "$OUTPUT_DIR/NO_TOR_AVAILABLE.txt" ]; then
-  echo "=== Tor placeholder already present (arch not supported), skipping ==="
   exit 0
 fi
 
@@ -155,15 +150,12 @@ case "$PLATFORM" in
     ;;
 esac
 
-# If Tor is not available for this platform+arch, create a placeholder
-# so that package-manifest.in's bin/tor/* glob does not fail.
+# If Tor is not available for this platform+arch, fail hard.
+# Tor is a required runtime component for Midori packaging.
 if [ "$TOR_AVAILABLE" = false ]; then
-  echo "=== WARNING: Tor Expert Bundle is not available for ${PLATFORM}-${ARCH} ==="
-  echo "Creating placeholder in $OUTPUT_DIR so packaging does not fail."
-  echo "Tor features will be disabled at runtime on this architecture."
-  mkdir -p "$OUTPUT_DIR"
-  echo "Tor Expert Bundle not available for ${PLATFORM}-${ARCH}" > "$OUTPUT_DIR/NO_TOR_AVAILABLE.txt"
-  exit 0
+  echo "ERROR: Tor Expert Bundle is not available for ${PLATFORM}-${ARCH}."
+  echo "Packaging is blocked because Tor cannot be left out of the final package."
+  exit 1
 fi
 
 DOWNLOAD_URL="${BASE_URL}/${ARCHIVE}"
@@ -231,5 +223,16 @@ chmod +x "$OUTPUT_DIR/pluggable_transports/"* 2> /dev/null || true
 echo ""
 echo "=== Tor $TOR_VERSION binaries installed ==="
 ls -la "$OUTPUT_DIR/"
+
+if [ ! -f "$OUTPUT_DIR/tor" ] && [ ! -f "$OUTPUT_DIR/tor.exe" ]; then
+  echo "ERROR: Tor binary was not installed into $OUTPUT_DIR"
+  exit 1
+fi
+
+if [ ! -f "$OUTPUT_DIR/geoip" ] || [ ! -f "$OUTPUT_DIR/geoip6" ]; then
+  echo "ERROR: Tor GeoIP files are missing in $OUTPUT_DIR"
+  exit 1
+fi
+
 echo ""
 echo "Done! Tor ready for packaging."
