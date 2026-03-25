@@ -2,6 +2,8 @@
 DEFINES["MOZ_APP_VERSION"] = CONFIG["MOZ_APP_VERSION"]
 DEFINES["MOZ_APP_MAXVERSION"] = CONFIG["MOZ_APP_MAXVERSION"]
 
+JAR_MANIFESTS += ["jar.mn"]
+
 FINAL_TARGET_FILES.features["midori-privacy-blocker"] += ["jar.mn"]
 FINAL_TARGET_FILES.features["midori-privacy-blocker"] += ["manifest.json"]
 FINAL_TARGET_FILES.features["midori-privacy-blocker"] += ["moz.build"]
