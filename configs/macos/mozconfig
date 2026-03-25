@@ -4,7 +4,6 @@
 
 unset MOZ_STDCXX_COMPAT
 
-ac_add_options --disable-dmd
 ac_add_options --enable-eme=widevine
 
 if test "$MIDORI_RELEASE"; then
