@@ -84,6 +84,12 @@ pref('browser.migrate.opera.enabled', true);
 // Enable downloading DRM.
 pref('media.eme.enabled', true);
 
+// Fix GMP (Widevine) downloads: Balrog expects a Firefox version in the URL,
+// but %VERSION% resolves to Midori's version (11.6.4) which Balrog doesn't
+// recognize. Use %PLATFORM_VERSION% (149.0) instead so Widevine CDM downloads
+// correctly from Mozilla's servers.
+pref("media.gmp-manager.url", "https://aus5.mozilla.org/update/3/GMP/%PLATFORM_VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+
 // Enable linux hardware video decoding. Note that this may cause a crash
 // on start for some linux setups, for example, those that do not have DMA-BUF
 // or VA-API. We should see if we can find a work around for those 
@@ -332,9 +338,6 @@ pref('browser.privatebrowsing.vpnpromourl', '', locked);
 // ============================================================================
 // DISABLE FIREFOX RELAY & FIREFOX ACCOUNTS
 // ============================================================================
-pref('identity.fxaccounts.autoconfig.uri', '', locked);
-pref('identity.fxaccounts.auth.uri', '', locked);
-pref('identity.fxaccounts.remote.root', '', locked);
 pref('identity.fxaccounts.commands.enabled', false, locked);
 pref('identity.fxaccounts.pairing.enabled', false, locked);
 pref('identity.fxaccounts.toolbar.enabled', false, locked);
