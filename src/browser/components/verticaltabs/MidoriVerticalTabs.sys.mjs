@@ -118,11 +118,59 @@ export const MidoriVerticalTabs = {
       doc.documentElement.setAttribute('midori-horizontal-tabs', this._getHorizontalPosition());
     }
 
+    // --- Move TabsToolbar for bottom horizontal tabs ---
+    this._applyBottomTabs(doc);
+
     // --- Pinned tabs icon feature (Natsumi-inspired) ---
     this._initPinnedTabsIcon(win);
 
     // --- Auto-select URL bar content on open (Natsumi urlbar.uc.mjs) ---
     this._initUrlbarAutoSelect(win);
+  },
+
+  /**
+   * Moves #TabsToolbar below #browser in the DOM for true bottom tabs,
+   * or restores it inside #navigator-toolbox for top/vertical modes.
+   */
+  _applyBottomTabs(doc) {
+    const tabsToolbar = doc.getElementById('TabsToolbar');
+    const navigatorToolbox = doc.getElementById('navigator-toolbox');
+    const browser = doc.getElementById('browser');
+    if (!tabsToolbar || !navigatorToolbox || !browser) return;
+
+    const isBottomHorizontal =
+      !this.isEnabled() && this._getHorizontalPosition() === 'bottom';
+
+    if (isBottomHorizontal) {
+      // Move TabsToolbar after #browser so it sits at the window bottom
+      if (tabsToolbar.parentNode !== browser.parentNode ||
+          tabsToolbar.previousElementSibling !== browser) {
+        // Save original flex value so we can restore it later
+        if (!tabsToolbar.hasAttribute('data-midori-original-flex')) {
+          tabsToolbar.setAttribute('data-midori-original-flex',
+            tabsToolbar.getAttribute('flex') || '');
+        }
+        tabsToolbar.removeAttribute('flex');
+        browser.after(tabsToolbar);
+      }
+    } else {
+      // Restore TabsToolbar inside #navigator-toolbox (after #toolbar-menubar)
+      if (tabsToolbar.parentNode !== navigatorToolbox) {
+        // Restore original flex attribute
+        const origFlex = tabsToolbar.getAttribute('data-midori-original-flex');
+        if (origFlex) {
+          tabsToolbar.setAttribute('flex', origFlex);
+        }
+        tabsToolbar.removeAttribute('data-midori-original-flex');
+
+        const menubar = doc.getElementById('toolbar-menubar');
+        if (menubar) {
+          menubar.after(tabsToolbar);
+        } else {
+          navigatorToolbox.prepend(tabsToolbar);
+        }
+      }
+    }
   },
 
   /**
@@ -228,16 +276,25 @@ export const MidoriVerticalTabs = {
    Lightweight, no backdrop-filter, no blur
    ===================================================================== */
 
+/* --- Bottom tabs: TabsToolbar is moved after #browser via JS --- */
 :root[midori-horizontal-tabs='bottom'] #TabsToolbar {
-  -moz-box-ordinal-group: 40 !important;
+  flex: none !important;  /* Don't stretch — only take natural height */
+  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent) !important;
+  border-bottom: none !important;
+  background-color: var(--toolbar-bgcolor) !important;
+  color: var(--toolbar-color, inherit) !important;
 }
 
-:root[midori-horizontal-tabs='bottom'] #nav-bar {
-  -moz-box-ordinal-group: 10 !important;
+/* Hide titlebar spacers & window buttons — they must stay at the top */
+:root[midori-horizontal-tabs='bottom'] #TabsToolbar .titlebar-spacer,
+:root[midori-horizontal-tabs='bottom'] #TabsToolbar .titlebar-buttonbox-container {
+  display: none !important;
 }
 
-:root[midori-horizontal-tabs='bottom'] #PersonalToolbar {
-  -moz-box-ordinal-group: 20 !important;
+/* Ensure content area fills the space between nav-bar and bottom tabs */
+:root[midori-horizontal-tabs='bottom'] #browser {
+  flex: 1 !important;
+  min-height: 0 !important;
 }
 
 /* --- Animations --- */
