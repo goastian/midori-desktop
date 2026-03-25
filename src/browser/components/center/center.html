@@ -1,0 +1,298 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src chrome: resource:; img-src chrome: resource: data: moz-icon: blob:; style-src chrome: 'unsafe-inline'; script-src chrome:; object-src 'none'">
+  <title>Midori Center</title>
+  <link rel="stylesheet" href="chrome://browser/content/center/center.css">
+</head>
+<body>
+  <div id="center-root">
+    <!-- Sidebar Navigation -->
+    <nav id="center-sidebar">
+      <div id="sidebar-header">
+        <img id="sidebar-logo" src="chrome://branding/content/about-logo.svg" alt="Midori" width="36" height="36">
+        <span id="sidebar-title">Midori Center</span>
+      </div>
+
+      <div id="sidebar-nav">
+        <button class="nav-item active" data-page="home">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 7.5L10 2l7 5.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V7.5z"/>
+            <path d="M7 18V10h6v8"/>
+          </svg>
+          <span>Home</span>
+        </button>
+        <button class="nav-item" data-page="tabs">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="3" width="16" height="14" rx="2"/>
+            <path d="M2 7h16"/>
+            <path d="M7 3v4"/>
+            <path d="M12 3v4"/>
+          </svg>
+          <span>Tab &amp; Appearance</span>
+        </button>
+        <button class="nav-item" data-page="sidebar">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="3" width="16" height="14" rx="2"/>
+            <path d="M7 3v14"/>
+          </svg>
+          <span>Sidebar</span>
+        </button>
+        <button class="nav-item" data-page="workspaces">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="2" width="7" height="7" rx="1.5"/>
+            <rect x="11" y="2" width="7" height="7" rx="1.5"/>
+            <rect x="2" y="11" width="7" height="7" rx="1.5"/>
+            <rect x="11" y="11" width="7" height="7" rx="1.5"/>
+          </svg>
+          <span>Workspaces</span>
+        </button>
+      </div>
+
+      <div id="sidebar-footer">
+        <div id="sidebar-about">
+          <span id="sidebar-version"></span>
+          <span id="sidebar-engine"></span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="center-content">
+      <!-- HOME PAGE -->
+      <section id="page-home" class="page active">
+        <div class="page-header">
+          <h1 class="page-title">Welcome to Midori Center</h1>
+          <p class="page-subtitle">Customize your browser experience — make Midori truly yours.</p>
+        </div>
+
+        <div class="cards-grid">
+          <button class="overview-card" data-navigate="tabs">
+            <div class="card-icon-wrap card-icon-green">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                <path d="M3 9h18"/>
+                <path d="M9 4v5"/>
+                <path d="M15 4v5"/>
+              </svg>
+            </div>
+            <div class="card-text">
+              <h3>Tab &amp; Appearance</h3>
+              <p>Customize tab layout, themes, and visual style</p>
+            </div>
+            <svg class="card-arrow" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+          </button>
+
+          <button class="overview-card" data-navigate="sidebar">
+            <div class="card-icon-wrap card-icon-teal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                <path d="M9 4v16"/>
+              </svg>
+            </div>
+            <div class="card-text">
+              <h3>Sidebar</h3>
+              <p>Configure the multi-panel sidebar</p>
+            </div>
+            <svg class="card-arrow" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+          </button>
+
+          <button class="overview-card" data-navigate="workspaces">
+            <div class="card-icon-wrap card-icon-emerald">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="8" height="8" rx="2"/>
+                <rect x="13" y="3" width="8" height="8" rx="2"/>
+                <rect x="3" y="13" width="8" height="8" rx="2"/>
+                <rect x="13" y="13" width="8" height="8" rx="2"/>
+              </svg>
+            </div>
+            <div class="card-text">
+              <h3>Workspaces</h3>
+              <p>Manage tab groups and workspace behavior</p>
+            </div>
+            <svg class="card-arrow" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+          </button>
+        </div>
+
+        <div class="home-info-banner">
+          <div class="info-badge">
+            <img src="chrome://branding/content/about-logo.svg" alt="" width="28" height="28">
+          </div>
+          <div class="info-text">
+            <strong>Midori Browser</strong>
+            <span id="home-version-detail"></span>
+          </div>
+          <a id="home-release-link" class="info-link" href="https://astian.org/midori-browser/" target="_blank" rel="noopener">Release Notes</a>
+        </div>
+      </section>
+
+      <!-- TAB & APPEARANCE PAGE -->
+      <section id="page-tabs" class="page">
+        <div class="page-header">
+          <h1 class="page-title">Tab &amp; Appearance</h1>
+          <p class="page-subtitle">Choose how your tabs are organized and how the browser looks.</p>
+        </div>
+
+        <!-- Tab Layout -->
+        <div class="setting-group">
+          <h2 class="group-title">Tab Layout</h2>
+          <p class="group-desc">Pick the position for your tabs.</p>
+          <div class="layout-grid" id="tabLayoutGrid">
+            <button class="layout-card" data-layout="horizontal-top">
+              <div class="layout-preview lp-horizontal-top">
+                <div class="lp-bar top"><span class="lp-tab active"></span><span class="lp-tab"></span><span class="lp-tab"></span></div>
+                <div class="lp-content"></div>
+              </div>
+              <span class="layout-label">Horizontal</span>
+            </button>
+            <button class="layout-card" data-layout="horizontal-bottom">
+              <div class="layout-preview lp-horizontal-bottom">
+                <div class="lp-content"></div>
+                <div class="lp-bar bottom"><span class="lp-tab active"></span><span class="lp-tab"></span><span class="lp-tab"></span></div>
+              </div>
+              <span class="layout-label">Bottom</span>
+            </button>
+            <button class="layout-card" data-layout="vertical-left">
+              <div class="layout-preview lp-vertical-left">
+                <div class="lp-sidebar left"><span class="lp-vtab active"></span><span class="lp-vtab"></span><span class="lp-vtab"></span></div>
+                <div class="lp-content"></div>
+              </div>
+              <span class="layout-label">Vertical</span>
+            </button>
+            <button class="layout-card" data-layout="vertical-right">
+              <div class="layout-preview lp-vertical-right">
+                <div class="lp-content"></div>
+                <div class="lp-sidebar right"><span class="lp-vtab active"></span><span class="lp-vtab"></span><span class="lp-vtab"></span></div>
+              </div>
+              <span class="layout-label">Vertical (Right)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Auto-hide Toolbar -->
+        <div class="setting-group">
+          <h2 class="group-title">Toolbar</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Auto-hide toolbar</strong>
+              <p>Hide the toolbar when scrolling down to maximize content area.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-autohide-toolbar">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Gradient -->
+        <div class="setting-group">
+          <h2 class="group-title">Custom Gradient</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Enable custom gradient</strong>
+              <p>Apply a custom gradient to the browser chrome.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-gradient-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- SIDEBAR PAGE -->
+      <section id="page-sidebar" class="page">
+        <div class="page-header">
+          <h1 class="page-title">Sidebar</h1>
+          <p class="page-subtitle">Configure the multi-panel sidebar for quick access to tools.</p>
+        </div>
+
+        <div class="setting-group">
+          <h2 class="group-title">General</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Enable Multi-Sidebar</strong>
+              <p>Show a sidebar with web panels, bookmarks, and more.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-msidebar-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Position</strong>
+              <p>Choose which side the sidebar appears on.</p>
+            </div>
+            <select id="pref-msidebar-position" class="select-input">
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Width</strong>
+              <p>Default sidebar width in pixels.</p>
+            </div>
+            <input type="number" id="pref-msidebar-width" class="number-input" min="200" max="600" step="10">
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Auto-hide sidebar</strong>
+              <p>Automatically collapse the sidebar when not in use.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-msidebar-autohide">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- WORKSPACES PAGE -->
+      <section id="page-workspaces" class="page">
+        <div class="page-header">
+          <h1 class="page-title">Workspaces</h1>
+          <p class="page-subtitle">Organize your tabs into separate workspaces for focused browsing.</p>
+        </div>
+
+        <div class="setting-group">
+          <h2 class="group-title">General</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Enable Workspaces</strong>
+              <p>Use workspaces to group tabs by task or project.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-workspaces-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Show Workspaces button</strong>
+              <p>Display the workspace switcher button in the toolbar.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-workspaces-button">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="chrome://browser/content/center/center.sys.mjs" type="module"></script>
+</body>
+</html>
