@@ -1,8 +1,27 @@
 diff --git a/browser/components/preferences/main.inc.xhtml b/browser/components/preferences/main.inc.xhtml
-index f23beeb5c793bc7a6cbea4512a5f2cd379ec98c7..120a521bd3c4e20672058ef462467e7b256cd533 100644
+index f23beeb5c7..a7cc6c6a9b 100644
 --- a/browser/components/preferences/main.inc.xhtml
 +++ b/browser/components/preferences/main.inc.xhtml
-@@ -369,6 +369,27 @@
+@@ -21,6 +21,18 @@
+   <html:h1 data-l10n-id="pane-general-title"/>
+ </hbox>
+ 
++<!-- Midori Center Banner -->
++<groupbox id="midoriCenterBanner" data-category="paneGeneral" hidden="true">
++  <hbox align="center" style="gap: 12px;">
++    <description flex="1" style="font-size: 13px;">
++      Personalize your browser — tab layout, sidebar, workspaces, and more — from Midori Center.
++    </description>
++    <button id="openMidoriCenter"
++            label="Open Midori Center"
++            style="background-color: #059669; color: white; border-radius: 8px; border: none; padding: 6px 16px; font-weight: 600; cursor: pointer;"/>
++  </hbox>
++</groupbox>
++
+ <!-- Default browser -->
+ <html:setting-group groupid="defaultBrowser" data-category="paneGeneral" hidden="true" />
+ 
+@@ -369,6 +381,27 @@
  <!-- Performance -->
  <html:setting-group groupid="performance" data-category="paneGeneral" hidden="true" />
  
@@ -31,7 +50,7 @@ index f23beeb5c793bc7a6cbea4512a5f2cd379ec98c7..120a521bd3c4e20672058ef462467e7b
  <html:setting-group groupid="browsing" data-category="paneGeneral" hidden="true"/>
  
 diff --git a/browser/components/preferences/main.js b/browser/components/preferences/main.js
-index e77dfebdf3a15033182eeae6eccd44a63aae3740..52f5f7d1f279669e459cc975a2a07772d16b1736 100644
+index e77dfebdf3..dd4861f0ef 100644
 --- a/browser/components/preferences/main.js
 +++ b/browser/components/preferences/main.js
 @@ -27,6 +27,7 @@ ChromeUtils.defineESModuleGetters(this, {
@@ -52,10 +71,18 @@ index e77dfebdf3a15033182eeae6eccd44a63aae3740..52f5f7d1f279669e459cc975a2a07772
    // Files and Applications
    { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
  
-@@ -5362,6 +5366,20 @@ var gMainPane = {
+@@ -5362,6 +5366,28 @@ var gMainPane = {
      initSettingGroup("profiles");
      initSettingGroup("profilePane");
  
++    // Midori Center button handler
++    let centerBtn = document.getElementById("openMidoriCenter");
++    if (centerBtn) {
++      centerBtn.addEventListener("command", function () {
++        window.open("about:center", "_blank");
++      });
++    }
++
 +    // Midori Memory Profile handler
 +    let memoryMenulist = document.getElementById("memoryProfileMenulist");
 +    if (memoryMenulist) {
@@ -73,4 +100,3 @@ index e77dfebdf3a15033182eeae6eccd44a63aae3740..52f5f7d1f279669e459cc975a2a07772
      setEventListener("manageBrowserLanguagesButton", "command", function () {
        gMainPane.showBrowserLanguagesSubDialog({ search: false });
      });
-
