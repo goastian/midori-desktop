@@ -165,7 +165,8 @@ export const MidoriSidebar = {
       { url: 'https://wallet.astian.org', title: 'Midori Wallet' },
       { url: 'https://cloud2.astian.org', title: 'Astian Cloud' },
       { url: 'https://astian.org/community', title: 'Astian Community' },
-      { url: 'https://notes.astian.org', title: 'Astian Notes' },
+      { url: 'https://calendar.astian.org', title: 'Astian Calendar' },
+      { url: 'https://contacts.astian.org', title: 'Astian Contacts' },
     ];
 
     const seeded = { ...store, panels: Array.isArray(store.panels) ? [...store.panels] : [], last: { ...(store.last || {}) } };
