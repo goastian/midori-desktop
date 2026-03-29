@@ -68,42 +68,7 @@ else
   esac
 fi
 
-# ── Find obj-* directory (platform-aware for cross-compilation) ──
-# Determine the expected obj-* suffix for the target platform
-case "$PLATFORM" in
-  linux) OBJ_SUFFIX="${ARCH}-pc-linux-gnu" ;;
-  windows) OBJ_SUFFIX="${ARCH}-pc-windows-msvc" ;;
-  macos) OBJ_SUFFIX="${ARCH}-apple-darwin" ;;
-esac
-
-OBJ_DIR="$ENGINE_DIR/obj-${OBJ_SUFFIX}"
-
-# If the target obj dir does not exist, fail fast instead of falling back.
-# Falling back can place Tor in the wrong obj-* and produce packages without Tor.
-if [ ! -d "$OBJ_DIR" ]; then
-  echo "ERROR: Target objdir not found: $OBJ_DIR"
-  echo "Run the target build first so Tor is copied into the correct package tree."
-  echo "Expected target: platform=$PLATFORM arch=$ARCH"
-  exit 1
-fi
-
-OUTPUT_DIR="$OBJ_DIR/dist/bin/tor"
-
-# ── Skip if already downloaded ──
-if [ -f "$OUTPUT_DIR/tor" ] || [ -f "$OUTPUT_DIR/tor.exe" ]; then
-  echo "=== Tor $TOR_VERSION already present in $OUTPUT_DIR, skipping download ==="
-  exit 0
-fi
-
-echo "=== Midori Tor Binary Downloader ==="
-echo "Platform: $PLATFORM"
-echo "Arch:     $ARCH"
-echo "Version:  $TOR_VERSION"
-echo "Obj dir:  $OBJ_DIR"
-echo "Output:   $OUTPUT_DIR"
-echo ""
-
-# ── Check availability and determine archive filename ──
+# ── Check availability early ──
 # Tor Expert Bundle is NOT available for every platform+arch combination.
 # Available: linux-x86_64, linux-i686, macos-x86_64, macos-aarch64,
 #            windows-x86_64, windows-i686
@@ -150,13 +115,48 @@ case "$PLATFORM" in
     ;;
 esac
 
-# If Tor is not available for this platform+arch, fail hard.
-# Tor is a required runtime component for Midori packaging.
+# If Tor is not available for this platform+arch, skip gracefully.
+# Tor is only available for x86_64 on Linux/Windows; macOS has both x86_64 and aarch64.
 if [ "$TOR_AVAILABLE" = false ]; then
-  echo "ERROR: Tor Expert Bundle is not available for ${PLATFORM}-${ARCH}."
-  echo "Packaging is blocked because Tor cannot be left out of the final package."
+  echo "=== Tor Expert Bundle is not available for ${PLATFORM}-${ARCH}. Skipping. ==="
+  echo "The package will be built without Tor integration for this architecture."
+  exit 0
+fi
+
+# ── Find obj-* directory (platform-aware for cross-compilation) ──
+# Determine the expected obj-* suffix for the target platform
+case "$PLATFORM" in
+  linux) OBJ_SUFFIX="${ARCH}-pc-linux-gnu" ;;
+  windows) OBJ_SUFFIX="${ARCH}-pc-windows-msvc" ;;
+  macos) OBJ_SUFFIX="${ARCH}-apple-darwin" ;;
+esac
+
+OBJ_DIR="$ENGINE_DIR/obj-${OBJ_SUFFIX}"
+
+# If the target obj dir does not exist, fail fast instead of falling back.
+# Falling back can place Tor in the wrong obj-* and produce packages without Tor.
+if [ ! -d "$OBJ_DIR" ]; then
+  echo "ERROR: Target objdir not found: $OBJ_DIR"
+  echo "Run the target build first so Tor is copied into the correct package tree."
+  echo "Expected target: platform=$PLATFORM arch=$ARCH"
   exit 1
 fi
+
+OUTPUT_DIR="$OBJ_DIR/dist/bin/tor"
+
+# ── Skip if already downloaded ──
+if [ -f "$OUTPUT_DIR/tor" ] || [ -f "$OUTPUT_DIR/tor.exe" ]; then
+  echo "=== Tor $TOR_VERSION already present in $OUTPUT_DIR, skipping download ==="
+  exit 0
+fi
+
+echo "=== Midori Tor Binary Downloader ==="
+echo "Platform: $PLATFORM"
+echo "Arch:     $ARCH"
+echo "Version:  $TOR_VERSION"
+echo "Obj dir:  $OBJ_DIR"
+echo "Output:   $OUTPUT_DIR"
+echo ""
 
 DOWNLOAD_URL="${BASE_URL}/${ARCHIVE}"
 TEMP_DIR=$(mktemp -d)
