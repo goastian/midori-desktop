@@ -34,9 +34,61 @@ if (!fs.existsSync(file)) {
 
 let content = fs.readFileSync(file, 'utf8');
 
-if (!content.includes("const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');")) {
+// Tor preflight: only enforce when Tor is actually available for the target.
+// Tor Expert Bundle is NOT available for linux-aarch64 or windows-aarch64.
+// Check if the conditional version is already applied
+if (content.includes('_torUnavailable')) {
+  // Already patched with conditional logic — nothing to do.
+} else if (content.includes("const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');")) {
+  // Old unconditional Tor check exists — replace with conditional version
+  const oldTorBlock = `        const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');
+        const torBinaryPath = process.ameliaPlatform == 'win32'
+            ? (0, node_path_1.join)(torDir, 'tor.exe')
+            : (0, node_path_1.join)(torDir, 'tor');
+        const torGeoIpPath = (0, node_path_1.join)(torDir, 'geoip');
+        const torGeoIp6Path = (0, node_path_1.join)(torDir, 'geoip6');
+        if (!(0, node_fs_1.existsSync)(torBinaryPath) || !(0, node_fs_1.existsSync)(torGeoIpPath) || !(0, node_fs_1.existsSync)(torGeoIp6Path)) {
+            log_1.log.error(\`Tor runtime files are missing in \${torDir}. Run scripts/download-tor.sh for the target platform before packaging.\`);
+        }`;
+  const newTorBlock = `        // Tor is only available for x86_64 on Linux/Windows; macOS has both x86_64 and aarch64.
+        const _torPlatform = process.env.AMELIA_PLATFORM || '';
+        const _torArch = process.env.AMELIA_COMPAT || '';
+        const _torUnavailable = (_torArch === 'aarch64' && (_torPlatform === 'linux' || _torPlatform === 'win32'));
+        if (!_torUnavailable) {
+            const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');
+            const torBinaryPath = process.ameliaPlatform == 'win32'
+                ? (0, node_path_1.join)(torDir, 'tor.exe')
+                : (0, node_path_1.join)(torDir, 'tor');
+            const torGeoIpPath = (0, node_path_1.join)(torDir, 'geoip');
+            const torGeoIp6Path = (0, node_path_1.join)(torDir, 'geoip6');
+            if (!(0, node_fs_1.existsSync)(torBinaryPath) || !(0, node_fs_1.existsSync)(torGeoIpPath) || !(0, node_fs_1.existsSync)(torGeoIp6Path)) {
+                log_1.log.error('Tor runtime files are missing in ' + torDir + '. Run scripts/download-tor.sh for the target platform before packaging.');
+            }
+        } else {
+            log_1.log.info('Tor is not available for ' + _torPlatform + '-' + _torArch + '. Skipping Tor preflight check.');
+        }`;
+  content = content.replace(oldTorBlock, newTorBlock);
+} else {
+  // No Tor check at all — insert the conditional version
   const packageArgsLine = "        const arguments_ = ['package'];";
-  const torPreflightBlock = "        const arguments_ = ['package'];\n        const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');\n        const torBinaryPath = process.ameliaPlatform == 'win32'\n            ? (0, node_path_1.join)(torDir, 'tor.exe')\n            : (0, node_path_1.join)(torDir, 'tor');\n        const torGeoIpPath = (0, node_path_1.join)(torDir, 'geoip');\n        const torGeoIp6Path = (0, node_path_1.join)(torDir, 'geoip6');\n        if (!(0, node_fs_1.existsSync)(torBinaryPath) || !(0, node_fs_1.existsSync)(torGeoIpPath) || !(0, node_fs_1.existsSync)(torGeoIp6Path)) {\n            log_1.log.error(`Tor runtime files are missing in ${torDir}. Run scripts/download-tor.sh for the target platform before packaging.`);\n        }";
+  const torPreflightBlock = `        const arguments_ = ['package'];
+        // Tor is only available for x86_64 on Linux/Windows; macOS has both x86_64 and aarch64.
+        const _torPlatform = process.env.AMELIA_PLATFORM || '';
+        const _torArch = process.env.AMELIA_COMPAT || '';
+        const _torUnavailable = (_torArch === 'aarch64' && (_torPlatform === 'linux' || _torPlatform === 'win32'));
+        if (!_torUnavailable) {
+            const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');
+            const torBinaryPath = process.ameliaPlatform == 'win32'
+                ? (0, node_path_1.join)(torDir, 'tor.exe')
+                : (0, node_path_1.join)(torDir, 'tor');
+            const torGeoIpPath = (0, node_path_1.join)(torDir, 'geoip');
+            const torGeoIp6Path = (0, node_path_1.join)(torDir, 'geoip6');
+            if (!(0, node_fs_1.existsSync)(torBinaryPath) || !(0, node_fs_1.existsSync)(torGeoIpPath) || !(0, node_fs_1.existsSync)(torGeoIp6Path)) {
+                log_1.log.error('Tor runtime files are missing in ' + torDir + '. Run scripts/download-tor.sh for the target platform before packaging.');
+            }
+        } else {
+            log_1.log.info('Tor is not available for ' + _torPlatform + '-' + _torArch + '. Skipping Tor preflight check.');
+        }`;
   if (content.includes(packageArgsLine)) {
     content = content.replace(packageArgsLine, torPreflightBlock);
   }
