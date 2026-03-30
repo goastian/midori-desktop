@@ -125,74 +125,89 @@ for ADDON_KEY in $ADDON_KEYS; do
             continue
         fi
 
-        # Clean existing addon directory but preserve moz.build and jar.mn if they exist
+        # Clean existing addon directory (moz.build and jar.mn will be regenerated)
         if [[ -d "$ADDON_DIR" ]]; then
-            # Save moz.build and jar.mn if they exist
-            SAVED_MOZBUILD=""
-            SAVED_JARMN=""
-            if [[ -f "$ADDON_DIR/moz.build" ]]; then
-                SAVED_MOZBUILD=$(cat "$ADDON_DIR/moz.build")
-            fi
-            if [[ -f "$ADDON_DIR/jar.mn" ]]; then
-                SAVED_JARMN=$(cat "$ADDON_DIR/jar.mn")
-            fi
-
             rm -rf "$ADDON_DIR"
         fi
 
         mkdir -p "$ADDON_DIR"
         echo "INFO: Unpacking $ADDON_KEY..."
         unzip -q -o "$TEMP_FILE" -d "$ADDON_DIR"
-
-        # Restore saved build files
-        if [[ -n "${SAVED_MOZBUILD:-}" ]]; then
-            echo "$SAVED_MOZBUILD" > "$ADDON_DIR/moz.build"
-        fi
-        if [[ -n "${SAVED_JARMN:-}" ]]; then
-            echo "$SAVED_JARMN" > "$ADDON_DIR/jar.mn"
-        fi
     fi
 
-    # Generate moz.build if missing
-    if [[ ! -f "$ADDON_DIR/moz.build" ]]; then
-        echo "INFO: Generating moz.build for $ADDON_KEY"
-        cat > "$ADDON_DIR/moz.build" << 'MOZBUILD'
-DEFINES["MOZ_APP_VERSION"] = CONFIG["MOZ_APP_VERSION"]
-DEFINES["MOZ_APP_MAXVERSION"] = CONFIG["MOZ_APP_MAXVERSION"]
+    # Always regenerate moz.build by scanning actual files in the addon directory.
+    # This ensures hashed filenames (e.g. Vite output) are always up to date.
+    echo "INFO: Generating moz.build for $ADDON_KEY (scanning actual files)"
+    {
+        echo 'DEFINES["MOZ_APP_VERSION"] = CONFIG["MOZ_APP_VERSION"]'
+        echo 'DEFINES["MOZ_APP_MAXVERSION"] = CONFIG["MOZ_APP_MAXVERSION"]'
+        echo ''
+        echo 'JAR_MANIFESTS += ["jar.mn"]'
+        echo ''
 
-JAR_MANIFESTS += ["jar.mn"]
-MOZBUILD
-    fi
+        # Add root-level files as FINAL_TARGET_FILES (exclude build system files)
+        while IFS= read -r -d '' file; do
+            BASENAME=$(basename "$file")
+            echo "FINAL_TARGET_FILES.features[\"$ADDON_ID\"] += [\"$BASENAME\"]"
+        done < <(find "$ADDON_DIR" -maxdepth 1 -type f ! -name "moz.build" ! -name "jar.mn" -print0 | sort -z)
 
-    # Generate jar.mn if missing
-    if [[ ! -f "$ADDON_DIR/jar.mn" ]]; then
-        echo "INFO: Generating jar.mn for $ADDON_KEY"
-
-        {
-            echo "browser.jar:"
-            echo "    builtin-addons/$ADDON_KEY/manifest.json (manifest.json)"
-
-            # Add root-level files (excluding manifest.json, moz.build, jar.mn)
-            while IFS= read -r -d '' file; do
-                BASENAME=$(basename "$file")
-                if [[ "$BASENAME" != "manifest.json" && "$BASENAME" != "moz.build" && "$BASENAME" != "jar.mn" ]]; then
-                    echo "    builtin-addons/$ADDON_KEY/$BASENAME ($BASENAME)"
+        # Add files in subdirectories as FINAL_TARGET_FILES with subdir keys
+        while IFS= read -r -d '' dir; do
+            DIRNAME=$(basename "$dir")
+            echo ''
+            # Check for nested subdirectories (e.g. _locales/en/)
+            while IFS= read -r -d '' subfile; do
+                RELPATH="${subfile#"$ADDON_DIR/"}"
+                # Split path into components for nested FINAL_TARGET_FILES keys
+                PARTS=(${RELPATH//\// })
+                if [[ ${#PARTS[@]} -eq 2 ]]; then
+                    echo "FINAL_TARGET_FILES.features[\"$ADDON_ID\"][\"$DIRNAME\"] += [\"$RELPATH\"]"
+                elif [[ ${#PARTS[@]} -eq 3 ]]; then
+                    echo "FINAL_TARGET_FILES.features[\"$ADDON_ID\"][\"${PARTS[0]}\"][\"${PARTS[1]}\"] += [\"$RELPATH\"]"
+                elif [[ ${#PARTS[@]} -ge 4 ]]; then
+                    # For deeply nested files, use up to 3 levels of keys
+                    echo "FINAL_TARGET_FILES.features[\"$ADDON_ID\"][\"${PARTS[0]}\"][\"${PARTS[1]}\"] += [\"$RELPATH\"]"
                 fi
-            done < <(find "$ADDON_DIR" -maxdepth 1 -type f -print0 | sort -z)
+            done < <(find "$dir" -type f -print0 | sort -z)
+        done < <(find "$ADDON_DIR" -maxdepth 1 -type d ! -path "$ADDON_DIR" -print0 | sort -z)
 
-            # Add directories with glob patterns
-            while IFS= read -r -d '' dir; do
-                DIRNAME=$(basename "$dir")
-                # Use ** glob for directories that may have subdirs (like _locales)
-                if find "$dir" -mindepth 2 -type f -print -quit 2>/dev/null | grep -q .; then
-                    echo "    builtin-addons/$ADDON_KEY/$DIRNAME/ ($DIRNAME/**/*)"
-                else
-                    echo "    builtin-addons/$ADDON_KEY/$DIRNAME/ ($DIRNAME/*)"
-                fi
-            done < <(find "$ADDON_DIR" -maxdepth 1 -type d ! -path "$ADDON_DIR" -print0 | sort -z)
+    } > "$ADDON_DIR/moz.build"
 
-        } > "$ADDON_DIR/jar.mn"
-    fi
+    # Also sync to src/ directory for source tracking
+    SRC_ADDON_DIR="$PROJECT_DIR/src/browser/extensions/$ADDON_KEY"
+    mkdir -p "$SRC_ADDON_DIR"
+    cp "$ADDON_DIR/moz.build" "$SRC_ADDON_DIR/moz.build"
+    echo "INFO: Synced moz.build to src/browser/extensions/$ADDON_KEY/"
+
+    # Always regenerate jar.mn by scanning actual directory structure
+    echo "INFO: Generating jar.mn for $ADDON_KEY (scanning actual files)"
+    {
+        echo "browser.jar:"
+        echo "    builtin-addons/$ADDON_KEY/manifest.json (manifest.json)"
+
+        # Add root-level files (excluding manifest.json, moz.build, jar.mn)
+        while IFS= read -r -d '' file; do
+            BASENAME=$(basename "$file")
+            if [[ "$BASENAME" != "manifest.json" && "$BASENAME" != "moz.build" && "$BASENAME" != "jar.mn" ]]; then
+                echo "    builtin-addons/$ADDON_KEY/$BASENAME ($BASENAME)"
+            fi
+        done < <(find "$ADDON_DIR" -maxdepth 1 -type f -print0 | sort -z)
+
+        # Add directories with glob patterns
+        while IFS= read -r -d '' dir; do
+            DIRNAME=$(basename "$dir")
+            # Use ** glob for directories that may have subdirs (like _locales)
+            if find "$dir" -mindepth 2 -type f -print -quit 2>/dev/null | grep -q .; then
+                echo "    builtin-addons/$ADDON_KEY/$DIRNAME/ ($DIRNAME/**/*)"
+            else
+                echo "    builtin-addons/$ADDON_KEY/$DIRNAME/ ($DIRNAME/*)"
+            fi
+        done < <(find "$ADDON_DIR" -maxdepth 1 -type d ! -path "$ADDON_DIR" -print0 | sort -z)
+
+    } > "$ADDON_DIR/jar.mn"
+
+    # Sync jar.mn to src/ too
+    cp "$ADDON_DIR/jar.mn" "$SRC_ADDON_DIR/jar.mn"
 
     # Verify manifest.json exists and has required gecko ID
     if [[ ! -f "$ADDON_DIR/manifest.json" ]]; then
