@@ -1,12 +1,14 @@
 diff --git a/browser/components/about/AboutRedirector.cpp b/browser/components/about/AboutRedirector.cpp
-index c63491d2fa..25d68b1937 100644
+index c63491d2fa99f80178f114c3a255a3e85176f3ae..5cf2ca98068bf47ef8984be8780224947c39b617 100644
 --- a/browser/components/about/AboutRedirector.cpp
 +++ b/browser/components/about/AboutRedirector.cpp
-@@ -124,6 +124,8 @@ static const RedirEntry kRedirMap[] = {
+@@ -124,6 +124,10 @@ static const RedirEntry kRedirMap[] = {
           nsIAboutModule::HIDE_FROM_ABOUTABOUT},
      {"preferences", "chrome://browser/content/preferences/preferences.xhtml",
       nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
 +    {"center", "chrome://browser/content/center/center.html",
++     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
++    {"setup", "chrome://browser/content/setup/setup.html",
 +     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
      {"downloads",
       "chrome://browser/content/downloads/contentAreaDownloadsView.xhtml",
