@@ -391,10 +391,17 @@ toolbar .toolbarbutton-1 {
 }
 
 #statuspanel-label {
-  border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
+  color: var(--toolbar-color, currentColor) !important;
+  border: 1px solid var(--toolbar-field-border-color,
+    color-mix(in srgb, currentColor 24%, transparent)) !important;
   border-radius: 13px !important;
-  background-color: var(--toolbar-bgcolor) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 94%,
+    black 6%
+  ) !important;
   padding: 2px 12px !important;
+  box-shadow: 0 2px 10px color-mix(in srgb, black 22%, transparent) !important;
 }
 
 /* --- Dialog popups animation --- */
