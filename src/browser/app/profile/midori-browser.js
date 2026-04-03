@@ -339,6 +339,7 @@ pref('browser.contentblocking.report.vpn-promo.url', '', locked);
 pref('browser.contentblocking.report.vpn-android.url', '', locked);
 pref('browser.contentblocking.report.vpn-ios.url', '', locked);
 pref('browser.privatebrowsing.vpnpromourl', '', locked);
+pref('privacy.globalprivacycontrol.enabled', true);
 
 // ============================================================================
 // DISABLE FIREFOX RELAY & FIREFOX ACCOUNTS
