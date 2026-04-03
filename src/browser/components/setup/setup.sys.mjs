@@ -185,7 +185,7 @@ class Search extends Page {
 
     const searchElements = document.getElementById('searchList');
 
-    const allowedEngines = ['AstianGO', 'Wikipedia (en)', 'Qwant'];
+    const allowedEngines = ['AstianGO', 'Qwant'];
 
     const engines = this.store
       .getEngine()
