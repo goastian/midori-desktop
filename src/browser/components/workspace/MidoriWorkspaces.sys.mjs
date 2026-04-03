@@ -45,6 +45,7 @@ const INDICATOR_ID = 'midori-workspace-indicator';
 const INDICATOR_ICON_ID = 'midori-workspace-indicator-icon';
 const INDICATOR_NAME_ID = 'midori-workspace-indicator-name';
 const QUICK_ICONS_ID = 'midori-workspace-quick-icons';
+const WORKSPACE_CHANGE_TOPIC = 'midori-workspaces-updated';
 const MAX_WORKSPACES = 25;
 const MAX_NAME_LENGTH = 32;
 const SAVE_DEBOUNCE_MS = 500;
@@ -905,6 +906,93 @@ export const MidoriWorkspaces = {
     }
   },
 
+  async _ensureWindowState(win) {
+    if (!win) return null;
+
+    let state = this._getWindowState(win);
+    if (state) {
+      return state;
+    }
+
+    if (!this.isEnabled()) {
+      return null;
+    }
+
+    await this._initWindow(win);
+    return this._getWindowState(win);
+  },
+
+  _emitWorkspaceChange(reason = 'updated') {
+    try {
+      Services.obs.notifyObservers(null, WORKSPACE_CHANGE_TOPIC, reason);
+    } catch (_) {}
+  },
+
+  _refreshWorkspaceUI(win, state) {
+    if (!win || !state) return;
+    this._populatePopup(win, state);
+    this._updateSelectorLabel(win.document, state);
+    this._updateQuickIcons(win, state);
+  },
+
+  _makeWorkspaceCopyName(workspaces, sourceName) {
+    const base = sanitizeName(sourceName || 'Workspace');
+    const names = new Set(workspaces.map((ws) => ws.name));
+    if (!names.has(`${base} Copy`)) {
+      return sanitizeName(`${base} Copy`);
+    }
+
+    let index = 2;
+    let candidate = sanitizeName(`${base} Copy ${index}`);
+    while (names.has(candidate)) {
+      index++;
+      candidate = sanitizeName(`${base} Copy ${index}`);
+    }
+    return candidate;
+  },
+
+  // =========================================================================
+  // Public API — Workspace data for management UI
+  // =========================================================================
+
+  getWorkspaceIcons() {
+    return WORKSPACE_ICONS.map((icon) => ({ ...icon }));
+  },
+
+  getMaxWorkspaces() {
+    return MAX_WORKSPACES;
+  },
+
+  getMaxWorkspaceNameLength() {
+    return MAX_NAME_LENGTH;
+  },
+
+  async getWorkspacesForWindow(win) {
+    const state = await this._ensureWindowState(win);
+    if (!state) {
+      return {
+        selectedId: null,
+        workspaces: [],
+      };
+    }
+
+    const items = state.data.workspaces.map((ws, index) => ({
+      id: ws.id,
+      name: ws.name,
+      icon: ws.icon,
+      isDefault: !!ws.isDefault,
+      isSelected: ws.id === state.data.selectedId,
+      canDelete: !ws.isDefault && state.data.workspaces.length > 1,
+      position: index,
+      tabCount: this._countTabsInWorkspace(win, ws.id),
+    }));
+
+    return {
+      selectedId: state.data.selectedId,
+      workspaces: items,
+    };
+  },
+
   // =========================================================================
   // Public API — workspace operations
   // =========================================================================
@@ -917,10 +1005,11 @@ export const MidoriWorkspaces = {
     if (!exists) return;
 
     this._applyWorkspace(win, state, workspaceId);
+    this._emitWorkspaceChange('switch');
   },
 
   async createWorkspace(win, name, icon = 'default') {
-    const state = this._getWindowState(win);
+    const state = await this._ensureWindowState(win);
     if (!state) return null;
     if (state.data.workspaces.length >= MAX_WORKSPACES) return null;
 
@@ -936,12 +1025,13 @@ export const MidoriWorkspaces = {
 
     // Switch to the new workspace
     this._applyWorkspace(win, state, ws.id);
+    this._emitWorkspaceChange('create');
 
     return ws.id;
   },
 
   async deleteWorkspace(win, workspaceId) {
-    const state = this._getWindowState(win);
+    const state = await this._ensureWindowState(win);
     if (!state) return false;
 
     const idx = state.data.workspaces.findIndex((ws) => ws.id === workspaceId);
@@ -974,11 +1064,12 @@ export const MidoriWorkspaces = {
     }
 
     this._scheduleSave();
+    this._emitWorkspaceChange('delete');
     return true;
   },
 
   async renameWorkspace(win, workspaceId, newName) {
-    const state = this._getWindowState(win);
+    const state = await this._ensureWindowState(win);
     if (!state) return false;
 
     const ws = state.data.workspaces.find((w) => w.id === workspaceId);
@@ -986,13 +1077,13 @@ export const MidoriWorkspaces = {
 
     ws.name = sanitizeName(newName);
     this._scheduleSave();
-    this._updateSelectorLabel(win.document, state);
-    this._updateQuickIcons(win, state);
+    this._refreshWorkspaceUI(win, state);
+    this._emitWorkspaceChange('rename');
     return true;
   },
 
   async setWorkspaceIcon(win, workspaceId, iconId) {
-    const state = this._getWindowState(win);
+    const state = await this._ensureWindowState(win);
     if (!state) return false;
 
     const ws = state.data.workspaces.find((w) => w.id === workspaceId);
@@ -1000,8 +1091,107 @@ export const MidoriWorkspaces = {
 
     ws.icon = validateIconId(iconId);
     this._scheduleSave();
-    this._updateSelectorLabel(win.document, state);
-    this._updateQuickIcons(win, state);
+    this._refreshWorkspaceUI(win, state);
+    this._emitWorkspaceChange('icon');
+    return true;
+  },
+
+  async setDefaultWorkspace(win, workspaceId) {
+    const state = await this._ensureWindowState(win);
+    if (!state) return false;
+
+    const ws = state.data.workspaces.find((w) => w.id === workspaceId);
+    if (!ws) return false;
+
+    for (const item of state.data.workspaces) {
+      item.isDefault = item.id === workspaceId;
+    }
+
+    this._scheduleSave();
+    this._refreshWorkspaceUI(win, state);
+    this._emitWorkspaceChange('default');
+    return true;
+  },
+
+  async moveWorkspace(win, workspaceId, direction) {
+    const state = await this._ensureWindowState(win);
+    if (!state) return false;
+
+    if (direction !== -1 && direction !== 1) {
+      return false;
+    }
+
+    const index = state.data.workspaces.findIndex((ws) => ws.id === workspaceId);
+    if (index === -1) return false;
+
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= state.data.workspaces.length) {
+      return false;
+    }
+
+    const [item] = state.data.workspaces.splice(index, 1);
+    state.data.workspaces.splice(targetIndex, 0, item);
+
+    this._scheduleSave();
+    this._refreshWorkspaceUI(win, state);
+    this._emitWorkspaceChange('reorder');
+    return true;
+  },
+
+  async duplicateWorkspace(win, workspaceId) {
+    const state = await this._ensureWindowState(win);
+    if (!state) return null;
+    if (state.data.workspaces.length >= MAX_WORKSPACES) return null;
+
+    const source = state.data.workspaces.find((ws) => ws.id === workspaceId);
+    if (!source) return null;
+
+    const duplicated = {
+      id: generateId(),
+      name: this._makeWorkspaceCopyName(state.data.workspaces, source.name),
+      icon: validateIconId(source.icon),
+      isDefault: false,
+    };
+
+    const sourceIndex = state.data.workspaces.findIndex((ws) => ws.id === workspaceId);
+    state.data.workspaces.splice(sourceIndex + 1, 0, duplicated);
+
+    this._scheduleSave();
+    this._refreshWorkspaceUI(win, state);
+    this._emitWorkspaceChange('duplicate');
+    return duplicated.id;
+  },
+
+  async updateWorkspace(win, workspaceId, updates = {}) {
+    const state = await this._ensureWindowState(win);
+    if (!state) return false;
+
+    const ws = state.data.workspaces.find((w) => w.id === workspaceId);
+    if (!ws) return false;
+
+    let changed = false;
+
+    if (typeof updates.name === 'string') {
+      const nextName = sanitizeName(updates.name);
+      if (nextName && nextName !== ws.name) {
+        ws.name = nextName;
+        changed = true;
+      }
+    }
+
+    if (typeof updates.icon === 'string') {
+      const nextIcon = validateIconId(updates.icon);
+      if (nextIcon !== ws.icon) {
+        ws.icon = nextIcon;
+        changed = true;
+      }
+    }
+
+    if (!changed) return true;
+
+    this._scheduleSave();
+    this._refreshWorkspaceUI(win, state);
+    this._emitWorkspaceChange('update');
     return true;
   },
 

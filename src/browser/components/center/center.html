@@ -287,6 +287,38 @@
               <span class="toggle-slider"></span>
             </label>
           </div>
+
+
+        <div class="setting-group" id="workspace-manager-panel">
+          <div class="workspace-manager-header">
+            <div>
+              <h2 class="group-title">Workspace manager</h2>
+              <p class="group-desc">Create, customize, and organize your workspaces.</p>
+            </div>
+            <span id="workspace-count" class="workspace-count-badge">0 / 25</span>
+          </div>
+
+          <div class="workspace-create-row">
+            <input
+              type="text"
+              id="workspace-create-name"
+              class="text-input"
+              maxlength="32"
+              placeholder="Workspace name"
+            >
+            <select id="workspace-create-icon" class="select-input"></select>
+            <button id="workspace-create-btn" class="mc-btn mc-btn-primary" type="button">
+              Create
+            </button>
+          </div>
+
+          <p id="workspace-manager-status" class="workspace-status" aria-live="polite"></p>
+
+          <div id="workspace-list" class="workspace-list"></div>
+          <p id="workspace-empty" class="workspace-empty" hidden>
+            No workspaces available.
+          </p>
+        </div>
         </div>
       </section>
 
