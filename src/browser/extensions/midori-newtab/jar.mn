@@ -3,5 +3,5 @@ browser.jar:
     builtin-addons/midori-newtab/index.html (index.html)
     builtin-addons/midori-newtab/index.js (index.js)
     builtin-addons/midori-newtab/vite.svg (vite.svg)
-    builtin-addons/midori-newtab/icons/ (icons/*)
     builtin-addons/midori-newtab/assets/ (assets/*)
+    builtin-addons/midori-newtab/icons/ (icons/*)
