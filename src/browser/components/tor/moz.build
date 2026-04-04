@@ -6,4 +6,5 @@
 
 EXTRA_JS_MODULES += [
     "MidoriTor.sys.mjs",
+    "MidoriTorLifecycle.sys.mjs",
 ]
