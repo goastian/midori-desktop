@@ -30,6 +30,7 @@
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserWindowTracker: 'resource:///modules/BrowserWindowTracker.sys.mjs',
+  MidoriTorLifecycle: 'resource:///modules/MidoriTorLifecycle.sys.mjs',
   PrivateBrowsingUtils: 'resource://gre/modules/PrivateBrowsingUtils.sys.mjs',
 });
 
@@ -37,6 +38,10 @@ const PREF_ENABLED = 'midori.tor.enabled';
 const PREF_SOCKS_PORT = 'midori.tor.socks_port';
 const PREF_BRIDGES_ENABLED = 'midori.tor.bridges.enabled';
 const PREF_BRIDGES_LIST = 'midori.tor.bridges.list';
+const PREF_PREWARM_ENABLED = 'midori.tor.prewarm.enabled';
+const PREF_PREWARM_IDLE_TIMEOUT_MS = 'midori.tor.prewarm.idle_timeout_ms';
+const PREF_BOOTSTRAP_TIMEOUT_MS = 'midori.tor.bootstrap_timeout_ms';
+const PREF_STOP_AFTER_LAST_WINDOW_MS = 'midori.tor.stop_after_last_window_ms';
 
 const TOR_SOCKS_HOST = '127.0.0.1';
 const TOR_DEFAULT_PORT = 9150;
@@ -76,6 +81,7 @@ export const MidoriTor = {
   _torBinaryAvailable: false,
   _startPromise: null,
   _stopAfterLastWindowTimer: null,
+  _prewarmIdleScheduled: false,
 
   // Circuit info (Fase 7 — UI status panel)
   _exitNodeIP: null,
@@ -91,7 +97,7 @@ export const MidoriTor = {
   _lastNewIdentityExit: '',
 
   /**
-   * Initialize the Tor module. Called once from BrowserGlue.
+   * Initialize the Tor module. Lazy-called when Tor entry points are used.
    */
   init() {
     if (this._initialized) {
@@ -122,6 +128,7 @@ export const MidoriTor = {
       // Kill Tor process when the browser exits so ports don't stay occupied
       Services.obs.addObserver(this, 'quit-application');
       Services.obs.addObserver(this, 'quit-application-granted');
+      this._schedulePrewarmOnIdle();
       log('MidoriTor initialized successfully. Tor binary available:', this._torBinaryAvailable);
   },
 
@@ -166,6 +173,15 @@ export const MidoriTor = {
    * @returns {Promise<boolean>} true if Tor started/is running successfully
    */
   async start() {
+    if (!this._initialized) {
+      this.init();
+    }
+
+    if (!Services.prefs.getBoolPref(PREF_ENABLED, true)) {
+      log('Tor is disabled by preference, skipping start()');
+      return false;
+    }
+
     log('start() called, current state:', this._state);
 
     if (this._state === STATE_CONNECTED) {
@@ -258,21 +274,22 @@ export const MidoriTor = {
       });
 
       this._process = process;
+      const bootstrapTimeoutMs = this._getBootstrapTimeoutMs();
       this._setState(STATE_BOOTSTRAPPING);
-      this._trace('bootstrap-enter', { timeoutMs: BOOTSTRAP_TIMEOUT_MS, pollMs: BOOTSTRAP_POLL_MS });
+      this._trace('bootstrap-enter', { timeoutMs: bootstrapTimeoutMs, pollMs: BOOTSTRAP_POLL_MS });
 
       // Give Tor time to create control_auth_cookie before attempting connection.
       // Tor needs to initialize its data directory, create the cookie, and start the control port.
       // This initial grace period prevents early connection attempts from failing.
-      this._trace('bootstrap-grace-begin', { waitMs: 2000 });
-      await this._sleep(2000);
-      this._trace('bootstrap-grace-end', { waitMs: 2000 });
+      this._trace('bootstrap-grace-begin', { waitMs: 400 });
+      await this._sleep(400);
+      this._trace('bootstrap-grace-end', { waitMs: 400 });
 
       // Quick probe to validate control port before regular bootstrap polling.
       await this._probeControlPort();
 
       // Wait for bootstrap to complete
-      const bootstrapped = await this._waitForBootstrap();
+      const bootstrapped = await this._waitForBootstrap(bootstrapTimeoutMs);
       if (bootstrapped) {
         this._setState(STATE_CONNECTED);
         this._trace('bootstrap-complete', {
@@ -289,7 +306,7 @@ export const MidoriTor = {
 
       console.error('MidoriTor: Bootstrap timed out');
       this._trace('bootstrap-timeout', {
-        timeoutMs: BOOTSTRAP_TIMEOUT_MS,
+        timeoutMs: bootstrapTimeoutMs,
         lastProgress: this._bootstrapProgress,
         lastSummary: this._bootstrapSummary,
         lastControlError: this._lastControlError,
@@ -548,6 +565,10 @@ export const MidoriTor = {
    * @returns {Promise<Window>}
    */
   async openTorWindow(openerWindow) {
+    if (!this._initialized) {
+      this.init();
+    }
+
     log('openTorWindow called');
 
     // Open a private window using promiseOpenWindow which waits for
@@ -581,8 +602,19 @@ export const MidoriTor = {
       error('Failed to configure Tor window:', e);
     }
 
+    const torEnabled = Services.prefs.getBoolPref(PREF_ENABLED, true);
+
     // Start Tor in the background after the window is open.
-    if (this._torBinaryAvailable && !this.isConnected) {
+    if (!torEnabled) {
+      log('Tor is disabled by preference, opened private window fallback');
+      this._showTorError(win);
+    } else if (
+      lazy.MidoriTorLifecycle.shouldAttemptOnDemandStart({
+        torEnabled,
+        torBinaryAvailable: this._torBinaryAvailable,
+        isConnected: this.isConnected,
+      })
+    ) {
       log('Tor binary available, starting in background...');
       this.start().then((started) => {
         if (!started) {
@@ -596,6 +628,9 @@ export const MidoriTor = {
     } else if (!this._torBinaryAvailable) {
       log('Tor binary not available, opened private window with Tor indicators only');
       this._showTorError(win);
+    } else if (!this._circuitInfoTimer && this.isConnected) {
+      // Resume periodic circuit refresh when a Tor window is opened again.
+      this._startCircuitInfoPolling();
     }
 
     return win;
@@ -666,9 +701,16 @@ export const MidoriTor = {
    */
   _scheduleStopAfterLastWindow() {
     this._cancelStopAfterLastWindowTimer();
-    if (!this._process) {
+    if (
+      !lazy.MidoriTorLifecycle.shouldScheduleStopAfterLastWindow({
+        remainingWindows: this._torWindows.size,
+        hasProcess: !!this._process,
+      })
+    ) {
       return;
     }
+
+    const stopDelayMs = this._getStopAfterLastWindowMs();
 
     this._stopAfterLastWindowTimer = Cc['@mozilla.org/timer;1'].createInstance(Ci.nsITimer);
     this._stopAfterLastWindowTimer.initWithCallback(
@@ -679,7 +721,7 @@ export const MidoriTor = {
           this.stop();
         }
       },
-      30000,
+      stopDelayMs,
       Ci.nsITimer.TYPE_ONE_SHOT
     );
   },
@@ -697,8 +739,9 @@ export const MidoriTor = {
     this._torWindows.delete(win);
     log('Tor window closing via', source, 'remaining:', this._torWindows.size);
 
-    if (this._torWindows.size === 0) {
-      log('Last Tor window closed, scheduling cleanup in 30s...');
+    if (lazy.MidoriTorLifecycle.shouldCleanupAfterWindowClose(this._torWindows.size)) {
+      log('Last Tor window closed, scheduling cleanup...');
+      this._stopCircuitInfoPolling();
       this._restoreProxyPrefs();
       this._scheduleStopAfterLastWindow();
     }
@@ -1550,10 +1593,65 @@ export const MidoriTor = {
   // ===========================================================================
 
   /**
+   * Read bootstrap timeout from prefs with sane bounds.
+   * @returns {number}
+   */
+  _getBootstrapTimeoutMs() {
+    const configured = Services.prefs.getIntPref(PREF_BOOTSTRAP_TIMEOUT_MS, BOOTSTRAP_TIMEOUT_MS);
+    return lazy.MidoriTorLifecycle.getBootstrapTimeoutMs(configured);
+  },
+
+  /**
+   * Read delayed-stop timeout from prefs with sane bounds.
+   * @returns {number}
+   */
+  _getStopAfterLastWindowMs() {
+    const configured = Services.prefs.getIntPref(PREF_STOP_AFTER_LAST_WINDOW_MS, 30000);
+    return lazy.MidoriTorLifecycle.getStopAfterLastWindowMs(configured);
+  },
+
+  /**
+   * Read idle timeout used to trigger optional Tor prewarm.
+   * @returns {number}
+   */
+  _getPrewarmIdleTimeoutMs() {
+    const configured = Services.prefs.getIntPref(PREF_PREWARM_IDLE_TIMEOUT_MS, 10000);
+    return lazy.MidoriTorLifecycle.getPrewarmIdleTimeoutMs(configured);
+  },
+
+  /**
+   * Schedule optional Tor prewarm using browser idle dispatch.
+   */
+  _schedulePrewarmOnIdle() {
+    if (this._prewarmIdleScheduled) {
+      return;
+    }
+    if (!Services.prefs.getBoolPref(PREF_PREWARM_ENABLED, false)) {
+      return;
+    }
+
+    this._prewarmIdleScheduled = true;
+    const idleTimeoutMs = this._getPrewarmIdleTimeoutMs();
+    this._trace('prewarm-scheduled', { idleTimeoutMs });
+
+    ChromeUtils.idleDispatch(async () => {
+      this._prewarmIdleScheduled = false;
+      if (Services.startup.shuttingDown) {
+        return;
+      }
+      try {
+        await this.prewarmIfEnabled();
+      } catch (e) {
+        this._trace('prewarm-failed', { message: String(e) });
+      }
+    }, { timeout: idleTimeoutMs });
+  },
+
+  /**
    * Wait for Tor to finish bootstrapping by polling the control port.
    * @returns {Promise<boolean>}
    */
-  async _waitForBootstrap() {
+  async _waitForBootstrap(timeoutMs = BOOTSTRAP_TIMEOUT_MS) {
     const startTime = Date.now();
     let pollAttempt = 0;
 
@@ -1567,7 +1665,7 @@ export const MidoriTor = {
         await this._sleep(500);
     }
 
-    while (Date.now() - startTime < BOOTSTRAP_TIMEOUT_MS) {
+    while (Date.now() - startTime < timeoutMs) {
       pollAttempt++;
       // Abort immediately if the process died
       if (this._processFailed || !this._process) {
@@ -1839,7 +1937,7 @@ export const MidoriTor = {
    * then resolves its country via GETINFO ip-to-country.
    */
   async _fetchCircuitInfo() {
-    if (this._state !== STATE_CONNECTED) {
+    if (this._state !== STATE_CONNECTED || this._torWindows.size === 0) {
       return;
     }
 
@@ -2399,6 +2497,30 @@ export const MidoriTor = {
    */
   _trace(event, details = {}) {
     log(`[trace:${event}]`, details);
+  },
+
+  /**
+   * Optional hook for future idle prewarm; disabled by default.
+   * Does nothing unless explicitly enabled by pref.
+   */
+  async prewarmIfEnabled() {
+    if (!this._initialized) {
+      this.init();
+    }
+    const shouldPrewarm = lazy.MidoriTorLifecycle.shouldAttemptPrewarm({
+      prewarmEnabled: Services.prefs.getBoolPref(PREF_PREWARM_ENABLED, false),
+      torEnabled: Services.prefs.getBoolPref(PREF_ENABLED, true),
+      torBinaryAvailable: this._torBinaryAvailable,
+      isConnected: this.isConnected,
+      state: this._state,
+      hasStartPromise: !!this._startPromise,
+    });
+    if (!shouldPrewarm) {
+      return this.isConnected;
+    }
+
+    this._trace('prewarm-start', { state: this._state });
+    return this.start();
   },
 
   /**
