@@ -271,6 +271,7 @@ pref('midori.tor.socks_port', 9150);
 pref('midori.tor.bridges.enabled', false);
 pref('midori.tor.bridges.list', '');
 pref('midori.tor.prewarm.enabled', false);
+pref('midori.tor.prewarm.idle_timeout_ms', 10000);
 pref('midori.tor.bootstrap_timeout_ms', 120000);
 pref('midori.tor.stop_after_last_window_ms', 15000);
 
