@@ -57,6 +57,26 @@ flatten_single_root_if_needed() {
         fi
 }
 
+sync_file_to_src() {
+    local src_file="$1"
+    local dst_file="$2"
+
+    mkdir -p "$(dirname "$dst_file")"
+
+    if [[ -e "$dst_file" ]]; then
+        local src_real
+        local dst_real
+        src_real="$(readlink -f "$src_file")"
+        dst_real="$(readlink -f "$dst_file")"
+        if [[ "$src_real" == "$dst_real" ]]; then
+            echo "INFO: Source and destination are the same file, skipping sync: $dst_file"
+            return 0
+        fi
+    fi
+
+    cp "$src_file" "$dst_file"
+}
+
 FORCE=false
 if [[ "${1:-}" == "--force" ]]; then
     FORCE=true
@@ -234,7 +254,7 @@ for ADDON_KEY in $ADDON_KEYS; do
     # Also sync to src/ directory for source tracking
     SRC_ADDON_DIR="$PROJECT_DIR/src/browser/extensions/$ADDON_KEY"
     mkdir -p "$SRC_ADDON_DIR"
-    cp "$ADDON_DIR/moz.build" "$SRC_ADDON_DIR/moz.build"
+    sync_file_to_src "$ADDON_DIR/moz.build" "$SRC_ADDON_DIR/moz.build"
     echo "INFO: Synced moz.build to src/browser/extensions/$ADDON_KEY/"
 
     # Always regenerate jar.mn by scanning actual directory structure
@@ -268,7 +288,7 @@ for ADDON_KEY in $ADDON_KEYS; do
     } > "$ADDON_DIR/jar.mn"
 
     # Sync jar.mn to src/ too
-    cp "$ADDON_DIR/jar.mn" "$SRC_ADDON_DIR/jar.mn"
+    sync_file_to_src "$ADDON_DIR/jar.mn" "$SRC_ADDON_DIR/jar.mn"
 
     # Verify manifest.json exists and has required gecko ID
     if [[ ! -f "$ADDON_DIR/manifest.json" ]]; then
@@ -290,8 +310,8 @@ for ADDON_KEY in $ADDON_KEYS; do
             echo "    builtin-addons/$ADDON_KEY/manifest.json (manifest.json)"
         } > "$ADDON_DIR/jar.mn"
 
-        cp "$ADDON_DIR/moz.build" "$SRC_ADDON_DIR/moz.build"
-        cp "$ADDON_DIR/jar.mn" "$SRC_ADDON_DIR/jar.mn"
+        sync_file_to_src "$ADDON_DIR/moz.build" "$SRC_ADDON_DIR/moz.build"
+        sync_file_to_src "$ADDON_DIR/jar.mn" "$SRC_ADDON_DIR/jar.mn"
     fi
 
     GECKO_ID=$(jq -r '.browser_specific_settings.gecko.id // empty' "$ADDON_DIR/manifest.json" 2>/dev/null)
