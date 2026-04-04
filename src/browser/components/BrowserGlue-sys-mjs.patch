@@ -10,7 +10,6 @@ index 938b7aa84266ad92b6654b4e44f7bca3dc315912..85278956703aa5beb7a070b56fbd3982
 +  MemoryProfileManager: "resource:///modules/MemoryProfileManager.sys.mjs",
 +  MidoriGradient: "resource:///modules/MidoriGradient.sys.mjs",
 +  MidoriSidebar: "resource:///modules/MidoriSidebar.sys.mjs",
-+  MidoriTor: "resource:///modules/MidoriTor.sys.mjs",
 +  MidoriVerticalTabs: "resource:///modules/MidoriVerticalTabs.sys.mjs",
 +  MidoriWorkspaces: "resource:///modules/MidoriWorkspaces.sys.mjs",
  });
@@ -71,15 +70,6 @@ index 938b7aa84266ad92b6654b4e44f7bca3dc315912..85278956703aa5beb7a070b56fbd3982
 +      lazy.MidoriVerticalTabs.init();
 +    } catch (e) {
 +      console.error("Midori: Failed to initialize MidoriVerticalTabs", e);
-+    }
-+    // =========================================================================
-+
-+    // =========================================================================
-+    // Midori Tor — Embedded Tor proxy integration
-+    try {
-+      lazy.MidoriTor.init();
-+    } catch (e) {
-+      console.error("Midori: Failed to initialize MidoriTor", e);
 +    }
 +    // =========================================================================
 +
