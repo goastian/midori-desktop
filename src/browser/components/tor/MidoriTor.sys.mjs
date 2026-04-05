@@ -38,15 +38,19 @@ const PREF_ENABLED = 'midori.tor.enabled';
 const PREF_SOCKS_PORT = 'midori.tor.socks_port';
 const PREF_BRIDGES_ENABLED = 'midori.tor.bridges.enabled';
 const PREF_BRIDGES_LIST = 'midori.tor.bridges.list';
+const PREF_BINARY_PATH = 'midori.tor.binary_path';
 const PREF_PREWARM_ENABLED = 'midori.tor.prewarm.enabled';
 const PREF_PREWARM_IDLE_TIMEOUT_MS = 'midori.tor.prewarm.idle_timeout_ms';
 const PREF_BOOTSTRAP_TIMEOUT_MS = 'midori.tor.bootstrap_timeout_ms';
 const PREF_STOP_AFTER_LAST_WINDOW_MS = 'midori.tor.stop_after_last_window_ms';
 
+const ENV_TOR_BINARY = 'MIDORI_TOR_BINARY';
+const ENV_TOR_DIR = 'MIDORI_TOR_DIR';
+
 const TOR_SOCKS_HOST = '127.0.0.1';
 const TOR_DEFAULT_PORT = 9150;
 const TOR_CONTROL_PORT = 9151;
-const BOOTSTRAP_TIMEOUT_MS = 120000; // 2 minutes max bootstrap time
+const BOOTSTRAP_TIMEOUT_MS = 300000; // 5 minutes default for slow test/dev environments
 const BOOTSTRAP_POLL_MS = 500;
 
 // Tor process states
@@ -79,9 +83,11 @@ export const MidoriTor = {
   _observers: [],
   _initialized: false,
   _torBinaryAvailable: false,
+  _torBinaryPathResolved: '',
   _startPromise: null,
   _stopAfterLastWindowTimer: null,
   _prewarmIdleScheduled: false,
+  _shutdownHandled: false,
 
   // Circuit info (Fase 7 — UI status panel)
   _exitNodeIP: null,
@@ -104,6 +110,7 @@ export const MidoriTor = {
       return;
     }
     this._initialized = true;
+    this._shutdownHandled = false;
     log('Initializing MidoriTor module...');
 
     // Generate a random control password for this session
@@ -111,6 +118,7 @@ export const MidoriTor = {
 
     // Check if Tor binary exists
     const torBin = this._getTorBinaryPath();
+    this._torBinaryPathResolved = torBin?.path || '';
     this._torBinaryAvailable = !!(torBin && torBin.exists());
     if (this._torBinaryAvailable) {
       log('Tor binary found at:', torBin.path);
@@ -118,7 +126,11 @@ export const MidoriTor = {
       warn(
         'Tor binary NOT found. Tor windows will open as private windows without proxy.',
         'Expected at:',
-        torBin ? torBin.path : '(unknown)'
+        torBin ? torBin.path : '(unknown)',
+        'You can override via pref',
+        PREF_BINARY_PATH,
+        'or env',
+        `${ENV_TOR_BINARY}/${ENV_TOR_DIR}`
       );
     }
 
@@ -1346,18 +1358,61 @@ export const MidoriTor = {
    */
   _getTorBinaryPath() {
     try {
-      // Get the application directory
-      const appDir = Services.dirsvc.get('GreBinD', Ci.nsIFile);
-      const torDir = appDir.clone();
-      torDir.append('tor');
+      const binaryName = Services.appinfo.OS === 'WINNT' ? 'tor.exe' : 'tor';
+      const env = Cc['@mozilla.org/process/environment;1'].getService(Ci.nsIEnvironment);
+      const candidates = [];
 
-      const torBin = torDir.clone();
-      if (Services.appinfo.OS === 'WINNT') {
-        torBin.append('tor.exe');
-      } else {
-        torBin.append('tor');
+      const prefBinaryPath = Services.prefs.getCharPref(PREF_BINARY_PATH, '').trim();
+      if (prefBinaryPath) {
+        candidates.push(prefBinaryPath);
       }
-      return torBin;
+
+      const envBinary = env.get(ENV_TOR_BINARY)?.trim();
+      if (envBinary) {
+        candidates.push(envBinary);
+      }
+
+      const envDir = env.get(ENV_TOR_DIR)?.trim();
+      if (envDir) {
+        candidates.push(`${envDir}/${binaryName}`);
+      }
+
+      const appDir = Services.dirsvc.get('GreBinD', Ci.nsIFile);
+      const bundled = appDir.clone();
+      bundled.append('tor');
+      bundled.append(binaryName);
+      candidates.push(bundled.path);
+
+      let fallback = null;
+      for (const rawPath of candidates) {
+        if (!rawPath) {
+          continue;
+        }
+        try {
+          const file = Cc['@mozilla.org/file/local;1'].createInstance(Ci.nsIFile);
+          file.initWithPath(rawPath);
+          if (!fallback) {
+            fallback = file;
+          }
+          if (!file.exists()) {
+            continue;
+          }
+
+          if (Services.appinfo.OS !== 'WINNT') {
+            try {
+              file.permissions = file.permissions | 0o111;
+            } catch (_) {
+              // Keep going even if chmod is not permitted.
+            }
+          }
+
+          return file;
+        } catch (_) {
+          // Ignore malformed candidate paths and continue.
+        }
+      }
+
+      return fallback;
     } catch (e) {
       console.error('MidoriTor: Failed to resolve tor binary path', e);
       return null;
@@ -1654,6 +1709,8 @@ export const MidoriTor = {
   async _waitForBootstrap(timeoutMs = BOOTSTRAP_TIMEOUT_MS) {
     const startTime = Date.now();
     let pollAttempt = 0;
+    let lastProgress = 0;
+    let stagnantPolls = 0;
 
     // Give tor a moment to start the control port, but check process health first
     for (let i = 0; i < 4; i++) {
@@ -1662,7 +1719,7 @@ export const MidoriTor = {
         this._trace('bootstrap-abort-early', { reason: 'process-failed-before-control-port' });
         return false;
       }
-        await this._sleep(500);
+      await this._sleep(500);
     }
 
     while (Date.now() - startTime < timeoutMs) {
@@ -1679,11 +1736,17 @@ export const MidoriTor = {
       }
 
       try {
-        const status = await this._getBootstrapStatus();
+        const status = await this._withTimeout(this._getBootstrapStatus(), 3500, null);
         if (status !== null) {
           this._bootstrapProgress = status.progress;
           this._bootstrapSummary = status.summary;
           this._bootstrapTag = status.tag;
+          if (status.progress > lastProgress) {
+            lastProgress = status.progress;
+            stagnantPolls = 0;
+          } else {
+            stagnantPolls++;
+          }
           this._trace('bootstrap-poll', {
             attempt: pollAttempt,
             elapsedMs: Date.now() - startTime,
@@ -1694,6 +1757,24 @@ export const MidoriTor = {
           this._notifyWindows();
           if (status.progress >= 100) {
             return true;
+          }
+
+          // Circuit-established fallback: only relevant when bootstrap is ≥80 %.
+          // Below that threshold Tor is genuinely still loading descriptors and
+          // the circuit cannot be established yet — probing it every poll is noise.
+          if (stagnantPolls >= 4 && status.progress >= 80) {
+            const established = await this._withTimeout(this._isCircuitEstablished(), 2000, false);
+            if (established) {
+              this._bootstrapProgress = 100;
+              this._bootstrapSummary = 'Tor circuit established';
+              this._bootstrapTag = 'done';
+              this._trace('bootstrap-fallback-established', {
+                attempt: pollAttempt,
+                elapsedMs: Date.now() - startTime,
+              });
+              this._notifyWindows();
+              return true;
+            }
           }
         } else {
           this._trace('bootstrap-poll-empty', {
@@ -1710,10 +1791,30 @@ export const MidoriTor = {
         });
       }
 
-      await this._sleep(BOOTSTRAP_POLL_MS);
+      // Adaptive sleep: slow down polling when stagnant to reduce log noise and
+      // avoid hammering the control port. After 10 stagnant polls use 2 s.
+      const sleepMs = stagnantPolls >= 10 ? 2000 : BOOTSTRAP_POLL_MS;
+      await this._sleep(sleepMs);
     }
 
     return false;
+  },
+
+  /**
+   * Check whether Tor reports that at least one circuit is established.
+   * @returns {Promise<boolean>}
+   */
+  async _isCircuitEstablished() {
+    try {
+      const response = await this._sendControlCommand('GETINFO status/circuit-established');
+      if (!response) {
+        return false;
+      }
+      return /status\/circuit-established=1/.test(response);
+    } catch (e) {
+      this._lastControlError = String(e);
+      return false;
+    }
   },
 
   /**
@@ -2543,11 +2644,11 @@ export const MidoriTor = {
     try {
       const notificationBox = win.gBrowser?.getNotificationBox() || win.gNotificationBox;
       if (notificationBox) {
+        const binaryPath = this._torBinaryPathResolved || '(unknown)';
         notificationBox.appendNotification(
           'midori-tor-error',
           {
-            label:
-              'Tor could not connect. Please check that the Tor binary is installed correctly.',
+            label: `Tor could not connect. Verify Tor binary at: ${binaryPath}`,
             priority: notificationBox.PRIORITY_CRITICAL_HIGH,
           },
           []
@@ -2570,12 +2671,16 @@ export const MidoriTor = {
       case 'domwindowclosed':
         this._handleTorWindowClosed(subject, 'observer');
         break;
-        case 'quit-application':
-        case 'quit-application-granted':
-          // Browser is closing — kill Tor process immediately so ports are freed
-          log('Browser exiting — stopping Tor process...');
-          this.stop();
+      case 'quit-application':
+      case 'quit-application-granted':
+        if (this._shutdownHandled) {
           break;
+        }
+        this._shutdownHandled = true;
+        // Browser is closing — kill Tor process immediately so ports are freed.
+        log('Browser exiting — stopping Tor process...');
+        this.stop();
+        break;
     }
   },
 };
