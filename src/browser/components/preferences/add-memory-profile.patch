@@ -1,5 +1,5 @@
 diff --git a/browser/components/preferences/main.inc.xhtml b/browser/components/preferences/main.inc.xhtml
-index f23beeb5c7..a7cc6c6a9b 100644
+index f23beeb5c793bc7a6cbea4512a5f2cd379ec98c7..a7cc6c6a9b36bd1f7cfec34d8940d0f3402ca0e2 100644
 --- a/browser/components/preferences/main.inc.xhtml
 +++ b/browser/components/preferences/main.inc.xhtml
 @@ -21,6 +21,18 @@
@@ -50,7 +50,7 @@ index f23beeb5c7..a7cc6c6a9b 100644
  <html:setting-group groupid="browsing" data-category="paneGeneral" hidden="true"/>
  
 diff --git a/browser/components/preferences/main.js b/browser/components/preferences/main.js
-index e77dfebdf3..dd4861f0ef 100644
+index e77dfebdf3a15033182eeae6eccd44a63aae3740..06f78df7d0c7f021cb696bb19f38ab6e17a91faf 100644
 --- a/browser/components/preferences/main.js
 +++ b/browser/components/preferences/main.js
 @@ -27,6 +27,7 @@ ChromeUtils.defineESModuleGetters(this, {
@@ -71,7 +71,7 @@ index e77dfebdf3..dd4861f0ef 100644
    // Files and Applications
    { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
  
-@@ -5362,6 +5366,28 @@ var gMainPane = {
+@@ -5362,6 +5366,29 @@ var gMainPane = {
      initSettingGroup("profiles");
      initSettingGroup("profilePane");
  
@@ -79,7 +79,8 @@ index e77dfebdf3..dd4861f0ef 100644
 +    let centerBtn = document.getElementById("openMidoriCenter");
 +    if (centerBtn) {
 +      centerBtn.addEventListener("command", function () {
-+        window.open("about:center", "_blank");
++        let mainWindow = window.browsingContext.topChromeWindow;
++        mainWindow.openTrustedLinkIn("about:center", "tab");
 +      });
 +    }
 +
@@ -100,3 +101,4 @@ index e77dfebdf3..dd4861f0ef 100644
      setEventListener("manageBrowserLanguagesButton", "command", function () {
        gMainPane.showBrowserLanguagesSubDialog({ search: false });
      });
+
