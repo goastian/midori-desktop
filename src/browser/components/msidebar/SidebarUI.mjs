@@ -1087,11 +1087,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     while (panelMenu.firstChild) panelMenu.firstChild.remove();
     const target = store.panels.find((x) => x.id === panelMenuTargetId);
     panelMenu.appendChild(
-      menuItem('Editar URL', () => {
+      menuItem('Edit URL', () => {
         const p = store.panels.find((x) => x.id === panelMenuTargetId);
         if (!p) return;
         const input = { value: p.url };
-        const ok = Services.prompt.prompt(win, 'Editar panel', 'URL del panel:', input, null, {});
+        const ok = Services.prompt.prompt(win, 'Edit panel', 'Panel URL:', input, null, {});
         if (!ok) return;
         const url = sanitizeUrl(input.value);
         if (!url) return;
@@ -1109,7 +1109,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       })
     );
     panelMenu.appendChild(
-      menuItem(target?.floating ? 'Acoplar' : 'Flotante', () => {
+      menuItem(target?.floating ? 'Dock' : 'Floating', () => {
         const next = updatePanel(panelMenuTargetId, (p) => {
           p.floating = !p.floating;
           p.pinned = !p.floating;
@@ -1173,7 +1173,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       })
     );
     panelMenu.appendChild(
-      menuItem('Reset posición/tamaño', () => {
+      menuItem('Reset position/size', () => {
         updatePanel(panelMenuTargetId, (pp) => {
           pp.geometry = { width: 480, height: 640, offsetX: 12, offsetY: 12 };
           pp.dockWidth = null;
@@ -1196,7 +1196,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       })
     );
     panelMenu.appendChild(
-      menuItem('Abrir en pestaña', () => {
+      menuItem('Open in tab', () => {
         const p = store.panels.find((x) => x.id === panelMenuTargetId);
         if (!p) return;
         try {
