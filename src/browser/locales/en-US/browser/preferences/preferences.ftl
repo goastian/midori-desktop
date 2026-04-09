@@ -770,13 +770,21 @@ home-prefs-sections-rows-option =
 
 ## Search Section
 
+search-engine-group = Default Search Engine
+search-default-engine = Search engine used in the address bar and search bar
+
 search-engine-default-header = Default Search Engine
 search-engine-default-desc-2 = This is your default search engine in the address bar and search bar. You can switch it at any time.
 search-engine-default-private-desc-2 = Choose a different default search engine for Private Windows only
 search-separate-default-engine =
     .label = Use this search engine in Private Windows
     .accesskey = U
+search-separate-default-engine-2 =
+    .label = Use this search engine in Private Windows
+    .accesskey = U
+search-separate-default-engine-dropdown = Private window default search engine
 
+search-suggestions-header-2 = Search Suggestions
 search-suggestions-header = Search Suggestions
 search-suggestions-desc = Choose how suggestions from search engines appear.
 
@@ -802,12 +810,21 @@ search-show-search-term-option-2 =
 # (appearing before).
 search-show-suggestions-above-history-option =
     .label = Show search suggestions ahead of browsing history in address bar results
+search-show-suggestions-above-history-option-2 =
+    .label = Show search suggestions ahead of browsing history in address bar results
 
 search-show-suggestions-private-windows =
     .label = Show search suggestions in Private Windows
+search-show-suggestions-private-windows-2 =
+    .label = Show search suggestions in Private Windows
 
 search-suggestions-cant-show = Search suggestions will not be shown in location bar results because you have configured { -brand-short-name } to never remember history.
+search-suggestions-cant-show-2 = Search suggestions will not be shown in location bar results because you have configured { -brand-short-name } to never remember history.
 
+addressbar-locbar-showtrendingsuggestions-option-2 =
+    .label = Show trending search suggestions
+
+search-one-click-header-3 = Search Shortcuts
 search-one-click-header2 = Search Shortcuts
 
 search-one-click-desc = Choose the alternative search engines that appear below the address bar and search bar when you start to enter a keyword.
@@ -827,9 +844,14 @@ search-remove-engine =
 search-add-engine =
     .label = Add
     .accesskey = A
+search-add-engine-2 =
+    .label = Add
+    .accesskey = A
 search-edit-engine =
     .label = Edit
     .accesskey = E
+
+update-search-engine-success = Search engine updated successfully.
 
 search-find-more-link = Find more search engines
 

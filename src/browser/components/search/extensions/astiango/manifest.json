@@ -7,7 +7,7 @@
       "id": "astiango@search.midori.org"
     }
   },
-  "hidden": true,
+  "hidden": false,
   "chrome_settings_overrides": {
     "search_provider": {
       "keyword": "@astiango",
