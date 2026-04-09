@@ -921,3 +921,28 @@ input[type='checkbox'] {
     background: rgba(255, 255, 255, 0.03);
   }
 }
+
+/* ====================================================================
+   FINAL WELCOME PAGE
+   ==================================================================== */
+
+#warmwelcome {
+  gap: 4px;
+}
+
+.warmwelcome-badge {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 8px;
+  background: linear-gradient(145deg, AccentColor, color-mix(in srgb, AccentColor 68%, #29c58b));
+  box-shadow:
+    0 8px 26px color-mix(in srgb, AccentColor 30%, transparent),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+  animation: checkPop 0.55s ease-out 0.1s backwards;
+}

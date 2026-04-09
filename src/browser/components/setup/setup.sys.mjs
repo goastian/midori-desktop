@@ -519,4 +519,5 @@ const pages = new Pages([
   new Gradient('gradient'),
   new TabLayout('tablayout'),
   new MSidebar('msidebar'),
+  new Page('warmwelcome'),
 ]);
