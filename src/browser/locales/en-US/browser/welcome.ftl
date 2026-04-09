@@ -43,9 +43,9 @@ welcome-dialog-msidebar-enable = Enable
 welcome-dialog-msidebar-disable = Disable
 welcome-dialog-msidebar-action = Continue
 
-welcome-dialog-search = Pick A Search Engine
-welcome-dialog-search-action = Next
-welcome-dialog-search-recommended = Recommended
+welcome-dialog-warmwelcome = You're all set
+welcome-dialog-warmwelcome-subtext = Enjoy your browsing, discover new things, and make Midori your everyday companion.
+welcome-dialog-warmwelcome-action = Start Browsing
 
 welcome-dialog-apps = Choose Applications to Install
 welcome-dialog-apps-subtext = Select which applications you want to install on your browser
