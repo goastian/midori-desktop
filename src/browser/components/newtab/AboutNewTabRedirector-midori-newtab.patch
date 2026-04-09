@@ -1,8 +1,8 @@
 diff --git a/browser/components/newtab/AboutNewTabRedirector.sys.mjs b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
-index adf3fb810bd257617150abb201ebaa2f9e7bc95f..7628597f030a6503d127ac75a0022393e25853f8 100644
+index adf3fb810b..387573a402 100644
 --- a/browser/components/newtab/AboutNewTabRedirector.sys.mjs
 +++ b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
-@@ -416,10 +416,15 @@ class BaseAboutNewTabRedirector {
+@@ -416,10 +416,30 @@ class BaseAboutNewTabRedirector {
     * the newtab page has no effect on the result of this function.
     */
    get defaultURL() {
@@ -10,15 +10,109 @@ index adf3fb810bd257617150abb201ebaa2f9e7bc95f..7628597f030a6503d127ac75a0022393
 -    // "resource://newtab/prerendered/activity-stream.html"
 -    // "resource://newtab/prerendered/activity-stream-debug.html"
 -    // "resource://newtab/prerendered/activity-stream-noscripts.html"
-+    // Midori: resolve midori-newtab extension URL if available
++    // Midori: resolve midori-newtab extension URL if available.
++    // We try multiple approaches since the WebExtensionPolicy may not yet be
++    // registered on early loads or after process recycling. As a last resort
++    // we fall back to the prerendered Activity Stream page so the tab is
++    // never left with a blank / black screen.
 +    try {
-+      let dominated = Cu.getGlobalForObject(Services);
-+      let policy = dominated.WebExtensionPolicy.getByID("midoritabs@astian.org");
++      const dominated = Cu.getGlobalForObject(Services);
++      const policy = dominated.WebExtensionPolicy.getByID("midoritabs@astian.org");
 +      if (policy) {
 +        return policy.getURL("index.html");
++      }
++      // Policy not yet ready — check if ExtensionSettingsStore has a Midori
++      // URL cached so we can return the correct URL during the brief window
++      // where the addon is registered but the policy object is not yet
++      // instantiated.  We read it directly from the newtabURL pref which
++      // ext-url-overrides.js writes when the addon activates.
++      const overrideURL = Services.prefs.getStringPref(
++        "browser.newtabpage.activity-stream.newtabURL", ""
++      );
++      if (overrideURL && overrideURL.startsWith("moz-extension://")) {
++        return overrideURL;
 +      }
 +    } catch (e) {}
 +    // Fallback to Activity Stream
      return [
        "resource://newtab/prerendered/",
        "activity-stream",
+@@ -463,6 +483,8 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
+   #suspendedChannels = [];
+   #addonInitializedPromise = null;
+   #addonInitializedResolver = null;
++  // Midori: cached URL for midori-newtab once the policy is registered
++  #midoriNewtabCachedURL = null;
+ 
+   constructor() {
+     super();
+@@ -471,6 +493,23 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
+     this.#addonInitializedPromise = promise;
+     this.#addonInitializedResolver = resolve;
+ 
++    // Midori: observe "webextension-loaded" to cache the URL immediately
++    // when midori-newtab registers its policy.  This handles the race where
++    // #addonInitialized becomes true before the extension policy is ready.
++    const self = this;
++    const midoriLoadObs = (subject) => {
++      try {
++        const id = subject?.wrappedJSObject?.id || subject?.id;
++        if (id === "midoritabs@astian.org") {
++          const url = self._getMidoriNewtabURL();
++          if (url) {
++            self.#midoriNewtabCachedURL = url;
++          }
++        }
++      } catch (e) {}
++    };
++    Services.obs.addObserver(midoriLoadObs, "webextension-loaded");
++
+     ChromeUtils.registerWindowActor("AboutNewTab", {
+       parent: {
+         esModuleURI: "resource:///actors/AboutNewTabParent.sys.mjs",
+@@ -498,6 +537,34 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
+     this.wrappedJSObject = this;
+   }
+ 
++    /**
++     * Midori: Returns the midori-newtab extension URL, or null if not ready.
++     * Used by newChannel() to detect the transient state where the addon policy
++     * is not yet available and we must suspend the channel.
++     */
++    _getMidoriNewtabURL() {
++      try {
++        const dominated = Cu.getGlobalForObject(Services);
++        const policy = dominated.WebExtensionPolicy.getByID("midoritabs@astian.org");
++        if (policy) {
++          return policy.getURL("index.html");
++        }
++      } catch (e) {}
++      return null;
++    }
++
++  /**
++   * Midori: override defaultURL to use the cached extension URL when available.
++   * This avoids repeated getByID() calls that could fail transiently on every
++   * new tab open.
++   */
++  get defaultURL() {
++    if (this.#midoriNewtabCachedURL) {
++      return this.#midoriNewtabCachedURL;
++    }
++    return super.defaultURL;
++  }
++
+   /**
+    * Waits for the AddonManager to be fully initialized, and for the built-in
+    * addon to be ready. Once that's done, it tterates any suspended channels and
+@@ -543,9 +610,9 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
+       return this.#getSuspendedChannel(resultChannel);
+     }
+ 
++
+     return resultChannel;
+   }
+-
+   /**
+    * Wraps an nsIChannel with an nsISuspendableChannelWrapper, suspends that
+    * wrapper, and then stores the wrapper in #suspendedChannels so that it can
