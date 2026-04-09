@@ -21,11 +21,6 @@ class EngineStore {
     this._engines = [];
   }
 
-  async init() {
-    const visibleEngines = await Services.search.getVisibleEngines();
-    await this.initSpecificEngine(visibleEngines);
-  }
-
   getEngine() {
     return this._engines;
   }
@@ -53,14 +48,6 @@ class EngineStore {
     return clonedObj;
   }
 
-  async getDefaultEngine() {
-    let engineName = await Services.search.getDefault();
-    return this.getEngineByName(engineName._name);
-  }
-
-  async setDefaultEngine(engine) {
-    await Services.search.setDefault(engine.originalEngine, Ci.nsISearchService.CHANGE_REASON_USER);
-  }
 }
 
 // =============================================================================
@@ -167,86 +154,21 @@ class Themes extends Page {
   }
 }
 
-class Search extends Page {
-  constructor(id) {
-    super(id);
-
-    this.store = new EngineStore();
-    this.searchList = [];
-
-    this.loadSearch();
-  }
-
-  async loadSearch() {
-    await sleep(1100);
-    await this.store.init();
-
-    const defaultEngine = await Services.search.getDefault();
-
-    const searchElements = document.getElementById('searchList');
-
-    const allowedEngines = ['AstianGO', 'Qwant'];
-
-    const engines = this.store
-      .getEngine()
-      .filter((engine) =>
-        allowedEngines.some((name) => engine.name.startsWith(name.split(' ')[0]))
-      );
-
-    engines.sort((a, b) => {
-      const aIdx = allowedEngines.findIndex((name) => a.name.startsWith(name.split(' ')[0]));
-      const bIdx = allowedEngines.findIndex((name) => b.name.startsWith(name.split(' ')[0]));
-      return aIdx - bIdx;
-    });
-
-    engines.forEach((search) => {
-      const container = this.loadSpecificSearch(search, defaultEngine);
-
-      searchElements.appendChild(container);
-      this.searchList.push(container);
-    });
-  }
-
-  /**
-   * @returns {HTMLDivElement}
-   */
-  loadSpecificSearch(search, defaultSearch) {
-    const container = document.createElement('div');
-    container.classList.add('card');
-
-    if (search.name == defaultSearch._name) {
-      container.classList.add('selected');
-    }
-
-    container.addEventListener('click', () => {
-      this.searchList.forEach((el) => el.classList.remove('selected'));
-      container.classList.add('selected');
-      this.store.setDefaultEngine(search);
-    });
-
-    const img = document.createElement('img');
-    img.src = search.iconURL;
-
-    const name = document.createElement('h3');
-    name.textContent = search.name;
-
-    container.appendChild(img);
-    container.appendChild(name);
-
-    return container;
-  }
-}
-
 class Import extends Page {
   constructor(id) {
     super(id);
 
     const importButton = document.getElementById('importBrowser');
     importButton.addEventListener('click', () => {
-      lazy.MigrationUtils.showMigrationWizard(window, [
-        lazy.MigrationUtils.MIGRATION_ENTRYPOINT_NEWTAB,
-        null,
-      ]);
+      try {
+        // Use the current MigrationUtils API and avoid passing a content
+        // window as opener, which can fail in nsIWindowWatcher.openWindow.
+        lazy.MigrationUtils.showMigrationWizard(null, {
+          entrypoint: lazy.MigrationUtils.MIGRATION_ENTRYPOINTS.NEWTAB,
+        });
+      } catch (error) {
+        console.error('Failed to open migration wizard from setup:', error);
+      }
       this.nextEl.click();
     });
   }
@@ -597,5 +519,4 @@ const pages = new Pages([
   new Gradient('gradient'),
   new TabLayout('tablayout'),
   new MSidebar('msidebar'),
-  new Search('search'),
 ]);
