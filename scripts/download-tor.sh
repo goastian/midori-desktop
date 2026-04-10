@@ -30,6 +30,69 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENGINE_DIR="$PROJECT_DIR/engine"
 
+stage_tor_placeholder() {
+  local output_dir="$1"
+
+  mkdir -p "$output_dir"
+  find "$output_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+  cat > "$output_dir/tor-unavailable.txt" <<EOF
+Tor Expert Bundle is not available for ${PLATFORM}-${ARCH}.
+Midori packages for this target ship without embedded Tor runtime files.
+This marker keeps the package manifest valid and prevents stale Tor artifacts.
+EOF
+}
+
+resolve_obj_dir() {
+  local candidates=()
+  local pattern
+  local match
+
+  case "$PLATFORM" in
+    linux)
+      candidates=(
+        "$ENGINE_DIR/obj-${ARCH}-unknown-linux-gnu"
+        "$ENGINE_DIR/obj-${ARCH}-pc-linux-gnu"
+      )
+      ;;
+    windows | win32)
+      candidates=(
+        "$ENGINE_DIR/obj-${ARCH}-pc-windows-msvc"
+      )
+      ;;
+    macos | darwin)
+      candidates=(
+        "$ENGINE_DIR/obj-${ARCH}-apple-darwin"
+      )
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  for match in "${candidates[@]}"; do
+    if [ -d "$match" ]; then
+      printf '%s\n' "$match"
+      return 0
+    fi
+  done
+
+  case "$PLATFORM" in
+    linux) pattern="$ENGINE_DIR/obj-${ARCH}-*-linux-gnu" ;;
+    windows | win32) pattern="$ENGINE_DIR/obj-${ARCH}-*-windows-msvc" ;;
+    macos | darwin) pattern="$ENGINE_DIR/obj-${ARCH}-*-darwin" ;;
+  esac
+
+  for match in $pattern; do
+    if [ -d "$match" ]; then
+      printf '%s\n' "$match"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 # ── Auto-detect platform ──
 if [ -n "${1:-}" ]; then
   PLATFORM="$1"
@@ -70,9 +133,9 @@ fi
 
 # ── Check availability early ──
 # Tor Expert Bundle is NOT available for every platform+arch combination.
-# Available: linux-x86_64, linux-i686, macos-x86_64, macos-aarch64,
+# Available: linux-x86_64, linux-i686, macos-x86_64,
 #            windows-x86_64, windows-i686
-# NOT available: linux-aarch64, windows-aarch64
+# NOT available: any aarch64 target (linux, windows, macOS)
 TOR_AVAILABLE=true
 
 case "$PLATFORM" in
@@ -101,7 +164,7 @@ case "$PLATFORM" in
   macos | darwin)
     case "$ARCH" in
       x86_64) ARCHIVE="tor-expert-bundle-macos-x86_64-${TOR_VERSION}.tar.gz" ;;
-      aarch64) ARCHIVE="tor-expert-bundle-macos-aarch64-${TOR_VERSION}.tar.gz" ;;
+      aarch64) TOR_AVAILABLE=false ;;
       *)
         echo "ERROR: Unsupported arch '$ARCH' for macOS"
         exit 1
@@ -115,34 +178,33 @@ case "$PLATFORM" in
     ;;
 esac
 
-# If Tor is not available for this platform+arch, skip gracefully.
-# Tor is only available for x86_64 on Linux/Windows; macOS has both x86_64 and aarch64.
-if [ "$TOR_AVAILABLE" = false ]; then
-  echo "=== Tor Expert Bundle is not available for ${PLATFORM}-${ARCH}. Skipping. ==="
-  echo "The package will be built without Tor integration for this architecture."
-  exit 0
-fi
-
 # ── Find obj-* directory (platform-aware for cross-compilation) ──
-# Determine the expected obj-* suffix for the target platform
-case "$PLATFORM" in
-  linux) OBJ_SUFFIX="${ARCH}-pc-linux-gnu" ;;
-  windows) OBJ_SUFFIX="${ARCH}-pc-windows-msvc" ;;
-  macos) OBJ_SUFFIX="${ARCH}-apple-darwin" ;;
-esac
+if ! OBJ_DIR="$(resolve_obj_dir)"; then
+  case "$PLATFORM" in
+    linux) OBJ_SUFFIX_HINT="${ARCH}-unknown-linux-gnu or ${ARCH}-pc-linux-gnu" ;;
+    windows | win32) OBJ_SUFFIX_HINT="${ARCH}-pc-windows-msvc" ;;
+    macos | darwin) OBJ_SUFFIX_HINT="${ARCH}-apple-darwin" ;;
+  esac
 
-OBJ_DIR="$ENGINE_DIR/obj-${OBJ_SUFFIX}"
-
-# If the target obj dir does not exist, fail fast instead of falling back.
-# Falling back can place Tor in the wrong obj-* and produce packages without Tor.
-if [ ! -d "$OBJ_DIR" ]; then
-  echo "ERROR: Target objdir not found: $OBJ_DIR"
+  echo "ERROR: Target objdir not found under $ENGINE_DIR"
   echo "Run the target build first so Tor is copied into the correct package tree."
   echo "Expected target: platform=$PLATFORM arch=$ARCH"
+  echo "Expected objdir pattern: obj-$OBJ_SUFFIX_HINT"
   exit 1
 fi
 
 OUTPUT_DIR="$OBJ_DIR/dist/bin/tor"
+
+# If Tor is not available for this platform+arch, stage a clean placeholder tree
+# so package-manifest.in can still include bin/tor/* without failing.
+# Tor is only available for x86 architectures.
+if [ "$TOR_AVAILABLE" = false ]; then
+  echo "=== Tor Expert Bundle is not available for ${PLATFORM}-${ARCH}. Skipping. ==="
+  echo "The package will be built without Tor integration for this architecture."
+  echo "Preparing placeholder Tor staging directory at $OUTPUT_DIR"
+  stage_tor_placeholder "$OUTPUT_DIR"
+  exit 0
+fi
 
 # ── Skip if already downloaded ──
 if [ -f "$OUTPUT_DIR/tor" ] || [ -f "$OUTPUT_DIR/tor.exe" ]; then
