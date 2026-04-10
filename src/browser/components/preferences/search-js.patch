@@ -1,0 +1,53 @@
+diff --git a/browser/components/preferences/search.js b/browser/components/preferences/search.js
+index d8a36e15da..f8f2f9c1c7 100644
+--- a/browser/components/preferences/search.js
++++ b/browser/components/preferences/search.js
+@@ -1034,10 +1034,11 @@ var gSearchPane = {
+   init() {
+     initSettingGroup("defaultEngine");
+     initSettingGroup("searchSuggestions");
+     initSettingGroup("firefoxSuggest");
+     initSettingGroup("searchShortcuts");
++    this.disableSearchEngineEditingUI();
+     this._engineStore = new EngineStore();
+     gEngineView = new EngineView(this._engineStore);
+ 
+     this._engineStore.init().catch(console.error);
+ 
+@@ -1059,10 +1060,36 @@ var gSearchPane = {
+       Services.obs.removeObserver(this, "browser-search-engine-modified");
+       Services.obs.removeObserver(this, "intl:app-locales-changed");
+     });
+   },
+ 
++  disableSearchEngineEditingUI() {
++    let defaultEngine = document.getElementById("defaultEngine");
++    if (defaultEngine) {
++      defaultEngine.disabled = true;
++    }
++
++    let defaultPrivateEngine = document.getElementById("defaultPrivateEngine");
++    if (defaultPrivateEngine) {
++      defaultPrivateEngine.disabled = true;
++    }
++
++    let separatePrivateToggle = document.getElementById(
++      "browserSeparateDefaultEngine"
++    );
++    if (separatePrivateToggle) {
++      separatePrivateToggle.disabled = true;
++    }
++
++    let oneClickSearchProvidersGroup = document.getElementById(
++      "oneClickSearchProvidersGroup"
++    );
++    if (oneClickSearchProvidersGroup) {
++      oneClickSearchProvidersGroup.hidden = true;
++    }
++  },
++
+   // ADDRESS BAR
+   handleEvent(aEvent) {
+     if (aEvent.type != "command") {
+       return;
+     }
