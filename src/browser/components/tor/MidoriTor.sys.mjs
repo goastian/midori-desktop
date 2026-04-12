@@ -293,9 +293,9 @@ export const MidoriTor = {
       // Give Tor time to create control_auth_cookie before attempting connection.
       // Tor needs to initialize its data directory, create the cookie, and start the control port.
       // This initial grace period prevents early connection attempts from failing.
-      this._trace('bootstrap-grace-begin', { waitMs: 400 });
-      await this._sleep(400);
-      this._trace('bootstrap-grace-end', { waitMs: 400 });
+      this._trace('bootstrap-grace-begin', { waitMs: 2000 });
+      await this._sleep(2000);
+      this._trace('bootstrap-grace-end', { waitMs: 2000 });
 
       // Quick probe to validate control port before regular bootstrap polling.
       await this._probeControlPort();
@@ -339,6 +339,9 @@ export const MidoriTor = {
    */
   stop() {
     this._cancelStopAfterLastWindowTimer();
+
+    // Restore hardening before stopping — ensures global prefs are clean
+    this._removeTorHardening();
 
     // Stop circuit info polling
     this._stopCircuitInfoPolling();
@@ -659,7 +662,8 @@ export const MidoriTor = {
 
     const port = Services.prefs.getIntPref(PREF_SOCKS_PORT, TOR_DEFAULT_PORT);
     this._setWindowProxyPrefs(null, port);
-    log('Reconciled existing Tor windows with active proxy settings');
+    this._applyTorHardening();
+    log('Reconciled existing Tor windows with active proxy settings and hardening');
   },
 
   /**
@@ -673,17 +677,19 @@ export const MidoriTor = {
     // Mark the window as a Tor window via attribute
     win.document.documentElement.setAttribute('midori-tor-window', 'true');
 
-    // Only apply proxy settings if Tor is actually connected
+    // Only apply proxy settings and hardening if Tor is actually connected.
+    // Deferring hardening prevents 39+ global prefs (cookies, WebGL, WebRTC,
+    // etc.) from corrupting normal browsing while Tor is still bootstrapping
+    // or when the binary is unavailable.  _reconcileWindowsAfterConnect()
+    // will apply both proxy and hardening once Tor finishes connecting.
     if (this.isConnected) {
       const port = Services.prefs.getIntPref(PREF_SOCKS_PORT, TOR_DEFAULT_PORT);
       this._setWindowProxyPrefs(win, port);
-      log('Proxy settings applied (SOCKS5 port:', port, ')');
+      this._applyTorHardening();
+      log('Proxy settings and hardening applied (SOCKS5 port:', port, ')');
     } else {
-      log('Tor not connected — skipping proxy configuration');
+      log('Tor not connected — deferring proxy and hardening until connected');
     }
-
-    // Always apply network hardening for Tor windows
-    this._applyTorHardening();
 
     // Inject Tor indicator CSS
     this._injectTorIndicator(win);
@@ -755,6 +761,10 @@ export const MidoriTor = {
       log('Last Tor window closed, scheduling cleanup...');
       this._stopCircuitInfoPolling();
       this._restoreProxyPrefs();
+      // Always remove hardening independently — _restoreProxyPrefs may
+      // early-return when Tor never connected (no proxy prefs saved),
+      // leaving 39+ global prefs corrupted.
+      this._removeTorHardening();
       this._scheduleStopAfterLastWindow();
     }
   },
@@ -2641,6 +2651,10 @@ export const MidoriTor = {
    * @param {Window} win
    */
   _showTorError(win) {
+    // Safety net: ensure hardening is removed when showing an error,
+    // since Tor failed to connect and hardening should not persist.
+    this._removeTorHardening();
+
     try {
       const notificationBox = win.gBrowser?.getNotificationBox() || win.gNotificationBox;
       if (notificationBox) {
