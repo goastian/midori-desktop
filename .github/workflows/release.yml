@@ -57,7 +57,6 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             TAG="${GITHUB_REF#refs/tags/v}"
             echo "version=$TAG" >> "$GITHUB_OUTPUT"
-            # Read display version from amelia.json
             DISPLAY_VERSION=$(jq -r '.brands.release.release.displayVersion' amelia.json)
             echo "display_version=$DISPLAY_VERSION" >> "$GITHUB_OUTPUT"
             echo "build_type=release" >> "$GITHUB_OUTPUT"
@@ -112,7 +111,6 @@ jobs:
             -name "*.exe" -o \
             -name "*.mar" \
           \) | while read -r file; do
-            # Prefix with artifact name (linux-x86_64, macos-aarch64, windows-x86_64, etc.)
             PLATFORM=$(echo "$file" | cut -d'/' -f2)
             FILENAME=$(basename "$file")
             TARGET="release-output/midori-${{ needs.prepare.outputs.display_version }}-${PLATFORM}-${FILENAME}"
@@ -132,27 +130,6 @@ jobs:
           sha256sum midori-* > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Prepare Flatpak release manifest
-        run: |
-          LINUX_X86=$(find release-output/ -name "*linux-x86_64*.tar.xz" | head -1)
-          LINUX_AARCH64=$(find release-output/ -name "*linux-aarch64*.tar.xz" | head -1)
-
-          if [ -n "$LINUX_X86" ] && [ -n "$LINUX_AARCH64" ]; then
-            # Create a dummy flatpak archive for now (metadata placeholder)
-            tar cf release-output/flatpak-archive.tar -T /dev/null
-
-            python3 scripts/prepare-flatpak-release.py \
-              --version "${{ needs.prepare.outputs.display_version }}" \
-              --linux-archive "$LINUX_X86" \
-              --linux-aarch64-archive "$LINUX_AARCH64" \
-              --flatpak-archive release-output/flatpak-archive.tar \
-              --output release-output/org.astian.midori.yml \
-              --template-root build/flatpak
-            echo "Flatpak manifest generated"
-          else
-            echo "Skipping Flatpak manifest — missing Linux archives"
-          fi
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -162,22 +139,18 @@ jobs:
 
           FLAGS="--generate-notes"
 
-          # Draft flag
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.draft }}" = "true" ]; then
             FLAGS="$FLAGS --draft"
           fi
 
-          # Prerelease flag
           if [ "${{ needs.prepare.outputs.build_type }}" = "dawn" ]; then
             FLAGS="$FLAGS --prerelease"
           fi
 
-          # Collect files to upload
           FILES=""
           for f in release-output/midori-* release-output/SHA256SUMS.txt; do
             [ -f "$f" ] && FILES="$FILES $f"
           done
-          [ -f "release-output/org.astian.midori.yml" ] && FILES="$FILES release-output/org.astian.midori.yml"
 
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release upload "$TAG" $FILES --repo "${{ github.repository }}" --clobber
@@ -189,12 +162,99 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
+  # Update Flatpak packaging repository
+  # ---------------------------------------------------------------------------
+  update-flatpak-repo:
+    name: Update Flatpak Packaging Repo
+    runs-on: ubuntu-latest
+    needs: [prepare, build, publish]
+    if: needs.prepare.outputs.build_type == 'release'
+    steps:
+      - name: Checkout midori-desktop
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts/
+
+      - name: Collect Linux archives
+        run: |
+          mkdir -p release-output
+          find release-artifacts/ -type f -name "*.tar.xz" | while read -r file; do
+            cp "$file" "release-output/$(basename "$file")"
+          done
+          ls -lah release-output
+
+      - name: Resolve Linux archive hashes
+        id: shas
+        run: |
+          X86_FILE=$(find release-output -name "*linux-x86_64*.tar.xz" | head -1)
+          ARM_FILE=$(find release-output -name "*linux-aarch64*.tar.xz" | head -1)
+
+          test -n "$X86_FILE"
+          test -n "$ARM_FILE"
+
+          echo "x86_file=$X86_FILE" >> "$GITHUB_OUTPUT"
+          echo "arm_file=$ARM_FILE" >> "$GITHUB_OUTPUT"
+          echo "x86_sha=$(sha256sum "$X86_FILE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "arm_sha=$(sha256sum "$ARM_FILE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Flatpak packaging repo
+        uses: actions/checkout@v4
+        with:
+          repository: goastian/org.astian.midori_browser
+          token: ${{ secrets.FLATPAK_REPO_TOKEN }}
+          path: flatpak-repo
+          ref: main
+
+      - name: Update Flatpak files
+        run: |
+          python3 scripts/update-flatpak-files.py \
+            --repo flatpak-repo \
+            --version "${{ needs.prepare.outputs.display_version }}" \
+            --x86-sha "${{ steps.shas.outputs.x86_sha }}" \
+            --arm-sha "${{ steps.shas.outputs.arm_sha }}"
+
+      - name: Install Flatpak tools for lint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y flathub org.flatpak.Builder
+
+      - name: Lint Flatpak manifest
+        run: |
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flatpak-repo/org.astian.midori_browser.yml
+
+      - name: Lint Flatpak appstream
+        run: |
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream flatpak-repo/org.astian.midori_browser.metainfo.xml
+
+      - name: Commit and push packaging update
+        run: |
+          cd flatpak-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .
+          git diff --cached --quiet && exit 0
+
+          git commit -m "Update Flatpak packaging for Midori Browser ${{ needs.prepare.outputs.display_version }}"
+          git push origin main
+
+  # ---------------------------------------------------------------------------
   # Deploy updates to update server (optional)
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy Updates
-    needs: [prepare, publish]
-    if: inputs.deploy_updates == true
+    needs: [prepare, publish, update-flatpak-repo]
+    if: always() && inputs.deploy_updates == true && needs.publish.result == 'success' && (needs.update-flatpak-repo.result == 'success' || needs.update-flatpak-repo.result == 'skipped')
     uses: ./.github/workflows/deploy.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
