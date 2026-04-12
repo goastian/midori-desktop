@@ -1722,16 +1722,6 @@ export const MidoriTor = {
     let lastProgress = 0;
     let stagnantPolls = 0;
 
-    // Give tor a moment to start the control port, but check process health first
-    for (let i = 0; i < 4; i++) {
-      if (this._processFailed || !this._process) {
-        warn('Bootstrap aborted: Tor process failed before control port was ready');
-        this._trace('bootstrap-abort-early', { reason: 'process-failed-before-control-port' });
-        return false;
-      }
-      await this._sleep(500);
-    }
-
     while (Date.now() - startTime < timeoutMs) {
       pollAttempt++;
       // Abort immediately if the process died
@@ -1769,10 +1759,13 @@ export const MidoriTor = {
             return true;
           }
 
-          // Circuit-established fallback: only relevant when bootstrap is ≥80 %.
-          // Below that threshold Tor is genuinely still loading descriptors and
-          // the circuit cannot be established yet — probing it every poll is noise.
-          if (stagnantPolls >= 4 && status.progress >= 80) {
+          // Circuit-established fallback: Tor can build a working circuit
+          // before reporting 100 % bootstrap.  When loading relay descriptors
+          // (typically 50-80 %) the progress stalls for 30-90 s on first run.
+          // Checking circuit-established at ≥50 % lets us declare success as
+          // soon as Tor is genuinely usable instead of waiting for the full
+          // descriptor download, which dramatically improves first-run UX.
+          if (stagnantPolls >= 3 && status.progress >= 50) {
             const established = await this._withTimeout(this._isCircuitEstablished(), 2000, false);
             if (established) {
               this._bootstrapProgress = 100;
@@ -1781,6 +1774,7 @@ export const MidoriTor = {
               this._trace('bootstrap-fallback-established', {
                 attempt: pollAttempt,
                 elapsedMs: Date.now() - startTime,
+                reportedProgress: status.progress,
               });
               this._notifyWindows();
               return true;
@@ -1801,9 +1795,11 @@ export const MidoriTor = {
         });
       }
 
-      // Adaptive sleep: slow down polling when stagnant to reduce log noise and
-      // avoid hammering the control port. After 10 stagnant polls use 2 s.
-      const sleepMs = stagnantPolls >= 10 ? 2000 : BOOTSTRAP_POLL_MS;
+      // Adaptive sleep: slow down polling when very stagnant to reduce log
+      // noise and avoid hammering the control port.  Use a generous threshold
+      // (30 polls ≈ 15 s at 500 ms) so the descriptor-loading phase (50-80 %)
+      // still gets frequent progress checks and the UI stays responsive.
+      const sleepMs = stagnantPolls >= 30 ? 2000 : BOOTSTRAP_POLL_MS;
       await this._sleep(sleepMs);
     }
 
