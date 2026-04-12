@@ -43,6 +43,13 @@
   background-color: transparent !important;
 }
 
+/* Keep bookmark and reader-mode buttons visible even when Firefox marks the
+   urlbar as invalid, since Midori themes still surface these actions. */
+.urlbar-input-container[pageproxystate="invalid"] > #page-action-buttons > #star-button-box,
+.urlbar-input-container[pageproxystate="invalid"] > #page-action-buttons > #reader-mode-button {
+  display: inline-flex !important;
+}
+
 /* ====================================================================
    TAB ENHANCEMENTS — Minimal, non-intrusive refinements
    ==================================================================== */
