@@ -97,7 +97,7 @@
 **Tasks:**
 
 - [x] Add option to switch search engines in Settings
-- [] Configure New Tab search bar to point to AstianGO
+- [X] Configure New Tab search bar to point to AstianGO
 - [x] Integration tests against the AstianGO API
 
 ---
