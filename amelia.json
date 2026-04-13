@@ -15,7 +15,7 @@
     "midori-privacy": {
       "id": "midori-privacy-blocker",
       "repo": "goastian/midori-privacy",
-      "version": "v2.1.2",
+      "version": "v2.1.3",
       "platform": "github",
       "fileGlob": "midori-privacy-2.1.0-firefox.zip"
     },
@@ -34,7 +34,7 @@
       "brandShortName": "Midori",
       "brandFullName": "Midori Browser",
       "release": {
-        "displayVersion": "11.6.5",
+        "displayVersion": "11.6.5.1",
         "github": {
           "repo": "goastian/midori-desktop"
         },
