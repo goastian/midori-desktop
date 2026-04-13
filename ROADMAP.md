@@ -150,15 +150,15 @@
 
 **Tasks:**
 
-- [ ] UI/UX design for the Midori New Tab
-- [ ] Implement `about:newtab` override
-- [ ] Central search bar integrated with AstianGO
-- [ ] Quick access shortcuts (frequent / custom sites)
-- [ ] Optional news / feed section (toggleable)
-- [ ] Customizable background (solid colors, gradients, or image)
-- [ ] Date and time widget
-- [ ] New Tab settings (show/hide sections)
-- [ ] Optional sync of shortcuts with Astian account
+- [x] UI/UX design for the Midori New Tab
+- [x] Implement `about:newtab` override
+- [x] Central search bar integrated with AstianGO
+- [x] Quick access shortcuts (frequent / custom sites)
+- [x] Optional news / feed section (toggleable)
+- [x] Customizable background (solid colors, gradients, or image)
+- [x] Date and time widget
+- [x] New Tab settings (show/hide sections)
+- [x] Optional sync of shortcuts with Astian account
 
 ---
 
