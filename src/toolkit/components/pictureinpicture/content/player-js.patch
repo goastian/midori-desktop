@@ -1,0 +1,25 @@
+diff --git a/toolkit/components/pictureinpicture/content/player.js b/toolkit/components/pictureinpicture/content/player.js
+index 34d92dcfba..254dc36fcd 100644
+--- a/toolkit/components/pictureinpicture/content/player.js
++++ b/toolkit/components/pictureinpicture/content/player.js
+@@ -29,6 +29,8 @@ const IMPROVED_CONTROLS_ENABLED_PREF =
+   "media.videocontrols.picture-in-picture.improved-video-controls.enabled";
+ const SEETHROUGH_MODE_ENABLED_PREF =
+   "media.videocontrols.picture-in-picture.seethrough-mode.enabled";
++const MIDORI_PIP_SKIN_ENABLED_PREF =
++  "midori.videocontrols.picture-in-picture.skin.enabled";
+ 
+ /**
+  * The "showing" attribute means that we intentionally want to show controls
+@@ -379,6 +381,11 @@ let Player = {
+       document.documentElement.classList.add("seethrough-mode");
+     }
+ 
++    // Keep Midori PiP skin fully opt-in via pref.
++    if (Services.prefs.getBoolPref(MIDORI_PIP_SKIN_ENABLED_PREF, false)) {
++      document.documentElement.setAttribute("midori-pip-skin", "compact");
++    }
++
+     this._isInitialized = true;
+   },
+ 

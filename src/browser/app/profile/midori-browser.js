@@ -117,8 +117,9 @@ pref('midori.search.customEngine.iconURL', '');
 // it by default
 pref('midori.sidebar.keeptabsactive.enabled', false);
 
-//PIP pref
+// PiP prefs
 pref('media.videocontrols.picture-in-picture.audio-toggle.enabled', true);
+pref('midori.videocontrols.picture-in-picture.skin.enabled', true);
 
 pref('browser.discovery.enabled', false);
 pref('svg.context-properties.content.enabled', true);
