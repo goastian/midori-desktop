@@ -88,14 +88,13 @@
 
 /* Keep zoom indicator visible when urlbar stays in usertyping state after
    navigation/search flows in Midori. */
-#urlbar[usertyping] > .urlbar-input-container > #page-action-buttons > #urlbar-zoom-button {
+#urlbar[usertyping] > .urlbar-input-container > #page-action-buttons > #urlbar-zoom-button:not([hidden]) {
   display: inline-flex !important;
 }
 
-/* If a zoom label is already present, prefer showing the indicator even when
-   hidden was not cleared in time by UI updates. */
-#urlbar-zoom-button[hidden][label] {
-  display: inline-flex !important;
+/* Always honor the hidden state set by ZoomUI when zoom is back to default. */
+#urlbar-zoom-button[hidden] {
+  display: none !important;
 }
 
 #urlbar-zoom-button:focus-visible {
