@@ -122,12 +122,6 @@ jobs:
         with:
           python-version-file: .python-version
 
-      - name: Install Python dependencies
-        run: pip install requests
-
-#      - name: Update Firefox
-#        run: npm run update-ff
-
       - name: Install npm dependencies
         run: npm ci
 
