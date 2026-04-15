@@ -1,10 +1,17 @@
 diff --git a/browser/components/preferences/search.js b/browser/components/preferences/search.js
-index d8a36e15da..f8f2f9c1c7 100644
+index d8a36e15da281872d4be9a8d46176ad785f8c82d..9d39523912620f06f038cff072eb0ceecd67c6bb 100644
 --- a/browser/components/preferences/search.js
 +++ b/browser/components/preferences/search.js
-@@ -1034,10 +1034,11 @@ var gSearchPane = {
-   init() {
-     initSettingGroup("defaultEngine");
+@@ -926,7 +926,7 @@ Preferences.addSetting(
+           items: [
+             {
+               id: editId,
+-              l10nId: "search-edit-engine-2",
++              l10nId: "search-edit-engine",
+               control: "moz-button",
+               iconSrc: "chrome://global/skin/icons/edit-outline.svg",
+               slot: "actions",
+@@ -1036,6 +1036,7 @@ var gSearchPane = {
      initSettingGroup("searchSuggestions");
      initSettingGroup("firefoxSuggest");
      initSettingGroup("searchShortcuts");
@@ -12,11 +19,7 @@ index d8a36e15da..f8f2f9c1c7 100644
      this._engineStore = new EngineStore();
      gEngineView = new EngineView(this._engineStore);
  
-     this._engineStore.init().catch(console.error);
- 
-@@ -1059,10 +1060,36 @@ var gSearchPane = {
-       Services.obs.removeObserver(this, "browser-search-engine-modified");
-       Services.obs.removeObserver(this, "intl:app-locales-changed");
+@@ -1061,6 +1062,32 @@ var gSearchPane = {
      });
    },
  
@@ -49,5 +52,3 @@ index d8a36e15da..f8f2f9c1c7 100644
    // ADDRESS BAR
    handleEvent(aEvent) {
      if (aEvent.type != "command") {
-       return;
-     }
