@@ -51,6 +51,79 @@
 }
 
 /* ====================================================================
+   ZOOM INDICATOR — Persistent zoom reset button in URL bar
+   ==================================================================== */
+
+#urlbar-zoom-button {
+  appearance: none;
+  font-size: 0.8em;
+  padding: 3px 7px;
+  border-radius: var(--urlbar-inner-border-radius);
+  background-color: var(--urlbar-box-bgcolor);
+  color: var(--urlbar-box-text-color);
+  margin-inline: 6px;
+  margin-block: calc((var(--urlbar-min-height) - 20px) / 2 - var(--urlbar-container-border-padding));
+  overflow: hidden;
+  transition: background-color 0.15s ease, color 0.15s ease !important;
+}
+
+#urlbar[focused] #urlbar-zoom-button {
+  background-color: var(--urlbar-box-focus-bgcolor);
+}
+
+#urlbar-zoom-button:hover {
+  background-color: var(--urlbar-box-hover-bgcolor);
+  color: var(--urlbar-box-hover-text-color);
+}
+
+#urlbar-zoom-button:hover:active {
+  background-color: var(--urlbar-box-active-bgcolor);
+  color: var(--urlbar-box-hover-text-color);
+}
+
+#urlbar-zoom-button[animate="true"] {
+  animation-name: urlbar-zoom-reset-pulse;
+  animation-duration: 250ms;
+}
+
+/* Keep zoom indicator visible when urlbar stays in usertyping state after
+   navigation/search flows in Midori. */
+#urlbar[usertyping] > .urlbar-input-container > #page-action-buttons > #urlbar-zoom-button {
+  display: inline-flex !important;
+}
+
+/* If a zoom label is already present, prefer showing the indicator even when
+   hidden was not cleared in time by UI updates. */
+#urlbar-zoom-button[hidden][label] {
+  display: inline-flex !important;
+}
+
+#urlbar-zoom-button:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-inset);
+}
+
+#urlbar-zoom-button > .toolbarbutton-text {
+  display: flex;
+}
+
+#urlbar-zoom-button > .toolbarbutton-icon {
+  display: none;
+}
+
+@keyframes urlbar-zoom-reset-pulse {
+  0% {
+    transform: scale(0);
+  }
+  75% {
+    transform: scale(1.5);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ====================================================================
    TAB ENHANCEMENTS — Minimal, non-intrusive refinements
    ==================================================================== */
 
