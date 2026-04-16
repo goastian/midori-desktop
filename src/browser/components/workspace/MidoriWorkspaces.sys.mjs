@@ -15,6 +15,7 @@
  * Preferences:
  *   - midori.workspaces.enabled       (bool, default: true)
  *   - midori.workspaces.show-button   (bool, default: true)
+ *   - midori.workspaces.show-name     (bool, default: true)
  *
  * Security:
  *   - All data is sanitized before DOM injection (no innerHTML with user data)
@@ -34,6 +35,7 @@
 
 const PREF_ENABLED = 'midori.workspaces.enabled';
 const PREF_SHOW_BUTTON = 'midori.workspaces.show-button';
+const PREF_SHOW_NAME = 'midori.workspaces.show-name';
 const PREF_VERTICAL = 'midori.verticaltabs.enabled';
 const PREF_SIDEBAR_VERTICAL = 'sidebar.verticalTabs';
 
@@ -167,6 +169,7 @@ export const MidoriWorkspaces = {
 
     Services.prefs.addObserver(PREF_ENABLED, this);
     Services.prefs.addObserver(PREF_SHOW_BUTTON, this);
+    Services.prefs.addObserver(PREF_SHOW_NAME, this);
     Services.prefs.addObserver(PREF_VERTICAL, this);
     Services.prefs.addObserver(PREF_SIDEBAR_VERTICAL, this);
 
@@ -189,6 +192,10 @@ export const MidoriWorkspaces = {
 
   showButton() {
     return Services.prefs.getBoolPref(PREF_SHOW_BUTTON, true);
+  },
+
+  showWorkspaceName() {
+    return Services.prefs.getBoolPref(PREF_SHOW_NAME, true);
   },
 
   // =========================================================================
@@ -642,12 +649,13 @@ export const MidoriWorkspaces = {
       const current = state.data.workspaces.find((ws) => ws.id === state.data.selectedId);
       if (current) {
         const emoji = getEmojiForIcon(current.icon);
-        selector.setAttribute('label', `${emoji} Workspaces`);
-        selector.setAttribute('tooltiptext', `Current: ${current.name}`);
+        const selectorLabel = this.showWorkspaceName() ? `${emoji} ${current.name}` : emoji;
+        selector.setAttribute('label', selectorLabel);
+        selector.setAttribute('tooltiptext', `Current workspace: ${current.name}`);
 
         const labelEl = doc.getElementById('midori-workspace-selector-label');
         if (labelEl) {
-          labelEl.setAttribute('value', `${emoji} Workspaces`);
+          labelEl.setAttribute('value', selectorLabel);
         }
       }
     }
@@ -1308,6 +1316,7 @@ export const MidoriWorkspaces = {
           }
         } else if (
           data === PREF_SHOW_BUTTON ||
+          data === PREF_SHOW_NAME ||
           data === PREF_VERTICAL ||
           data === PREF_SIDEBAR_VERTICAL
         ) {
@@ -1353,6 +1362,7 @@ export const MidoriWorkspaces = {
   uninit() {
     Services.prefs.removeObserver(PREF_ENABLED, this);
     Services.prefs.removeObserver(PREF_SHOW_BUTTON, this);
+    Services.prefs.removeObserver(PREF_SHOW_NAME, this);
     Services.prefs.removeObserver(PREF_VERTICAL, this);
     Services.prefs.removeObserver(PREF_SIDEBAR_VERTICAL, this);
 

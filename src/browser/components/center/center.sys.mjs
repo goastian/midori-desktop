@@ -20,6 +20,7 @@ const PREF_MAP = {
   "pref-msidebar-autohide": { pref: "midori.msidebar.autohide.enabled", type: "bool" },
   "pref-workspaces-enabled":{ pref: "midori.workspaces.enabled",      type: "bool" },
   "pref-workspaces-button": { pref: "midori.workspaces.show-button",  type: "bool" },
+  "pref-workspaces-name":   { pref: "midori.workspaces.show-name",    type: "bool" },
 };
 
 const FALLBACK_WORKSPACE_ICONS = [
