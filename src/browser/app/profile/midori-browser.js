@@ -176,6 +176,7 @@ pref('browser.toolbars.bookmarks.visibility', 'never');
 // Midori Workspaces
 pref('midori.workspaces.enabled', true);
 pref('midori.workspaces.show-button', true);
+pref('midori.workspaces.show-name', true);
 
 // ============================================================================
 // MIDORI MEMORY PROFILE
