@@ -119,7 +119,8 @@ pref('midori.sidebar.keeptabsactive.enabled', false);
 
 // PiP prefs
 pref('media.videocontrols.picture-in-picture.audio-toggle.enabled', true);
-pref('midori.videocontrols.picture-in-picture.skin.enabled', true);
+// PiP skin: "off", "compact", "island"
+pref('midori.pip.skin', 'compact');
 
 pref('browser.discovery.enabled', false);
 pref('svg.context-properties.content.enabled', true);

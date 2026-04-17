@@ -14,6 +14,7 @@ const WORKSPACES_MODULE_URL = "resource:///modules/MidoriWorkspaces.sys.mjs";
 const PREF_MAP = {
   "pref-autohide-toolbar":  { pref: "midori.autohide.toolbar",        type: "bool" },
   "pref-gradient-enabled":  { pref: "midori.gradient.enabled",        type: "bool" },
+  "pref-pip-skin":          { pref: "midori.pip.skin",                type: "string" },
   "pref-msidebar-enabled":  { pref: "midori.msidebar.enabled",        type: "bool" },
   "pref-msidebar-position": { pref: "midori.msidebar.position",       type: "string" },
   "pref-msidebar-width":    { pref: "midori.msidebar.width",          type: "int" },
