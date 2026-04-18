@@ -9,6 +9,7 @@
 
 const WORKSPACE_CHANGE_TOPIC = "midori-workspaces-updated";
 const WORKSPACES_MODULE_URL = "resource:///modules/MidoriWorkspaces.sys.mjs";
+const SHORTCUTS_MODULE_URL = "resource:///modules/MidoriShortcuts.sys.mjs";
 
 // ---- Pref mapping: element ID → { pref, type } ----
 const PREF_MAP = {
@@ -54,8 +55,19 @@ const workspaceUI = {
   status: null,
 };
 
+const shortcutUI = {
+  panel: null,
+  count: null,
+  groups: null,
+  status: null,
+};
+
 let workspaceApi = null;
 let workspaceObserver = null;
+let shortcutsApi = null;
+let shortcutObserver = null;
+let shortcutObservedPrefs = [];
+let shortcutFlashPref = "";
 
 // ---- Read a pref by type ----
 function readPref(prefName, type) {
@@ -97,6 +109,20 @@ function getWorkspaceApi() {
   return workspaceApi;
 }
 
+function getShortcutsApi() {
+  if (shortcutsApi) {
+    return shortcutsApi;
+  }
+
+  try {
+    shortcutsApi = ChromeUtils.importESModule(SHORTCUTS_MODULE_URL);
+  } catch {
+    shortcutsApi = null;
+  }
+
+  return shortcutsApi;
+}
+
 function getWorkspaceIcons(api) {
   try {
     const icons = api?.getWorkspaceIcons?.();
@@ -116,6 +142,17 @@ function setWorkspaceStatus(message, isError = false) {
 
 function clearWorkspaceStatus() {
   setWorkspaceStatus("");
+}
+
+function setShortcutStatus(message, isError = false) {
+  if (!shortcutUI.status) return;
+  shortcutUI.status.textContent = message || "";
+  shortcutUI.status.classList.toggle("workspace-status-error", !!isError);
+  shortcutUI.status.hidden = !message;
+}
+
+function clearShortcutStatus() {
+  setShortcutStatus("");
 }
 
 function populateIconSelect(selectEl, icons, selectedIcon) {
@@ -426,6 +463,316 @@ async function initWorkspaceManager() {
   await refreshWorkspaceManager();
 }
 
+function findShortcutConflict(definitions, currentPref, candidate) {
+  if (!candidate) {
+    return null;
+  }
+
+  const api = getShortcutsApi();
+  const normalized = api?.normalizeShortcutString?.(candidate) || candidate;
+  for (const definition of definitions) {
+    if (definition.pref === currentPref) {
+      continue;
+    }
+
+    const existing = api?.getShortcutValue?.(definition.pref) || "";
+    if (existing && existing === normalized) {
+      return definition;
+    }
+  }
+
+  return null;
+}
+
+function syncShortcutFieldValue(input, definition) {
+  const api = getShortcutsApi();
+  const savedValue = api?.getShortcutValue?.(definition.pref) || "";
+  input.dataset.savedShortcut = savedValue;
+  delete input.dataset.pendingShortcut;
+  input.value = api?.formatShortcutForDisplay?.(savedValue) || "Not set";
+  input.classList.remove(
+    "shortcut-field-capturing",
+    "shortcut-field-error",
+    "shortcut-field-success"
+  );
+}
+
+function buildShortcutRow(definitions, definition) {
+  const api = getShortcutsApi();
+  const row = document.createElement("div");
+  row.className = "shortcut-row";
+
+  const meta = document.createElement("div");
+  meta.className = "shortcut-meta";
+
+  const title = document.createElement("strong");
+  title.textContent = definition.title;
+  meta.appendChild(title);
+
+  const desc = document.createElement("p");
+  desc.textContent = definition.description;
+  meta.appendChild(desc);
+
+  const controls = document.createElement("div");
+  controls.className = "shortcut-controls";
+
+  const inputRow = document.createElement("div");
+  inputRow.className = "shortcut-input-row";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.readOnly = true;
+  input.className = "shortcut-field";
+  input.setAttribute("aria-label", definition.title);
+  input.title = `${definition.title} shortcut`;
+  syncShortcutFieldValue(input, definition);
+
+  if (shortcutFlashPref === definition.pref) {
+    input.classList.add("shortcut-field-success");
+  }
+
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "mc-btn";
+  resetBtn.textContent = definition.defaultValue ? "Reset" : "Clear";
+  resetBtn.disabled = !definition.defaultValue && !api?.getShortcutValue?.(definition.pref);
+  resetBtn.addEventListener("click", async () => {
+    api?.setShortcutValue?.(definition.pref, definition.defaultValue || "");
+    shortcutFlashPref = definition.pref;
+    setShortcutStatus(`${definition.title} shortcut updated.`);
+    await refreshShortcutManager();
+  });
+
+  input.addEventListener("focus", () => {
+    input.classList.add("shortcut-field-capturing");
+    setShortcutStatus(`Press a shortcut for ${definition.title}, then press Esc to save it.`);
+  });
+
+  input.addEventListener("blur", () => {
+    syncShortcutFieldValue(input, definition);
+    clearShortcutStatus();
+  });
+
+  const hint = document.createElement("div");
+  hint.className = "shortcut-hint";
+  hint.textContent = "Click field, press shortcut, then Esc to save.";
+
+  const conflict = document.createElement("div");
+  conflict.className = "shortcut-conflict";
+  conflict.hidden = true;
+
+  input.addEventListener("keydown", async event => {
+    if (event.key === "Tab") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.key === "Backspace") {
+      api?.setShortcutValue?.(definition.pref, "");
+      shortcutFlashPref = definition.pref;
+      setShortcutStatus(`${definition.title} shortcut cleared.`);
+      await refreshShortcutManager();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      const pendingShortcut = input.dataset.pendingShortcut;
+      if (pendingShortcut === undefined) {
+        input.blur();
+        return;
+      }
+
+      const conflictDef = findShortcutConflict(definitions, definition.pref, pendingShortcut);
+      if (conflictDef) {
+        input.classList.add("shortcut-field-error");
+        conflict.hidden = false;
+        conflict.textContent = `Conflict with ${conflictDef.title}. Choose another shortcut or clear the other action first.`;
+        setShortcutStatus(`Shortcut conflict: ${conflictDef.title} already uses ${pendingShortcut}.`, true);
+        return;
+      }
+
+      api?.setShortcutValue?.(definition.pref, pendingShortcut);
+      shortcutFlashPref = definition.pref;
+      setShortcutStatus(`${definition.title} shortcut saved.`);
+      await refreshShortcutManager();
+      return;
+    }
+
+    const captured = api?.captureShortcutFromKeyEvent?.(event) || "";
+    if (!captured) {
+      setShortcutStatus("Use a modifier plus a key, or a function key.", true);
+      return;
+    }
+
+    input.dataset.pendingShortcut = captured;
+    input.value = api?.formatShortcutForDisplay?.(captured) || captured;
+    input.classList.add("shortcut-field-capturing");
+    input.classList.remove("shortcut-field-error", "shortcut-field-success");
+
+    const conflictDef = findShortcutConflict(definitions, definition.pref, captured);
+    if (conflictDef) {
+      conflict.hidden = false;
+      conflict.textContent = `Conflict with ${conflictDef.title}. Press Esc to keep editing.`;
+      input.classList.add("shortcut-field-error");
+      setShortcutStatus(`Conflict with ${conflictDef.title}.`, true);
+    } else {
+      conflict.hidden = true;
+      conflict.textContent = "";
+      setShortcutStatus(`Ready to save ${captured}. Press Esc to confirm.`);
+    }
+  });
+
+  inputRow.appendChild(input);
+  inputRow.appendChild(resetBtn);
+  controls.appendChild(inputRow);
+  controls.appendChild(hint);
+  controls.appendChild(conflict);
+
+  const defaults = document.createElement("div");
+  defaults.className = "shortcut-default";
+  defaults.textContent = definition.defaultValue
+    ? `Default: ${definition.defaultValue}`
+    : "Default: Not set";
+
+  const actions = document.createElement("div");
+  actions.className = "shortcut-actions";
+
+  const captureBtn = document.createElement("button");
+  captureBtn.type = "button";
+  captureBtn.className = "mc-btn";
+  captureBtn.textContent = "Capture";
+  captureBtn.addEventListener("click", () => {
+    input.focus();
+    input.select();
+  });
+  actions.appendChild(captureBtn);
+
+  row.appendChild(meta);
+  row.appendChild(controls);
+  row.appendChild(defaults);
+  row.appendChild(actions);
+  return row;
+}
+
+async function refreshShortcutManager() {
+  if (!shortcutUI.panel || !shortcutUI.count || !shortcutUI.groups) {
+    return;
+  }
+
+  const api = getShortcutsApi();
+  const definitions = api?.getShortcutDefinitions?.() || [];
+  if (!api || !definitions.length) {
+    shortcutUI.count.textContent = "0 / 0";
+    shortcutUI.groups.textContent = "";
+    const empty = document.createElement("div");
+    empty.className = "shortcut-empty";
+    empty.textContent = "Shortcut service is unavailable in this context.";
+    shortcutUI.groups.appendChild(empty);
+    setShortcutStatus("Could not connect to the shortcut service.", true);
+    return;
+  }
+
+  const configuredCount = definitions.filter(definition => api.getShortcutValue(definition.pref)).length;
+  shortcutUI.count.textContent = `${configuredCount} / ${definitions.length}`;
+  shortcutUI.groups.textContent = "";
+
+  const groups = new Map();
+  for (const definition of definitions) {
+    if (!groups.has(definition.category)) {
+      groups.set(definition.category, []);
+    }
+    groups.get(definition.category).push(definition);
+  }
+
+  for (const [category, items] of groups.entries()) {
+    const section = document.createElement("section");
+    section.className = "shortcut-group";
+
+    const header = document.createElement("div");
+    header.className = "shortcut-group-header";
+
+    const copy = document.createElement("div");
+    const title = document.createElement("h3");
+    title.textContent = category;
+    const desc = document.createElement("p");
+    desc.textContent = `${items.length} customizable action${items.length === 1 ? "" : "s"}.`;
+    copy.appendChild(title);
+    copy.appendChild(desc);
+
+    const count = document.createElement("span");
+    count.className = "shortcut-group-count";
+    count.textContent = `${items.filter(item => api.getShortcutValue(item.pref)).length} active`;
+
+    header.appendChild(copy);
+    header.appendChild(count);
+
+    const list = document.createElement("div");
+    list.className = "shortcut-list";
+    for (const definition of items) {
+      list.appendChild(buildShortcutRow(definitions, definition));
+    }
+
+    section.appendChild(header);
+    section.appendChild(list);
+    shortcutUI.groups.appendChild(section);
+  }
+
+  if (shortcutFlashPref) {
+    window.setTimeout(() => {
+      if (shortcutFlashPref) {
+        shortcutFlashPref = "";
+        refreshShortcutManager();
+      }
+    }, 900);
+  }
+}
+
+async function initShortcutManager() {
+  shortcutUI.panel = document.getElementById("shortcut-manager-panel");
+  shortcutUI.count = document.getElementById("shortcut-count");
+  shortcutUI.groups = document.getElementById("shortcut-groups");
+  shortcutUI.status = document.getElementById("shortcut-manager-status");
+
+  if (!shortcutUI.panel) {
+    return;
+  }
+
+  const api = getShortcutsApi();
+  const definitions = api?.getShortcutDefinitions?.() || [];
+  shortcutObservedPrefs = [...new Set(definitions.map(definition => definition.pref))];
+
+  if (!shortcutObserver && shortcutObservedPrefs.length) {
+    shortcutObserver = {
+      observe() {
+        refreshShortcutManager();
+      },
+    };
+    for (const pref of shortcutObservedPrefs) {
+      Services.prefs.addObserver(pref, shortcutObserver);
+    }
+  }
+
+  window.addEventListener(
+    "unload",
+    () => {
+      if (shortcutObserver) {
+        for (const pref of shortcutObservedPrefs) {
+          try {
+            Services.prefs.removeObserver(pref, shortcutObserver);
+          } catch {}
+        }
+      }
+      shortcutObserver = null;
+      shortcutObservedPrefs = [];
+    },
+    { once: true }
+  );
+
+  await refreshShortcutManager();
+}
+
 // ---- Init prefs on all mapped elements ----
 function initPrefs() {
   for (const [id, { pref, type }] of Object.entries(PREF_MAP)) {
@@ -537,4 +884,5 @@ document.addEventListener("DOMContentLoaded", () => {
   initTabLayout();
   initVersionInfo();
   initWorkspaceManager();
+  initShortcutManager();
 });

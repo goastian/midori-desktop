@@ -240,8 +240,22 @@ pref('midori.msidebar.tooltip.fullUrl', false);
 pref('midori.msidebar.webPanelToolbar.autohide', true);
 pref('midori.msidebar.webPanelToolbar.autohideBack', true);
 pref('midori.msidebar.webPanelToolbar.autohideForward', true);
-pref('midori.msidebar.shortcut.toggleSidebar', '');
+pref('midori.msidebar.shortcut.toggleSidebar', 'Ctrl+Alt+S');
 pref('midori.msidebar.shortcut.togglePanel', '');
+
+pref('midori.shortcuts.general.openCenter', 'Ctrl+Alt+M');
+pref('midori.shortcuts.tabs.toggleVertical', 'Ctrl+Alt+V');
+pref('midori.workspaces.shortcut.previous', 'Ctrl+Alt+Q');
+pref('midori.workspaces.shortcut.next', 'Ctrl+Alt+E');
+pref('midori.workspaces.shortcut.switch1', '');
+pref('midori.workspaces.shortcut.switch2', '');
+pref('midori.workspaces.shortcut.switch3', '');
+pref('midori.workspaces.shortcut.switch4', '');
+pref('midori.workspaces.shortcut.switch5', '');
+pref('midori.workspaces.shortcut.switch6', '');
+pref('midori.workspaces.shortcut.switch7', '');
+pref('midori.workspaces.shortcut.switch8', '');
+pref('midori.workspaces.shortcut.switch9', '');
 
 pref('sidebar.revamp', false);
 pref('sidebar.verticalTabs', false);

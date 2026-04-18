@@ -319,6 +319,14 @@ body::before {
   .card-icon-emerald { background: rgba(52, 211, 153, 0.15); color: #6ee7b7; }
 }
 
+.card-icon-amber {
+  background: #fef3c7;
+  color: #b45309;
+}
+@media (prefers-color-scheme: dark) {
+  .card-icon-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+}
+
 .card-text {
   flex: 1;
   min-width: 0;
@@ -757,6 +765,203 @@ body::before {
 
 .workspace-disabled {
   opacity: 0.8;
+}
+
+/* ---- Keyboard Shortcuts ---- */
+.shortcut-hero-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+}
+
+.shortcut-hero-copy {
+  max-width: 620px;
+}
+
+.shortcut-hero-tips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shortcut-tip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--mc-border);
+  background: color-mix(in srgb, var(--mc-surface) 86%, var(--mc-bg-subtle) 14%);
+  color: var(--mc-text-muted);
+}
+
+.shortcut-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.shortcut-group {
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius);
+  background: color-mix(in srgb, var(--mc-surface) 90%, var(--mc-bg-subtle) 10%);
+  overflow: hidden;
+}
+
+.shortcut-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--mc-border);
+  background: color-mix(in srgb, var(--mc-surface) 74%, var(--mc-bg-subtle) 26%);
+}
+
+.shortcut-group-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.shortcut-group-header p {
+  font-size: 12.5px;
+  color: var(--mc-text-muted);
+  margin-top: 3px;
+}
+
+.shortcut-group-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mc-sidebar-active-text);
+  background: var(--mc-sidebar-active-bg);
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+
+.shortcut-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(220px, 1fr) auto auto;
+  gap: 14px;
+  padding: 16px 18px;
+  border-top: 1px solid var(--mc-border);
+  align-items: start;
+}
+
+.shortcut-row:first-child {
+  border-top: none;
+}
+
+.shortcut-meta strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.shortcut-meta p,
+.shortcut-default,
+.shortcut-conflict {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.shortcut-meta p,
+.shortcut-default {
+  color: var(--mc-text-muted);
+}
+
+.shortcut-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shortcut-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.shortcut-field {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--mc-border);
+  border-radius: 10px;
+  background: var(--mc-surface);
+  color: var(--mc-text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: border-color var(--mc-transition), box-shadow var(--mc-transition), background var(--mc-transition);
+}
+
+.shortcut-field:hover {
+  border-color: var(--mc-border-hover);
+}
+
+.shortcut-field:focus {
+  outline: none;
+  border-color: var(--mc-green-500);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+}
+
+.shortcut-field.shortcut-field-capturing {
+  border-style: dashed;
+  border-color: var(--mc-green-500);
+  background: color-mix(in srgb, var(--mc-green-50) 65%, var(--mc-surface) 35%);
+}
+
+.shortcut-field.shortcut-field-success {
+  border-color: #059669;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.16);
+}
+
+.shortcut-field.shortcut-field-error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
+}
+
+.shortcut-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.shortcut-hint {
+  font-size: 11.5px;
+  color: var(--mc-text-muted);
+}
+
+.shortcut-conflict {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.shortcut-empty {
+  padding: 18px;
+  font-size: 12.5px;
+  color: var(--mc-text-muted);
+}
+
+@media (max-width: 920px) {
+  .shortcut-hero-panel,
+  .workspace-manager-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .shortcut-row {
+    grid-template-columns: 1fr;
+  }
+
+  .shortcut-input-row,
+  .shortcut-actions {
+    flex-wrap: wrap;
+  }
 }
 
 /* ---- Tab Layout Grid ---- */
