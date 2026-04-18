@@ -25,6 +25,13 @@
       "version": "v1.0.13",
       "platform": "github",
       "fileGlob": "midori-tab-1.0.13-firefox.zip"
+    },
+        "midorivpn-extension": {
+      "id": "midorivpn@astian.org",
+      "repo": "midorivpn-extension",
+      "version": "v1.0.6",
+      "platform": "github",
+      "fileGlob": "release.xpi"
     }
   },
   "brands": {
