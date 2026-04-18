@@ -47,6 +47,7 @@ const VERTICAL_RAIL_ID = 'midori-workspace-rail';
 const INDICATOR_ID = 'midori-workspace-indicator';
 const INDICATOR_ICON_ID = 'midori-workspace-indicator-icon';
 const INDICATOR_NAME_ID = 'midori-workspace-indicator-name';
+const INDICATOR_COUNT_ID = 'midori-workspace-indicator-count';
 const QUICK_ICONS_ID = 'midori-workspace-quick-icons';
 const WORKSPACE_CHANGE_TOPIC = 'midori-workspaces-updated';
 const MAX_WORKSPACES = 25;
@@ -72,9 +73,32 @@ const WORKSPACE_ICONS = [
   { id: 'star', emoji: '⭐' },
 ];
 
+const WORKSPACE_ACCENTS = {
+  default: '#5f88ff',
+  work: '#3b82f6',
+  personal: '#14b8a6',
+  shopping: '#f59e0b',
+  social: '#06b6d4',
+  dev: '#6366f1',
+  research: '#0ea5a4',
+  music: '#a855f7',
+  gaming: '#ec4899',
+  finance: '#10b981',
+  travel: '#f97316',
+  education: '#0ea5e9',
+  health: '#ef4444',
+  news: '#64748b',
+  creative: '#d946ef',
+  star: '#eab308',
+};
+
 function getEmojiForIcon(iconId) {
   const icon = WORKSPACE_ICONS.find((i) => i.id === iconId);
   return icon ? icon.emoji : '🏠';
+}
+
+function getWorkspaceAccent(iconId) {
+  return WORKSPACE_ACCENTS[iconId] || WORKSPACE_ACCENTS.default;
 }
 
 function sanitizeName(name) {
@@ -531,8 +555,14 @@ export const MidoriWorkspaces = {
     chevronEl.className = 'midori-workspace-indicator-chevron';
     chevronEl.setAttribute('value', '\u25BE');
 
+    const countEl = doc.createXULElement('label');
+    countEl.id = INDICATOR_COUNT_ID;
+    countEl.className = 'midori-workspace-indicator-count';
+    countEl.setAttribute('value', '0');
+
     indicator.appendChild(iconEl);
     indicator.appendChild(nameEl);
+    indicator.appendChild(countEl);
     indicator.appendChild(chevronEl);
 
     indicator.addEventListener('command', () => {
@@ -601,9 +631,16 @@ export const MidoriWorkspaces = {
     if (!current) return;
 
     const emoji = getEmojiForIcon(current.icon);
+    const accent = getWorkspaceAccent(current.icon);
+    const tabCount = this._countTabsInWorkspace(state.win, state.data.selectedId);
 
     const nameEl = doc.getElementById(INDICATOR_NAME_ID);
     if (nameEl) nameEl.setAttribute('value', current.name);
+
+    const countEl = doc.getElementById(INDICATOR_COUNT_ID);
+    if (countEl) {
+      countEl.setAttribute('value', `${tabCount}`);
+    }
 
     const iconEl = doc.getElementById(INDICATOR_ICON_ID);
     if (iconEl) {
@@ -612,9 +649,11 @@ export const MidoriWorkspaces = {
       indicator.style.setProperty('--midori-workspace-emoji', `"${emoji}"`);
     }
 
+    indicator.style.setProperty('--midori-workspace-accent', accent);
+
     indicator.setAttribute(
       'tooltiptext',
-      `Workspace: ${current.name} - Click to switch or manage workspaces`
+      `Workspace: ${current.name} (${tabCount} tabs) - Click to switch or manage workspaces`
     );
   },
 
@@ -638,6 +677,7 @@ export const MidoriWorkspaces = {
       btn.className = 'midori-workspace-quick-btn toolbarbutton-1';
       btn.setAttribute('tooltiptext', `Switch to workspace: ${ws.name}`);
       btn.setAttribute('label', getEmojiForIcon(ws.icon));
+      btn.style.setProperty('--midori-workspace-accent', getWorkspaceAccent(ws.icon));
 
       if (ws.id === selectedId) {
         btn.setAttribute('data-active', 'true');
@@ -921,19 +961,67 @@ export const MidoriWorkspaces = {
       }, 50);
     };
 
+    // Shift + wheel over workspace controls switches workspaces quickly.
+    state._onWorkspaceWheel = (event) => {
+      if (!event.shiftKey) return;
+
+      let node = event.target;
+      let isWorkspaceTarget = false;
+      while (node && node !== win.document) {
+        if (
+          node.id === INDICATOR_ID ||
+          node.id === QUICK_ICONS_ID ||
+          node.id === SELECTOR_ID
+        ) {
+          isWorkspaceTarget = true;
+          break;
+        }
+        node = node.parentNode;
+      }
+
+      if (!isWorkspaceTarget) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      this._switchWorkspaceRelative(win, state, event.deltaY > 0 ? 1 : -1);
+    };
+
     container.addEventListener('TabOpen', state._onTabOpen);
     container.addEventListener('TabClose', state._onTabClose);
+    win.document.addEventListener('wheel', state._onWorkspaceWheel, {
+      capture: true,
+      passive: false,
+    });
+  },
+
+  _switchWorkspaceRelative(win, state, delta) {
+    const list = state?.data?.workspaces;
+    if (!Array.isArray(list) || list.length === 0) return;
+
+    const currentIndex = list.findIndex((ws) => ws.id === state.data.selectedId);
+    if (currentIndex === -1) return;
+
+    const nextIndex = (currentIndex + delta + list.length) % list.length;
+    const next = list[nextIndex];
+    if (!next || next.id === state.data.selectedId) return;
+
+    this.switchWorkspace(win, next.id);
   },
 
   _detachTabListeners(win, state) {
-    if (!state._onTabOpen) return;
     const container = win.gBrowser?.tabContainer;
-    if (!container) return;
+    if (container && state._onTabOpen) {
+      container.removeEventListener('TabOpen', state._onTabOpen);
+      container.removeEventListener('TabClose', state._onTabClose);
+    }
 
-    container.removeEventListener('TabOpen', state._onTabOpen);
-    container.removeEventListener('TabClose', state._onTabClose);
+    if (state._onWorkspaceWheel) {
+      win.document.removeEventListener('wheel', state._onWorkspaceWheel, true);
+    }
+
     state._onTabOpen = null;
     state._onTabClose = null;
+    state._onWorkspaceWheel = null;
   },
 
   _ensureVisibleTab(win, state) {
