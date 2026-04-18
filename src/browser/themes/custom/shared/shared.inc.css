@@ -307,17 +307,94 @@ menupopup:not([position]) {
   opacity: 0.5 !important;
 }
 
-/* --- Vertical mode: workspace icon strip above tabs in sidebar --- */
+/* --- Vertical mode: Zen-like workspace rail above sidebar tabs --- */
 
-/* Force #vertical-tabs to column layout so workspace strip appears above tabs */
-#vertical-tabs:has(#midori-workspace-quick-icons) {
+/* Force #vertical-tabs to column layout so workspace rail appears above tabs */
+#vertical-tabs:has(#midori-workspace-rail) {
   flex-direction: column !important;
 }
 
-/* Ensure tabs fill the remaining space below workspace strip */
-#vertical-tabs:has(#midori-workspace-quick-icons) > #tabbrowser-tabs {
+/* Ensure tabs fill the remaining space below workspace rail */
+#vertical-tabs:has(#midori-workspace-rail) > #tabbrowser-tabs {
   flex: 1 1 auto !important;
   min-height: 0 !important;
+}
+
+#midori-workspace-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 6px 7px !important;
+  margin: 0 !important;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  background: color-mix(in srgb, var(--toolbar-bgcolor) 92%, black 8%);
+  -moz-window-dragging: no-drag;
+  flex-shrink: 0;
+  order: -1 !important;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+#midori-workspace-rail::before {
+  content: "Workspaces";
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.72;
+  padding-inline: 6px;
+  line-height: 1.2;
+}
+
+#midori-workspace-indicator {
+  -moz-appearance: none !important;
+  appearance: none !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 30px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  border-radius: 10px !important;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent) !important;
+  background: color-mix(in srgb, var(--toolbar-bgcolor) 88%, white 12%) !important;
+  color: inherit !important;
+  transition: var(--midori-transition) !important;
+}
+
+#midori-workspace-indicator:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent) !important;
+}
+
+#midori-workspace-indicator:active {
+  background: color-mix(in srgb, currentColor 16%, transparent) !important;
+}
+
+#midori-workspace-indicator > .toolbarbutton-icon,
+#midori-workspace-indicator > .toolbarbutton-text {
+  display: none !important;
+}
+
+#midori-workspace-indicator-icon {
+  font-size: 13px !important;
+  min-width: 14px;
+}
+
+#midori-workspace-indicator-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px !important;
+  font-weight: 620 !important;
+}
+
+.midori-workspace-indicator-chevron {
+  font-size: 10px !important;
+  opacity: 0.58;
 }
 
 #midori-workspace-quick-icons {
@@ -325,17 +402,10 @@ menupopup:not([position]) {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 4px 4px !important;
+  gap: 4px;
+  padding: 0 !important;
   margin: 0 !important;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
-  -moz-window-dragging: no-drag;
   min-height: 30px;
-  flex-shrink: 0;
-  /* Force this to appear first in the flex order */
-  order: -1 !important;
-  /* Prevent this from stretching the sidebar width */
-  width: 100%;
   max-width: 100%;
   overflow: hidden;
   box-sizing: border-box;
@@ -344,75 +414,99 @@ menupopup:not([position]) {
 .midori-workspace-quick-btn {
   -moz-appearance: none !important;
   appearance: none !important;
-  min-width: 24px !important;
-  height: 24px !important;
+  min-width: 26px !important;
+  height: 26px !important;
   padding: 0 !important;
-  margin: 1px !important;
-  border-radius: 6px !important;
-  border: none !important;
+  margin: 0 !important;
+  border-radius: 8px !important;
+  border: 1px solid transparent !important;
   background-color: transparent !important;
   font-size: 12px !important;
   cursor: default !important;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease !important;
+  transition: var(--midori-transition), border-color 0.15s ease !important;
   position: relative;
 }
 
 .midori-workspace-quick-btn:hover {
   background-color: color-mix(in srgb, currentColor 10%, transparent) !important;
+  border-color: color-mix(in srgb, currentColor 10%, transparent) !important;
 }
 
 .midori-workspace-quick-btn:active {
   background-color: color-mix(in srgb, currentColor 16%, transparent) !important;
 }
 
-/* Active workspace — accent background + left bar indicator */
+/* Active workspace uses a stronger pill and accent ring for visibility. */
 .midori-workspace-quick-btn[data-active="true"] {
-  background-color: color-mix(in srgb,
-    var(--focus-outline-color, AccentColor) 15%, transparent) !important;
-  box-shadow: inset 2px 0 0 var(--focus-outline-color, AccentColor) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--focus-outline-color, AccentColor) 18%,
+    transparent
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--focus-outline-color, AccentColor) 42%,
+    transparent
+  ) !important;
+  box-shadow: inset 0 0 0 1px color-mix(
+    in srgb,
+    var(--focus-outline-color, AccentColor) 36%,
+    transparent
+  ) !important;
 }
 
-/* Add (+) button */
 .midori-workspace-add-btn {
   font-weight: 700 !important;
   font-size: 14px !important;
-  opacity: 0.4 !important;
+  opacity: 0.7 !important;
 }
 
 .midori-workspace-add-btn:hover {
   opacity: 1 !important;
 }
 
-/* Hide .toolbarbutton-text and .toolbarbutton-icon for quick btns */
+/* Hide generated icon node; emoji label is enough for quick buttons. */
 .midori-workspace-quick-btn > .toolbarbutton-icon {
   display: none !important;
 }
 
-/* When sidebar is collapsed, stack workspace icons vertically */
-#tabbrowser-tabs[orient="vertical"]:not([expanded]) ~ #midori-workspace-quick-icons,
-#tabbrowser-tabs[orient="vertical"]:not([expanded]) + #midori-workspace-quick-icons {
-  flex-direction: column;
-  padding: 2px !important;
-  gap: 1px;
+/* Collapsed vertical tabs: keep a compact icon-only rail. */
+#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-rail {
+  align-items: center;
+  padding: 6px 4px !important;
 }
 
-/* Also handle the case where quick-icons is a sibling at the same level */
+#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-rail::before,
+#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-indicator-name,
+#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-indicator-chevron {
+  display: none !important;
+}
+
+#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-indicator {
+  justify-content: center;
+  width: 30px;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+}
+
 #vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-quick-icons {
   flex-direction: column;
-  padding: 2px !important;
-  gap: 1px;
+  gap: 3px;
 }
 
 #vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-quick-btn {
   min-width: 28px !important;
   height: 28px !important;
-  border-radius: 6px !important;
+  border-radius: 8px !important;
 }
 
-/* Workspace popup panel — flat */
+/* Workspace popup panel */
 #midori-workspace-popup {
   border: var(--midori-border-medium,
     1px solid color-mix(in srgb, currentColor 12%, transparent)) !important;
+  border-radius: 10px !important;
+  padding-block: 4px !important;
 }
 
 /* Active workspace item highlight */
@@ -423,17 +517,17 @@ menupopup:not([position]) {
     var(--focus-outline-color, AccentColor) 12%,
     transparent
   ) !important;
-  border-radius: 4px !important;
+  border-radius: 6px !important;
 }
 
 /* New Workspace action item */
 .midori-workspace-new-item {
-  font-weight: 600 !important;
-  opacity: 0.85 !important;
+  font-weight: 620 !important;
+  opacity: 0.9 !important;
 }
 
 /* Manage item — subtle */
 .midori-workspace-manage-item {
   font-size: 12px !important;
-  opacity: 0.65 !important;
+  opacity: 0.7 !important;
 }

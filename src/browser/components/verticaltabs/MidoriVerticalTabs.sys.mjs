@@ -424,6 +424,24 @@ toolbar .toolbarbutton-1 {
    MIDORI VERTICAL TABS — Flat Design layout
    ===================================================================== */
 
+/* --- Sidebar hierarchy helpers (workspace rail + tabs area) --- */
+#vertical-tabs:has(#midori-workspace-rail) #tabbrowser-tabs {
+  padding-top: 6px !important;
+}
+
+#vertical-tabs:has(#midori-workspace-rail)
+  #tabbrowser-tabs[orient="vertical"][expanded]::before {
+  content: "Tabs";
+  display: block;
+  margin: 0 8px 6px !important;
+  padding: 0 6px !important;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.68;
+}
+
 /* --- Content area separation (flat border, no glass) --- */
 :root:not([inDOMFullscreen="true"]):not([customizing]) {
   #tabbrowser-tabbox {

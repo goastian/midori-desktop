@@ -43,6 +43,7 @@ const WORKSPACE_ATTR = 'midori-workspace-id';
 const STYLE_ID = 'midori-workspaces-style';
 const SELECTOR_ID = 'midori-workspace-selector';
 const POPUP_ID = 'midori-workspace-popup';
+const VERTICAL_RAIL_ID = 'midori-workspace-rail';
 const INDICATOR_ID = 'midori-workspace-indicator';
 const INDICATOR_ICON_ID = 'midori-workspace-indicator-icon';
 const INDICATOR_NAME_ID = 'midori-workspace-indicator-name';
@@ -506,15 +507,50 @@ export const MidoriWorkspaces = {
       return false;
     }
 
-    // Create workspace strip container — inserted as FIRST child of #vertical-tabs
-    // so it appears above the tabs, not below them.
+    // Create a dedicated vertical rail so workspaces are clearly separate from tabs.
+    const rail = doc.createXULElement('vbox');
+    rail.id = VERTICAL_RAIL_ID;
+    rail.className = 'midori-workspace-rail';
+
+    const indicator = doc.createXULElement('toolbarbutton');
+    indicator.id = INDICATOR_ID;
+    indicator.className = 'midori-workspace-indicator toolbarbutton-1';
+    indicator.setAttribute('tooltiptext', 'Workspaces - Click to switch workspace');
+
+    const iconEl = doc.createXULElement('label');
+    iconEl.id = INDICATOR_ICON_ID;
+    iconEl.className = 'midori-workspace-indicator-icon';
+    iconEl.setAttribute('value', '\uD83C\uDFE0');
+
+    const nameEl = doc.createXULElement('label');
+    nameEl.id = INDICATOR_NAME_ID;
+    nameEl.className = 'midori-workspace-indicator-name';
+    nameEl.setAttribute('value', 'Workspaces');
+
+    const chevronEl = doc.createXULElement('label');
+    chevronEl.className = 'midori-workspace-indicator-chevron';
+    chevronEl.setAttribute('value', '\u25BE');
+
+    indicator.appendChild(iconEl);
+    indicator.appendChild(nameEl);
+    indicator.appendChild(chevronEl);
+
+    indicator.addEventListener('command', () => {
+      this._showIndicatorPopup(win, state, indicator);
+    });
+
+    rail.appendChild(indicator);
+
+    // Create workspace strip container and place it under the indicator.
     const container = doc.createXULElement('hbox');
     container.id = QUICK_ICONS_ID;
     container.className = 'midori-workspace-quick-icons';
+    rail.appendChild(container);
 
     // Insert before first child (above tabs)
-    verticalTabs.insertBefore(container, verticalTabs.firstChild);
+    verticalTabs.insertBefore(rail, verticalTabs.firstChild);
 
+    this._updateIndicator(doc, state);
     this._updateQuickIcons(win, state);
 
     // --- Pre-create popup attached to mainPopupSet for reuse ---
@@ -551,7 +587,7 @@ export const MidoriWorkspaces = {
       });
     }
     this._populatePopup(win, state);
-    popup.openPopup(anchorNode, 'before_start', 0, 0, false, false);
+    popup.openPopup(anchorNode, 'after_start', 0, 0, false, false);
   },
 
   /**
@@ -571,10 +607,15 @@ export const MidoriWorkspaces = {
 
     const iconEl = doc.getElementById(INDICATOR_ICON_ID);
     if (iconEl) {
-      iconEl.setAttribute('label', emoji);
+      iconEl.setAttribute('value', emoji);
       // Store current icon data as CSS variable for potential styling
       indicator.style.setProperty('--midori-workspace-emoji', `"${emoji}"`);
     }
+
+    indicator.setAttribute(
+      'tooltiptext',
+      `Workspace: ${current.name} - Click to switch or manage workspaces`
+    );
   },
 
   /**
@@ -595,7 +636,7 @@ export const MidoriWorkspaces = {
     for (const ws of workspaces) {
       const btn = doc.createXULElement('toolbarbutton');
       btn.className = 'midori-workspace-quick-btn toolbarbutton-1';
-      btn.setAttribute('tooltiptext', ws.name);
+      btn.setAttribute('tooltiptext', `Switch to workspace: ${ws.name}`);
       btn.setAttribute('label', getEmojiForIcon(ws.icon));
 
       if (ws.id === selectedId) {
@@ -621,7 +662,7 @@ export const MidoriWorkspaces = {
     if (workspaces.length < MAX_WORKSPACES) {
       const addBtn = doc.createXULElement('toolbarbutton');
       addBtn.className = 'midori-workspace-quick-btn midori-workspace-add-btn toolbarbutton-1';
-      addBtn.setAttribute('tooltiptext', 'New Workspace');
+      addBtn.setAttribute('tooltiptext', 'Create new workspace');
       addBtn.setAttribute('label', '+');
       addBtn.addEventListener('command', () => {
         this._showCreateDialog(win, state);
@@ -632,6 +673,8 @@ export const MidoriWorkspaces = {
 
   _removeUI(win) {
     const doc = win.document;
+    const verticalRail = doc.getElementById(VERTICAL_RAIL_ID);
+    if (verticalRail) verticalRail.remove();
     const selector = doc.getElementById(SELECTOR_ID);
     if (selector) selector.remove();
     const indicator = doc.getElementById(INDICATOR_ID);
