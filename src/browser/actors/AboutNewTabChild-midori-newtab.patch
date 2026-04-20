@@ -1,5 +1,5 @@
 diff --git a/browser/actors/AboutNewTabChild.sys.mjs b/browser/actors/AboutNewTabChild.sys.mjs
-index 8c90ee5fd4..c404b902a8 100644
+index 8c90ee5fd4e4b8c9196143735ace0e0f2783087c..c404b902a814f7fff6acc74d445fc881ef5491d9 100644
 --- a/browser/actors/AboutNewTabChild.sys.mjs
 +++ b/browser/actors/AboutNewTabChild.sys.mjs
 @@ -46,6 +46,15 @@ export class AboutNewTabChild extends RemotePageChild {

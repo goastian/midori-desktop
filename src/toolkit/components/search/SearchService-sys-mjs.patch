@@ -1,17 +1,15 @@
 diff --git a/toolkit/components/search/SearchService.sys.mjs b/toolkit/components/search/SearchService.sys.mjs
-index f06d2a2d08..6dd781a77b 100644
+index f06d2a2d080e88d17a5e74084bfa14178da22637..6dd781a77bc2f729732f16ba3a45132066e4e330 100644
 --- a/toolkit/components/search/SearchService.sys.mjs
 +++ b/toolkit/components/search/SearchService.sys.mjs
-@@ -2796,13 +2796,50 @@ export const SearchService = new (class SearchService {
- 
-  for (let [key, value] of Object.entries(searchEngineSelectorProperties)) {
-    this._settings.setMetaDataAttribute(key, value);
-  }
+@@ -2798,9 +2798,46 @@ export const SearchService = new (class SearchService {
+       this._settings.setMetaDataAttribute(key, value);
+     }
  
 -    return this.#engineSelector.fetchEngineConfiguration(
 +    let refinedConfig = await this.#engineSelector.fetchEngineConfiguration(
-    searchEngineSelectorProperties
-  );
+       searchEngineSelectorProperties
+     );
 +
 +    return this.#enforceAstiangoOnlyConfiguration(refinedConfig);
 +  }
@@ -52,13 +50,9 @@ index f06d2a2d08..6dd781a77b 100644
    }
  
    #setDefaultFromSelector(refinedConfig) {
-  this.#searchDefault = refinedConfig.appDefaultEngineId;
-  this.#searchPrivateDefault = refinedConfig.appPrivateDefaultEngineId;
-@@ -3945,15 +3982,45 @@ class SearchDefaultOverrideAllowlistHandler {
-  }
- 
-  let searchProvider =
-    extension.manifest.chrome_settings_overrides.search_provider;
+@@ -3947,11 +3984,41 @@ class SearchDefaultOverrideAllowlistHandler {
+     let searchProvider =
+       extension.manifest.chrome_settings_overrides.search_provider;
  
 +    // Normalize legacy providers that embed query parameters directly in
 +    // `search_url` so comparisons remain stable across format migrations.
@@ -84,7 +78,7 @@ index f06d2a2d08..6dd781a77b 100644
 +
 +    searchProvider = normalizeProvider(searchProvider);
 +
-  return entry.urls.some(
+     return entry.urls.some(
 -      e =>
 -        searchProvider.search_url == e.search_url &&
 -        searchProvider.search_url_get_params == e.search_url_get_params &&
@@ -99,10 +93,6 @@ index f06d2a2d08..6dd781a77b 100644
 +            normalizedEntry.search_url_post_params
 +        );
 +      }
-  );
+     );
    }
- 
-   /**
-    * Determines if an existing search engine is allowed to override a default one
-
  

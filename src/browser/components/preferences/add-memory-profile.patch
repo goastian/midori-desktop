@@ -50,7 +50,7 @@ index f23beeb5c793bc7a6cbea4512a5f2cd379ec98c7..a7cc6c6a9b36bd1f7cfec34d8940d0f3
  <html:setting-group groupid="browsing" data-category="paneGeneral" hidden="true"/>
  
 diff --git a/browser/components/preferences/main.js b/browser/components/preferences/main.js
-index e77dfebdf3a15033182eeae6eccd44a63aae3740..06f78df7d0c7f021cb696bb19f38ab6e17a91faf 100644
+index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c0a9f4f4d 100644
 --- a/browser/components/preferences/main.js
 +++ b/browser/components/preferences/main.js
 @@ -27,6 +27,7 @@ ChromeUtils.defineESModuleGetters(this, {
@@ -71,6 +71,146 @@ index e77dfebdf3a15033182eeae6eccd44a63aae3740..06f78df7d0c7f021cb696bb19f38ab6e
    // Files and Applications
    { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
  
+@@ -3034,7 +3038,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "browserLayoutHorizontalTabs",
+             value: "false",
+-            l10nId: "browser-layout-horizontal-tabs2",
++            l10nId: "browser-layout-horizontal-tabs",
+             controlAttrs: {
+               class: "setting-chooser-item",
+               imagesrc:
+@@ -3044,7 +3048,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "browserLayoutVerticalTabs",
+             value: "true",
+-            l10nId: "browser-layout-vertical-tabs2",
++            l10nId: "browser-layout-vertical-tabs",
+             controlAttrs: {
+               class: "setting-chooser-item",
+               imagesrc:
+@@ -3055,7 +3059,7 @@ SettingGroupManager.registerGroups({
+       },
+       {
+         id: "browserLayoutShowSidebar",
+-        l10nId: "browser-layout-show-sidebar2",
++        l10nId: "browser-layout-show-sidebar",
+       },
+     ],
+   },
+@@ -4047,7 +4051,7 @@ SettingGroupManager.registerGroups({
+   },
+   permissions: {
+     id: "permissions",
+-    l10nId: "permissions-header3",
++    l10nId: "permissions-header",
+     headingLevel: 2,
+     items: [
+       {
+@@ -4060,7 +4064,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "locationSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-location2",
++            l10nId: "permissions-location",
+             controlAttrs: {
+               ".iconSrc": "chrome://browser/skin/notification-icons/geo.svg",
+               "search-l10n-ids":
+@@ -4070,7 +4074,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "cameraSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-camera2",
++            l10nId: "permissions-camera",
+             controlAttrs: {
+               ".iconSrc": "chrome://browser/skin/notification-icons/camera.svg",
+               "search-l10n-ids":
+@@ -4080,7 +4084,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "localHostSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-localhost2",
++            l10nId: "permissions-localhost",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/local-host.svg",
+@@ -4091,7 +4095,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "localNetworkSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-local-network2",
++            l10nId: "permissions-local-network",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/local-network.svg",
+@@ -4102,7 +4106,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "microphoneSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-microphone2",
++            l10nId: "permissions-microphone",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/microphone.svg",
+@@ -4113,7 +4117,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "speakerSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-speaker2",
++            l10nId: "permissions-speaker",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/speaker.svg",
+@@ -4124,7 +4128,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "notificationSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-notification2",
++            l10nId: "permissions-notification",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/desktop-notification.svg",
+@@ -4135,7 +4139,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "autoplaySettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-autoplay2",
++            l10nId: "permissions-autoplay",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/autoplay-media.svg",
+@@ -4146,7 +4150,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "xrSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-xr2",
++            l10nId: "permissions-xr",
+             controlAttrs: {
+               ".iconSrc": "chrome://browser/skin/notification-icons/xr.svg",
+               "search-l10n-ids":
+@@ -4162,7 +4166,7 @@ SettingGroupManager.registerGroups({
+         items: [
+           {
+             id: "popupPolicyButton",
+-            l10nId: "permissions-block-popups-exceptions-button2",
++            l10nId: "permissions-block-popups-exceptions-button",
+             control: "moz-box-button",
+             controlAttrs: {
+               "search-l10n-ids":
+@@ -4173,11 +4177,11 @@ SettingGroupManager.registerGroups({
+       },
+       {
+         id: "warnAddonInstall",
+-        l10nId: "permissions-addon-install-warning3",
++        l10nId: "permissions-addon-install-warning",
+         items: [
+           {
+             id: "addonExceptions",
+-            l10nId: "permissions-addon-exceptions2",
++            l10nId: "permissions-addon-exceptions",
+             control: "moz-box-button",
+             controlAttrs: {
+               "search-l10n-ids":
 @@ -5362,6 +5366,29 @@ var gMainPane = {
      initSettingGroup("profiles");
      initSettingGroup("profilePane");

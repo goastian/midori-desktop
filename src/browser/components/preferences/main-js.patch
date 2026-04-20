@@ -2,6 +2,24 @@ diff --git a/browser/components/preferences/main.js b/browser/components/prefere
 index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c0a9f4f4d 100644
 --- a/browser/components/preferences/main.js
 +++ b/browser/components/preferences/main.js
+@@ -27,6 +27,7 @@ ChromeUtils.defineESModuleGetters(this, {
+   FormAutofillPreferences:
+     "resource://autofill/FormAutofillPreferences.sys.mjs",
+   getMozRemoteImageURL: "moz-src:///toolkit/modules/FaviconUtils.sys.mjs",
++  MemoryProfileManager: "resource:///modules/MemoryProfileManager.sys.mjs",
+ });
+ 
+ // Constants & Enumeration Values
+@@ -204,6 +205,9 @@ Preferences.addAll([
+   { id: "dom.ipc.processCount.web", type: "int" },
+   { id: "layers.acceleration.disabled", type: "bool", inverted: true },
+ 
++  // Midori Memory Profile
++  { id: "midori.memory.profile", type: "int" },
++
+   // Files and Applications
+   { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
+ 
 @@ -3034,7 +3038,7 @@ SettingGroupManager.registerGroups({
            {
              id: "browserLayoutHorizontalTabs",
@@ -142,3 +160,33 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              control: "moz-box-button",
              controlAttrs: {
                "search-l10n-ids":
+@@ -5362,6 +5366,29 @@ var gMainPane = {
+     initSettingGroup("profiles");
+     initSettingGroup("profilePane");
+ 
++    // Midori Center button handler
++    let centerBtn = document.getElementById("openMidoriCenter");
++    if (centerBtn) {
++      centerBtn.addEventListener("command", function () {
++        let mainWindow = window.browsingContext.topChromeWindow;
++        mainWindow.openTrustedLinkIn("about:center", "tab");
++      });
++    }
++
++    // Midori Memory Profile handler
++    let memoryMenulist = document.getElementById("memoryProfileMenulist");
++    if (memoryMenulist) {
++      memoryMenulist.addEventListener("command", function () {
++        let profileIndex = parseInt(memoryMenulist.value, 10);
++        try {
++          MemoryProfileManager.applyProfile(profileIndex);
++          console.log("MemoryProfileManager: Profile changed to " + profileIndex);
++        } catch (e) {
++          console.error("MemoryProfileManager: Failed to apply profile", e);
++        }
++      });
++    }
++
+     setEventListener("manageBrowserLanguagesButton", "command", function () {
+       gMainPane.showBrowserLanguagesSubDialog({ search: false });
+     });
