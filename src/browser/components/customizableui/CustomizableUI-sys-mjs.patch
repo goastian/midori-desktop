@@ -1,5 +1,5 @@
 diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
-index 4aca0aa0c90603e09b58395debb62875c018a8cf..07ddea36dcfcda1a27aa597ac201bef559d15780 100644
+index 4aca0aa0c90603e09b58395debb62875c018a8cf..13b64ccb14de777599bc1cec59161fa7a1eabcb2 100644
 --- a/browser/components/customizableui/CustomizableUI.sys.mjs
 +++ b/browser/components/customizableui/CustomizableUI.sys.mjs
 @@ -18,6 +18,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
@@ -10,15 +10,16 @@ index 4aca0aa0c90603e09b58395debb62875c018a8cf..07ddea36dcfcda1a27aa597ac201bef5
    ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
  });
  
-@@ -28,6 +29,7 @@ ChromeUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
+@@ -28,6 +29,8 @@ ChromeUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
  });
  
  const kDefaultThemeID = "default-theme@mozilla.org";
 +const kMidoriPrivacyID = "midori-protection@astian.org";
++const kMidoriVPNID = "midorivpn@astian.org";
  
  const kSpecialWidgetPfx = "customizableui-special-";
  
-@@ -353,6 +355,7 @@ var CustomizableUIInternal = {
+@@ -353,6 +356,7 @@ var CustomizableUIInternal = {
        false
      );
  
@@ -26,15 +27,17 @@ index 4aca0aa0c90603e09b58395debb62875c018a8cf..07ddea36dcfcda1a27aa597ac201bef5
      let navbarPlacements = [
        lazy.sidebarRevampEnabled ? "sidebar-button" : null,
        "back-button",
-@@ -363,6 +366,7 @@ var CustomizableUIInternal = {
+@@ -363,7 +367,9 @@ var CustomizableUIInternal = {
          : "home-button",
        "spring",
        "vertical-spacer",
 +      `${makeWidgetId(kMidoriPrivacyID)}-browser-action`,
        "urlbar-container",
++      `${makeWidgetId(kMidoriVPNID)}-browser-action`,
        "spring",
        "downloads-button",
-@@ -379,7 +383,6 @@ var CustomizableUIInternal = {
+       AppConstants.MOZ_DEV_EDITION ? "developer-button" : null,
+@@ -379,7 +385,6 @@ var CustomizableUIInternal = {
          overflowable: true,
          defaultPlacements: navbarPlacements,
          verticalTabsDefaultPlacements: [
@@ -42,7 +45,7 @@ index 4aca0aa0c90603e09b58395debb62875c018a8cf..07ddea36dcfcda1a27aa597ac201bef5
            "alltabs-button",
          ],
          defaultCollapsed: false,
-@@ -404,7 +407,6 @@ var CustomizableUIInternal = {
+@@ -404,7 +409,6 @@ var CustomizableUIInternal = {
        {
          type: CustomizableUI.TYPE_TOOLBAR,
          defaultPlacements: [
@@ -50,7 +53,7 @@ index 4aca0aa0c90603e09b58395debb62875c018a8cf..07ddea36dcfcda1a27aa597ac201bef5
            "tabbrowser-tabs",
            "new-tab-button",
            "alltabs-button",
-@@ -757,18 +759,6 @@ var CustomizableUIInternal = {
+@@ -757,18 +761,6 @@ var CustomizableUIInternal = {
        }
      }
  
