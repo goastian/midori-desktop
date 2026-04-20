@@ -48,7 +48,11 @@ pref("intl.multilingual.enabled", true, locked);
 pref("intl.multilingual.downloadEnabled", true, locked);
 pref("intl.multilingual.liveReload", true, locked);
 pref("intl.multilingual.liveReloadBidirectional", false, locked);
-pref("app.update.langpack.enabled", true, locked);
+// Langpack updates are part of the app-update pipeline (see bug #183):
+// even with `app.update.enabled=false` they would still trigger silent
+// network checks against MOZ_APPUPDATE_HOST and surface an "update
+// available" badge on the hamburger button. Keep them off and locked.
+pref("app.update.langpack.enabled", false, locked);
 
 // Disable sidebar firefox default
 pref("browser.sidebar.enabled", false);
@@ -58,21 +62,13 @@ pref("browser.newtabpage.activity-stream.go.background.image", false);
 // MacOS translucency preference (disabled for testing only) 
 pref("pulse.mac-translucent", false);
 
-// Prefs from browser/branding/unofficial/prefs/firefox-branding.js:
-
-// The time interval between checks for a new version (in seconds)
-pref("app.update.interval", 86400); // 24 hours
-// Give the user x seconds to react before showing the big UI. default=24 hours
-pref("app.update.promptWaitTime", 86400);
-
-// The number of days a binary is permitted to be old
-// without checking for an update.  This assumes that
-// app.update.checkInstallTime is true.
-pref("app.update.checkInstallTime.days", 2);
-
-// Give the user x seconds to reboot before showing a badge on the hamburger
-// button. default=immediately
-pref("app.update.badgeWaitTime", 0);
+// NOTE: app-update cadence prefs (app.update.interval, promptWaitTime,
+// checkInstallTime.days, badgeWaitTime) are intentionally NOT set here.
+// They only matter when the updater is enabled, and leaving them at
+// non-zero values was letting the hamburger-menu update badge reappear
+// whenever anything briefly re-enabled the update service (bug #183).
+// All update surfaces are disabled + locked in the section near the
+// bottom of this file ("DISABLE AUTOMATIC UPDATES ...").
 
 // Number of usages of the web console.
 // If this is less than 5, then pasting code into the web console is disabled
@@ -143,9 +139,9 @@ pref('dom.webmidi.enabled', true);
 pref("extensions.getAddons.search.browseURL", "https://addons.mozilla.org/%LOCALE%/firefox/search?q=%TERMS%&platform=%OS%&appver=%PLATFORMVERSION%");
 pref("extensions.getAddons.langpacks.url", "https://services.addons.mozilla.org/api/v4/addons/language-tools/?app=firefox&type=language&appversion=%PLATFORMVERSION%");
 
-// Check for system add-on updates.
+// Check for system add-on updates. The `enabled` flag is locked off lower
+// in this file alongside the rest of the update-surface prefs (bug #183).
 pref("extensions.systemAddon.update.url", "https://update.astian.org/browser/addons/%CHANNEL%/update.xml", locked);
-pref("extensions.systemAddon.update.enabled", true);
 
 //Update Routes (Download page for manual download and Temperoraliy Discord Invite Link for Release Notes)
 pref("app.update.url.manual", "https://astian.org/midori-browser/download", locked);
@@ -376,12 +372,28 @@ pref('signon.firefoxRelay.base_url', '', locked);
 // ============================================================================
 // DISABLE AUTOMATIC UPDATES POINTING TO MOZILLA SERVERS
 // ============================================================================
+// Midori does not ship an app-update server. Every knob that can cause a
+// network check or surface an "update available" notification is locked off
+// here. See bug #183 for the Windows regression this is meant to fix.
 pref('app.update.enabled', false, locked);
 pref('app.update.auto', false, locked);
 pref('app.update.staging.enabled', false, locked);
 pref('app.update.background.scheduling.enabled', false, locked);
 pref('app.update.BITS.enabled', false, locked);
-pref('extensions.update.autoUpdateDefault', true); // keep extension auto-updates
+pref('app.update.service.enabled', false, locked);
+pref('app.update.silent', false, locked);
+pref('app.update.checkInstallTime', false, locked);
+pref('app.update.notifyDuringDownload', false, locked);
+// Hard-neutralize the update URL so even if something briefly flips one of
+// the flags above, no request can ever leave the browser. A data: URL is
+// inert: the update service will fail to parse it as an update manifest
+// and silently give up without touching the hamburger badge UI.
+pref('app.update.url', 'data:text/plain,', locked);
+// Keep extension auto-updates working (silent, no doorhanger). System
+// add-ons ship security fixes; lock the flag so users/profiles can't flip
+// it and trigger an unexpected "update available" toast.
+pref('extensions.update.autoUpdateDefault', true);
+pref('extensions.systemAddon.update.enabled', true, locked);
 pref('extensions.getAddons.cache.enabled', false, locked);
 
 // ============================================================================
