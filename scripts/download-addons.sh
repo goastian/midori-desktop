@@ -119,6 +119,7 @@ for ADDON_KEY in $ADDON_KEYS; do
     # Read addon config
     ADDON_ID=$(jq -r ".addons[\"$ADDON_KEY\"].id" "$AMELIA_JSON")
     PLATFORM=$(jq -r ".addons[\"$ADDON_KEY\"].platform // \"unknown\"" "$AMELIA_JSON")
+    EXPECTED_VERSION=$(jq -r ".addons[\"$ADDON_KEY\"].version // \"\"" "$AMELIA_JSON")
     ADDON_DIR="$EXTENSIONS_DIR/$ADDON_KEY"
 
     # Check if addon already has files (not just empty dir)
@@ -127,8 +128,22 @@ for ADDON_KEY in $ADDON_KEYS; do
         FILE_COUNT=$(find "$ADDON_DIR" -type f ! -name "moz.build" ! -name "jar.mn" | wc -l)
     fi
 
-    if [[ "$FILE_COUNT" -gt 0 ]] && [[ "$FORCE" != "true" ]]; then
-        echo "INFO: $ADDON_KEY already has $FILE_COUNT files. Skipping download (use --force to re-download)."
+    # Compare installed manifest version with the version requested in amelia.json.
+    # Strip a leading "v" from amelia's version (e.g. "v1.0.14" -> "1.0.14") because
+    # manifest.json version fields never carry that prefix.
+    VERSION_MATCHES=false
+    if [[ "$FILE_COUNT" -gt 0 ]] && [[ -n "$EXPECTED_VERSION" ]] && [[ -f "$ADDON_DIR/manifest.json" ]]; then
+        INSTALLED_VERSION=$(jq -r '.version // ""' "$ADDON_DIR/manifest.json" 2>/dev/null)
+        NORMALIZED_EXPECTED="${EXPECTED_VERSION#v}"
+        if [[ -n "$INSTALLED_VERSION" ]] && [[ "$INSTALLED_VERSION" == "$NORMALIZED_EXPECTED" ]]; then
+            VERSION_MATCHES=true
+        else
+            echo "INFO: $ADDON_KEY version mismatch (installed=${INSTALLED_VERSION:-unknown}, expected=${NORMALIZED_EXPECTED}). Re-downloading."
+        fi
+    fi
+
+    if [[ "$FILE_COUNT" -gt 0 ]] && [[ "$VERSION_MATCHES" == "true" ]] && [[ "$FORCE" != "true" ]]; then
+        echo "INFO: $ADDON_KEY already at version $INSTALLED_VERSION. Skipping download (use --force to re-download)."
     else
         # Resolve download URL based on platform
         DOWNLOAD_URL=""
