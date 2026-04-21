@@ -15,6 +15,6 @@ index 8c90ee5fd4e4b8c9196143735ace0e0f2783087c..c404b902a814f7fff6acc74d445fc881
 +        return;
 +      }
 +
-       if (!lazy.NEWTAB_SELF_LOADING) {
-         const debug =
-           !AppConstants.RELEASE_OR_BETA && lazy.ACTIVITY_STREAM_DEBUG;
+       // @nova-cleanup(remove-conditional): Remove Nova CSS swapping logic
+       if (lazy.NOVA_ENABLED) {
+         const doc = this.contentWindow.document;

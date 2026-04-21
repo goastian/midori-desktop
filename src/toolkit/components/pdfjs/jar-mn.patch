@@ -2,8 +2,9 @@ diff --git a/toolkit/components/pdfjs/jar.mn b/toolkit/components/pdfjs/jar.mn
 index 2e177a0a8c92bb1385ddcc1581a5cdd39e447ba6..b7c88efe2255126ce3963dcea575244732c12448 100644
 --- a/toolkit/components/pdfjs/jar.mn
 +++ b/toolkit/components/pdfjs/jar.mn
-@@ -28,6 +28,7 @@ pdfjs.jar:
+@@ -28,7 +28,8 @@ pdfjs.jar:
   content/PdfjsChild.sys.mjs (content/PdfjsChild.sys.mjs)
+  content/PdfjsContextMenu.sys.mjs (content/PdfjsContextMenu.sys.mjs)
   content/web/viewer.html (content/web/viewer.html)
   content/web/viewer.css (content/web/viewer.css)
 + content/web/midori-pdfjs.css (content/web/midori-pdfjs.css)

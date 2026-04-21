@@ -127,7 +127,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
                "search-l10n-ids":
 @@ -4080,7 +4084,7 @@ SettingGroupManager.registerGroups({
            {
-             id: "localHostSettingsButton",
+             id: "loopbackNetworkSettingsButton",
              control: "moz-box-button",
 -            l10nId: "permissions-localhost2",
 +            l10nId: "permissions-localhost",
@@ -191,8 +191,8 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
 @@ -4162,7 +4166,7 @@ SettingGroupManager.registerGroups({
          items: [
            {
-             id: "popupPolicyButton",
--            l10nId: "permissions-block-popups-exceptions-button2",
+             id: "popupAndRedirectPolicyButton",
+-            l10nId: "permissions-block-popups-exceptions-button4",
 +            l10nId: "permissions-block-popups-exceptions-button",
              control: "moz-box-button",
              controlAttrs: {

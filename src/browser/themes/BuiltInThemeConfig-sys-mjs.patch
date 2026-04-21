@@ -37,7 +37,7 @@ index e05847bd9fa98b8edd1acfc8491b1e9f263d0e12..783544bc7417d86e86c98904ed7d597a
 -    "firefox-alpenglow@mozilla.org",
 +    "midori-theme-sky-crystal@midori.astian.org",
      {
--      version: "1.5.1",
+-      version: "1.5.2",
 -      path: "resource://builtin-themes/alpenglow/",
 +      version: "1.0.0",
 +      path: "resource://builtin-themes/midori-theme-sky-crystal/",
