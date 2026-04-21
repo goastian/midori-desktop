@@ -1,8 +1,7 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "midori-tab",
-  "description": "A beautiful, customizable new tab with smart search, workspaces, bookmarks and command palette.",
-  "version": "1.0.7",
+  "description": "A beautiful, customizable new tab with smart search, workspaces and bookmarks.",
   "author": "Im-Jota",
   "chrome_url_overrides": {
     "newtab": "index.html"
@@ -11,63 +10,69 @@
     "storage",
     "identity",
     "tabs",
-    "history",
+    "activeTab",
     "bookmarks",
-    "scripting"
-  ],
-  "host_permissions": [
+    "history",
+    "browsingData",
+    "search",
     "https://api.rss2json.com/*",
     "https://api.unsplash.com/*",
-    "<all_urls>"
+    "https://api.github.com/*",
+    "https://duckduckgo.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://marketplace.astian.org/*"
   ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": false
+  },
   "commands": {
-    "toggle-command-palette": {
+    "open-omni": {
       "suggested_key": {
-        "default": "Ctrl+Alt+Space",
-        "mac": "Command+Alt+Space"
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
       },
-      "description": "Abrir paleta de comandos"
+      "description": "Open command menu"
     }
   },
   "content_scripts": [
     {
       "matches": [
-        "http://*/*",
-        "https://*/*"
+        "<all_urls>"
       ],
+      "run_at": "document_idle",
       "js": [
-        "content-script.js"
+        "omni-content.js"
       ],
-      "run_at": "document_end",
       "all_frames": false
     }
+  ],
+  "web_accessible_resources": [
+    "globe.svg",
+    "icons/*",
+    "assets/*"
   ],
   "icons": {
     "16": "icons/16.png",
     "48": "icons/48.png",
     "128": "icons/128.png"
   },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "content-script-palette.js"
-      ],
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ]
-    }
-  ],
-  "background": {
-    "scripts": [
-      "background.js"
-    ],
-    "type": "module"
+  "browser_action": {
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    },
+    "default_title": "Open Midori command menu"
   },
   "browser_specific_settings": {
     "gecko": {
       "id": "midoritabs@astian.org",
       "strict_min_version": "109.0"
     }
-  }
+  },
+  "version": "1.0.14"
 }

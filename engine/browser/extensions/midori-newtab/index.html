@@ -6,9 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vite + Vue</title>
     <script type="module" crossorigin src="/index.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DJq5EpTA.css">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-BWJKHpfS.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CoIuj5wv.css">
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      // Apply theme instantly to prevent FOUC (flash of unstyled content)
+      try {
+        var raw = localStorage.getItem('tabStore');
+        if (raw) {
+          var s = JSON.parse(raw);
+          var theme = s.theme || 'light';
+          if (s.autoTheme) {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+        }
+      } catch(e) {}
+    </script>
   </body>
 </html>
