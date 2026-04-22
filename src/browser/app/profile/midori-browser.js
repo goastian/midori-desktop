@@ -443,3 +443,14 @@ pref('browser.promo.focus.enabled', false, locked);
 pref('browser.discovery.enabled', false, locked);
 pref('extensions.htmlaboutaddons.recommendations.enabled', false, locked);
 pref('extensions.getAddons.showPane', false, locked);
+
+// ============================================================================
+// PDF VIEWER STABILITY
+// ============================================================================
+// pdf.js runs as a chrome/resource script. On constrained systems (and under
+// the lowMemory profile where content processes are limited to 1), rendering
+// large PDFs can exceed the default slow-script timeout, causing the viewer
+// to be killed repeatedly and the tab to be torn down. Bumping these values
+// gives the viewer enough head-room to finish rendering.
+pref('dom.max_chrome_script_run_time', 60);
+pref('dom.max_ext_content_script_run_time', 30);
