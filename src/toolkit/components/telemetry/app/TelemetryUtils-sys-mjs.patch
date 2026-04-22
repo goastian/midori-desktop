@@ -1,0 +1,14 @@
+diff --git a/toolkit/components/telemetry/app/TelemetryUtils.sys.mjs b/toolkit/components/telemetry/app/TelemetryUtils.sys.mjs
+index 51525bc8f94da207c186ee743a5e23001e0bbd66..072088e60125aeb2a848e9c7eb78461e42d33cff 100644
+--- a/toolkit/components/telemetry/app/TelemetryUtils.sys.mjs
++++ b/toolkit/components/telemetry/app/TelemetryUtils.sys.mjs
+@@ -128,6 +128,9 @@ export var TelemetryUtils = {
+    * Takes a date and returns it truncated to a date with daily precision.
+    */
+   truncateToDays(date) {
++    if (!date || typeof date.getFullYear !== "function") {
++      return null;
++    }
+     return new Date(
+       date.getFullYear(),
+       date.getMonth(),

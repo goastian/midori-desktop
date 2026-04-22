@@ -1,0 +1,20 @@
+diff --git a/browser/modules/FaviconLoader.sys.mjs b/browser/modules/FaviconLoader.sys.mjs
+index c4358f549ae602b31fa5989cc8aee32f770140c3..8c2b898ab79dba72925e979082c366ba4db10078 100644
+--- a/browser/modules/FaviconLoader.sys.mjs
++++ b/browser/modules/FaviconLoader.sys.mjs
+@@ -433,7 +433,14 @@ function extractIconSize(aSizes) {
+  */
+ function getLinkIconURI(aLink) {
+   let targetDoc = aLink.ownerDocument;
+-  let uri = Services.io.newURI(aLink.href, targetDoc.characterSet);
++  let uri;
++  try {
++    uri = Services.io.newURI(aLink.href, targetDoc.characterSet);
++  } catch (e) {
++    // Malformed favicon href (e.g. empty, bad scheme, or otherwise invalid).
++    // Returning null lets callers gracefully skip this icon.
++    return null;
++  }
+   try {
+     uri = uri.mutate().setUserPass("").finalize();
+   } catch (e) {
