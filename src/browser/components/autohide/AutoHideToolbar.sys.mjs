@@ -22,6 +22,9 @@ const MOUSE_REVEAL_ZONE_PX = 10;
 const WHEEL_HIDE_THRESHOLD = 40;
 const WHEEL_SHOW_THRESHOLD = -30;
 const IDLE_RESET_MS = 300;
+// Delay before re-measuring toolbox height to avoid getBoundingClientRect()
+// while a CSS transition is still running (avoids compositor sync stall).
+const HEIGHT_REMEASURE_DELAY_MS = 250;
 
 export const AutoHideToolbar = {
   _initialized: false,
@@ -97,8 +100,24 @@ export const AutoHideToolbar = {
         doc.documentElement.style.setProperty('--midori-toolbox-height', height + 'px');
       }
     };
-    // Initial measurement (defer to let layout settle)
-    win.setTimeout(updateToolboxHeight, 100);
+
+    // Track async handles so we can cancel them when the window is detached
+    let rafId = null;
+    let heightRemeasureTimer = null;
+
+    // Debounced height update — fires only after transitions have settled
+    const scheduleHeightUpdate = () => {
+      if (heightRemeasureTimer !== null) {
+        win.clearTimeout(heightRemeasureTimer);
+      }
+      heightRemeasureTimer = win.setTimeout(() => {
+        heightRemeasureTimer = null;
+        updateToolboxHeight();
+      }, HEIGHT_REMEASURE_DELAY_MS);
+    };
+
+    // Initial measurement: defer to let layout settle
+    win.setTimeout(updateToolboxHeight, 150);
 
     const state = {
       isHidden: false,
@@ -123,8 +142,10 @@ export const AutoHideToolbar = {
       if (win.fullScreen) return;
       const urlbar = doc.getElementById('urlbar');
       if (urlbar?.hasAttribute('focused')) return;
-      // Re-measure height before hiding (may have changed)
-      updateToolboxHeight();
+      // NOTE: Do NOT call updateToolboxHeight() here — getBoundingClientRect()
+      // inside a rAF callback during an active CSS transition causes a
+      // compositor sync deadlock in newer Firefox. Height is cached at
+      // attach-time and refreshed via scheduleHeightUpdate() after transitions.
       state.isHidden = true;
       toolbox.setAttribute(TOOLBOX_HIDDEN_ATTR, 'true');
     };
@@ -136,17 +157,19 @@ export const AutoHideToolbar = {
       state.accumulatedDelta += e.deltaY;
 
       // Reset accumulated delta after user stops scrolling
-      if (state.resetTimer) {
+      if (state.resetTimer !== null) {
         win.clearTimeout(state.resetTimer);
       }
       state.resetTimer = win.setTimeout(() => {
+        state.resetTimer = null;
         state.accumulatedDelta = 0;
       }, IDLE_RESET_MS);
 
       // Use rAF to batch visual updates for smoothness
       if (!state.rafPending) {
         state.rafPending = true;
-        win.requestAnimationFrame(() => {
+        rafId = win.requestAnimationFrame(() => {
+          rafId = null;
           state.rafPending = false;
           if (state.accumulatedDelta > WHEEL_HIDE_THRESHOLD) {
             hide();
@@ -203,13 +226,13 @@ export const AutoHideToolbar = {
     // --- Tab switch: always show toolbar ---
     const onTabSelect = () => {
       show();
-      updateToolboxHeight();
+      scheduleHeightUpdate();
     };
     win.gBrowser?.tabContainer?.addEventListener('TabSelect', onTabSelect);
 
     // --- Window resize: re-measure height ---
     const onResize = () => {
-      updateToolboxHeight();
+      scheduleHeightUpdate();
     };
     win.addEventListener('resize', onResize, { passive: true });
 
@@ -239,12 +262,31 @@ export const AutoHideToolbar = {
       onResize,
       show,
       browserPanel,
+      // Cancels all pending async work — called by _detachFromWindow
+      cancelPending: () => {
+        if (rafId !== null) {
+          win.cancelAnimationFrame(rafId);
+          rafId = null;
+          state.rafPending = false;
+        }
+        if (state.resetTimer !== null) {
+          win.clearTimeout(state.resetTimer);
+          state.resetTimer = null;
+        }
+        if (heightRemeasureTimer !== null) {
+          win.clearTimeout(heightRemeasureTimer);
+          heightRemeasureTimer = null;
+        }
+      },
     });
   },
 
   _detachFromWindow(win) {
     const listeners = this._windowListeners.get(win);
     if (!listeners) return;
+
+    // Cancel any in-flight rAF / timers before tearing down listeners
+    listeners.cancelPending?.();
 
     const doc = win.document;
     const toolbox = doc?.getElementById('navigator-toolbox');

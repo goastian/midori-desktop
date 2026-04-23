@@ -179,7 +179,6 @@ menupopup:not([position]) {
     box-shadow 0.15s ease !important;
   z-index: 1;
   position: relative;
-  will-change: margin-top, opacity;
 }
 
 #navigator-toolbox[midori-autohide-hidden="true"] {
@@ -188,36 +187,12 @@ menupopup:not([position]) {
   pointer-events: none !important;
 }
 
-/* Rounded corners on content area when toolbar is hidden */
-#navigator-toolbox[midori-autohide-hidden="true"] ~ #browser,
-#navigator-toolbox[midori-autohide-hidden="true"] ~ #browser #tabbrowser-tabpanels {
-  border-top-left-radius: 10px !important;
-  border-top-right-radius: 10px !important;
-  overflow: hidden !important;
-}
-
-/* Smooth transition for border-radius on content area */
-#navigator-toolbox[midori-autohide] ~ #browser,
-#navigator-toolbox[midori-autohide] ~ #browser #tabbrowser-tabpanels {
-  transition: border-radius 0.2s cubic-bezier(0.2, 0, 0, 1) !important;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-
 /* Never auto-hide in fullscreen (Firefox handles that) or customize mode */
 :root[inFullscreen] #navigator-toolbox[midori-autohide-hidden="true"],
 :root[customizing] #navigator-toolbox[midori-autohide-hidden="true"] {
   margin-top: 0 !important;
   opacity: 1 !important;
   pointer-events: auto !important;
-}
-
-:root[inFullscreen] #navigator-toolbox[midori-autohide-hidden="true"] ~ #browser,
-:root[inFullscreen] #navigator-toolbox[midori-autohide-hidden="true"] ~ #browser #tabbrowser-tabpanels,
-:root[customizing] #navigator-toolbox[midori-autohide-hidden="true"] ~ #browser,
-:root[customizing] #navigator-toolbox[midori-autohide-hidden="true"] ~ #browser #tabbrowser-tabpanels {
-  border-top-left-radius: 0 !important;
-  border-top-right-radius: 0 !important;
 }
 
 /* ====================================================================
