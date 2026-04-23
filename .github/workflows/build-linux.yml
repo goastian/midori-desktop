@@ -1,0 +1,181 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Build Linux
+
+on:
+  workflow_call:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: false
+        type: string
+        default: release
+      build_id:
+        required: false
+        type: string
+        default: ''
+      use_sccache:
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  linux-build:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    env:
+      MIDORI_RELEASE: 'true'
+      MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
+      SURFER_COMPAT: ${{ matrix.arch }}
+      SCCACHE_DIR: ~/.cache/sccache
+      RUSTC_WRAPPER: ${{ inputs.use_sccache && 'sccache' || '' }}
+      CARGO_INCREMENTAL: 0
+
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
+            /usr/share/swift /usr/local/.ghcup || true
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get autoremove -y 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup sccache
+        if: ${{ inputs.use_sccache }}
+        run: |
+          SCCACHE_VERSION="v0.8.1"
+          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          sudo mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/
+          sccache --version
+
+      - name: Restore sccache cache
+        if: ${{ inputs.use_sccache }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/sccache
+          key: sccache-linux-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            sccache-linux-${{ matrix.arch }}-
+
+      - name: Setup Rust
+        run: |
+          if [ -f .rust-toolchain ]; then
+            RUST_VERSION=$(cat .rust-toolchain)
+          else
+            RUST_VERSION="1.83"
+          fi
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$RUST_VERSION"
+          . "$HOME/.cargo/env"
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            rustup target add aarch64-unknown-linux-gnu
+          fi
+          rustc --version
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgtk-3-dev \
+            libdbus-glib-1-dev \
+            libxt-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libpython3-dev \
+            libdrm-dev \
+            libcurl4-openssl-dev \
+            libx11-xcb-dev \
+            nasm \
+            yasm \
+            clang \
+            lld \
+            llvm \
+            xvfb
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          fi
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Set brand
+        run: npm run brand
+
+      - name: Activate CI configuration
+        run: npm run ci -- --display-version ${{ inputs.display_version }}
+
+      - name: Download prepared source
+        uses: actions/download-artifact@v4
+        with:
+          name: midori.source.tar.zst
+
+      - name: Extract prepared source
+        run: |
+          mkdir -p engine
+          tar --use-compress-program=zstd -xf midori.source.tar.zst -C engine
+          rm midori.source.tar.zst
+
+      - name: Bootstrap
+        run: npm run bootstrap
+
+      - name: Build
+        env:
+          AMELIA_PLATFORM: linux
+        run: |
+          . "$HOME/.cargo/env"
+          if [ -n "${{ inputs.build_id }}" ]; then
+            export MOZ_BUILD_DATE="${{ inputs.build_id }}"
+          fi
+          export MIDORI_RELEASE=1
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            npm run build:linux-arm64
+          else
+            npm run build:linux-x64
+          fi
+
+      - name: Package
+        env:
+          AMELIA_PLATFORM: linux
+        run: |
+          export MIDORI_RELEASE=1
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            npm run package:linux-arm64 -- --verbose
+          else
+            npm run package:linux-x64 -- --verbose
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            dist/*.tar.xz
+            dist/*.mar
+            dist/update/
+          retention-days: 5
+          if-no-files-found: error

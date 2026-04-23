@@ -1,8 +1,0 @@
-[
-  [
-    "warning",
-    "multiple declarations in a single statement reduces readability",
-    "readability-isolate-declaration"
-  ],
-  { "reliability": "high" }
-]

@@ -1,0 +1,20 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+base_path: locales
+files:
+  - source: en-US/browser/browser/midori-general.ftl
+    translation: browser/browser/midori-general.ftl
+  - source: en-US/browser/browser/midori-split-view.ftl
+    translation: browser/browser/midori-split-view.ftl
+  - source: en-US/browser/browser/midori-vertical-tabs.ftl
+    translation: browser/browser/midori-vertical-tabs.ftl
+  - source: en-US/browser/browser/midori-welcome.ftl
+    translation: browser/browser/midori-welcome.ftl
+  - source: en-US/browser/browser/midori-workspaces.ftl
+    translation: browser/browser/midori-workspaces.ftl
+  - source: en-US/browser/browser/preferences/midori-preferences.ftl
+    translation: browser/browser/preferences/midori-preferences.ftl
+  - source: en-US/browser/browser/midori-folders.ftl
+    translation: browser/browser/midori-folders.ftl

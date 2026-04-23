@@ -1,0 +1,12 @@
+diff --git a/toolkit/components/pictureinpicture/content/player.xhtml b/toolkit/components/pictureinpicture/content/player.xhtml
+index 09c9c5000de96fcd4a9d26328408996540c2cbda..e1ea7a8ff6480ad6409e097ec5e34e9e9157c988 100644
+--- a/toolkit/components/pictureinpicture/content/player.xhtml
++++ b/toolkit/components/pictureinpicture/content/player.xhtml
+@@ -14,6 +14,7 @@
+     <meta charset="utf-8"/>
+     <meta http-equiv="Content-Security-Policy" content="default-src chrome:"/>
+     <link rel="stylesheet" href="chrome://global/skin/pictureinpicture/player.css"/>
++    <link rel="stylesheet" href="chrome://global/skin/pictureinpicture/midori-pip.css"/>
+     <link rel="localization" href="toolkit/pictureinpicture/pictureinpicture.ftl"/>
+     <link rel="localization" href="browser/browserSets.ftl"/>
+     <script src="chrome://global/content/pictureinpicture/player.js"></script>

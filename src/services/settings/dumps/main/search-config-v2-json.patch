@@ -1,0 +1,63 @@
+diff --git a/services/settings/dumps/main/search-config-v2.json b/services/settings/dumps/main/search-config-v2.json
+index f78d1d35b21b820614a157b1d3472561ea9d4074..04dc5eecad5e232547f98354858c62d5b6c937af 100644
+--- a/services/settings/dumps/main/search-config-v2.json
++++ b/services/settings/dumps/main/search-config-v2.json
+@@ -113,7 +113,7 @@
+       "schema": 1745887776020
+     },
+     {
+-      "globalDefault": "google",
++      "globalDefault": "astiango",
+       "id": "f3891684-2348-4e7a-9765-0c5d2d0ab1b9",
+       "last_modified": 1702906502241,
+       "recordType": "defaultEngines",
+@@ -205,6 +205,37 @@
+         }
+       ]
+     },
++    {
++      "base": {
++        "aliases": [
++          "astiango"
++        ],
++        "classification": "general",
++        "name": "AstianGO",
++        "urls": {
++          "search": {
++            "base": "https://astiango.com/search",
++            "searchTermParamName": "q"
++          },
++          "suggestions": {
++            "base": "https://astiango.com/autocomplete",
++            "searchTermParamName": "q"
++          }
++        }
++      },
++      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
++      "identifier": "astiango",
++      "last_modified": 1770000000000,
++      "recordType": "engine",
++      "schema": 1770000000000,
++      "variants": [
++        {
++          "environment": {
++            "allRegionsAndLocales": true
++          }
++        }
++      ]
++    },
+     {
+       "base": {
+         "classification": "unknown",
+@@ -3548,6 +3579,11 @@
+       "recordType": "engine",
+       "schema": 1718698472747,
+       "variants": [
++        {
++          "environment": {
++            "allRegionsAndLocales": true
++          }
++        },
+         {
+           "environment": {
+             "locales": [

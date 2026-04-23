@@ -1,0 +1,98 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+if test "$MIDORI_CROSS_COMPILING"; then
+
+  export MOZ_STUB_INSTALLER=1
+
+  export CROSS_BUILD=1
+  CROSS_COMPILE=1
+
+  # Use the locally downloaded Windows sysroot for cross-compilation.
+  # This avoids the 'winreg' error when building from Linux.
+  # Run: bash scripts/setup-winsysroot.sh  to download it.
+  if test -z "$WINSYSROOT" -a -d "$HOME/.mozbuild/vs"; then
+    export WINSYSROOT="$HOME/.mozbuild/vs"
+  fi
+
+  # Use Mozilla's custom wine build if available (avoids compatibility
+  # issues with system wine when running fxc.exe, midl.exe, etc.)
+  if test -d "$HOME/.mozbuild/wine/bin"; then
+    export PATH="$HOME/.mozbuild/wine/bin:$PATH"
+  fi
+
+  # NSIS for building the Windows installer from Linux
+  if test -d "$HOME/.mozbuild/nsis/bin"; then
+    export PATH="$HOME/.mozbuild/nsis/bin:$PATH"
+  fi
+
+  # Windows App SDK (required for mica titlebar support)
+  if test "$AMELIA_COMPAT" = "aarch64" -a -d "$HOME/.mozbuild/winappsdk-aarch64-pc-windows-msvc"; then
+    export MOZ_WINDOWS_APP_SDK_DIR="$HOME/.mozbuild/winappsdk-aarch64-pc-windows-msvc"
+  elif test "$AMELIA_COMPAT" = "x86_64" -a -d "$HOME/.mozbuild/winappsdk-x86_64-pc-windows-msvc"; then
+    export MOZ_WINDOWS_APP_SDK_DIR="$HOME/.mozbuild/winappsdk-x86_64-pc-windows-msvc"
+  fi
+
+  # Use a dedicated WINEPREFIX for cross-compilation builds.
+  # mk_add_options ensures these are available during make (not just configure).
+  export WINEPREFIX="$HOME/.mozbuild/wineprefix"
+  export WINEDEBUG=-all
+  mk_add_options "export WINEPREFIX=$HOME/.mozbuild/wineprefix"
+  mk_add_options "export WINEDEBUG=-all"
+  if test -d "$HOME/.mozbuild/wine/bin"; then
+    mk_add_options "export PATH=$HOME/.mozbuild/nsis/bin:$HOME/.mozbuild/wine/bin:$PATH"
+  fi
+
+  # The bundled MSVC STL in the downloaded VS toolchain may be older than
+  # _MSVC_STL_UPDATE >= 202503L, which Firefox 150 requires to enable STL
+  # hardening on Windows. Disable it here so cross-compilation succeeds with
+  # older sysroots. Remove this once the VS toolchain is updated.
+  ac_add_options --disable-stl-hardening
+fi
+
+ac_add_options --disable-maintenance-service
+ac_add_options --disable-bits-download
+
+if test "$AMELIA_COMPAT" = "x86_64"; then
+
+  ac_add_options --target=x86_64-pc-windows-msvc
+  ac_add_options --enable-eme=widevine,wmfcdm
+
+  ac_add_options --enable-optimize="-O3 -w -ftree-vectorize -mfpmath=sse -mprfchw -msse3 -mcx16 -msahf"
+
+  export LDFLAGS="-Wl,-O3"
+  export RUSTFLAGS="-Clink-args=--icf=safe"
+elif test "$AMELIA_COMPAT" = "aarch64"; then
+  ac_add_options --target=aarch64-pc-windows-msvc
+  ac_add_options --enable-eme=widevine
+
+  ac_add_options --enable-optimize="-O2 -mtune=cortex-a55 -march=armv8.2-a+simd"
+
+  # override LTO settings
+  export MOZ_LTO=cross,thin
+  ac_add_options --enable-lto=cross,thin
+
+  export CFLAGS="-O2 -march=armv8.2-a+simd -mtune=cortex-a55"
+  export CPPFLAGS="-O2 -march=armv8.2-a+simd -mtune=cortex-a55"
+  export CXXFLAGS="-O2 -march=armv8.2-a+simd -mtune=cortex-a55"
+  export LDFLAGS="-Wl,-O2 -march=armv8.2-a+simd -mtune=cortex-a55"
+  export RUSTFLAGS="-C target-feature=+v8.2a -Ctarget-cpu=cortex-a55"
+fi
+
+if test "$MIDORI_CROSS_COMPILING"; then
+  if test "$MIDORI_GA_GENERATE_PROFILE"; then
+    export CXXFLAGS="$CXXFLAGS -fprofile-generate -mllvm -enable-name-compression=false -mllvm -pgo-temporal-instrumentation -fprofile-update=atomic"
+    mk_add_options "export MOZ_AUTOMATION_PACKAGE_GENERATED_SOURCES=0"
+    ac_add_options --enable-profile-generate=cross
+  elif test "$AMELIA_COMPAT" = "x86_64"; then
+    # Dont use PGO on aarch64 builds and the MIDORI_GA_DISABLE_PGO flag is not set
+    if test "$MIDORI_GA_DISABLE_PGO"; then
+      export MIDORI_DUMMY=1
+    elif test -f "$(echo ~)/artifact/merged.profdata" -a -f "$(echo ~)/artifact/en-US.log"; then
+      ac_add_options --enable-profile-use=cross
+      ac_add_options --with-pgo-profile-path=$(echo ~)/artifact/merged.profdata
+      ac_add_options --with-pgo-jarlog=$(echo ~)/artifact/en-US.log
+    fi
+  fi
+fi

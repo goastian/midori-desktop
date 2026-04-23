@@ -1,0 +1,9 @@
+browser.jar:
+% content browser %content/browser/ contentaccessible=yes
+  content/browser/setup/setup.html          (setup.html)
+  content/browser/setup/setup.css           (setup.css)
+  content/browser/setup/setup.sys.mjs       (setup.sys.mjs)
+  content/browser/setup/migrate.light.svg   (migrate.light.svg)
+  content/browser/setup/migrate.dark.svg    (migrate.dark.svg)
+  content/browser/setup/sidebar.vis.svg     (sidebar.vis.svg)
+  content/browser/setup/vertical.vis.svg    (vertical.vis.svg)

@@ -1,0 +1,65 @@
+{
+  "manifest_version": 2,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "midori-theme-volcanic-sunset@midori.astian.org",
+      "strict_min_version": "120.0"
+    }
+  },
+  "version": "2.0.0",
+  "name": "Midori — Ink & Mint",
+  "description": "Tinta profunda con destellos menta. Elegante, de alto impacto y muy legible.",
+  "author": "Astian, Inc.",
+  "icons": {
+    "32": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "theme": {
+    "colors": {
+      "frame": "#F5F7F5",
+      "frame_inactive": "#eef1ee",
+      "tab_background_text": "#1A2E22",
+      "tab_text": "#1A2E22",
+      "tab_loading": "#06E290",
+      "tab_line": "#06E290",
+      "toolbar": "#E2EBE4",
+      "toolbar_text": "#1A2E22",
+      "toolbar_field": "#ffffff",
+      "toolbar_field_text": "#1A2E22",
+      "toolbar_field_border": "#9BBFAA",
+      "toolbar_field_focus": "#ffffff",
+      "toolbar_field_text_focus": "#1A2E22",
+      "toolbar_field_border_focus": "#06E290",
+      "toolbar_field_highlight": "#BCFCE4",
+      "toolbar_field_highlight_text": "#1A2E22",
+      "toolbar_top_separator": "transparent",
+      "toolbar_bottom_separator": "#9BBFAA",
+      "ntp_background": "#F5F7F5",
+      "ntp_card_background": "#ffffff",
+      "ntp_text": "#1A2E22",
+      "popup": "#E2EBE4",
+      "popup_text": "#1A2E22",
+      "popup_border": "#9BBFAA",
+      "popup_highlight": "#c8e0d2",
+      "popup_highlight_text": "#1A2E22",
+      "sidebar": "#E2EBE4",
+      "sidebar_text": "#1A2E22",
+      "sidebar_highlight": "#b8d5c5",
+      "sidebar_highlight_text": "#1A2E22",
+      "sidebar_border": "#9BBFAA",
+      "icons": "#2E5040",
+      "icons_attention": "#06E290",
+      "button_background_hover": "#c8e0d2",
+      "button_background_active": "#9BBFAA"
+    },
+    "properties": {
+      "color_scheme": "light",
+      "content_color_scheme": "auto"
+    }
+  },
+  "theme_experiment": {
+    "colors": {},
+    "properties": {}
+  }
+}

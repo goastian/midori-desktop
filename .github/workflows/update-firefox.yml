@@ -1,0 +1,245 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Update Firefox Upstream
+
+on:
+  schedule:
+    # Check every 6 hours for upstream changes
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      check_rc:
+        description: 'Check for Release Candidate too'
+        required: false
+        type: boolean
+        default: false
+      auto_build:
+        description: 'Trigger build automatically if update found'
+        required: false
+        type: boolean
+        default: false
+      recalculate_patches:
+        description: 'Recalculate patch set when patch import fails'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect upstream Firefox changes
+  # ---------------------------------------------------------------------------
+  check-update:
+    name: Check for Firefox Updates
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+      new_version: ${{ steps.changes.outputs.new_version }}
+      new_rc: ${{ steps.changes.outputs.new_rc }}
+      previous_version: ${{ steps.before.outputs.version }}
+      is_major_update: ${{ steps.changes.outputs.is_major_update }}
+      is_security_update: ${{ steps.changes.outputs.is_security_update }}
+      patches_clean: ${{ steps.check-patches.outcome == 'success' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check if upstream branch already exists
+        id: check-upstream-branch
+        run: |
+          if git ls-remote --heads origin automation/firefox-update | grep -q "refs/heads/automation/firefox-update"; then
+            echo "branch_exists=true" >> "$GITHUB_OUTPUT"
+            echo "⚠️ Branch automation/firefox-update already exists — skipping to avoid conflicts"
+          else
+            echo "branch_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        if: steps.check-upstream-branch.outputs.branch_exists == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        if: steps.check-upstream-branch.outputs.branch_exists == 'false'
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Setup Git
+        if: steps.check-upstream-branch.outputs.branch_exists == 'false'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install npm dependencies
+        if: steps.check-upstream-branch.outputs.branch_exists == 'false'
+        run: npm ci
+
+      - name: Set brand
+        if: steps.check-upstream-branch.outputs.branch_exists == 'false'
+        run: npm run brand
+
+      - name: Store current version
+        if: steps.check-upstream-branch.outputs.branch_exists == 'false'
+        id: before
+        run: |
+          VERSION=$(jq -r '.version.version' amelia.json)
+          RC_VERSION=$(jq -r '.version.candidate' amelia.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "rc_version=$RC_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update Firefox version
+        if: steps.check-upstream-branch.outputs.branch_exists == 'false'
+        run: |
+          if [ "${{ inputs.check_rc }}" = "true" ]; then
+            npm run update-ff:rc
+          else
+            npm run update-ff
+          fi
+
+      - name: Check for changes
+        if: steps.check-upstream-branch.outputs.branch_exists == 'false'
+        id: changes
+        run: |
+          NEW_VERSION=$(jq -r '.version.version' amelia.json)
+          NEW_RC=$(jq -r '.version.candidate' amelia.json)
+          OLD_VERSION="${{ steps.before.outputs.version }}"
+
+          if [ "$NEW_VERSION" != "$OLD_VERSION" ] || \
+             [ "$NEW_RC" != "${{ steps.before.outputs.rc_version }}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+            echo "new_rc=$NEW_RC" >> "$GITHUB_OUTPUT"
+
+            # Detect update type (major vs patch/security)
+            OLD_MAJOR=$(echo "$OLD_VERSION" | cut -d. -f1)
+            NEW_MAJOR=$(echo "$NEW_VERSION" | cut -d. -f1)
+            if [ "$OLD_MAJOR" != "$NEW_MAJOR" ]; then
+              echo "is_major_update=true" >> "$GITHUB_OUTPUT"
+              echo "is_security_update=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_major_update=false" >> "$GITHUB_OUTPUT"
+              OLD_MINOR=$(echo "$OLD_VERSION" | cut -d. -f2)
+              NEW_MINOR=$(echo "$NEW_VERSION" | cut -d. -f2)
+              if [ "$OLD_MINOR" = "$NEW_MINOR" ]; then
+                echo "is_security_update=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "is_security_update=false" >> "$GITHUB_OUTPUT"
+              fi
+            fi
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify patches apply cleanly
+        if: steps.changes.outputs.changed == 'true'
+        id: check-patches
+        continue-on-error: true
+        run: |
+          echo "Checking if patches apply cleanly..."
+          npm run import
+
+      - name: Recalculate patches if needed
+        if: >-
+          steps.changes.outputs.changed == 'true' &&
+          steps.check-patches.outcome != 'success' &&
+          (github.event_name == 'schedule' || inputs.recalculate_patches == true)
+        run: |
+          echo "Patch import failed, attempting patch recalculation..."
+          npm run recalculate-patches
+
+      - name: Run formatter
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          npm run lint:fix || true
+
+      - name: Determine update type
+        if: steps.changes.outputs.changed == 'true'
+        id: update-type
+        run: |
+          UPDATE_TYPE="patch"
+          if [ "${{ steps.changes.outputs.is_major_update }}" = "true" ]; then
+            UPDATE_TYPE="major"
+          elif [ "${{ steps.changes.outputs.is_security_update }}" = "true" ]; then
+            UPDATE_TYPE="security"
+          fi
+          echo "type=$UPDATE_TYPE" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="automation/firefox-update"
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "chore(upstream): sync Firefox to ${{ steps.changes.outputs.new_version }}"
+          git push -f origin "$BRANCH"
+
+          # Determine patch status text
+          if [ "${{ steps.check-patches.outcome }}" = "success" ]; then
+            PATCH_STATUS="✅ All patches applied cleanly"
+            PATCH_NEXT="Patches applied cleanly ✅"
+          else
+            PATCH_STATUS="⚠️ Some patches did not apply cleanly — please review"
+            PATCH_NEXT="⚠️ Review patches that did not apply cleanly"
+          fi
+
+          # Create or update PR
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "PR #$EXISTING_PR already exists, updated branch."
+          else
+            gh pr create \
+              --title "chore(upstream): update Firefox to ${{ steps.changes.outputs.new_version }}" \
+              --body "## Automated Firefox Upstream Update
+
+          | Field | Value |
+          |-------|-------|
+          | **Previous version** | ${{ steps.before.outputs.version }} |
+          | **New version** | ${{ steps.changes.outputs.new_version }} |
+          | **RC version** | ${{ steps.changes.outputs.new_rc }} |
+          | **Update type** | ${{ steps.update-type.outputs.type }} |
+          | **Patches** | ${PATCH_STATUS} |
+
+          ### What changed
+          - Firefox upstream has released version **${{ steps.changes.outputs.new_version }}**
+          - This PR updates \`amelia.json\` and related files to track the new upstream
+
+          ### Next steps
+          1. Review the [Firefox release notes](https://www.mozilla.org/en-US/firefox/${{ steps.changes.outputs.new_version }}/releasenotes/)
+          2. ${PATCH_NEXT}
+          3. Merge to trigger automated builds
+
+          ---
+          *This PR was generated automatically by the Update Firefox Upstream workflow.*" \
+              --head "$BRANCH" \
+              --base main \
+              --label "upstream,automated,${{ steps.update-type.outputs.type }}-update" || true
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Auto-build on upstream change (when explicitly enabled)
+  # ---------------------------------------------------------------------------
+  trigger-build:
+    name: Trigger Builds
+    needs: check-update
+    if: >-
+      needs.check-update.outputs.changed == 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.auto_build == true
+    uses: ./.github/workflows/build.yml
+    with:
+      display_version: ${{ needs.check-update.outputs.new_version }}
+      build_type: release
+    secrets: inherit

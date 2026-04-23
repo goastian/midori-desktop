@@ -1,0 +1,56 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Triggers a full build when an automated upstream Firefox update PR is merged.
+# This bridges the gap between detection (update-firefox.yml) and compilation.
+
+name: On Upstream Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  check-trigger:
+    name: Check if Build Should Trigger
+    if: >-
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'upstream') &&
+      contains(github.event.pull_request.labels.*.name, 'automated')
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      display_version: ${{ steps.check.outputs.display_version }}
+      build_type: ${{ steps.check.outputs.build_type }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version info
+        id: check
+        run: |
+          DISPLAY_VERSION=$(jq -r '.brands.release.release.displayVersion' amelia.json)
+          echo "display_version=$DISPLAY_VERSION" >> "$GITHUB_OUTPUT"
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
+
+          # Determine build type based on PR labels
+          if echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q "dawn"; then
+            echo "build_type=dawn" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_type=release" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "🔄 Upstream merge detected — triggering build for v${DISPLAY_VERSION}"
+
+  build:
+    name: Build All Platforms
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should_build == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      display_version: ${{ needs.check-trigger.outputs.display_version }}
+      build_type: ${{ needs.check-trigger.outputs.build_type }}
+      use_sccache: true
+    secrets: inherit

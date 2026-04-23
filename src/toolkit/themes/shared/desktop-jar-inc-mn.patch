@@ -1,0 +1,12 @@
+diff --git a/toolkit/themes/shared/desktop-jar.inc.mn b/toolkit/themes/shared/desktop-jar.inc.mn
+index f4de1ab5a42b1f8595f3120f6a0a9173537ddea4..bd5cded907192cee4ef71a1a083e3a3531c8d6f7 100644
+--- a/toolkit/themes/shared/desktop-jar.inc.mn
++++ b/toolkit/themes/shared/desktop-jar.inc.mn
+@@ -148,6 +148,7 @@
+   skin/classic/global/narrate/slow.svg                     (../../shared/narrate/slow.svg)
+   skin/classic/global/narrate/headphone.svg                (../../shared/narrate/headphone.svg)
+   skin/classic/global/narrate/headphone-active.svg         (../../shared/narrate/headphone-active.svg)
++  skin/classic/global/pictureinpicture/midori-pip.css      (../../shared/pictureinpicture/midori-pip.css)
+   skin/classic/global/pictureinpicture/player.css          (../../shared/pictureinpicture/player.css)
+   skin/classic/global/pictureinpicture/texttracks.css           (../../shared/pictureinpicture/texttracks.css)
+   skin/classic/global/reader/RM-Type-Controls-24x24.svg    (../../shared/reader/RM-Type-Controls-24x24.svg)

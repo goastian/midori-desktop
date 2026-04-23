@@ -1,0 +1,141 @@
+diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/BrowserGlue.sys.mjs
+index 938b7aa84266ad92b6654b4e44f7bca3dc315912..7a3e4799bd588a08cf39d4722a462b97b4fdac9c 100644
+--- a/browser/components/BrowserGlue.sys.mjs
++++ b/browser/components/BrowserGlue.sys.mjs
+@@ -75,6 +75,13 @@ ChromeUtils.defineESModuleGetters(lazy, {
+     "resource:///modules/WebProtocolHandlerRegistrar.sys.mjs",
+   WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
+   setTimeout: "resource://gre/modules/Timer.sys.mjs",
++  AutoHideToolbar: "resource:///modules/AutoHideToolbar.sys.mjs",
++  MemoryProfileManager: "resource:///modules/MemoryProfileManager.sys.mjs",
++  MidoriGradient: "resource:///modules/MidoriGradient.sys.mjs",
++  MidoriSidebar: "resource:///modules/MidoriSidebar.sys.mjs",
++  MidoriShortcuts: "resource:///modules/MidoriShortcuts.sys.mjs",
++  MidoriVerticalTabs: "resource:///modules/MidoriVerticalTabs.sys.mjs",
++  MidoriWorkspaces: "resource:///modules/MidoriWorkspaces.sys.mjs",
+ });
+ 
+ XPCOMUtils.defineLazyServiceGetters(lazy, {
+@@ -1676,6 +1683,101 @@ BrowserGlue.prototype = {
+   },
+ 
+   async _maybeShowDefaultBrowserPrompt() {
++    // =========================================================================
++    // Midori browser welcome
++
++    const welcomeEnabledPref = 'midori.welcome.enabled'
++    const welcomeSeenPref = 'midori.welcome.seen'
++
++    // NOTE: Get bool prefs takes in two options, the pref string and a default
++    // value if it is not defined
++
++    const welcomeEnabled = Services.prefs.getBoolPref(welcomeEnabledPref, true)
++    const welcomeSeen = Services.prefs.getBoolPref(welcomeSeenPref, false)
++
++    if (welcomeEnabled && !welcomeSeen)
++      this._openSetupTab()
++
++    // =========================================================================
++    // Midori Memory Profile - Initialize and apply on startup
++    try {
++      lazy.MemoryProfileManager.init();
++      lazy.MemoryProfileManager.applyProfile(
++        lazy.MemoryProfileManager.getCurrentProfile()
++      );
++    } catch (e) {
++      console.error("Midori: Failed to initialize MemoryProfileManager", e);
++    }
++    // =========================================================================
++
++    // =========================================================================
++    // Midori AutoHide Toolbar - Initialize on startup
++    try {
++      lazy.AutoHideToolbar.init();
++    } catch (e) {
++      console.error("Midori: Failed to initialize AutoHideToolbar", e);
++    }
++    // =========================================================================
++
++    // =========================================================================
++    // Midori Gradient System - Initialize on startup
++    try {
++      lazy.MidoriGradient.init();
++    } catch (e) {
++      console.error("Midori: Failed to initialize MidoriGradient", e);
++    }
++    // =========================================================================
++
++    // =========================================================================
++    // Midori Vertical Tabs (Natsumi-style) - Initialize on startup
++    try {
++      lazy.MidoriVerticalTabs.init();
++    } catch (e) {
++      console.error("Midori: Failed to initialize MidoriVerticalTabs", e);
++    }
++    // =========================================================================
++
++    // =========================================================================
++    // Midori Workspaces - Initialize on startup
++    try {
++      lazy.MidoriWorkspaces.init();
++    } catch (e) {
++      console.error("Midori: Failed to initialize MidoriWorkspaces", e);
++    }
++    // =========================================================================
++
++    // =========================================================================
++    // Midori Sidebar - Initialize on startup
++    try {
++      lazy.MidoriSidebar.init();
++    } catch (e) {
++      console.error("Midori: Failed to initialize MidoriSidebar", e);
++    }
++    // =========================================================================
++
++    // =========================================================================
++    // Midori Shortcuts - Initialize configurable keyboard shortcuts on startup
++    try {
++      lazy.MidoriShortcuts.init();
++    } catch (e) {
++      console.error("Midori: Failed to initialize MidoriShortcuts", e);
++    }
++    // =========================================================================
++
++    // =========================================================================
++    // Midori Tor - Optional idle prewarm startup hook
++    try {
++      if (Services.prefs.getBoolPref("midori.tor.prewarm.enabled", false)) {
++        const { MidoriTor } = ChromeUtils.importESModule(
++          "resource:///modules/MidoriTor.sys.mjs"
++        );
++        MidoriTor.init();
++      }
++    } catch (e) {
++      console.error("Midori: Failed to initialize MidoriTor prewarm", e);
++    }
++    // =========================================================================
++
+     // Ensuring the user is notified arranges the following ordering.  Highest
+     // priority is datareporting policy modal, if present.  Second highest
+     // priority is the upgrade dialog, which can include a "primary browser"
+@@ -1782,4 +1884,20 @@ BrowserGlue.prototype = {
+     "nsIObserver",
+     "nsISupportsWeakReference",
+   ]),
++
++  /**
++  * Opens the first-run setup tab (about:setup).
++  * This tab is shown only once on the very first browser launch.
++  *
++  * @patch Midori Browser
++  */
++  _openSetupTab() {
++    const win = lazy.BrowserWindowTracker.getTopWindow();
++    if (win) {
++      win.gBrowser.selectedTab = win.gBrowser.addTab('about:setup', {
++        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
++      });
++    }
++  },
++
+ };

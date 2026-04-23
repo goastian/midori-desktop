@@ -1,0 +1,117 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Patch Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      firefox_channel:
+        description: 'Firefox update channel to check'
+        required: true
+        type: choice
+        options:
+          - release
+          - rc
+        default: release
+      update_l10n_only:
+        description: 'Only update l10n commit hash'
+        required: false
+        type: boolean
+        default: false
+      recalculate:
+        description: 'Recalculate patch set after update'
+        required: false
+        type: boolean
+        default: true
+      create_pr:
+        description: 'Create PR if there are changes'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maintain:
+    name: Update and Recalculate Patches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Set brand
+        run: npm run brand
+
+      - name: Update upstream metadata
+        run: |
+          if [ "${{ inputs.update_l10n_only }}" = "true" ]; then
+            npm run update-ff:l10n
+          elif [ "${{ inputs.firefox_channel }}" = "rc" ]; then
+            npm run update-ff:rc
+          else
+            npm run update-ff
+          fi
+
+      - name: Recalculate patches
+        if: inputs.recalculate == true
+        run: npm run recalculate-patches
+
+      - name: Verify patch import
+        run: npm run import
+
+      - name: Upload patch bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: patch-set-${{ github.run_id }}
+          path: |
+            patches/**
+            amelia.json
+          retention-days: 14
+
+      - name: Create PR
+        if: inputs.create_pr == true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No patch changes detected, skipping PR."
+            exit 0
+          fi
+
+          BRANCH="automation/patch-maintenance-${{ github.run_id }}"
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "chore(patches): update upstream and recalculate patches"
+          git push -f origin "$BRANCH"
+
+          gh pr create \
+            --title "chore(patches): update and recalculate patch set" \
+            --body "Automated patch maintenance run.\n\n- Updated Firefox metadata\n- Recalculated patch set\n- Verified import step" \
+            --base main \
+            --head "$BRANCH" \
+            --label "automated,patches" || true

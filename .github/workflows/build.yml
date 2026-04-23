@@ -1,0 +1,255 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      display_version:
+        description: 'Display version for the build (e.g. 12.0)'
+        required: true
+        type: string
+      build_type:
+        description: 'Build type'
+        required: true
+        type: choice
+        options:
+          - release
+          - dawn
+        default: release
+      platforms:
+        description: 'Platforms to build'
+        required: true
+        type: choice
+        options:
+          - all
+          - linux
+          - macos
+          - windows
+        default: all
+      use_sccache:
+        description: 'Use sccache for compilation caching'
+        required: false
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: false
+        type: string
+        default: release
+      platforms:
+        required: false
+        type: string
+        default: all
+      use_sccache:
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: build-${{ github.ref }}-${{ inputs.build_type }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Generate build metadata (build ID, version, timestamps)
+  # ---------------------------------------------------------------------------
+  build-metadata:
+    name: Generate Build Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      build_id: ${{ steps.meta.outputs.build_id }}
+      build_date: ${{ steps.meta.outputs.build_date }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate metadata
+        id: meta
+        run: |
+          echo "build_id=$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "version=${{ inputs.display_version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Debug info
+        run: |
+          echo "Build ID: ${{ steps.meta.outputs.build_id }}"
+          echo "Build date: ${{ steps.meta.outputs.build_date }}"
+          echo "Version: ${{ steps.meta.outputs.version }}"
+          echo "Build type: ${{ inputs.build_type }}"
+          echo "Platforms: ${{ inputs.platforms }}"
+          echo "Use sccache: ${{ inputs.use_sccache }}"
+
+  # ---------------------------------------------------------------------------
+  # Prepare source: download Firefox, import patches, build language packs
+  # This runs ONCE and uploads the prepared source as an artifact so each
+  # platform build doesn't have to re-download and re-import (~15 min saved).
+  # ---------------------------------------------------------------------------
+  prepare-source:
+    name: Prepare Source
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: build-metadata
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
+            /usr/share/swift /usr/local/.ghcup || true
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get autoremove -y 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          df -h
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Apply Amelia patches
+        run: bash scripts/patch-amelia.sh
+
+      - name: Set brand
+        run: npm run brand
+
+      - name: Activate CI configuration
+        run: npm run ci -- --display-version ${{ inputs.display_version }}
+
+      - name: Download Firefox source
+        run: npm run download
+
+      - name: Import patches
+        run: npm run import
+
+      - name: Prepare language packs
+        run: python3 scripts/prepare_l10n.py --no-cleanup
+
+      - name: Compress prepared source
+        run: |
+          tar \
+            --exclude='./.git' \
+            --use-compress-program=zstd \
+            -hcf midori.source.tar.zst \
+            -C engine .
+
+      - name: Upload prepared source
+        uses: actions/upload-artifact@v4
+        with:
+          name: midori.source.tar.zst
+          path: ./midori.source.tar.zst
+          retention-days: 2
+
+  # ---------------------------------------------------------------------------
+  # Linux builds
+  # ---------------------------------------------------------------------------
+  build-linux:
+    name: Linux
+    if: inputs.platforms == 'all' || inputs.platforms == 'linux'
+    needs: [build-metadata, prepare-source]
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      display_version: ${{ inputs.display_version }}
+      build_type: ${{ inputs.build_type }}
+      build_id: ${{ needs.build-metadata.outputs.build_id }}
+      use_sccache: ${{ inputs.use_sccache }}
+    secrets: inherit
+
+  # ---------------------------------------------------------------------------
+  # macOS builds
+  # ---------------------------------------------------------------------------
+  build-macos:
+    name: macOS
+    if: inputs.platforms == 'all' || inputs.platforms == 'macos'
+    needs: [build-metadata, prepare-source]
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      display_version: ${{ inputs.display_version }}
+      build_type: ${{ inputs.build_type }}
+      build_id: ${{ needs.build-metadata.outputs.build_id }}
+      use_sccache: ${{ inputs.use_sccache }}
+    secrets: inherit
+
+  # ---------------------------------------------------------------------------
+  # Windows builds (cross-compiled from Linux)
+  # ---------------------------------------------------------------------------
+  build-windows:
+    name: Windows
+    if: inputs.platforms == 'all' || inputs.platforms == 'windows'
+    needs: [build-metadata, prepare-source]
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      display_version: ${{ inputs.display_version }}
+      build_type: ${{ inputs.build_type }}
+      build_id: ${{ needs.build-metadata.outputs.build_id }}
+      use_sccache: ${{ inputs.use_sccache }}
+    secrets: inherit
+
+  verify-artifacts:
+    name: Verify Build Artifacts
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-macos, build-windows]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts/
+
+      - name: Verify expected platform artifacts
+        run: |
+          set -e
+
+          expect_artifact() {
+            local name="$1"
+            if [ ! -d "all-artifacts/${name}" ]; then
+              echo "Missing artifact directory: ${name}"
+              exit 1
+            fi
+            local count
+            count=$(find "all-artifacts/${name}" -type f | wc -l)
+            if [ "$count" -eq 0 ]; then
+              echo "Artifact directory is empty: ${name}"
+              exit 1
+            fi
+            echo "${name}: ${count} files"
+          }
+
+          if [ "${{ inputs.platforms }}" = "all" ] || [ "${{ inputs.platforms }}" = "linux" ]; then
+            expect_artifact "linux-x86_64"
+            expect_artifact "linux-aarch64"
+          fi
+
+          if [ "${{ inputs.platforms }}" = "all" ] || [ "${{ inputs.platforms }}" = "macos" ]; then
+            expect_artifact "macos-x86_64"
+            expect_artifact "macos-aarch64"
+          fi
+
+          if [ "${{ inputs.platforms }}" = "all" ] || [ "${{ inputs.platforms }}" = "windows" ]; then
+            expect_artifact "windows-x86_64"
+            expect_artifact "windows-aarch64"
+          fi
+
+      - name: Build summary
+        run: |
+          echo "## Build Artifact Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          find all-artifacts -maxdepth 2 -type f | sort >> "$GITHUB_STEP_SUMMARY"

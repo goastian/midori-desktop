@@ -1,0 +1,65 @@
+{
+  "manifest_version": 2,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "midori-theme-citrus-dawn@midori.astian.org",
+      "strict_min_version": "120.0"
+    }
+  },
+  "version": "2.0.0",
+  "name": "Midori — Sand & Sage",
+  "description": "Arenas cálidas con sage frío. Contraste de temperatura, fresco y moderno.",
+  "author": "Astian, Inc.",
+  "icons": {
+    "32": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "theme": {
+    "colors": {
+      "frame": "#FAF6F0",
+      "frame_inactive": "#f5f0e8",
+      "tab_background_text": "#024B30",
+      "tab_text": "#024B30",
+      "tab_loading": "#036641",
+      "tab_line": "#036641",
+      "toolbar": "#F0E8D8",
+      "toolbar_text": "#024B30",
+      "toolbar_field": "#ffffff",
+      "toolbar_field_text": "#024B30",
+      "toolbar_field_border": "#E0CBAA",
+      "toolbar_field_focus": "#ffffff",
+      "toolbar_field_text_focus": "#024B30",
+      "toolbar_field_border_focus": "#036641",
+      "toolbar_field_highlight": "#e8dcc6",
+      "toolbar_field_highlight_text": "#024B30",
+      "toolbar_top_separator": "transparent",
+      "toolbar_bottom_separator": "#E0CBAA",
+      "ntp_background": "#FAF6F0",
+      "ntp_card_background": "#ffffff",
+      "ntp_text": "#024B30",
+      "popup": "#F0E8D8",
+      "popup_text": "#024B30",
+      "popup_border": "#E0CBAA",
+      "popup_highlight": "#e0d4be",
+      "popup_highlight_text": "#024B30",
+      "sidebar": "#f2ebe0",
+      "sidebar_text": "#024B30",
+      "sidebar_highlight": "#d8ccb4",
+      "sidebar_highlight_text": "#024B30",
+      "sidebar_border": "#E0CBAA",
+      "icons": "#6B8C7A",
+      "icons_attention": "#036641",
+      "button_background_hover": "#e8dcc6",
+      "button_background_active": "#E0CBAA"
+    },
+    "properties": {
+      "color_scheme": "light",
+      "content_color_scheme": "auto"
+    }
+  },
+  "theme_experiment": {
+    "colors": {},
+    "properties": {}
+  }
+}

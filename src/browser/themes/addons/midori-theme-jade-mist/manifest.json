@@ -1,0 +1,65 @@
+{
+  "manifest_version": 2,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "midori-theme-jade-mist@midori.astian.org",
+      "strict_min_version": "120.0"
+    }
+  },
+  "version": "2.0.0",
+  "name": "Midori — Midori Breeze",
+  "description": "El tema insignia de Midori. Verde menta fresco, minimalista y ligero.",
+  "author": "Astian, Inc.",
+  "icons": {
+    "32": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "theme": {
+    "colors": {
+      "frame": "#C4F0E0",
+      "frame_inactive": "#b8e8d5",
+      "tab_background_text": "#1a3a2a",
+      "tab_text": "#1a3a2a",
+      "tab_loading": "#04A469",
+      "tab_line": "#04A469",
+      "toolbar": "#C4F0E0",
+      "toolbar_text": "#1a3a2a",
+      "toolbar_field": "#ffffff",
+      "toolbar_field_text": "#1a3a2a",
+      "toolbar_field_border": "#7EC4A8",
+      "toolbar_field_focus": "#ffffff",
+      "toolbar_field_text_focus": "#1a3a2a",
+      "toolbar_field_border_focus": "#04A469",
+      "toolbar_field_highlight": "#d4f5e8",
+      "toolbar_field_highlight_text": "#1a3a2a",
+      "toolbar_top_separator": "transparent",
+      "toolbar_bottom_separator": "#7EC4A8",
+      "ntp_background": "#e8f7f0",
+      "ntp_card_background": "#ffffff",
+      "ntp_text": "#1a3a2a",
+      "popup": "#dff2ea",
+      "popup_text": "#1a3a2a",
+      "popup_border": "#7EC4A8",
+      "popup_highlight": "#b2e5d0",
+      "popup_highlight_text": "#1a3a2a",
+      "sidebar": "#d4eee2",
+      "sidebar_text": "#1a3a2a",
+      "sidebar_highlight": "#a8dfc8",
+      "sidebar_highlight_text": "#1a3a2a",
+      "sidebar_border": "#7EC4A8",
+      "icons": "#04A469",
+      "icons_attention": "#038a57",
+      "button_background_hover": "#b2e5d0",
+      "button_background_active": "#7EC4A8"
+    },
+    "properties": {
+      "color_scheme": "light",
+      "content_color_scheme": "auto"
+    }
+  },
+  "theme_experiment": {
+    "colors": {},
+    "properties": {}
+  }
+}

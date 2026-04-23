@@ -1,0 +1,351 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Deploy Updates
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: false
+        type: string
+        default: release
+      dry_run:
+        required: false
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. 11.6.1)'
+        required: true
+        type: string
+      display_version:
+        description: 'Display version (e.g. 11.6.1)'
+        required: true
+        type: string
+      build_type:
+        description: 'Build type'
+        required: true
+        type: choice
+        options:
+          - release
+          - dawn
+        default: release
+      dry_run:
+        description: 'Dry run (validate without deploying)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Validate artifacts before deployment
+  # ---------------------------------------------------------------------------
+  validate:
+    name: Validate Artifacts
+    runs-on: ubuntu-latest
+    outputs:
+      has_linux_x86_64: ${{ steps.check.outputs.has_linux_x86_64 }}
+      has_linux_aarch64: ${{ steps.check.outputs.has_linux_aarch64 }}
+      has_macos_x86_64: ${{ steps.check.outputs.has_macos_x86_64 }}
+      has_macos_aarch64: ${{ steps.check.outputs.has_macos_aarch64 }}
+      has_windows_x86_64: ${{ steps.check.outputs.has_windows_x86_64 }}
+      has_windows_aarch64: ${{ steps.check.outputs.has_windows_aarch64 }}
+      all_platforms: ${{ steps.check.outputs.all_platforms }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+        continue-on-error: true
+
+      - name: Check available platforms
+        id: check
+        run: |
+          check_platform() {
+            local name="$1"
+            local dir="artifacts/${name}"
+            if [ -d "$dir" ] && [ "$(find "$dir" -type f | wc -l)" -gt 0 ]; then
+              echo "has_${name}=true" >> "$GITHUB_OUTPUT"
+              echo "✅ ${name}: found $(find "$dir" -type f | wc -l) files"
+              return 0
+            else
+              echo "has_${name}=false" >> "$GITHUB_OUTPUT"
+              echo "❌ ${name}: no artifacts found"
+              return 1
+            fi
+          }
+
+          ALL=true
+          check_platform "linux-x86_64" || ALL=false
+          check_platform "linux-aarch64" || ALL=false
+          check_platform "macos-x86_64" || ALL=false
+          check_platform "macos-aarch64" || ALL=false
+          check_platform "windows-x86_64" || ALL=false
+          check_platform "windows-aarch64" || ALL=false
+
+          echo "all_platforms=$ALL" >> "$GITHUB_OUTPUT"
+
+      - name: Validate MAR files
+        run: |
+          echo "Validating MAR (Mozilla Archive) files..."
+          find artifacts/ -name "*.mar" -type f | while read -r mar; do
+            SIZE=$(stat -c%s "$mar")
+            if [ "$SIZE" -lt 1000 ]; then
+              echo "⚠️ WARNING: $mar seems too small (${SIZE} bytes)"
+            else
+              echo "✅ $mar (${SIZE} bytes)"
+            fi
+          done
+
+  # ---------------------------------------------------------------------------
+  # Generate update manifests for all platforms
+  # ---------------------------------------------------------------------------
+  generate-update-manifests:
+    name: Generate Update Manifests
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate update XML manifests
+        run: |
+          mkdir -p update-output
+
+          VERSION="${{ inputs.display_version }}"
+          BUILD_TYPE="${{ inputs.build_type }}"
+          UPDATE_HOST=$(jq -r '.updateHostname' amelia.json)
+
+          # Generate update manifest per platform
+          generate_manifest() {
+            local platform="$1"
+            local arch="$2"
+            local mar_pattern="$3"
+
+            MAR_FILE=$(find artifacts/ -path "*${platform}*" -name "${mar_pattern}" -type f | head -1)
+            if [ -z "$MAR_FILE" ]; then
+              echo "⚠️ No MAR file found for ${platform}-${arch}, skipping manifest"
+              return
+            fi
+
+            MAR_SIZE=$(stat -c%s "$MAR_FILE")
+            MAR_HASH=$(sha512sum "$MAR_FILE" | cut -d' ' -f1)
+            MAR_FILENAME=$(basename "$MAR_FILE")
+
+            cat > "update-output/${platform}-${arch}-update.xml" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <updates>
+            <update type="minor" displayVersion="${VERSION}" appVersion="${VERSION}"
+                    platformVersion="${VERSION}" buildID="$(date +%Y%m%d%H%M%S)">
+              <patch type="complete"
+                     URL="https://${UPDATE_HOST}/${BUILD_TYPE}/${platform}/${arch}/${MAR_FILENAME}"
+                     hashFunction="sha512"
+                     hashValue="${MAR_HASH}"
+                     size="${MAR_SIZE}"/>
+            </update>
+          </updates>
+          EOF
+            echo "✅ Generated manifest for ${platform}-${arch}"
+          }
+
+          generate_manifest "linux" "x86_64" "*.mar"
+          generate_manifest "linux" "aarch64" "*.mar"
+          generate_manifest "macos" "x86_64" "*.mar"
+          generate_manifest "macos" "aarch64" "*.mar"
+          generate_manifest "windows" "x86_64" "*.mar"
+          generate_manifest "windows" "aarch64" "*.mar"
+
+          echo "--- Generated manifests ---"
+          ls -la update-output/
+
+      - name: Upload update manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-manifests
+          path: update-output/
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Deploy update files to update server
+  # ---------------------------------------------------------------------------
+  deploy-updates:
+    name: Deploy to Update Server
+    runs-on: ubuntu-latest
+    needs: [validate, generate-update-manifests]
+    if: inputs.dry_run == false
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: deploy-artifacts/
+
+      - name: Prepare deployment structure
+        run: |
+          BUILD_TYPE="${{ inputs.build_type }}"
+          VERSION="${{ inputs.display_version }}"
+
+          mkdir -p deploy-staging/${BUILD_TYPE}
+
+          # Organize MAR files by platform/arch
+          organize_mar() {
+            local platform="$1"
+            local arch="$2"
+            local artifact_dir="$3"
+
+            if [ -d "deploy-artifacts/${artifact_dir}" ]; then
+              mkdir -p "deploy-staging/${BUILD_TYPE}/${platform}/${arch}"
+              find "deploy-artifacts/${artifact_dir}" -name "*.mar" -exec cp {} \
+                "deploy-staging/${BUILD_TYPE}/${platform}/${arch}/" \;
+              echo "✅ Staged ${platform}/${arch}"
+            fi
+          }
+
+          organize_mar "linux" "x86_64" "linux-x86_64"
+          organize_mar "linux" "aarch64" "linux-aarch64"
+          organize_mar "macos" "x86_64" "macos-x86_64"
+          organize_mar "macos" "aarch64" "macos-aarch64"
+          organize_mar "windows" "x86_64" "windows-x86_64"
+          organize_mar "windows" "aarch64" "windows-aarch64"
+
+          # Copy update manifests
+          if [ -d "deploy-artifacts/update-manifests" ]; then
+            cp deploy-artifacts/update-manifests/*.xml "deploy-staging/${BUILD_TYPE}/" 2>/dev/null || true
+          fi
+
+          echo "--- Deployment staging structure ---"
+          find deploy-staging/ -type f | sort
+
+      - name: Generate deployment summary
+        run: |
+          VERSION="${{ inputs.display_version }}"
+          BUILD_TYPE="${{ inputs.build_type }}"
+
+          cat > deploy-staging/DEPLOY_INFO.json <<EOF
+          {
+            "version": "${VERSION}",
+            "buildType": "${BUILD_TYPE}",
+            "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commitSha": "${{ github.sha }}",
+            "runId": "${{ github.run_id }}",
+            "platforms": {
+              "linux-x86_64": ${{ needs.validate.outputs.has_linux_x86_64 }},
+              "linux-aarch64": ${{ needs.validate.outputs.has_linux_aarch64 }},
+              "macos-x86_64": ${{ needs.validate.outputs.has_macos_x86_64 }},
+              "macos-aarch64": ${{ needs.validate.outputs.has_macos_aarch64 }},
+              "windows-x86_64": ${{ needs.validate.outputs.has_windows_x86_64 }},
+              "windows-aarch64": ${{ needs.validate.outputs.has_windows_aarch64 }}
+            }
+          }
+          EOF
+
+      # -----------------------------------------------------------------------
+      # Upload to update server
+      # This step uses rsync/scp to deploy to your update server.
+      # Configure the following secrets in your repository:
+      #   - UPDATE_SERVER_HOST: hostname or IP of the update server
+      #   - UPDATE_SERVER_USER: SSH username
+      #   - UPDATE_SERVER_KEY:  SSH private key for authentication
+      #   - UPDATE_SERVER_PATH: remote base path (e.g. /var/www/updates)
+      # -----------------------------------------------------------------------
+      - name: Deploy to update server
+        if: ${{ vars.UPDATE_SERVER_ENABLED == 'true' }}
+        env:
+          SERVER_HOST: ${{ secrets.UPDATE_SERVER_HOST }}
+          SERVER_USER: ${{ secrets.UPDATE_SERVER_USER }}
+          SERVER_PATH: ${{ secrets.UPDATE_SERVER_PATH }}
+        run: |
+          # Setup SSH key
+          mkdir -p ~/.ssh
+          echo "${{ secrets.UPDATE_SERVER_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Deploy via rsync
+          rsync -avz --progress \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            deploy-staging/ \
+            "${SERVER_USER}@${SERVER_HOST}:${SERVER_PATH}/"
+
+          echo "✅ Deployed to ${SERVER_HOST}:${SERVER_PATH}"
+
+          # Cleanup
+          rm -f ~/.ssh/deploy_key
+
+      - name: Upload deployment bundle (fallback)
+        if: ${{ vars.UPDATE_SERVER_ENABLED != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-bundle-${{ inputs.display_version }}
+          path: deploy-staging/
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # Post-deployment verification
+  # ---------------------------------------------------------------------------
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: deploy-updates
+    if: inputs.dry_run == false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check update server availability
+        if: ${{ vars.UPDATE_SERVER_ENABLED == 'true' }}
+        run: |
+          UPDATE_HOST=$(jq -r '.updateHostname' amelia.json)
+          BUILD_TYPE="${{ inputs.build_type }}"
+
+          echo "Checking update server at https://${UPDATE_HOST}..."
+
+          # Verify update XML is accessible for each platform
+          PLATFORMS=("linux/x86_64" "linux/aarch64" "macos/x86_64" "macos/aarch64" "windows/x86_64" "windows/aarch64")
+
+          for platform_arch in "${PLATFORMS[@]}"; do
+            URL="https://${UPDATE_HOST}/${BUILD_TYPE}/${platform_arch}/"
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
+              echo "✅ ${platform_arch}: HTTP ${HTTP_CODE}"
+            else
+              echo "⚠️ ${platform_arch}: HTTP ${HTTP_CODE} (may not be deployed yet)"
+            fi
+          done
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Version** | ${{ inputs.display_version }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Build type** | ${{ inputs.build_type }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Commit** | ${{ github.sha }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Run ID** | ${{ github.run_id }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Deployed at** | $(date -u) |" >> "$GITHUB_STEP_SUMMARY"

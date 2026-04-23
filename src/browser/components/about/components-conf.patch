@@ -1,0 +1,20 @@
+diff --git a/browser/components/about/components.conf b/browser/components/about/components.conf
+index cb90dd44b467a11ef01b71ad9f0d0d7f0745d5f0..357da93221b6de0eac3487e4850f2745e3eb94d9 100644
+--- a/browser/components/about/components.conf
++++ b/browser/components/about/components.conf
+@@ -8,6 +8,7 @@ pages = [
+     'aichatcontent',
+     'asrouter',
+     'blocked',
++    'center',
+     'certerror',
+     'downloads',
+     'framecrashed',
+@@ -28,6 +29,7 @@ pages = [
+     'robots',
+     'sessionrestore',
+     'settings',
++    'setup',
+     'tabcrashed',
+     'unloads',
+     'welcome',

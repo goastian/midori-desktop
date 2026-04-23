@@ -1,0 +1,16 @@
+diff --git a/browser/themes/shared/preferences/privacy.css b/browser/themes/shared/preferences/privacy.css
+index 1cfe9a9eef2e6cd162b17c3ca629e08f94219c6c..4331cd9704e7099b23d3fdd6f2a3f6905a06f810 100644
+--- a/browser/themes/shared/preferences/privacy.css
++++ b/browser/themes/shared/preferences/privacy.css
+@@ -69,7 +69,10 @@
+   list-style-image: url(chrome://browser/skin/notification-icons/midi.svg);
+ }
+ 
+-/* Content Blocking */
++/* Content Blocking - Hidden: replaced by midori-privacy extension */
++#trackingGroup {
++  display: none;
++}
+ 
+ /* Override styling that sets descriptions as grey */
+ #trackingGroup description.indent,

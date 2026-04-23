@@ -1,0 +1,167 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Build macOS
+
+on:
+  workflow_call:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: false
+        type: string
+        default: release
+      build_id:
+        required: false
+        type: string
+        default: ''
+      use_sccache:
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  macos-build:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.arch == 'x86_64' && 'macos-13' || 'macos-14' }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    env:
+      MIDORI_RELEASE: 'true'
+      MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
+      SURFER_COMPAT: ${{ matrix.arch }}
+      SCCACHE_DIR: ~/Library/Caches/Mozilla.sccache
+      RUSTC_WRAPPER: ${{ inputs.use_sccache && 'sccache' || '' }}
+      CARGO_INCREMENTAL: 0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup sccache
+        if: ${{ inputs.use_sccache }}
+        run: |
+          SCCACHE_VERSION="v0.8.1"
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            SCCACHE_ARCH="aarch64-apple-darwin"
+          else
+            SCCACHE_ARCH="x86_64-apple-darwin"
+          fi
+          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}.tar.gz" | tar xz
+          sudo mv sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}/sccache /usr/local/bin/
+          sccache --version
+
+      - name: Restore sccache cache
+        if: ${{ inputs.use_sccache }}
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Mozilla.sccache
+          key: sccache-macos-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            sccache-macos-${{ matrix.arch }}-
+
+      - name: Install system dependencies
+        run: |
+          brew update
+          brew install gnu-tar
+          echo 'export PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH"' >> ~/.bash_profile
+          echo 'export PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH"' >> ~/.zshrc
+          source ~/.bash_profile || true
+
+      - name: Setup Rust
+        run: |
+          if [ -f .rust-toolchain ]; then
+            RUST_VERSION=$(cat .rust-toolchain)
+          else
+            RUST_VERSION="1.83"
+          fi
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$RUST_VERSION"
+          . "$HOME/.cargo/env"
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            rustup target add aarch64-apple-darwin
+          else
+            rustup target add x86_64-apple-darwin
+          fi
+          rustc --version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Set brand
+        run: npm run brand
+
+      - name: Activate CI configuration
+        run: npm run ci -- --display-version ${{ inputs.display_version }}
+
+      - name: Download prepared source
+        uses: actions/download-artifact@v4
+        with:
+          name: midori.source.tar.zst
+
+      - name: Extract prepared source
+        run: |
+          mkdir -p engine
+          export PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH"
+          tar --use-compress-program=zstd -xf midori.source.tar.zst -C engine
+          rm midori.source.tar.zst
+
+      - name: Bootstrap
+        run: |
+          cd engine
+          export AMELIA_PLATFORM="darwin"
+          ./mach --no-interactive bootstrap --application-choice browser --exclude macos-sdk || true
+          cd ..
+
+      - name: Build
+        env:
+          AMELIA_PLATFORM: darwin
+        run: |
+          . "$HOME/.cargo/env"
+          if [ -n "${{ inputs.build_id }}" ]; then
+            export MOZ_BUILD_DATE="${{ inputs.build_id }}"
+          fi
+          export MIDORI_RELEASE=1
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            npm run build:mac-arm64
+          else
+            npm run build:mac-x64
+          fi
+
+      - name: Package
+        env:
+          AMELIA_PLATFORM: darwin
+        run: |
+          export MIDORI_RELEASE=1
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            npm run package:mac-arm64 -- --verbose
+          else
+            npm run package:mac-x64 -- --verbose
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: |
+            dist/*.dmg
+            dist/*.mar
+            dist/update/
+          retention-days: 5
+          if-no-files-found: error

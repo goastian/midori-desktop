@@ -1,0 +1,21 @@
+{
+  "name": "AstianGO",
+  "manifest_version": 2,
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "astiango@search.midori.org"
+    }
+  },
+  "hidden": false,
+  "chrome_settings_overrides": {
+    "search_provider": {
+      "keyword": "@astiango",
+      "name": "AstianGO",
+      "search_url": "https://astiango.com/search",
+      "search_url_get_params": "q={searchTerms}",
+      "suggest_url": "https://astiango.com/autocomplete",
+      "suggest_url_get_params": "q={searchTerms}"
+    }
+  }
+}

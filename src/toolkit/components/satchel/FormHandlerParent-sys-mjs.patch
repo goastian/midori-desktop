@@ -1,0 +1,33 @@
+diff --git a/toolkit/components/satchel/FormHandlerParent.sys.mjs b/toolkit/components/satchel/FormHandlerParent.sys.mjs
+index 37159507c768e2b3f92c5a5350180f640db21e10..6c879e07fe91aac3166f76c4310c36599c28e340 100644
+--- a/toolkit/components/satchel/FormHandlerParent.sys.mjs
++++ b/toolkit/components/satchel/FormHandlerParent.sys.mjs
+@@ -32,8 +32,26 @@ export class FormHandlerParent extends JSWindowActorParent {
+    * @param {BrowsingContext} navigatedBrowsingContext
+    */
+   onPageNavigated(navigatedBrowsingContext) {
+-    const browsingContexts =
+-      navigatedBrowsingContext.getAllBrowsingContextsInSubtree();
++    // The browsing context may already be detached (e.g. the tab was closed
++    // or the content process was torn down while the navigation message was
++    // still in-flight). Bail out in that case instead of throwing.
++    if (
++      !navigatedBrowsingContext ||
++      typeof navigatedBrowsingContext.getAllBrowsingContextsInSubtree !==
++        "function"
++    ) {
++      return;
++    }
++
++    let browsingContexts;
++    try {
++      browsingContexts =
++        navigatedBrowsingContext.getAllBrowsingContextsInSubtree();
++    } catch (e) {
++      // The browsing context was destroyed between the null check above and
++      // this call. Nothing to notify.
++      return;
++    }
+ 
+     if (this.browsingContext === navigatedBrowsingContext) {
+       // Don't notify the child of the navigated process root,

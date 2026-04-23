@@ -1,0 +1,13 @@
+diff --git a/browser/themes/linux/browser.css b/browser/themes/linux/browser.css
+index dfb3e2c843d748e46c0f5878c9d06cebacffb603..a51d940142b7fa1a35f157d985026a7c3eaa7bb0 100644
+--- a/browser/themes/linux/browser.css
++++ b/browser/themes/linux/browser.css
+@@ -5,6 +5,8 @@
+ @import url("chrome://browser/skin/browser-shared.css");
+ @import url("chrome://browser/skin/contextmenu.css");
+ 
++%include ../custom/linux/linux.inc.css
++
+ /**
+  * We still want to do some of the tweaks that browser-colors does, like
+  * disabling the toolbar field border and backgrounds.

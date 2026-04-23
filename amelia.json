@@ -1,0 +1,78 @@
+{
+  "name": "Midori Browser",
+  "vendor": "Astian",
+  "appId": "midori",
+  "binaryName": "midori",
+  "version": {
+    "product": "firefox",
+    "version": "150.0",
+    "candidate": "150.0"
+  },
+  "buildOptions": {
+    "generateBranding": true
+  },
+  "addons": {
+    "midori-privacy": {
+      "id": "midori-privacy-blocker",
+      "repo": "goastian/midori-privacy",
+      "version": "v2.1.4",
+      "platform": "github",
+      "fileGlob": "midori-privacy-2.1.4-firefox.zip"
+    },
+    "midori-newtab": {
+      "id": "midori-newtab",
+      "repo": "goastian/midori-tab",
+      "version": "v1.0.14",
+      "platform": "github",
+      "fileGlob": "midori-tab-1.0.14-firefox.zip"
+    },
+    "midorivpn-extension": {
+      "id": "midorivpn@astian.org",
+      "repo": "goastian/midorivpn-extension",
+      "version": "v1.0.7",
+      "platform": "github",
+      "fileGlob": "MidoriVPN-1.0.7.zip"
+    }
+  },
+  "brands": {
+    "release": {
+      "backgroundColor": "#282A33",
+      "brandShorterName": "Midori",
+      "brandShortName": "Midori",
+      "brandFullName": "Midori Browser",
+      "release": {
+        "displayVersion": "11.7",
+        "github": {
+          "repo": "goastian/midori-desktop"
+        },
+        "archives": {
+          "windows": "windows.mar",
+          "macos-aarch64": "macos-aarch64.mar",
+          "linux": "linux.mar",
+          "macos-x64": "macos-x64.mar",
+          "windows-arm64": "windows-arm64.mar",
+          "linux-aarch64": "linux-aarch64.mar"
+        }
+      }
+    },
+    "dawn": {
+      "backgroundColor": "#282A33",
+      "brandShorterName": "Midori",
+      "brandShortName": "Dawn",
+      "brandFullName": "Midori Dawn",
+      "release": {
+        "displayVersion": "11.6.3",
+        "github": {
+          "repo": "goastian/midori-desktop"
+        }
+      }
+    }
+  },
+  "license": {
+    "ignoredFiles": [
+      ".*\\.json"
+    ],
+    "licenseType": "MPL-2.0"
+  },
+  "updateHostname": "update.astian.org"
+}

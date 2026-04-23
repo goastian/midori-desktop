@@ -1,0 +1,13 @@
+diff --git a/build/moz.build b/build/moz.build
+index 720fb1235f418fb063e88d8bbcd2eb444e84870b..10ffb489bce3bc65c6ffbfe468dfa540644b80fc 100644
+--- a/build/moz.build
++++ b/build/moz.build
+@@ -93,7 +93,7 @@ if CONFIG["MOZ_APP_BASENAME"]:
+         if CONFIG[var]:
+             appini_defines[var] = True
+ 
+-    appini_defines["MOZ_APPUPDATE_HOST"] = "aus5.mozilla.org"
++    appini_defines["MOZ_APPUPDATE_HOST"] = "update.astian.org"
+     if CONFIG["MOZ_APPUPDATE_HOST"]:
+         appini_defines["MOZ_APPUPDATE_HOST"] = CONFIG["MOZ_APPUPDATE_HOST"]
+ 

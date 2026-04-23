@@ -1,0 +1,14 @@
+diff --git a/browser/components/moz.build b/browser/components/moz.build
+index 913558d43c8c19f162feb2e08c48676f86e9cac2..000837f5fbaa5ec120fcab1ddbae327ac1c1e350 100644
+--- a/browser/components/moz.build
++++ b/browser/components/moz.build
+@@ -80,6 +80,9 @@ DIRS += [
+     "webrtc",
+ ]
+ 
++# Pulse: Custom components
++DIRS += ["autohide", "center", "gradient", "memory", "msidebar", "setup", "shortcuts", "tor", "verticaltabs", "workspace"]
++
+ DIRS += ["build"]
+ 
+ if CONFIG["MOZ_SELECTABLE_PROFILES"]:

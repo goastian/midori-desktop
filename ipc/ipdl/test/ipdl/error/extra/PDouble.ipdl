@@ -1,5 +1,0 @@
-// This is a valid file.
-
-protocol PDouble {
-child: async Msg();
-};

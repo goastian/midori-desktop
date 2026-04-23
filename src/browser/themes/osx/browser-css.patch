@@ -1,0 +1,13 @@
+diff --git a/browser/themes/osx/browser.css b/browser/themes/osx/browser.css
+index 8fe643be3f60da00760775c918ba3228fbd2b610..b01b5b5aab5b6adbf79f56e06729fb0a9b1dfbab 100644
+--- a/browser/themes/osx/browser.css
++++ b/browser/themes/osx/browser.css
+@@ -4,6 +4,8 @@
+ 
+ @import url("chrome://browser/skin/browser-shared.css");
+ 
++%include ../custom/macos/macos.inc.css
++
+ :root {
+   --arrowpanel-field-background: light-dark(rgba(249, 249, 250, 0.3), rgba(12, 12, 13, 0.3));
+ }

@@ -1,0 +1,67 @@
+diff --git a/browser/themes/BuiltInThemeConfig.sys.mjs b/browser/themes/BuiltInThemeConfig.sys.mjs
+index e05847bd9fa98b8edd1acfc8491b1e9f263d0e12..783544bc7417d86e86c98904ed7d597a9c935984 100644
+--- a/browser/themes/BuiltInThemeConfig.sys.mjs
++++ b/browser/themes/BuiltInThemeConfig.sys.mjs
+@@ -20,30 +20,49 @@
+  *   non-native appearance. See Document.forceNonNativeTheme and the
+  *   (-moz-native-theme) media query.
+  */
++// Midori Browser — Flat Design Theme Collection
++// Replaces Firefox default themes (Light, Dark, Alpenglow)
+ export const BuiltInThemeConfig = new Map([
+   [
+-    "firefox-compact-light@mozilla.org",
++    "midori-theme-jade-mist@midori.astian.org",
+     {
+-      version: "1.3.4",
+-      path: "resource://builtin-themes/light/",
+-      inApp: true,
+-      nonNative: true,
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-jade-mist/",
+     },
+   ],
+   [
+-    "firefox-compact-dark@mozilla.org",
++    "midori-theme-forest-void@midori.astian.org",
+     {
+-      version: "1.3.4",
+-      path: "resource://builtin-themes/dark/",
+-      inApp: true,
+-      nonNative: true,
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-forest-void/",
+     },
+   ],
+   [
+-    "firefox-alpenglow@mozilla.org",
++    "midori-theme-sky-crystal@midori.astian.org",
+     {
+-      version: "1.5.2",
+-      path: "resource://builtin-themes/alpenglow/",
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-sky-crystal/",
++    },
++  ],
++  [
++    "midori-theme-deep-ocean@midori.astian.org",
++    {
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-deep-ocean/",
++    },
++  ],
++  [
++    "midori-theme-citrus-dawn@midori.astian.org",
++    {
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-citrus-dawn/",
++    },
++  ],
++  [
++    "midori-theme-volcanic-sunset@midori.astian.org",
++    {
++      version: "1.0.0",
++      path: "resource://builtin-themes/midori-theme-volcanic-sunset/",
+     },
+   ],
+ ]);

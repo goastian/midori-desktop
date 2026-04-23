@@ -1,0 +1,244 @@
+diff --git a/browser/components/preferences/main.inc.xhtml b/browser/components/preferences/main.inc.xhtml
+index f23beeb5c793bc7a6cbea4512a5f2cd379ec98c7..a7cc6c6a9b36bd1f7cfec34d8940d0f3402ca0e2 100644
+--- a/browser/components/preferences/main.inc.xhtml
++++ b/browser/components/preferences/main.inc.xhtml
+@@ -21,6 +21,18 @@
+   <html:h1 data-l10n-id="pane-general-title"/>
+ </hbox>
+ 
++<!-- Midori Center Banner -->
++<groupbox id="midoriCenterBanner" data-category="paneGeneral" hidden="true">
++  <hbox align="center" style="gap: 12px;">
++    <description flex="1" style="font-size: 13px;">
++      Personalize your browser — tab layout, sidebar, workspaces, and more — from Midori Center.
++    </description>
++    <button id="openMidoriCenter"
++            label="Open Midori Center"
++            style="background-color: #059669; color: white; border-radius: 8px; border: none; padding: 6px 16px; font-weight: 600; cursor: pointer;"/>
++  </hbox>
++</groupbox>
++
+ <!-- Default browser -->
+ <html:setting-group groupid="defaultBrowser" data-category="paneGeneral" hidden="true" />
+ 
+@@ -369,6 +381,27 @@
+ <!-- Performance -->
+ <html:setting-group groupid="performance" data-category="paneGeneral" hidden="true" />
+ 
++<!-- Midori Memory Profile -->
++<groupbox id="memoryProfileGroup" data-category="paneGeneral" hidden="true">
++  <label><html:h2 data-l10n-id="performance-memory-profile-title"/></label>
++
++  <hbox id="memoryProfileBox" align="center">
++    <label id="memoryProfileLabel"
++           control="memoryProfileMenulist"
++           data-l10n-id="performance-memory-profile-label"
++           flex="1"/>
++    <menulist id="memoryProfileMenulist" preference="midori.memory.profile" sizetopopup="always">
++      <menupopup>
++        <menuitem value="0" label="Performance (Higher RAM, faster)"/>
++        <menuitem value="1" label="Balanced (Recommended)"/>
++        <menuitem value="2" label="Low Memory (Lower RAM, slower)"/>
++        <menuitem value="3" label="Gaming/AI (WebGPU, Maximum Performance)"/>
++      </menupopup>
++    </menulist>
++  </hbox>
++  <description class="description-deemphasized" data-l10n-id="performance-memory-profile-desc"/>
++</groupbox>
++
+ <!-- Browsing -->
+ <html:setting-group groupid="browsing" data-category="paneGeneral" hidden="true"/>
+ 
+diff --git a/browser/components/preferences/main.js b/browser/components/preferences/main.js
+index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c0a9f4f4d 100644
+--- a/browser/components/preferences/main.js
++++ b/browser/components/preferences/main.js
+@@ -27,6 +27,7 @@ ChromeUtils.defineESModuleGetters(this, {
+   FormAutofillPreferences:
+     "resource://autofill/FormAutofillPreferences.sys.mjs",
+   getMozRemoteImageURL: "moz-src:///toolkit/modules/FaviconUtils.sys.mjs",
++  MemoryProfileManager: "resource:///modules/MemoryProfileManager.sys.mjs",
+ });
+ 
+ // Constants & Enumeration Values
+@@ -204,6 +205,9 @@ Preferences.addAll([
+   { id: "dom.ipc.processCount.web", type: "int" },
+   { id: "layers.acceleration.disabled", type: "bool", inverted: true },
+ 
++  // Midori Memory Profile
++  { id: "midori.memory.profile", type: "int" },
++
+   // Files and Applications
+   { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
+ 
+@@ -3034,7 +3038,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "browserLayoutHorizontalTabs",
+             value: "false",
+-            l10nId: "browser-layout-horizontal-tabs2",
++            l10nId: "browser-layout-horizontal-tabs",
+             controlAttrs: {
+               class: "setting-chooser-item",
+               imagesrc:
+@@ -3044,7 +3048,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "browserLayoutVerticalTabs",
+             value: "true",
+-            l10nId: "browser-layout-vertical-tabs2",
++            l10nId: "browser-layout-vertical-tabs",
+             controlAttrs: {
+               class: "setting-chooser-item",
+               imagesrc:
+@@ -3055,7 +3059,7 @@ SettingGroupManager.registerGroups({
+       },
+       {
+         id: "browserLayoutShowSidebar",
+-        l10nId: "browser-layout-show-sidebar2",
++        l10nId: "browser-layout-show-sidebar",
+       },
+     ],
+   },
+@@ -4047,7 +4051,7 @@ SettingGroupManager.registerGroups({
+   },
+   permissions: {
+     id: "permissions",
+-    l10nId: "permissions-header3",
++    l10nId: "permissions-header",
+     headingLevel: 2,
+     items: [
+       {
+@@ -4060,7 +4064,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "locationSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-location2",
++            l10nId: "permissions-location",
+             controlAttrs: {
+               ".iconSrc": "chrome://browser/skin/notification-icons/geo.svg",
+               "search-l10n-ids":
+@@ -4070,7 +4074,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "cameraSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-camera2",
++            l10nId: "permissions-camera",
+             controlAttrs: {
+               ".iconSrc": "chrome://browser/skin/notification-icons/camera.svg",
+               "search-l10n-ids":
+@@ -4080,7 +4084,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "loopbackNetworkSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-localhost2",
++            l10nId: "permissions-localhost",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/local-host.svg",
+@@ -4091,7 +4095,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "localNetworkSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-local-network2",
++            l10nId: "permissions-local-network",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/local-network.svg",
+@@ -4102,7 +4106,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "microphoneSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-microphone2",
++            l10nId: "permissions-microphone",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/microphone.svg",
+@@ -4113,7 +4117,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "speakerSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-speaker2",
++            l10nId: "permissions-speaker",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/speaker.svg",
+@@ -4124,7 +4128,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "notificationSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-notification2",
++            l10nId: "permissions-notification",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/desktop-notification.svg",
+@@ -4135,7 +4139,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "autoplaySettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-autoplay2",
++            l10nId: "permissions-autoplay",
+             controlAttrs: {
+               ".iconSrc":
+                 "chrome://browser/skin/notification-icons/autoplay-media.svg",
+@@ -4146,7 +4150,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "xrSettingsButton",
+             control: "moz-box-button",
+-            l10nId: "permissions-xr2",
++            l10nId: "permissions-xr",
+             controlAttrs: {
+               ".iconSrc": "chrome://browser/skin/notification-icons/xr.svg",
+               "search-l10n-ids":
+@@ -4162,7 +4166,7 @@ SettingGroupManager.registerGroups({
+         items: [
+           {
+             id: "popupAndRedirectPolicyButton",
+-            l10nId: "permissions-block-popups-exceptions-button4",
++            l10nId: "permissions-block-popups-exceptions-button",
+             control: "moz-box-button",
+             controlAttrs: {
+               "search-l10n-ids":
+@@ -4173,11 +4177,11 @@ SettingGroupManager.registerGroups({
+       },
+       {
+         id: "warnAddonInstall",
+-        l10nId: "permissions-addon-install-warning3",
++        l10nId: "permissions-addon-install-warning",
+         items: [
+           {
+             id: "addonExceptions",
+-            l10nId: "permissions-addon-exceptions2",
++            l10nId: "permissions-addon-exceptions",
+             control: "moz-box-button",
+             controlAttrs: {
+               "search-l10n-ids":
+@@ -5362,6 +5366,29 @@ var gMainPane = {
+     initSettingGroup("profiles");
+     initSettingGroup("profilePane");
+ 
++    // Midori Center button handler
++    let centerBtn = document.getElementById("openMidoriCenter");
++    if (centerBtn) {
++      centerBtn.addEventListener("command", function () {
++        let mainWindow = window.browsingContext.topChromeWindow;
++        mainWindow.openTrustedLinkIn("about:center", "tab");
++      });
++    }
++
++    // Midori Memory Profile handler
++    let memoryMenulist = document.getElementById("memoryProfileMenulist");
++    if (memoryMenulist) {
++      memoryMenulist.addEventListener("command", function () {
++        let profileIndex = parseInt(memoryMenulist.value, 10);
++        try {
++          MemoryProfileManager.applyProfile(profileIndex);
++          console.log("MemoryProfileManager: Profile changed to " + profileIndex);
++        } catch (e) {
++          console.error("MemoryProfileManager: Failed to apply profile", e);
++        }
++      });
++    }
++
+     setEventListener("manageBrowserLanguagesButton", "command", function () {
+       gMainPane.showBrowserLanguagesSubDialog({ search: false });
+     });
+

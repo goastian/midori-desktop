@@ -1,0 +1,10 @@
+browser.jar:
+    builtin-addons/midori-privacy/manifest.json (manifest.json)
+    builtin-addons/midori-privacy/background/ (background/*)
+    builtin-addons/midori-privacy/content/ (content/*)
+    builtin-addons/midori-privacy/icons/ (icons/*)
+    builtin-addons/midori-privacy/_locales/ (_locales/**/*)
+    builtin-addons/midori-privacy/options/ (options/*)
+    builtin-addons/midori-privacy/popup/ (popup/*)
+    builtin-addons/midori-privacy/setup/ (setup/*)
+    builtin-addons/midori-privacy/shared/ (shared/*)

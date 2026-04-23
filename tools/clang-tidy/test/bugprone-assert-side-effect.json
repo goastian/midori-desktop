@@ -1,8 +1,0 @@
-[
-  [
-    "warning",
-    "side effect in assert() condition discarded in release builds",
-    "bugprone-assert-side-effect"
-  ],
-  { "reliability": "high" }
-]

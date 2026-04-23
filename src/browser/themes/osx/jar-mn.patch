@@ -1,0 +1,13 @@
+diff --git a/browser/themes/osx/jar.mn b/browser/themes/osx/jar.mn
+index 9b8fa9fa05dbe2421a3d4deb3d9784e90ea3848e..03d37d9b86aaef78792239530027b03200fbfb6d 100644
+--- a/browser/themes/osx/jar.mn
++++ b/browser/themes/osx/jar.mn
+@@ -5,7 +5,7 @@
+ browser.jar:
+ % skin browser classic/1.0 %skin/classic/browser/
+ #include ../shared/jar.inc.mn
+-  skin/classic/browser/browser.css
++* skin/classic/browser/browser.css
+   skin/classic/browser/customizableui/panelUI.css    (customizableui/panelUI.css)
+   skin/classic/browser/downloads/allDownloadsView.css (downloads/allDownloadsView.css)
+   skin/classic/browser/downloads/downloads.css              (downloads/downloads.css)

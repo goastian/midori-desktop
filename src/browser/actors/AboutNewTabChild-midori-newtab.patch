@@ -1,0 +1,20 @@
+diff --git a/browser/actors/AboutNewTabChild.sys.mjs b/browser/actors/AboutNewTabChild.sys.mjs
+index 8c90ee5fd4e4b8c9196143735ace0e0f2783087c..c404b902a814f7fff6acc74d445fc881ef5491d9 100644
+--- a/browser/actors/AboutNewTabChild.sys.mjs
++++ b/browser/actors/AboutNewTabChild.sys.mjs
+@@ -46,6 +46,15 @@ export class AboutNewTabChild extends RemotePageChild {
+         return; // about:newtab is a blank page
+       }
+ 
++      // Midori: skip Activity Stream script injection when the newtab page is
++      // provided by the midori-newtab extension (moz-extension:// URL).  The
++      // extension ships its own scripts and injecting Activity Stream on top of
++      // it will cause conflicts and can leave the tab with a black screen.
++      const docURI = this.contentWindow.document.documentURI || "";
++      if (docURI.startsWith("moz-extension://")) {
++        return;
++      }
++
+       // @nova-cleanup(remove-conditional): Remove Nova CSS swapping logic
+       if (lazy.NOVA_ENABLED) {
+         const doc = this.contentWindow.document;

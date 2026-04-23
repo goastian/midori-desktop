@@ -1,5 +1,0 @@
-[android.os.Process = skip:true]
-setThreadPriority =
-getThreadPriority =
-myTid =
-THREAD_PRIORITY_URGENT_AUDIO =

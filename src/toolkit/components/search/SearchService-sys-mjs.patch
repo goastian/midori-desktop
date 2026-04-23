@@ -1,0 +1,98 @@
+diff --git a/toolkit/components/search/SearchService.sys.mjs b/toolkit/components/search/SearchService.sys.mjs
+index f06d2a2d080e88d17a5e74084bfa14178da22637..6dd781a77bc2f729732f16ba3a45132066e4e330 100644
+--- a/toolkit/components/search/SearchService.sys.mjs
++++ b/toolkit/components/search/SearchService.sys.mjs
+@@ -2798,9 +2798,46 @@ export const SearchService = new (class SearchService {
+       this._settings.setMetaDataAttribute(key, value);
+     }
+ 
+-    return this.#engineSelector.fetchEngineConfiguration(
++    let refinedConfig = await this.#engineSelector.fetchEngineConfiguration(
+       searchEngineSelectorProperties
+     );
++
++    return this.#enforceAstiangoOnlyConfiguration(refinedConfig);
++  }
++
++  #enforceAstiangoOnlyConfiguration(refinedConfig) {
++    const forcedEngineId = "astiango";
++
++    let astiangoEngine = refinedConfig.engines.find(
++      engine => engine.identifier == forcedEngineId
++    );
++
++    if (!astiangoEngine) {
++      lazy.logConsole.warn(
++        "AstianGO was not present in refined search config; injecting built-in fallback configuration."
++      );
++      astiangoEngine = {
++        identifier: forcedEngineId,
++        name: "AstianGO",
++        aliases: ["astiango", "@astiango"],
++        classification: "general",
++        urls: {
++          search: {
++            base: "https://astiango.com/search",
++            searchTermParamName: "q",
++          },
++          suggestions: {
++            base: "https://astiango.com/autocomplete",
++            searchTermParamName: "q",
++          },
++        },
++      };
++    }
++
++    refinedConfig.engines = [astiangoEngine];
++    refinedConfig.appDefaultEngineId = forcedEngineId;
++    refinedConfig.appPrivateDefaultEngineId = forcedEngineId;
++    return refinedConfig;
+   }
+ 
+   #setDefaultFromSelector(refinedConfig) {
+@@ -3947,11 +3984,41 @@ class SearchDefaultOverrideAllowlistHandler {
+     let searchProvider =
+       extension.manifest.chrome_settings_overrides.search_provider;
+ 
++    // Normalize legacy providers that embed query parameters directly in
++    // `search_url` so comparisons remain stable across format migrations.
++    const normalizeProvider = provider => {
++      let normalized = {
++        ...provider,
++      };
++
++      if (
++        normalized.search_url &&
++        !normalized.search_url_get_params &&
++        normalized.search_url.includes("?")
++      ) {
++        let [base, query] = normalized.search_url.split("?", 2);
++        if (query) {
++          normalized.search_url = base;
++          normalized.search_url_get_params = query;
++        }
++      }
++
++      return normalized;
++    };
++
++    searchProvider = normalizeProvider(searchProvider);
++
+     return entry.urls.some(
+-      e =>
+-        searchProvider.search_url == e.search_url &&
+-        searchProvider.search_url_get_params == e.search_url_get_params &&
+-        searchProvider.search_url_post_params == e.search_url_post_params
++      e => {
++        const normalizedEntry = normalizeProvider(e);
++        return (
++          searchProvider.search_url == normalizedEntry.search_url &&
++          searchProvider.search_url_get_params ==
++            normalizedEntry.search_url_get_params &&
++          searchProvider.search_url_post_params ==
++            normalizedEntry.search_url_post_params
++        );
++      }
+     );
+   }
+ 

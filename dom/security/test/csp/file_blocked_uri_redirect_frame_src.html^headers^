@@ -1,1 +1,0 @@
-Content-Security-Policy: frame-src http://example.com; report-uri http://mochi.test:8888/foo.sjs;

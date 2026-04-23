@@ -1,0 +1,14 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Midori Browser — macOS-specific Flat Design adjustments
+ */
+
+/* Ensure traffic light buttons have correct spacing */
+:root[tabsintitlebar] .titlebar-buttonbox-container {
+  margin-inline-start: 6px;
+  margin-top: 4px;
+}
+
+/* macOS native scrollbar — no override needed, keep system default */

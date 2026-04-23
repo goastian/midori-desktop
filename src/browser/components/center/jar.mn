@@ -1,0 +1,5 @@
+browser.jar:
+% content browser %content/browser/ contentaccessible=yes
+  content/browser/center/center.html        (center.html)
+  content/browser/center/center.css         (center.css)
+  content/browser/center/center.sys.mjs     (center.sys.mjs)

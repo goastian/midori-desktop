@@ -1,0 +1,33 @@
+DEFINES["MOZ_APP_VERSION"] = CONFIG["MOZ_APP_VERSION"]
+DEFINES["MOZ_APP_MAXVERSION"] = CONFIG["MOZ_APP_MAXVERSION"]
+
+JAR_MANIFESTS += ["jar.mn"]
+
+FINAL_TARGET_FILES.features["midori-privacy-blocker"] += ["manifest.json"]
+
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["background"] += ["background/index.js"]
+
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["content"] += ["content/cosmetic.js"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["content"] += ["content/scriptlets.js"]
+
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon-128.png"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon-16.png"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon-32.png"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon-48.png"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon.svg"]
+
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["_locales"]["en"] += ["_locales/en/messages.json"]
+
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["options"] += ["options/options.css"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["options"] += ["options/options.html"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["options"] += ["options/options.js"]
+
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["popup"] += ["popup/popup.css"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["popup"] += ["popup/popup.html"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["popup"] += ["popup/popup.js"]
+
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["setup"] += ["setup/setup.css"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["setup"] += ["setup/setup.html"]
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["setup"] += ["setup/setup.js"]
+
+FINAL_TARGET_FILES.features["midori-privacy-blocker"]["shared"] += ["shared/styles.css"]

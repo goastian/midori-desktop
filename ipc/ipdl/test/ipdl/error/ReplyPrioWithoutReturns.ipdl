@@ -1,6 +1,0 @@
-//error: non-returns message `NormalPrio' cannot specify [ReplyPriority]
-async protocol ReplyPrioWithoutReturns
-{
-child:
-  [ReplyPriority=normal] async NormalPrio();
-};

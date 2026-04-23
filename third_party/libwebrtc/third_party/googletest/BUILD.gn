@@ -1,8 +1,0 @@
-import("//third_party/libaom/options.gni")
-import("../../webrtc.gni")
-
-config("gmock_config") {
-}
-
-config("gtest_config") {
-}
