@@ -43,6 +43,12 @@ if test "$MIDORI_CROSS_COMPILING"; then
   if test -d "$HOME/.mozbuild/wine/bin"; then
     mk_add_options "export PATH=$HOME/.mozbuild/nsis/bin:$HOME/.mozbuild/wine/bin:$PATH"
   fi
+
+  # The bundled MSVC STL in the downloaded VS toolchain may be older than
+  # _MSVC_STL_UPDATE >= 202503L, which Firefox 150 requires to enable STL
+  # hardening on Windows. Disable it here so cross-compilation succeeds with
+  # older sysroots. Remove this once the VS toolchain is updated.
+  ac_add_options --disable-stl-hardening
 fi
 
 ac_add_options --disable-maintenance-service
