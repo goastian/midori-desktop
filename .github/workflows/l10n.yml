@@ -45,12 +45,14 @@ jobs:
         run: python3 scripts/prepare_l10n.py --download-only --force
 
       - name: Sync Crowdin translations
-        if: ${{ secrets.CROWDIN_TOKEN != '' }}
         env:
           CROWDIN_PROJECT_ID: ${{ vars.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_TOKEN }}
         run: |
-          # Install Crowdin CLI
+          if [ -z "$CROWDIN_PERSONAL_TOKEN" ]; then
+            echo "No Crowdin token, skipping Crowdin sync."
+            exit 0
+          fi
           npm install -g @crowdin/cli
           crowdin upload sources --config crowdin.yml
           crowdin download --config crowdin.yml

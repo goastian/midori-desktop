@@ -122,7 +122,6 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-
       - name: Ensure branding/unofficial exists
         run: |
           mkdir -p engine/browser/branding/unofficial
