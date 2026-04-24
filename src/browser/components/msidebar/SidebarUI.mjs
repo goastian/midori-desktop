@@ -1601,8 +1601,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const previousActivePanelId = activePanelId;
     store = next || { panels: [], last: {} };
     syncToolbarPrefs();
-    if (previousActivePanelId && store.panels.some((panel) => panel.id === previousActivePanelId)) {
-      setActivePanel(previousActivePanelId);
+    const targetId = previousActivePanelId || store.last?.selectedPanelId;
+    if (targetId && store.panels.some((panel) => panel.id === targetId)) {
+      setActivePanel(targetId);
     } else {
       hidePanelArea();
       renderButtons();
