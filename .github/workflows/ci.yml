@@ -128,6 +128,12 @@ jobs:
       - name: Apply Amelia patches
         run: bash scripts/patch-amelia.sh
 
+      - name: Debug Amelia branding patch
+        run: |
+          echo '--- branding-patch.js after patch ---'
+          head -40 node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js || tail -40 node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js
+          echo '--- END ---'
+
       - name: Initialize Amelia (download + import + bootstrap)
         run: npm run init
 
