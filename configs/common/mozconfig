@@ -92,7 +92,11 @@ if test "$MIDORI_RELEASE"; then
   mk_add_options AUTOCLOBBER=1
   export AUTOCLOBBER=1
 
-  ac_add_options --enable-updater
+  if test "$MIDORI_FLATPAK"; then
+    ac_add_options --disable-updater
+  else
+    ac_add_options --enable-updater
+  fi
 
   ac_add_options --enable-js-shell
   export MOZ_PACKAGE_JSSHELL=1
@@ -100,7 +104,9 @@ if test "$MIDORI_RELEASE"; then
   ac_add_options --disable-crashreporter
 fi
 
-ac_add_options --enable-unverified-updates
+if ! test "$MIDORI_FLATPAK"; then
+  ac_add_options --enable-unverified-updates
+fi
 
 ac_add_options --enable-jxl
 

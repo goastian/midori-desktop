@@ -54,6 +54,7 @@
     "bootstrap:win": "cross-env AMELIA_PLATFORM=win32 MIDORI_CROSS_COMPILING=true amelia bootstrap",
     "bootstrap:mac": "cross-env AMELIA_PLATFORM=darwin amelia bootstrap",
     "bootstrap:linux": "amelia bootstrap",
+    "flatpak:package": "bash scripts/flatpak-build-package.sh",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lc": "node scripts/license-check.mjs"

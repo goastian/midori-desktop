@@ -7,7 +7,7 @@ name: Localization Sync
 on:
   schedule:
     # Every Monday at 06:00 UTC
-    - cron: '0 6 * * 1'
+    - cron: "0 6 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -45,11 +45,10 @@ jobs:
         run: python3 scripts/prepare_l10n.py --download-only --force
 
       - name: Sync Crowdin translations
-        if: ${{ env.HAS_CROWDIN == 'true' }}
+        if: ${{ secrets.CROWDIN_TOKEN != '' }}
         env:
           CROWDIN_PROJECT_ID: ${{ vars.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_TOKEN }}
-          HAS_CROWDIN: ${{ secrets.CROWDIN_TOKEN != '' }}
         run: |
           # Install Crowdin CLI
           npm install -g @crowdin/cli

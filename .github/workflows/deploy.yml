@@ -24,15 +24,15 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g. 11.6.1)'
+        description: "Version tag (e.g. 11.6.1)"
         required: true
         type: string
       display_version:
-        description: 'Display version (e.g. 11.6.1)'
+        description: "Display version (e.g. 11.6.1)"
         required: true
         type: string
       build_type:
-        description: 'Build type'
+        description: "Build type"
         required: true
         type: choice
         options:
@@ -40,7 +40,7 @@ on:
           - dawn
         default: release
       dry_run:
-        description: 'Dry run (validate without deploying)'
+        description: "Dry run (validate without deploying)"
         required: false
         type: boolean
         default: true
@@ -76,12 +76,13 @@ jobs:
           check_platform() {
             local name="$1"
             local dir="artifacts/${name}"
+            local key="${name//-/_}"
             if [ -d "$dir" ] && [ "$(find "$dir" -type f | wc -l)" -gt 0 ]; then
-              echo "has_${name}=true" >> "$GITHUB_OUTPUT"
+              echo "has_${key}=true" >> "$GITHUB_OUTPUT"
               echo "✅ ${name}: found $(find "$dir" -type f | wc -l) files"
               return 0
             else
-              echo "has_${name}=false" >> "$GITHUB_OUTPUT"
+              echo "has_${key}=false" >> "$GITHUB_OUTPUT"
               echo "❌ ${name}: no artifacts found"
               return 1
             fi
@@ -193,7 +194,7 @@ jobs:
   deploy-updates:
     name: Deploy to Update Server
     runs-on: ubuntu-latest
-    needs: [validate, generate-update-manifests]
+    needs: [ validate, generate-update-manifests ]
     if: inputs.dry_run == false
     environment: production
     steps:

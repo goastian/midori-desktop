@@ -1,0 +1,26 @@
+[Desktop Entry]
+Name=Midori Browser
+Comment=A privacy-focused browser by Astian
+Exec=midori %u
+Icon=org.astian.midori_browser
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;application/x-xpinstall;application/pdf;application/json;
+StartupWMClass=midori
+Categories=Network;WebBrowser;
+StartupNotify=true
+Terminal=false
+X-MultipleArgs=false
+Keywords=Internet;WWW;Browser;Web;Explorer;
+Actions=new-window;new-private-window;profilemanager;
+
+[Desktop Action new-window]
+Name=Open a New Window
+Exec=midori %u
+
+[Desktop Action new-private-window]
+Name=Open a New Private Window
+Exec=midori --private-window %u
+
+[Desktop Action profilemanager]
+Name=Open the Profile Manager
+Exec=midori --ProfileManager %u

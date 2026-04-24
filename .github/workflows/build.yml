@@ -145,10 +145,21 @@ jobs:
 
       - name: Compress prepared source
         run: |
+          SOURCE_EXCLUDES=(
+            --exclude='./.git'
+            --exclude='./obj-*'
+            --exclude='./dist'
+            --exclude='./node_modules'
+            --exclude='./*/node_modules'
+          )
           tar \
-            --exclude='./.git' \
+            "${SOURCE_EXCLUDES[@]}" \
             --use-compress-program=zstd \
             -hcf midori.source.tar.zst \
+            -C engine .
+          tar \
+            "${SOURCE_EXCLUDES[@]}" \
+            -hJcf "midori-${{ inputs.display_version }}.source.tar.xz" \
             -C engine .
 
       - name: Upload prepared source
@@ -157,6 +168,13 @@ jobs:
           name: midori.source.tar.zst
           path: ./midori.source.tar.zst
           retention-days: 2
+
+      - name: Upload Flatpak source bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: midori.source.tar.xz
+          path: ./midori-${{ inputs.display_version }}.source.tar.xz
+          retention-days: 5
 
   # ---------------------------------------------------------------------------
   # Linux builds

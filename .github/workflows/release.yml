@@ -7,15 +7,15 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       display_version:
-        description: 'Display version (e.g. 12.0)'
+        description: "Display version (e.g. 12.0)"
         required: true
         type: string
       build_type:
-        description: 'Build type'
+        description: "Build type"
         required: true
         type: choice
         options:
@@ -23,12 +23,12 @@ on:
           - dawn
         default: release
       draft:
-        description: 'Create as draft release'
+        description: "Create as draft release"
         required: false
         type: boolean
         default: true
       deploy_updates:
-        description: 'Deploy updates to update server after release'
+        description: "Deploy updates to update server after release"
         required: false
         type: boolean
         default: false
@@ -85,7 +85,7 @@ jobs:
   publish:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [prepare, build]
+    needs: [ prepare, build ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -113,6 +113,9 @@ jobs:
           \) | while read -r file; do
             PLATFORM=$(echo "$file" | cut -d'/' -f2)
             FILENAME=$(basename "$file")
+            case "$FILENAME" in
+              *.source.tar.xz) continue ;;
+            esac
             TARGET="release-output/midori-${{ needs.prepare.outputs.display_version }}-${PLATFORM}-${FILENAME}"
             cp "$file" "$TARGET"
           done
@@ -124,6 +127,11 @@ jobs:
             mkdir -p "release-output/update-manifests/${PLATFORM}"
             cp "$file" "release-output/update-manifests/${PLATFORM}/"
           done
+
+          # Collect the source bundle consumed by the Flatpak build manifest
+          SOURCE_BUNDLE=$(find release-artifacts/ -type f -name "*.source.tar.xz" | head -1)
+          test -n "$SOURCE_BUNDLE"
+          cp "$SOURCE_BUNDLE" "release-output/midori-${{ needs.prepare.outputs.display_version }}.source.tar.xz"
 
           # Generate SHA256 checksums
           cd release-output
@@ -167,7 +175,7 @@ jobs:
   update-flatpak-repo:
     name: Update Flatpak Packaging Repo
     runs-on: ubuntu-latest
-    needs: [prepare, build, publish]
+    needs: [ prepare, build, publish ]
     if: needs.prepare.outputs.build_type == 'release'
     steps:
       - name: Checkout midori-desktop
@@ -183,27 +191,22 @@ jobs:
         with:
           path: release-artifacts/
 
-      - name: Collect Linux archives
+      - name: Collect Flatpak source bundle
         run: |
           mkdir -p release-output
-          find release-artifacts/ -type f -name "*.tar.xz" | while read -r file; do
-            cp "$file" "release-output/$(basename "$file")"
-          done
+          SOURCE_BUNDLE=$(find release-artifacts/ -type f -name "*.source.tar.xz" | head -1)
+          test -n "$SOURCE_BUNDLE"
+          cp "$SOURCE_BUNDLE" "release-output/midori-${{ needs.prepare.outputs.display_version }}.source.tar.xz"
           ls -lah release-output
 
-      - name: Resolve Linux archive hashes
+      - name: Resolve Flatpak source metadata
         id: shas
         run: |
-          X86_FILE=$(find release-output -name "*linux-x86_64*.tar.xz" | head -1)
-          ARM_FILE=$(find release-output -name "*linux-aarch64*.tar.xz" | head -1)
-
-          test -n "$X86_FILE"
-          test -n "$ARM_FILE"
-
-          echo "x86_file=$X86_FILE" >> "$GITHUB_OUTPUT"
-          echo "arm_file=$ARM_FILE" >> "$GITHUB_OUTPUT"
-          echo "x86_sha=$(sha256sum "$X86_FILE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "arm_sha=$(sha256sum "$ARM_FILE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          SOURCE_FILE=$(find release-output -name "*.source.tar.xz" | head -1)
+          test -n "$SOURCE_FILE"
+          echo "source_file=$SOURCE_FILE" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(sha256sum "$SOURCE_FILE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "source_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Flatpak packaging repo
         uses: actions/checkout@v4
@@ -218,8 +221,14 @@ jobs:
           python3 scripts/update-flatpak-files.py \
             --repo flatpak-repo \
             --version "${{ needs.prepare.outputs.display_version }}" \
-            --x86-sha "${{ steps.shas.outputs.x86_sha }}" \
-            --arm-sha "${{ steps.shas.outputs.arm_sha }}"
+            --source-sha "${{ steps.shas.outputs.source_sha }}" \
+            --source-commit "${{ steps.shas.outputs.source_commit }}"
+
+      - name: Regenerate Flatpak npm sources
+        run: |
+          pip install flatpak-node-generator
+          bash scripts/refresh-node-sources.sh package-lock.json
+          cp generated-sources.json flatpak-repo/generated-sources.json
 
       - name: Install Flatpak tools for lint
         run: |
@@ -253,8 +262,10 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy Updates
-    needs: [prepare, publish, update-flatpak-repo]
-    if: always() && inputs.deploy_updates == true && needs.publish.result == 'success' && (needs.update-flatpak-repo.result == 'success' || needs.update-flatpak-repo.result == 'skipped')
+    needs: [ prepare, publish, update-flatpak-repo ]
+    if: always() && inputs.deploy_updates == true && needs.publish.result ==
+      'success' && (needs.update-flatpak-repo.result == 'success' ||
+      needs.update-flatpak-repo.result == 'skipped')
     uses: ./.github/workflows/deploy.yml
     with:
       version: ${{ needs.prepare.outputs.version }}

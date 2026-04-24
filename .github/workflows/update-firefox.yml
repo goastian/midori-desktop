@@ -7,21 +7,21 @@ name: Update Firefox Upstream
 on:
   schedule:
     # Check every 6 hours for upstream changes
-    - cron: '0 */6 * * *'
+    - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       check_rc:
-        description: 'Check for Release Candidate too'
+        description: "Check for Release Candidate too"
         required: false
         type: boolean
         default: false
       auto_build:
-        description: 'Trigger build automatically if update found'
+        description: "Trigger build automatically if update found"
         required: false
         type: boolean
         default: false
       recalculate_patches:
-        description: 'Recalculate patch set when patch import fails'
+        description: "Recalculate patch set when patch import fails"
         required: false
         type: boolean
         default: true
@@ -73,6 +73,7 @@ jobs:
           python-version-file: .python-version
 
       - name: Install Python dependencies
+        if: steps.check-upstream-branch.outputs.branch_exists == 'false'
         run: pip install requests
 
       - name: Setup Git
@@ -151,9 +152,9 @@ jobs:
 
       - name: Recalculate patches if needed
         if: >-
-          steps.changes.outputs.changed == 'true' &&
-          steps.check-patches.outcome != 'success' &&
-          (github.event_name == 'schedule' || inputs.recalculate_patches == true)
+          steps.changes.outputs.changed == 'true' && steps.check-patches.outcome
+          != 'success' && (github.event_name == 'schedule' ||
+          inputs.recalculate_patches == true)
         run: |
           echo "Patch import failed, attempting patch recalculation..."
           npm run recalculate-patches
@@ -235,9 +236,8 @@ jobs:
     name: Trigger Builds
     needs: check-update
     if: >-
-      needs.check-update.outputs.changed == 'true' &&
-      github.event_name == 'workflow_dispatch' &&
-      inputs.auto_build == true
+      needs.check-update.outputs.changed == 'true' && github.event_name ==
+      'workflow_dispatch' && inputs.auto_build == true
     uses: ./.github/workflows/build.yml
     with:
       display_version: ${{ needs.check-update.outputs.new_version }}

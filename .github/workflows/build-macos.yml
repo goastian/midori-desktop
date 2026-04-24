@@ -17,7 +17,7 @@ on:
       build_id:
         required: false
         type: string
-        default: ''
+        default: ""
       use_sccache:
         required: false
         type: boolean
@@ -31,9 +31,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [x86_64, aarch64]
+        arch: [ x86_64, aarch64 ]
     env:
-      MIDORI_RELEASE: 'true'
+      MIDORI_RELEASE: "true"
       MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
       SURFER_COMPAT: ${{ matrix.arch }}
       SCCACHE_DIR: ~/Library/Caches/Mozilla.sccache
@@ -118,7 +118,7 @@ jobs:
       - name: Extract prepared source
         run: |
           mkdir -p engine
-          export PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH"
+          export PATH="$(brew --prefix gnu-tar)/libexec/gnubin:$PATH"
           tar --use-compress-program=zstd -xf midori.source.tar.zst -C engine
           rm midori.source.tar.zst
 

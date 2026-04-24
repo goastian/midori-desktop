@@ -36,9 +36,13 @@ let content = fs.readFileSync(file, 'utf8');
 
 // Tor preflight: only enforce when Tor is actually available for the target.
 // Tor Expert Bundle is NOT available for linux-aarch64 or windows-aarch64.
+// Flatpak builds intentionally omit the embedded Tor runtime.
 // Check if the conditional version is already applied
 if (content.includes('_torUnavailable')) {
-  // Already patched with conditional logic — nothing to do.
+  content = content.replace(
+    /const _torUnavailable = \(_torArch === 'aarch64' && \(_torPlatform === 'linux' \|\| _torPlatform === 'win32'\)\);/g,
+    "const _torUnavailable = process.env.MIDORI_FLATPAK === '1' || (_torArch === 'aarch64' && (_torPlatform === 'linux' || _torPlatform === 'win32'));"
+  );
 } else if (content.includes("const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');")) {
   // Old unconditional Tor check exists — replace with conditional version
   const oldTorBlock = `        const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');
@@ -53,7 +57,7 @@ if (content.includes('_torUnavailable')) {
   const newTorBlock = `        // Tor is only available for x86_64 on Linux/Windows; macOS has both x86_64 and aarch64.
         const _torPlatform = process.env.AMELIA_PLATFORM || '';
         const _torArch = process.env.AMELIA_COMPAT || '';
-        const _torUnavailable = (_torArch === 'aarch64' && (_torPlatform === 'linux' || _torPlatform === 'win32'));
+        const _torUnavailable = process.env.MIDORI_FLATPAK === '1' || (_torArch === 'aarch64' && (_torPlatform === 'linux' || _torPlatform === 'win32'));
         if (!_torUnavailable) {
             const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');
             const torBinaryPath = process.ameliaPlatform == 'win32'
@@ -75,7 +79,7 @@ if (content.includes('_torUnavailable')) {
         // Tor is only available for x86_64 on Linux/Windows; macOS has both x86_64 and aarch64.
         const _torPlatform = process.env.AMELIA_PLATFORM || '';
         const _torArch = process.env.AMELIA_COMPAT || '';
-        const _torUnavailable = (_torArch === 'aarch64' && (_torPlatform === 'linux' || _torPlatform === 'win32'));
+        const _torUnavailable = process.env.MIDORI_FLATPAK === '1' || (_torArch === 'aarch64' && (_torPlatform === 'linux' || _torPlatform === 'win32'));
         if (!_torUnavailable) {
             const torDir = (0, node_path_1.join)(constants_1.OBJ_DIR, 'dist', 'bin', 'tor');
             const torBinaryPath = process.ameliaPlatform == 'win32'

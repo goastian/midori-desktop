@@ -32,12 +32,13 @@ ENGINE_DIR="$PROJECT_DIR/engine"
 
 stage_tor_placeholder() {
   local output_dir="$1"
+  local reason="${2:-Tor Expert Bundle is not available for ${PLATFORM}-${ARCH}.}"
 
   mkdir -p "$output_dir"
   find "$output_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
   cat > "$output_dir/tor-unavailable.txt" <<EOF
-Tor Expert Bundle is not available for ${PLATFORM}-${ARCH}.
+$reason
 Midori packages for this target ship without embedded Tor runtime files.
 This marker keeps the package manifest valid and prevents stale Tor artifacts.
 EOF
@@ -194,6 +195,13 @@ if ! OBJ_DIR="$(resolve_obj_dir)"; then
 fi
 
 OUTPUT_DIR="$OBJ_DIR/dist/bin/tor"
+
+if [ "${MIDORI_FLATPAK:-}" = "1" ]; then
+  echo "=== Flatpak build: omitting embedded Tor runtime for ${PLATFORM}-${ARCH}. ==="
+  stage_tor_placeholder "$OUTPUT_DIR" \
+    "Flatpak builds do not bundle the Tor Expert Bundle runtime."
+  exit 0
+fi
 
 # If Tor is not available for this platform+arch, stage a clean placeholder tree
 # so package-manifest.in can still include bin/tor/* without failing.
