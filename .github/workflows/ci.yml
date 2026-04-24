@@ -6,9 +6,9 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [ main, dev ]
   pull_request:
-    branches: [main, dev]
+    branches: [ main, dev ]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -124,6 +124,9 @@ jobs:
 
       - name: Set brand
         run: npm run brand
+
+      - name: Apply Amelia patches
+        run: bash scripts/patch-amelia.sh
 
       - name: Initialize Amelia (download + import + bootstrap)
         run: npm run init
