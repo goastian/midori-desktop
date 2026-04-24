@@ -125,8 +125,13 @@ NODE
 fi
 
 if [ -f "$AMELIA_BRANDING" ]; then
-  if grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING"; then
-    echo "[patch-amelia] branding-patch.js fallback already applied."
+  _brand_unofficial_patched=false
+  _brand_official_patched=false
+  grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING" && _brand_unofficial_patched=true
+  grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'official')) ?" "$AMELIA_BRANDING" && _brand_official_patched=true
+
+  if [ "$_brand_unofficial_patched" = "true" ] && [ "$_brand_official_patched" = "true" ]; then
+    echo "[patch-amelia] branding-patch.js fallbacks already applied."
   else
     node <<'NODE'
 const fs = require('node:fs');
@@ -138,20 +143,33 @@ if (!fs.existsSync(file)) {
 
 let content = fs.readFileSync(file, 'utf8');
 
-const source = "const BRANDING_FF = (0, node_path_1.join)(BRANDING_STORE, 'unofficial');";
-const replacement = "const BRANDING_FF = (0, node_fs_1.existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ? (0, node_path_1.join)(BRANDING_STORE, 'unofficial') : (0, node_path_1.join)(BRANDING_STORE, 'official');";
+// Patch 1: unofficial → official fallback (release brand)
+// If engine/browser/branding/unofficial is missing, fall back to official.
+const unofficialSource = "const BRANDING_FF = (0, node_path_1.join)(BRANDING_STORE, 'unofficial');";
+const unofficialReplacement = "const BRANDING_FF = (0, node_fs_1.existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ? (0, node_path_1.join)(BRANDING_STORE, 'unofficial') : (0, node_path_1.join)(BRANDING_STORE, 'official');";
 
-if (content.includes(source) && !content.includes("existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?")) {
-  content = content.replace(source, replacement);
+if (content.includes(unofficialSource) && !content.includes("existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?")) {
+  content = content.replace(unofficialSource, unofficialReplacement);
+}
+
+// Patch 2: official → unofficial fallback (dawn brand)
+// engine/browser/branding/official does not exist in the public Firefox source.
+// If it is missing, fall back to unofficial so the branding patch can proceed.
+const officialSource = "const BRANDING_FF = (0, node_path_1.join)(BRANDING_STORE, 'official');";
+const officialReplacement = "const BRANDING_FF = (0, node_fs_1.existsSync)((0, node_path_1.join)(BRANDING_STORE, 'official')) ? (0, node_path_1.join)(BRANDING_STORE, 'official') : (0, node_path_1.join)(BRANDING_STORE, 'unofficial');";
+
+if (content.includes(officialSource) && !content.includes("existsSync)((0, node_path_1.join)(BRANDING_STORE, 'official')) ?")) {
+  content = content.replace(officialSource, officialReplacement);
 }
 
 fs.writeFileSync(file, content, 'utf8');
 NODE
 
-    if grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING"; then
-      echo "[patch-amelia] Patched branding-patch.js with unofficial->official fallback."
+    if grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING" ||
+      grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'official')) ?" "$AMELIA_BRANDING"; then
+      echo "[patch-amelia] Patched branding-patch.js with branding directory fallbacks."
     else
-      echo "[patch-amelia] WARNING: Could not patch branding-patch.js fallback."
+      echo "[patch-amelia] WARNING: Could not patch branding-patch.js fallbacks."
     fi
   fi
 fi
