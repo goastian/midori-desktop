@@ -191,8 +191,13 @@ async function refreshAddonToggle(kind) {
     return;
   }
 
+  const api = getAddonManagerApi();
+  const perms = addon.permissions || 0;
+  const canDisable = !!(perms & api.AddonManager.PERM_CAN_DISABLE);
+  const canEnable = !!(perms & api.AddonManager.PERM_CAN_ENABLE);
+
   control.checked = !addon.userDisabled;
-  control.disabled = false;
+  control.disabled = control.checked ? !canDisable : !canEnable;
 }
 
 async function setAddonEnabled(kind, enabled) {
@@ -207,16 +212,23 @@ async function setAddonEnabled(kind, enabled) {
 
   control.disabled = true;
   try {
-    const targetUserDisabled = !enabled;
-    if ("userDisabled" in addon) {
-      addon.userDisabled = targetUserDisabled;
-    } else if (enabled) {
-      await addon.enable?.();
+    const api = getAddonManagerApi();
+    const perms = addon.permissions || 0;
+    if (enabled && !(perms & api.AddonManager.PERM_CAN_ENABLE)) {
+      throw new Error("This extension cannot be enabled by user action.");
+    }
+    if (!enabled && !(perms & api.AddonManager.PERM_CAN_DISABLE)) {
+      throw new Error("This extension cannot be disabled by user action.");
+    }
+
+    if (enabled) {
+      await addon.enable({ allowSystemAddons: true });
     } else {
-      await addon.disable?.();
+      await addon.disable({ allowSystemAddons: true });
     }
 
     const updatedAddon = await getAddonById(ADDON_IDS[kind]);
+    const targetUserDisabled = !enabled;
     const applied = updatedAddon ? updatedAddon.userDisabled === targetUserDisabled : false;
     if (!applied) {
       throw new Error("The extension state could not be changed.");
