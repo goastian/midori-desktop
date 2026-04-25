@@ -690,6 +690,11 @@ body::before {
   margin-bottom: 10px;
 }
 
+.addon-controls-status {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
 .workspace-status-error {
   color: #ef4444;
 }

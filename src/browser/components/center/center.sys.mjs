@@ -10,6 +10,12 @@
 const WORKSPACE_CHANGE_TOPIC = "midori-workspaces-updated";
 const WORKSPACES_MODULE_URL = "resource:///modules/MidoriWorkspaces.sys.mjs";
 const SHORTCUTS_MODULE_URL = "resource:///modules/MidoriShortcuts.sys.mjs";
+const ADDON_MANAGER_MODULE_URL = "resource://gre/modules/AddonManager.sys.mjs";
+
+const ADDON_IDS = {
+  privacy: "midori-protection@astian.org",
+  vpn: "midorivpn@astian.org",
+};
 
 // ---- Pref mapping: element ID → { pref, type } ----
 const PREF_MAP = {
@@ -62,12 +68,19 @@ const shortcutUI = {
   status: null,
 };
 
+const addonUI = {
+  privacy: null,
+  vpn: null,
+  status: null,
+};
+
 let workspaceApi = null;
 let workspaceObserver = null;
 let shortcutsApi = null;
 let shortcutObserver = null;
 let shortcutObservedPrefs = [];
 let shortcutFlashPref = "";
+let addonManagerApi = null;
 
 // ---- Read a pref by type ----
 function readPref(prefName, type) {
@@ -121,6 +134,123 @@ function getShortcutsApi() {
   }
 
   return shortcutsApi;
+}
+
+function getAddonManagerApi() {
+  if (addonManagerApi) {
+    return addonManagerApi;
+  }
+
+  try {
+    addonManagerApi = ChromeUtils.importESModule(ADDON_MANAGER_MODULE_URL);
+  } catch {
+    addonManagerApi = null;
+  }
+
+  return addonManagerApi;
+}
+
+function setAddonStatus(message, isError = false) {
+  if (!addonUI.status) return;
+  addonUI.status.textContent = message || "";
+  addonUI.status.classList.toggle("workspace-status-error", !!isError);
+  addonUI.status.hidden = !message;
+}
+
+function clearAddonStatus() {
+  setAddonStatus("");
+}
+
+async function getAddonById(addonId) {
+  try {
+    const api = getAddonManagerApi();
+    return (await api?.AddonManager?.getAddonByID?.(addonId)) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshAddonToggle(kind) {
+  const control = addonUI[kind];
+  if (!control) {
+    return;
+  }
+
+  const addon = await getAddonById(ADDON_IDS[kind]);
+  if (!addon) {
+    control.checked = false;
+    control.disabled = true;
+    setAddonStatus("The selected extension is unavailable in this build.", true);
+    return;
+  }
+
+  if (addon.appDisabled) {
+    control.checked = false;
+    control.disabled = true;
+    setAddonStatus(`${addon.name} is disabled by the application and cannot be toggled here.`, true);
+    return;
+  }
+
+  control.checked = !addon.userDisabled;
+  control.disabled = false;
+}
+
+async function setAddonEnabled(kind, enabled) {
+  const control = addonUI[kind];
+  const addon = await getAddonById(ADDON_IDS[kind]);
+
+  if (!control || !addon) {
+    setAddonStatus("Could not update extension state.", true);
+    await refreshAddonToggle(kind);
+    return;
+  }
+
+  control.disabled = true;
+  try {
+    const targetUserDisabled = !enabled;
+    if ("userDisabled" in addon) {
+      addon.userDisabled = targetUserDisabled;
+    } else if (enabled) {
+      await addon.enable?.();
+    } else {
+      await addon.disable?.();
+    }
+
+    const updatedAddon = await getAddonById(ADDON_IDS[kind]);
+    const applied = updatedAddon ? updatedAddon.userDisabled === targetUserDisabled : false;
+    if (!applied) {
+      throw new Error("The extension state could not be changed.");
+    }
+
+    setAddonStatus(`${updatedAddon.name} ${enabled ? "enabled" : "disabled"}.`);
+  } catch (error) {
+    const reason = error?.message ? ` (${error.message})` : "";
+    setAddonStatus(`Could not ${enabled ? "enable" : "disable"} ${addon.name}.${reason}`, true);
+  }
+
+  await refreshAddonToggle(kind);
+}
+
+async function initAddonControls() {
+  addonUI.privacy = document.getElementById("pref-midori-privacy-enabled");
+  addonUI.vpn = document.getElementById("pref-midori-vpn-enabled");
+  addonUI.status = document.getElementById("addon-controls-status");
+
+  if (!addonUI.privacy || !addonUI.vpn) {
+    return;
+  }
+
+  clearAddonStatus();
+  await refreshAddonToggle("privacy");
+  await refreshAddonToggle("vpn");
+
+  addonUI.privacy.addEventListener("change", async () => {
+    await setAddonEnabled("privacy", addonUI.privacy.checked);
+  });
+
+  addonUI.vpn.addEventListener("change", async () => {
+    await setAddonEnabled("vpn", addonUI.vpn.checked);
+  });
 }
 
 function getWorkspaceIcons(api) {
@@ -881,6 +1011,7 @@ function initVersionInfo() {
 document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
   initPrefs();
+  initAddonControls();
   initTabLayout();
   initVersionInfo();
   initWorkspaceManager();

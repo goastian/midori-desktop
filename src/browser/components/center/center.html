@@ -160,6 +160,35 @@
           </div>
           <a id="home-release-link" class="info-link" href="https://astian.org/midori-browser/" target="_blank" rel="noopener">Release Notes</a>
         </div>
+
+        <div class="setting-group">
+          <h2 class="group-title">Privacy &amp; VPN</h2>
+          <p class="group-desc">Enable or disable Midori Privacy (ad blocker) and Midori VPN at any time.</p>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Midori Privacy (Ad Blocker)</strong>
+              <p>Completely enable or disable the bundled ad blocker extension.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-midori-privacy-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Midori VPN</strong>
+              <p>Completely enable or disable the bundled VPN extension.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-midori-vpn-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <p id="addon-controls-status" class="workspace-status addon-controls-status" aria-live="polite" hidden></p>
+        </div>
       </section>
 
       <!-- TAB & APPEARANCE PAGE -->
