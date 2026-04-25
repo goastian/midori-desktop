@@ -145,7 +145,7 @@ jobs:
 
       - name: Compress prepared source
         run: |
-          SOURCE_EXCLUDES=(
+          BUILD_SOURCE_EXCLUDES=(
             --exclude='./.git'
             --exclude='./obj-*'
             --exclude='./dist'
@@ -153,14 +153,49 @@ jobs:
             --exclude='./*/node_modules'
           )
           tar \
-            "${SOURCE_EXCLUDES[@]}" \
+            "${BUILD_SOURCE_EXCLUDES[@]}" \
             --use-compress-program=zstd \
             -hcf midori.source.tar.zst \
             -C engine .
+
+          FLATPAK_SOURCE="midori-${{ inputs.display_version }}-src.tar.xz"
+          FLATPAK_STAGE="$(mktemp -d)"
+          trap 'rm -rf "$FLATPAK_STAGE"' EXIT
+
+          CLEAN_SOURCE_EXCLUDES=(
+            --exclude='./.git'
+            --exclude='./.github'
+            --exclude='./.hg'
+            --exclude='./.svn'
+            --exclude='./obj-*'
+            --exclude='./dist'
+            --exclude='./out'
+            --exclude='./build'
+            --exclude='./build-dir'
+            --exclude='./.flatpak-builder'
+            --exclude='./flatpak-repo'
+            --exclude='./repo'
+            --exclude='./node_modules'
+            --exclude='./*/node_modules'
+            --exclude='./.cache'
+            --exclude='./.mozbuild'
+            --exclude='./.npm'
+            --exclude='./*.log'
+          )
+
           tar \
-            "${SOURCE_EXCLUDES[@]}" \
-            -hJcf "midori-${{ inputs.display_version }}.source.tar.xz" \
-            -C engine .
+            "${CLEAN_SOURCE_EXCLUDES[@]}" \
+            -cf - \
+            -C engine . | tar -xf - -C "$FLATPAK_STAGE"
+
+          tar \
+            --sort=name \
+            --mtime='UTC 2020-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -cJf "$FLATPAK_SOURCE" \
+            -C "$FLATPAK_STAGE" .
 
       - name: Upload prepared source
         uses: actions/upload-artifact@v4
@@ -172,8 +207,8 @@ jobs:
       - name: Upload Flatpak source bundle
         uses: actions/upload-artifact@v4
         with:
-          name: midori.source.tar.xz
-          path: ./midori-${{ inputs.display_version }}.source.tar.xz
+          name: midori-src.tar.xz
+          path: ./midori-${{ inputs.display_version }}-src.tar.xz
           retention-days: 5
 
   # ---------------------------------------------------------------------------

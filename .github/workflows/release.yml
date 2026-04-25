@@ -114,7 +114,7 @@ jobs:
             PLATFORM=$(echo "$file" | cut -d'/' -f2)
             FILENAME=$(basename "$file")
             case "$FILENAME" in
-              *.source.tar.xz) continue ;;
+              *.source.tar.xz | midori-*-src.tar.xz) continue ;;
             esac
             TARGET="release-output/midori-${{ needs.prepare.outputs.display_version }}-${PLATFORM}-${FILENAME}"
             cp "$file" "$TARGET"
@@ -129,9 +129,9 @@ jobs:
           done
 
           # Collect the source bundle consumed by the Flatpak build manifest
-          SOURCE_BUNDLE=$(find release-artifacts/ -type f -name "*.source.tar.xz" | head -1)
+          SOURCE_BUNDLE=$(find release-artifacts/ -type f -name "midori-*-src.tar.xz" | head -1)
           test -n "$SOURCE_BUNDLE"
-          cp "$SOURCE_BUNDLE" "release-output/midori-${{ needs.prepare.outputs.display_version }}.source.tar.xz"
+          cp "$SOURCE_BUNDLE" "release-output/midori-${{ needs.prepare.outputs.display_version }}-src.tar.xz"
 
           # Generate SHA256 checksums
           cd release-output

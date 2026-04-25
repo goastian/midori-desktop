@@ -29,7 +29,7 @@ if [ -z "$SOURCE_COMMIT" ]; then
 fi
 
 if [ -z "$SOURCE_SHA" ]; then
-  source_bundle="$REPO_ROOT/release-output/midori-$VERSION.source.tar.xz"
+  source_bundle="$REPO_ROOT/release-output/midori-$VERSION-src.tar.xz"
   if [ -f "$source_bundle" ]; then
     SOURCE_SHA="$(sha256sum "$source_bundle" | awk '{print $1}')"
   else

@@ -15,7 +15,7 @@ on:
         required: false
         type: string
       source_sha:
-        description: "Optional SHA256 for midori-<version>.source.tar.xz"
+        description: "Optional SHA256 for midori-<version>-src.tar.xz"
         required: false
         type: string
       source_commit:
@@ -90,7 +90,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --pattern SHA256SUMS.txt \
               --dir /tmp/flatpak-release; then
-              SOURCE_SHA="$(awk -v file="midori-$VERSION.source.tar.xz" '$2 == file {print $1}' /tmp/flatpak-release/SHA256SUMS.txt)"
+              SOURCE_SHA="$(awk -v file="midori-$VERSION-src.tar.xz" '$2 == file {print $1}' /tmp/flatpak-release/SHA256SUMS.txt)"
             else
               echo "SHA256SUMS.txt not available for v$VERSION; preserving manifest sha256"
             fi

@@ -43,7 +43,7 @@ def update_manifest(
     tag = f"v{version}"
     source_url = (
         "https://github.com/goastian/midori-desktop/releases/download/"
-        f"{tag}/midori-{version}.source.tar.xz"
+        f"{tag}/midori-{version}-src.tar.xz"
     )
 
     text = replace_or_fail(
@@ -66,14 +66,14 @@ def update_manifest(
             "source git commit",
         )
     text = replace_or_fail(
-        r"url:\s+https://github\.com/goastian/midori-desktop/releases/download/v[^/]+/midori-[^/\s]+\.source\.tar\.xz",
+        r"url:\s+https://github\.com/goastian/midori-desktop/releases/download/v[^/]+/midori-[^/\s]+(?:\.source|-src)\.tar\.xz",
         f"url: {source_url}",
         text,
         "source tarball URL",
     )
     if source_sha:
         text = replace_or_fail(
-            r"(url:\s+https://github\.com/goastian/midori-desktop/releases/download/v[^/]+/midori-[^/\s]+\.source\.tar\.xz\n\s+sha256:\s+)[\"']?[a-f0-9]{64}[\"']?",
+            r"(url:\s+https://github\.com/goastian/midori-desktop/releases/download/v[^/]+/midori-[^/\s]+(?:\.source|-src)\.tar\.xz\n\s+sha256:\s+)[\"']?[a-f0-9]{64}[\"']?",
             rf"\g<1>{source_sha}",
             text,
             "source tarball sha256",
