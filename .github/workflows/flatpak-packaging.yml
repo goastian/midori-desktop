@@ -96,26 +96,13 @@ jobs:
             fi
           fi
 
+          SOURCE_COMMIT="$INPUT_SOURCE_COMMIT"
+          if [ -z "$SOURCE_COMMIT" ]; then
+            SOURCE_COMMIT="$(git rev-list -n 1 "v$VERSION" 2>/dev/null || git rev-parse HEAD)"
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-
-      - name: Clone Midori source tag
-        id: source
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $GH_TOKEN" \
-            clone --depth 1 --branch "v$VERSION" \
-            "https://github.com/$GITHUB_REPOSITORY.git" midori-source
-
-          TAG_COMMIT="$(git -C midori-source rev-parse HEAD)"
-          SOURCE_COMMIT="${INPUT_SOURCE_COMMIT:-$TAG_COMMIT}"
-
-          echo "tag_commit=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
           echo "source_commit=$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Flatpak packaging repo
@@ -133,7 +120,7 @@ jobs:
           args=(
             --repo flatpak-repo
             --version "${{ steps.meta.outputs.version }}"
-            --source-commit "${{ steps.source.outputs.source_commit }}"
+            --source-commit "${{ steps.meta.outputs.source_commit }}"
           )
 
           if [ -n "${{ steps.meta.outputs.source_sha }}" ]; then
@@ -154,7 +141,7 @@ jobs:
           python3 -m pip install --user flatpak-node-generator
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          bash scripts/refresh-node-sources.sh midori-source/package-lock.json flatpak-repo/generated-sources.json
+          bash scripts/refresh-node-sources.sh package-lock.json flatpak-repo/generated-sources.json
 
       - name: Install Flatpak lint tools
         if: github.event_name != 'workflow_dispatch' || inputs.lint || inputs.build_flatpak
