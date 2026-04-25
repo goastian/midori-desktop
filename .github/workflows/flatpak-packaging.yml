@@ -154,7 +154,19 @@ jobs:
       - name: Lint Flatpak appstream
         if: github.event_name == 'release' || inputs.lint
         run: |
-          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder appstream flatpak-repo/org.astian.midori_browser.metainfo.xml
+          set +e
+          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder appstream flatpak-repo/org.astian.midori_browser.metainfo.xml 2>&1 | tee /tmp/flatpak-appstream-lint.log
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            if grep -Eq "screenshot-image-not-found|url-not-reachable" /tmp/flatpak-appstream-lint.log; then
+              echo "AppStream lint only failed because remote screenshots/URLs are not reachable yet."
+              echo "The packaging sync can continue; Flathub will validate reachability once the release assets exist."
+            else
+              exit "$status"
+            fi
+          fi
 
       - name: Commit and push packaging update
         run: |
