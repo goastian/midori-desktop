@@ -143,18 +143,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install -y flathub org.flatpak.Builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.flatpak.Builder
 
       - name: Lint Flatpak manifest
         if: github.event_name == 'release' || inputs.lint
         run: |
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flatpak-repo/org.astian.midori_browser.yml
+          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder manifest flatpak-repo/org.astian.midori_browser.yml
 
       - name: Lint Flatpak appstream
         if: github.event_name == 'release' || inputs.lint
         run: |
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream flatpak-repo/org.astian.midori_browser.metainfo.xml
+          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder appstream flatpak-repo/org.astian.midori_browser.metainfo.xml
 
       - name: Commit and push packaging update
         run: |
