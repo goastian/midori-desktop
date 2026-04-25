@@ -594,6 +594,12 @@ toolbar .toolbarbutton-1 {
   transition: background-color 0.15s ease !important;
 }
 
+#urlbar:not([open]) .urlbar-input-container[pageproxystate="valid"] > #identity-box,
+#urlbar:not([open]) #page-action-buttons {
+  display: inline-flex !important;
+  margin-inline: 0 !important;
+}
+
 /* Keep page actions (passwords, bookmark, reader-mode, translations,
    permissions) always visible — Midori needs these surfaced in both
    horizontal and vertical modes. */
@@ -651,15 +657,18 @@ toolbar .toolbarbutton-1 {
 
 /* In the floating/expanded urlbar only hide Firefox's native tracking
    protection container (replaced by the midori-privacy extension icon).
-   Keep #identity-box (site info + permissions) and #page-action-buttons
-   (passwords, bookmark, reader-mode, translations) visible. */
+   Keep #identity-box visible only for valid pages so Firefox can still
+   hide its invalid-state search icon and permission anchors correctly.
+   Keep #page-action-buttons (passwords, bookmark, reader-mode,
+   translations) visible. */
 #urlbar[open] #tracking-protection-icon-container {
   display: none !important;
 }
 
-#urlbar[open] #identity-box,
+#urlbar[open] .urlbar-input-container[pageproxystate="valid"] > #identity-box,
 #urlbar[open] #page-action-buttons {
   display: flex !important;
+  margin-inline: 0 !important;
 }
 
 #urlbar[open] #urlbar-go-button {
