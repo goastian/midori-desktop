@@ -52,6 +52,23 @@
   display: inline-flex !important;
 }
 
+/* Midori: always surface site info, permissions and password manager
+   regardless of urlbar state (idle / open / invalid). The midori-privacy
+   extension replaces Firefox's tracking protection icon, but the rest of
+   the urlbar actions must remain reachable in both horizontal and vertical
+   tab modes. */
+#identity-box,
+#identity-icon-box,
+#identity-permission-box,
+#page-action-buttons,
+#page-action-buttons > #star-button-box,
+#page-action-buttons > #reader-mode-button,
+#page-action-buttons > #translations-button:not([hidden]),
+#page-action-buttons > #login-fill-button:not([hidden]) {
+  display: inline-flex !important;
+  visibility: visible !important;
+}
+
 /* Keep translations badge from bleeding into adjacent URL bar actions. */
 #translations-button-locale {
   background-color: var(--urlbar-box-bgcolor) !important;

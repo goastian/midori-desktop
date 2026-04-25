@@ -594,18 +594,15 @@ toolbar .toolbarbutton-1 {
   transition: background-color 0.15s ease !important;
 }
 
+/* Keep page actions (passwords, bookmark, reader-mode, translations,
+   permissions) always visible — Midori needs these surfaced in both
+   horizontal and vertical modes. */
 #urlbar:not([open]) .urlbar-page-action {
-  opacity: 0;
-  width: 0 !important;
-  padding: 0 !important;
-  overflow: hidden;
-  transition: opacity 0.15s ease, width 0.15s ease, padding 0.15s ease !important;
-}
-
-#urlbar:not([open]):hover .urlbar-page-action {
-  opacity: 1;
+  opacity: 1 !important;
   width: 26px !important;
   padding: 5px !important;
+  overflow: visible;
+  transition: background-color 0.15s ease !important;
 }
 
 #urlbar:not([open]):hover #identity-icon-box {
@@ -652,10 +649,17 @@ toolbar .toolbarbutton-1 {
   border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
 }
 
-#urlbar[open] #tracking-protection-icon-container,
+/* In the floating/expanded urlbar only hide Firefox's native tracking
+   protection container (replaced by the midori-privacy extension icon).
+   Keep #identity-box (site info + permissions) and #page-action-buttons
+   (passwords, bookmark, reader-mode, translations) visible. */
+#urlbar[open] #tracking-protection-icon-container {
+  display: none !important;
+}
+
 #urlbar[open] #identity-box,
 #urlbar[open] #page-action-buttons {
-  display: none !important;
+  display: flex !important;
 }
 
 #urlbar[open] #urlbar-go-button {
