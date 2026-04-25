@@ -32,6 +32,11 @@ on:
         required: false
         type: boolean
         default: true
+      build_flatpak:
+        description: "Run flatpak-builder after updating the packaging repo"
+        required: false
+        type: boolean
+        default: false
   release:
     types:
       - published
@@ -78,11 +83,6 @@ jobs:
             VERSION="$(node -p "require('./package.json').version")"
           fi
 
-          SOURCE_COMMIT="$INPUT_SOURCE_COMMIT"
-          if [ -z "$SOURCE_COMMIT" ]; then
-            SOURCE_COMMIT="$(git rev-list -n 1 "v$VERSION" 2>/dev/null || git rev-parse HEAD)"
-          fi
-
           SOURCE_SHA="$INPUT_SOURCE_SHA"
           if [ -z "$SOURCE_SHA" ]; then
             mkdir -p /tmp/flatpak-release
@@ -97,8 +97,26 @@ jobs:
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "source_commit=$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Clone Midori source tag
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: bearer $GH_TOKEN" \
+            clone --depth 1 --branch "v$VERSION" \
+            "https://github.com/$GITHUB_REPOSITORY.git" midori-source
+
+          TAG_COMMIT="$(git -C midori-source rev-parse HEAD)"
+          SOURCE_COMMIT="${INPUT_SOURCE_COMMIT:-$TAG_COMMIT}"
+
+          echo "tag_commit=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "source_commit=$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Flatpak packaging repo
         uses: actions/checkout@v4
@@ -115,7 +133,7 @@ jobs:
           args=(
             --repo flatpak-repo
             --version "${{ steps.meta.outputs.version }}"
-            --source-commit "${{ steps.meta.outputs.source_commit }}"
+            --source-commit "${{ steps.source.outputs.source_commit }}"
           )
 
           if [ -n "${{ steps.meta.outputs.source_sha }}" ]; then
@@ -125,34 +143,34 @@ jobs:
           python3 scripts/update-flatpak-release.py "${args[@]}"
 
       - name: Setup Node.js
-        if: github.event_name == 'release' || inputs.update_node_sources
+        if: github.event_name != 'workflow_dispatch' || inputs.update_node_sources
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Regenerate Flatpak npm sources
-        if: github.event_name == 'release' || inputs.update_node_sources
+        if: github.event_name != 'workflow_dispatch' || inputs.update_node_sources
         run: |
           python3 -m pip install --user flatpak-node-generator
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          bash scripts/refresh-node-sources.sh package-lock.json flatpak-repo/generated-sources.json
+          bash scripts/refresh-node-sources.sh midori-source/package-lock.json flatpak-repo/generated-sources.json
 
       - name: Install Flatpak lint tools
-        if: github.event_name == 'release' || inputs.lint
+        if: github.event_name != 'workflow_dispatch' || inputs.lint || inputs.build_flatpak
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak
+          sudo apt-get install -y flatpak flatpak-builder
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.flatpak.Builder
 
       - name: Lint Flatpak manifest
-        if: github.event_name == 'release' || inputs.lint
+        if: github.event_name != 'workflow_dispatch' || inputs.lint
         run: |
           flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder manifest flatpak-repo/org.astian.midori_browser.yml
 
       - name: Lint Flatpak appstream
-        if: github.event_name == 'release' || inputs.lint
+        if: github.event_name != 'workflow_dispatch' || inputs.lint
         run: |
           set +e
           flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder appstream flatpak-repo/org.astian.midori_browser.metainfo.xml 2>&1 | tee /tmp/flatpak-appstream-lint.log
@@ -167,6 +185,16 @@ jobs:
               exit "$status"
             fi
           fi
+
+      - name: Build Flatpak package
+        if: (github.event_name == 'push' || inputs.build_flatpak) && steps.meta.outputs.source_sha != ''
+        run: |
+          flatpak-builder \
+            --user \
+            --force-clean \
+            --install-deps-from=flathub \
+            build-dir \
+            flatpak-repo/org.astian.midori_browser.yml
 
       - name: Commit and push packaging update
         run: |
