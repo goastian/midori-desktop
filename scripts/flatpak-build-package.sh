@@ -26,6 +26,8 @@ export AMELIA_PLATFORM=linux
 export AMELIA_COMPAT="$SURFER_COMPAT"
 export MIDORI_RELEASE=1
 export MIDORI_RELEASE_BRANCH=release
+export MIDORI_GA_RELEASE=1
+export MIDORI_GA_RELEASE_BRANCH=release
 export MIDORI_GA_DISABLE_PGO=1
 export MIDORI_DISABLE_LTO=1
 export MIDORI_FLATPAK=1
@@ -52,7 +54,11 @@ fi
 bash scripts/download-tor.sh linux "$SURFER_COMPAT"
 amelia package
 
-package_archive="$(find dist -maxdepth 1 -type f -name '*.tar.xz' | sort | head -n 1)"
+# Buscar específicamente el archivo que corresponde a la plataforma actual
+ARCH_PATTERN="linux-${SURFER_COMPAT/x86_64/x64}"
+ARCH_PATTERN="${ARCH_PATTERN/aarch64/arm64}"
+package_archive="$(find dist -maxdepth 1 -type f -name "*${ARCH_PATTERN}*.tar.xz" | sort | head -n 1)"
+
 if [ -z "$package_archive" ]; then
   echo "No Linux package archive was produced under dist/" >&2
   exit 1

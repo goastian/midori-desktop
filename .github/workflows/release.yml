@@ -212,13 +212,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: goastian/org.astian.midori_browser
-          token: ${{ secrets.FLATPAK_REPO_TOKEN }}
+          token: ${{ secrets.PACKAGING_TOKEN }}
           path: flatpak-repo
           ref: main
 
       - name: Update Flatpak files
         run: |
-          python3 scripts/update-flatpak-files.py \
+          python3 scripts/update-flatpak-release.py \
             --repo flatpak-repo \
             --version "${{ needs.prepare.outputs.display_version }}" \
             --source-sha "${{ steps.shas.outputs.source_sha }}" \

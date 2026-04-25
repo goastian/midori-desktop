@@ -36,7 +36,7 @@ def replace_or_fail(pattern: str, replacement: str, text: str, description: str)
 def update_manifest(
     path: Path,
     version: str,
-    source_sha: str,
+    source_sha: str | None,
     source_commit: str | None,
 ) -> None:
     text = path.read_text(encoding="utf-8")
@@ -47,7 +47,7 @@ def update_manifest(
     )
 
     text = replace_or_fail(
-        r"(runtime-version:\s*')[^']+(')",
+        r"(runtime-version:\s*[\"']?)[0-9.]+([\"']?)",
         rf"\g<1>{RUNTIME_VERSION}\2",
         text,
         "runtime-version",
@@ -71,19 +71,40 @@ def update_manifest(
         text,
         "source tarball URL",
     )
-    text = replace_or_fail(
-        r"(midori-[^/\s]+\.source\.tar\.xz\n\s+sha256:\s+)'?[a-f0-9]{64}'?",
-        rf"\g<1>{source_sha}",
-        text,
-        "source tarball sha256",
-    )
+    if source_sha:
+        text = replace_or_fail(
+            r"(url:\s+https://github\.com/goastian/midori-desktop/releases/download/v[^/]+/midori-[^/\s]+\.source\.tar\.xz\n\s+sha256:\s+)[\"']?[a-f0-9]{64}[\"']?",
+            rf"\g<1>{source_sha}",
+            text,
+            "source tarball sha256",
+        )
 
     path.write_text(text, encoding="utf-8")
+
+
+def update_screenshot_urls(root: ET.Element, version: str) -> None:
+    prefix_pattern = re.compile(
+        r"https://raw\.githubusercontent\.com/goastian/midori-desktop/"
+        r"v[^/]+/screenshots/"
+    )
+    replacement = (
+        f"https://raw.githubusercontent.com/goastian/midori-desktop/"
+        f"v{version}/screenshots/"
+    )
+
+    screenshots = root.find("screenshots")
+    if screenshots is None:
+        return
+
+    for image in screenshots.findall(".//image"):
+        if image.text:
+            image.text = prefix_pattern.sub(replacement, image.text)
 
 
 def update_metainfo(path: Path, version: str) -> None:
     tree = ET.parse(path)
     root = tree.getroot()
+    update_screenshot_urls(root, version)
 
     releases = root.find("releases")
     if releases is None:
@@ -135,7 +156,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Update Flatpak packaging repo files")
     parser.add_argument("--repo", required=True, help="Path to the packaging repository")
     parser.add_argument("--version", required=True, help="Release version, e.g. 11.7")
-    parser.add_argument("--source-sha", required=True, help="SHA256 for the source tarball")
+    parser.add_argument(
+        "--source-sha",
+        help="SHA256 for the source tarball; omitted values preserve the current manifest sha256",
+    )
     parser.add_argument("--source-commit", help="Git commit for the release tag")
     args = parser.parse_args()
 
@@ -156,7 +180,10 @@ def main() -> None:
 
     print(f"Updated packaging repo at: {repo}")
     print(f"Version: {args.version}")
-    print(f"Source sha256: {args.source_sha}")
+    if args.source_sha:
+        print(f"Source sha256: {args.source_sha}")
+    else:
+        print("Source sha256: preserved from existing manifest")
     if args.source_commit:
         print(f"Source commit: {args.source_commit}")
 
