@@ -52,21 +52,33 @@
   display: inline-flex !important;
 }
 
-/* Midori: always surface site info, permissions and password manager
-   regardless of urlbar state (idle / open / invalid). The midori-privacy
-   extension replaces Firefox's tracking protection icon, but the rest of
-   the urlbar actions must remain reachable in both horizontal and vertical
-   tab modes. */
-#identity-box,
-#identity-icon-box,
-#identity-permission-box,
-#page-action-buttons,
-#page-action-buttons > #star-button-box,
-#page-action-buttons > #reader-mode-button,
-#page-action-buttons > #translations-button:not([hidden]),
-#page-action-buttons > #login-fill-button:not([hidden]) {
+/* Midori uses browser.urlbar.trustPanel.featureGate=true, so
+   #trust-icon-container replaces the old lock icon (#identity-icon-box).
+   The native CSS shows it inside @media -moz-pref(...), which can fail to
+   evaluate before the style sheet is fully parsed. Override it explicitly
+   so the icon is reliably visible on valid pages in both tab modes.
+   We scope to pageproxystate="valid" so the native pointer-events and
+   click handlers work correctly (no popup-on-click broken behavior). */
+.urlbar-input-container[pageproxystate="valid"] > #trust-icon-container:not(.chickletShown) {
   display: inline-flex !important;
-  visibility: visible !important;
+}
+
+/* Keep the identity container present on valid pages, but do not force the
+   permission icon itself visible. Firefox toggles #identity-permission-box
+   dynamically depending on granted/blocked permissions, and forcing it here
+   breaks the native permission prompt anchoring/interaction. */
+.urlbar-input-container[pageproxystate="valid"] > #identity-box {
+  display: inline-flex !important;
+}
+
+/* Compact spacing between urlbar action buttons. */
+.urlbar-input-container[pageproxystate="valid"] > #identity-box,
+.urlbar-input-container[pageproxystate="valid"] > #page-action-buttons {
+  margin-inline: 0 !important;
+}
+
+.urlbar-input-container[pageproxystate="valid"] > #page-action-buttons > .urlbar-page-action {
+  margin-inline: 1px !important;
 }
 
 /* Keep translations badge from bleeding into adjacent URL bar actions. */
