@@ -1,8 +1,8 @@
 diff --git a/browser/actors/AboutNewTabChild.sys.mjs b/browser/actors/AboutNewTabChild.sys.mjs
-index 8c90ee5fd4e4b8c9196143735ace0e0f2783087c..c404b902a814f7fff6acc74d445fc881ef5491d9 100644
+index 513dbaa5d3ae1936763207df41a754edc400044e..49ad8d7b3f7702c9e4ea67b7168ba0088d77b598 100644
 --- a/browser/actors/AboutNewTabChild.sys.mjs
 +++ b/browser/actors/AboutNewTabChild.sys.mjs
-@@ -46,6 +46,15 @@ export class AboutNewTabChild extends RemotePageChild {
+@@ -54,6 +54,15 @@ export class AboutNewTabChild extends RemotePageChild {
          return; // about:newtab is a blank page
        }
  
