@@ -3,7 +3,7 @@
  * Peskyfox                                                                 *
  * "Aquila non capit muscas"                                                *
  * priority: remove annoyances                                              *
- * version: 144                                                             *
+ * version: 148                                                             *
  * url: https://github.com/yokoffing/Betterfox                              *
  * credit: Some prefs are reproduced and adapted from the arkenfox project  *
  * credit urL: https://github.com/arkenfox/user.js                          *
@@ -43,7 +43,7 @@ user_pref("browser.preferences.moreFromMozilla", false);
 user_pref("browser.aboutConfig.showWarning", false);
 
 // PREF: disable welcome notices
-//user_pref("browser.startup.homepage_override.mstone", "ignore"); // What's New page after updates; master switch
+user_pref("browser.startup.homepage_override.mstone", "ignore");
 user_pref("browser.aboutwelcome.enabled", false); // disable Intro screens
     //user_pref("startup.homepage_welcome_url", "");
     //user_pref("startup.homepage_welcome_url.additional", "");
@@ -97,47 +97,30 @@ user_pref("browser.privateWindowSeparation.enabled", false);
 /****************************************************************************
  * SECTION: AI                                                              *
 ****************************************************************************/
-// PREF: AI master switch
-// [1] https://github.com/yokoffing/Betterfox/issues/416
+// PREF: AI default controls
+// [1] https://blog.mozilla.org/en/firefox/how-to-use-ai-controls/
+user_pref("browser.ai.control.default", "blocked");
 user_pref("browser.ml.enable", false);
 
-// PREF: AI chat
-user_pref("browser.ml.chat.enabled", false);
+// PREF: Translations
+//user_pref("browser.ai.control.translations", "blocked");
 
-// PREF: AI chatbot option in right click menu
-user_pref("browser.ml.chat.menu", false);
+// PREF: Image alt text in Nightly PDF viewer
+//user_pref("browser.ai.control.pdfjsAltText", "blocked");
 
-// PREF: AI-enhanced tab groups
+// PREF: Tab group suggestions
 // [1] https://support.mozilla.org/kb/how-use-ai-enhanced-tab-groups
-user_pref("browser.tabs.groups.smart.enabled", true);
+//user_pref("browser.ai.control.smartTabGroups", "blocked");
+user_pref("browser.tabs.groups.smart.enabled", false);
 
-// PREF: link previews
-user_pref("browser.ml.linkPreview.enabled", true);
+// PREF: Key points in link previews
+//user_pref("browser.ai.control.linkPreviewKeyPoints", "blocked");
+user_pref("browser.ml.linkPreview.enabled", false);
 
-/****************************************************************************
- * SECTION: COOKIE BANNER HANDLING                                          *
-****************************************************************************/
-
-// PREF: Cookie Banner handling
-// [DEPRECIATED] Future of the project is unclear. See [5] and [6].
-// [NOTE] Feature still enforces Total Cookie Protection to limit 3rd-party cookie tracking [1]
-// [1] https://github.com/mozilla/cookie-banner-rules-list/issues/33#issuecomment-1318460084
-// [2] https://phabricator.services.mozilla.com/D153642
-// [3] https://winaero.com/make-firefox-automatically-click-on-reject-all-in-cookie-banner-consent/
-// [4] https://docs.google.com/spreadsheets/d/1Nb4gVlGadyxix4i4FBDnOeT_eJp2Zcv69o-KfHtK-aA/edit#gid=0
-// [5] https://bugzilla.mozilla.org/show_bug.cgi?id=1940418
-// [6] https://github.com/mozilla/cookie-banner-rules-list/issues/544
-// 2: reject banners if it is a one-click option; otherwise, fall back to the accept button to remove banner
-// 1: reject banners if it is a one-click option; otherwise, keep banners on screen
-// 0: disable all cookie banner handling
-//user_pref("cookiebanners.service.mode", 1);
-//user_pref("cookiebanners.service.mode.privateBrowsing", 1);
-
-// PREF: Cookie Banner global rules
-// Global rules that can handle a list of cookie banner libraries and providers on any site.
-// This is used for click rules that can handle common Consent Management Providers (CMP).
-//user_pref("cookiebanners.service.enableGlobalRules", true); // DEFAULT [FF121+]
-//user_pref("cookiebanners.service.enableGlobalRules.subFrames", true); // DEFAULT [FF121+]
+// PREF: Chatbot in sidebar
+//user_pref("browser.ai.control.sidebarChatbot", "blocked");
+user_pref("browser.ml.chat.enabled", false);
+user_pref("browser.ml.chat.menu", false);
 
 /****************************************************************************
  * SECTION: TRANSLATIONS                                                    *
@@ -162,8 +145,9 @@ user_pref("full-screen-api.transition-duration.enter", "0 0"); // default=200 20
 user_pref("full-screen-api.transition-duration.leave", "0 0"); // default=200 200
 
 // PREF: disable fullscreen notice
-user_pref("full-screen-api.warning.delay", -1); // default=500
-user_pref("full-screen-api.warning.timeout", 0); // default=3000
+// [NOTE] Adjust to a sensible value, like 1250, if you have security concerns.
+//user_pref("full-screen-api.warning.timeout", 0); // default=3000; alt=1250
+//user_pref("full-screen-api.warning.delay", -1); // default=500
 
 /****************************************************************************
  * SECTION: FONT APPEARANCE                                                 *
@@ -410,6 +394,17 @@ user_pref("browser.download.open_pdf_attachments_inline", true);
 //user_pref("pdfjs.defaultZoomValue", page-width);
 
 /****************************************************************************
+ * SECTION: DOM (DOCUMENT OBJECT MODEL)                                     *
+****************************************************************************/
+// PREF: prevent scripts from moving and resizing open windows
+//user_pref("dom.disable_window_move_resize", true);
+
+// PREF: disable beforeunload event
+// [WHY] The method is commonly abused by scam and spyware sites.
+// [1] https://developer.mozilla.org/docs/Web/API/Window/beforeunload_event
+//user_pref("dom.disable_beforeunload", true);
+
+/****************************************************************************
  * SECTION: TAB BEHAVIOR                                                    *
 ****************************************************************************/
 
@@ -432,7 +427,7 @@ user_pref("browser.download.open_pdf_attachments_inline", true);
 // 0 = force all new windows opened by JavaScript into tabs
 // [NOTE] Most advertising popups also open in new windows with values set
 // [1] https://kb.mozillazine.org/About:config_entries
-//user_pref("browser.link.open_newwindow.restriction", 0);
+//user_pref("browser.link.open_newwindow.restriction", 2); // DEFAULT
 
 // PREF: override <browser.link.open_newwindow> for external links
 // Set if a different destination for external links is needed
@@ -483,9 +478,6 @@ user_pref("findbar.highlightAll", true);
 // It's been default in Linux since at least FF102.
 // [1] https://gitlab.torproject.org/tpo/applications/tor-browser/-/issues/10089
 //user_pref("middlemouse.contentLoadURL", false);
-
-// PREF: Prevent scripts from moving and resizing open windows
-//user_pref("dom.disable_window_move_resize", true);
 
 // PREF: insert new tabs after groups like it
 // true(default) = open new tabs to the right of the parent tab

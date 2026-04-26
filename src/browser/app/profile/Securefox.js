@@ -3,7 +3,7 @@
  * Securefox                                                                *
  * "Natura non contristatur"                                                *     
  * priority: provide sensible security and privacy                          *
- * version: 144                                                             *
+ * version: 150                                                             *
  * url: https://github.com/yokoffing/Betterfox                              *
  * credit: Most prefs are reproduced and adapted from the arkenfox project  *
  * credit urL: https://github.com/arkenfox/user.js                          *
@@ -12,19 +12,16 @@
 /****************************************************************************
  * SECTION: TRACKING PROTECTION                                             *
 ****************************************************************************/
-
-// PREF: Enhanced Tracking Protection (ETP)
-// Tracking Content blocking will strip cookies and block all resource requests to domains listed in Disconnect.me.
-// Firefox deletes all stored site data (incl. cookies, browser storage) if the site is a known tracker and hasn’t
-// been interacted with in the last 30 days.
-// [ALLOWLIST] https://disconnect.me/trackerprotection/unblocked
-// [NOTE] FF86: "Strict" tracking protection enables dFPI.
-// [1] https://support.mozilla.org/en-US/kb/enhanced-tracking-protection-firefox-desktop
-// [2] https://www.reddit.com/r/firefox/comments/l7xetb/network_priority_for_firefoxs_enhanced_tracking/gle2mqn/?web2x&context=3
-user_pref("browser.contentblocking.category", "strict"); // [HIDDEN]
-// [1] https://bugzilla.mozilla.org/show_bug.cgi?id=1970647
-user_pref("privacy.trackingprotection.allow_list.baseline.enabled", false); // [FF142+]
-//user_pref("privacy.trackingprotection.allow_list.convenience.enabled", true); // [FF142+]
+// PREF: enable ETP Strict Mode [FF86+]
+// ETP Strict Mode enables Total Cookie Protection (TCP)
+// [NOTE] Adding site exceptions disables all ETP protections for that site and increases the risk of
+// cross-site state tracking e.g. exceptions for SiteA and SiteB means PartyC on both sites is shared
+// [1] https://blog.mozilla.org/security/2021/02/23/total-cookie-protection/
+// [2] https://support.mozilla.org/en-US/kb/enhanced-tracking-protection-firefox-desktop
+// [3] https://www.reddit.com/r/firefox/comments/l7xetb/network_priority_for_firefoxs_enhanced_tracking/gle2mqn/?web2x&context=3
+// [SETTING] to add site exceptions: Urlbar>ETP Shield
+// [SETTING] to manage site exceptions: Options>Privacy & Security>Enhanced Tracking Protection>Manage Exceptions
+user_pref("browser.contentblocking.category", "custom"); // [HIDDEN PREF]
 //user_pref("privacy.trackingprotection.enabled", true); // enabled with "Strict"
 //user_pref("privacy.trackingprotection.pbmode.enabled", true); // DEFAULT
 //user_pref("browser.contentblocking.customBlockList.preferences.ui.enabled", false); // DEFAULT
@@ -43,6 +40,21 @@ user_pref("privacy.trackingprotection.allow_list.baseline.enabled", false); // [
     //user_pref("privacy.fingerprintingProtection.pbmode", true); // DEFAULT
 //user_pref("privacy.bounceTrackingProtection.mode", 1); // [FF131+] [ETP FF133+]
 // [1] https://searchfox.org/mozilla-central/source/toolkit/components/antitracking/bouncetrackingprotection/nsIBounceTrackingProtection.idl#11-23
+
+// PREF: disable ETP web compat features (about:compat) [FF93+]
+// [SETUP-HARDEN] Includes skip lists, heuristics (SmartBlock) and automatic grants
+// Opener and redirect heuristics are granted for 30 days, see [3]
+// [1] https://blog.mozilla.org/security/2021/07/13/smartblock-v2/
+// [2] https://hg.mozilla.org/mozilla-central/rev/e5483fd469ab#l4.12
+// [3] https://developer.mozilla.org/docs/Web/Privacy/State_Partitioning#storage_access_heuristics
+    // user_pref("privacy.antitracking.enableWebcompat", false);
+
+// PREF: set ETP Strict/Custom exception lists (FF141+)
+// [SETTING] Options>Privacy & Security>Enhanced Tracking Protection>Strict/Custom>Fix major [baseline] | minor [convenience]
+// [1] https://support.mozilla.org/en-US/kb/manage-enhanced-tracking-protection-exceptions
+// [2] https://etp-exceptions.mozilla.org/
+// user_pref("privacy.trackingprotection.allow_list.baseline.enabled", true); // [DEFAULT: true]
+// user_pref("privacy.trackingprotection.allow_list.convenience.enabled", true); // [DEFAULT: true]
 
 // PREF: query stripping
 // Currently uses a small list [1]
@@ -65,22 +77,6 @@ user_pref("privacy.trackingprotection.allow_list.baseline.enabled", false); // [
 // [3] https://searchfox.org/mozilla-central/source/browser/extensions/webcompat/data/shims.js
 //user_pref("extensions.webcompat.enable_shims", true); // [HIDDEN] enabled with "Strict"
 //user_pref("extensions.webcompat.smartblockEmbeds.enabled", true); // [DEFAULT FF137+]
-
-// PREF: allow embedded tweets and reddit posts [FF136+]
-// [TEST - reddit embed] https://www.pcgamer.com/amazing-halo-infinite-bugs-are-already-rolling-in/
-// [TEST - instagram embed] https://www.ndtv.com/entertainment/bharti-singh-and-husband-haarsh-limbachiyaa-announce-pregnancy-see-trending-post-2646359
-// [TEST - tweet embed] https://www.newsweek.com/cryptic-tweet-britney-spears-shows-elton-john-collab-may-date-back-2015-1728036
-// [TEST - tiktok embed] https://www.vulture.com/article/snl-adds-four-new-cast-members-for-season-48.html
-// [TEST - truthsocial embed] https://www.newsweek.com/donald-trump-congratulates-patrick-brittany-mahomes-new-baby-2027097
-// [1] https://www.reddit.com/r/firefox/comments/l79nxy/firefox_dev_is_ignoring_social_tracking_preference/gl84ukk
-// [2] https://www.reddit.com/r/firefox/comments/pvds9m/reddit_embeds_not_loading/
-// [3] https://github.com/yokoffing/Betterfox/issues/413
-//user_pref("urlclassifier.trackingSkipURLs", "embed.reddit.com, *.twitter.com, *.twimg.com"); // MANUAL [FF136+]
-//user_pref("urlclassifier.features.socialtracking.skipURLs", "*.twitter.com, *.twimg.com"); // MANUAL [FF136+]
-
-// PREF: allow embedded tweets, Instagram and Reddit posts, and TikTok embeds [before FF136+]
-//user_pref("urlclassifier.trackingSkipURLs", "*.reddit.com, *.twitter.com, *.twimg.com, *.tiktok.com"); // MANUAL
-//user_pref("urlclassifier.features.socialtracking.skipURLs", "*.instagram.com, *.twitter.com, *.twimg.com"); // MANUAL
 
 // PREF: lower the priority of network loads for resources on the tracking protection list [NIGHTLY]
 // [1] https://github.com/arkenfox/user.js/issues/102#issuecomment-298413904
@@ -201,8 +197,9 @@ user_pref("privacy.trackingprotection.allow_list.baseline.enabled", false); // [
 // PREF: remove temp files opened from non-PB windows with an external application
 // [1] https://bugzilla.mozilla.org/buglist.cgi?bug_id=302433,1738574
 // [2] https://github.com/arkenfox/user.js/issues/1732
+// [3] https://bugzilla.mozilla.org/302433
 user_pref("browser.download.start_downloads_in_tmp_dir", true); // [FF102+]
-user_pref("browser.helperApps.deleteTempFileOnExit", true);
+//user_pref("browser.helperApps.deleteTempFileOnExit", true); // DEFAULT [FF108]
 
 // PREF: disable UITour backend
 // This way, there is no chance that a remote page can use it.
@@ -276,8 +273,8 @@ user_pref("security.OCSP.enabled", 0);
 // CRLite is faster and more private than OCSP [2].
 // 0 = disabled
 // 1 = consult CRLite but only collect telemetry
-// 2 = consult CRLite and enforce both "Revoked" and "Not Revoked" results
-// 3 = consult CRLite and enforce "Not Revoked" results, but defer to OCSP for "Revoked" [FF99+, default FF100+]
+// 2 = consult CRLite and enforce both "Revoked" and "Not Revoked" results (default)
+// 3 = consult CRLite and enforce "Not Revoked" results, but defer to OCSP for "Revoked" (removed FF145)
 // [1] https://bugzilla.mozilla.org/buglist.cgi?bug_id=1429800,1670985,1753071
 // [2] https://blog.mozilla.org/security/tag/crlite/
 //user_pref("security.remote_settings.crlite_filters.enabled", true); // [DEFAULT: true FF137+]
@@ -321,7 +318,7 @@ user_pref("security.OCSP.enabled", 0);
 //user_pref("browser.contentanalysis.default_result", 0; // [FF127+] [DEFAULT]
 
 // PREF: disable referrer and storage access for resources injected by content scripts [FF139+]
-//user_pref("privacy.antitracking.isolateContentScriptResources", true);
+user_pref("privacy.antitracking.isolateContentScriptResources", true);
 
 // PREF: disable CSP Level 2 Reporting [FF140+]
 // [1] https://github.com/yokoffing/Betterfox/issues/415
@@ -347,7 +344,7 @@ user_pref("security.ssl.treat_unsafe_negotiation_as_broken", true);
 // know that. Setting this pref to true is the only way for the
 // browser to ensure there will be no unsafe renegotiations on
 // the channel between the browser and the server.
-// [STATS] SSL Labs > Renegotiation Support (May 2024) reports over 99.7% of top sites have secure renegotiation [4].
+// [STATS] SSL Labs > Renegotiation Support (Nov 2025) reports almost 99.8% of top sites have secure renegotiation [4].
 // [1] https://wiki.mozilla.org/Security:Renegotiation
 // [2] https://datatracker.ietf.org/doc/html/rfc5746
 // [3] https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2009-3555
@@ -355,6 +352,8 @@ user_pref("security.ssl.treat_unsafe_negotiation_as_broken", true);
 //user_pref("security.ssl.require_safe_negotiation", true);
 
 // PREF: display advanced information on Insecure Connection warning pages
+// This pref only works when it's possible to add an exception,
+// i.e. it doesn't work for HSTS discrepancies (https://subdomain.preloaded-hsts.badssl.com/)
 // [TEST] https://expired.badssl.com/
 user_pref("browser.xul.error_pages.expert_bad_cert", true);
 
@@ -415,9 +414,20 @@ user_pref("security.tls.enable_0rtt_data", false);
  * SECTION: DISK AVOIDANCE                                                  *
 ****************************************************************************/
 
-// PREF: set media cache in Private Browsing to in-memory
+// PREF: disk cache
+// [NOTE] If you think it helps performance, then feel free to override this.
+// [SETTINGS] See about:cache
+// More efficient to keep the browser cache instead of having to
+// re-download objects for the websites you visit frequently.
+// [1] https://www.janbambas.cz/new-firefox-http-cache-enabled/
+user_pref("browser.cache.disk.enable", false);
+
+// PREF: set media cache in Private Browsing to in-memory and increase its maximum size
 // [NOTE] MSE (Media Source Extensions) are already stored in-memory in PB
+// [1] https://hg.mozilla.org/mozilla-central/file/tip/modules/libpref/init/StaticPrefList.yaml#l9652
+// [2] https://github.com/arkenfox/user.js/pull/941#issuecomment-668278121
 user_pref("browser.privatebrowsing.forceMediaMemoryCache", true);
+user_pref("media.memory_cache_max_size", 65536); // 64 MB; default=8192; AF=65536
 
 // PREF: minimum interval (in ms) between session save operations
 // Firefox periodically saves the user's session so it can restore
@@ -445,10 +455,6 @@ user_pref("browser.sessionstore.interval", 60000); // 1 minute; default=15000 (1
 // [NOTE] .URL shortcut files will be created with a generic icon.
 // Favicons are stored as .ico files in profile_dir\shortcutCache.
 //user_pref("browser.shell.shortcutFavicons", false);
-
-// PREF: remove temp files opened with an external application
-// [1] https://bugzilla.mozilla.org/302433
-//user_pref("browser.helperApps.deleteTempFileOnExit", true); // DEFAULT [FF108]
 
 // PREF: disable page thumbnails capturing
 // Page thumbnails are only used in chrome/privileged contexts.
@@ -562,6 +568,128 @@ user_pref("privacy.history.custom", true);
 // [WARNING] Be selective with what cookies you keep, as they also disable partitioning [1]
 // [1] https://bugzilla.mozilla.org/show_bug.cgi?id=1767271
 
+/****************************************************************************
+ * SECTION: SPECULATIVE LOADING                                            *
+****************************************************************************/
+
+// These are connections that are not explicitly asked for (e.g., clicked on).
+// [1] https://developer.mozilla.org/en-US/docs/Web/Performance/Speculative_loading
+
+// [NOTE] FF85+ partitions (isolates) pooled connections, prefetch connections,
+// pre-connect connections, speculative connections, TLS session identifiers,
+// and other connections. We can take advantage of the speed of pre-connections
+// while preserving privacy. Users may relax hardening to maximize their preference.
+// For more information, see SecureFox: "PREF: State Paritioning" and "PREF: Network Partitioning".
+// [NOTE] To activate and increase network predictions, go to settings in uBlock Origin and uncheck:
+// - "Disable pre-fetching (to prevent any connection for blocked network requests)"
+// [NOTE] Add prefs to "MY OVERRIDES" section and uncomment to enable them in your user.js.
+
+// PREF: link-mouseover opening connection to linked server
+// When accessing content online, devices use sockets as endpoints.
+// The global limit on half-open sockets controls how many speculative
+// connection attempts can occur at once when starting new connections [3].
+// If the user follows through, pages can load faster since some
+// work was done in advance. Firefox opens predictive connections
+// to sites when hovering over New Tab thumbnails or starting a
+// URL Bar search [1] and hyperlinks within a page [2].
+// [NOTE] DNS (if enabled), TCP, and SSL handshakes are set up in advance,
+// but page contents are not downloaded until a click on the link is registered.
+// [1] https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections?redirectslug=how-stop-firefox-automatically-making-connections&redirectlocale=en-US#:~:text=Speculative%20pre%2Dconnections
+// [2] https://news.slashdot.org/story/15/08/14/2321202/how-to-quash-firefoxs-silent-requests
+// [3] https://searchfox.org/mozilla-central/rev/028c68d5f32df54bca4cf96376f79e48dfafdf08/modules/libpref/init/all.js#1280-1282
+// [4] https://www.keycdn.com/blog/resource-hints#prefetch
+// [5] https://3perf.com/blog/link-rels/#prefetch
+user_pref("network.http.speculative-parallel-limit", 0);
+
+// PREF: DNS prefetching for HTMLLinkElement <link rel="dns-prefetch">
+// Used for cross-origin connections to provide small performance improvements.
+// You can enable rel=dns-prefetch for the HTTPS document without prefetching
+// DNS for anchors, whereas the latter makes more specualtive requests [5].
+// [1] https://bitsup.blogspot.com/2008/11/dns-prefetching-for-firefox.html
+// [2] https://css-tricks.com/prefetching-preloading-prebrowsing/#dns-prefetching
+// [3] https://www.keycdn.com/blog/resource-hints#2-dns-prefetching
+// [4] http://www.mecs-press.org/ijieeb/ijieeb-v7-n5/IJIEEB-V7-N5-2.pdf
+// [5] https://bugzilla.mozilla.org/show_bug.cgi?id=1596935#c28
+user_pref("network.dns.disablePrefetch", true);
+    user_pref("network.dns.disablePrefetchFromHTTPS", true); // [FF127+ false]
+
+// PREF: DNS prefetch for HTMLAnchorElement (speculative DNS)
+// Disable speculative DNS calls to prevent Firefox from resolving
+// hostnames for other domains linked on a page. This may eliminate
+// unnecessary DNS lookups, but can increase latency when following external links.
+// [1] https://bugzilla.mozilla.org/show_bug.cgi?id=1596935#c28
+// [2] https://github.com/arkenfox/user.js/issues/1870#issuecomment-2220773972
+//user_pref("dom.prefetch_dns_for_anchor_http_document", false); // [FF128+]
+//user_pref("dom.prefetch_dns_for_anchor_https_document", false); // DEFAULT [FF128+]
+
+// PREF: enable <link rel="preconnect"> tag and Link: rel=preconnect response header handling
+//user_pref("network.preconnect", true); // DEFAULT
+
+// PREF: preconnect to the autocomplete URL in the address bar
+// Whether to warm up network connections for autofill or search results.
+// Firefox preloads URLs that autocomplete when a user types into the address bar.
+// Connects to destination server ahead of time, to avoid TCP handshake latency.
+// [NOTE] Firefox will perform DNS lookup (if enabled) and TCP and TLS handshake,
+// but will not start sending or receiving HTTP data.
+// [1] https://www.ghacks.net/2017/07/24/disable-preloading-firefox-autocomplete-urls/
+user_pref("browser.urlbar.speculativeConnect.enabled", false);
+
+// PREF: mousedown speculative connections on bookmarks and history [FF98+]
+// Whether to warm up network connections for places:menus and places:toolbar.
+user_pref("browser.places.speculativeConnect.enabled", false);
+
+// PREF: network module preload <link rel="modulepreload"> [FF115+]
+// High-priority loading of current page JavaScript modules.
+// Used to preload high-priority JavaScript modules for strategic performance improvements.
+// Module preloading allows developers to fetch JavaScript modules and dependencies
+// earlier to accelerate page loads. The browser downloads, parses, and compiles modules
+// referenced by links with this attribute in parallel with other resources, rather
+// than sequentially waiting to process each. Preloading reduces overall download times.
+// Browsers may also automatically preload dependencies without firing extra events.
+// Unlike other pre-connection tags (except rel=preload), this tag is mandatory for the browser.
+// [1] https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/modulepreload
+//user_pref("network.modulepreload", true); // DEFAULT
+
+// PREF: link prefetching <link rel="prefetch">
+// Pre-populates the HTTP cache by prefetching same-site future navigation
+// resources or subresources used on those pages.
+// Enabling link prefetching allows Firefox to preload pages tagged as important.
+// The browser prefetches links with the prefetch-link tag, fetching resources
+// likely needed for the next navigation at low priority. When clicking a link
+// or loading a new page, prefetching stops and discards hints. Prefetching
+// downloads resources without executing them.
+// [NOTE] Since link prefetch uses the HTTP cache, it has a number of issues
+// with document prefetches, such as being potentially blocked by Cache-Control headers
+// (e.g. cache partitioning).
+// [1] https://developer.mozilla.org/en-US/docs/Glossary/Prefetch
+// [2] http://www.mecs-press.org/ijieeb/ijieeb-v7-n5/IJIEEB-V7-N5-2.pdf
+// [3] https://timkadlec.com/remembers/2020-06-17-prefetching-at-this-age/
+// [4] https://3perf.com/blog/link-rels/#prefetch
+// [5] https://developer.mozilla.org/docs/Web/HTTP/Link_prefetching_FAQ
+user_pref("network.prefetch-next", false);
+
+// PREF: Fetch Priority API [FF119+]
+// Indicates whether the `fetchpriority` attribute for elements which support it.
+// [1] https://web.dev/articles/fetch-priority
+// [2] https://nitropack.io/blog/post/priority-hints
+// [2] https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/fetchPriority
+// [3] https://developer.mozilla.org/en-US/docs/Web/API/HTMLLinkElement/fetchPriority
+//user_pref("network.fetchpriority.enabled", true);
+
+// PREF: early hints [FF120+]
+// [1] https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/103
+// [2] https://developer.chrome.com/blog/early-hints/
+// [3] https://blog.cloudflare.com/early-hints/
+// [4] https://blog.cloudflare.com/early-hints-performance/
+//user_pref("network.early-hints.enabled", true);
+
+// PREF: `Link: rel=preconnect` in 103 Early Hint response [FF120+]
+// Used to warm most critical cross-origin connections to provide
+// performance improvements when connecting to them.
+// [NOTE] When 0, this is limited by "network.http.speculative-parallel-limit".
+//user_pref("network.early-hints.preconnect.enabled", true);
+//user_pref("network.early-hints.preconnect.max_connections", 10); // DEFAULT
+
 /******************************************************************************
  * SECTION: SEARCH / URL BAR                                                 *
 ******************************************************************************/
@@ -664,16 +792,14 @@ user_pref("network.IDN_show_punycode", true);
 /******************************************************************************
  * SECTION: HTTPS-FIRST POLICY                          *
 ******************************************************************************/
-
 // PREF: HTTPS-First Policy
 // Firefox attempts to make all connections to websites secure,
 // and falls back to insecure connections only when a website
 // does not support it. Unlike HTTPS-Only Mode, Firefox
 // will NOT ask for your permission before connecting to a website
 // that doesn’t support secure connections.
-// As of August 2023, Google estimates that 5-10% of traffic
-// has remained on HTTP, allowing attackers to eavesdrop
-// on or change that data [6].
+// As of October 2025, Google estimates that 3-5% of traffic
+// is insecure, allowing attackers to eavesdrop on or change that data [8].
 // [NOTE] HTTPS-Only Mode needs to be disabled for HTTPS First to work.
 // [TEST] http://example.com [upgrade]
 // [TEST] http://httpforever.com/ [no upgrade]
@@ -684,9 +810,20 @@ user_pref("network.IDN_show_punycode", true);
 // [5] https://www.cloudflare.com/learning/ssl/why-use-https/
 // [6] https://blog.chromium.org/2023/08/towards-https-by-default.html
 // [7] https://attackanddefense.dev/2025/03/31/https-first-in-firefox-136.html
+// [8] https://security.googleblog.com/2025/10/https-by-default.html
 //user_pref("dom.security.https_first", true); // [DEFAULT FF136+]
 //user_pref("dom.security.https_first_pbm", true); // [DEFAULT FF91+]
 //user_pref("dom.security.https_first_schemeless", true); // [FF120+] [DEFAULT FF129+]
+
+// PREF: block insecure passive content (images) on HTTPS pages
+// [WARNING] This preference blocks all mixed content, including upgradable.
+// Firefox still attempts an HTTP connection if it can't find a secure one,
+// even with HTTPS First Policy. Although rare, this leaves a small risk of
+// a malicious image being served through a MITM attack.
+// Disable this pref if using HTTPS-Only Mode.
+// [NOTE] Enterprise users may need to enable this setting [1].
+// [1] https://blog.mozilla.org/security/2024/06/05/firefox-will-upgrade-more-mixed-content-in-version-127/
+//user_pref("security.mixed_content.block_display_content", true); // Defense-in-depth (see HTTPS-Only mode)
 
 /******************************************************************************
  * SECTION: HTTPS-ONLY MODE                              *
@@ -696,9 +833,8 @@ user_pref("network.IDN_show_punycode", true);
 // by a server. Options to use HTTP are then provided.
 // [NOTE] When "https_only_mode" (all windows) is true,
 // "https_only_mode_pbm" (private windows only) is ignored.
-// As of August 2023, Google estimates that 5-10% of traffic
-// has remained on HTTP, allowing attackers to eavesdrop
-// on or change that data [5].
+// As of October 2025, Google estimates that 3-5% of traffic
+// is insecure, allowing attackers to eavesdrop on or change that data [6].
 // [SETTING] to add site exceptions: Padlock>HTTPS-Only mode>On/Off/Off temporarily
 // [SETTING] Privacy & Security>HTTPS-Only Mode
 // [TEST] http://example.com [upgrade]
@@ -708,17 +844,23 @@ user_pref("network.IDN_show_punycode", true);
 // [3] https://web.dev/why-https-matters/
 // [4] https://www.cloudflare.com/learning/ssl/why-use-https/
 // [5] https://blog.chromium.org/2023/08/towards-https-by-default.html
+// [6] https://security.googleblog.com/2025/10/https-by-default.html
 
-// PREF: enable HTTPS-only Mode
-//user_pref("dom.security.https_only_mode_pbm", true); // Private Browsing windows only
-//user_pref("dom.security.https_only_mode", true); // Normal + Private Browsing windows
+// PREF: enable HTTPS-Only mode in all windows
+// When the top-level is HTTPS, insecure subresources are also upgraded (silent fail)
+// [SETTING] to add site exceptions: Padlock>HTTPS-Only mode>On (after "Continue to HTTP Site")
+// [SETTING] Privacy & Security>HTTPS-Only Mode (and manage exceptions)
+// [TEST] http://example.com [upgrade]
+// [TEST] http://httpforever.com/ | http://http.rip [no upgrade]
+user_pref("dom.security.https_only_mode", true); // [FF76+]
+    //user_pref("dom.security.https_only_mode_pbm", true); // [FF80+] Private Browsing windows only
 
 // PREF: offer suggestion for HTTPS site when available
 // [1] https://x.com/leli_gibts_scho/status/1371463866606059528
-//user_pref("dom.security.https_only_mode_error_page_user_suggestions", true);
+user_pref("dom.security.https_only_mode_error_page_user_suggestions", true);
 
 // PREF: HTTP background requests in HTTPS-only Mode
-// When attempting to upgrade, if the server doesn't respond within 3 seconds[=default time],
+// When attempting to upgrade, if the server doesn't respond within a few seconds,
 // Firefox sends HTTP requests in order to check if the server supports HTTPS or not.
 // This is done to avoid waiting for a timeout which takes 90 seconds.
 // Firefox only sends top level domain when falling back to http.
@@ -727,10 +869,6 @@ user_pref("network.IDN_show_punycode", true);
 // [1] https://bugzilla.mozilla.org/buglist.cgi?bug_id=1642387,1660945
 // [2] https://blog.mozilla.org/attack-and-defense/2021/03/10/insights-into-https-only-mode/
 //user_pref("dom.security.https_only_mode_send_http_background_request", true); // DEFAULT
-    //user_pref("dom.security.https_only_fire_http_request_background_timer_ms", 3000); // DEFAULT
-
-// PREF: disable HTTPS-Only mode for local resources
-//user_pref("dom.security.https_only_mode.upgrade_local", false); // DEFAULT
 
 /******************************************************************************
  * SECTION: DNS-over-HTTPS                                                    *
@@ -927,6 +1065,14 @@ user_pref("editor.truncate_user_pastes", false);
 // [DO NOT TOUCH] Icons will double-up if the website implements it natively.
 //user_pref("layout.forms.reveal-password-button.enabled", true); // always show icon in password fields
 
+// PREF: disable automatic authentication on Microsoft sites [WINDOWS]
+// [1] https://bugzilla.mozilla.org/buglist.cgi?bug_id=1695693,1719301
+//user_pref("network.http.windows-sso.enabled", false); // DEFAULT
+
+// PREF: enforce no direct attestation in passkeys [FF144+]
+// [1] https://bugzilla.mozilla.org/show_bug.cgi?id=1981587 ***/
+//user_pref("security.webauthn.always_allow_direct_attestation", false); // [DEFAULT: false]
+
 /****************************************************************************
  * SECTION: ADDRESS + CREDIT CARD MANAGER                                   *
 ****************************************************************************/
@@ -937,32 +1083,6 @@ user_pref("editor.truncate_user_pastes", false);
 // [2] https://www.ghacks.net/2017/05/24/firefoxs-new-form-autofill-is-awesome
 //user_pref("extensions.formautofill.addresses.enabled", false);
 //user_pref("extensions.formautofill.creditCards.enabled", false);
-
-/******************************************************************************
- * SECTION: MIXED CONTENT + CROSS-SITE                                       *
-******************************************************************************/
-
-// PREF: block insecure passive content (images) on HTTPS pages
-// [WARNING] This preference blocks all mixed content, including upgradable.
-// Firefox still attempts an HTTP connection if it can't find a secure one,
-// even with HTTPS First Policy. Although rare, this leaves a small risk of
-// a malicious image being served through a MITM attack.
-// Disable this pref if using HTTPS-Only Mode.
-// [NOTE] Enterprise users may need to enable this setting [1].
-// [1] https://blog.mozilla.org/security/2024/06/05/firefox-will-upgrade-more-mixed-content-in-version-127/
-user_pref("security.mixed_content.block_display_content", true);
-
-// PREF: allow PDFs to load javascript
-// https://www.reddit.com/r/uBlockOrigin/comments/mulc86/firefox_88_now_supports_javascript_in_pdf_files/
-user_pref("pdfjs.enableScripting", false);
-
-// PREF: disable middle click on new tab button opening URLs or searches using clipboard [FF115+]
-// Enable if you're using LINUX.
-//user_pref("browser.tabs.searchclipboardfor.middleclick", false); // DEFAULT WINDOWS macOS
-
-// PREF: disable automatic authentication on Microsoft sites [WINDOWS]
-// [1] https://bugzilla.mozilla.org/buglist.cgi?bug_id=1695693,1719301
-//user_pref("network.http.windows-sso.enabled", false);
 
 /****************************************************************************
  * SECTION: EXTENSIONS                                                      *
@@ -1139,7 +1259,7 @@ user_pref("privacy.userContext.ui.enabled", true);
     //user_pref("browser.eme.ui.enabled", false);
 
 /******************************************************************************
- * SECTION: JIT                                                              *
+ * SECTION: JIT & WASM                                                        *
 ******************************************************************************/
 // PREF: Just-In-Time Compilation
 // Around half of zero-day exploits are directly related to "just in time"
@@ -1148,8 +1268,7 @@ user_pref("privacy.userContext.ui.enabled", true);
 // [1] https://microsoftedge.github.io/edgevr/posts/Super-Duper-Secure-Mode/
 // [2] https://www.youtube.com/watch?v=i7qlZeDt9o4
 
-// PREF: JavaScript JIT
-// PREF: disable Ion and baseline JIT to harden against JS exploits
+// PREF: Ion and Baseline JIT
 // [NOTE] When both Ion and JIT are disabled, and trustedprincipals
 // is enabled, then Ion can still be used by extensions [4].
 // Tor Browser doesn't even ship with these disabled by default.
@@ -1159,31 +1278,40 @@ user_pref("privacy.userContext.ui.enabled", true);
 // [4] https://bugzilla.mozilla.org/show_bug.cgi?id=1599226
 // [5] https://wiki.mozilla.org/IonMonkey
 // [6] https://github.com/arkenfox/user.js/issues/1791#issuecomment-1891273681
-//user_pref("javascript.options.baselinejit", false);
+//user_pref("javascript.options.baselinejit", false); // DO NOT TOUCH
 //user_pref("javascript.options.ion", false);
-//user_pref("javascript.options.jit_trustedprincipals", false);
+//user_pref("javascript.options.jit_trustedprincipals", true); // HIDDEN PREF
+
+// PREF: Blinterp (JIT-like)
+// You do not need to touch blinterp unless you want to go even slower
+// than the Baseline JIT (which I do not recommend).
+//user_pref("javascript.options.blinterp", false);
 
 // PREF: WebAssembly JIT [FF52+]
 // Vulnerabilities [1] have increasingly been found, including those known and fixed
 // in native programs years ago [2]. WASM has powerful low-level access, making
 // certain attacks (brute-force) and vulnerabilities more possible.
+// trustedprincipals: This controls whether WebAssembly is allowed in "privileged" contexts
+// (like your extensions or internal browser scripts).
 // [STATS] ~0.2% of websites, about half of which are for cryptomining / malvertising [2][3]
 // [1] https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=wasm
 // [2] https://spectrum.ieee.org/tech-talk/telecom/security/more-worries-over-the-security-of-web-assembly
 // [3] https://www.zdnet.com/article/half-of-the-websites-using-webassembly-use-it-for-malicious-purposes
 //user_pref("javascript.options.wasm", false);
     //user_pref("javascript.options.wasm_trustedprincipals", false);
-    //user_pref("javascript.options.wasm_baselinejit", false);
+    //user_pref("javascript.options.wasm_baselinejit", true); // DO NOT TOUCH
     //user_pref("javascript.options.wasm_optimizingjit", false);
 
 // PREF: Asm.js JIT [FF22+]
+// Asm.js is essentially the "ancestor" of WebAssembly. It was a strict subset of JavaScript
+// designed to allow browsers to pre-compile code into highly efficient machine instructions.
+// However, WebAssembly was created specifically to replace Asm.js and has done so almost entirely.
+// Disabling Asm.js removes the "legacy" risk surface without affecting your ability to run modern WebAssembly sites.
 // [1] http://asmjs.org/
 // [2] https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=asm.js
 // [3] https://rh0dev.github.io/blog/2017/the-return-of-the-jit/
-//user_pref("javascript.options.asmjs", false);
-
-// PREF: Blinterp (JIT-like)
-//user_pref("javascript.options.blinterp", false);
+// [4] https://github.com/rh0dev/slides/blob/master/OffensiveCon2018_From_Assembly_to_JavaScript_and_back.pdf
+//user_pref("javascript.options.asmjs", false); // DEFAULT
      
 /******************************************************************************
  * SECTION: VARIOUS                                                          *
@@ -1197,6 +1325,27 @@ user_pref("privacy.userContext.ui.enabled", true);
 // PREF: number of usages of the web console
 // If this is less than 5, then pasting code into the web console is disabled.
 //user_pref("devtools.selfxss.count", 5);
+
+// PREF: disable middle click on new tab button opening URLs or searches using clipboard [FF115+]
+// Enable if you're using LINUX.
+//user_pref("browser.tabs.searchclipboardfor.middleclick", false); // DEFAULT WINDOWS macOS
+
+// PREF: do not allow PDFs to load javascript
+// [1] https://www.reddit.com/r/uBlockOrigin/comments/mulc86/firefox_88_now_supports_javascript_in_pdf_files/
+
+// PREF: enforce PDFJS, disable PDFJS scripting
+// This setting controls if the option "Display in Firefox" is available in the setting below
+// and by effect controls whether PDFs are handled in-browser or externally ("Ask" or "Open With").
+// [WHY] pdfjs is lightweight, open source, and secure: the last exploit was June 2015 [1].
+// It doesn't break "state separation" of browser content (by not sharing with OS, independent apps).
+// It maintains disk avoidance and application data isolation. It's convenient. You can still save to disk.
+// [NOTE] JS can still force a pdf to open in-browser by bundling its own code.
+// [SETUP-CHROME] You may prefer a different pdf reader for security/workflow reasons.
+// [SETTING] General>Applications>Portable Document Format (PDF)
+// [1] https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=pdf.js+firefox
+// [2] https://www.reddit.com/r/uBlockOrigin/comments/mulc86/firefox_88_now_supports_javascript_in_pdf_files/
+//user_pref("pdfjs.disabled", false); // [DEFAULT: false]
+user_pref("pdfjs.enableScripting", false); // [FF86+]
 
  /******************************************************************************
  * SECTION: SAFE BROWSING (SB)                                               *
@@ -1212,6 +1361,11 @@ user_pref("privacy.userContext.ui.enabled", true);
 // [4] https://educatedguesswork.org/posts/safe-browsing-privacy/
 // [5] https://www.google.com/chrome/privacy/whitepaper.html#malware
 // [6] https://security.googleblog.com/2022/08/how-hash-based-safe-browsing-works-in.html
+
+// [FF147+] Firefox now supports the Safe Browsing V5 protocol and has migrated
+// from Safe Browsing V4 to the local list mode of Safe Browsing V5 protocol.
+// [1] https://developers.google.com/safe-browsing/reference
+// [2] https://developers.google.com/safe-browsing/reference/Local.List.Mode
 
 // PREF: Safe Browsing
 // [WARNING] Be sure to have alternate security measures if you disable SB! Adblockers do not count!
@@ -1399,6 +1553,7 @@ user_pref("toolkit.telemetry.firstShutdownPing.enabled", false);
 
 // PREF: disable Telemetry Coverage
 // [1] https://blog.mozilla.org/data/2018/08/20/effectively-measuring-search-in-firefox/
+// [2] https://github.com/yokoffing/Betterfox/issues/443
 user_pref("toolkit.telemetry.coverage.opt-out", true); // [HIDDEN PREF]
 user_pref("toolkit.coverage.opt-out", true); // [FF64+] [HIDDEN PREF]
 user_pref("toolkit.coverage.endpoint.base", "");
@@ -1477,7 +1632,6 @@ user_pref("browser.tabs.crashReporting.sendReport", false);
 
 // PREF: assorted telemetry
 // [NOTE] Shouldn't be needed for user.js, but browser forks may want to disable these prefs.
-//user_pref("doh-rollout.disable-heuristics", true); // ensure DoH doesn't get enabled automatically
 //user_pref("dom.security.unexpected_system_load_telemetry_enabled", false);
 //user_pref("messaging-system.rsexperimentloader.enabled", false);
 //user_pref("network.trr.confirmation_telemetry_enabled", false);
