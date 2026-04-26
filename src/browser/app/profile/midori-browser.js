@@ -185,6 +185,14 @@ pref('midori.memory.profile', 2);
 // Enable tab unloading when system memory is low
 pref('browser.tabs.unloadOnLowMemory', true);
 
+// Keep native inactivity unloading aligned with Midori tab sleep defaults.
+pref('browser.tabs.min_inactive_duration_before_unload', 600000);
+
+// Automatically discard inactive tabs after 10 minutes by default.
+pref('midori.tabsleep.enabled', true);
+pref('midori.tabsleep.timeoutMinutes', 10);
+pref('midori.tabsleep.excludeHosts', '');
+
 // Fork server for Linux - enables copy-on-write memory sharing
 pref('dom.ipc.forkserver.enable', true);
 
