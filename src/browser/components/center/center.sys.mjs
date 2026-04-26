@@ -21,6 +21,8 @@ const ADDON_IDS = {
 const PREF_MAP = {
   "pref-autohide-toolbar":  { pref: "midori.autohide.toolbar",        type: "bool" },
   "pref-gradient-enabled":  { pref: "midori.gradient.enabled",        type: "bool" },
+  "pref-tabsleep-enabled":  { pref: "midori.tabsleep.enabled",        type: "bool" },
+  "pref-tabsleep-timeout":  { pref: "midori.tabsleep.timeoutMinutes", type: "int" },
   "pref-pip-skin":          { pref: "midori.pip.skin",                type: "string" },
   "pref-msidebar-enabled":  { pref: "midori.msidebar.enabled",        type: "bool" },
   "pref-msidebar-position": { pref: "midori.msidebar.position",       type: "string" },

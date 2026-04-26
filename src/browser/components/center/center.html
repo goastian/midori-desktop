@@ -249,6 +249,28 @@
           </div>
         </div>
 
+        <div class="setting-group">
+          <h2 class="group-title">Tab Sleep</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Sleep inactive tabs</strong>
+              <p>Unload background tabs automatically to reduce RAM usage.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-tabsleep-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Sleep after</strong>
+              <p>Minutes a tab can stay inactive before Midori discards it.</p>
+            </div>
+            <input type="number" id="pref-tabsleep-timeout" class="number-input" min="1" max="1440" step="1">
+          </div>
+        </div>
+
         <!-- Gradient -->
         <div class="setting-group">
           <h2 class="group-title">Custom Gradient</h2>
