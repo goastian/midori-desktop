@@ -1,5 +1,5 @@
 diff --git a/browser/components/preferences/main.inc.xhtml b/browser/components/preferences/main.inc.xhtml
-index f23beeb5c793bc7a6cbea4512a5f2cd379ec98c7..a7cc6c6a9b36bd1f7cfec34d8940d0f3402ca0e2 100644
+index 7d6bbc54d21bf149dd1b99a38ca803654e6908eb..59e90de62343af0285d4081b52e7d22901ab05a8 100644
 --- a/browser/components/preferences/main.inc.xhtml
 +++ b/browser/components/preferences/main.inc.xhtml
 @@ -21,6 +21,18 @@
@@ -21,7 +21,7 @@ index f23beeb5c793bc7a6cbea4512a5f2cd379ec98c7..a7cc6c6a9b36bd1f7cfec34d8940d0f3
  <!-- Default browser -->
  <html:setting-group groupid="defaultBrowser" data-category="paneGeneral" hidden="true" />
  
-@@ -369,6 +381,27 @@
+@@ -371,6 +383,27 @@
  <!-- Performance -->
  <html:setting-group groupid="performance" data-category="paneGeneral" hidden="true" />
  
@@ -50,10 +50,10 @@ index f23beeb5c793bc7a6cbea4512a5f2cd379ec98c7..a7cc6c6a9b36bd1f7cfec34d8940d0f3
  <html:setting-group groupid="browsing" data-category="paneGeneral" hidden="true"/>
  
 diff --git a/browser/components/preferences/main.js b/browser/components/preferences/main.js
-index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c0a9f4f4d 100644
+index 8f8da3c4cabb4a05b50431b1feeff8f1f1abcf6e..9fdf32842fdfacadd8351512a89c891e8c9d24ba 100644
 --- a/browser/components/preferences/main.js
 +++ b/browser/components/preferences/main.js
-@@ -27,6 +27,7 @@ ChromeUtils.defineESModuleGetters(this, {
+@@ -32,6 +32,7 @@ ChromeUtils.defineESModuleGetters(this, {
    FormAutofillPreferences:
      "resource://autofill/FormAutofillPreferences.sys.mjs",
    getMozRemoteImageURL: "moz-src:///toolkit/modules/FaviconUtils.sys.mjs",
@@ -61,7 +61,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
  });
  
  // Constants & Enumeration Values
-@@ -204,6 +205,9 @@ Preferences.addAll([
+@@ -211,6 +212,9 @@ Preferences.addAll([
    { id: "dom.ipc.processCount.web", type: "int" },
    { id: "layers.acceleration.disabled", type: "bool", inverted: true },
  
@@ -71,7 +71,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
    // Files and Applications
    { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
  
-@@ -3034,7 +3038,7 @@ SettingGroupManager.registerGroups({
+@@ -2876,7 +2880,7 @@ SettingGroupManager.registerGroups({
            {
              id: "browserLayoutHorizontalTabs",
              value: "false",
@@ -80,7 +80,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                class: "setting-chooser-item",
                imagesrc:
-@@ -3044,7 +3048,7 @@ SettingGroupManager.registerGroups({
+@@ -2886,7 +2890,7 @@ SettingGroupManager.registerGroups({
            {
              id: "browserLayoutVerticalTabs",
              value: "true",
@@ -89,7 +89,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                class: "setting-chooser-item",
                imagesrc:
-@@ -3055,7 +3059,7 @@ SettingGroupManager.registerGroups({
+@@ -2897,7 +2901,7 @@ SettingGroupManager.registerGroups({
        },
        {
          id: "browserLayoutShowSidebar",
@@ -98,7 +98,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
        },
      ],
    },
-@@ -4047,7 +4051,7 @@ SettingGroupManager.registerGroups({
+@@ -3927,7 +3931,7 @@ SettingGroupManager.registerGroups({
    },
    permissions: {
      id: "permissions",
@@ -107,7 +107,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
      headingLevel: 2,
      items: [
        {
-@@ -4060,7 +4064,7 @@ SettingGroupManager.registerGroups({
+@@ -3940,7 +3944,7 @@ SettingGroupManager.registerGroups({
            {
              id: "locationSettingsButton",
              control: "moz-box-button",
@@ -116,7 +116,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                ".iconSrc": "chrome://browser/skin/notification-icons/geo.svg",
                "search-l10n-ids":
-@@ -4070,7 +4074,7 @@ SettingGroupManager.registerGroups({
+@@ -3950,7 +3954,7 @@ SettingGroupManager.registerGroups({
            {
              id: "cameraSettingsButton",
              control: "moz-box-button",
@@ -125,7 +125,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                ".iconSrc": "chrome://browser/skin/notification-icons/camera.svg",
                "search-l10n-ids":
-@@ -4080,7 +4084,7 @@ SettingGroupManager.registerGroups({
+@@ -3960,7 +3964,7 @@ SettingGroupManager.registerGroups({
            {
              id: "loopbackNetworkSettingsButton",
              control: "moz-box-button",
@@ -134,7 +134,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                ".iconSrc":
                  "chrome://browser/skin/notification-icons/local-host.svg",
-@@ -4091,7 +4095,7 @@ SettingGroupManager.registerGroups({
+@@ -3971,7 +3975,7 @@ SettingGroupManager.registerGroups({
            {
              id: "localNetworkSettingsButton",
              control: "moz-box-button",
@@ -143,7 +143,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                ".iconSrc":
                  "chrome://browser/skin/notification-icons/local-network.svg",
-@@ -4102,7 +4106,7 @@ SettingGroupManager.registerGroups({
+@@ -3982,7 +3986,7 @@ SettingGroupManager.registerGroups({
            {
              id: "microphoneSettingsButton",
              control: "moz-box-button",
@@ -152,7 +152,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                ".iconSrc":
                  "chrome://browser/skin/notification-icons/microphone.svg",
-@@ -4113,7 +4117,7 @@ SettingGroupManager.registerGroups({
+@@ -3993,7 +3997,7 @@ SettingGroupManager.registerGroups({
            {
              id: "speakerSettingsButton",
              control: "moz-box-button",
@@ -161,7 +161,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                ".iconSrc":
                  "chrome://browser/skin/notification-icons/speaker.svg",
-@@ -4124,7 +4128,7 @@ SettingGroupManager.registerGroups({
+@@ -4004,7 +4008,7 @@ SettingGroupManager.registerGroups({
            {
              id: "notificationSettingsButton",
              control: "moz-box-button",
@@ -170,7 +170,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                ".iconSrc":
                  "chrome://browser/skin/notification-icons/desktop-notification.svg",
-@@ -4135,7 +4139,7 @@ SettingGroupManager.registerGroups({
+@@ -4015,7 +4019,7 @@ SettingGroupManager.registerGroups({
            {
              id: "autoplaySettingsButton",
              control: "moz-box-button",
@@ -179,7 +179,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                ".iconSrc":
                  "chrome://browser/skin/notification-icons/autoplay-media.svg",
-@@ -4146,7 +4150,7 @@ SettingGroupManager.registerGroups({
+@@ -4026,7 +4030,7 @@ SettingGroupManager.registerGroups({
            {
              id: "xrSettingsButton",
              control: "moz-box-button",
@@ -188,7 +188,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              controlAttrs: {
                ".iconSrc": "chrome://browser/skin/notification-icons/xr.svg",
                "search-l10n-ids":
-@@ -4162,7 +4166,7 @@ SettingGroupManager.registerGroups({
+@@ -4042,7 +4046,7 @@ SettingGroupManager.registerGroups({
          items: [
            {
              id: "popupAndRedirectPolicyButton",
@@ -197,7 +197,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              control: "moz-box-button",
              controlAttrs: {
                "search-l10n-ids":
-@@ -4173,11 +4177,11 @@ SettingGroupManager.registerGroups({
+@@ -4053,11 +4057,11 @@ SettingGroupManager.registerGroups({
        },
        {
          id: "warnAddonInstall",
@@ -211,7 +211,7 @@ index a5f2e4258942010ee61ed7a86497f51793366fcd..cc9c5fcc7de98ee62b04a72439449e7c
              control: "moz-box-button",
              controlAttrs: {
                "search-l10n-ids":
-@@ -5362,6 +5366,29 @@ var gMainPane = {
+@@ -5235,6 +5239,29 @@ var gMainPane = {
      initSettingGroup("profiles");
      initSettingGroup("profilePane");
  

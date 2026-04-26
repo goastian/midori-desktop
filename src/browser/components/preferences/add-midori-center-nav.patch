@@ -1,8 +1,8 @@
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index 3c60cc9f199ba5836ea1233fbbeb74a6dd63b0c0..14dc238afe9f5b1d8f2121639e66c6ff68206ede 100644
+index 2d6cba7fac0c7de6d7c4a819f2c7ad20ce10bb33..4baad21014891d03590b45692e0e3067d779fd09 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -396,7 +396,15 @@ function init_all() {
+@@ -378,7 +378,15 @@ function init_all() {
    gMainPane.preInit();
  
    let categories = document.getElementById("categories");
