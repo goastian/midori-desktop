@@ -1,5 +1,5 @@
 diff --git a/services/settings/dumps/main/search-config-icons.json b/services/settings/dumps/main/search-config-icons.json
-index 3249024a839387130f15a0d66b72bf7c6c4e5f85..18cd3bc9ab3fb0d7c0b6f79d3dacb1b58b338dd2 100644
+index eff078659ce0ad969ac69b1b01759328ce998b54..c5a67b33ab34a16e01023af83238a028ecd4450b 100644
 --- a/services/settings/dumps/main/search-config-icons.json
 +++ b/services/settings/dumps/main/search-config-icons.json
 @@ -1,5 +1,21 @@

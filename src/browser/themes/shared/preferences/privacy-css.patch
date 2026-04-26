@@ -1,5 +1,5 @@
 diff --git a/browser/themes/shared/preferences/privacy.css b/browser/themes/shared/preferences/privacy.css
-index 1cfe9a9eef2e6cd162b17c3ca629e08f94219c6c..4331cd9704e7099b23d3fdd6f2a3f6905a06f810 100644
+index 1e68941cbe94ddd7f9732e39315816211221c9ba..6c15388786898f5d2977cb65db9cdd25c2e9fdd7 100644
 --- a/browser/themes/shared/preferences/privacy.css
 +++ b/browser/themes/shared/preferences/privacy.css
 @@ -69,7 +69,10 @@

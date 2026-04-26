@@ -1,5 +1,5 @@
 diff --git a/services/settings/dumps/main/search-config-v2.json b/services/settings/dumps/main/search-config-v2.json
-index f78d1d35b21b820614a157b1d3472561ea9d4074..04dc5eecad5e232547f98354858c62d5b6c937af 100644
+index 6b34fe02250e1d8a14f7219414a227a27dbbfa11..033e08d0b0d18152fbce38c4dac1c1bda29c333e 100644
 --- a/services/settings/dumps/main/search-config-v2.json
 +++ b/services/settings/dumps/main/search-config-v2.json
 @@ -113,7 +113,7 @@
@@ -49,7 +49,7 @@ index f78d1d35b21b820614a157b1d3472561ea9d4074..04dc5eecad5e232547f98354858c62d5
      {
        "base": {
          "classification": "unknown",
-@@ -3548,6 +3579,11 @@
+@@ -3538,6 +3569,11 @@
        "recordType": "engine",
        "schema": 1718698472747,
        "variants": [

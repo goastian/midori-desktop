@@ -1,5 +1,5 @@
 diff --git a/browser/themes/shared/jar.inc.mn b/browser/themes/shared/jar.inc.mn
-index 94de6f280e709161a54a65ffb621256b4e4e86fa..e0205e01b18685707373a913fd6342728f7e2cbc 100644
+index 3a12a7a33c33cec463b3d38647bdf647827784f8..cb415bef3203fc498f5aeee63bf6b569d92e9c2c 100644
 --- a/browser/themes/shared/jar.inc.mn
 +++ b/browser/themes/shared/jar.inc.mn
 @@ -18,7 +18,7 @@
