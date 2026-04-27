@@ -400,7 +400,7 @@ user_pref("security.tls.enable_0rtt_data", false);
 // PREF: disable showing about:blank as soon as possible during startup [FF60+]
 // [1] https://github.com/arkenfox/user.js/issues/1618
 // [2] https://bugzilla.mozilla.org/1448423
-//user_pref("browser.startup.blankWindow", false);
+user_pref("browser.startup.blankWindow", false);
 
 // PREF: disable ICC color management
 // Use a color calibrator for best results [WINDOWS]

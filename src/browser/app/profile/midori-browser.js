@@ -199,6 +199,9 @@ pref('dom.ipc.forkserver.enable', true);
 // ============================================================================
 // MIDORI FLAT DESIGN THEMES
 // ============================================================================
+// Theme mode: auto | light | dark
+pref('midori.theme.mode', 'auto');
+
 // Set Midori Breeze as the default active theme
 pref('extensions.activeThemeID', 'midori-theme-jade-mist@midori.astian.org');
 

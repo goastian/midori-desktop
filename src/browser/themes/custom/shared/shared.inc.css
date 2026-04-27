@@ -205,7 +205,8 @@ menupopup:not([position]) {
    ==================================================================== */
 
 #tabbrowser-tabpanels .browserContainer {
-  background-color: var(--lwt-accent-color, Canvas) !important;
+  background-color: var(--tabpanel-background-color,
+    var(--lwt-accent-color, Canvas)) !important;
 }
 
 /* ====================================================================
