@@ -17,7 +17,7 @@ index c4ff66417c43c8c56948b7de4c48cf93828a66bf..783544bc7417d86e86c98904ed7d597a
 -      path: "resource://builtin-themes/light/",
 -      inApp: true,
 -      nonNative: true,
-+      version: "1.0.0",
++      version: "2.0.0",
 +      path: "resource://builtin-themes/midori-theme-jade-mist/",
      },
    ],
@@ -29,7 +29,7 @@ index c4ff66417c43c8c56948b7de4c48cf93828a66bf..783544bc7417d86e86c98904ed7d597a
 -      path: "resource://builtin-themes/dark/",
 -      inApp: true,
 -      nonNative: true,
-+      version: "1.0.0",
++      version: "2.0.0",
 +      path: "resource://builtin-themes/midori-theme-forest-void/",
      },
    ],
@@ -39,28 +39,28 @@ index c4ff66417c43c8c56948b7de4c48cf93828a66bf..783544bc7417d86e86c98904ed7d597a
      {
 -      version: "1.5.2",
 -      path: "resource://builtin-themes/alpenglow/",
-+      version: "1.0.0",
++      version: "2.0.0",
 +      path: "resource://builtin-themes/midori-theme-sky-crystal/",
 +    },
 +  ],
 +  [
 +    "midori-theme-deep-ocean@midori.astian.org",
 +    {
-+      version: "1.0.0",
++      version: "2.0.0",
 +      path: "resource://builtin-themes/midori-theme-deep-ocean/",
 +    },
 +  ],
 +  [
 +    "midori-theme-citrus-dawn@midori.astian.org",
 +    {
-+      version: "1.0.0",
++      version: "2.0.0",
 +      path: "resource://builtin-themes/midori-theme-citrus-dawn/",
 +    },
 +  ],
 +  [
 +    "midori-theme-volcanic-sunset@midori.astian.org",
 +    {
-+      version: "1.0.0",
++      version: "2.0.0",
 +      path: "resource://builtin-themes/midori-theme-volcanic-sunset/",
      },
    ],
