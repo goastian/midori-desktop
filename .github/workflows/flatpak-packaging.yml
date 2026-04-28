@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-name: Flatpak Packaging
+name: Flatpak Packaging Sync
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Midori version to publish to the Flatpak repo, without leading v"
+        description: "Midori version to sync to the Flatpak packaging repo, without leading v"
         required: false
         type: string
       source_sha:
@@ -33,7 +33,7 @@ on:
         type: boolean
         default: true
       build_flatpak:
-        description: "Run flatpak-builder after updating the packaging repo"
+        description: "Run flatpak-builder against the packaging manifest after syncing"
         required: false
         type: boolean
         default: false
@@ -46,9 +46,14 @@ permissions:
 
 jobs:
   sync-packaging-repo:
-    name: Sync org.astian.midori_browser
+    name: Sync Flatpak staging repo
     runs-on: ubuntu-latest
     if: github.event_name != 'release' || github.event.release.prerelease == false
+    env:
+      FLATPAK_PACKAGING_REPO: goastian/org.astian.midori_browser
+      FLATPAK_PACKAGING_BRANCH: master
+      FLATPAK_MANIFEST: org.astian.midori_browser.yml
+      FLATPAK_METAINFO: build/flatpak/org.astian.midori_browser.metainfo.xml
     steps:
       - name: Checkout midori-desktop
         uses: actions/checkout@v4
@@ -108,10 +113,10 @@ jobs:
       - name: Checkout Flatpak packaging repo
         uses: actions/checkout@v4
         with:
-          repository: goastian/org.astian.midori_browser
+          repository: ${{ env.FLATPAK_PACKAGING_REPO }}
           token: ${{ secrets.PACKAGING_TOKEN }}
           path: flatpak-repo
-          ref: main
+          ref: ${{ env.FLATPAK_PACKAGING_BRANCH }}
 
       - name: Update Flatpak release files
         run: |
@@ -128,6 +133,12 @@ jobs:
           fi
 
           python3 scripts/update-flatpak-release.py "${args[@]}"
+
+      - name: Remove duplicated upstream metadata from packaging repo
+        run: |
+          rm -f \
+            flatpak-repo/org.astian.midori_browser.desktop \
+            flatpak-repo/org.astian.midori_browser.metainfo.xml
 
       - name: Setup Node.js
         if: github.event_name != 'workflow_dispatch' || inputs.update_node_sources
@@ -154,13 +165,13 @@ jobs:
       - name: Lint Flatpak manifest
         if: github.event_name != 'workflow_dispatch' || inputs.lint
         run: |
-          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder manifest flatpak-repo/org.astian.midori_browser.yml
+          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder manifest "flatpak-repo/${{ env.FLATPAK_MANIFEST }}"
 
-      - name: Lint Flatpak appstream
+      - name: Lint upstream AppStream metadata
         if: github.event_name != 'workflow_dispatch' || inputs.lint
         run: |
           set +e
-          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder appstream flatpak-repo/org.astian.midori_browser.metainfo.xml 2>&1 | tee /tmp/flatpak-appstream-lint.log
+          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder appstream "${{ env.FLATPAK_METAINFO }}" 2>&1 | tee /tmp/flatpak-appstream-lint.log
           status="${PIPESTATUS[0]}"
           set -e
 
@@ -181,7 +192,7 @@ jobs:
             --force-clean \
             --install-deps-from=flathub \
             build-dir \
-            flatpak-repo/org.astian.midori_browser.yml
+            "flatpak-repo/${{ env.FLATPAK_MANIFEST }}"
 
       - name: Commit and push packaging update
         run: |
@@ -189,8 +200,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add .
+          git add "${{ env.FLATPAK_MANIFEST }}"
+          git add -A org.astian.midori_browser.desktop org.astian.midori_browser.metainfo.xml
+          if [ -f generated-sources.json ]; then
+            git add generated-sources.json
+          fi
+          if [ -f flathub.json ]; then
+            git add flathub.json
+          fi
           git diff --cached --quiet && exit 0
 
           git commit -m "Update Flatpak packaging for Midori Browser ${{ steps.meta.outputs.version }}"
-          git push origin main
+          git push origin "${{ env.FLATPAK_PACKAGING_BRANCH }}"
