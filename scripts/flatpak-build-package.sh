@@ -76,9 +76,14 @@ exec /app/lib/midori/midori "$@"
 EOF
 chmod 0755 "$PREFIX/bin/midori"
 
-install -Dm0644 build/flatpak/org.astian.midori_browser.desktop \
+metadata_dir="flatpak-packaging"
+if [ ! -f "$metadata_dir/org.astian.midori_browser.desktop" ]; then
+  metadata_dir="build/flatpak"
+fi
+
+install -Dm0644 "$metadata_dir/org.astian.midori_browser.desktop" \
   "$PREFIX/share/applications/$APP_ID.desktop"
-install -Dm0644 build/flatpak/org.astian.midori_browser.metainfo.xml \
+install -Dm0644 "$metadata_dir/org.astian.midori_browser.metainfo.xml" \
   "$PREFIX/share/metainfo/$APP_ID.metainfo.xml"
 install -Dm0644 build/flatpak/distribution/policies.json \
   "$PREFIX/lib/midori/distribution/policies.json"
