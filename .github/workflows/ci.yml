@@ -122,15 +122,6 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Ensure branding/unofficial exists
-        run: |
-          mkdir -p engine/browser/branding/unofficial
-          touch engine/browser/branding/unofficial/logo.png
-          touch engine/browser/branding/unofficial/logo-mac.png
-          touch engine/browser/branding/unofficial/firefox.ico
-          touch engine/browser/branding/unofficial/firefox64.ico
-          echo 'dummy' > engine/browser/branding/unofficial/branding.nsi
-
       - name: Apply Amelia patches
         run: bash scripts/patch-amelia.sh
 

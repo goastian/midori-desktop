@@ -12,11 +12,14 @@ set -e
 #    - missing build/application.ini.in during early imports
 # 4) copy-patches assumptions in CI source trees:
 #    - missing engine/.gitignore during manual patch linking
+# 5) download assumptions in CI source trees:
+#    - partial engine/ directory should not suppress Firefox source download
 
 AMELIA_PKG="node_modules/@goastian/amelia/dist/commands/package.js"
 AMELIA_ADDON="node_modules/@goastian/amelia/dist/commands/download/addon.js"
 AMELIA_BRANDING="node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js"
 AMELIA_COPY_PATCHES="node_modules/@goastian/amelia/dist/commands/patches/copy-patches.js"
+AMELIA_DOWNLOAD_FIREFOX="node_modules/@goastian/amelia/dist/commands/download/firefox.js"
 
 if [ -f "$AMELIA_PKG" ]; then
   if grep -q "split('\\\\n').filter(Boolean)" "$AMELIA_PKG"; then
@@ -306,6 +309,47 @@ NODE
       echo "[patch-amelia] Patched copy-patches.js with .gitignore fallback."
     else
       echo "[patch-amelia] WARNING: Could not patch copy-patches.js .gitignore fallback."
+    fi
+  fi
+fi
+
+if [ -f "$AMELIA_DOWNLOAD_FIREFOX" ]; then
+  if grep -q "Existing engine/ workspace is incomplete; removing it before downloading Firefox source." "$AMELIA_DOWNLOAD_FIREFOX"; then
+    echo "[patch-amelia] download/firefox.js partial-engine guard already applied."
+  else
+    node <<'NODE'
+const fs = require('node:fs');
+
+const file = 'node_modules/@goastian/amelia/dist/commands/download/firefox.js';
+if (!fs.existsSync(file)) {
+  process.exit(0);
+}
+
+let content = fs.readFileSync(file, 'utf8');
+
+const oldDownloadBlock = `    if (!(0, node_fs_1.existsSync)(constants_1.ENGINE_DIR)) {
+        await setupFirefoxSource(version, candidateBuild, isCandidate);
+    }`;
+const newDownloadBlock = `    const needsFirefoxSource = shouldSetupFirefoxSource();
+    if (needsFirefoxSource && (0, node_fs_1.existsSync)(constants_1.ENGINE_DIR)) {
+        log_1.log.info('Existing engine/ workspace is incomplete; removing it before downloading Firefox source.');
+        (0, node_fs_1.rmSync)(constants_1.ENGINE_DIR, { recursive: true, force: true });
+    }
+    if (needsFirefoxSource) {
+        await setupFirefoxSource(version, candidateBuild, isCandidate);
+    }`;
+
+if (content.includes(oldDownloadBlock)) {
+  content = content.replace(oldDownloadBlock, newDownloadBlock);
+}
+
+fs.writeFileSync(file, content, 'utf8');
+NODE
+
+    if grep -q "Existing engine/ workspace is incomplete; removing it before downloading Firefox source." "$AMELIA_DOWNLOAD_FIREFOX"; then
+      echo "[patch-amelia] Patched download/firefox.js with partial-engine fallback."
+    else
+      echo "[patch-amelia] WARNING: Could not patch download/firefox.js partial-engine fallback."
     fi
   fi
 fi
