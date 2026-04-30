@@ -127,11 +127,20 @@ fi
 if [ -f "$AMELIA_BRANDING" ]; then
   _brand_unofficial_patched=false
   _brand_official_patched=false
+  _brand_shared_nsh_guard_patched=false
+  _brand_base_copy_guard_patched=false
+  _brand_nsis_fallback_patched=false
   grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING" && _brand_unofficial_patched=true
   grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'official')) ?" "$AMELIA_BRANDING" && _brand_official_patched=true
+  grep -q "Skipping shared.nsh patch because" "$AMELIA_BRANDING" && _brand_shared_nsh_guard_patched=true
+  grep -q "Skipping Mozilla base branding copy because" "$AMELIA_BRANDING" && _brand_base_copy_guard_patched=true
+  grep -q "No base branding.nsi found in" "$AMELIA_BRANDING" && _brand_nsis_fallback_patched=true
 
-  if [ "$_brand_unofficial_patched" = "true" ] && [ "$_brand_official_patched" = "true" ]; then
-    echo "[patch-amelia] branding-patch.js fallbacks already applied."
+  if { [ "$_brand_unofficial_patched" = "true" ] || [ "$_brand_official_patched" = "true" ]; } &&
+    [ "$_brand_shared_nsh_guard_patched" = "true" ] &&
+    [ "$_brand_base_copy_guard_patched" = "true" ] &&
+    [ "$_brand_nsis_fallback_patched" = "true" ]; then
+    echo "[patch-amelia] branding-patch.js guards already applied."
   else
     node <<'NODE'
 const fs = require('node:fs');
@@ -162,14 +171,72 @@ if (content.includes(officialSource) && !content.includes("existsSync)((0, node_
   content = content.replace(officialSource, officialReplacement);
 }
 
+// Patch 3: tolerate Firefox source trees that do not ship official/unofficial
+// branding folders by skipping the base copy and generating the few files we
+// need from Midori's own branding config.
+if (!content.includes('Skipping Mozilla base branding copy because')) {
+  content = content.replace(
+    "    const firefoxBrandingDirectoryContents = await (0, utils_1.walkDirectory)(BRANDING_FF);",
+    `    const firefoxBrandingDirectoryContents = (0, node_fs_1.existsSync)(BRANDING_FF)
+        ? await (0, utils_1.walkDirectory)(BRANDING_FF)
+        : [];
+    if (!(0, node_fs_1.existsSync)(BRANDING_FF)) {
+        log_1.log.info('Skipping Mozilla base branding copy because ' + BRANDING_FF + ' does not exist in this source tree.');
+    }`
+  );
+}
+
+if (!content.includes('No base branding.nsi found in')) {
+  const oldBrandingNsisBlock = `    const brandingNsis = files.filter((file) => file.includes(BRANDING_NSIS));
+    console.assert(brandingNsis.length == 1, 'There should only be one branding.nsi file');
+    const outputBrandingNsis = (0, node_path_1.join)(outputPath, brandingNsis[0].replace(BRANDING_FF, ''));
+    const configureProfileBrandingPath = (0, node_path_1.join)(outputPath, 'pref', 'firefox-branding.js');
+    log_1.log.debug('Configuring branding.nsi into ' + outputBrandingNsis);
+    configureBrandingNsis(outputBrandingNsis, brandingConfig);`;
+  const newBrandingNsisBlock = `    const brandingNsis = files.filter((file) => file.includes(BRANDING_NSIS));
+    const outputBrandingNsis = brandingNsis.length == 1
+        ? (0, node_path_1.join)(outputPath, brandingNsis[0].replace(BRANDING_FF, ''))
+        : (0, node_path_1.join)(outputPath, BRANDING_NSIS);
+    const configureProfileBrandingPath = (0, node_path_1.join)(outputPath, 'pref', 'firefox-branding.js');
+    if (brandingNsis.length != 1) {
+        log_1.log.info('No base branding.nsi found in ' + BRANDING_FF + '. Generating ' + outputBrandingNsis + ' from template.');
+    }
+    (0, utils_1.mkdirpSync)((0, node_path_1.dirname)(outputBrandingNsis));
+    (0, utils_1.mkdirpSync)((0, node_path_1.dirname)(configureProfileBrandingPath));
+    log_1.log.debug('Configuring branding.nsi into ' + outputBrandingNsis);
+    configureBrandingNsis(outputBrandingNsis, brandingConfig);`;
+  if (content.includes(oldBrandingNsisBlock)) {
+    content = content.replace(oldBrandingNsisBlock, newBrandingNsisBlock);
+  }
+}
+
+// Patch 4: guard shared.nsh mutation so Linux/macOS source trees can import
+// branding without the Windows NSIS installer files being present.
+if (!content.includes('Skipping shared.nsh patch because')) {
+  content = content.replace(
+    /\(0, node_fs_1\.writeFileSync\)\(SHARED_NSH, \(0, node_fs_1\.readFileSync\)\(SHARED_NSH\)\s*\.toString\(\)\s*\.replace\('"Publisher" "Mozilla"', `"Publisher" "\$\{brandingConfig\.brandingVendor\}"`\)\);/,
+    `if ((0, node_fs_1.existsSync)(SHARED_NSH)) {
+        (0, node_fs_1.writeFileSync)(SHARED_NSH, (0, node_fs_1.readFileSync)(SHARED_NSH)
+            .toString()
+            .replace('"Publisher" "Mozilla"', \`"Publisher" "\${brandingConfig.brandingVendor}"\`));
+    }
+    else {
+        log_1.log.info('Skipping shared.nsh patch because ' + SHARED_NSH + ' does not exist in this source tree.');
+    }`
+  );
+}
+
 fs.writeFileSync(file, content, 'utf8');
 NODE
 
-    if grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING" ||
-      grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'official')) ?" "$AMELIA_BRANDING"; then
-      echo "[patch-amelia] Patched branding-patch.js with branding directory fallbacks."
+    if { grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING" ||
+      grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'official')) ?" "$AMELIA_BRANDING"; } &&
+      grep -q "Skipping Mozilla base branding copy because" "$AMELIA_BRANDING" &&
+      grep -q "No base branding.nsi found in" "$AMELIA_BRANDING" &&
+      grep -q "Skipping shared.nsh patch because" "$AMELIA_BRANDING"; then
+      echo "[patch-amelia] Patched branding-patch.js with branding fallbacks and missing-file guards."
     else
-      echo "[patch-amelia] WARNING: Could not patch branding-patch.js fallbacks."
+      echo "[patch-amelia] WARNING: Could not fully patch branding-patch.js guards."
     fi
   fi
 fi
