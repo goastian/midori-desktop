@@ -7,10 +7,16 @@ set -e
 # 2) addon download flow issues in CI:
 #    - git identity requirement during addon initialization
 #    - hard failure when browser/extensions/moz.build is not present
+# 3) branding patch assumptions in CI source trees:
+#    - missing shared.nsh on non-Windows imports
+#    - missing build/application.ini.in during early imports
+# 4) copy-patches assumptions in CI source trees:
+#    - missing engine/.gitignore during manual patch linking
 
 AMELIA_PKG="node_modules/@goastian/amelia/dist/commands/package.js"
 AMELIA_ADDON="node_modules/@goastian/amelia/dist/commands/download/addon.js"
 AMELIA_BRANDING="node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js"
+AMELIA_COPY_PATCHES="node_modules/@goastian/amelia/dist/commands/patches/copy-patches.js"
 
 if [ -f "$AMELIA_PKG" ]; then
   if grep -q "split('\\\\n').filter(Boolean)" "$AMELIA_PKG"; then
@@ -130,16 +136,19 @@ if [ -f "$AMELIA_BRANDING" ]; then
   _brand_shared_nsh_guard_patched=false
   _brand_base_copy_guard_patched=false
   _brand_nsis_fallback_patched=false
+  _brand_update_url_guard_patched=false
   grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'unofficial')) ?" "$AMELIA_BRANDING" && _brand_unofficial_patched=true
   grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'official')) ?" "$AMELIA_BRANDING" && _brand_official_patched=true
   grep -q "Skipping shared.nsh patch because" "$AMELIA_BRANDING" && _brand_shared_nsh_guard_patched=true
   grep -q "Skipping Mozilla base branding copy because" "$AMELIA_BRANDING" && _brand_base_copy_guard_patched=true
   grep -q "No base branding.nsi found in" "$AMELIA_BRANDING" && _brand_nsis_fallback_patched=true
+  grep -q "Skipping update URL patch because" "$AMELIA_BRANDING" && _brand_update_url_guard_patched=true
 
   if { [ "$_brand_unofficial_patched" = "true" ] || [ "$_brand_official_patched" = "true" ]; } &&
     [ "$_brand_shared_nsh_guard_patched" = "true" ] &&
     [ "$_brand_base_copy_guard_patched" = "true" ] &&
-    [ "$_brand_nsis_fallback_patched" = "true" ]; then
+    [ "$_brand_nsis_fallback_patched" = "true" ] &&
+    [ "$_brand_update_url_guard_patched" = "true" ]; then
     echo "[patch-amelia] branding-patch.js guards already applied."
   else
     node <<'NODE'
@@ -226,6 +235,25 @@ if (!content.includes('Skipping shared.nsh patch because')) {
   );
 }
 
+// Patch 5: tolerate source trees where application.ini.in is not present yet
+// during import. The URL rewrite is not required for a build-only CI check.
+if (!content.includes('Skipping update URL patch because')) {
+  content = content.replace(
+    /function setUpdateURLs\(\) \{\s*const baseURL = `URL=https:\/\/@MOZ_APPUPDATE_HOST@\/updates\/browser\/%BUILD_TARGET%\/%CHANNEL%\/update\.xml`;\s*const appIni = \(0, node_path_1\.join\)\(constants_1\.ENGINE_DIR, 'build', 'application\.ini\.in'\);\s*const appIniContents = \(0, node_fs_1\.readFileSync\)\(appIni\)\.toString\(\);\s*const updatedAppIni = appIniContents\.replace\(\/URL=\.\*update\.xml\/g, baseURL\);\s*\(0, node_fs_1\.writeFileSync\)\(appIni, updatedAppIni\);\s*\}/,
+    `function setUpdateURLs() {
+    const baseURL = \`URL=https://@MOZ_APPUPDATE_HOST@/updates/browser/%BUILD_TARGET%/%CHANNEL%/update.xml\`;
+    const appIni = (0, node_path_1.join)(constants_1.ENGINE_DIR, 'build', 'application.ini.in');
+    if (!(0, node_fs_1.existsSync)(appIni)) {
+        log_1.log.info('Skipping update URL patch because ' + appIni + ' does not exist in this source tree.');
+        return;
+    }
+    const appIniContents = (0, node_fs_1.readFileSync)(appIni).toString();
+    const updatedAppIni = appIniContents.replace(/URL=.*update.xml/g, baseURL);
+    (0, node_fs_1.writeFileSync)(appIni, updatedAppIni);
+}`
+  );
+}
+
 fs.writeFileSync(file, content, 'utf8');
 NODE
 
@@ -233,10 +261,51 @@ NODE
       grep -q "existsSync)((0, node_path_1.join)(BRANDING_STORE, 'official')) ?" "$AMELIA_BRANDING"; } &&
       grep -q "Skipping Mozilla base branding copy because" "$AMELIA_BRANDING" &&
       grep -q "No base branding.nsi found in" "$AMELIA_BRANDING" &&
-      grep -q "Skipping shared.nsh patch because" "$AMELIA_BRANDING"; then
+      grep -q "Skipping shared.nsh patch because" "$AMELIA_BRANDING" &&
+      grep -q "Skipping update URL patch because" "$AMELIA_BRANDING"; then
       echo "[patch-amelia] Patched branding-patch.js with branding fallbacks and missing-file guards."
     else
       echo "[patch-amelia] WARNING: Could not fully patch branding-patch.js guards."
+    fi
+  fi
+fi
+
+if [ -f "$AMELIA_COPY_PATCHES" ]; then
+  if grep -q "const gitignorePath = (0, node_path_1.resolve)(constants_1.ENGINE_DIR, '.gitignore');" "$AMELIA_COPY_PATCHES"; then
+    echo "[patch-amelia] copy-patches.js .gitignore guard already applied."
+  else
+    node <<'NODE'
+const fs = require('node:fs');
+
+const file = 'node_modules/@goastian/amelia/dist/commands/patches/copy-patches.js';
+if (!fs.existsSync(file)) {
+  process.exit(0);
+}
+
+let content = fs.readFileSync(file, 'utf8');
+
+const oldGitignoreBlock = `    const gitignore = (0, node_fs_2.readFileSync)((0, node_path_1.resolve)(constants_1.ENGINE_DIR, '.gitignore')).toString();
+    if (!gitignore.includes(getChunked(name).join('/')))
+        (0, utils_1.appendToFileSync)((0, node_path_1.resolve)(constants_1.ENGINE_DIR, '.gitignore'), \`\\n\${getChunked(name).join('/')}\`);`;
+const newGitignoreBlock = `    const gitignorePath = (0, node_path_1.resolve)(constants_1.ENGINE_DIR, '.gitignore');
+    if (!(0, node_fs_1.existsSync)(gitignorePath)) {
+        (0, node_fs_2.writeFileSync)(gitignorePath, '');
+    }
+    const gitignore = (0, node_fs_2.readFileSync)(gitignorePath).toString();
+    if (!gitignore.includes(getChunked(name).join('/')))
+        (0, utils_1.appendToFileSync)(gitignorePath, \`\\n\${getChunked(name).join('/')}\`);`;
+
+if (content.includes(oldGitignoreBlock)) {
+  content = content.replace(oldGitignoreBlock, newGitignoreBlock);
+}
+
+fs.writeFileSync(file, content, 'utf8');
+NODE
+
+    if grep -q "const gitignorePath = (0, node_path_1.resolve)(constants_1.ENGINE_DIR, '.gitignore');" "$AMELIA_COPY_PATCHES"; then
+      echo "[patch-amelia] Patched copy-patches.js with .gitignore fallback."
+    else
+      echo "[patch-amelia] WARNING: Could not patch copy-patches.js .gitignore fallback."
     fi
   fi
 fi
