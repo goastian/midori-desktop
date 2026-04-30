@@ -97,7 +97,16 @@ jobs:
           fi
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$RUST_VERSION"
           . "$HOME/.cargo/env"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           rustc --version
+
+      - name: Install cbindgen
+        run: |
+          . "$HOME/.cargo/env"
+          if ! command -v cbindgen >/dev/null 2>&1 || ! cbindgen --version | grep -q '0.29.1'; then
+            cargo install cbindgen --version 0.29.1 --locked
+          fi
+          cbindgen --version
 
       - name: Install system dependencies
         run: |
