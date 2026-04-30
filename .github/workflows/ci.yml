@@ -144,14 +144,6 @@ jobs:
       - name: Initialize Amelia (download + import + bootstrap)
         run: npm run init
 
-      - name: Apply CI-only mozconfig overrides
-        run: |
-          {
-            echo
-            echo '# CI-only overrides'
-            echo 'ac_add_options --without-wasm-sandboxed-libraries'
-          } >> mozconfig
-
       - name: Build check (dev mode)
         run: |
           . "$HOME/.cargo/env"
