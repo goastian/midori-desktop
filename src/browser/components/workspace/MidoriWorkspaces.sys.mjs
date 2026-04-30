@@ -44,10 +44,6 @@ const STYLE_ID = 'midori-workspaces-style';
 const SELECTOR_ID = 'midori-workspace-selector';
 const POPUP_ID = 'midori-workspace-popup';
 const VERTICAL_RAIL_ID = 'midori-workspace-rail';
-const INDICATOR_ID = 'midori-workspace-indicator';
-const INDICATOR_ICON_ID = 'midori-workspace-indicator-icon';
-const INDICATOR_NAME_ID = 'midori-workspace-indicator-name';
-const INDICATOR_COUNT_ID = 'midori-workspace-indicator-count';
 const QUICK_ICONS_ID = 'midori-workspace-quick-icons';
 const WORKSPACE_CHANGE_TOPIC = 'midori-workspaces-updated';
 const MAX_WORKSPACES = 25;
@@ -536,42 +532,7 @@ export const MidoriWorkspaces = {
     rail.id = VERTICAL_RAIL_ID;
     rail.className = 'midori-workspace-rail';
 
-    const indicator = doc.createXULElement('toolbarbutton');
-    indicator.id = INDICATOR_ID;
-    indicator.className = 'midori-workspace-indicator toolbarbutton-1';
-    indicator.setAttribute('tooltiptext', 'Workspaces - Click to switch workspace');
-
-    const iconEl = doc.createXULElement('label');
-    iconEl.id = INDICATOR_ICON_ID;
-    iconEl.className = 'midori-workspace-indicator-icon';
-    iconEl.setAttribute('value', '\uD83C\uDFE0');
-
-    const nameEl = doc.createXULElement('label');
-    nameEl.id = INDICATOR_NAME_ID;
-    nameEl.className = 'midori-workspace-indicator-name';
-    nameEl.setAttribute('value', 'Workspaces');
-
-    const chevronEl = doc.createXULElement('label');
-    chevronEl.className = 'midori-workspace-indicator-chevron';
-    chevronEl.setAttribute('value', '\u25BE');
-
-    const countEl = doc.createXULElement('label');
-    countEl.id = INDICATOR_COUNT_ID;
-    countEl.className = 'midori-workspace-indicator-count';
-    countEl.setAttribute('value', '0');
-
-    indicator.appendChild(iconEl);
-    indicator.appendChild(nameEl);
-    indicator.appendChild(countEl);
-    indicator.appendChild(chevronEl);
-
-    indicator.addEventListener('command', () => {
-      this._showIndicatorPopup(win, state, indicator);
-    });
-
-    rail.appendChild(indicator);
-
-    // Create workspace strip container and place it under the indicator.
+    // Create workspace strip container and place it under the rail header.
     const container = doc.createXULElement('hbox');
     container.id = QUICK_ICONS_ID;
     container.className = 'midori-workspace-quick-icons';
@@ -580,7 +541,6 @@ export const MidoriWorkspaces = {
     // Insert before first child (above tabs)
     verticalTabs.insertBefore(rail, verticalTabs.firstChild);
 
-    this._updateIndicator(doc, state);
     this._updateQuickIcons(win, state);
 
     // --- Pre-create popup attached to mainPopupSet for reuse ---
@@ -621,45 +581,8 @@ export const MidoriWorkspaces = {
   },
 
   /**
-   * Update the workspace indicator (vertical mode) with current workspace info.
-   */
-  _updateIndicator(doc, state) {
-    const indicator = doc.getElementById(INDICATOR_ID);
-    if (!indicator) return;
-
-    const current = state.data.workspaces.find((ws) => ws.id === state.data.selectedId);
-    if (!current) return;
-
-    const emoji = getEmojiForIcon(current.icon);
-    const accent = getWorkspaceAccent(current.icon);
-    const tabCount = this._countTabsInWorkspace(state.win, state.data.selectedId);
-
-    const nameEl = doc.getElementById(INDICATOR_NAME_ID);
-    if (nameEl) nameEl.setAttribute('value', current.name);
-
-    const countEl = doc.getElementById(INDICATOR_COUNT_ID);
-    if (countEl) {
-      countEl.setAttribute('value', `${tabCount}`);
-    }
-
-    const iconEl = doc.getElementById(INDICATOR_ICON_ID);
-    if (iconEl) {
-      iconEl.setAttribute('value', emoji);
-      // Store current icon data as CSS variable for potential styling
-      indicator.style.setProperty('--midori-workspace-emoji', `"${emoji}"`);
-    }
-
-    indicator.style.setProperty('--midori-workspace-accent', accent);
-
-    indicator.setAttribute(
-      'tooltiptext',
-      `Workspace: ${current.name} (${tabCount} tabs) - Click to switch or manage workspaces`
-    );
-  },
-
-  /**
    * Update the quick workspace icon buttons (vertical mode, bottom of sidebar).
-   * Like Natsumi/Floorp: one icon per workspace + a "+" button to add.
+   * Like Natsumi/Floorp: one icon per workspace + a "+" launcher button.
    */
   _updateQuickIcons(win, state) {
     const doc = win.document;
@@ -698,14 +621,19 @@ export const MidoriWorkspaces = {
       container.appendChild(btn);
     }
 
-    // "+" button to create new workspace
+    // "+" button opens the workspace popup (same launcher used by right-click)
     if (workspaces.length < MAX_WORKSPACES) {
       const addBtn = doc.createXULElement('toolbarbutton');
       addBtn.className = 'midori-workspace-quick-btn midori-workspace-add-btn toolbarbutton-1';
-      addBtn.setAttribute('tooltiptext', 'Create new workspace');
+      addBtn.setAttribute('tooltiptext', 'Open workspace menu');
       addBtn.setAttribute('label', '+');
       addBtn.addEventListener('command', () => {
-        this._showCreateDialog(win, state);
+        this._showIndicatorPopup(win, state, addBtn);
+      });
+      addBtn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this._showIndicatorPopup(win, state, addBtn);
       });
       container.appendChild(addBtn);
     }
@@ -717,8 +645,6 @@ export const MidoriWorkspaces = {
     if (verticalRail) verticalRail.remove();
     const selector = doc.getElementById(SELECTOR_ID);
     if (selector) selector.remove();
-    const indicator = doc.getElementById(INDICATOR_ID);
-    if (indicator) indicator.remove();
     const quickIcons = doc.getElementById(QUICK_ICONS_ID);
     if (quickIcons) quickIcons.remove();
     const popup = doc.getElementById(POPUP_ID);
@@ -743,8 +669,7 @@ export const MidoriWorkspaces = {
       }
     }
 
-    // Update vertical mode indicator + quick icons
-    this._updateIndicator(doc, state);
+    // Vertical mode buttons are updated separately by _updateQuickIcons.
   },
 
   _populatePopup(win, state) {
@@ -882,7 +807,7 @@ export const MidoriWorkspaces = {
       }
     }
 
-    // Update UI (both horizontal selector label and vertical indicator)
+    // Update UI (horizontal selector label + vertical quick buttons)
     this._updateSelectorLabel(win.document, state);
     this._updateQuickIcons(win, state);
 
@@ -969,7 +894,7 @@ export const MidoriWorkspaces = {
       let isWorkspaceTarget = false;
       while (node && node !== win.document) {
         if (
-          node.id === INDICATOR_ID ||
+          node.id === VERTICAL_RAIL_ID ||
           node.id === QUICK_ICONS_ID ||
           node.id === SELECTOR_ID
         ) {
