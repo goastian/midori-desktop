@@ -22,8 +22,28 @@
 
 const PREF_ENABLED = 'midori.verticaltabs.enabled';
 const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
+const PREF_VERTICAL_WIDTH = 'midori.verticaltabs.width';
+const PREF_VERTICAL_DENSITY = 'midori.verticaltabs.density';
+const PREF_VERTICAL_COMPACT = 'midori.verticaltabs.compact';
+const PREF_VERTICAL_FLOATING_URLBAR = 'midori.verticaltabs.floatingUrlbar';
+const PREF_VERTICAL_SHOW_RAIL = 'midori.verticaltabs.showRail';
+const PREF_VERTICAL_ACCENT_MODE = 'midori.verticaltabs.accent.mode';
+const PREF_VERTICAL_ACCENT_CUSTOM = 'midori.verticaltabs.accent.custom';
 const PREF_HORIZONTAL_POSITION = 'midori.horizontaltabs.position';
 const STYLE_ID = 'midori-verticaltabs-style';
+
+const OBSERVED_PREFS = new Set([
+  PREF_ENABLED,
+  PREF_VERTICAL_POSITION,
+  PREF_VERTICAL_WIDTH,
+  PREF_VERTICAL_DENSITY,
+  PREF_VERTICAL_COMPACT,
+  PREF_VERTICAL_FLOATING_URLBAR,
+  PREF_VERTICAL_SHOW_RAIL,
+  PREF_VERTICAL_ACCENT_MODE,
+  PREF_VERTICAL_ACCENT_CUSTOM,
+  PREF_HORIZONTAL_POSITION,
+]);
 
 export const MidoriVerticalTabs = {
   _initialized: false,
@@ -34,6 +54,13 @@ export const MidoriVerticalTabs = {
 
     Services.prefs.addObserver(PREF_ENABLED, this);
     Services.prefs.addObserver(PREF_VERTICAL_POSITION, this);
+    Services.prefs.addObserver(PREF_VERTICAL_WIDTH, this);
+    Services.prefs.addObserver(PREF_VERTICAL_DENSITY, this);
+    Services.prefs.addObserver(PREF_VERTICAL_COMPACT, this);
+    Services.prefs.addObserver(PREF_VERTICAL_FLOATING_URLBAR, this);
+    Services.prefs.addObserver(PREF_VERTICAL_SHOW_RAIL, this);
+    Services.prefs.addObserver(PREF_VERTICAL_ACCENT_MODE, this);
+    Services.prefs.addObserver(PREF_VERTICAL_ACCENT_CUSTOM, this);
     Services.prefs.addObserver(PREF_HORIZONTAL_POSITION, this);
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
 
@@ -65,15 +92,138 @@ export const MidoriVerticalTabs = {
     return pos === 'bottom' ? 'bottom' : 'top';
   },
 
-  // =========================================================================
-  // Observer
-  // =========================================================================
+  _getVerticalWidth() {
+    const width = Services.prefs.getIntPref(PREF_VERTICAL_WIDTH, 248);
+    return Math.max(200, Math.min(420, width));
+  },
+
+  _getVerticalDensity() {
+    const density = Services.prefs.getStringPref(PREF_VERTICAL_DENSITY, 'normal');
+    if (density === 'compact' || density === 'comfortable') {
+      return density;
+    }
+    return 'normal';
+  },
+
+  _isVerticalCompact() {
+    return Services.prefs.getBoolPref(PREF_VERTICAL_COMPACT, false);
+  },
+
+  _isFloatingUrlbarEnabled() {
+    return Services.prefs.getBoolPref(PREF_VERTICAL_FLOATING_URLBAR, true);
+  },
+
+  _isShowRailEnabled() {
+    return Services.prefs.getBoolPref(PREF_VERTICAL_SHOW_RAIL, true);
+  },
+
+  _getAccentMode() {
+    const mode = Services.prefs.getStringPref(PREF_VERTICAL_ACCENT_MODE, 'workspace');
+    if (mode === 'system' || mode === 'custom') {
+      return mode;
+    }
+    return 'workspace';
+  },
+
+  _getCustomAccent() {
+    const value = Services.prefs.getStringPref(PREF_VERTICAL_ACCENT_CUSTOM, '#2d8659').trim();
+    return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#2d8659';
+  },
+
+  _resolveVerticalAccent(doc) {
+    const mode = this._getAccentMode();
+    if (mode === 'custom') {
+      return this._getCustomAccent();
+    }
+
+    if (mode === 'workspace') {
+      const activeBtn = doc.querySelector(
+        '#midori-workspace-quick-icons .midori-workspace-quick-btn[data-active="true"]'
+      );
+      const accent = activeBtn?.style?.getPropertyValue('--midori-workspace-accent')?.trim();
+      if (accent) {
+        return accent;
+      }
+    }
+
+    return 'AccentColor';
+  },
+
+  _applyDensity(root) {
+    const density = this._getVerticalDensity();
+    root.setAttribute('midori-vt-density', density);
+    switch (density) {
+      case 'compact':
+        root.style.setProperty('--midori-vt-density-pad', '4px');
+        root.style.setProperty('--midori-vt-tab-radius', '10px');
+        break;
+      case 'comfortable':
+        root.style.setProperty('--midori-vt-density-pad', '8px');
+        root.style.setProperty('--midori-vt-tab-radius', '12px');
+        break;
+      default:
+        root.style.setProperty('--midori-vt-density-pad', '6px');
+        root.style.setProperty('--midori-vt-tab-radius', '11px');
+        break;
+    }
+  },
+
+  _applyWidth(root) {
+    root.style.setProperty('--midori-vt-width', `${this._getVerticalWidth()}px`);
+  },
+
+  _applyCompact(root) {
+    root.setAttribute('midori-vt-compact', this._isVerticalCompact() ? 'true' : 'false');
+  },
+
+  _applyFloatingUrlbar(root) {
+    root.setAttribute(
+      'midori-vt-floating-urlbar',
+      this._isFloatingUrlbarEnabled() ? 'true' : 'false'
+    );
+  },
+
+  _applyShowRail(root) {
+    root.setAttribute('midori-vt-show-rail', this._isShowRailEnabled() ? 'true' : 'false');
+  },
+
+  _applyVerticalRootState(doc) {
+    const root = doc.documentElement;
+    this._applyDensity(root);
+    this._applyWidth(root);
+    this._applyCompact(root);
+    this._applyFloatingUrlbar(root);
+    this._applyShowRail(root);
+
+    const accent = this._resolveVerticalAccent(doc);
+    root.style.setProperty('--midori-vt-accent', accent);
+    root.style.setProperty('--midori-vt-divider', 'color-mix(in srgb, currentColor 12%, transparent)');
+    root.setAttribute('midori-vt-accent-mode', this._getAccentMode());
+
+    if (Services.locale.isAppLocaleRTL()) {
+      root.setAttribute('midori-vt-rtl', 'true');
+    } else {
+      root.removeAttribute('midori-vt-rtl');
+    }
+  },
+
+  _clearVerticalRootState(doc) {
+    const root = doc.documentElement;
+    root.removeAttribute('midori-vt-density');
+    root.removeAttribute('midori-vt-compact');
+    root.removeAttribute('midori-vt-floating-urlbar');
+    root.removeAttribute('midori-vt-show-rail');
+    root.removeAttribute('midori-vt-accent-mode');
+    root.removeAttribute('midori-vt-rtl');
+    root.style.removeProperty('--midori-vt-width');
+    root.style.removeProperty('--midori-vt-density-pad');
+    root.style.removeProperty('--midori-vt-tab-radius');
+    root.style.removeProperty('--midori-vt-accent');
+    root.style.removeProperty('--midori-vt-divider');
+  },
 
   observe(subject, topic, data) {
-    if (
-      topic === 'nsPref:changed' &&
-      (data === PREF_ENABLED || data === PREF_VERTICAL_POSITION || data === PREF_HORIZONTAL_POSITION)
-    ) {
+    if (topic === 'nsPref:changed' && OBSERVED_PREFS.has(data)) {
       this._syncFirefoxPrefs();
       this._refreshAllWindows();
     } else if (topic === 'browser-delayed-startup-finished') {
@@ -113,9 +263,11 @@ export const MidoriVerticalTabs = {
     if (this.isEnabled()) {
       doc.documentElement.removeAttribute('midori-horizontal-tabs');
       doc.documentElement.setAttribute('midori-vertical-tabs', this._getVerticalSide());
+      this._applyVerticalRootState(doc);
     } else {
       doc.documentElement.removeAttribute('midori-vertical-tabs');
       doc.documentElement.setAttribute('midori-horizontal-tabs', this._getHorizontalPosition());
+      this._clearVerticalRootState(doc);
     }
 
     // --- Move TabsToolbar for bottom horizontal tabs ---
@@ -421,309 +573,16 @@ toolbar .toolbarbutton-1 {
       `
 
 /* =====================================================================
-   MIDORI VERTICAL TABS — Flat Design layout
+   MIDORI VERTICAL TABS — Runtime defaults
+   Visual layout is handled in shared.inc.css.
    ===================================================================== */
 
-/* --- Sidebar hierarchy helpers (workspace rail + tabs area) --- */
-#vertical-tabs:has(#midori-workspace-rail) #tabbrowser-tabs {
-  padding-top: 6px !important;
-}
-
-#vertical-tabs:has(#midori-workspace-rail)
-  #tabbrowser-tabs[orient="vertical"][expanded]::before {
-  content: "Tabs";
-  display: block;
-  margin: 0 8px 6px !important;
-  padding: 0 6px !important;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  opacity: 0.68;
-}
-
-/* --- Content area separation (flat border, no glass) --- */
-:root:not([inDOMFullscreen="true"]):not([customizing]) {
-  #tabbrowser-tabbox {
-    margin-right: 6px !important;
-    margin-bottom: 6px !important;
-
-    .browserSidebarContainer {
-      border: 1px solid color-mix(in srgb, currentColor 8%, transparent) !important;
-      border-radius: 10px !important;
-      overflow: hidden;
-    }
-  }
-}
-
-/* --- Hide vertical spacer --- */
-#vertical-spacer { display: none !important; }
-
-/* --- Navbar refinements --- */
-#PanelUI-button { order: -1 !important; }
-
-#PanelUI-menu-button {
-  padding: 0 var(--toolbarbutton-outer-padding) 0
-    var(--toolbar-start-end-padding) !important;
-}
-
-#nav-bar { border: none !important; }
-
-#nav-bar-customization-target {
-  & > :is(toolbarbutton, toolbaritem):first-child,
-  & > toolbarpaletteitem:first-child > :is(toolbarbutton, toolbaritem) {
-    padding-inline-start: 0 !important;
-  }
-}
-
-/* Scale down toolbar buttons */
-#nav-bar-customization-target .toolbarbutton-1,
-.urlbar-go-button,
-.search-go-button {
-  scale: 0.92 !important;
-  border-radius: 10px !important;
-}
-
-/* Hide unified extensions until hover */
-#nav-bar:not([customizing]) #unified-extensions-button {
-  opacity: 0 !important;
-  transition: opacity 0.15s ease !important;
-}
-#nav-bar:not([customizing]) #unified-extensions-button:hover {
-  opacity: 1 !important;
-}
-
-/* Hide private browsing label */
-.private-browsing-indicator-label { display: none !important; }
-
-/* Sidebar tools — horizontal row, show/hide on hover */
-.tools-and-extensions[orientation="horizontal"] {
-  display: flex !important;
-  flex-wrap: initial !important;
-  flex-direction: row !important;
-  opacity: 0.4 !important;
-}
-
-/* Sidebar tools hover visibility */
-.wrapper:hover {
-  .tools-and-extensions:hover { opacity: 1 !important; }
-  .tools-and-extensions[orientation="vertical"] {
-    transition: 0.15s ease !important;
-    display: flex !important;
-    visibility: inherit !important;
-    opacity: 0.4 !important;
-    margin-top: -12px !important;
-  }
-  .tools-and-extensions[orientation="horizontal"] {
-    overflow: scroll !important;
-    scrollbar-width: thin;
-    scrollbar-color: var(--lwt-accent-color) transparent;
-    transition: 0.15s ease !important;
-    margin-top: 0 !important;
-    &:hover { opacity: 1 !important; }
-  }
-}
-
-.wrapper .tools-and-extensions[orientation="vertical"] {
-  visibility: collapse;
-  opacity: 0 !important;
-  margin-top: -12px !important;
-}
-
-/* --- Sidebar styling (flat) --- */
-#sidebar {
-  border-radius: 10px !important;
-  border: 1px solid color-mix(in srgb, currentColor 6%, transparent) !important;
-  background-color: var(--toolbar-bgcolor) !important;
-  transition: background-color 0.15s ease !important;
-}
-
-#sidebar-box {
-  padding-inline-end: 0 !important;
-  border: none !important;
-  transition: background-color 0.15s ease !important;
-}
-
-/* Remove sidebar styling in fullscreen */
-#main-window[inFullscreen="true"] {
-  #sidebar-box { padding: 0 !important; }
-  #sidebar { border-radius: 0 !important; }
-}
-
-/* --- Content area rounded corners --- */
-#tabbrowser-tabpanels {
-  border-radius: 10px !important;
-}
-
-/* --- URL bar — compact when idle, floating when active (flat) --- */
-
-#urlbar-container {
-  --urlbar-container-height: 40px !important;
-}
-
-/* Idle: compact pill, centered text, hidden actions */
-#urlbar:not([open]) {
-  height: 32px !important;
-  border-radius: 16px !important;
-  border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
-  transition: border 0.15s ease !important;
-}
-
-#urlbar:not([open]) #urlbar-background,
-#urlbar:not([open]) .urlbar-background {
-  border-radius: 16px !important;
-  background-color: var(--toolbar-field-background-color, var(--toolbar-bgcolor)) !important;
-  transition: background-color 0.15s ease !important;
-  border-color: transparent !important;
-}
-
-#urlbar:not([open]) #urlbar-input {
-  text-align: center !important;
-}
-
-/* Hide identity/actions when idle unless hovered */
-#urlbar:not([open]) #identity-icon-label,
-#urlbar:not([open]) #tracking-protection-icon-container,
-#urlbar:not([open]) #urlbar-searchmode-switcher {
-  display: none !important;
-}
-
-#urlbar:not([open]) #identity-icon-box {
-  background-color: color-mix(in srgb, var(--toolbar-field-background-color) 40%, transparent) !important;
-  border-radius: 13px !important;
-  transition: background-color 0.15s ease !important;
-}
-
-#urlbar:not([open]) #page-action-buttons {
-  display: inline-flex !important;
-  margin-inline: 0 !important;
-}
-
-/* Keep page actions (passwords, bookmark, reader-mode, translations,
-   permissions) always visible — Midori needs these surfaced in both
-   horizontal and vertical modes. */
-#urlbar:not([open]) .urlbar-page-action {
-  opacity: 1 !important;
-  width: 26px !important;
-  padding: 5px !important;
-  overflow: visible;
-  transition: background-color 0.15s ease !important;
-}
-
-#urlbar:not([open]):hover #identity-icon-box {
-  background-color: color-mix(in srgb, var(--toolbar-field-background-color) 70%, transparent) !important;
-}
-
-/* Expanded: floating overlay (flat, no blur) */
-#urlbar[open] {
-  top: 25vh !important;
-  width: 60% !important;
-  left: 50% !important;
-  translate: -50% 0 !important;
-  border-radius: 12px !important;
-  animation: midori-floating-urlbar-appear 0.2s ease !important;
-  z-index: 999 !important;
-}
-
-#urlbar[open] .urlbar-input-container {
-  padding-block: 5px !important;
-}
-
-#urlbar[open] .urlbar-input-container::before {
-  content: "";
-  width: 16px;
-  height: 16px;
-  background-image: url("chrome://browser/skin/preferences/category-search.svg");
-  background-size: 16px;
-  -moz-context-properties: stroke, fill, fill-opacity, stroke-opacity;
-  fill: currentColor;
-  margin-left: 12px !important;
-  margin-top: 10px !important;
-  margin-right: 8px !important;
-}
-
-#urlbar[open] #urlbar-input {
-  font-size: 18px !important;
-}
-
-#urlbar[open] #urlbar-background,
-#urlbar[open] .urlbar-background {
-  background-color: var(--toolbar-bgcolor) !important;
-  border-radius: 12px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08) !important;
-  border: 1px solid color-mix(in srgb, currentColor 10%, transparent) !important;
-}
-
-/* In the floating/expanded urlbar only hide Firefox's native tracking
-   protection container (replaced by the midori-privacy extension icon).
-   Let Firefox control #identity-box visibility/anchor state natively, and
-   keep #page-action-buttons (passwords, bookmark, reader-mode,
-   translations) visible. */
-#urlbar[open] #tracking-protection-icon-container {
-  display: none !important;
-}
-
-#urlbar[open] #page-action-buttons {
-  display: flex !important;
-  margin-inline: 0 !important;
-}
-
-#urlbar[open] #urlbar-go-button {
-  width: 28px !important;
-  height: 28px !important;
-  margin-block: auto !important;
-  border-radius: 8px !important;
-  transition: background-color 0.15s ease !important;
-}
-
-/* Search engine color hints in floating urlbar */
-#urlbar[open] #urlbar-searchmode-switcher {
-  height: 24px !important;
-  margin-block: auto !important;
-  border-radius: 12px !important;
-  background: color-mix(in srgb, var(--focus-outline-color, AccentColor) 15%, transparent) !important;
-}
-
-/* URL results styling */
-#urlbar[open] .urlbarView-url {
-  color: var(--focus-outline-color, AccentColor) !important;
-}
-
-/* Focus outline */
-#urlbar:focus-within,
-#searchbar:focus-within {
-  outline-color: color-mix(in srgb,
-    var(--toolbar-bgcolor) 85%,
-    var(--lwt-text-color, currentColor)
-  ) !important;
-}
-
-/* --- Tab groups --- */
-tab-group .tab-group-label-container label {
-  background: transparent !important;
-  color: var(--lwt-text-color, currentColor) !important;
-  transition: background-color 0.15s ease, color 0.15s ease !important;
-}
-
-tab-group .tab-group-label-container label:hover {
-  background: color-mix(in srgb,
-    light-dark(var(--tab-group-color), var(--tab-group-color-invert)) 20%,
-    transparent
-  ) !important;
-  color: light-dark(var(--tab-group-color), var(--tab-group-color-invert)) !important;
-  border-radius: 9px !important;
-}
-
-sidebar-main:has([expanded]) tab-group .tab-group-label-container label {
-  padding-left: 38px !important;
-  padding-right: 10px !important;
-  transition: 0.3s ease !important;
-}
-
-sidebar-main:not([expanded]) tab-group {
-  padding-block: calc(var(--tab-inline-padding, 8px) / 2) !important;
-  margin-block: 0 !important;
-  transition: 0.3s ease !important;
+:root[midori-vertical-tabs] {
+  --midori-vt-width: 248px;
+  --midori-vt-density-pad: 6px;
+  --midori-vt-tab-radius: 11px;
+  --midori-vt-accent: AccentColor;
+  --midori-vt-divider: color-mix(in srgb, currentColor 12%, transparent);
 }
 `
     );

@@ -229,6 +229,13 @@ pref('midori.gradient.texture.opacity', 50);
 // with light visual refinements.
 pref('midori.verticaltabs.enabled', false);
 pref('midori.verticaltabs.position', 'left');
+pref('midori.verticaltabs.width', 248);
+pref('midori.verticaltabs.density', 'normal');
+pref('midori.verticaltabs.compact', false);
+pref('midori.verticaltabs.floatingUrlbar', true);
+pref('midori.verticaltabs.showRail', true);
+pref('midori.verticaltabs.accent.mode', 'workspace');
+pref('midori.verticaltabs.accent.custom', '#2d8659');
 pref('midori.horizontaltabs.position', 'top');
 
 pref('midori.msidebar.enabled', false);

@@ -337,66 +337,88 @@ menupopup:not([position]) {
   opacity: 0.5 !important;
 }
 
-/* --- Vertical mode: Zen-like workspace rail above sidebar tabs --- */
 
-/* Force #vertical-tabs to column layout so workspace rail appears above tabs */
-#vertical-tabs:has(#midori-workspace-rail) {
+
+:root[midori-vertical-tabs] {
+  --midori-vt-width: 248px;
+  --midori-vt-density-pad: 6px;
+  --midori-vt-tab-radius: 11px;
+  --midori-vt-accent: var(--focus-outline-color, AccentColor);
+  --midori-vt-divider: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+:root[midori-vertical-tabs] #sidebar-box {
+  width: var(--midori-vt-width) !important;
+  min-width: var(--midori-vt-width) !important;
+  max-width: var(--midori-vt-width) !important;
+}
+
+:root[midori-vertical-tabs] #vertical-tabs {
   flex-direction: column !important;
 }
 
-/* Ensure tabs fill the remaining space below workspace rail */
-#vertical-tabs:has(#midori-workspace-rail) > #tabbrowser-tabs {
+:root[midori-vertical-tabs] #vertical-tabs > #tabbrowser-tabs {
   flex: 1 1 auto !important;
   min-height: 0 !important;
+  padding-top: var(--midori-vt-density-pad) !important;
 }
 
-#midori-workspace-rail {
+:root[midori-vertical-tabs] #vertical-spacer {
+  display: none !important;
+}
+
+/* --------------------------- WORKSPACES --------------------------- */
+
+:root[midori-vertical-tabs][midori-vt-show-rail="false"] #midori-workspace-rail {
+  display: none !important;
+}
+
+:root[midori-vertical-tabs] #midori-workspace-rail {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 6px 9px !important;
+  padding: calc(var(--midori-vt-density-pad) + 4px) var(--midori-vt-density-pad) var(--midori-vt-density-pad) !important;
   margin: 0 !important;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
-  background: color-mix(in srgb, var(--toolbar-bgcolor) 92%, black 8%);
+  border-block-end: 1px solid var(--midori-vt-divider);
+  background: var(--toolbar-bgcolor);
   -moz-window-dragging: no-drag;
   flex-shrink: 0;
   order: -1 !important;
   width: 100%;
-  max-width: 100%;
   box-sizing: border-box;
+  transition: background-color 150ms ease, border-color 150ms ease !important;
 }
 
-#midori-workspace-rail::before {
-  content: "Workspaces";
+:root[midori-vertical-tabs] #midori-workspace-rail::before {
+  content: "WORKSPACES";
   display: block;
   font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.03em;
+  font-weight: 680;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  opacity: 0.72;
-  padding-inline: 8px;
+  opacity: 0.75;
   line-height: 1.2;
-  margin-bottom: 2px;
+  padding-inline: calc(var(--midori-vt-density-pad) + 2px);
 }
 
-#midori-workspace-quick-icons {
+:root[midori-vertical-tabs] #midori-workspace-quick-icons {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
+  justify-content: flex-start;
   gap: 4px;
-  padding: 0 2px !important;
+  padding-inline: 1px !important;
   margin: 0 !important;
   min-height: 30px;
   max-width: 100%;
   overflow: hidden;
-  box-sizing: border-box;
 }
 
-.midori-workspace-quick-btn {
+:root[midori-vertical-tabs] .midori-workspace-quick-btn {
   -moz-appearance: none !important;
   appearance: none !important;
-  --midori-workspace-accent: var(--focus-outline-color, AccentColor);
+  --midori-workspace-accent: var(--midori-vt-accent);
   min-width: 26px !important;
   height: 26px !important;
   padding: 0 !important;
@@ -406,72 +428,210 @@ menupopup:not([position]) {
   background-color: transparent !important;
   font-size: 12px !important;
   cursor: default !important;
-  transition: var(--midori-transition), border-color 0.15s ease !important;
-  position: relative;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease !important;
 }
 
-.midori-workspace-quick-btn:hover {
+:root[midori-vertical-tabs] .midori-workspace-quick-btn:hover {
   background-color: color-mix(in srgb, currentColor 10%, transparent) !important;
   border-color: color-mix(in srgb, currentColor 10%, transparent) !important;
 }
 
-.midori-workspace-quick-btn:active {
-  background-color: color-mix(in srgb, currentColor 16%, transparent) !important;
+:root[midori-vertical-tabs] .midori-workspace-quick-btn[data-active="true"] {
+  background-color: color-mix(in srgb, var(--midori-workspace-accent) 18%, transparent) !important;
+  border-color: color-mix(in srgb, var(--midori-workspace-accent) 40%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--midori-workspace-accent) 36%, transparent) !important;
 }
 
-/* Active workspace uses a stronger pill and accent ring for visibility. */
-.midori-workspace-quick-btn[data-active="true"] {
-  background-color: color-mix(
-    in srgb,
-    var(--midori-workspace-accent) 18%,
-    transparent
-  ) !important;
-  border-color: color-mix(
-    in srgb,
-    var(--midori-workspace-accent) 42%,
-    transparent
-  ) !important;
-  box-shadow: inset 0 0 0 1px color-mix(
-    in srgb,
-    var(--midori-workspace-accent) 36%,
-    transparent
-  ) !important;
-}
-
-.midori-workspace-add-btn {
+:root[midori-vertical-tabs] .midori-workspace-add-btn {
   font-weight: 700 !important;
   font-size: 14px !important;
   opacity: 0.7 !important;
 }
 
-.midori-workspace-add-btn:hover {
+:root[midori-vertical-tabs] .midori-workspace-add-btn:hover {
   opacity: 1 !important;
 }
 
-/* Hide generated icon node; emoji label is enough for quick buttons. */
-.midori-workspace-quick-btn > .toolbarbutton-icon {
+:root[midori-vertical-tabs] .midori-workspace-quick-btn > .toolbarbutton-icon {
   display: none !important;
 }
 
-/* Collapsed vertical tabs: keep a compact icon-only rail. */
-#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-rail {
+/* ---------------------------- PINNED ----------------------------- */
+
+:root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"] {
+  border-block-end: 1px solid var(--midori-vt-divider);
+  padding-block: var(--midori-vt-density-pad) !important;
+}
+
+:root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"]::before {
+  content: "PINNED";
+  display: block;
+  font-size: 10px;
+  font-weight: 680;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  line-height: 1.2;
+  margin-block-end: 4px;
+  padding-inline: calc(var(--midori-vt-density-pad) + 6px);
+}
+
+:root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"]::part(items-wrapper) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: var(--tab-height-with-margin-padding);
+  gap: 2px;
+  padding-inline: var(--midori-vt-density-pad) !important;
+}
+
+/* ----------------------------- TABS ------------------------------ */
+
+:root[midori-vertical-tabs] #tabbrowser-tabs[orient="vertical"][expanded]::before {
+  content: "TABS";
+  display: block;
+  margin: var(--midori-vt-density-pad) var(--midori-vt-density-pad) 6px !important;
+  padding-inline: 6px !important;
+  font-size: 10px;
+  font-weight: 680;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  border-block-end: 1px solid var(--midori-vt-divider);
+  padding-block-end: 4px;
+}
+
+:root[midori-vertical-tabs] #tabbrowser-tabs[orient="vertical"] .tabbrowser-tab {
+  position: relative;
+}
+
+:root[midori-vertical-tabs] #tabbrowser-tabs[orient="vertical"] .tab-background {
+  border-radius: var(--midori-vt-tab-radius) !important;
+  transition: background-color 150ms ease, box-shadow 150ms ease, border-color 150ms ease !important;
+}
+
+:root[midori-vertical-tabs] #tabbrowser-tabs[orient="vertical"] .tabbrowser-tab[selected]::before {
+  content: "";
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: 2px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--midori-vt-accent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+:root[midori-vertical-tabs="right"] #tabbrowser-tabs[orient="vertical"] .tabbrowser-tab[selected]::before {
+  inset-inline-start: auto;
+  inset-inline-end: 2px;
+}
+
+/* --------------------------- COMPACT ----------------------------- */
+
+:root[midori-vertical-tabs][midori-vt-compact="true"] #tabbrowser-tabs[orient="vertical"][expanded] .tab-label-container {
+  display: none !important;
+}
+
+:root[midori-vertical-tabs][midori-vt-compact="true"] #tabbrowser-tabs[orient="vertical"][expanded] .tab-content {
+  justify-content: center !important;
+}
+
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-rail {
   align-items: center;
-  padding: 6px 4px !important;
+  padding-inline: 4px !important;
 }
 
-#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-rail::before {
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-rail::before,
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #pinned-tabs-container[orient="vertical"]::before,
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #tabbrowser-tabs[orient="vertical"][expanded]::before {
   display: none !important;
 }
 
-#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-quick-icons {
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-quick-icons {
   flex-direction: column;
   gap: 3px;
 }
 
-#vertical-tabs:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-quick-btn {
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-quick-btn {
   min-width: 28px !important;
   height: 28px !important;
   border-radius: 8px !important;
+}
+
+/* ------------------------- FLOATING URLBAR ------------------------ */
+
+:root[midori-vertical-tabs] #urlbar-container {
+  --urlbar-container-height: 40px !important;
+}
+
+:root[midori-vertical-tabs] #urlbar:not([open]) {
+  height: 32px !important;
+  border-radius: 16px !important;
+  border: 1px solid var(--midori-vt-divider) !important;
+  transition: border-color 150ms ease !important;
+}
+
+:root[midori-vertical-tabs] #urlbar:not([open]) #urlbar-background,
+:root[midori-vertical-tabs] #urlbar:not([open]) .urlbar-background {
+  border-radius: 16px !important;
+  background-color: var(--toolbar-field-background-color, var(--toolbar-bgcolor)) !important;
+  border-color: transparent !important;
+}
+
+:root[midori-vertical-tabs] #urlbar[open] {
+  top: 24vh !important;
+  inset-inline-start: calc(var(--midori-vt-width) + 24px) !important;
+  width: min(980px, calc(100vw - var(--midori-vt-width) - 48px)) !important;
+  max-width: none !important;
+  translate: 0 !important;
+  border-radius: 12px !important;
+  animation: midori-floating-urlbar-appear 0.2s ease !important;
+  z-index: 999 !important;
+}
+
+:root[midori-vertical-tabs="right"] #urlbar[open] {
+  inset-inline-start: auto !important;
+  inset-inline-end: calc(var(--midori-vt-width) + 24px) !important;
+}
+
+:root[midori-vertical-tabs][midori-vt-floating-urlbar="false"] #urlbar[open] {
+  top: auto !important;
+  inset-inline: auto !important;
+  width: auto !important;
+  max-width: 100% !important;
+  translate: none !important;
+  border-radius: 12px !important;
+}
+
+:root[midori-vertical-tabs] #urlbar[open] #urlbar-background,
+:root[midori-vertical-tabs] #urlbar[open] .urlbar-background {
+  background-color: var(--toolbar-bgcolor) !important;
+  border-radius: 12px !important;
+  border: 1px solid var(--midori-vt-divider) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  backdrop-filter: none !important;
+}
+
+/* ---------------------- GEOMETRY + MIRRORING ---------------------- */
+
+:root[midori-vertical-tabs] #tabbrowser-tabbox {
+  margin-inline-end: 6px !important;
+  margin-block-end: 6px !important;
+}
+
+:root[midori-vertical-tabs="right"] #tabbrowser-tabbox {
+  margin-inline-end: 0 !important;
+  margin-inline-start: 6px !important;
+}
+
+:root[midori-vertical-tabs]:-moz-locale-dir(rtl) #midori-workspace-quick-icons {
+  justify-content: flex-end;
+}
+
+:root[midori-vertical-tabs]:-moz-locale-dir(rtl) #midori-workspace-rail::before,
+:root[midori-vertical-tabs]:-moz-locale-dir(rtl) #pinned-tabs-container[orient="vertical"]::before,
+:root[midori-vertical-tabs]:-moz-locale-dir(rtl) #tabbrowser-tabs[orient="vertical"][expanded]::before {
+  text-align: end;
 }
 
 /* Workspace popup panel */
