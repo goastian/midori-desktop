@@ -143,6 +143,14 @@ jobs:
       - name: Bootstrap
         run: npm run bootstrap
 
+      - name: Apply CI-only mozconfig overrides
+        run: |
+          {
+            echo
+            echo '# CI-only overrides'
+            echo 'ac_add_options --without-wasm-sandboxed-libraries'
+          } >> mozconfig
+
       - name: Build
         env:
           AMELIA_PLATFORM: linux
