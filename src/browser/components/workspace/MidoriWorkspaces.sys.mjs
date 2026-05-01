@@ -396,7 +396,7 @@ export const MidoriWorkspaces = {
     const DELAYS = [0, 300, 600, 1200, 2000, 3000];
 
     // Already injected?
-    if (doc.getElementById(INDICATOR_ID) || doc.getElementById(SELECTOR_ID)) return;
+    if (doc.getElementById(QUICK_ICONS_ID) || doc.getElementById(SELECTOR_ID)) return;
     // Window closed?
     if (win.closed) return;
 
@@ -532,40 +532,16 @@ export const MidoriWorkspaces = {
     rail.id = VERTICAL_RAIL_ID;
     rail.className = 'midori-workspace-rail';
 
-    const indicator = doc.createXULElement('toolbarbutton');
-    indicator.id = INDICATOR_ID;
-    indicator.className = 'midori-workspace-indicator toolbarbutton-1';
-    indicator.setAttribute('tooltiptext', 'Workspaces - Click to switch workspace');
+    const container = doc.createXULElement('hbox');
+    container.id = QUICK_ICONS_ID;
+    container.className = 'midori-workspace-quick-icons';
 
-    const iconEl = doc.createXULElement('label');
-    iconEl.id = INDICATOR_ICON_ID;
-    iconEl.className = 'midori-workspace-indicator-icon';
-    iconEl.setAttribute('value', '\uD83C\uDFE0');
-
-    const nameEl = doc.createXULElement('label');
-    nameEl.id = INDICATOR_NAME_ID;
-    nameEl.className = 'midori-workspace-indicator-name';
-    nameEl.setAttribute('value', 'Workspaces');
-
-    const countEl = doc.createXULElement('label');
-    countEl.id = INDICATOR_COUNT_ID;
-    countEl.className = 'midori-workspace-indicator-count';
-    countEl.setAttribute('value', '0');
-
-    indicator.appendChild(iconEl);
-    indicator.appendChild(nameEl);
-    indicator.appendChild(countEl);
-
-    indicator.addEventListener('command', () => {
-      this._showIndicatorPopup(win, state, indicator);
-    });
-
-    rail.appendChild(indicator);
+    rail.appendChild(container);
 
     // Insert before first child (above tabs)
     verticalTabs.insertBefore(rail, verticalTabs.firstChild);
 
-    this._updateIndicator(doc, state);
+    this._updateQuickIcons(win, state);
 
     // --- Pre-create popup attached to mainPopupSet for reuse ---
     const popupSet = doc.getElementById('mainPopupSet');
