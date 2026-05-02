@@ -6,7 +6,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, dev, flatpak ]
+    branches: [ main, dev ]
   pull_request:
     branches: [ main, dev ]
 
@@ -37,16 +37,11 @@ jobs:
       - name: License check
         run: npm run lc
 
-  build-check:
-    name: Build Check (Linux x86_64)
+  bootstrap-smoke:
+    name: Bootstrap Smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 60
     needs: lint
-    env:
-      SURFER_COMPAT: x86_64
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      RUSTC_WRAPPER: sccache
-      CARGO_INCREMENTAL: 0
     steps:
       - name: Free disk space
         run: |
@@ -72,21 +67,11 @@ jobs:
         with:
           python-version-file: .python-version
 
-      - name: Setup sccache
+      - name: Resolve display version
+        id: version
         run: |
-          SCCACHE_VERSION="v0.8.1"
-          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
-          sudo mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/
-          mkdir -p "$SCCACHE_DIR"
-          sccache --version
-
-      - name: Restore sccache cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.cache/sccache
-          key: sccache-ci-x86_64-${{ github.sha }}
-          restore-keys: |
-            sccache-ci-x86_64-
+          VERSION="$(python3 -c "import json; print(json.load(open('package.json', 'r', encoding='utf-8'))['version'])")"
+          echo "display_version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Setup Rust
         run: |
@@ -99,14 +84,6 @@ jobs:
           . "$HOME/.cargo/env"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           rustc --version
-
-      - name: Install cbindgen
-        run: |
-          . "$HOME/.cargo/env"
-          if ! command -v cbindgen >/dev/null 2>&1 || ! cbindgen --version | grep -q '0.29.1'; then
-            cargo install cbindgen --version 0.29.1 --locked
-          fi
-          cbindgen --version
 
       - name: Install system dependencies
         run: |
@@ -135,32 +112,35 @@ jobs:
       - name: Apply Amelia patches
         run: bash scripts/patch-amelia.sh
 
-      - name: Debug Amelia branding patch
+      - name: Set brand
+        run: npm run brand
+
+      - name: Activate CI configuration
+        run: npm run ci -- --display-version ${{ steps.version.outputs.display_version }}
+
+      - name: Create log directory
+        run: mkdir -p .ci-logs
+
+      - name: Download Firefox source
         run: |
-          echo '--- branding-patch.js after patch ---'
-          head -40 node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js || tail -40 node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js
-          echo '--- END ---'
+          set -o pipefail
+          npm run download 2>&1 | tee .ci-logs/download.log
 
-      - name: Initialize Amelia (download + import + bootstrap)
-        run: npm run init
-
-      - name: Apply CI-only mozconfig overrides
+      - name: Import patches
         run: |
-          {
-            echo
-            echo '# CI-only overrides'
-            echo 'ac_add_options --without-wasm-sandboxed-libraries'
-          } >> mozconfig
+          set -o pipefail
+          npm run import 2>&1 | tee .ci-logs/import.log
 
-      - name: Build check (dev mode)
+      - name: Bootstrap
         run: |
-          bash scripts/ci-build-check.sh
+          set -o pipefail
+          npm run bootstrap 2>&1 | tee .ci-logs/bootstrap.log
 
-      - name: Upload build-check log
+      - name: Upload bootstrap smoke logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-check-log-${{ github.run_id }}
-          path: .ci-logs/build-check.log
+          name: bootstrap-smoke-logs-${{ github.run_id }}
+          path: .ci-logs/
           retention-days: 14
           if-no-files-found: warn

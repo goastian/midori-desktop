@@ -1,0 +1,202 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Linux Build Check
+
+on:
+  push:
+    branches: [ main, dev ]
+  workflow_dispatch:
+    inputs:
+      display_version:
+        description: "Optional display version override"
+        required: false
+        type: string
+      use_sccache:
+        description: "Use sccache for compilation caching"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-build-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-version:
+    name: Resolve Display Version
+    runs-on: ubuntu-latest
+    outputs:
+      display_version: ${{ steps.version.outputs.display_version }}
+      use_sccache: ${{ steps.settings.outputs.use_sccache }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve display version
+        id: version
+        env:
+          INPUT_DISPLAY_VERSION: ${{ github.event.inputs.display_version }}
+        run: |
+          VERSION="$INPUT_DISPLAY_VERSION"
+          if [ -z "$VERSION" ]; then
+            VERSION="$(python3 -c "import json; print(json.load(open('package.json', 'r', encoding='utf-8'))['version'])")"
+          fi
+          echo "display_version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve build settings
+        id: settings
+        env:
+          INPUT_USE_SCCACHE: ${{ github.event.inputs.use_sccache }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "$INPUT_USE_SCCACHE" ]; then
+            USE_SCCACHE="$INPUT_USE_SCCACHE"
+          else
+            USE_SCCACHE="true"
+          fi
+          echo "use_sccache=$USE_SCCACHE" >> "$GITHUB_OUTPUT"
+
+  prepare-source:
+    name: Prepare Source
+    needs: resolve-version
+    uses: ./.github/workflows/prepare-source.yml
+    with:
+      display_version: ${{ needs.resolve-version.outputs.display_version }}
+      build_type: release
+      upload_flatpak_source: false
+
+  linux-compile:
+    name: Linux x86_64
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    needs: [ resolve-version, prepare-source ]
+    env:
+      SURFER_COMPAT: x86_64
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      RUSTC_WRAPPER: ${{ needs.resolve-version.outputs.use_sccache == 'true' && 'sccache' || '' }}
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
+            /usr/share/swift /usr/local/.ghcup || true
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get autoremove -y 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Setup sccache
+        if: ${{ needs.resolve-version.outputs.use_sccache == 'true' }}
+        run: |
+          SCCACHE_VERSION="v0.8.1"
+          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          sudo mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/
+          mkdir -p "$SCCACHE_DIR"
+          sccache --version
+
+      - name: Restore sccache cache
+        if: ${{ needs.resolve-version.outputs.use_sccache == 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cache/sccache
+          key: sccache-linux-check-x86_64-${{ github.sha }}
+          restore-keys: |
+            sccache-linux-check-x86_64-
+
+      - name: Setup Rust
+        run: |
+          if [ -f .rust-toolchain ]; then
+            RUST_VERSION=$(cat .rust-toolchain)
+          else
+            RUST_VERSION="1.83"
+          fi
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$RUST_VERSION"
+          . "$HOME/.cargo/env"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          rustc --version
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgtk-3-dev \
+            libdbus-glib-1-dev \
+            libxt-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libpython3-dev \
+            libdrm-dev \
+            libcurl4-openssl-dev \
+            libx11-xcb-dev \
+            nasm \
+            yasm \
+            clang \
+            lld \
+            llvm \
+            xvfb
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Apply Amelia patches
+        run: bash scripts/patch-amelia.sh
+
+      - name: Set brand
+        run: npm run brand
+
+      - name: Activate CI configuration
+        run: npm run ci -- --display-version ${{ needs.resolve-version.outputs.display_version }}
+
+      - name: Download prepared source
+        uses: actions/download-artifact@v4
+        with:
+          name: midori.source.tar.zst
+
+      - name: Extract prepared source
+        run: |
+          mkdir -p engine
+          tar --use-compress-program=zstd -xf midori.source.tar.zst -C engine
+          rm midori.source.tar.zst
+
+      - name: Bootstrap
+        run: npm run bootstrap
+
+      - name: Apply CI-only mozconfig overrides
+        run: |
+          {
+            echo
+            echo '# CI-only overrides'
+            echo 'ac_add_options --without-wasm-sandboxed-libraries'
+          } >> mozconfig
+
+      - name: Build check (dev mode)
+        run: bash scripts/ci-build-check.sh
+
+      - name: Upload build-check log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-check-log-${{ github.run_id }}
+          path: .ci-logs/build-check.log
+          retention-days: 14
+          if-no-files-found: warn

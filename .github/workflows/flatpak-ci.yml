@@ -1,0 +1,88 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Flatpak CI
+
+on:
+  push:
+    branches: [ flatpak ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flatpak-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packaging-lint:
+    name: Packaging Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout midori-desktop
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout Flatpak packaging repo
+        uses: actions/checkout@v4
+        with:
+          repository: goastian/org.astian.midori_browser
+          token: ${{ secrets.PACKAGING_TOKEN }}
+          path: flatpak-repo
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install Flatpak sync tool
+        run: |
+          python3 -m pip install --user flatpak-node-generator
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sync Flatpak packaging repo
+        run: bash scripts/sync-flatpak-packaging.sh flatpak-repo
+
+      - name: Install Flatpak lint tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.flatpak.Builder
+
+      - name: Lint Flatpak manifest
+        run: |
+          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder manifest flatpak-repo/org.astian.midori_browser.yml
+
+      - name: Lint Flatpak appstream
+        run: |
+          set +e
+          flatpak run --user --command=flatpak-builder-lint org.flatpak.Builder appstream flatpak-repo/org.astian.midori_browser.metainfo.xml 2>&1 | tee /tmp/flatpak-appstream-lint.log
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            if grep -Eq "screenshot-image-not-found|url-not-reachable" /tmp/flatpak-appstream-lint.log; then
+              echo "AppStream lint only failed because remote screenshots/URLs are not reachable yet."
+              echo "The packaging sync can continue; Flathub will validate reachability once the release assets exist."
+            else
+              exit "$status"
+            fi
+          fi
+
+      - name: Check packaging drift
+        run: |
+          cd flatpak-repo
+          git status --short
+          git diff --stat
+          git diff --exit-code
