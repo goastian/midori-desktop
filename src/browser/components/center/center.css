@@ -976,6 +976,83 @@ body::before {
   gap: 14px;
 }
 
+.vertical-sidebar-section {
+  margin-top: 18px;
+  border-top: 1px solid var(--mc-border);
+  padding-top: 14px;
+}
+
+.vertical-sidebar-section[data-vertical-active="false"] {
+  display: none;
+}
+
+.setting-subtitle {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.slider-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.slider-control input[type="range"] {
+  width: 180px;
+  accent-color: var(--mc-green-600);
+}
+
+.slider-value {
+  font-size: 12px;
+  color: var(--mc-text-muted);
+  min-width: 54px;
+  text-align: right;
+}
+
+.radio-group,
+.segmented-control {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.radio-group label,
+.segmented-control label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--mc-text);
+}
+
+.segmented-control label {
+  border: 1px solid var(--mc-border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: border-color var(--mc-transition), background var(--mc-transition);
+}
+
+.segmented-control label:has(input:checked) {
+  border-color: var(--mc-green-500);
+  background: var(--mc-sidebar-active-bg);
+}
+
+.color-input {
+  width: 44px;
+  height: 30px;
+  border: 1px solid var(--mc-border);
+  border-radius: 8px;
+  background: var(--mc-surface);
+  padding: 2px;
+}
+
 .layout-card {
   display: flex;
   flex-direction: column;

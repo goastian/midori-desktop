@@ -24,6 +24,14 @@ const PREF_MAP = {
   "pref-tabsleep-enabled":  { pref: "midori.tabsleep.enabled",        type: "bool" },
   "pref-tabsleep-timeout":  { pref: "midori.tabsleep.timeoutMinutes", type: "int" },
   "pref-pip-skin":          { pref: "midori.pip.skin",                type: "string" },
+  "pref-vtabs-width":       { pref: "midori.verticaltabs.width",      type: "int" },
+  "pref-vtabs-density":     { pref: "midori.verticaltabs.density",    type: "string" },
+  "pref-vtabs-compact":     { pref: "midori.verticaltabs.compact",    type: "bool" },
+  "pref-vtabs-floating-urlbar": { pref: "midori.verticaltabs.floatingUrlbar", type: "bool" },
+  "pref-vtabs-show-rail":   { pref: "midori.verticaltabs.showRail",   type: "bool" },
+  "pref-vtabs-workspace-name": { pref: "midori.workspaces.show-name", type: "bool" },
+  "pref-vtabs-accent-mode": { pref: "midori.verticaltabs.accent.mode", type: "string" },
+  "pref-vtabs-accent-custom": { pref: "midori.verticaltabs.accent.custom", type: "string" },
   "pref-msidebar-enabled":  { pref: "midori.msidebar.enabled",        type: "bool" },
   "pref-msidebar-position": { pref: "midori.msidebar.position",       type: "string" },
   "pref-msidebar-width":    { pref: "midori.msidebar.width",          type: "int" },
@@ -928,14 +936,78 @@ function initPrefs() {
     if (el.type === "checkbox") {
       el.checked = !!val;
       el.addEventListener("change", () => writePref(pref, type, el.checked));
+    } else if (el.type === "range") {
+      el.value = String(val);
+      const valueTarget = el.dataset.valueTarget ? document.getElementById(el.dataset.valueTarget) : null;
+      const syncRangeValue = () => {
+        if (valueTarget) {
+          valueTarget.textContent = `${el.value} px`;
+        }
+      };
+      syncRangeValue();
+      el.addEventListener("input", () => {
+        syncRangeValue();
+        writePref(pref, type, parseInt(el.value, 10));
+      });
+      el.addEventListener("change", () => {
+        syncRangeValue();
+        writePref(pref, type, parseInt(el.value, 10));
+      });
     } else if (el.tagName === "SELECT") {
       el.value = String(val);
       el.addEventListener("change", () => writePref(pref, type, el.value));
+    } else if (el.tagName === "FIELDSET") {
+      const radios = [...el.querySelectorAll("input[type=radio]")];
+      if (!radios.length) {
+        continue;
+      }
+      const current = String(val);
+      const selected = radios.find(radio => radio.value === current) || radios[0];
+      selected.checked = true;
+      for (const radio of radios) {
+        radio.addEventListener("change", () => {
+          if (radio.checked) {
+            writePref(pref, type, radio.value);
+          }
+        });
+      }
     } else if (el.type === "number") {
       el.value = val;
       el.addEventListener("change", () => writePref(pref, type, parseInt(el.value, 10)));
+    } else if (el.type === "color") {
+      el.value = String(val);
+      el.addEventListener("input", () => writePref(pref, type, el.value));
+      el.addEventListener("change", () => writePref(pref, type, el.value));
     }
   }
+}
+
+function isVerticalLayout(layout) {
+  return layout === "vertical-left" || layout === "vertical-right";
+}
+
+function setVerticalSidebarVisibility(layout) {
+  const section = document.getElementById("verticalSidebarSection");
+  if (!section) {
+    return;
+  }
+  section.dataset.verticalActive = isVerticalLayout(layout) ? "true" : "false";
+}
+
+function initVerticalSidebarControls() {
+  const accentModeFieldset = document.getElementById("pref-vtabs-accent-mode");
+  const customColorRow = document.getElementById("pref-vtabs-accent-custom-row");
+  if (!accentModeFieldset || !customColorRow) {
+    return;
+  }
+
+  const syncCustomColorVisibility = () => {
+    const selected = accentModeFieldset.querySelector("input[type=radio]:checked")?.value;
+    customColorRow.hidden = selected !== "custom";
+  };
+
+  accentModeFieldset.addEventListener("change", syncCustomColorVisibility);
+  syncCustomColorVisibility();
 }
 
 // ---- Tab layout ----
@@ -969,13 +1041,16 @@ function initTabLayout() {
   const grid = document.getElementById("tabLayoutGrid");
   if (!grid) return;
   const current = getTabLayout();
+  setVerticalSidebarVisibility(current);
 
   for (const card of grid.querySelectorAll(".layout-card")) {
     card.classList.toggle("selected", card.dataset.layout === current);
     card.addEventListener("click", () => {
       grid.querySelectorAll(".layout-card").forEach(c => c.classList.remove("selected"));
       card.classList.add("selected");
-      setTabLayout(card.dataset.layout);
+      const layout = card.dataset.layout;
+      setTabLayout(layout);
+      setVerticalSidebarVisibility(layout);
     });
   }
 }
@@ -1025,6 +1100,7 @@ function initVersionInfo() {
 document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
   initPrefs();
+  initVerticalSidebarControls();
   initAddonControls();
   initTabLayout();
   initVersionInfo();

@@ -94,7 +94,7 @@ export const MidoriVerticalTabs = {
 
   _getVerticalWidth() {
     const width = Services.prefs.getIntPref(PREF_VERTICAL_WIDTH, 248);
-    return Math.max(200, Math.min(420, width));
+    return Math.max(180, Math.min(360, width));
   },
 
   _getVerticalDensity() {

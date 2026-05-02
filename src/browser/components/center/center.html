@@ -232,6 +232,105 @@
               <span class="layout-label">Vertical (Right)</span>
             </button>
           </div>
+
+          <div id="verticalSidebarSection" class="vertical-sidebar-section" data-vertical-active="false">
+            <h3 class="setting-subtitle">Vertical sidebar</h3>
+            <p class="group-desc">Tune how the vertical sidebar looks and behaves.</p>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <strong>Sidebar width</strong>
+                <p>Adjust the vertical tabs sidebar width.</p>
+              </div>
+              <div class="slider-control">
+                <input
+                  type="range"
+                  id="pref-vtabs-width"
+                  min="180"
+                  max="360"
+                  step="1"
+                  data-value-target="pref-vtabs-width-value"
+                >
+                <span id="pref-vtabs-width-value" class="slider-value">248 px</span>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <strong>Density</strong>
+                <p>Choose tab spacing inside the vertical sidebar.</p>
+              </div>
+              <fieldset id="pref-vtabs-density" class="radio-group">
+                <label><input type="radio" name="pref-vtabs-density" value="compact"> Compact</label>
+                <label><input type="radio" name="pref-vtabs-density" value="normal"> Normal</label>
+                <label><input type="radio" name="pref-vtabs-density" value="comfortable"> Comfortable</label>
+              </fieldset>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <strong>Compact tabs</strong>
+                <p>Use a tighter visual tab style.</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="pref-vtabs-compact">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <strong>Floating URL bar</strong>
+                <p>Keep the URL bar floating over content when open.</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="pref-vtabs-floating-urlbar">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <strong>Show rail</strong>
+                <p>Display the workspace quick-access rail above tabs.</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="pref-vtabs-show-rail">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <strong>Show workspace name</strong>
+                <p>Show the active workspace name near its icon.</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="pref-vtabs-workspace-name">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <strong>Accent mode</strong>
+                <p>Select where the vertical sidebar accent color comes from.</p>
+              </div>
+              <fieldset id="pref-vtabs-accent-mode" class="segmented-control">
+                <label><input type="radio" name="pref-vtabs-accent-mode" value="workspace"> Workspace</label>
+                <label><input type="radio" name="pref-vtabs-accent-mode" value="system"> System</label>
+                <label><input type="radio" name="pref-vtabs-accent-mode" value="custom"> Custom</label>
+              </fieldset>
+            </div>
+
+            <div class="setting-row" id="pref-vtabs-accent-custom-row">
+              <div class="setting-info">
+                <strong>Custom accent color</strong>
+                <p>Used only when Accent mode is set to Custom.</p>
+              </div>
+              <input type="color" id="pref-vtabs-accent-custom" class="color-input">
+            </div>
+          </div>
         </div>
 
         <!-- Auto-hide Toolbar -->
