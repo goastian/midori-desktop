@@ -610,7 +610,10 @@ export const MidoriWorkspaces = {
     if (iconEl) iconEl.setAttribute('value', emoji);
 
     const labelEl = doc.getElementById('midori-workspace-dropdown-label');
-    if (labelEl) labelEl.setAttribute('value', sanitizeName(current.name));
+    if (labelEl) {
+      const label = this.showWorkspaceName() ? sanitizeName(current.name) : '';
+      labelEl.setAttribute('value', label);
+    }
   },
 
   /**
