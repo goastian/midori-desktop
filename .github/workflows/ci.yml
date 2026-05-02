@@ -154,5 +154,13 @@ jobs:
 
       - name: Build check (dev mode)
         run: |
-          . "$HOME/.cargo/env"
-          npm run build
+          bash scripts/ci-build-check.sh
+
+      - name: Upload build-check log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-check-log-${{ github.run_id }}
+          path: .ci-logs/build-check.log
+          retention-days: 14
+          if-no-files-found: warn
