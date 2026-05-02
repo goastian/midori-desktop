@@ -235,6 +235,8 @@ pref('midori.verticaltabs.compact', false);
 pref('midori.verticaltabs.floatingUrlbar', true);
 pref('midori.verticaltabs.showRail', true);
 pref('midori.verticaltabs.showPinnedSection', true);
+pref('midori.verticaltabs.essentials.enabled', true);
+pref('midori.verticaltabs.essentials.max', 4);
 pref('midori.verticaltabs.essentialsPromo', true);
 pref('midori.verticaltabs.accent.mode', 'workspace');
 pref('midori.verticaltabs.accent.custom', '#2d8659');

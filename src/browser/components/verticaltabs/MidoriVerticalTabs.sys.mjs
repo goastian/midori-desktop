@@ -28,12 +28,19 @@ const PREF_VERTICAL_COMPACT = 'midori.verticaltabs.compact';
 const PREF_VERTICAL_FLOATING_URLBAR = 'midori.verticaltabs.floatingUrlbar';
 const PREF_VERTICAL_SHOW_RAIL = 'midori.verticaltabs.showRail';
 const PREF_VERTICAL_SHOW_PINNED_SECTION = 'midori.verticaltabs.showPinnedSection';
+const PREF_VERTICAL_ESSENTIALS_ENABLED = 'midori.verticaltabs.essentials.enabled';
+const PREF_VERTICAL_ESSENTIALS_MAX = 'midori.verticaltabs.essentials.max';
 const PREF_VERTICAL_ESSENTIALS_PROMO = 'midori.verticaltabs.essentialsPromo';
 const PREF_VERTICAL_ACCENT_MODE = 'midori.verticaltabs.accent.mode';
 const PREF_VERTICAL_ACCENT_CUSTOM = 'midori.verticaltabs.accent.custom';
 const PREF_HORIZONTAL_POSITION = 'midori.horizontaltabs.position';
 const STYLE_ID = 'midori-verticaltabs-style';
 const ESSENTIALS_PROMO_ID = 'midori-essentials-promo';
+const ESSENTIAL_ATTR = 'midori-essential';
+const FIRST_REGULAR_PINNED_ATTR = 'midori-first-regular-pinned';
+const ESSENTIALS_CTX_SEPARATOR_ID = 'midori-context-essentials-separator';
+const ESSENTIALS_CTX_ADD_ID = 'midori-context-add-essential';
+const ESSENTIALS_CTX_REMOVE_ID = 'midori-context-remove-essential';
 
 const OBSERVED_PREFS = new Set([
   PREF_ENABLED,
@@ -44,6 +51,8 @@ const OBSERVED_PREFS = new Set([
   PREF_VERTICAL_FLOATING_URLBAR,
   PREF_VERTICAL_SHOW_RAIL,
   PREF_VERTICAL_SHOW_PINNED_SECTION,
+  PREF_VERTICAL_ESSENTIALS_ENABLED,
+  PREF_VERTICAL_ESSENTIALS_MAX,
   PREF_VERTICAL_ESSENTIALS_PROMO,
   PREF_VERTICAL_ACCENT_MODE,
   PREF_VERTICAL_ACCENT_CUSTOM,
@@ -65,6 +74,8 @@ export const MidoriVerticalTabs = {
     Services.prefs.addObserver(PREF_VERTICAL_FLOATING_URLBAR, this);
     Services.prefs.addObserver(PREF_VERTICAL_SHOW_RAIL, this);
     Services.prefs.addObserver(PREF_VERTICAL_SHOW_PINNED_SECTION, this);
+    Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_ENABLED, this);
+    Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_MAX, this);
     Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_PROMO, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_MODE, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_CUSTOM, this);
@@ -126,6 +137,15 @@ export const MidoriVerticalTabs = {
 
   _isShowPinnedSectionEnabled() {
     return Services.prefs.getBoolPref(PREF_VERTICAL_SHOW_PINNED_SECTION, true);
+  },
+
+  _isEssentialsEnabled() {
+    return Services.prefs.getBoolPref(PREF_VERTICAL_ESSENTIALS_ENABLED, true);
+  },
+
+  _getEssentialsMax() {
+    const value = Services.prefs.getIntPref(PREF_VERTICAL_ESSENTIALS_MAX, 4);
+    return Math.max(1, Math.min(12, value));
   },
 
   _isEssentialsPromoEnabled() {
@@ -225,6 +245,8 @@ export const MidoriVerticalTabs = {
     this._applyShowRail(root);
     this._applyShowPinnedSection(root);
     this._applyEssentialsPromo(root);
+    root.setAttribute('midori-vt-essentials-enabled', this._isEssentialsEnabled() ? 'true' : 'false');
+    root.setAttribute('midori-vt-essentials-max', String(this._getEssentialsMax()));
 
     const accent = this._resolveVerticalAccent(doc);
     root.style.setProperty('--midori-vt-accent', accent);
@@ -246,6 +268,10 @@ export const MidoriVerticalTabs = {
     root.removeAttribute('midori-vt-show-rail');
     root.removeAttribute('midori-vt-show-pinned-section');
     root.removeAttribute('midori-vt-essentials-promo');
+    root.removeAttribute('midori-vt-essentials-enabled');
+    root.removeAttribute('midori-vt-essentials-max');
+    root.removeAttribute('midori-vt-has-essentials');
+    root.removeAttribute('midori-vt-essentials-count');
     root.removeAttribute('midori-vt-has-pinned');
     root.removeAttribute('midori-vt-pinned-count');
     root.removeAttribute('midori-vt-accent-mode');
@@ -300,12 +326,14 @@ export const MidoriVerticalTabs = {
       doc.documentElement.setAttribute('midori-vertical-tabs', this._getVerticalSide());
       this._applyVerticalRootState(doc);
       this._initEssentialsPromo(win);
+      this._initEssentialsContextMenu(win);
       this._updatePinnedState(win);
     } else {
       doc.documentElement.removeAttribute('midori-vertical-tabs');
       doc.documentElement.setAttribute('midori-horizontal-tabs', this._getHorizontalPosition());
       this._clearVerticalRootState(doc);
       this._removeEssentialsPromo(win);
+      this._updateEssentialsContextMenu(win);
     }
 
     // --- Move TabsToolbar for bottom horizontal tabs ---
@@ -453,19 +481,148 @@ export const MidoriVerticalTabs = {
     if (!doc || !gBrowser) return;
 
     const root = doc.documentElement;
-    const pinnedCount = gBrowser.tabs.filter(tab => tab.pinned && !tab.closing).length;
+    const pinnedTabs = gBrowser.tabs.filter(tab => tab.pinned && !tab.closing);
+    const essentialTabs = this._normalizeEssentials(win, pinnedTabs);
+    const pinnedCount = pinnedTabs.length;
+    const essentialsCount = essentialTabs.length;
+
+    for (const tab of pinnedTabs) {
+      tab.removeAttribute(FIRST_REGULAR_PINNED_ATTR);
+    }
+
+    const firstRegularPinned = pinnedTabs.find(tab => !tab.hasAttribute(ESSENTIAL_ATTR));
+    if (firstRegularPinned) {
+      firstRegularPinned.setAttribute(FIRST_REGULAR_PINNED_ATTR, 'true');
+    }
+
     root.setAttribute('midori-vt-pinned-count', String(pinnedCount));
     root.setAttribute('midori-vt-has-pinned', pinnedCount > 0 ? 'true' : 'false');
+    root.setAttribute('midori-vt-essentials-count', String(essentialsCount));
+    root.setAttribute('midori-vt-has-essentials', essentialsCount > 0 ? 'true' : 'false');
 
-    this._updateEssentialsPromo(win, pinnedCount);
+    this._updateEssentialsPromo(win, pinnedCount, essentialsCount);
   },
 
-  _updateEssentialsPromo(win, pinnedCount) {
+  _normalizeEssentials(win, pinnedTabs) {
+    if (!win?.gBrowser) {
+      return [];
+    }
+
+    const maxEssentials = this._getEssentialsMax();
+    const essentialsEnabled = this._isEssentialsEnabled();
+    const gBrowser = win.gBrowser;
+
+    if (!essentialsEnabled) {
+      for (const tab of pinnedTabs) {
+        if (tab.hasAttribute(ESSENTIAL_ATTR)) {
+          tab.removeAttribute(ESSENTIAL_ATTR);
+        }
+      }
+      return [];
+    }
+
+    const essentialTabs = [];
+    for (const tab of pinnedTabs) {
+      if (!tab.hasAttribute(ESSENTIAL_ATTR)) {
+        continue;
+      }
+      if (essentialTabs.length >= maxEssentials) {
+        tab.removeAttribute(ESSENTIAL_ATTR);
+        continue;
+      }
+      essentialTabs.push(tab);
+    }
+
+    // Keep essentials grouped at the beginning of the pinned area.
+    for (let i = 0; i < essentialTabs.length; i++) {
+      const tab = essentialTabs[i];
+      if (tab._tPos !== i) {
+        gBrowser.moveTabTo(tab, i);
+      }
+    }
+
+    return gBrowser.tabs.filter(
+      tab => tab.pinned && !tab.closing && tab.hasAttribute(ESSENTIAL_ATTR)
+    );
+  },
+
+  _canAddCurrentToEssentials(win, essentialsCount = null) {
+    const selectedTab = win?.gBrowser?.selectedTab;
+    if (!selectedTab || selectedTab.closing || selectedTab.hasAttribute(ESSENTIAL_ATTR)) {
+      return false;
+    }
+    if (essentialsCount === null) {
+      essentialsCount = win.gBrowser.tabs.filter(
+        tab => tab.pinned && !tab.closing && tab.hasAttribute(ESSENTIAL_ATTR)
+      ).length;
+    }
+    return this._isEssentialsEnabled() && essentialsCount < this._getEssentialsMax();
+  },
+
+  _isEssentialsAtCapacity(win, contextTab = null) {
+    if (!win?.gBrowser) {
+      return true;
+    }
+
+    const max = this._getEssentialsMax();
+    let count = win.gBrowser.tabs.filter(
+      tab => tab.pinned && !tab.closing && tab.hasAttribute(ESSENTIAL_ATTR)
+    ).length;
+
+    if (contextTab?.hasAttribute?.(ESSENTIAL_ATTR)) {
+      count -= 1;
+    }
+
+    return count >= max;
+  },
+
+  _shouldMarkTabEssentialByPosition(win, tab) {
+    if (!win?.gBrowser || !tab?.pinned || tab.closing || !this._isEssentialsEnabled()) {
+      return false;
+    }
+    return tab._tPos < this._getEssentialsMax();
+  },
+
+  _handlePinnedTabMove(win, movedTab) {
+    if (!this.isEnabled() || !this._isEssentialsEnabled()) {
+      return;
+    }
+    if (!movedTab || movedTab.closing || !movedTab.pinned) {
+      return;
+    }
+
+    if (this._shouldMarkTabEssentialByPosition(win, movedTab)) {
+      movedTab.setAttribute(ESSENTIAL_ATTR, 'true');
+    } else if (movedTab.hasAttribute(ESSENTIAL_ATTR)) {
+      movedTab.removeAttribute(ESSENTIAL_ATTR);
+    }
+  },
+
+  _setTabEssential(win, tab, value) {
+    if (!win?.gBrowser || !tab || tab.closing) {
+      return;
+    }
+
+    if (!value) {
+      tab.removeAttribute(ESSENTIAL_ATTR);
+      this._updatePinnedState(win);
+      return;
+    }
+
+    if (!tab.pinned) {
+      win.gBrowser.pinTab(tab);
+    }
+    tab.setAttribute(ESSENTIAL_ATTR, 'true');
+    this._updatePinnedState(win);
+  },
+
+  _updateEssentialsPromo(win, pinnedCount, essentialsCount) {
     const doc = win?.document;
     if (!doc) return;
 
     if (
       !this.isEnabled() ||
+      !this._isEssentialsEnabled() ||
       !this._isEssentialsPromoEnabled() ||
       !this._isShowPinnedSectionEnabled()
     ) {
@@ -479,7 +636,7 @@ export const MidoriVerticalTabs = {
       return;
     }
 
-    if (pinnedCount > 0) {
+    if (essentialsCount > 0) {
       this._removeEssentialsPromo(win);
       return;
     }
@@ -501,15 +658,14 @@ export const MidoriVerticalTabs = {
       const button = doc.createXULElement('toolbarbutton');
       button.id = 'midori-essentials-promo-button';
       button.className = 'toolbarbutton-1 midori-essentials-promo-button';
-      button.setAttribute('label', 'Pin current tab');
-      button.setAttribute('tooltiptext', 'Pin the currently selected tab');
+      button.setAttribute('label', 'Add current to essentials');
+      button.setAttribute('tooltiptext', 'Pin and mark the selected tab as essential');
       button.addEventListener('command', () => {
         const tab = win.gBrowser?.selectedTab;
-        if (!tab || tab.pinned) {
+        if (!tab || !this._canAddCurrentToEssentials(win, essentialsCount)) {
           return;
         }
-        win.gBrowser.pinTab(tab);
-        this._updatePinnedState(win);
+        this._setTabEssential(win, tab, true);
       });
 
       promo.appendChild(title);
@@ -520,15 +676,16 @@ export const MidoriVerticalTabs = {
     }
 
     const button = doc.getElementById('midori-essentials-promo-button');
-    const selectedTab = win.gBrowser?.selectedTab;
     if (button) {
-      const canPinCurrent = !!selectedTab && !selectedTab.pinned;
-      button.disabled = !canPinCurrent;
+      const canAddCurrent = this._canAddCurrentToEssentials(win, essentialsCount);
+      button.disabled = !canAddCurrent;
       button.setAttribute(
         'tooltiptext',
-        canPinCurrent
-          ? 'Pin the currently selected tab'
-          : 'Select a regular tab to pin it as an essential'
+        canAddCurrent
+          ? 'Pin and mark the selected tab as essential'
+          : essentialsCount >= this._getEssentialsMax()
+            ? 'You reached the maximum number of essentials'
+            : 'Select a regular tab that is not already essential'
       );
     }
   },
@@ -538,6 +695,108 @@ export const MidoriVerticalTabs = {
     if (promo) {
       promo.remove();
     }
+  },
+
+  _initEssentialsContextMenu(win) {
+    const doc = win?.document;
+    if (!doc || doc._midoriEssentialsContextMenuInit) {
+      this._updateEssentialsContextMenu(win);
+      return;
+    }
+
+    const popup = doc.getElementById('tabContextMenu');
+    if (!popup) {
+      return;
+    }
+
+    let separator = doc.getElementById(ESSENTIALS_CTX_SEPARATOR_ID);
+    if (!separator) {
+      separator = doc.createXULElement('menuseparator');
+      separator.id = ESSENTIALS_CTX_SEPARATOR_ID;
+      popup.appendChild(separator);
+    }
+
+    let addItem = doc.getElementById(ESSENTIALS_CTX_ADD_ID);
+    if (!addItem) {
+      addItem = doc.createXULElement('menuitem');
+      addItem.id = ESSENTIALS_CTX_ADD_ID;
+      addItem.setAttribute('label', 'Add to Essentials');
+      addItem.addEventListener('command', () => {
+        const tab = win.TabContextMenu?.contextTab;
+        if (!tab || tab.closing || tab.hasAttribute(ESSENTIAL_ATTR)) {
+          return;
+        }
+        if (this._isEssentialsAtCapacity(win, tab)) {
+          return;
+        }
+        this._setTabEssential(win, tab, true);
+      });
+      popup.appendChild(addItem);
+    }
+
+    let removeItem = doc.getElementById(ESSENTIALS_CTX_REMOVE_ID);
+    if (!removeItem) {
+      removeItem = doc.createXULElement('menuitem');
+      removeItem.id = ESSENTIALS_CTX_REMOVE_ID;
+      removeItem.setAttribute('label', 'Remove from Essentials');
+      removeItem.addEventListener('command', () => {
+        const tab = win.TabContextMenu?.contextTab;
+        if (!tab || tab.closing || !tab.hasAttribute(ESSENTIAL_ATTR)) {
+          return;
+        }
+        this._setTabEssential(win, tab, false);
+      });
+      popup.appendChild(removeItem);
+    }
+
+    const onPopupShowing = event => {
+      if (event.target?.id !== 'tabContextMenu') {
+        return;
+      }
+      this._updateEssentialsContextMenu(win);
+    };
+
+    popup.addEventListener('popupshowing', onPopupShowing);
+    doc._midoriEssentialsContextMenuInit = true;
+    doc._midoriEssentialsContextMenuPopupHandler = onPopupShowing;
+
+    this._updateEssentialsContextMenu(win);
+  },
+
+  _updateEssentialsContextMenu(win) {
+    const doc = win?.document;
+    if (!doc) {
+      return;
+    }
+
+    const separator = doc.getElementById(ESSENTIALS_CTX_SEPARATOR_ID);
+    const addItem = doc.getElementById(ESSENTIALS_CTX_ADD_ID);
+    const removeItem = doc.getElementById(ESSENTIALS_CTX_REMOVE_ID);
+    if (!separator || !addItem || !removeItem) {
+      return;
+    }
+
+    const tab = win.TabContextMenu?.contextTab;
+    const canUseEssentials =
+      this.isEnabled() &&
+      this._isShowPinnedSectionEnabled() &&
+      this._isEssentialsEnabled() &&
+      !!tab &&
+      !tab.closing;
+
+    const tabIsEssential = canUseEssentials && tab.hasAttribute(ESSENTIAL_ATTR);
+    const canAdd =
+      canUseEssentials &&
+      !tabIsEssential &&
+      !this._isEssentialsAtCapacity(win, tab);
+    const canRemove = canUseEssentials && tabIsEssential;
+
+    separator.hidden = !canUseEssentials;
+    addItem.hidden = !canUseEssentials;
+    removeItem.hidden = !canUseEssentials;
+
+    addItem.disabled = !canAdd;
+    removeItem.disabled = !canRemove;
   },
 
   _initEssentialsPromo(win) {
@@ -553,8 +812,16 @@ export const MidoriVerticalTabs = {
 
     const tabContainer = win.gBrowser?.tabContainer;
     if (tabContainer) {
-      tabContainer.addEventListener('TabPinned', update);
+      tabContainer.addEventListener('TabPinned', event => {
+        this._handlePinnedTabMove(win, event.target);
+        update();
+      });
       tabContainer.addEventListener('TabUnpinned', update);
+      tabContainer.addEventListener('TabMove', event => {
+        this._handlePinnedTabMove(win, event.target);
+        update();
+      });
+      tabContainer.addEventListener('TabAttrModified', update);
       tabContainer.addEventListener('TabClose', update);
       tabContainer.addEventListener('TabOpen', update);
       tabContainer.addEventListener('TabSelect', update);

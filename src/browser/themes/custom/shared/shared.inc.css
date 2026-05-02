@@ -520,6 +520,10 @@ menupopup:not([position]) {
   padding-inline: calc(var(--midori-vt-density-pad) + 6px);
 }
 
+:root[midori-vertical-tabs][midori-vt-has-essentials="true"] #pinned-tabs-container[orient="vertical"]::before {
+  content: "ESSENTIALS + PINNED";
+}
+
 :root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"]::part(items-wrapper) {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -544,6 +548,37 @@ menupopup:not([position]) {
 
 :root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"] .tabbrowser-tab[selected] .tab-background {
   background-color: color-mix(in srgb, var(--midori-vt-accent) 16%, transparent) !important;
+}
+
+:root[midori-vertical-tabs][midori-vt-essentials-enabled="true"]
+  #pinned-tabs-container[orient="vertical"]
+  .tabbrowser-tab[midori-essential="true"]
+  .tab-background {
+  background-color: color-mix(in srgb, var(--midori-vt-accent) 24%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--midori-vt-accent) 52%, transparent) !important;
+}
+
+:root[midori-vertical-tabs][midori-vt-essentials-enabled="true"]
+  #pinned-tabs-container[orient="vertical"]
+  .tabbrowser-tab[midori-essential="true"]
+  .tab-content::after {
+  content: "★";
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline-end: 1px;
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0.95;
+  color: var(--midori-vt-accent);
+  pointer-events: none;
+}
+
+:root[midori-vertical-tabs][midori-vt-has-essentials="true"]
+  #pinned-tabs-container[orient="vertical"]
+  .tabbrowser-tab[midori-first-regular-pinned="true"] {
+  box-shadow: inset 0 1px 0 0 var(--midori-vt-divider);
+  margin-block-start: 2px !important;
+  padding-block-start: 2px !important;
 }
 
 :root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"] .tab-content {

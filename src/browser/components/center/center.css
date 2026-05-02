@@ -469,6 +469,10 @@ body::before {
   display: none;
 }
 
+.setting-row.setting-row-disabled {
+  opacity: 0.55;
+}
+
 .setting-row:last-child {
   border-bottom: none;
   padding-bottom: 0;

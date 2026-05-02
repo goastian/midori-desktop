@@ -313,8 +313,27 @@
 
             <div class="setting-row">
               <div class="setting-info">
+                <strong>Enable essentials</strong>
+                <p>Allow a curated subset of pinned tabs to be marked as essentials.</p>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="pref-vtabs-essentials-enabled">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row" id="pref-vtabs-essentials-max-row">
+              <div class="setting-info">
+                <strong>Max essentials</strong>
+                <p>Set the maximum number of essential tabs shown in the pinned area.</p>
+              </div>
+              <input type="number" id="pref-vtabs-essentials-max" class="number-input" min="1" max="12" step="1">
+            </div>
+
+            <div class="setting-row" id="pref-vtabs-essentials-promo-row">
+              <div class="setting-info">
                 <strong>Show essentials promo</strong>
-                <p>When there are no pinned tabs, show a helper card to pin your current tab.</p>
+                <p>When there are no essentials, show a helper card to add your current tab.</p>
               </div>
               <label class="toggle-switch">
                 <input type="checkbox" id="pref-vtabs-essentials-promo">

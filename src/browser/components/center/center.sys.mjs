@@ -30,6 +30,8 @@ const PREF_MAP = {
   "pref-vtabs-floating-urlbar": { pref: "midori.verticaltabs.floatingUrlbar", type: "bool" },
   "pref-vtabs-show-rail":   { pref: "midori.verticaltabs.showRail",   type: "bool" },
   "pref-vtabs-show-pinned-section": { pref: "midori.verticaltabs.showPinnedSection", type: "bool" },
+  "pref-vtabs-essentials-enabled": { pref: "midori.verticaltabs.essentials.enabled", type: "bool" },
+  "pref-vtabs-essentials-max": { pref: "midori.verticaltabs.essentials.max", type: "int" },
   "pref-vtabs-essentials-promo": { pref: "midori.verticaltabs.essentialsPromo", type: "bool" },
   "pref-vtabs-workspace-name": { pref: "midori.workspaces.show-name", type: "bool" },
   "pref-vtabs-accent-mode": { pref: "midori.verticaltabs.accent.mode", type: "string" },
@@ -997,6 +999,11 @@ function setVerticalSidebarVisibility(layout) {
 function initVerticalSidebarControls() {
   const accentModeFieldset = document.getElementById("pref-vtabs-accent-mode");
   const customColorRow = document.getElementById("pref-vtabs-accent-custom-row");
+  const essentialsToggle = document.getElementById("pref-vtabs-essentials-enabled");
+  const essentialsMax = document.getElementById("pref-vtabs-essentials-max");
+  const essentialsMaxRow = document.getElementById("pref-vtabs-essentials-max-row");
+  const essentialsPromo = document.getElementById("pref-vtabs-essentials-promo");
+  const essentialsPromoRow = document.getElementById("pref-vtabs-essentials-promo-row");
   if (!accentModeFieldset || !customColorRow) {
     return;
   }
@@ -1008,6 +1015,28 @@ function initVerticalSidebarControls() {
 
   accentModeFieldset.addEventListener("change", syncCustomColorVisibility);
   syncCustomColorVisibility();
+
+  const syncEssentialsControls = () => {
+    if (!essentialsToggle) {
+      return;
+    }
+    const enabled = !!essentialsToggle.checked;
+    if (essentialsMax) {
+      essentialsMax.disabled = !enabled;
+    }
+    if (essentialsPromo) {
+      essentialsPromo.disabled = !enabled;
+    }
+    if (essentialsMaxRow) {
+      essentialsMaxRow.classList.toggle("setting-row-disabled", !enabled);
+    }
+    if (essentialsPromoRow) {
+      essentialsPromoRow.classList.toggle("setting-row-disabled", !enabled);
+    }
+  };
+
+  essentialsToggle?.addEventListener("change", syncEssentialsControls);
+  syncEssentialsControls();
 }
 
 // ---- Tab layout ----
