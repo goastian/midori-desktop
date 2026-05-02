@@ -33,6 +33,65 @@ def replace_or_fail(pattern: str, replacement: str, text: str, description: str)
     return updated
 
 
+def normalize_generated_sources(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    filtered_lines: list[str] = []
+    in_modules = False
+
+    for line in lines:
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+
+        if stripped == "modules:" and indent == 0:
+            in_modules = True
+            filtered_lines.append(line)
+            continue
+
+        if in_modules and indent <= 1 and stripped and not stripped.startswith("#"):
+            in_modules = False
+
+        if in_modules and indent == 2 and stripped == "- generated-sources.json":
+            continue
+
+        filtered_lines.append(line)
+
+    lines = filtered_lines
+
+    in_midori_module = False
+    insert_at: int | None = None
+    has_generated_sources = False
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+
+        if stripped == "- name: midori" and indent == 2:
+            in_midori_module = True
+            continue
+
+        if in_midori_module and indent <= 2 and stripped and not stripped.startswith("#"):
+            break
+
+        if not in_midori_module:
+            continue
+
+        if stripped == "sources:" and indent == 4:
+            insert_at = index + 1
+            continue
+
+        if insert_at is not None and indent <= 4 and stripped and not stripped.startswith("#"):
+            break
+
+        if stripped == "- generated-sources.json" and indent == 6:
+            has_generated_sources = True
+            break
+
+    if insert_at is not None and not has_generated_sources:
+        lines.insert(insert_at, "      - generated-sources.json\n")
+
+    return "".join(lines)
+
+
 def update_manifest(
     path: Path,
     version: str,
@@ -40,6 +99,7 @@ def update_manifest(
     source_commit: str | None,
 ) -> None:
     text = path.read_text(encoding="utf-8")
+    text = normalize_generated_sources(text)
     tag = f"v{version}"
     source_url = (
         "https://github.com/goastian/midori-desktop/releases/download/"

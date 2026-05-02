@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import shutil
 import sys
 from pathlib import Path
 
 
+APP_ID = "org.astian.midori_browser"
 RELEASE_SUFFIXES = (".tar.xz", ".dmg", ".exe", ".mar", ".AppImage", ".deb", ".rpm")
 
 
@@ -17,6 +20,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-dir", required=True, help="Directory from actions/download-artifact")
     parser.add_argument("--output-dir", required=True, help="Directory to populate with release assets")
     parser.add_argument("--version", required=True, help="Release version without leading v")
+    parser.add_argument(
+        "--source-commit",
+        help="Git commit that produced the prepared source bundle",
+    )
     parser.add_argument(
         "--linux-mode",
         choices=("hybrid", "gha-only", "obs-only"),
@@ -121,6 +128,41 @@ def copy_source_bundle(version: str, input_dir: Path, output_dir: Path) -> None:
     shutil.copy2(source_artifacts[0], output_dir / f"midori-{version}-src.tar.xz")
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_flatpak_release_metadata(
+    version: str,
+    output_dir: Path,
+    source_commit: str | None,
+) -> None:
+    source_name = f"midori-{version}-src.tar.xz"
+    source_path = output_dir / source_name
+    metadata = {
+        "app_id": APP_ID,
+        "version": version,
+        "tag": f"v{version}",
+        "source_file": source_name,
+        "source_sha256": sha256_file(source_path),
+        "source_url": (
+            "https://github.com/goastian/midori-desktop/releases/download/"
+            f"v{version}/{source_name}"
+        ),
+    }
+    if source_commit:
+        metadata["source_commit"] = source_commit
+
+    (output_dir / "flatpak-release.json").write_text(
+        f"{json.dumps(metadata, indent=2, sort_keys=True)}\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     args = parse_args()
     input_dir = Path(args.input_dir).resolve()
@@ -135,6 +177,7 @@ def main() -> int:
         collect_platform_assets(args.version, platform_root, output_dir, platform_root.name)
 
     copy_source_bundle(args.version, input_dir, output_dir)
+    write_flatpak_release_metadata(args.version, output_dir, args.source_commit)
 
     if args.linux_mode != "gha-only":
         copy_obs_assets(args.version, input_dir / "obs-linux", output_dir)

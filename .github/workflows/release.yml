@@ -216,11 +216,13 @@ jobs:
             --input-dir release-artifacts \
             --output-dir release-output \
             --version "${{ needs.prepare.outputs.version }}" \
+            --source-commit "${{ github.sha }}" \
             --linux-mode "${{ needs.prepare.outputs.linux_mode }}"
           (
             cd release-output
             sha256sum midori-* > SHA256SUMS.txt
             cat SHA256SUMS.txt
+            cat flatpak-release.json
           )
 
       - name: Create GitHub Release
@@ -241,7 +243,7 @@ jobs:
           fi
 
           FILES=""
-          for f in release-output/midori-* release-output/SHA256SUMS.txt; do
+          for f in release-output/midori-* release-output/SHA256SUMS.txt release-output/flatpak-release.json; do
             [ -f "$f" ] && FILES="$FILES $f"
           done
 

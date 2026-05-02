@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PKG_REPO_DIR="${1:-$REPO_ROOT/org.astian.midori_browser}"
 APP_ID="org.astian.midori_browser"
+RELEASE_METADATA="$REPO_ROOT/release-output/flatpak-release.json"
 VERSION="${VERSION:-}"
 SOURCE_SHA="${SOURCE_SHA:-}"
 SOURCE_COMMIT="${SOURCE_COMMIT:-}"
@@ -21,11 +22,29 @@ if [ ! -f "$PKG_REPO_DIR/$APP_ID.yml" ]; then
 fi
 
 if [ -z "$VERSION" ]; then
+  if [ -f "$RELEASE_METADATA" ]; then
+    VERSION="$(node -e "const c=require('$RELEASE_METADATA'); console.log(c.version || '')")"
+  fi
+fi
+
+if [ -z "$VERSION" ]; then
   VERSION="$(node -e "const c=require('$REPO_ROOT/amelia.json'); console.log(c.brands.release.release.displayVersion)")"
 fi
 
 if [ -z "$SOURCE_COMMIT" ]; then
+  if [ -f "$RELEASE_METADATA" ]; then
+    SOURCE_COMMIT="$(node -e "const c=require('$RELEASE_METADATA'); console.log(c.source_commit || '')")"
+  fi
+fi
+
+if [ -z "$SOURCE_COMMIT" ]; then
   SOURCE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+fi
+
+if [ -z "$SOURCE_SHA" ]; then
+  if [ -f "$RELEASE_METADATA" ]; then
+    SOURCE_SHA="$(node -e "const c=require('$RELEASE_METADATA'); console.log(c.source_sha256 || '')")"
+  fi
 fi
 
 if [ -z "$SOURCE_SHA" ]; then
