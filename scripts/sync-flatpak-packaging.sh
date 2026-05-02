@@ -21,7 +21,7 @@ if [ ! -f "$PKG_REPO_DIR/$APP_ID.yml" ]; then
 fi
 
 if [ -z "$VERSION" ]; then
-  VERSION="$(node -p "require('$REPO_ROOT/package.json').version")"
+  VERSION="$(node -e "const c=require('$REPO_ROOT/amelia.json'); console.log(c.brands.release.release.displayVersion)")"
 fi
 
 if [ -z "$SOURCE_COMMIT" ]; then
