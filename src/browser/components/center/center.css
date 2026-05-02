@@ -465,6 +465,10 @@ body::before {
   border-bottom: 1px solid var(--mc-border);
 }
 
+.setting-row[hidden] {
+  display: none;
+}
+
 .setting-row:last-child {
   border-bottom: none;
   padding-bottom: 0;

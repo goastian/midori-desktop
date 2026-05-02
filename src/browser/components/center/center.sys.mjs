@@ -947,7 +947,6 @@ function initPrefs() {
       syncRangeValue();
       el.addEventListener("input", () => {
         syncRangeValue();
-        writePref(pref, type, parseInt(el.value, 10));
       });
       el.addEventListener("change", () => {
         syncRangeValue();
@@ -976,7 +975,6 @@ function initPrefs() {
       el.addEventListener("change", () => writePref(pref, type, parseInt(el.value, 10)));
     } else if (el.type === "color") {
       el.value = String(val);
-      el.addEventListener("input", () => writePref(pref, type, el.value));
       el.addEventListener("change", () => writePref(pref, type, el.value));
     }
   }
