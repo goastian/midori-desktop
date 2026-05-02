@@ -32,7 +32,6 @@ jobs:
           repository: goastian/org.astian.midori_browser
           token: ${{ secrets.PACKAGING_TOKEN }}
           path: flatpak-repo
-          ref: main
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

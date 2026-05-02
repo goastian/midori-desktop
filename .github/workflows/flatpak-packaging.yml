@@ -111,7 +111,6 @@ jobs:
           repository: goastian/org.astian.midori_browser
           token: ${{ secrets.PACKAGING_TOKEN }}
           path: flatpak-repo
-          ref: main
 
       - name: Update Flatpak release files
         run: |
@@ -193,4 +192,5 @@ jobs:
           git diff --cached --quiet && exit 0
 
           git commit -m "Update Flatpak packaging for Midori Browser ${{ steps.meta.outputs.version }}"
-          git push origin main
+          PACKAGING_BRANCH="$(git symbolic-ref --short HEAD)"
+          git push origin "HEAD:${PACKAGING_BRANCH}"
