@@ -45,6 +45,7 @@ const SELECTOR_ID = 'midori-workspace-selector';
 const POPUP_ID = 'midori-workspace-popup';
 const VERTICAL_RAIL_ID = 'midori-workspace-rail';
 const QUICK_ICONS_ID = 'midori-workspace-quick-icons';
+const DROPDOWN_ID = 'midori-workspace-dropdown';
 const WORKSPACE_CHANGE_TOPIC = 'midori-workspaces-updated';
 const MAX_WORKSPACES = 25;
 const MAX_NAME_LENGTH = 32;
@@ -511,7 +512,8 @@ export const MidoriWorkspaces = {
   },
 
   /**
-   * Vertical mode: workspace icon strip ABOVE tabs in the sidebar.
+   * Vertical mode: Vivaldi-style workspace dropdown ABOVE tabs in the sidebar.
+   * Shows current workspace (emoji + name) with a chevron; clicking opens the popup.
    * Inserted as first child of #vertical-tabs so it doesn't interfere
    * with the native tab layout (flex-direction: column).
    * @returns {boolean} true if vertical UI was successfully injected
@@ -532,16 +534,33 @@ export const MidoriWorkspaces = {
     rail.id = VERTICAL_RAIL_ID;
     rail.className = 'midori-workspace-rail';
 
-    const container = doc.createXULElement('hbox');
-    container.id = QUICK_ICONS_ID;
-    container.className = 'midori-workspace-quick-icons';
+    // ── Vivaldi-style dropdown button ──────────────────────────────────────
+    const dropdown = doc.createXULElement('toolbarbutton');
+    dropdown.id = DROPDOWN_ID;
+    dropdown.className = 'midori-workspace-dropdown toolbarbutton-1';
+    dropdown.setAttribute('tooltiptext', 'Switch workspace');
 
-    rail.appendChild(container);
+    // Emoji icon
+    const iconEl = doc.createXULElement('label');
+    iconEl.id = 'midori-workspace-dropdown-icon';
+    iconEl.className = 'midori-workspace-dropdown-icon';
+    iconEl.setAttribute('value', '🏠');
+    dropdown.appendChild(iconEl);
+
+    // Workspace name
+    const labelEl = doc.createXULElement('label');
+    labelEl.id = 'midori-workspace-dropdown-label';
+    labelEl.className = 'midori-workspace-dropdown-label';
+    labelEl.setAttribute('value', 'Workspace');
+    dropdown.appendChild(labelEl);
+
+    rail.appendChild(dropdown);
+    // ──────────────────────────────────────────────────────────────────────
 
     // Insert before first child (above tabs)
     verticalTabs.insertBefore(rail, verticalTabs.firstChild);
 
-    this._updateQuickIcons(win, state);
+    this._updateDropdown(doc, state);
 
     // --- Pre-create popup attached to mainPopupSet for reuse ---
     const popupSet = doc.getElementById('mainPopupSet');
@@ -557,8 +576,41 @@ export const MidoriWorkspaces = {
       });
     }
 
+    // Clicking the dropdown button opens the popup
+    dropdown.addEventListener('click', (e) => {
+      if (e.button !== 0) return;
+      const popup = doc.getElementById(POPUP_ID);
+      if (!popup) return;
+      this._populatePopup(win, state);
+      popup.openPopup(dropdown, 'after_start', 0, 0, false, false);
+    });
+
     console.log('MidoriWorkspaces: Vertical UI injected successfully');
     return true;
+  },
+
+  /**
+   * Update the Vivaldi-style dropdown button with the currently active workspace.
+   * Called in vertical mode after every workspace switch.
+   */
+  _updateDropdown(doc, state) {
+    const dropdown = doc.getElementById(DROPDOWN_ID);
+    if (!dropdown) return;
+
+    const current = state.data.workspaces.find((ws) => ws.id === state.data.selectedId);
+    if (!current) return;
+
+    const emoji = getEmojiForIcon(current.icon);
+    const accent = getWorkspaceAccent(current.icon);
+
+    dropdown.style.setProperty('--midori-workspace-accent', accent);
+    dropdown.setAttribute('tooltiptext', `Current workspace: ${current.name}`);
+
+    const iconEl = doc.getElementById('midori-workspace-dropdown-icon');
+    if (iconEl) iconEl.setAttribute('value', emoji);
+
+    const labelEl = doc.getElementById('midori-workspace-dropdown-label');
+    if (labelEl) labelEl.setAttribute('value', sanitizeName(current.name));
   },
 
   /**
@@ -581,61 +633,17 @@ export const MidoriWorkspaces = {
   },
 
   /**
-   * Update the quick workspace icon buttons (vertical mode, bottom of sidebar).
-   * Like Natsumi/Floorp: one icon per workspace + a "+" launcher button.
+   * Update the vertical workspace UI.
+   * In vertical mode, updates the Vivaldi-style dropdown button.
+   * In horizontal mode, this is a no-op (horizontal uses _updateSelectorLabel).
    */
   _updateQuickIcons(win, state) {
     const doc = win.document;
-    const container = doc.getElementById(QUICK_ICONS_ID);
-    if (!container) return;
 
-    // Clear existing buttons
-    while (container.firstChild) container.firstChild.remove();
-
-    const { workspaces, selectedId } = state.data;
-
-    // One button per workspace
-    for (const ws of workspaces) {
-      const btn = doc.createXULElement('toolbarbutton');
-      btn.className = 'midori-workspace-quick-btn toolbarbutton-1';
-      btn.setAttribute('tooltiptext', `Switch to workspace: ${ws.name}`);
-      btn.setAttribute('label', getEmojiForIcon(ws.icon));
-      btn.style.setProperty('--midori-workspace-accent', getWorkspaceAccent(ws.icon));
-
-      if (ws.id === selectedId) {
-        btn.setAttribute('data-active', 'true');
-      }
-
-      // Left click → switch workspace
-      btn.addEventListener('command', () => {
-        this.switchWorkspace(win, ws.id);
-      });
-
-      // Right click → context popup for this workspace
-      btn.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this._showIndicatorPopup(win, state, btn);
-      });
-
-      container.appendChild(btn);
-    }
-
-    // "+" button opens the workspace popup (same launcher used by right-click)
-    if (workspaces.length < MAX_WORKSPACES) {
-      const addBtn = doc.createXULElement('toolbarbutton');
-      addBtn.className = 'midori-workspace-quick-btn midori-workspace-add-btn toolbarbutton-1';
-      addBtn.setAttribute('tooltiptext', 'Open workspace menu');
-      addBtn.setAttribute('label', '+');
-      addBtn.addEventListener('command', () => {
-        this._showIndicatorPopup(win, state, addBtn);
-      });
-      addBtn.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this._showIndicatorPopup(win, state, addBtn);
-      });
-      container.appendChild(addBtn);
+    // Vertical mode: update the dropdown button
+    if (doc.getElementById(DROPDOWN_ID)) {
+      this._updateDropdown(doc, state);
+      return;
     }
   },
 
@@ -643,6 +651,8 @@ export const MidoriWorkspaces = {
     const doc = win.document;
     const verticalRail = doc.getElementById(VERTICAL_RAIL_ID);
     if (verticalRail) verticalRail.remove();
+    const dropdown = doc.getElementById(DROPDOWN_ID);
+    if (dropdown) dropdown.remove();
     const selector = doc.getElementById(SELECTOR_ID);
     if (selector) selector.remove();
     const quickIcons = doc.getElementById(QUICK_ICONS_ID);
@@ -896,6 +906,7 @@ export const MidoriWorkspaces = {
         if (
           node.id === VERTICAL_RAIL_ID ||
           node.id === QUICK_ICONS_ID ||
+          node.id === DROPDOWN_ID ||
           node.id === SELECTOR_ID
         ) {
           isWorkspaceTarget = true;
