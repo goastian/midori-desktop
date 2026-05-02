@@ -311,11 +311,13 @@ export const MidoriSidebar = {
         return attr;
       }
     } catch {}
+    // Read directly from the vtabs position pref — guaranteed up-to-date since
+    // setTabLayout writes it synchronously before any pref observer fires.
     try {
-      return Services.prefs.getBoolPref('sidebar.position_start', true) ? 'left' : 'right';
+      const side = Services.prefs.getStringPref(PREF_VERTICAL_POSITION, 'left');
+      return side === 'right' ? 'right' : 'left';
     } catch {}
-    const side = Services.prefs.getStringPref(PREF_VERTICAL_POSITION, 'left');
-    return side === 'right' ? 'right' : 'left';
+    return 'left';
   },
 
   _getEffectiveSidebarPosition(win = null) {

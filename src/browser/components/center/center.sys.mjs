@@ -1023,10 +1023,16 @@ function setTabLayout(layout) {
   const vertical = layout === "vertical-left" || layout === "vertical-right";
   Services.prefs.setBoolPref("midori.verticaltabs.enabled", vertical);
   if (vertical) {
+    const vtabsSide = layout === "vertical-right" ? "right" : "left";
+    Services.prefs.setCharPref("midori.verticaltabs.position", vtabsSide);
+    // Keep the multi-sidebar on the opposite side
     Services.prefs.setCharPref(
-      "midori.verticaltabs.position",
-      layout === "vertical-right" ? "right" : "left"
+      "midori.msidebar.position",
+      vtabsSide === "left" ? "right" : "left"
     );
+    // Also sync the dropdown in the Sidebar settings page if it's loaded
+    const posSelect = document.getElementById("pref-msidebar-position");
+    if (posSelect) posSelect.value = vtabsSide === "left" ? "right" : "left";
   } else {
     Services.prefs.setCharPref(
       "midori.horizontaltabs.position",
