@@ -10,9 +10,13 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      version:
+        description: "Release version (e.g. 12.0.0) without leading v"
+        required: false
+        type: string
       display_version:
-        description: "Display version (e.g. 12.0)"
-        required: true
+        description: "Deprecated alias for version; kept for backwards compatibility"
+        required: false
         type: string
       build_type:
         description: "Build type"
@@ -27,6 +31,20 @@ on:
         required: false
         type: boolean
         default: true
+      linux_mode:
+        description: "Linux publication mode"
+        required: false
+        type: choice
+        options:
+          - hybrid
+          - gha-only
+          - obs-only
+        default: hybrid
+      obs_timeout_minutes:
+        description: "How long to wait for OBS Linux artifacts"
+        required: false
+        type: string
+        default: "180"
       deploy_updates:
         description: "Deploy updates to update server after release"
         required: false
@@ -47,6 +65,8 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       display_version: ${{ steps.version.outputs.display_version }}
       build_type: ${{ steps.version.outputs.build_type }}
+      linux_mode: ${{ steps.version.outputs.linux_mode }}
+      obs_timeout_minutes: ${{ steps.version.outputs.obs_timeout_minutes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,17 +74,38 @@ jobs:
       - name: Resolve version
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${GITHUB_REF#refs/tags/v}"
-            echo "version=$TAG" >> "$GITHUB_OUTPUT"
-            DISPLAY_VERSION=$(jq -r '.brands.release.release.displayVersion' amelia.json)
-            echo "display_version=$DISPLAY_VERSION" >> "$GITHUB_OUTPUT"
-            echo "build_type=release" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${{ inputs.display_version }}" >> "$GITHUB_OUTPUT"
-            echo "display_version=${{ inputs.display_version }}" >> "$GITHUB_OUTPUT"
-            echo "build_type=${{ inputs.build_type }}" >> "$GITHUB_OUTPUT"
+          DEFAULT_OBS_TIMEOUT_MINUTES="${{ vars.OBS_TIMEOUT_MINUTES }}"
+          if [ -z "$DEFAULT_OBS_TIMEOUT_MINUTES" ]; then
+            DEFAULT_OBS_TIMEOUT_MINUTES="180"
           fi
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            BUILD_TYPE="release"
+            LINUX_MODE="hybrid"
+            OBS_TIMEOUT_MINUTES="$DEFAULT_OBS_TIMEOUT_MINUTES"
+          else
+            VERSION="${{ inputs.version }}"
+            if [ -z "$VERSION" ]; then
+              VERSION="${{ inputs.display_version }}"
+            fi
+            if [ -z "$VERSION" ]; then
+              echo "A version input is required for manual releases." >&2
+              exit 1
+            fi
+            BUILD_TYPE="${{ inputs.build_type }}"
+            LINUX_MODE="${{ inputs.linux_mode }}"
+            OBS_TIMEOUT_MINUTES="${{ inputs.obs_timeout_minutes }}"
+            if [ -z "$OBS_TIMEOUT_MINUTES" ]; then
+              OBS_TIMEOUT_MINUTES="$DEFAULT_OBS_TIMEOUT_MINUTES"
+            fi
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "display_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_type=$BUILD_TYPE" >> "$GITHUB_OUTPUT"
+          echo "linux_mode=$LINUX_MODE" >> "$GITHUB_OUTPUT"
+          echo "obs_timeout_minutes=$OBS_TIMEOUT_MINUTES" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
   # Trigger the full build matrix
@@ -80,12 +121,80 @@ jobs:
     secrets: inherit
 
   # ---------------------------------------------------------------------------
+  # Wait for Linux distro packages published by Open Build Service
+  # Configure these repository settings for OBS integration:
+  #   vars.OBS_API_URL
+  #   vars.OBS_PROJECT
+  #   vars.OBS_PACKAGE
+  #   vars.OBS_TIMEOUT_MINUTES
+  #   secrets.OBS_USERNAME
+  #   secrets.OBS_TOKEN
+  # ---------------------------------------------------------------------------
+  obs-linux:
+    name: Fetch OBS Linux Artifacts
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Skip OBS integration
+        if: ${{ needs.prepare.outputs.linux_mode == 'gha-only' }}
+        run: echo "Linux mode is gha-only; skipping OBS artifact collection."
+
+      - name: Checkout
+        if: ${{ needs.prepare.outputs.linux_mode != 'gha-only' }}
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        if: ${{ needs.prepare.outputs.linux_mode != 'gha-only' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Download OBS binaries
+        if: ${{ needs.prepare.outputs.linux_mode != 'gha-only' }}
+        env:
+          OBS_API_URL: ${{ vars.OBS_API_URL }}
+          OBS_PROJECT: ${{ vars.OBS_PROJECT }}
+          OBS_PACKAGE: ${{ vars.OBS_PACKAGE }}
+          OBS_USERNAME: ${{ secrets.OBS_USERNAME }}
+          OBS_TOKEN: ${{ secrets.OBS_TOKEN }}
+        run: |
+          API_URL="${OBS_API_URL:-https://build.opensuse.org}"
+          PROJECT="${OBS_PROJECT:-home:astian-inc}"
+          PACKAGE="${OBS_PACKAGE:-midori-browser}"
+          OBS_ARGS=()
+          if [ -n "$OBS_USERNAME" ] || [ -n "$OBS_TOKEN" ]; then
+            if [ -z "$OBS_USERNAME" ] || [ -z "$OBS_TOKEN" ]; then
+              echo "OBS_USERNAME and OBS_TOKEN must be configured together." >&2
+              exit 1
+            fi
+            OBS_ARGS+=(--username "$OBS_USERNAME" --token "$OBS_TOKEN")
+          fi
+          mkdir -p obs-artifacts
+          python3 scripts/fetch_obs_artifacts.py \
+            --api-url "$API_URL" \
+            --project "$PROJECT" \
+            --package "$PACKAGE" \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --output-dir obs-artifacts \
+            "${OBS_ARGS[@]}" \
+            --timeout-seconds "$(( ${{ needs.prepare.outputs.obs_timeout_minutes }} * 60 ))"
+
+      - name: Upload OBS artifacts
+        if: ${{ needs.prepare.outputs.linux_mode != 'gha-only' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-linux
+          path: obs-artifacts/
+          retention-days: 5
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
   # Create GitHub Release with all artifacts
   # ---------------------------------------------------------------------------
   publish:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [ prepare, build ]
+    needs: [ prepare, build, obs-linux ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,50 +209,26 @@ jobs:
         with:
           path: release-artifacts/
 
-      - name: Organize and generate checksums
+      - name: Organize and validate release assets
         run: |
           mkdir -p release-output
-
-          # Collect all distributable files
-          find release-artifacts/ -type f \( \
-            -name "*.tar.xz" -o \
-            -name "*.dmg" -o \
-            -name "*.exe" -o \
-            -name "*.mar" \
-          \) | while read -r file; do
-            PLATFORM=$(echo "$file" | cut -d'/' -f2)
-            FILENAME=$(basename "$file")
-            case "$FILENAME" in
-              *.source.tar.xz | midori-*-src.tar.xz) continue ;;
-            esac
-            TARGET="release-output/midori-${{ needs.prepare.outputs.display_version }}-${PLATFORM}-${FILENAME}"
-            cp "$file" "$TARGET"
-          done
-
-          # Collect update manifests
-          mkdir -p release-output/update-manifests
-          find release-artifacts/ -path "*/update/*" -type f | while read -r file; do
-            PLATFORM=$(echo "$file" | cut -d'/' -f2)
-            mkdir -p "release-output/update-manifests/${PLATFORM}"
-            cp "$file" "release-output/update-manifests/${PLATFORM}/"
-          done
-
-          # Collect the source bundle consumed by the Flatpak build manifest
-          SOURCE_BUNDLE=$(find release-artifacts/ -type f -name "midori-*-src.tar.xz" | head -1)
-          test -n "$SOURCE_BUNDLE"
-          cp "$SOURCE_BUNDLE" "release-output/midori-${{ needs.prepare.outputs.display_version }}-src.tar.xz"
-
-          # Generate SHA256 checksums
-          cd release-output
-          sha256sum midori-* > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          python3 scripts/collect_release_artifacts.py \
+            --input-dir release-artifacts \
+            --output-dir release-output \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --linux-mode "${{ needs.prepare.outputs.linux_mode }}"
+          (
+            cd release-output
+            sha256sum midori-* > SHA256SUMS.txt
+            cat SHA256SUMS.txt
+          )
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${{ needs.prepare.outputs.version }}"
-          TITLE="Midori Browser v${{ needs.prepare.outputs.display_version }}"
+          TITLE="Midori Browser v${{ needs.prepare.outputs.version }}"
 
           FLAGS="--generate-notes"
 

@@ -177,12 +177,19 @@ jobs:
             npm run package:linux-x64 -- --verbose
           fi
 
+      - name: Build AppImage
+        if: ${{ matrix.arch == 'x86_64' }}
+        env:
+          MIDORI_RELEASE_VERSION: ${{ inputs.display_version }}
+        run: bash scripts/build-appimage.sh x86_64
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.arch }}
           path: |
             dist/*.tar.xz
+            dist/*.AppImage
             dist/*.mar
             dist/update/
           retention-days: 5

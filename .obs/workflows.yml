@@ -1,0 +1,10 @@
+release_tag_build:
+  steps:
+    - trigger_services:
+        project: home:astian-inc
+        package: midori-browser
+    - rebuild_package:
+        project: home:astian-inc
+        package: midori-browser
+  filters:
+    event: tag_push
