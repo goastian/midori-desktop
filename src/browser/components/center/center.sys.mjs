@@ -29,6 +29,8 @@ const PREF_MAP = {
   "pref-vtabs-compact":     { pref: "midori.verticaltabs.compact",    type: "bool" },
   "pref-vtabs-floating-urlbar": { pref: "midori.verticaltabs.floatingUrlbar", type: "bool" },
   "pref-vtabs-show-rail":   { pref: "midori.verticaltabs.showRail",   type: "bool" },
+  "pref-vtabs-show-pinned-section": { pref: "midori.verticaltabs.showPinnedSection", type: "bool" },
+  "pref-vtabs-essentials-promo": { pref: "midori.verticaltabs.essentialsPromo", type: "bool" },
   "pref-vtabs-workspace-name": { pref: "midori.workspaces.show-name", type: "bool" },
   "pref-vtabs-accent-mode": { pref: "midori.verticaltabs.accent.mode", type: "string" },
   "pref-vtabs-accent-custom": { pref: "midori.verticaltabs.accent.custom", type: "string" },

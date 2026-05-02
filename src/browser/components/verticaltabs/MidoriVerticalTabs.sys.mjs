@@ -27,10 +27,13 @@ const PREF_VERTICAL_DENSITY = 'midori.verticaltabs.density';
 const PREF_VERTICAL_COMPACT = 'midori.verticaltabs.compact';
 const PREF_VERTICAL_FLOATING_URLBAR = 'midori.verticaltabs.floatingUrlbar';
 const PREF_VERTICAL_SHOW_RAIL = 'midori.verticaltabs.showRail';
+const PREF_VERTICAL_SHOW_PINNED_SECTION = 'midori.verticaltabs.showPinnedSection';
+const PREF_VERTICAL_ESSENTIALS_PROMO = 'midori.verticaltabs.essentialsPromo';
 const PREF_VERTICAL_ACCENT_MODE = 'midori.verticaltabs.accent.mode';
 const PREF_VERTICAL_ACCENT_CUSTOM = 'midori.verticaltabs.accent.custom';
 const PREF_HORIZONTAL_POSITION = 'midori.horizontaltabs.position';
 const STYLE_ID = 'midori-verticaltabs-style';
+const ESSENTIALS_PROMO_ID = 'midori-essentials-promo';
 
 const OBSERVED_PREFS = new Set([
   PREF_ENABLED,
@@ -40,6 +43,8 @@ const OBSERVED_PREFS = new Set([
   PREF_VERTICAL_COMPACT,
   PREF_VERTICAL_FLOATING_URLBAR,
   PREF_VERTICAL_SHOW_RAIL,
+  PREF_VERTICAL_SHOW_PINNED_SECTION,
+  PREF_VERTICAL_ESSENTIALS_PROMO,
   PREF_VERTICAL_ACCENT_MODE,
   PREF_VERTICAL_ACCENT_CUSTOM,
   PREF_HORIZONTAL_POSITION,
@@ -59,6 +64,8 @@ export const MidoriVerticalTabs = {
     Services.prefs.addObserver(PREF_VERTICAL_COMPACT, this);
     Services.prefs.addObserver(PREF_VERTICAL_FLOATING_URLBAR, this);
     Services.prefs.addObserver(PREF_VERTICAL_SHOW_RAIL, this);
+    Services.prefs.addObserver(PREF_VERTICAL_SHOW_PINNED_SECTION, this);
+    Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_PROMO, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_MODE, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_CUSTOM, this);
     Services.prefs.addObserver(PREF_HORIZONTAL_POSITION, this);
@@ -117,6 +124,14 @@ export const MidoriVerticalTabs = {
     return Services.prefs.getBoolPref(PREF_VERTICAL_SHOW_RAIL, true);
   },
 
+  _isShowPinnedSectionEnabled() {
+    return Services.prefs.getBoolPref(PREF_VERTICAL_SHOW_PINNED_SECTION, true);
+  },
+
+  _isEssentialsPromoEnabled() {
+    return Services.prefs.getBoolPref(PREF_VERTICAL_ESSENTIALS_PROMO, true);
+  },
+
   _getAccentMode() {
     const mode = Services.prefs.getStringPref(PREF_VERTICAL_ACCENT_MODE, 'workspace');
     if (mode === 'system' || mode === 'custom') {
@@ -137,10 +152,10 @@ export const MidoriVerticalTabs = {
     }
 
     if (mode === 'workspace') {
-      const activeBtn = doc.querySelector(
-        '#midori-workspace-quick-icons .midori-workspace-quick-btn[data-active="true"]'
-      );
-      const accent = activeBtn?.style?.getPropertyValue('--midori-workspace-accent')?.trim();
+      const workspaceAccentSource =
+        doc.getElementById('midori-workspace-dropdown') ||
+        doc.querySelector('#midori-workspace-quick-icons .midori-workspace-quick-btn[data-active="true"]');
+      const accent = workspaceAccentSource?.style?.getPropertyValue('--midori-workspace-accent')?.trim();
       if (accent) {
         return accent;
       }
@@ -187,6 +202,20 @@ export const MidoriVerticalTabs = {
     root.setAttribute('midori-vt-show-rail', this._isShowRailEnabled() ? 'true' : 'false');
   },
 
+  _applyShowPinnedSection(root) {
+    root.setAttribute(
+      'midori-vt-show-pinned-section',
+      this._isShowPinnedSectionEnabled() ? 'true' : 'false'
+    );
+  },
+
+  _applyEssentialsPromo(root) {
+    root.setAttribute(
+      'midori-vt-essentials-promo',
+      this._isEssentialsPromoEnabled() ? 'true' : 'false'
+    );
+  },
+
   _applyVerticalRootState(doc) {
     const root = doc.documentElement;
     this._applyDensity(root);
@@ -194,6 +223,8 @@ export const MidoriVerticalTabs = {
     this._applyCompact(root);
     this._applyFloatingUrlbar(root);
     this._applyShowRail(root);
+    this._applyShowPinnedSection(root);
+    this._applyEssentialsPromo(root);
 
     const accent = this._resolveVerticalAccent(doc);
     root.style.setProperty('--midori-vt-accent', accent);
@@ -213,6 +244,10 @@ export const MidoriVerticalTabs = {
     root.removeAttribute('midori-vt-compact');
     root.removeAttribute('midori-vt-floating-urlbar');
     root.removeAttribute('midori-vt-show-rail');
+    root.removeAttribute('midori-vt-show-pinned-section');
+    root.removeAttribute('midori-vt-essentials-promo');
+    root.removeAttribute('midori-vt-has-pinned');
+    root.removeAttribute('midori-vt-pinned-count');
     root.removeAttribute('midori-vt-accent-mode');
     root.removeAttribute('midori-vt-rtl');
     root.style.removeProperty('--midori-vt-width');
@@ -264,10 +299,13 @@ export const MidoriVerticalTabs = {
       doc.documentElement.removeAttribute('midori-horizontal-tabs');
       doc.documentElement.setAttribute('midori-vertical-tabs', this._getVerticalSide());
       this._applyVerticalRootState(doc);
+      this._initEssentialsPromo(win);
+      this._updatePinnedState(win);
     } else {
       doc.documentElement.removeAttribute('midori-vertical-tabs');
       doc.documentElement.setAttribute('midori-horizontal-tabs', this._getHorizontalPosition());
       this._clearVerticalRootState(doc);
+      this._removeEssentialsPromo(win);
     }
 
     // --- Move TabsToolbar for bottom horizontal tabs ---
@@ -407,6 +445,122 @@ export const MidoriVerticalTabs = {
       }
       wasOpen = isOpen;
     }).observe(urlbar, { attributes: true, attributeFilter: ['open'] });
+  },
+
+  _updatePinnedState(win) {
+    const doc = win?.document;
+    const gBrowser = win?.gBrowser;
+    if (!doc || !gBrowser) return;
+
+    const root = doc.documentElement;
+    const pinnedCount = gBrowser.tabs.filter(tab => tab.pinned && !tab.closing).length;
+    root.setAttribute('midori-vt-pinned-count', String(pinnedCount));
+    root.setAttribute('midori-vt-has-pinned', pinnedCount > 0 ? 'true' : 'false');
+
+    this._updateEssentialsPromo(win, pinnedCount);
+  },
+
+  _updateEssentialsPromo(win, pinnedCount) {
+    const doc = win?.document;
+    if (!doc) return;
+
+    if (
+      !this.isEnabled() ||
+      !this._isEssentialsPromoEnabled() ||
+      !this._isShowPinnedSectionEnabled()
+    ) {
+      this._removeEssentialsPromo(win);
+      return;
+    }
+
+    const pinnedContainer = doc.getElementById('pinned-tabs-container');
+    if (!pinnedContainer || pinnedContainer.getAttribute('orient') !== 'vertical') {
+      this._removeEssentialsPromo(win);
+      return;
+    }
+
+    if (pinnedCount > 0) {
+      this._removeEssentialsPromo(win);
+      return;
+    }
+
+    let promo = doc.getElementById(ESSENTIALS_PROMO_ID);
+    if (!promo) {
+      promo = doc.createXULElement('vbox');
+      promo.id = ESSENTIALS_PROMO_ID;
+      promo.className = 'midori-essentials-promo';
+
+      const title = doc.createXULElement('label');
+      title.className = 'midori-essentials-promo-title';
+      title.setAttribute('value', 'Pin your essentials');
+
+      const subtitle = doc.createXULElement('label');
+      subtitle.className = 'midori-essentials-promo-subtitle';
+      subtitle.setAttribute('value', 'Pin important tabs for instant access here.');
+
+      const button = doc.createXULElement('toolbarbutton');
+      button.id = 'midori-essentials-promo-button';
+      button.className = 'toolbarbutton-1 midori-essentials-promo-button';
+      button.setAttribute('label', 'Pin current tab');
+      button.setAttribute('tooltiptext', 'Pin the currently selected tab');
+      button.addEventListener('command', () => {
+        const tab = win.gBrowser?.selectedTab;
+        if (!tab || tab.pinned) {
+          return;
+        }
+        win.gBrowser.pinTab(tab);
+        this._updatePinnedState(win);
+      });
+
+      promo.appendChild(title);
+      promo.appendChild(subtitle);
+      promo.appendChild(button);
+
+      pinnedContainer.appendChild(promo);
+    }
+
+    const button = doc.getElementById('midori-essentials-promo-button');
+    const selectedTab = win.gBrowser?.selectedTab;
+    if (button) {
+      const canPinCurrent = !!selectedTab && !selectedTab.pinned;
+      button.disabled = !canPinCurrent;
+      button.setAttribute(
+        'tooltiptext',
+        canPinCurrent
+          ? 'Pin the currently selected tab'
+          : 'Select a regular tab to pin it as an essential'
+      );
+    }
+  },
+
+  _removeEssentialsPromo(win) {
+    const promo = win?.document?.getElementById(ESSENTIALS_PROMO_ID);
+    if (promo) {
+      promo.remove();
+    }
+  },
+
+  _initEssentialsPromo(win) {
+    const doc = win?.document;
+    if (!doc || doc._midoriEssentialsPromoInit) return;
+    doc._midoriEssentialsPromoInit = true;
+
+    const update = () => {
+      this._updatePinnedState(win);
+    };
+
+    doc._midoriEssentialsPromoUpdate = update;
+
+    const tabContainer = win.gBrowser?.tabContainer;
+    if (tabContainer) {
+      tabContainer.addEventListener('TabPinned', update);
+      tabContainer.addEventListener('TabUnpinned', update);
+      tabContainer.addEventListener('TabClose', update);
+      tabContainer.addEventListener('TabOpen', update);
+      tabContainer.addEventListener('TabSelect', update);
+    }
+
+    update();
   },
 
   _refreshAllWindows() {
