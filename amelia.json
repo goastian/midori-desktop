@@ -15,9 +15,9 @@
     "midori-privacy": {
       "id": "midori-privacy-blocker",
       "repo": "goastian/midori-privacy",
-      "version": "v2.2.0",
+      "version": "v2.2.1",
       "platform": "github",
-      "fileGlob": "midori-privacy-2.2.0-firefox.zip"
+      "fileGlob": "midori-privacy-2.2.1-firefox.zip"
     },
     "midori-newtab": {
       "id": "midori-newtab",
@@ -29,9 +29,9 @@
     "midorivpn-extension": {
       "id": "midorivpn@astian.org",
       "repo": "goastian/midorivpn-extension",
-      "version": "v1.0.7",
+      "version": "v1.0.8",
       "platform": "github",
-      "fileGlob": "MidoriVPN-1.0.7.zip"
+      "fileGlob": "midorivpn-extension-1.0.8.zip"
     }
   },
   "brands": {
