@@ -15,16 +15,16 @@
     "midori-privacy": {
       "id": "midori-privacy-blocker",
       "repo": "goastian/midori-privacy",
-      "version": "v2.2.2",
+      "version": "v2.2.3",
       "platform": "github",
       "fileGlob": "midori-privacy-2.2.2-firefox.zip"
     },
     "midori-newtab": {
       "id": "midori-newtab",
       "repo": "goastian/midori-tab",
-      "version": "v1.0.20",
+      "version": "v1.0.21",
       "platform": "github",
-      "fileGlob": "midori-tab-1.0.20-firefox.zip"
+      "fileGlob": "midori-tab-1.0.21-firefox.zip"
     },
     "midorivpn-extension": {
       "id": "midorivpn@astian.org",
