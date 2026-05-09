@@ -1,0 +1,321 @@
+<!doctype html><html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Welcome to MidoriVPN</title><style>*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #f0fdf4;
+        background-image:
+          radial-gradient(ellipse at 15% 50%, rgba(34,197,94,.12) 0%, transparent 55%),
+          radial-gradient(ellipse at 85% 20%, rgba(22,163,74,.08) 0%, transparent 50%),
+          radial-gradient(ellipse at 50% 100%, rgba(21,128,61,.06) 0%, transparent 60%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 2.5rem;
+        padding: 4rem 2rem 3rem;
+      }
+
+      .lang-bar {
+        position: fixed;
+        top: 1rem;
+        right: 1.25rem;
+        display: flex;
+        gap: .3rem;
+      }
+
+      .lang-btn {
+        background: #fff;
+        border: 1px solid #dbe4ef;
+        border-radius: .4rem;
+        padding: .28rem .6rem;
+        font-size: .78rem;
+        font-weight: 600;
+        color: #64748b;
+        cursor: pointer;
+        transition: border-color .15s, color .15s;
+      }
+      .lang-btn:hover { border-color: #16a34a; color: #15803d; }
+      .lang-btn.active { border-color: #16a34a; color: #15803d; background: #f0fdf4; }
+
+      .card {
+        flex: none;
+        background: #fff;
+        border-radius: 1.25rem;
+        box-shadow: 0 20px 60px rgba(15,23,42,.12);
+        max-width: 480px;
+        width: 100%;
+        padding: 2.5rem 2.5rem 2rem;
+        text-align: center;
+      }
+
+      .logo {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 1.25rem;
+        display: block;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        color: #0f172a;
+        font-weight: 700;
+        margin-bottom: .5rem;
+      }
+
+      .subtitle {
+        font-size: .95rem;
+        color: #64748b;
+        margin-bottom: 2rem;
+        line-height: 1.55;
+      }
+
+      .permission-box {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: .75rem;
+        padding: 1.1rem 1.25rem;
+        text-align: left;
+        margin-bottom: 1.75rem;
+      }
+
+      .permission-box h2 {
+        font-size: .9rem;
+        font-weight: 600;
+        color: #1e293b;
+        margin-bottom: .75rem;
+        display: flex;
+        align-items: center;
+        gap: .45rem;
+      }
+
+      .permission-box h2 svg { flex-shrink: 0; color: #16a34a; }
+
+      .perm-item {
+        display: flex;
+        align-items: flex-start;
+        gap: .6rem;
+        margin-bottom: .55rem;
+        font-size: .85rem;
+        color: #475569;
+        line-height: 1.45;
+      }
+      .perm-item:last-child { margin-bottom: 0; }
+
+      .perm-item svg { flex-shrink: 0; margin-top: .1rem; color: #22c55e; }
+
+      #btn-grant {
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+        border: none;
+        border-radius: .65rem;
+        padding: .8rem 2.2rem;
+        cursor: pointer;
+        transition: background .15s, transform .1s, box-shadow .15s;
+        width: 100%;
+        justify-content: center;
+        margin-bottom: .85rem;
+        box-shadow: 0 4px 18px rgba(22,163,74,.35);
+      }
+      #btn-grant:hover { background: linear-gradient(135deg, #15803d 0%, #16a34a 100%); box-shadow: 0 6px 24px rgba(22,163,74,.45); }
+      #btn-grant:active { transform: scale(.98); }
+      #btn-grant:disabled { background: #94a3b8; box-shadow: none; cursor: default; }
+
+      #btn-skip {
+        background: none;
+        border: none;
+        color: #94a3b8;
+        font-size: .8rem;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      #btn-skip:hover { color: #64748b; }
+
+      /* ── Desktop client promo banner ──────────────────────────────────── */
+      @keyframes pulse-dot {
+        0%, 100% { opacity: 1;  transform: scale(1); }
+        50%       { opacity: .5; transform: scale(.7); }
+      }
+      @keyframes float-orb {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50%       { transform: translateY(-12px) scale(1.04); }
+      }
+
+      .desktop-banner {
+        flex: none;
+        width: 100%;
+        max-width: 400px;
+        background: linear-gradient(150deg, #14532d 0%, #15803d 35%, #16a34a 72%, #22c55e 100%);
+        border-radius: 1.5rem;
+        padding: 2rem 1.85rem 1.75rem;
+        color: #fff;
+        text-align: left;
+        box-shadow:
+          0 24px 64px rgba(21,128,61,.45),
+          0 0 0 1px rgba(255,255,255,.12),
+          inset 0 1px 0 rgba(255,255,255,.2);
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* Mesh dot pattern overlay */
+      .desktop-banner::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image:
+          radial-gradient(circle at 100% 0%,   rgba(255,255,255,.18) 0%, transparent 50%),
+          radial-gradient(circle at 0%   100%,  rgba(20,83,45,.4)     0%, transparent 55%),
+          radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,.55) 0%, transparent 100%),
+          radial-gradient(1.5px 1.5px at 34%  8%, rgba(255,255,255,.45) 0%, transparent 100%),
+          radial-gradient(1px   1px   at 60% 22%, rgba(255,255,255,.5)  0%, transparent 100%),
+          radial-gradient(1px   1px   at 82%  5%, rgba(255,255,255,.5)  0%, transparent 100%),
+          radial-gradient(1px   1px   at 90% 40%, rgba(255,255,255,.35) 0%, transparent 100%),
+          radial-gradient(1px   1px   at 20% 78%, rgba(255,255,255,.35) 0%, transparent 100%),
+          radial-gradient(1px   1px   at 72% 85%, rgba(255,255,255,.4)  0%, transparent 100%);
+        pointer-events: none;
+      }
+
+      /* Floating glow orb — azul claro Midori */
+      .desktop-banner::after {
+        content: '';
+        position: absolute;
+        top: -70px;
+        right: -50px;
+        width: 220px;
+        height: 220px;
+        background: radial-gradient(circle, rgba(187,247,208,.4) 0%, rgba(74,222,128,.15) 50%, transparent 70%);
+        pointer-events: none;
+        animation: float-orb 6s ease-in-out infinite;
+      }
+
+      .desktop-banner-inner { position: relative; z-index: 1; }
+
+      /* Badge */
+      .desktop-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        background: rgba(255,255,255,.22);
+        border: 1px solid rgba(255,255,255,.45);
+        border-radius: 2rem;
+        padding: .22rem .75rem;
+        font-size: .68rem;
+        font-weight: 700;
+        letter-spacing: .09em;
+        color: #fff;
+        text-transform: uppercase;
+        margin-bottom: 1.1rem;
+        backdrop-filter: blur(4px);
+      }
+      .desktop-badge-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #bfefff;
+        flex-shrink: 0;
+        animation: pulse-dot 1.8s ease-in-out infinite;
+      }
+
+      /* Headline */
+      .desktop-banner h3 {
+        font-size: 1.45rem;
+        font-weight: 800;
+        line-height: 1.2;
+        color: #fff;
+        margin-bottom: .7rem;
+        letter-spacing: -.025em;
+        text-shadow: 0 1px 12px rgba(20,83,45,.4);
+      }
+      .desktop-banner h3 em {
+        font-style: normal;
+        background: linear-gradient(90deg, #dcfce7 0%, #bbf7d0 60%, #fff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      /* Description */
+      .desktop-banner p {
+        font-size: .855rem;
+        color: rgba(255,255,255,.82);
+        line-height: 1.65;
+        margin-bottom: 1.2rem;
+      }
+
+      /* Feature pills */
+      .desktop-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem;
+        margin-bottom: 1.35rem;
+      }
+      .desktop-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: .28rem;
+        background: rgba(255,255,255,.18);
+        border: 1px solid rgba(255,255,255,.32);
+        border-radius: 2rem;
+        padding: .28rem .72rem;
+        font-size: .74rem;
+        font-weight: 600;
+        color: #fff;
+        white-space: nowrap;
+        backdrop-filter: blur(4px);
+      }
+
+      /* CTA */
+      .desktop-banner-cta {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: .5rem;
+        background: #fff;
+        color: #15803d;
+        font-size: .92rem;
+        font-weight: 700;
+        border-radius: .75rem;
+        padding: .82rem 1.5rem;
+        text-decoration: none;
+        transition: background .18s ease, transform .15s ease, box-shadow .2s ease;
+        box-shadow: 0 4px 22px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.9);
+        letter-spacing: .01em;
+        margin-bottom: .95rem;
+      }
+      .desktop-banner-cta:hover {
+        background: #f0fdf4;
+        transform: translateY(-2px);
+        box-shadow: 0 10px 32px rgba(0,0,0,.22);
+      }
+      .desktop-banner-cta:active { transform: scale(.97); }
+
+      /* Platforms */
+      .desktop-platforms {
+        text-align: center;
+        font-size: .72rem;
+        color: rgba(255,255,255,.6);
+        letter-spacing: .03em;
+      }
+
+      .status {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: .5rem;
+        padding: .75rem 1rem;
+        border-radius: .6rem;
+        font-size: .875rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
+      }
+      .status.visible { display: flex; }
+      .status.success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+      .status.error   { background: #fff1f2; color: #dc2626; border: 1px solid #fecaca; }</style><script defer="defer" src="/welcome.7f57d6e3e28b70bb1482.js"></script></head><body><div class="lang-bar"><button class="lang-btn active" data-lang="es">ES</button> <button class="lang-btn" data-lang="en">EN</button></div><div class="desktop-banner"><div class="desktop-banner-inner"><div class="desktop-badge"><span class="desktop-badge-dot"></span> <span id="t-desktop-badge"></span></div><h3 id="t-desktop-title"></h3><p id="t-desktop-desc"></p><div class="desktop-pills"><span class="desktop-pill"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Mesh VPN </span><span class="desktop-pill" id="t-pill-2"></span> <span class="desktop-pill" id="t-pill-3"></span></div><a id="desktop-cta" class="desktop-banner-cta" href="#" target="_blank" rel="noopener noreferrer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15V3m0 12-4-4m4 4 4-4" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 20h18" stroke="#15803d" stroke-width="2.5" stroke-linecap="round"/></svg> <span id="t-desktop-btn"></span></a><div class="desktop-platforms" id="t-desktop-platforms"></div></div></div><div class="card"><img class="logo" src="icons/icon128.png" alt="MidoriVPN"/><h1 id="t-title"></h1><p class="subtitle" id="t-subtitle"></p><div class="permission-box"><h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2a5 5 0 0 1 5 5v2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h1V7a5 5 0 0 1 5-5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> <span id="t-perm-title"></span></h2><div class="perm-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> <span id="t-perm-1"></span></div><div class="perm-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> <span id="t-perm-2"></span></div><div class="perm-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> <span id="t-perm-3"></span></div></div><div id="status-ok" class="status success"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> <span id="t-status-ok"></span></div><div id="status-err" class="status error"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> <span id="t-status-err"></span></div><button id="btn-grant"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 2a5 5 0 0 1 5 5v2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h1V7a5 5 0 0 1 5-5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> <span id="t-btn-grant"></span></button> <button id="btn-skip"><span id="t-btn-skip"></span></button></div><script src="welcome.js"></script></body></html>

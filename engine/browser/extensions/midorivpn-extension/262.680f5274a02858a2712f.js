@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkmidorivpn_extension=self.webpackChunkmidorivpn_extension||[]).push([[262],{262(n,e){e.A=(n,e)=>{const s=n.__vccOpts||n;for(const[n,o]of e)s[n]=o;return s}}}]);
