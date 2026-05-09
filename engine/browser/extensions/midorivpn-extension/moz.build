@@ -7,6 +7,7 @@ FINAL_TARGET_FILES.features["midorivpn@astian.org"] += ["262.680f5274a02858a2712
 FINAL_TARGET_FILES.features["midorivpn@astian.org"] += ["810.6ab1e8732dc02b37ce44.js"]
 FINAL_TARGET_FILES.features["midorivpn@astian.org"] += ["background.js"]
 FINAL_TARGET_FILES.features["midorivpn@astian.org"] += ["manifest.json"]
+FINAL_TARGET_FILES.features["midorivpn@astian.org"] += ["moz.build"]
 FINAL_TARGET_FILES.features["midorivpn@astian.org"] += ["popup-389e2277.f9db3d690f7b1af49d3e.js"]
 FINAL_TARGET_FILES.features["midorivpn@astian.org"] += ["popup-43dd7041.1c98fc8e2bb46110fdfc.js"]
 FINAL_TARGET_FILES.features["midorivpn@astian.org"] += ["popup-43dd7041.621cbe4e0ac1d2385acf.css"]
