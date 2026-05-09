@@ -22,9 +22,9 @@
     "midori-newtab": {
       "id": "midori-newtab",
       "repo": "goastian/midori-tab",
-      "version": "v1.0.21",
+      "version": "v1.0.22",
       "platform": "github",
-      "fileGlob": "midori-tab-1.0.21-firefox.zip"
+      "fileGlob": "midori-tab-1.0.22-firefox.zip"
     },
     "midorivpn-extension": {
       "id": "midorivpn@astian.org",
@@ -41,7 +41,7 @@
       "brandShortName": "Midori",
       "brandFullName": "Midori Browser",
       "release": {
-        "displayVersion": "11.7.2",
+        "displayVersion": "11.7.3",
         "github": {
           "repo": "goastian/midori-desktop"
         },
