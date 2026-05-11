@@ -430,8 +430,8 @@ pref('messaging-system.rsexperimentloader.enabled', false, locked);
 // ============================================================================
 // DISABLE FIREFOX LABS
 // ============================================================================
-pref('browser.preferences.experimental', false, locked);
-pref('browser.preferences.experimental.hidden', true, locked);
+pref('browser.preferences.experimental', false);
+pref('browser.preferences.experimental.hidden', true);
 
 // ============================================================================
 // OUTBOUND CONNECTION AUDIT — block unnecessary Mozilla connections
