@@ -29,9 +29,9 @@
     "midorivpn-extension": {
       "id": "midorivpn@astian.org",
       "repo": "goastian/midorivpn-extension",
-      "version": "v1.0.12",
+      "version": "v1.0.13",
       "platform": "github",
-      "fileGlob": "midorivpn-extension-1.0.12.zip"
+      "fileGlob": "midorivpn-extension-1.0.13.zip"
     }
   },
   "brands": {
