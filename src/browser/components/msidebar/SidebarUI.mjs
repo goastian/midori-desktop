@@ -108,7 +108,7 @@ function safeHostname(url) {
 function tooltipTextForPanel(panel) {
   const mode = Prefs.getTooltipMode();
   if (mode === Prefs.TOOLTIP_OFF) return '';
-  const title = (panel?.title || '').trim();
+  const title = (panel?.title?.value || '').trim();
   const fullUrl = Prefs.getTooltipFullUrl();
   const url = fullUrl ? panel?.url || '' : safeHostname(panel?.url || '') || panel?.url || '';
   if (mode === Prefs.TOOLTIP_TITLE) return title || url || 'Panel';
@@ -658,7 +658,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (!panel) return;
     panelAreaHiddenByUser = false;
     activePanelId = panel.id;
-    currentPanelFloating = !!panel.floating;
+    currentPanelFloating = !!panel.floating?.enabled;
     store.last = store.last || {};
     store.last.selectedPanelId = panel.id;
     clearBrowser();
@@ -683,7 +683,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       applyZoomToBrowser(activeBrowser, panel.zoom);
     } catch {}
     stack.appendChild(browserEl);
-    titleBaseText = panel.title || safeHostname(panel.url) || panel.url;
+    titleBaseText = panel.title?.value || safeHostname(panel.url) || panel.url;
     titleLabel.setAttribute('value', titleBaseText);
     if (currentPanelFloating) {
       boxArea.setAttribute('overlay', 'true');
@@ -741,7 +741,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       const btn = createXul(doc, 'toolbarbutton');
       btn.classList.add('toolbarbutton-1', 'midori-msidebar-icon', 'midori-msidebar-panel-btn');
       btn.setAttribute('label', '');
-      btn.setAttribute('aria-label', panel.title || safeHostname(panel.url) || panel.url || 'Panel');
+      btn.setAttribute('aria-label', panel.title?.value || safeHostname(panel.url) || panel.url || 'Panel');
       const tt = tooltipTextForPanel(panel);
       if (tt) btn.setAttribute('tooltiptext', tt);
       btn.setAttribute('midori-msidebar-panel-id', panel.id);
@@ -1087,6 +1087,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     while (panelMenu.firstChild) panelMenu.firstChild.remove();
     const target = store.panels.find((x) => x.id === panelMenuTargetId);
     panelMenu.appendChild(
+      menuItem('Edit…', () => {
+        openEditPanelDialog(panelMenuTargetId);
+      })
+    );
+    panelMenu.appendChild(menuSeparator());
+    panelMenu.appendChild(
       menuItem('Edit URL', () => {
         const p = store.panels.find((x) => x.id === panelMenuTargetId);
         if (!p) return;
@@ -1109,10 +1115,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       })
     );
     panelMenu.appendChild(
-      menuItem(target?.floating ? 'Dock' : 'Floating', () => {
+      menuItem(target?.floating?.enabled ? 'Dock' : 'Floating', () => {
         const next = updatePanel(panelMenuTargetId, (p) => {
-          p.floating = !p.floating;
-          p.pinned = !p.floating;
+          p.floating.enabled = !p.floating.enabled;
+          p.pinned = !p.floating.enabled;
           return p;
         });
         if (next && panelMenuTargetId === activePanelId) setActivePanel(activePanelId);
@@ -1607,6 +1613,357 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     } else {
       hidePanelArea();
       renderButtons();
+    }
+  }
+
+  function openEditPanelDialog(panelId) {
+    const panel = store.panels.find((p) => p.id === panelId);
+    if (!panel) return;
+
+    const dlg = createXul(doc, 'dialog');
+    dlg.id = 'midori-msidebar-edit-dialog';
+    dlg.setAttribute('title', 'Edit Panel');
+    dlg.setAttribute('style', 'width: 600px; min-height: 400px;');
+
+    // Tab box
+    const tabs = createXul(doc, 'tabbox');
+    tabs.setAttribute('orient', 'vertical');
+    const tabstrip = createXul(doc, 'tabs');
+    tabs.appendChild(tabstrip);
+
+    const tabpanels = createXul(doc, 'tabpanels');
+    tabs.appendChild(tabpanels);
+
+    // Helper: Create a tab
+    function mkTab(label) {
+      const tab = createXul(doc, 'tab');
+      tab.setAttribute('label', label);
+      tabstrip.appendChild(tab);
+      const panel = createXul(doc, 'tabpanel');
+      panel.setAttribute('style', 'padding: 12px; overflow: auto; max-height: 350px;');
+      tabpanels.appendChild(panel);
+      return panel;
+    }
+
+    // Helper: Create form row
+    function formRow(label, control, style = '') {
+      const hbox = createXul(doc, 'hbox');
+      hbox.setAttribute('align', 'center');
+      hbox.setAttribute('style', `gap: 8px; margin-bottom: 12px; ${style}`);
+      const lbl = createXul(doc, 'label');
+      lbl.setAttribute('value', label);
+      lbl.setAttribute('style', 'min-width: 120px;');
+      hbox.appendChild(lbl);
+      hbox.appendChild(control);
+      return hbox;
+    }
+
+    // TAB 1: General
+    const pnGeneral = mkTab('General');
+    {
+      const chkPinned = createXul(doc, 'checkbox');
+      chkPinned.setAttribute('label', 'Pinned');
+      chkPinned.setAttribute('checked', panel.pinned ? 'true' : 'false');
+      pnGeneral.appendChild(chkPinned);
+
+      const chkMobile = createXul(doc, 'checkbox');
+      chkMobile.setAttribute('label', 'Mobile');
+      chkMobile.setAttribute('checked', panel.mobile ? 'true' : 'false');
+      pnGeneral.appendChild(chkMobile);
+
+      const chkTemporary = createXul(doc, 'checkbox');
+      chkTemporary.setAttribute('label', 'Temporary');
+      chkTemporary.setAttribute('checked', panel.temporary ? 'true' : 'false');
+      pnGeneral.appendChild(chkTemporary);
+
+      const chkUnload = createXul(doc, 'checkbox');
+      chkUnload.setAttribute('label', 'Unload on close');
+      chkUnload.setAttribute('checked', panel.unloadOnClose ? 'true' : 'false');
+      pnGeneral.appendChild(chkUnload);
+
+      const chkLoadOnStartup = createXul(doc, 'checkbox');
+      chkLoadOnStartup.setAttribute('label', 'Load on startup');
+      chkLoadOnStartup.setAttribute('checked', panel.loadOnStartup ? 'true' : 'false');
+      pnGeneral.appendChild(chkLoadOnStartup);
+
+      const chkRestoreLast = createXul(doc, 'checkbox');
+      chkRestoreLast.setAttribute('label', 'Restore last URL');
+      chkRestoreLast.setAttribute('checked', panel.restoreLastUrl ? 'true' : 'false');
+      pnGeneral.appendChild(chkRestoreLast);
+
+      const chkMuted = createXul(doc, 'checkbox');
+      chkMuted.setAttribute('label', 'Muted');
+      chkMuted.setAttribute('checked', panel.muted ? 'true' : 'false');
+      pnGeneral.appendChild(chkMuted);
+
+      pnGeneral._controls = { chkPinned, chkMobile, chkTemporary, chkUnload, chkLoadOnStartup, chkRestoreLast, chkMuted };
+    }
+
+    // TAB 2: Title & Favicon
+    const pnTitleFavicon = mkTab('Title & Favicon');
+    {
+      const txtTitle = createXul(doc, 'textbox');
+      txtTitle.setAttribute('value', panel.title?.value || '');
+      txtTitle.setAttribute('style', 'width: 100%;');
+      pnTitleFavicon.appendChild(formRow('Title', txtTitle, 'flex: 1;'));
+
+      const rdoTitleDynamic = createXul(doc, 'radio');
+      rdoTitleDynamic.setAttribute('label', 'Dynamic (from page)');
+      rdoTitleDynamic.setAttribute('selected', panel.title?.mode === 'dynamic' ? 'true' : 'false');
+      pnTitleFavicon.appendChild(rdoTitleDynamic);
+
+      const rdoTitleStatic = createXul(doc, 'radio');
+      rdoTitleStatic.setAttribute('label', 'Static (custom)');
+      rdoTitleStatic.setAttribute('selected', panel.title?.mode === 'static' ? 'true' : 'false');
+      pnTitleFavicon.appendChild(rdoTitleStatic);
+
+      const h2 = createXul(doc, 'label');
+      h2.setAttribute('value', 'Favicon');
+      h2.setAttribute('style', 'margin-top: 16px; margin-bottom: 8px; font-weight: bold;');
+      pnTitleFavicon.appendChild(h2);
+
+      const txtFavicon = createXul(doc, 'textbox');
+      txtFavicon.setAttribute('value', panel.favicon?.value || '');
+      txtFavicon.setAttribute('style', 'width: 100%;');
+      pnTitleFavicon.appendChild(formRow('Favicon URL', txtFavicon, 'flex: 1;'));
+
+      const rdoFavDynamic = createXul(doc, 'radio');
+      rdoFavDynamic.setAttribute('label', 'Dynamic (from page)');
+      rdoFavDynamic.setAttribute('selected', panel.favicon?.mode === 'dynamic' ? 'true' : 'false');
+      pnTitleFavicon.appendChild(rdoFavDynamic);
+
+      const rdoFavStatic = createXul(doc, 'radio');
+      rdoFavStatic.setAttribute('label', 'Static (custom)');
+      rdoFavStatic.setAttribute('selected', panel.favicon?.mode === 'static' ? 'true' : 'false');
+      pnTitleFavicon.appendChild(rdoFavStatic);
+
+      pnTitleFavicon._controls = { txtTitle, rdoTitleDynamic, rdoTitleStatic, txtFavicon, rdoFavDynamic, rdoFavStatic };
+    }
+
+    // TAB 3: Position & Size
+    const pnPosition = mkTab('Position & Size');
+    {
+      const chkFloating = createXul(doc, 'checkbox');
+      chkFloating.setAttribute('label', 'Floating window');
+      chkFloating.setAttribute('checked', panel.floating?.enabled ? 'true' : 'false');
+      pnPosition.appendChild(chkFloating);
+
+      const chkAlwaysOnTop = createXul(doc, 'checkbox');
+      chkAlwaysOnTop.setAttribute('label', 'Always on top');
+      chkAlwaysOnTop.setAttribute('checked', panel.floating?.alwaysOnTop ? 'true' : 'false');
+      pnPosition.appendChild(chkAlwaysOnTop);
+
+      const anchorOptions = [
+        { label: 'Top-left', value: 'tl' },
+        { label: 'Top-right', value: 'tr' },
+        { label: 'Bottom-left', value: 'bl' },
+        { label: 'Bottom-right', value: 'br' },
+        { label: 'Center', value: 'center' },
+      ];
+      const anchorMenu = createXul(doc, 'menulist');
+      anchorMenu.setAttribute('style', 'width: 100%;');
+      const anchorPopup = createXul(doc, 'menupopup');
+      for (const opt of anchorOptions) {
+        const mi = createXul(doc, 'menuitem');
+        mi.setAttribute('label', opt.label);
+        mi.setAttribute('value', opt.value);
+        anchorPopup.appendChild(mi);
+      }
+      anchorMenu.appendChild(anchorPopup);
+      anchorMenu.value = panel.floating?.anchor || 'center';
+      pnPosition.appendChild(formRow('Anchor', anchorMenu, 'flex: 1;'));
+
+      const txtX = createXul(doc, 'textbox');
+      txtX.setAttribute('value', panel.floating?.x || '0');
+      txtX.setAttribute('type', 'number');
+      pnPosition.appendChild(formRow('X', txtX));
+
+      const txtY = createXul(doc, 'textbox');
+      txtY.setAttribute('value', panel.floating?.y || '0');
+      txtY.setAttribute('type', 'number');
+      pnPosition.appendChild(formRow('Y', txtY));
+
+      const txtW = createXul(doc, 'textbox');
+      txtW.setAttribute('value', panel.floating?.w || '480');
+      txtW.setAttribute('type', 'number');
+      pnPosition.appendChild(formRow('Width', txtW));
+
+      const txtH = createXul(doc, 'textbox');
+      txtH.setAttribute('value', panel.floating?.h || '640');
+      txtH.setAttribute('type', 'number');
+      pnPosition.appendChild(formRow('Height', txtH));
+
+      pnPosition._controls = { chkFloating, chkAlwaysOnTop, anchorMenu, txtX, txtY, txtW, txtH };
+    }
+
+    // TAB 4: Loading
+    const pnLoading = mkTab('Loading');
+    {
+      const chkPeriodicReload = createXul(doc, 'checkbox');
+      chkPeriodicReload.setAttribute('label', 'Periodic reload');
+      chkPeriodicReload.setAttribute('checked', panel.periodicReload?.enabled ? 'true' : 'false');
+      pnLoading.appendChild(chkPeriodicReload);
+
+      const txtReloadSecs = createXul(doc, 'textbox');
+      txtReloadSecs.setAttribute('value', Math.max(30, panel.periodicReload?.seconds || 300));
+      txtReloadSecs.setAttribute('type', 'number');
+      txtReloadSecs.setAttribute('min', '30');
+      pnLoading.appendChild(formRow('Reload interval (seconds)', txtReloadSecs));
+
+      pnLoading._controls = { chkPeriodicReload, txtReloadSecs };
+    }
+
+    // TAB 5: Shortcut
+    const pnShortcut = mkTab('Shortcut');
+    {
+      const txtShortcut = createXul(doc, 'textbox');
+      txtShortcut.setAttribute('value', panel.shortcut || '');
+      txtShortcut.setAttribute('placeholder', 'e.g., Ctrl+Shift+E');
+      txtShortcut.setAttribute('style', 'width: 100%;');
+      pnShortcut.appendChild(formRow('Keyboard Shortcut', txtShortcut, 'flex: 1;'));
+
+      pnShortcut._controls = { txtShortcut };
+    }
+
+    // TAB 6: CSS
+    const pnCSS = mkTab('CSS');
+    {
+      const chkCssEnabled = createXul(doc, 'checkbox');
+      chkCssEnabled.setAttribute('label', 'Enable CSS selector');
+      chkCssEnabled.setAttribute('checked', panel.cssSelector?.enabled ? 'true' : 'false');
+      pnCSS.appendChild(chkCssEnabled);
+
+      const txtCss = createXul(doc, 'textbox');
+      txtCss.setAttribute('value', panel.cssSelector?.value || '');
+      txtCss.setAttribute('multiline', 'true');
+      txtCss.setAttribute('rows', '8');
+      txtCss.setAttribute('style', 'width: 100%; height: 200px; font-family: monospace;');
+      pnCSS.appendChild(formRow('CSS Selector', txtCss, 'flex: 1;'));
+
+      pnCSS._controls = { chkCssEnabled, txtCss };
+    }
+
+    // TAB 7: Hide
+    const pnHide = mkTab('Hide');
+    {
+      const chkHideToolbar = createXul(doc, 'checkbox');
+      chkHideToolbar.setAttribute('label', 'Hide toolbar');
+      chkHideToolbar.setAttribute('checked', panel.hide?.toolbar ? 'true' : 'false');
+      pnHide.appendChild(chkHideToolbar);
+
+      const chkHideSoundIcon = createXul(doc, 'checkbox');
+      chkHideSoundIcon.setAttribute('label', 'Hide sound icon');
+      chkHideSoundIcon.setAttribute('checked', panel.hide?.soundIcon ? 'true' : 'false');
+      pnHide.appendChild(chkHideSoundIcon);
+
+      const chkHideNotifBadge = createXul(doc, 'checkbox');
+      chkHideNotifBadge.setAttribute('label', 'Hide notification badge');
+      chkHideNotifBadge.setAttribute('checked', panel.hide?.notificationBadge ? 'true' : 'false');
+      pnHide.appendChild(chkHideNotifBadge);
+
+      pnHide._controls = { chkHideToolbar, chkHideSoundIcon, chkHideNotifBadge };
+    }
+
+    // Dialog buttons
+    const btnOK = createXul(doc, 'button');
+    btnOK.setAttribute('label', 'OK');
+    btnOK.setAttribute('oncommand', '');
+
+    const btnCancel = createXul(doc, 'button');
+    btnCancel.setAttribute('label', 'Cancel');
+    btnCancel.setAttribute('oncommand', '');
+
+    dlg.appendChild(tabs);
+    const buttonBox = createXul(doc, 'hbox');
+    buttonBox.setAttribute('pack', 'end');
+    buttonBox.setAttribute('style', 'margin-top: 16px; gap: 8px;');
+    buttonBox.appendChild(btnOK);
+    buttonBox.appendChild(btnCancel);
+    dlg.appendChild(buttonBox);
+
+    btnOK.addEventListener('command', () => {
+      updatePanel(panelId, (p) => {
+        const g = pnGeneral._controls;
+        p.pinned = g.chkPinned.checked;
+        p.mobile = g.chkMobile.checked;
+        p.temporary = g.chkTemporary.checked;
+        p.unloadOnClose = g.chkUnload.checked;
+        p.loadOnStartup = g.chkLoadOnStartup.checked;
+        p.restoreLastUrl = g.chkRestoreLast.checked;
+        p.muted = g.chkMuted.checked;
+
+        const tf = pnTitleFavicon._controls;
+        p.title = {
+          mode: tf.rdoTitleDynamic.selected ? 'dynamic' : 'static',
+          value: tf.txtTitle.value,
+        };
+        p.favicon = {
+          mode: tf.rdoFavDynamic.selected ? 'dynamic' : 'static',
+          value: tf.txtFavicon.value,
+        };
+
+        const pos = pnPosition._controls;
+        p.floating = {
+          enabled: pos.chkFloating.checked,
+          anchor: pos.anchorMenu.value || 'center',
+          alwaysOnTop: pos.chkAlwaysOnTop.checked,
+          x: parseInt(pos.txtX.value) || 0,
+          y: parseInt(pos.txtY.value) || 0,
+          w: parseInt(pos.txtW.value) || 480,
+          h: parseInt(pos.txtH.value) || 640,
+        };
+
+        const ld = pnLoading._controls;
+        p.periodicReload = {
+          enabled: ld.chkPeriodicReload.checked,
+          seconds: Math.max(30, parseInt(ld.txtReloadSecs.value) || 300),
+        };
+
+        const sc = pnShortcut._controls;
+        p.shortcut = sc.txtShortcut.value;
+
+        const cs = pnCSS._controls;
+        p.cssSelector = {
+          enabled: cs.chkCssEnabled.checked,
+          value: cs.txtCss.value,
+        };
+
+        const hd = pnHide._controls;
+        p.hide = {
+          toolbar: hd.chkHideToolbar.checked,
+          soundIcon: hd.chkHideSoundIcon.checked,
+          notificationBadge: hd.chkHideNotifBadge.checked,
+        };
+
+        return p;
+      });
+
+      if (panelId === activePanelId) {
+        setActivePanel(activePanelId);
+      } else {
+        renderButtons();
+      }
+
+      try {
+        dlg.removeEventListener('dialogaccept', onOK);
+        dlg.removeEventListener('dialogcancel', onCancel);
+        dlg.close();
+      } catch {}
+    }, true);
+
+    btnCancel.addEventListener('command', () => {
+      try {
+        dlg.removeEventListener('dialogaccept', onOK);
+        dlg.removeEventListener('dialogcancel', onCancel);
+        dlg.close();
+      } catch {}
+    }, true);
+
+    doc.documentElement.appendChild(dlg);
+    try {
+      dlg.showModal?.();
+    } catch {
+      Services.ww.openWindow(win, 'data:text/html;charset=utf-8,' + encodeURIComponent(dlg.outerHTML), '_blank', 'modal,centerscreen', null);
     }
   }
 
