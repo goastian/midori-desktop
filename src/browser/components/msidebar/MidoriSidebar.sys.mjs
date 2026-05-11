@@ -149,13 +149,8 @@ export const MidoriSidebar = {
     const ui = this._uis.get(win);
     if (!store || !ui) return;
 
-    try {
-      Services.prefs.setBoolPref(PREF_SEEDED_DEFAULT_PANELS, true);
-    } catch {}
-
-    try {
-      if (Array.isArray(store.panels) && store.panels.length) return;
-    } catch {}
+    // Early exit if store already has panels (schema may vary v1/v2, be defensive)
+    if (store.panels?.length > 0) return;
 
     const defaults = [
       { url: 'https://wallet.astian.org', title: 'Midori Wallet' },
@@ -177,6 +172,11 @@ export const MidoriSidebar = {
     this._stores.set(win, validated);
     ui.setStore(validated);
     this._scheduleSave(win, validated);
+
+    // Mark as seeded ONLY after successful creation and update
+    try {
+      Services.prefs.setBoolPref(PREF_SEEDED_DEFAULT_PANELS, true);
+    } catch {}
   },
 
   _scheduleSave(win, nextStore) {
