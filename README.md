@@ -74,7 +74,7 @@
 | 🌐 **Cross-Platform** | Available for Windows, macOS, and Linux (x86_64 & ARM64) |
 | 📱 **Workspace Manager** | Organize your browsing with custom workspaces |
 | 🔍 **Custom Search Engine** | Midori's own search engine + support for popular alternatives |
-| 🆕 **New Tab Suite** | Smart new tab page with personalized content and integrated ads management |
+| 🆕 **New Tab Suite** | Smart new tab page with personalized content |
 | 🔐 **Security Focused** | Built on Firefox's robust security model with enhanced protections |
 | 📧 **Email & Contacts Sync** | Native CalDAV, CardDAV, and email integration |
 | 🎨 **Customizable UI** | Themes, extensions, and flexible UI customization |
@@ -158,7 +158,7 @@ Midori Browser is built on **Mozilla Firefox's core** with custom enhancements:
 - **Engine:** Gecko.
 - **Frontend:** C++, JavaScript, XUL/HTML5
 - **Extensions:** WebExtensions API compatible
-- **Backend Services:** Node.js + TypeScript (Sync, Settings, Ads)
+- **Backend Services:** Node.js + TypeScript (Sync, Settings)
 - **Database:** PostgreSQL + SQLite (embedded)
 - **Build System:** Moz.build / Gradle
 
@@ -167,7 +167,6 @@ Midori Browser is built on **Mozilla Firefox's core** with custom enhancements:
 ```
 engine/          # Gecko-based browser engine & UI
 src/             # Custom Midori modules & extensions
-backend/         # Node.js services (sync, ads, settings)
 scripts/         # Build & development scripts
 tests/           # E2E tests (Playwright)
 locales/         # Multi-language support (60+ languages)
