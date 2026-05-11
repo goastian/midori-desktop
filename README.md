@@ -155,7 +155,7 @@ winget install midori-browser
 
 Midori Browser is built on **Mozilla Firefox's core** with custom enhancements:
 
-- **Engine:** Gecko (Firefox ESR base)
+- **Engine:** Gecko.
 - **Frontend:** C++, JavaScript, XUL/HTML5
 - **Extensions:** WebExtensions API compatible
 - **Backend Services:** Node.js + TypeScript (Sync, Settings, Ads)
