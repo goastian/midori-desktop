@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📝 GitHub Discussions
+    url: https://github.com/goastian/midori-desktop/discussions
+    about: Start a discussion, ask questions, or share ideas about Midori
+  - name: 💬 Support Community
+    url: https://astian.org/community/
+    about: Get help from the official Midori community
+  - name: 💭 Telegram Chat
+    url: https://t.me/midoriweb
+    about: Join our live chat on Telegram
+  - name: 🐦 Twitter/X
+    url: https://twitter.com/grupoastian
+    about: Follow us for news and updates
