@@ -367,7 +367,7 @@ pref('browser.urlbar.groupLabels.enabled', false);
 pref('browser.ml.enable', false);
 pref('browser.ml.chat.enabled', false);
 pref('browser.ml.chat.menu', false);
-pref('browser.preferences.aiControls', true,);
+pref('browser.preferences.aiControls', true);
 
 // ============================================================================
 // DISABLE MOZILLA VPN INTEGRATION
