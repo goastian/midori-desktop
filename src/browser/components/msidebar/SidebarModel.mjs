@@ -88,9 +88,11 @@ export function createPanel({ url, title, userContextId } = {}) {
   return panel;
 }
 
-export function validateStore(store) {
+export function validateStore(store, options = {}) {
   const def = createDefaultStore();
   if (!store || typeof store !== 'object') return def;
+
+  const includeTemporary = !!options.includeTemporary;
 
   const version = Number.isInteger(store.version) ? store.version : STORE_VERSION;
   let panels = Array.isArray(store.panels) ? store.panels : [];
@@ -111,7 +113,10 @@ export function validateStore(store) {
     const safeUrl = sanitizeUrl(p.url);
     if (!safeUrl) continue;
     seen.add(p.id);
-    fixedPanels.push(normalizePanel_v2(p, safeUrl));
+    const normalized = normalizePanel_v2(p, safeUrl);
+    if (!normalized) continue;
+    if (!includeTemporary && normalized.temporary) continue;
+    fixedPanels.push(normalized);
   }
 
   const selectedPanelId =

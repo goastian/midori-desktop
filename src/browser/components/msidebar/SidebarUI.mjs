@@ -52,6 +52,8 @@ function ensureStyle(doc) {
 #midori-msidebar-box-area[collapsed='true']{width:0;min-width:0;opacity:0;overflow:hidden;}
 #midori-msidebar-box-area[collapsed='true']:not([autohide-target='true']){pointer-events:none;}
 #midori-msidebar-box-area[overlay='true']{position:absolute;top:0;bottom:0;z-index:30;box-shadow:var(--content-area-shadow);}
+#midori-msidebar-box-area[overlay='true'][floating='true']{z-index:45;}
+#midori-msidebar-box-area[overlay='true'][always-on-top='true']{z-index:2147483000;}
 #midori-msidebar-box-area[overlay='true'][position='left']{left:var(--midori-msidebar-main-width);}
 #midori-msidebar-box-area[overlay='true'][position='right']{right:var(--midori-msidebar-main-width);}
 #midori-msidebar-box-area[animated='true']:not([initializing]){transition:width var(--midori-msidebar-anim) ease, opacity var(--midori-msidebar-anim) ease;}
@@ -86,6 +88,123 @@ function ensureStyle(doc) {
 .midori-msidebar-panel-btn[container-indicator='top']{box-shadow:inset 0 3px 0 var(--midori-msidebar-container-color, transparent);}
 .midori-msidebar-panel-btn[container-indicator='bottom']{box-shadow:inset 0 -3px 0 var(--midori-msidebar-container-color, transparent);}
 .midori-msidebar-panel-btn[container-indicator='around']{outline:2px solid var(--midori-msidebar-container-color, transparent);outline-offset:-2px;}
+
+#midori-msidebar-edit-panel{
+  background-color:var(--toolbar-bgcolor);
+  color:var(--toolbar-color);
+  border:1px solid var(--sidebar-border-color);
+  border-radius:var(--border-radius-medium);
+  padding:0;
+  max-width:600px;
+}
+
+#midori-msidebar-edit-panel > vbox{
+  padding:16px;
+}
+
+#midori-msidebar-edit-panel tabs{
+  background-color:color-mix(in srgb, var(--toolbar-bgcolor) 85%, var(--sidebar-background-color));
+  border-bottom:1px solid var(--sidebar-border-color);
+}
+
+#midori-msidebar-edit-panel tab{
+  background-color:transparent;
+  color:var(--toolbar-color);
+  padding:8px 12px;
+  border:none;
+  border-bottom:2px solid transparent;
+  margin:0;
+  cursor:pointer;
+}
+
+#midori-msidebar-edit-panel tab[selected='true']{
+  border-bottom-color:var(--focus-outline-color);
+  background-color:color-mix(in srgb, var(--toolbar-bgcolor) 92%, var(--sidebar-background-color));
+}
+
+#midori-msidebar-edit-panel tab:hover{
+  background-color:color-mix(in srgb, var(--toolbar-bgcolor) 90%, var(--sidebar-background-color));
+}
+
+#midori-msidebar-edit-panel tabpanels{
+  background-color:var(--toolbar-bgcolor);
+  color:var(--toolbar-color);
+}
+
+#midori-msidebar-edit-panel tabpanel{
+  background-color:var(--toolbar-bgcolor);
+  color:var(--toolbar-color);
+  padding:12px;
+  overflow:auto;
+}
+
+#midori-msidebar-edit-panel checkbox{
+  margin:4px 0;
+  -moz-user-select:none;
+}
+
+#midori-msidebar-edit-panel checkbox > label{
+  color:var(--toolbar-color);
+  margin-left:6px;
+}
+
+#midori-msidebar-edit-panel label{
+  color:var(--toolbar-color);
+}
+
+#midori-msidebar-edit-panel textbox{
+  background-color:var(--sidebar-background-color);
+  color:var(--sidebar-text-color);
+  border:1px solid var(--sidebar-border-color);
+  padding:4px 6px;
+  border-radius:2px;
+}
+
+#midori-msidebar-edit-panel textbox:focus{
+  border-color:var(--focus-outline-color);
+  outline:1px solid var(--focus-outline-color);
+}
+
+#midori-msidebar-edit-panel menulist{
+  background-color:var(--sidebar-background-color);
+  color:var(--sidebar-text-color);
+  border:1px solid var(--sidebar-border-color);
+  padding:4px 6px;
+  border-radius:2px;
+}
+
+#midori-msidebar-edit-panel menupopup{
+  background-color:var(--toolbar-bgcolor);
+  color:var(--toolbar-color);
+  border:1px solid var(--sidebar-border-color);
+}
+
+#midori-msidebar-edit-panel menuitem{
+  background-color:var(--toolbar-bgcolor);
+  color:var(--toolbar-color);
+  padding:4px 8px;
+}
+
+#midori-msidebar-edit-panel menuitem:hover{
+  background-color:var(--focus-outline-color);
+}
+
+#midori-msidebar-edit-panel button{
+  background-color:var(--sidebar-background-color);
+  color:var(--sidebar-text-color);
+  border:1px solid var(--sidebar-border-color);
+  padding:6px 12px;
+  border-radius:var(--border-radius-medium);
+  cursor:pointer;
+}
+
+#midori-msidebar-edit-panel button:hover{
+  background-color:color-mix(in srgb, var(--sidebar-background-color) 95%, var(--focus-outline-color));
+}
+
+#midori-msidebar-edit-panel button:active{
+  background-color:var(--focus-outline-color);
+}
 `;
   doc.documentElement.appendChild(style);
 }
@@ -181,6 +300,63 @@ function faviconFallbackForPanel(panel) {
 
 function clampZoom(z) {
   return Math.max(0.3, Math.min(3, typeof z === 'number' ? z : 1));
+}
+
+function clampFloatingNumber(value, min, max, fallback) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function normalizedAnchor(anchor) {
+  return ['tl', 'tr', 'bl', 'br', 'center'].includes(anchor) ? anchor : 'center';
+}
+
+function anchorUsesRight(anchor, position) {
+  const a = normalizedAnchor(anchor);
+  return a === 'tr' || a === 'br' || (a === 'center' && position === 'right');
+}
+
+function anchorUsesBottom(anchor) {
+  const a = normalizedAnchor(anchor);
+  return a === 'bl' || a === 'br';
+}
+
+export function computeFloatingZIndex(alwaysOnTop) {
+  return alwaysOnTop ? 2147483000 : 45;
+}
+
+export function computeFloatingPlacement({ anchor, x, y, w, h, position }) {
+  const finalAnchor = normalizedAnchor(anchor);
+  const width = clampFloatingNumber(w, 240, 1200, 480);
+  const height = clampFloatingNumber(h, 240, 1200, 640);
+  const offsetX = clampFloatingNumber(x, -2000, 2000, 12);
+  const offsetY = clampFloatingNumber(y, -2000, 2000, 12);
+
+  const next = {
+    width: `${width}px`,
+    height: `${height}px`,
+    top: 'unset',
+    bottom: 'unset',
+    left: 'unset',
+    right: 'unset',
+  };
+
+  if (finalAnchor === 'center') {
+    next.top = `calc(50% - ${Math.round(height / 2)}px + ${offsetY}px)`;
+  } else if (anchorUsesBottom(finalAnchor)) {
+    next.bottom = `${offsetY}px`;
+  } else {
+    next.top = `${offsetY}px`;
+  }
+
+  const sideExpr = `calc(var(--midori-msidebar-main-width) + ${offsetX}px)`;
+  if (anchorUsesRight(finalAnchor, position)) {
+    next.right = sideExpr;
+  } else {
+    next.left = sideExpr;
+  }
+
+  return next;
 }
 
 export function createSidebarUI(win, { onStoreChanged } = {}) {
@@ -353,6 +529,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const faviconPending = new Set();
   const faviconRetryAt = new Map();
   let splitterDrag = null;
+  const desktopReloadPanels = new Set();
 
   function syncEdgeTriggerVisibility() {
     const shouldShow = autohideEnabled && visible && !currentPanelFloating;
@@ -560,23 +737,38 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function applyFloatingGeometry(panel) {
-    if (!panel?.geometry) return;
-    const g = panel.geometry;
-    const w = Math.min(1200, Math.max(240, Math.round(g.width || 480)));
-    const h = Math.min(1200, Math.max(240, Math.round(g.height || 640)));
-    const ox = Math.min(2000, Math.max(-2000, Math.round(g.offsetX || 12)));
-    const oy = Math.min(2000, Math.max(-2000, Math.round(g.offsetY || 12)));
-    boxArea.style.width = `${w}px`;
-    boxArea.style.height = `${h}px`;
-    boxArea.style.top = `${oy}px`;
-    boxArea.style.bottom = 'unset';
-    if (position === 'left') {
-      boxArea.style.left = `calc(var(--midori-msidebar-main-width) + ${ox}px)`;
-      boxArea.style.right = 'unset';
-    } else {
-      boxArea.style.right = `calc(var(--midori-msidebar-main-width) + ${ox}px)`;
-      boxArea.style.left = 'unset';
-    }
+    const floating = panel?.floating || {};
+    const geometry = panel?.geometry || {};
+    const placement = computeFloatingPlacement({
+      anchor: floating.anchor,
+      x: typeof floating.x === 'number' ? floating.x : geometry.offsetX,
+      y: typeof floating.y === 'number' ? floating.y : geometry.offsetY,
+      w: typeof floating.w === 'number' ? floating.w : geometry.width,
+      h: typeof floating.h === 'number' ? floating.h : geometry.height,
+      position,
+    });
+    boxArea.style.width = placement.width;
+    boxArea.style.height = placement.height;
+    boxArea.style.top = placement.top;
+    boxArea.style.bottom = placement.bottom;
+    boxArea.style.left = placement.left;
+    boxArea.style.right = placement.right;
+    setBoolAttr(boxArea, 'floating', true);
+    setBoolAttr(boxArea, 'always-on-top', !!floating.alwaysOnTop);
+    boxArea.style.zIndex = String(computeFloatingZIndex(!!floating.alwaysOnTop));
+  }
+
+  function currentMainWidthPx() {
+    return parseFloat(getComputedStyle(doc.documentElement).getPropertyValue('--midori-msidebar-main-width')) || 44;
+  }
+
+  function floatingOffsetsFromRect(rect, anchor) {
+    const useRight = anchorUsesRight(anchor, position);
+    const useBottom = anchorUsesBottom(anchor);
+    const mainW = currentMainWidthPx();
+    const x = useRight ? Math.round(win.innerWidth - rect.right - mainW) : Math.round(rect.left - mainW);
+    const y = useBottom ? Math.round(win.innerHeight - rect.bottom) : Math.round(rect.top);
+    return { x, y };
   }
 
   function clearFloatingChrome() {
@@ -598,6 +790,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     boxArea.style.left = '';
     boxArea.style.right = '';
     boxArea.style.bottom = '';
+    boxArea.style.zIndex = '';
+    boxArea.removeAttribute('floating');
+    boxArea.removeAttribute('always-on-top');
   }
 
   function ensureFloatingChrome() {
@@ -662,7 +857,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     store.last = store.last || {};
     store.last.selectedPanelId = panel.id;
     clearBrowser();
-    const browserEl = createPanelBrowser(win, panel);
+    const browserEl = createPanelBrowser(win, {
+      ...panel,
+      mobile: !!panel.mobile && !desktopReloadPanels.has(panel.id),
+    });
     activeBrowser = browserEl;
     activeBrowser.addEventListener(
       'load',
@@ -693,6 +891,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       applyFloatingGeometry(panel);
     } else {
       clearFloatingChrome();
+      boxArea.removeAttribute('floating');
+      boxArea.removeAttribute('always-on-top');
+      boxArea.style.zIndex = '';
       boxArea.style.display = '';
       boxArea.setAttribute('overlay', autohideEnabled && autohideMode === 'overlay' ? 'true' : 'false');
       boxArea.style.height = '';
@@ -929,8 +1130,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       startLeft: rect.left,
       startTop: rect.top,
       startRight: rect.right,
-      position,
+      startBottom: rect.bottom,
+      anchor: store.panels.find((p) => p.id === activePanelId)?.floating?.anchor || 'center',
     };
+    // Disable animations during drag to prevent flickering
+    boxArea.setAttribute('animated', 'false');
     win.addEventListener('mousemove', onFloatingDragMove, true);
     win.addEventListener('mouseup', onFloatingDragUp, true);
   }
@@ -939,17 +1143,24 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (!floatingDrag) return;
     const dx = e.clientX - floatingDrag.startX;
     const dy = e.clientY - floatingDrag.startY;
-    const top = Math.round(floatingDrag.startTop + dy);
-    boxArea.style.top = `${top}px`;
-    boxArea.style.bottom = 'unset';
-    if (floatingDrag.position === 'left') {
-      const left = Math.round(floatingDrag.startLeft + dx);
-      boxArea.style.left = `${left}px`;
-      boxArea.style.right = 'unset';
+    const anchor = floatingDrag.anchor || 'center';
+    if (anchorUsesBottom(anchor)) {
+      const bottom = Math.round(win.innerHeight - (floatingDrag.startBottom + dy));
+      boxArea.style.bottom = `${bottom}px`;
+      boxArea.style.top = 'unset';
     } else {
+      const top = Math.round(floatingDrag.startTop + dy);
+      boxArea.style.top = `${top}px`;
+      boxArea.style.bottom = 'unset';
+    }
+    if (anchorUsesRight(anchor, position)) {
       const right = Math.round(win.innerWidth - (floatingDrag.startRight + dx));
       boxArea.style.right = `${right}px`;
       boxArea.style.left = 'unset';
+    } else {
+      const left = Math.round(floatingDrag.startLeft + dx);
+      boxArea.style.left = `${left}px`;
+      boxArea.style.right = 'unset';
     }
     if (Prefs.getGeometryHintEnabled()) {
       try {
@@ -967,18 +1178,30 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     win.removeEventListener('mouseup', onFloatingDragUp, true);
     if (!floatingDrag) return;
     const rect = boxArea.getBoundingClientRect();
-    const ox =
-      floatingDrag.position === 'left'
-        ? Math.round(rect.left - parseFloat(getComputedStyle(doc.documentElement).getPropertyValue('--midori-msidebar-main-width')) || 44)
-        : Math.round(win.innerWidth - rect.right - (parseFloat(getComputedStyle(doc.documentElement).getPropertyValue('--midori-msidebar-main-width')) || 44));
-    const oy = Math.round(rect.top);
+    const anchor = floatingDrag.anchor || 'center';
+    const offsets = floatingOffsetsFromRect(rect, anchor);
     updatePanel(activePanelId, (p) => {
+      p.floating = p.floating || {};
+      p.floating.x = offsets.x;
+      p.floating.y = offsets.y;
+      p.floating.w = Math.round(rect.width);
+      p.floating.h = Math.round(rect.height);
       p.geometry = p.geometry || {};
-      p.geometry.offsetX = ox;
-      p.geometry.offsetY = oy;
+      p.geometry.offsetX = offsets.x;
+      p.geometry.offsetY = offsets.y;
+      p.geometry.width = Math.round(rect.width);
+      p.geometry.height = Math.round(rect.height);
       return p;
     });
     floatingDrag = null;
+    // Re-enable animations after drag ends with delay to let layout settle
+    setTimeout(() => {
+      win.requestAnimationFrame(() => {
+        win.requestAnimationFrame(() => {
+          if (animated) boxArea.setAttribute('animated', 'true');
+        });
+      });
+    }, 50);
     try {
       titleLabel.setAttribute('value', titleBaseText);
     } catch {}
@@ -993,6 +1216,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       startY: e.clientY,
       startRect: rect,
     };
+    // Disable animations during resize to prevent flickering
+    boxArea.setAttribute('animated', 'false');
     win.addEventListener('mousemove', onFloatingResizeMove, true);
     win.addEventListener('mouseup', onFloatingResizeUp, true);
   }
@@ -1016,14 +1241,20 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const height = Math.min(1200, Math.max(240, Math.round(bottom - top)));
     boxArea.style.width = `${width}px`;
     boxArea.style.height = `${height}px`;
-    boxArea.style.top = `${Math.round(top)}px`;
-    boxArea.style.bottom = 'unset';
-    if (position === 'left') {
-      boxArea.style.left = `${Math.round(left)}px`;
-      boxArea.style.right = 'unset';
+    const anchor = store.panels.find((p) => p.id === activePanelId)?.floating?.anchor || 'center';
+    if (anchorUsesBottom(anchor)) {
+      boxArea.style.bottom = `${Math.round(win.innerHeight - bottom)}px`;
+      boxArea.style.top = 'unset';
     } else {
+      boxArea.style.top = `${Math.round(top)}px`;
+      boxArea.style.bottom = 'unset';
+    }
+    if (anchorUsesRight(anchor, position)) {
       boxArea.style.right = `${Math.round(win.innerWidth - right)}px`;
       boxArea.style.left = 'unset';
+    } else {
+      boxArea.style.left = `${Math.round(left)}px`;
+      boxArea.style.right = 'unset';
     }
     if (Prefs.getGeometryHintEnabled()) {
       try {
@@ -1038,19 +1269,29 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (!floatingResize) return;
     const rect = boxArea.getBoundingClientRect();
     updatePanel(activePanelId, (p) => {
+      const anchor = p.floating?.anchor || 'center';
+      const offsets = floatingOffsetsFromRect(rect, anchor);
+      p.floating = p.floating || {};
+      p.floating.w = Math.round(rect.width);
+      p.floating.h = Math.round(rect.height);
+      p.floating.x = offsets.x;
+      p.floating.y = offsets.y;
       p.geometry = p.geometry || {};
       p.geometry.width = Math.round(rect.width);
       p.geometry.height = Math.round(rect.height);
-      const mainW = parseFloat(getComputedStyle(doc.documentElement).getPropertyValue('--midori-msidebar-main-width')) || 44;
-      if (position === 'left') {
-        p.geometry.offsetX = Math.round(rect.left - mainW);
-      } else {
-        p.geometry.offsetX = Math.round(win.innerWidth - rect.right - mainW);
-      }
-      p.geometry.offsetY = Math.round(rect.top);
+      p.geometry.offsetX = offsets.x;
+      p.geometry.offsetY = offsets.y;
       return p;
     });
     floatingResize = null;
+    // Re-enable animations after resize ends with delay to let layout settle
+    setTimeout(() => {
+      win.requestAnimationFrame(() => {
+        win.requestAnimationFrame(() => {
+          if (animated) boxArea.setAttribute('animated', 'true');
+        });
+      });
+    }, 50);
     try {
       titleLabel.setAttribute('value', titleBaseText);
     } catch {}
@@ -1114,9 +1355,24 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         }
       })
     );
+    if (target?.mobile) {
+      panelMenu.appendChild(
+        menuItem(desktopReloadPanels.has(panelMenuTargetId) ? 'Reload as mobile' : 'Reload as desktop', () => {
+          if (desktopReloadPanels.has(panelMenuTargetId)) {
+            desktopReloadPanels.delete(panelMenuTargetId);
+          } else {
+            desktopReloadPanels.add(panelMenuTargetId);
+          }
+          if (panelMenuTargetId === activePanelId) {
+            setActivePanel(activePanelId);
+          }
+        })
+      );
+    }
     panelMenu.appendChild(
       menuItem(target?.floating?.enabled ? 'Dock' : 'Floating', () => {
         const next = updatePanel(panelMenuTargetId, (p) => {
+          p.floating = p.floating || {};
           p.floating.enabled = !p.floating.enabled;
           p.pinned = !p.floating.enabled;
           return p;
@@ -1194,6 +1450,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         const idx = store.panels.findIndex((p) => p.id === panelMenuTargetId);
         if (idx === -1) return;
         store.panels.splice(idx, 1);
+        desktopReloadPanels.delete(panelMenuTargetId);
         if (store.last?.selectedPanelId === panelMenuTargetId) {
           store.last.selectedPanelId = store.panels[0]?.id;
         }
@@ -1606,6 +1863,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function setStore(next) {
     const previousActivePanelId = activePanelId;
     store = next || { panels: [], last: {} };
+    for (const id of [...desktopReloadPanels]) {
+      if (!store.panels.some((panel) => panel.id === id && panel.mobile)) {
+        desktopReloadPanels.delete(id);
+      }
+    }
     syncToolbarPrefs();
     const targetId = previousActivePanelId || store.last?.selectedPanelId;
     if (targetId && store.panels.some((panel) => panel.id === targetId)) {
@@ -1620,10 +1882,70 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const panel = store.panels.find((p) => p.id === panelId);
     if (!panel) return;
 
-    const dlg = createXul(doc, 'dialog');
-    dlg.id = 'midori-msidebar-edit-dialog';
-    dlg.setAttribute('title', 'Edit Panel');
-    dlg.setAttribute('style', 'width: 600px; min-height: 400px;');
+    // Use a vbox container that will act as a lightweight dialog
+    const dlgWrapper = createXul(doc, 'vbox');
+    dlgWrapper.id = 'midori-msidebar-edit-dialog-wrapper';
+    dlgWrapper.setAttribute('style', `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10000;
+      width: 620px;
+      max-height: 90vh;
+      background: var(--popup-bg-color, #f9f9fb);
+      border: 1px solid var(--popup-border-color, #ccc);
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      font-family: system-ui, -apple-system, sans-serif;
+    `);
+
+    // Add a semi-transparent backdrop
+    const backdrop = createXul(doc, 'vbox');
+    backdrop.id = 'midori-msidebar-edit-dialog-backdrop';
+    backdrop.setAttribute('style', `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.3);
+      z-index: 9999;
+    `);
+    backdrop.addEventListener('click', () => {
+      backdrop.remove();
+      dlgWrapper.remove();
+    });
+    doc.documentElement.appendChild(backdrop);
+
+    // Title bar
+    const titleBar = createXul(doc, 'hbox');
+    titleBar.setAttribute('style', `
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--popup-border-color, #e0e0e0);
+      align-items: center;
+    `);
+    const titleLabel = createXul(doc, 'label');
+    titleLabel.setAttribute('value', 'Edit Panel');
+    titleLabel.setAttribute('style', 'flex: 1; font-weight: bold; font-size: 1.1em;');
+    titleBar.appendChild(titleLabel);
+    dlgWrapper.appendChild(titleBar);
+
+    // Scroll container for content
+    const scrollBox = createXul(doc, 'scrollbox');
+    scrollBox.setAttribute('style', `
+      flex: 1;
+      overflow: auto;
+      padding: 12px 16px;
+    `);
+    dlgWrapper.appendChild(scrollBox);
+
+    const dlg = createXul(doc, 'vbox');
+    dlg.id = 'midori-msidebar-edit-panel';
+    dlg.setAttribute('style', 'display: flex; flex-direction: column; gap: 0;');
+    scrollBox.appendChild(dlg);
 
     // Tab box
     const tabs = createXul(doc, 'tabbox');
@@ -1867,11 +2189,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     // Dialog buttons
     const btnOK = createXul(doc, 'button');
     btnOK.setAttribute('label', 'OK');
-    btnOK.setAttribute('oncommand', '');
 
     const btnCancel = createXul(doc, 'button');
     btnCancel.setAttribute('label', 'Cancel');
-    btnCancel.setAttribute('oncommand', '');
 
     dlg.appendChild(tabs);
     const buttonBox = createXul(doc, 'hbox');
@@ -1886,6 +2206,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         const g = pnGeneral._controls;
         p.pinned = g.chkPinned.checked;
         p.mobile = g.chkMobile.checked;
+        if (!p.mobile) {
+          desktopReloadPanels.delete(panelId);
+        }
         p.temporary = g.chkTemporary.checked;
         p.unloadOnClose = g.chkUnload.checked;
         p.loadOnStartup = g.chkLoadOnStartup.checked;
@@ -1944,27 +2267,21 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         renderButtons();
       }
 
-      try {
-        dlg.removeEventListener('dialogaccept', onOK);
-        dlg.removeEventListener('dialogcancel', onCancel);
-        dlg.close();
-      } catch {}
+      backdrop.remove();
+      dlgWrapper.remove();
     }, true);
 
     btnCancel.addEventListener('command', () => {
-      try {
-        dlg.removeEventListener('dialogaccept', onOK);
-        dlg.removeEventListener('dialogcancel', onCancel);
-        dlg.close();
-      } catch {}
+      backdrop.remove();
+      dlgWrapper.remove();
     }, true);
 
-    doc.documentElement.appendChild(dlg);
+    doc.documentElement.appendChild(dlgWrapper);
+    // Focus the first input for better UX
     try {
-      dlg.showModal?.();
-    } catch {
-      Services.ww.openWindow(win, 'data:text/html;charset=utf-8,' + encodeURIComponent(dlg.outerHTML), '_blank', 'modal,centerscreen', null);
-    }
+      const firstInput = dlgWrapper.querySelector('textbox, checkbox, menulist');
+      if (firstInput) firstInput.focus();
+    } catch {}
   }
 
   function destroy() {

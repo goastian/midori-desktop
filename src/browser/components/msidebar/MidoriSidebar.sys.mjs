@@ -168,7 +168,7 @@ export const MidoriSidebar = {
       seeded.panels.push(p);
     }
 
-    const validated = validateStore(seeded);
+    const validated = validateStore(seeded, { includeTemporary: true });
     this._stores.set(win, validated);
     ui.setStore(validated);
     this._scheduleSave(win, validated);
@@ -183,8 +183,9 @@ export const MidoriSidebar = {
     const ui = this._uis.get(win);
     if (!ui) return;
 
-    const validated = validateStore(nextStore);
-    this._stores.set(win, validated);
+    const runtimeValidated = validateStore(nextStore, { includeTemporary: true });
+    const persistedValidated = validateStore(runtimeValidated);
+    this._stores.set(win, runtimeValidated);
 
     const existing = this._saveTimers.get(win);
     if (existing) {
@@ -195,13 +196,19 @@ export const MidoriSidebar = {
 
     const timer = lazy.setTimeout(() => {
       this._saveTimers.delete(win);
-      saveStore(validated).catch(() => {});
+      saveStore(persistedValidated).catch(() => {});
     }, 400);
     this._saveTimers.set(win, timer);
   },
 
   _cleanupWindow(win) {
     const ui = this._uis.get(win);
+    const store = this._stores.get(win);
+    if (store?.panels?.some?.((p) => p?.temporary)) {
+      const cleaned = validateStore(store, { includeTemporary: false });
+      this._stores.set(win, cleaned);
+      saveStore(cleaned).catch(() => {});
+    }
     if (ui) {
       try {
         ui.destroy();
