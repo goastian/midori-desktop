@@ -1089,20 +1089,33 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (activePanelId === panel.id && panelAreaHiddenByUser) {
+            panelAreaHiddenByUser = false;
+            if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
+            if (currentPanelFloating) {
+              boxArea.style.display = '';
+              setBoolAttr(boxArea, 'collapsed', !visible);
+            } else if (autohideEnabled) {
+              applyAutohideCollapsedState(true);
+            } else {
+              setBoolAttr(boxArea, 'collapsed', false);
+            }
+            syncSplitterVisibility();
+            syncEdgeTriggerVisibility();
+            renderButtons();
+            onStoreChanged?.(store);
+            return;
+          }
           if (activePanelId === panel.id && !panelAreaHiddenByUser) {
             panelAreaHiddenByUser = true;
             _ahOpen = false;
             if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
             store.last = store.last || {};
-            store.last.selectedPanelId = null;
-            activePanelId = null;
-            currentPanelFloating = false;
-            clearBrowser();
-            clearFloatingChrome();
-            titleLabel.setAttribute('value', '');
+            store.last.selectedPanelId = panel.id;
             setBoolAttr(boxArea, 'collapsed', true);
             boxArea.style.display = '';
-            setBoolAttr(splitter, 'hidden', true);
+            syncSplitterVisibility();
+            syncEdgeTriggerVisibility();
             renderButtons();
             onStoreChanged?.(store);
             return;

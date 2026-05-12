@@ -74,7 +74,8 @@ export function getDebugEnabled() {
 }
 
 export function getHidePanelWhenHidden() {
-  return Services.prefs.getBoolPref(PREF_HIDE_PANEL_WHEN_HIDDEN, true);
+  // Keep web app sessions alive by default when sidebar is hidden.
+  return Services.prefs.getBoolPref(PREF_HIDE_PANEL_WHEN_HIDDEN, false);
 }
 
 export function getNewPanelButtonPosition() {
