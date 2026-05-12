@@ -242,9 +242,9 @@ pref('midori.verticaltabs.accent.mode', 'workspace');
 pref('midori.verticaltabs.accent.custom', '#2d8659');
 pref('midori.horizontaltabs.position', 'top');
 
-pref('midori.msidebar.enabled', false);
+pref('midori.msidebar.enabled', true);
 pref('midori.msidebar.position', 'left');
-pref('midori.msidebar.width', 320);
+pref('midori.msidebar.width', 400);
 pref('midori.msidebar.autohide.enabled', false);
 pref('midori.msidebar.autohide.mode', 'overlay');
 pref('midori.msidebar.animations.enabled', true);
