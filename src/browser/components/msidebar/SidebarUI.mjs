@@ -1,5 +1,10 @@
 import { createPanel, sanitizeUrl } from './SidebarModel.mjs';
-import { createPanelBrowser, destroyBrowser } from './SidebarPanelHost.mjs';
+import {
+  createPanelBrowser,
+  createPanelNotificationBridge,
+  createPanelPromptAdapter,
+  destroyBrowser,
+} from './SidebarPanelHost.mjs';
 import * as Prefs from './SidebarPrefs.mjs';
 
 const lazy = {};
@@ -38,8 +43,10 @@ function ensureStyle(doc) {
 #midori-msidebar-main .toolbarbutton-text{display:none;}
 .midori-msidebar-panel-btn .toolbarbutton-text{display:none;}
 .midori-msidebar-panel-btn .toolbarbutton-icon{width:18px;height:18px;}
-.midori-msidebar-panel-btn{list-style-image:url("chrome://global/skin/icons/defaultFavicon.svg");}
+.midori-msidebar-panel-btn{list-style-image:url("chrome://global/skin/icons/defaultFavicon.svg");position:relative;overflow:visible;}
 .midori-msidebar-panel-btn[checked='true']{background:color-mix(in srgb, currentColor 10%, transparent);}
+.midori-msidebar-panel-btn[data-sound-playing='true']::after{content:"";position:absolute;right:3px;bottom:2px;width:12px;height:12px;background:url("chrome://browser/skin/notification-icons/speaker.svg") center/12px 12px no-repeat;opacity:0.95;pointer-events:none;}
+.midori-msidebar-panel-btn[data-notification-badge]::before{content:attr(data-notification-badge);position:absolute;top:1px;right:1px;min-width:12px;height:12px;padding:0 3px;border-radius:999px;background:#d92222;color:#fff;font-size:9px;font-weight:700;line-height:12px;text-align:center;pointer-events:none;}
 
 #midori-msidebar-toggle{list-style-image:url("chrome://browser/skin/sidebars.svg");}
 #midori-msidebar-add{list-style-image:url("chrome://global/skin/icons/plus.svg");}
@@ -359,6 +366,16 @@ export function computeFloatingPlacement({ anchor, x, y, w, h, position }) {
   return next;
 }
 
+export function computePanelButtonDecorations(panel, { audioPlaying = false, notificationCount = 0 } = {}) {
+  const hide = panel?.hide && typeof panel.hide === 'object' ? panel.hide : {};
+  const count = Number.isFinite(notificationCount) ? Math.max(0, Math.floor(notificationCount)) : 0;
+  const badgeText = !hide.notificationBadge && count > 0 ? (count > 99 ? '99+' : String(count)) : '';
+  return {
+    showSoundIcon: !!audioPlaying && !hide.soundIcon,
+    badgeText,
+  };
+}
+
 export function createSidebarUI(win, { onStoreChanged } = {}) {
   const doc = win.document;
   ensureStyle(doc);
@@ -530,6 +547,80 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const faviconRetryAt = new Map();
   let splitterDrag = null;
   const desktopReloadPanels = new Set();
+  const panelAudioState = new Map();
+  const panelNotificationCount = new Map();
+  let activePromptAdapter = null;
+  let activeNotificationBridge = null;
+  let activeAudioEventsCleanup = null;
+
+  function teardownActivePanelBridges() {
+    if (activeAudioEventsCleanup) {
+      try {
+        activeAudioEventsCleanup();
+      } catch {}
+      activeAudioEventsCleanup = null;
+    }
+    if (activeNotificationBridge) {
+      try {
+        activeNotificationBridge.destroy();
+      } catch {}
+      activeNotificationBridge = null;
+    }
+    if (activePromptAdapter) {
+      try {
+        activePromptAdapter.destroy();
+      } catch {}
+      activePromptAdapter = null;
+    }
+  }
+
+  function setPanelAudioState(panelId, playing) {
+    if (!panelId) return;
+    panelAudioState.set(panelId, !!playing);
+    renderButtons();
+  }
+
+  function incrementPanelNotificationBadge(panelId, amount = 1) {
+    if (!panelId) return;
+    const delta = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 1;
+    if (!delta) return;
+    const next = (panelNotificationCount.get(panelId) || 0) + delta;
+    panelNotificationCount.set(panelId, next);
+    renderButtons();
+  }
+
+  function syncPanelAudioFromBrowser(panelId, browserEl) {
+    let playing = false;
+    try {
+      playing = !!browserEl?.audioPlaybackStarted;
+    } catch {}
+    if (!playing) {
+      try {
+        playing = browserEl?.getAttribute?.('soundplaying') === 'true';
+      } catch {}
+    }
+    setPanelAudioState(panelId, playing);
+  }
+
+  function applyPanelButtonDecorations(btn, panel) {
+    const panelId = panel?.id;
+    const decorations = computePanelButtonDecorations(panel, {
+      audioPlaying: !!panelAudioState.get(panelId),
+      notificationCount: panelNotificationCount.get(panelId) || 0,
+    });
+
+    if (decorations.showSoundIcon) {
+      btn.setAttribute('data-sound-playing', 'true');
+    } else {
+      btn.removeAttribute('data-sound-playing');
+    }
+
+    if (decorations.badgeText) {
+      btn.setAttribute('data-notification-badge', decorations.badgeText);
+    } else {
+      btn.removeAttribute('data-notification-badge');
+    }
+  }
 
   function syncEdgeTriggerVisibility() {
     const shouldShow = autohideEnabled && visible && !currentPanelFloating;
@@ -759,7 +850,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function currentMainWidthPx() {
-    return parseFloat(getComputedStyle(doc.documentElement).getPropertyValue('--midori-msidebar-main-width')) || 44;
+    return parseFloat(win.getComputedStyle(doc.documentElement).getPropertyValue('--midori-msidebar-main-width')) || 44;
   }
 
   function floatingOffsetsFromRect(rect, anchor) {
@@ -821,6 +912,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function clearBrowser() {
+    teardownActivePanelBridges();
+    if (activePanelId) {
+      panelAudioState.set(activePanelId, false);
+    }
     if (activeBrowser) {
       destroyBrowser(activeBrowser);
       activeBrowser = null;
@@ -862,11 +957,40 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       mobile: !!panel.mobile && !desktopReloadPanels.has(panel.id),
     });
     activeBrowser = browserEl;
+    activePromptAdapter = createPanelPromptAdapter(win, activeBrowser, {
+      onPromptShown(kind) {
+        if (kind === 'media') {
+          syncPanelAudioFromBrowser(panel.id, activeBrowser);
+        }
+      },
+    });
+    activeNotificationBridge = createPanelNotificationBridge(activeBrowser, {
+      onIncrement(amount) {
+        incrementPanelNotificationBadge(panel.id, amount);
+      },
+    });
+    const onAudioStarted = () => setPanelAudioState(panel.id, true);
+    const onAudioStopped = () => setPanelAudioState(panel.id, false);
+    try {
+      activeBrowser.addEventListener('DOMAudioPlaybackStarted', onAudioStarted, true);
+      activeBrowser.addEventListener('DOMAudioPlaybackStopped', onAudioStopped, true);
+      activeAudioEventsCleanup = () => {
+        try {
+          activeBrowser.removeEventListener('DOMAudioPlaybackStarted', onAudioStarted, true);
+        } catch {}
+        try {
+          activeBrowser.removeEventListener('DOMAudioPlaybackStopped', onAudioStopped, true);
+        } catch {}
+      };
+    } catch {
+      activeAudioEventsCleanup = null;
+    }
     activeBrowser.addEventListener(
       'load',
       () => {
         syncNavButtons();
         applyZoomToBrowser(activeBrowser, panel.zoom);
+        syncPanelAudioFromBrowser(panel.id, activeBrowser);
         try {
           faviconCache.delete(panel.id);
         } catch {}
@@ -950,6 +1074,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       const cc = containerColorForUserContext(panel.userContextId);
       if (cc) btn.style.setProperty('--midori-msidebar-container-color', cc);
       setPanelButtonIcon(btn, faviconCache.get(panel.id) || faviconFallbackForPanel(panel));
+      applyPanelButtonDecorations(btn, panel);
       btn.addEventListener(
         'contextmenu',
         (e) => {
@@ -1891,15 +2016,14 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       left: 50%;
       transform: translate(-50%, -50%);
       z-index: 10000;
-      width: 620px;
-      max-height: 90vh;
-      background: var(--popup-bg-color, #f9f9fb);
-      border: 1px solid var(--popup-border-color, #ccc);
-      border-radius: 8px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      width: min(760px, 92vw);
+      max-height: 88vh;
+      background: var(--toolbar-bgcolor);
+      border: 1px solid color-mix(in srgb, var(--sidebar-border-color) 75%, transparent);
+      border-radius: 12px;
+      box-shadow: 0 18px 48px rgba(0,0,0,0.35);
       display: flex;
       flex-direction: column;
-      font-family: system-ui, -apple-system, sans-serif;
     `);
 
     // Add a semi-transparent backdrop
@@ -1911,7 +2035,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0,0,0,0.3);
+      background: rgba(8,10,18,0.46);
       z-index: 9999;
     `);
     backdrop.addEventListener('click', () => {
@@ -1924,8 +2048,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const titleBar = createXul(doc, 'hbox');
     titleBar.setAttribute('style', `
       padding: 12px 16px;
-      border-bottom: 1px solid var(--popup-border-color, #e0e0e0);
+      border-bottom: 1px solid color-mix(in srgb, var(--sidebar-border-color) 60%, transparent);
       align-items: center;
+      background: color-mix(in srgb, var(--toolbar-bgcolor) 90%, var(--sidebar-background-color));
     `);
     const titleLabel = createXul(doc, 'label');
     titleLabel.setAttribute('value', 'Edit Panel');
@@ -1938,7 +2063,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     scrollBox.setAttribute('style', `
       flex: 1;
       overflow: auto;
-      padding: 12px 16px;
+      padding: 12px 16px 10px;
     `);
     dlgWrapper.appendChild(scrollBox);
 
@@ -1949,7 +2074,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
     // Tab box
     const tabs = createXul(doc, 'tabbox');
-    tabs.setAttribute('orient', 'vertical');
     const tabstrip = createXul(doc, 'tabs');
     tabs.appendChild(tabstrip);
 
@@ -1957,27 +2081,46 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     tabs.appendChild(tabpanels);
 
     // Helper: Create a tab
+    let editTabCounter = 0;
     function mkTab(label) {
       const tab = createXul(doc, 'tab');
       tab.setAttribute('label', label);
       tabstrip.appendChild(tab);
+
       const panel = createXul(doc, 'tabpanel');
-      panel.setAttribute('style', 'padding: 12px; overflow: auto; max-height: 350px;');
+      panel.id = `midori-msidebar-edit-tabpanel-${panelId}-${editTabCounter++}`;
+      tab.setAttribute('linkedpanel', panel.id);
+      panel.setAttribute('style', 'padding: 10px 8px; overflow: auto; max-height: 52vh;');
       tabpanels.appendChild(panel);
-      return panel;
+
+      const content = createXul(doc, 'vbox');
+      content.setAttribute('style', 'display:flex; flex-direction:column; gap:8px;');
+      panel.appendChild(content);
+      return content;
     }
 
     // Helper: Create form row
     function formRow(label, control, style = '') {
       const hbox = createXul(doc, 'hbox');
       hbox.setAttribute('align', 'center');
-      hbox.setAttribute('style', `gap: 8px; margin-bottom: 12px; ${style}`);
+      hbox.setAttribute('style', `gap: 10px; margin-bottom: 10px; ${style}`);
       const lbl = createXul(doc, 'label');
       lbl.setAttribute('value', label);
-      lbl.setAttribute('style', 'min-width: 120px;');
+      lbl.setAttribute('style', 'min-width: 132px; font-weight: 600;');
       hbox.appendChild(lbl);
       hbox.appendChild(control);
       return hbox;
+    }
+
+    function formColumn(label, control, style = '') {
+      const box = createXul(doc, 'vbox');
+      box.setAttribute('style', `gap: 6px; margin-bottom: 10px; ${style}`);
+      const lbl = createXul(doc, 'label');
+      lbl.setAttribute('value', label);
+      lbl.setAttribute('style', 'font-weight: 600;');
+      box.appendChild(lbl);
+      box.appendChild(control);
+      return box;
     }
 
     // TAB 1: General
@@ -1988,10 +2131,21 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       chkPinned.setAttribute('checked', panel.pinned ? 'true' : 'false');
       pnGeneral.appendChild(chkPinned);
 
-      const chkMobile = createXul(doc, 'checkbox');
-      chkMobile.setAttribute('label', 'Mobile');
-      chkMobile.setAttribute('checked', panel.mobile ? 'true' : 'false');
-      pnGeneral.appendChild(chkMobile);
+      const uaMenu = createXul(doc, 'menulist');
+      uaMenu.setAttribute('style', 'min-width: 240px;');
+      const uaPopup = createXul(doc, 'menupopup');
+      for (const opt of [
+        { label: 'Desktop (default)', value: 'desktop' },
+        { label: 'Mobile (iPhone emulation)', value: 'mobile' },
+      ]) {
+        const mi = createXul(doc, 'menuitem');
+        mi.setAttribute('label', opt.label);
+        mi.setAttribute('value', opt.value);
+        uaPopup.appendChild(mi);
+      }
+      uaMenu.appendChild(uaPopup);
+      uaMenu.value = panel.mobile ? 'mobile' : 'desktop';
+      pnGeneral.appendChild(formRow('User agent', uaMenu, 'flex: 1;'));
 
       const chkTemporary = createXul(doc, 'checkbox');
       chkTemporary.setAttribute('label', 'Temporary');
@@ -2018,7 +2172,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       chkMuted.setAttribute('checked', panel.muted ? 'true' : 'false');
       pnGeneral.appendChild(chkMuted);
 
-      pnGeneral._controls = { chkPinned, chkMobile, chkTemporary, chkUnload, chkLoadOnStartup, chkRestoreLast, chkMuted };
+      pnGeneral._controls = { chkPinned, uaMenu, chkTemporary, chkUnload, chkLoadOnStartup, chkRestoreLast, chkMuted };
     }
 
     // TAB 2: Title & Favicon
@@ -2026,18 +2180,23 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     {
       const txtTitle = createXul(doc, 'textbox');
       txtTitle.setAttribute('value', panel.title?.value || '');
-      txtTitle.setAttribute('style', 'width: 100%;');
+      txtTitle.setAttribute('style', 'width: 100%; min-width: 320px;');
       pnTitleFavicon.appendChild(formRow('Title', txtTitle, 'flex: 1;'));
 
-      const rdoTitleDynamic = createXul(doc, 'radio');
-      rdoTitleDynamic.setAttribute('label', 'Dynamic (from page)');
-      rdoTitleDynamic.setAttribute('selected', panel.title?.mode === 'dynamic' ? 'true' : 'false');
-      pnTitleFavicon.appendChild(rdoTitleDynamic);
-
-      const rdoTitleStatic = createXul(doc, 'radio');
-      rdoTitleStatic.setAttribute('label', 'Static (custom)');
-      rdoTitleStatic.setAttribute('selected', panel.title?.mode === 'static' ? 'true' : 'false');
-      pnTitleFavicon.appendChild(rdoTitleStatic);
+      const titleModeMenu = createXul(doc, 'menulist');
+      const titleModePopup = createXul(doc, 'menupopup');
+      for (const opt of [
+        { label: 'Dynamic (from page)', value: 'dynamic' },
+        { label: 'Static (custom)', value: 'static' },
+      ]) {
+        const mi = createXul(doc, 'menuitem');
+        mi.setAttribute('label', opt.label);
+        mi.setAttribute('value', opt.value);
+        titleModePopup.appendChild(mi);
+      }
+      titleModeMenu.appendChild(titleModePopup);
+      titleModeMenu.value = panel.title?.mode === 'static' ? 'static' : 'dynamic';
+      pnTitleFavicon.appendChild(formRow('Title mode', titleModeMenu, 'flex: 1;'));
 
       const h2 = createXul(doc, 'label');
       h2.setAttribute('value', 'Favicon');
@@ -2046,20 +2205,25 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
       const txtFavicon = createXul(doc, 'textbox');
       txtFavicon.setAttribute('value', panel.favicon?.value || '');
-      txtFavicon.setAttribute('style', 'width: 100%;');
+      txtFavicon.setAttribute('style', 'width: 100%; min-width: 320px;');
       pnTitleFavicon.appendChild(formRow('Favicon URL', txtFavicon, 'flex: 1;'));
 
-      const rdoFavDynamic = createXul(doc, 'radio');
-      rdoFavDynamic.setAttribute('label', 'Dynamic (from page)');
-      rdoFavDynamic.setAttribute('selected', panel.favicon?.mode === 'dynamic' ? 'true' : 'false');
-      pnTitleFavicon.appendChild(rdoFavDynamic);
+      const favModeMenu = createXul(doc, 'menulist');
+      const favModePopup = createXul(doc, 'menupopup');
+      for (const opt of [
+        { label: 'Dynamic (from page)', value: 'dynamic' },
+        { label: 'Static (custom)', value: 'static' },
+      ]) {
+        const mi = createXul(doc, 'menuitem');
+        mi.setAttribute('label', opt.label);
+        mi.setAttribute('value', opt.value);
+        favModePopup.appendChild(mi);
+      }
+      favModeMenu.appendChild(favModePopup);
+      favModeMenu.value = panel.favicon?.mode === 'static' ? 'static' : 'dynamic';
+      pnTitleFavicon.appendChild(formRow('Favicon mode', favModeMenu, 'flex: 1;'));
 
-      const rdoFavStatic = createXul(doc, 'radio');
-      rdoFavStatic.setAttribute('label', 'Static (custom)');
-      rdoFavStatic.setAttribute('selected', panel.favicon?.mode === 'static' ? 'true' : 'false');
-      pnTitleFavicon.appendChild(rdoFavStatic);
-
-      pnTitleFavicon._controls = { txtTitle, rdoTitleDynamic, rdoTitleStatic, txtFavicon, rdoFavDynamic, rdoFavStatic };
+      pnTitleFavicon._controls = { txtTitle, titleModeMenu, txtFavicon, favModeMenu };
     }
 
     // TAB 3: Position & Size
@@ -2098,22 +2262,40 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       const txtX = createXul(doc, 'textbox');
       txtX.setAttribute('value', panel.floating?.x || '0');
       txtX.setAttribute('type', 'number');
+      txtX.setAttribute('style', 'width: 110px;');
       pnPosition.appendChild(formRow('X', txtX));
 
       const txtY = createXul(doc, 'textbox');
       txtY.setAttribute('value', panel.floating?.y || '0');
       txtY.setAttribute('type', 'number');
+      txtY.setAttribute('style', 'width: 110px;');
       pnPosition.appendChild(formRow('Y', txtY));
 
       const txtW = createXul(doc, 'textbox');
       txtW.setAttribute('value', panel.floating?.w || '480');
       txtW.setAttribute('type', 'number');
+      txtW.setAttribute('style', 'width: 110px;');
       pnPosition.appendChild(formRow('Width', txtW));
 
       const txtH = createXul(doc, 'textbox');
       txtH.setAttribute('value', panel.floating?.h || '640');
       txtH.setAttribute('type', 'number');
+      txtH.setAttribute('style', 'width: 110px;');
       pnPosition.appendChild(formRow('Height', txtH));
+
+      const syncFloatingControls = () => {
+        const enabled = !!chkFloating.checked;
+        try {
+          chkAlwaysOnTop.disabled = !enabled;
+          anchorMenu.disabled = !enabled;
+          txtX.disabled = !enabled;
+          txtY.disabled = !enabled;
+          txtW.disabled = !enabled;
+          txtH.disabled = !enabled;
+        } catch {}
+      };
+      chkFloating.addEventListener('command', syncFloatingControls, true);
+      syncFloatingControls();
 
       pnPosition._controls = { chkFloating, chkAlwaysOnTop, anchorMenu, txtX, txtY, txtW, txtH };
     }
@@ -2130,6 +2312,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       txtReloadSecs.setAttribute('value', Math.max(30, panel.periodicReload?.seconds || 300));
       txtReloadSecs.setAttribute('type', 'number');
       txtReloadSecs.setAttribute('min', '30');
+      txtReloadSecs.setAttribute('style', 'width: 140px;');
       pnLoading.appendChild(formRow('Reload interval (seconds)', txtReloadSecs));
 
       pnLoading._controls = { chkPeriodicReload, txtReloadSecs };
@@ -2141,7 +2324,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       const txtShortcut = createXul(doc, 'textbox');
       txtShortcut.setAttribute('value', panel.shortcut || '');
       txtShortcut.setAttribute('placeholder', 'e.g., Ctrl+Shift+E');
-      txtShortcut.setAttribute('style', 'width: 100%;');
+      txtShortcut.setAttribute('style', 'width: 100%; min-width: 320px;');
       pnShortcut.appendChild(formRow('Keyboard Shortcut', txtShortcut, 'flex: 1;'));
 
       pnShortcut._controls = { txtShortcut };
@@ -2159,8 +2342,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       txtCss.setAttribute('value', panel.cssSelector?.value || '');
       txtCss.setAttribute('multiline', 'true');
       txtCss.setAttribute('rows', '8');
-      txtCss.setAttribute('style', 'width: 100%; height: 200px; font-family: monospace;');
-      pnCSS.appendChild(formRow('CSS Selector', txtCss, 'flex: 1;'));
+      txtCss.setAttribute('style', 'width: 100%; min-width: 420px; min-height: 180px; font-family: monospace;');
+      pnCSS.appendChild(formColumn('CSS Selector', txtCss, 'flex: 1;'));
 
       pnCSS._controls = { chkCssEnabled, txtCss };
     }
@@ -2196,7 +2379,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     dlg.appendChild(tabs);
     const buttonBox = createXul(doc, 'hbox');
     buttonBox.setAttribute('pack', 'end');
-    buttonBox.setAttribute('style', 'margin-top: 16px; gap: 8px;');
+    buttonBox.setAttribute('style', 'margin-top: 14px; gap: 10px; padding: 0 2px;');
     buttonBox.appendChild(btnOK);
     buttonBox.appendChild(btnCancel);
     dlg.appendChild(buttonBox);
@@ -2205,7 +2388,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       updatePanel(panelId, (p) => {
         const g = pnGeneral._controls;
         p.pinned = g.chkPinned.checked;
-        p.mobile = g.chkMobile.checked;
+        p.mobile = g.uaMenu.value === 'mobile';
         if (!p.mobile) {
           desktopReloadPanels.delete(panelId);
         }
@@ -2217,11 +2400,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
         const tf = pnTitleFavicon._controls;
         p.title = {
-          mode: tf.rdoTitleDynamic.selected ? 'dynamic' : 'static',
+          mode: tf.titleModeMenu.value === 'static' ? 'static' : 'dynamic',
           value: tf.txtTitle.value,
         };
         p.favicon = {
-          mode: tf.rdoFavDynamic.selected ? 'dynamic' : 'static',
+          mode: tf.favModeMenu.value === 'static' ? 'static' : 'dynamic',
           value: tf.txtFavicon.value,
         };
 
@@ -2301,6 +2484,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       _ahTimer = null;
     }
     clearBrowser();
+    teardownActivePanelBridges();
     try {
       wrapper.remove();
     } catch {}
