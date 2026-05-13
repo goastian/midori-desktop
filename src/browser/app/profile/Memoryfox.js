@@ -59,7 +59,7 @@ pref("dom.ipc.processPrelaunch.fission.number", 0); // default=3
 // -1 = automatic (based on system RAM, can be high)
 // Lower values reduce RAM but may increase disk reads
 // [1] https://kb.mozillazine.org/Browser.cache.memory.capacity
-pref("browser.cache.memory.capacity", 65536); // 64 MB (default automatic ~256MB)
+pref("browser.cache.memory.capacity", 32768); // 32 MB (default automatic ~256MB)
 //pref("browser.cache.memory.capacity", 32768); // 32 MB for low-RAM
 //pref("browser.cache.memory.capacity", 16384); // 16 MB minimal
 
@@ -84,10 +84,10 @@ pref("browser.cache.frecency_half_life_hours", 3); // default=6
 // Each cached page can use 10-50MB+ RAM
 // -1 = automatic (8 pages), 0 = disable
 // [1] https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Releases/1.5/Using_Firefox_1.5_caching
-pref("browser.sessionhistory.max_total_viewers", 2); // default=8
+pref("browser.sessionhistory.max_total_viewers", 1); // default=8
 
 // PREF: limit stored closed tabs
-pref("browser.sessionstore.max_tabs_undo", 5); // default=25
+pref("browser.sessionstore.max_tabs_undo", 3); // default=25
 
 // PREF: limit stored closed windows
 pref("browser.sessionstore.max_windows_undo", 1); // default=3
@@ -103,20 +103,20 @@ pref("browser.sessionstore.interval", 120000); // 2 minutes (default=15000)
 
 // PREF: media memory cache
 // Large media files are cached in RAM for smooth playback
-pref("media.memory_cache_max_size", 65536); // 64 MB (default=8192)
+pref("media.memory_cache_max_size", 32768); // 32 MB (default=8192)
 //pref("media.memory_cache_max_size", 32768); // 32 MB for low-RAM
 
 // PREF: combined media caches limit
-pref("media.memory_caches_combined_limit_kb", 262144); // 256 MB (default=524288)
-//pref("media.memory_caches_combined_limit_kb", 131072); // 128 MB for low-RAM
+pref("media.memory_caches_combined_limit_kb", 131072); // 128 MB (default=524288)
+//pref("media.memory_caches_combined_limit_kb", 65536); // 64 MB for low-RAM
 
 // PREF: percentage of system memory for media caches
 pref("media.memory_caches_combined_limit_pc_sysmem", 3); // default=5
 
 // PREF: media cache read-ahead
 // Reduces pre-buffering to save RAM
-pref("media.cache_readahead_limit", 120); // default=60; seconds ahead
-pref("media.cache_resume_threshold", 60); // default=30
+pref("media.cache_readahead_limit", 60); // default=60; seconds ahead
+pref("media.cache_resume_threshold", 30); // default=30
 
 /****************************************************************************
  * SECTION: IMAGE CACHE                                                      *
@@ -133,7 +133,7 @@ pref("image.cache.size", 5242880); // 5 MB (default=5242880)
 
 // PREF: image decode chunk size
 // Smaller chunks = less peak RAM during decoding
-pref("image.mem.decode_bytes_at_a_time", 32768); // default=16384
+pref("image.mem.decode_bytes_at_a_time", 16384); // default=16384
 
 // PREF: discard decoded images after timeout
 // Images are re-decoded when needed, saving RAM
@@ -141,7 +141,7 @@ pref("image.mem.discardable", true); // DEFAULT
 pref("image.mem.animated.discardable", true);
 
 // PREF: shared surface unmap timeout
-pref("image.mem.shared.unmap.min_expiration_ms", 60000); // default=120000
+pref("image.mem.shared.unmap.min_expiration_ms", 120000); // default=120000
 
 /****************************************************************************
  * SECTION: JAVASCRIPT MEMORY / GARBAGE COLLECTION                           *
@@ -160,7 +160,7 @@ pref("javascript.options.mem.gc_high_frequency_heap_growth_min", 120); // defaul
 
 // PREF: GC heap growth factor
 // Lower = GC runs more frequently, using less peak RAM
-pref("javascript.options.mem.gc_heap_growth_factor", 110); // default=150 (%)
+pref("javascript.options.mem.gc_heap_growth_factor", 100); // default=150 (%)
 
 // PREF: compact on user inactive
 // Run memory compaction when user is idle

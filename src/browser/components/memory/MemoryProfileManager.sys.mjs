@@ -67,15 +67,16 @@ const MEMORY_PROFILES = {
       'dom.ipc.processCount.webIsolated': 1,
       'dom.ipc.processPrelaunch.enabled': false,
       'dom.ipc.processPrelaunch.fission.number': 0,
-      'browser.cache.memory.capacity': 65536, // 64 MB
-      'browser.sessionhistory.max_total_viewers': 2,
-      'browser.sessionstore.max_tabs_undo': 5,
+      'browser.cache.memory.capacity': 32768, // 32 MB
+      'browser.cache.memory.max_entry_size': 4096,
+      'browser.sessionhistory.max_total_viewers': 1,
+      'browser.sessionstore.max_tabs_undo': 3,
       'browser.sessionstore.max_windows_undo': 1,
-      'media.memory_cache_max_size': 32768, // 32 MB
-      'media.memory_caches_combined_limit_kb': 131072, // 128 MB
-      'javascript.options.mem.gc_high_frequency_heap_growth_max': 150,
-      'javascript.options.mem.gc_high_frequency_heap_growth_min': 100,
-      'javascript.options.mem.gc_heap_growth_factor': 100,
+      'media.memory_cache_max_size': 16384, // 16 MB
+      'media.memory_caches_combined_limit_kb': 65536, // 64 MB
+      'javascript.options.mem.gc_high_frequency_heap_growth_max': 120,
+      'javascript.options.mem.gc_high_frequency_heap_growth_min': 80,
+      'javascript.options.mem.gc_heap_growth_factor': 90,
       'browser.tabs.unloadOnLowMemory': true,
     },
   },
@@ -218,6 +219,22 @@ const LINUX_SETTINGS = {
   'widget.dmabuf.force-enabled': true, // DMA-BUF for better GPU memory
 };
 
+const WINDOWS_LOW_MEMORY_SETTINGS = {
+  'browser.tabs.remote.warmup.enabled': false,
+  'browser.tabs.remote.warmup.maxTabs': 0,
+  'browser.tabs.remote.warmup.unloadDelayMs': 0,
+  'browser.cache.memory.capacity': 32768,
+  'browser.cache.memory.max_entry_size': 4096,
+  'browser.sessionhistory.max_total_viewers': 0,
+  'dom.ipc.keepProcessesAlive.web': 0,
+  'network.predictor.enabled': false,
+  'network.predictor.enable-prefetch': false,
+  'network.dns.disablePrefetch': true,
+  'network.prefetch-next': false,
+  'media.cache_readahead_limit': 15,
+  'media.cache_resume_threshold': 5,
+};
+
 export const MemoryProfileManager = {
   PREF_MEMORY_PROFILE: 'midori.memory.profile',
 
@@ -289,6 +306,16 @@ export const MemoryProfileManager = {
       }
     }
 
+    if (profileIndex === 2 && lazy.AppConstants.platform === 'win') {
+      for (const [pref, value] of Object.entries(WINDOWS_LOW_MEMORY_SETTINGS)) {
+        try {
+          this._setPref(pref, value);
+        } catch (e) {
+          console.error(`MemoryProfileManager: Failed to set Windows pref ${pref}:`, e);
+        }
+      }
+    }
+
     // Save the current profile preference
     Services.prefs.setIntPref(this.PREF_MEMORY_PROFILE, profileIndex);
 
@@ -319,7 +346,7 @@ export const MemoryProfileManager = {
     const descriptions = {
       0: '~1.5-4 GB with multiple tabs',
       1: '~1-2.5 GB with multiple tabs',
-      2: '~600 MB-1.5 GB with multiple tabs',
+      2: '~350 MB-1.1 GB with multiple tabs',
       3: '~2-5 GB with multiple tabs (WebGPU enabled)',
     };
     return descriptions[profileIndex] || 'Unknown';
