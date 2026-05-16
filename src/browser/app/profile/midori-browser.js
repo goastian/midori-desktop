@@ -143,12 +143,6 @@ pref("extensions.getAddons.langpacks.url", "https://services.addons.mozilla.org/
 // in this file alongside the rest of the update-surface prefs (bug #183).
 pref("extensions.systemAddon.update.url", "https://update.astian.org/browser/addons/%CHANNEL%/update.xml", locked);
 
-//Update Routes (Download page for manual download and Temperoraliy Discord Invite Link for Release Notes)
-pref("app.update.url.manual", "https://astian.org/midori-browser/download", locked);
-pref("app.update.url.details", "https://github.com/goastian/midori-desktop/releases//latest", locked);
-pref("app.releaseNotesURL", "https://github.com/gooastian/midori-browser/commits/main", locked);
-pref("app.releaseNotesURL.aboutDialog", "https://github.com/goastian/midori-browser/commits/main", locked);
-
 // Pocket is now fully disabled in the locked prefs section at the bottom of this file.
 
 // Reenable accessability. Should have a low enough performance impact with the
@@ -394,9 +388,8 @@ pref('signon.firefoxRelay.base_url', '', locked);
 // ============================================================================
 // DISABLE AUTOMATIC UPDATES POINTING TO MOZILLA SERVERS
 // ============================================================================
-// Midori does not ship an app-update server. Every knob that can cause a
-// network check or surface an "update available" notification is locked off
-// here. See bug #183 for the Windows regression this is meant to fix.
+// Keep background update surfaces off, but let the updater use the host
+// defined at build time in application.ini (MOZ_APPUPDATE_HOST).
 pref('app.update.enabled', false, locked);
 pref('app.update.auto', false, locked);
 pref('app.update.staging.enabled', false, locked);
@@ -406,11 +399,6 @@ pref('app.update.service.enabled', false, locked);
 pref('app.update.silent', false, locked);
 pref('app.update.checkInstallTime', false, locked);
 pref('app.update.notifyDuringDownload', false, locked);
-// Hard-neutralize the update URL so even if something briefly flips one of
-// the flags above, no request can ever leave the browser. A data: URL is
-// inert: the update service will fail to parse it as an update manifest
-// and silently give up without touching the hamburger badge UI.
-pref('app.update.url', 'data:text/plain,', locked);
 // Keep extension auto-updates working (silent, no doorhanger). System
 // add-ons ship security fixes; lock the flag so users/profiles can't flip
 // it and trigger an unexpected "update available" toast.
