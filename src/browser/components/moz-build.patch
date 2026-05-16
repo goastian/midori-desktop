@@ -7,7 +7,7 @@ index 63b59082d8c8be455530f81ed19d8fac49937200..41ec7fde77fb039cba1cf4275d7a0175
  ]
  
 +# Pulse: Custom components
-+DIRS += ["autohide", "center", "gradient", "memory", "msidebar", "setup", "shortcuts", "tabsleep", "tor", "verticaltabs", "workspace"]
++DIRS += ["autohide", "center", "cws", "gradient", "memory", "msidebar", "setup", "shortcuts", "tabsleep", "tor", "verticaltabs", "workspace"]
 +
  DIRS += ["build"]
  

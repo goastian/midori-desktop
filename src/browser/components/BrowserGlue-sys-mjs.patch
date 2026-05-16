@@ -17,7 +17,7 @@ index 75cdab491d35dc30be6c0a4ec6ab88e6fb4239aa..7c13d813c5a5d5ed2468c6704ed2039c
  });
  
  XPCOMUtils.defineLazyServiceGetters(lazy, {
-@@ -1695,6 +1703,110 @@ BrowserGlue.prototype = {
+@@ -1695,6 +1703,132 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
@@ -125,10 +125,32 @@ index 75cdab491d35dc30be6c0a4ec6ab88e6fb4239aa..7c13d813c5a5d5ed2468c6704ed2039c
 +    }
 +    // =========================================================================
 +
++    // =========================================================================
++    // Midori Chrome Web Store - register install actor on chromewebstore.google.com
++    try {
++      ChromeUtils.registerWindowActor("MidoriCWS", {
++        parent: {
++          esModuleURI: "resource:///modules/MidoriCWSParent.sys.mjs",
++        },
++        child: {
++          esModuleURI: "resource:///modules/MidoriCWSChild.sys.mjs",
++          events: { DOMContentLoaded: {}, pageshow: {} },
++        },
++        matches: [
++          "https://chromewebstore.google.com/*",
++          "https://chrome.google.com/webstore/*",
++        ],
++        allFrames: false,
++      });
++    } catch (e) {
++      console.error("Midori: Failed to register MidoriCWS actor", e);
++    }
++    // =========================================================================
++
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1813,4 +1925,20 @@ BrowserGlue.prototype = {
+@@ -1813,4 +1947,20 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
