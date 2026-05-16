@@ -24,7 +24,7 @@
       "repo": "goastian/midori-tab",
       "version": "v1.0.25",
       "platform": "github",
-      "fileGlob": "midori-tab-1.0.23-firefox.zip"
+      "fileGlob": "midori-tab-1.0.25-firefox.zip"
     },
     "midorivpn-extension": {
       "id": "midorivpn@astian.org",
