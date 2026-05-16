@@ -1,0 +1,31 @@
+diff --git a/browser/base/content/test/about/browser_aboutDialog_distribution.js b/browser/base/content/test/about/browser_aboutDialog_distribution.js
+index 65c8b00487d6d8823eab7f09e316b4c8317ba813..1b9e62df2d92bccfb599ec3952f2b8039e252771 100644
+--- a/browser/base/content/test/about/browser_aboutDialog_distribution.js
++++ b/browser/base/content/test/about/browser_aboutDialog_distribution.js
+@@ -64,6 +64,26 @@ add_task(async function verify_distribution_info_displays() {
+   aboutDialog.close();
+ });
+ 
++add_task(async function verify_about_update_urls_use_midori_defaults() {
++  is(
++    Services.urlFormatter.formatURLPref("app.update.url.manual"),
++    "https://astian.org/midori-browser/download/",
++    "Manual update URL comes from Midori branding"
++  );
++  is(
++    Services.urlFormatter.formatURLPref("app.update.url.details"),
++    "https://astian.org/midori-browser/release-notes/latest/",
++    "Update details URL comes from Midori branding"
++  );
++  is(
++    Services.urlFormatter.formatURLPref("app.releaseNotesURL.aboutDialog").startsWith(
++      "https://astian.org/midori-browser/release-notes/"
++    ),
++    true,
++    "About dialog release notes URL comes from Midori branding"
++  );
++});
++
+ add_task(async function cleanup() {
+   let defaultBranch = Services.prefs.getDefaultBranch(null);
+ 
