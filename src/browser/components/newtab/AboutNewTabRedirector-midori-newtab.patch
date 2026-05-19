@@ -2,10 +2,14 @@ diff --git a/browser/components/newtab/AboutNewTabRedirector.sys.mjs b/browser/c
 index adf3fb810bd257617150abb201ebaa2f9e7bc95f..387573a402eb7d3f190648dd96e7445afeb20950 100644
 --- a/browser/components/newtab/AboutNewTabRedirector.sys.mjs
 +++ b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
-@@ -416,10 +416,30 @@ class BaseAboutNewTabRedirector {
+@@ -425,14 +425,34 @@ class BaseAboutNewTabRedirector {
     * the newtab page has no effect on the result of this function.
     */
    get defaultURL() {
+     if (this.remoteRendererEnabled) {
+       return "resource://newtab/data/content/remote-renderer-host.html";
+     }
+ 
 -    // Generate the desired activity stream resource depending on state, e.g.,
 -    // "resource://newtab/prerendered/activity-stream.html"
 -    // "resource://newtab/prerendered/activity-stream-debug.html"

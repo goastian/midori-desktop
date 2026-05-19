@@ -6,15 +6,15 @@ index b3459f8233b2509744e27bfe33884c6a92164e36..76b71e0882381f8f6becaf88bc4e3cc5
    ; When we're using the GUI, .onGUIEnd sends the ping, but of course that isn't
    ; invoked when we're running silently.
    ${If} ${Silent}
--    Call SendPing
-+    ; Call SendPing
+-    Call SendPingIfApplicable
++    ; Call SendPingIfApplicable
    ${EndIf}
  SectionEnd
  
-@@ -1978,5 +1978,5 @@ FunctionEnd
+@@ -1801,5 +1801,5 @@ FunctionEnd
  
  Function .onGUIEnd
    ${OnEndCommon}
--  Call SendPing
-+  ; Call SendPing
+-  Call SendPingIfApplicable
++  ; Call SendPingIfApplicable
  FunctionEnd

@@ -37,12 +37,3 @@ index bc8f5775785e08a0cc1c8a6ad1f0e19e980c607d..bf11d30d10fb38855f6a0e8d5346be27
      AppAssocReg::SetAppAsDefault "$R9" ".xht" "file"
      Pop $0
      AppAssocReg::SetAppAsDefault "$R9" ".xhtml" "file"
-@@ -1856,7 +1861,7 @@ FunctionEnd
-   ; uninstalled.
- 
-   ; Do all of that twice, once for the local machine and once for the current user
--  
-+
-   ; Remove protocol handlers
-   ClearErrors
-   ReadRegStr $0 HKLM "Software\Classes\${_PROTOCOL}\DefaultIcon" ""

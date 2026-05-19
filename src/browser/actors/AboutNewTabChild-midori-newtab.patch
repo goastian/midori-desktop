@@ -15,6 +15,6 @@ index 513dbaa5d3ae1936763207df41a754edc400044e..49ad8d7b3f7702c9e4ea67b7168ba008
 +        return;
 +      }
 +
-       // @nova-cleanup(remove-conditional): Remove Nova CSS swapping logic
-       if (lazy.NOVA_ENABLED) {
-         const doc = this.contentWindow.document;
+       if (lazy.NEWTAB_REMOTE_RENDERER_ENABLED) {
+         // We asynchronously request the parent to assign the right renderer
+         // version to us, so that we can guarantee that the parent has locked

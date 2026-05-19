@@ -24,13 +24,13 @@ index db617c65b89643015d91b0f6a20eab7d7a1b598f..89ff6ebc774657e6f4ee76843995ab11
   * The current version. We can use this to auto-add new default widgets as necessary.
   * (would be const but isn't because of testing purposes)
 + *
-+ * Midori: bumped to 24 to migrate profiles that existed before MidoriVPN and
++ * Midori: bumped to 25 to migrate profiles that existed before MidoriVPN and
 + * MidoriPrivacy were added to the default navbar placements, so that existing
 + * users see these built-in extension buttons around the urlbar after an
 + * update instead of only on fresh profiles.
   */
--var kVersion = 23;
-+var kVersion = 24;
+-var kVersion = 24;
++var kVersion = 25;
  
  /**
   * Buttons removed from built-ins by version they were removed. kVersion must be
@@ -87,8 +87,8 @@ index db617c65b89643015d91b0f6a20eab7d7a1b598f..89ff6ebc774657e6f4ee76843995ab11
      // Unified Extensions addon button migration, which puts any browser action
      // buttons in the overflow menu into the addons panel instead.
      if (currentVersion < 19) {
-@@ -855,6 +852,31 @@ var CustomizableUIInternal = {
-         navbarPlacements.splice(buttonIndex, 1);
+@@ -852,6 +852,31 @@ var CustomizableUIInternal = {
+         navbarPlacements.push("reset-pbm-toolbar-button");
        }
      }
 +
@@ -96,7 +96,7 @@ index db617c65b89643015d91b0f6a20eab7d7a1b598f..89ff6ebc774657e6f4ee76843995ab11
 +    // placed around the urlbar for profiles that existed before they were
 +    // added to the default placements. Without this, upgraded users never
 +    // see the built-in extension buttons unless they reset their profile.
-+    if (currentVersion < 24) {
++    if (currentVersion < 25) {
 +      const { makeWidgetId } = lazy.ExtensionCommon;
 +      const privacyButtonId = `${makeWidgetId(kMidoriPrivacyID)}-browser-action`;
 +      const vpnButtonId = `${makeWidgetId(kMidoriVPNID)}-browser-action`;

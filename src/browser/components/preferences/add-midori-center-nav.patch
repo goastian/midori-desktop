@@ -2,41 +2,42 @@ diff --git a/browser/components/preferences/preferences.js b/browser/components/
 index 2d6cba7fac0c7de6d7c4a819f2c7ad20ce10bb33..4baad21014891d03590b45692e0e3067d779fd09 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -378,7 +378,15 @@ function init_all() {
-   gMainPane.preInit();
+@@ -452,9 +452,14 @@ function init_all() {
+    gSearchResultsPane.init();
+    gMainPane.preInit();
  
-   let categories = document.getElementById("categories");
--  categories.addEventListener("select", event => gotoPref(event.target.value));
-+  categories.addEventListener("select", event => {
-+    if (event.target.value === "paneMidoriCenter") {
+    let categories = document.getElementById("categories");
+-  categories.addEventListener("change-view", event => {
+-    gotoPref(event.target.view);
+-  });
++  categories.addEventListener("change-view", event => {
++    if (event.target.view === "paneMidoriCenter") {
 +      let mainWindow = window.browsingContext.topChromeWindow;
 +      mainWindow.openTrustedLinkIn("about:center", "tab");
-+      categories.clearSelection();
 +      return;
 +    }
-+    gotoPref(event.target.value);
++    gotoPref(event.target.view);
 +  });
  
-   document.documentElement.addEventListener("keydown", function (event) {
-     if (event.keyCode == KeyEvent.DOM_VK_TAB) {
+    maybeDisplayPoliciesNotice();
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
 index b006d5e5e64c418fbf930c010401e4ea3a3647a3..3b5d2a3f0a17aa55ab462a0843760f8de8bcbb20 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
-@@ -196,6 +196,15 @@
-           <label class="category-name" flex="1" data-l10n-id="more-from-moz-title"></label>
-         </richlistitem>
+@@ -160,9 +160,15 @@
+   <html:moz-page-nav-button id="category-more-from-mozilla"
+     hidden="true"
+     view="paneMoreFromMozilla"
+     iconsrc="chrome://browser/skin/preferences/mozilla-logo.svg"
+     data-l10n-id="more-from-moz-title">
+   </html:moz-page-nav-button>
++      <html:moz-page-nav-button id="category-midori-center"
++        view="paneMidoriCenter"
++        iconsrc="chrome://browser/skin/preferences/category-general.svg"
++        label="Midori Center"
++        tooltiptext="Midori Center">
++      </html:moz-page-nav-button>
  
-+        <richlistitem id="category-midori-center"
-+                      class="category"
-+                      value="paneMidoriCenter"
-+                      align="center"
-+                      tooltiptext="Midori Center">
-+          <image class="category-icon" style="list-style-image: url('chrome://browser/skin/preferences/category-general.svg');"/>
-+          <label class="category-name" flex="1">Midori Center</label>
-+        </richlistitem>
-+
-         <!-- The following <richlistitem> elements are hidden from the list of items via the hidden-category class.
-             The intent is that they act as sub-pages, accessible from the UI of one of the main pages, but are
-             not listed as primary pages themselves via the selector.
+   <!-- Hidden sub-page entries (CSS display:none via .hidden-category).
+        These keep gotoPref() routing working for sub-pages that are
 
