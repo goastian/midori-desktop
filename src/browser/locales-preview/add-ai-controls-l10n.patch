@@ -1,0 +1,65 @@
+diff --git a/browser/locales-preview/aiFeatures.ftl b/browser/locales-preview/aiFeatures.ftl
+index 39bffc661cf..9fb1d95cb74 100644
+--- a/browser/locales-preview/aiFeatures.ftl
++++ b/browser/locales-preview/aiFeatures.ftl
+@@ -3,6 +3,60 @@
+ # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ 
+ preferences-ai-controls-block-confirmation-smart-window = Smart Window
++preferences-ai-controls-description = Choose which AI features can run in your browser.
++
++preferences-ai-controls-state-description-before = Feature states:
++preferences-ai-controls-state-description-available = Available: You can choose to enable this feature.
++preferences-ai-controls-state-description-enabled = Enabled: This feature is currently active.
++preferences-ai-controls-state-description-blocked = Blocked: This feature is disabled and cannot run.
++
++preferences-ai-controls-block-ai =
++    .label = Block all AI features
++preferences-ai-controls-block-ai-description = Disable AI features across the browser. <a data-l10n-name="link">Learn more</a>
++preferences-ai-controls-blocked-message =
++    .message = AI features are blocked. Unblock them to use AI controls.
++
++preferences-ai-controls-on-device-group =
++    .label = On-device AI features
++    .description = Control AI features that run locally on your device.
++preferences-ai-controls-translations-control =
++    .label = Translation suggestions
++preferences-ai-controls-translations-more-link =
++    .label = Configure translations
++preferences-ai-controls-pdfjs-control =
++    .label = PDF alt text generation
++preferences-ai-controls-tab-group-suggestions-control =
++    .label = Tab group suggestions
++preferences-ai-controls-key-points-control =
++    .label = Link preview key points
++
++preferences-ai-controls-sidebar-chatbot-group =
++    .label = Sidebar chatbot
++    .description = Choose whether chat providers can appear in the sidebar.
++preferences-ai-controls-sidebar-chatbot-control =
++    .label = Sidebar chatbot access
++
++preferences-ai-controls-state-available =
++    .label = Available
++preferences-ai-controls-state-enabled =
++    .label = Enabled
++preferences-ai-controls-state-blocked =
++    .label = Blocked
++
++preferences-ai-controls-block-confirmation-heading = Block all AI features?
++preferences-ai-controls-block-confirmation-description = This will block AI features across your browser.
++preferences-ai-controls-block-confirmation-features-start = The following features will be blocked:
++preferences-ai-controls-block-confirmation-translations = Translation suggestions
++preferences-ai-controls-block-confirmation-pdfjs = PDF alt text generation
++preferences-ai-controls-block-confirmation-tab-group-suggestions = Tab group suggestions
++preferences-ai-controls-block-confirmation-key-points = Link preview key points
++preferences-ai-controls-block-confirmation-sidebar-chatbot = Sidebar chatbot
++preferences-ai-controls-block-confirmation-features-after = You can re-enable these features later from Settings.
++preferences-ai-controls-block-confirmation-cancel =
++    .label = Cancel
++preferences-ai-controls-block-confirmation-confirm =
++    .label = Block
++
+ smart-window-block-title = Block Smart Window?
+ smart-window-block-description-both = This will delete your Smart Window chats and memories.
+ smart-window-block-description-chats = This will delete your Smart Window chats.
