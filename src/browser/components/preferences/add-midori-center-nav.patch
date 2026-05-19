@@ -24,7 +24,7 @@ diff --git a/browser/components/preferences/preferences.xhtml b/browser/componen
 index b006d5e5e64c418fbf930c010401e4ea3a3647a3..3b5d2a3f0a17aa55ab462a0843760f8de8bcbb20 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
-@@ -160,9 +160,15 @@
+@@ -160,9 +160,14 @@
    <html:moz-page-nav-button id="category-more-from-mozilla"
      hidden="true"
      view="paneMoreFromMozilla"
