@@ -34,8 +34,7 @@ index b006d5e5e64c418fbf930c010401e4ea3a3647a3..3b5d2a3f0a17aa55ab462a0843760f8d
 +      <html:moz-page-nav-button id="category-midori-center"
 +        view="paneMidoriCenter"
 +        iconsrc="chrome://browser/skin/preferences/category-general.svg"
-+        label="Midori Center"
-+        tooltiptext="Midori Center">
++        data-l10n-id="pane-midori-center-title">
 +      </html:moz-page-nav-button>
  
    <!-- Hidden sub-page entries (CSS display:none via .hidden-category).

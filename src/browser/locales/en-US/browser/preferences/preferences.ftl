@@ -60,6 +60,14 @@ pane-sync-title3 = Sync
 category-sync3 =
     .tooltiptext = { pane-sync-title3 }
 
+pane-ai-controls-title = AI
+category-ai-controls =
+    .tooltiptext = { pane-ai-controls-title }
+
+pane-midori-center-title = Midori Center
+category-midori-center =
+    .tooltiptext = { pane-midori-center-title }
+
 settings-pane-labs-title = { -firefoxlabs-brand-name }
 settings-category-labs =
     .tooltiptext = { -firefoxlabs-brand-name }
