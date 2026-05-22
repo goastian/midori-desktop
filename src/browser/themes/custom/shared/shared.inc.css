@@ -52,17 +52,28 @@
   display: inline-flex !important;
 }
 
-/* Vertical tabs can keep the urlbar in invalid state while permission
-   prompts are being anchored. Keep only the native permission/notification
-   anchors visible in that state so WebRTC/camera prompts still appear in
-   the correct urlbar location. */
-:root[midori-vertical-tabs] .urlbar-input-container[pageproxystate="invalid"] > #identity-box > #notification-popup-box {
+/* Firefox 151 can hide the whole identity block while the urlbar is invalid.
+   Permission prompts still anchor there, so keep the identity container and
+   native permission anchors alive whenever a permission notification is active. */
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box:has(> #notification-popup-box:not([hidden])) {
+  display: inline-flex !important;
+  pointer-events: auto !important;
+  -moz-user-focus: normal !important;
+}
+
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box > #notification-popup-box:not([hidden]) {
   display: inline-flex !important;
 }
 
-:root[midori-vertical-tabs] .urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[open="true"],
-:root[midori-vertical-tabs] .urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[hasPermissions],
-:root[midori-vertical-tabs] .urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[hasSharingIcon] {
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box:has(> #identity-permission-box:is([open="true"], [hasPermissions], [hasSharingIcon])) {
+  display: inline-flex !important;
+  pointer-events: auto !important;
+  -moz-user-focus: normal !important;
+}
+
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[open="true"],
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[hasPermissions],
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[hasSharingIcon] {
   display: inline-flex !important;
 }
 
