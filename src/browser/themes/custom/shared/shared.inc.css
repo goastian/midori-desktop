@@ -13,9 +13,19 @@
 
 :root {
   --midori-border-radius: 8px;
+  --midori-island-radius: 14px;
+  --midori-pill-radius: 999px;
+  --midori-content-radius: 12px;
+  --midori-tab-group-radius: 12px;
+  --midori-chrome-gutter: 6px;
+  --midori-content-gutter: 6px;
   --midori-border-subtle: 1px solid color-mix(in srgb, currentColor 8%, transparent);
   --midori-border-medium: 1px solid color-mix(in srgb, currentColor 12%, transparent);
-
+  --midori-surface-flat: color-mix(
+    in srgb,
+    var(--toolbar-field-background-color, var(--toolbar-bgcolor)) 82%,
+    var(--toolbar-color, currentColor) 5%
+  );
   --midori-btn-hover: color-mix(in srgb, currentColor 8%, transparent);
   --midori-btn-active: color-mix(in srgb,
     var(--focus-outline-color, AccentColor) 18%, transparent);
@@ -36,11 +46,95 @@
    ==================================================================== */
 
 #navigator-toolbox {
-  border-bottom: var(--midori-border-subtle) !important;
+  background-color: var(--toolbar-bgcolor) !important;
+  border-bottom: 0 !important;
 }
 
 #navigator-toolbox #nav-bar {
-  background-color: transparent !important;
+  margin: 0 var(--midori-chrome-gutter) var(--midori-chrome-gutter) !important;
+  border: var(--midori-border-subtle) !important;
+  border-radius: var(--midori-island-radius) !important;
+  background-color: var(--midori-surface-flat) !important;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, currentColor 5%, transparent) !important;
+}
+
+:root:not([inFullscreen]) #TabsToolbar {
+  padding-inline: var(--midori-chrome-gutter) !important;
+}
+
+:root:not([inFullscreen]) #tabbrowser-tabbox {
+  margin-inline: var(--midori-content-gutter) !important;
+  margin-block-end: var(--midori-content-gutter) !important;
+  border-radius: var(--midori-content-radius) !important;
+  background-color: var(--tabpanel-background-color,
+    var(--lwt-accent-color, Canvas)) !important;
+  overflow: clip !important;
+}
+
+:root[inFullscreen] #tabbrowser-tabbox {
+  margin: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+#tabbrowser-tabpanels {
+  border-radius: inherit !important;
+}
+
+#urlbar:not([open]) {
+  border-radius: var(--midori-pill-radius) !important;
+}
+
+#urlbar:not([open]) #urlbar-background,
+#urlbar:not([open]) .urlbar-background {
+  border-radius: var(--midori-pill-radius) !important;
+  border: var(--midori-border-subtle) !important;
+  background-color: var(--toolbar-field-background-color, var(--toolbar-bgcolor)) !important;
+}
+
+#urlbar[focused]:not([open]) #urlbar-background,
+#urlbar[focused]:not([open]) .urlbar-background {
+  border-color: color-mix(
+    in srgb,
+    var(--focus-outline-color, AccentColor) 42%,
+    transparent
+  ) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--toolbar-field-focus-background-color, var(--toolbar-field-background-color, var(--toolbar-bgcolor))) 92%,
+    var(--focus-outline-color, AccentColor) 8%
+  ) !important;
+}
+
+.tabbrowser-tab .tab-background {
+  border-radius: var(--midori-island-radius) !important;
+  transition: background-color 150ms ease, border-color 150ms ease !important;
+}
+
+.tabbrowser-tab:hover .tab-background {
+  background-color: color-mix(in srgb, currentColor 7%, transparent) !important;
+}
+
+.tabbrowser-tab[selected] .tab-background {
+  background-color: color-mix(
+    in srgb,
+    var(--focus-outline-color, AccentColor) 12%,
+    var(--toolbar-bgcolor)
+  ) !important;
+  outline: 1px solid color-mix(
+    in srgb,
+    var(--focus-outline-color, AccentColor) 26%,
+    transparent
+  ) !important;
+  outline-offset: -1px !important;
+}
+
+.toolbarbutton-1 > .toolbarbutton-icon,
+.toolbarbutton-1 > .toolbarbutton-badge-stack,
+.urlbar-page-action,
+#identity-box,
+#trust-icon-container {
+  border-radius: var(--midori-pill-radius) !important;
 }
 
 /* Keep bookmark, reader-mode, and translations buttons visible even when
@@ -52,29 +146,42 @@
   display: inline-flex !important;
 }
 
-/* Firefox 151 can hide the whole identity block while the urlbar is invalid.
+/* Firefox 151 hides invalid-page identity children from identity-block.css.
    Permission prompts still anchor there, so keep the identity container and
    native permission anchors alive whenever a permission notification is active. */
+#identity-box[pageproxystate="invalid"]:has(> #notification-popup-box:not([hidden])),
 .urlbar-input-container[pageproxystate="invalid"] > #identity-box:has(> #notification-popup-box:not([hidden])) {
   display: inline-flex !important;
   pointer-events: auto !important;
   -moz-user-focus: normal !important;
 }
 
+#identity-box[pageproxystate="invalid"] > #notification-popup-box:not([hidden]),
 .urlbar-input-container[pageproxystate="invalid"] > #identity-box > #notification-popup-box:not([hidden]) {
   display: inline-flex !important;
 }
 
+#identity-box[pageproxystate="invalid"]:has(> #identity-permission-box:is([open="true"], [hasPermissions], [hasSharingIcon])),
 .urlbar-input-container[pageproxystate="invalid"] > #identity-box:has(> #identity-permission-box:is([open="true"], [hasPermissions], [hasSharingIcon])) {
   display: inline-flex !important;
   pointer-events: auto !important;
   -moz-user-focus: normal !important;
 }
 
+#identity-box[pageproxystate="invalid"] > #identity-permission-box[open="true"],
+#identity-box[pageproxystate="invalid"] > #identity-permission-box[hasPermissions],
+#identity-box[pageproxystate="invalid"] > #identity-permission-box[hasSharingIcon],
 .urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[open="true"],
 .urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[hasPermissions],
 .urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[hasSharingIcon] {
   display: inline-flex !important;
+}
+
+#urlbar[pageproxystate="invalid"] #identity-box:has(> #notification-popup-box:not([hidden])),
+#urlbar[pageproxystate="invalid"] #identity-box:has(> #identity-permission-box:is([open="true"], [hasPermissions], [hasSharingIcon])) {
+  display: inline-flex !important;
+  pointer-events: auto !important;
+  -moz-user-focus: normal !important;
 }
 
 /* Midori uses browser.urlbar.trustPanel.featureGate=true, so
@@ -195,6 +302,106 @@
 #vertical-tabs-newtab-button {
   transition: background-color 0.15s ease !important;
   border-radius: var(--midori-border-radius) !important;
+}
+
+/* ====================================================================
+   TAB GROUPS — Nova-flat grouped tab islands
+   ==================================================================== */
+
+#tabbrowser-tabs[orient="horizontal"] {
+  --tab-group-label-padding: 8px;
+  --tab-group-line-thickness: 3px;
+  --tab-group-line-toolbar-border-distance: 2px;
+}
+
+#tabbrowser-tabs[orient="horizontal"] tab-group:not([collapsed]) > .tab-group-label-container {
+  margin-inline-start: 4px !important;
+  padding-inline-end: 2px !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] .tab-group-label-hover-highlight {
+  border-radius: var(--midori-pill-radius) !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] .tab-group-label {
+  min-height: 28px !important;
+  min-width: 28px !important;
+  max-width: 16em !important;
+  padding-inline: 10px !important;
+  border-radius: var(--midori-pill-radius) !important;
+  background-color: color-mix(
+    in srgb,
+    var(--tab-group-color) 16%,
+    var(--toolbar-bgcolor)
+  ) !important;
+  color: var(--toolbar-color) !important;
+  outline: 1px solid color-mix(
+    in srgb,
+    var(--tab-group-color) 36%,
+    transparent
+  ) !important;
+  outline-offset: -1px !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  line-height: 26px !important;
+  margin-block: auto !important;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, currentColor 5%, transparent) !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] tab-group[collapsed] > .tab-group-label-container .tab-group-label {
+  background-color: color-mix(
+    in srgb,
+    var(--tab-group-color) 20%,
+    var(--toolbar-bgcolor)
+  ) !important;
+  color: var(--toolbar-color) !important;
+  outline-color: color-mix(in srgb, var(--tab-group-color) 48%, transparent) !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] tab-group[collapsed]:not([movingtabgroup]) .tab-group-label-hover-highlight:hover,
+#tabbrowser-tabs[orient="horizontal"] tab-group[previewpanelactive] .tab-group-label-hover-highlight {
+  background-color: color-mix(in srgb, var(--tab-group-color) 12%, transparent) !important;
+  box-shadow: none !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] tab-group .tab-group-line,
+#tabbrowser-tabs[orient="horizontal"] tab-group > .tab-group-label-container::after,
+#tabbrowser-tabs[orient="horizontal"] tab-group > .tab-group-overflow-count-container::after {
+  height: var(--tab-group-line-thickness) !important;
+  inset-block-end: var(--tab-group-line-toolbar-border-distance) !important;
+  border-radius: var(--midori-pill-radius) !important;
+  background-color: color-mix(in srgb, var(--tab-group-color) 46%, transparent) !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] tab-group:not([collapsed]) > .tabbrowser-tab {
+  padding-inline: 1px !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] tab-group:not([collapsed]) > .tabbrowser-tab .tab-background {
+  border-radius: var(--midori-tab-group-radius) !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] tab-group:not([collapsed]) > .tabbrowser-tab:hover .tab-background {
+  background-color: color-mix(in srgb, var(--tab-group-color) 10%, transparent) !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] tab-group:not([collapsed]) > .tabbrowser-tab[selected] .tab-background {
+  background-color: color-mix(
+    in srgb,
+    var(--tab-group-color) 18%,
+    var(--toolbar-bgcolor)
+  ) !important;
+  outline-color: color-mix(in srgb, var(--tab-group-color) 36%, transparent) !important;
+}
+
+#tabbrowser-tabs[orient="horizontal"] .tab-group-overflow-count {
+  color: var(--toolbar-color) !important;
+  background-color: color-mix(in srgb, var(--tab-group-color) 14%, var(--toolbar-bgcolor)) !important;
+  border-radius: var(--midori-pill-radius) !important;
+  outline: 1px solid color-mix(in srgb, var(--tab-group-color) 36%, transparent) !important;
+  outline-offset: -1px !important;
+  padding: 3px 8px !important;
+  margin-block: auto !important;
 }
 
 /* ====================================================================
@@ -356,12 +563,19 @@ menupopup:not([position]) {
   --midori-vt-tab-radius: 11px;
   --midori-vt-accent: var(--focus-outline-color, AccentColor);
   --midori-vt-divider: color-mix(in srgb, currentColor 12%, transparent);
+  min-width: calc(var(--window-min-width, 500px) + var(--window-min-width-increase-for-vertical-tabs, 138px)) !important;
+}
+
+:root[midori-vertical-tabs][contentanalysisactive]:not([chromehidden~="toolbar"]) {
+  min-width: calc(var(--window-min-width, 500px) + var(--window-min-width-increase-for-vertical-tabs, 138px) + 36px) !important;
 }
 
 :root[midori-vertical-tabs] #sidebar-box {
   width: var(--midori-vt-width) !important;
   min-width: var(--midori-vt-width) !important;
   max-width: var(--midori-vt-width) !important;
+  position: relative;
+  z-index: var(--browser-area-z-index-sidebar, 1);
 }
 
 :root[midori-vertical-tabs] #vertical-tabs {
