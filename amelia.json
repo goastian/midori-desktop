@@ -6,7 +6,7 @@
   "version": {
     "product": "firefox",
     "version": "151.0.2",
-    "candidate": "151.0"
+    "candidate": "151.0.2"
   },
   "buildOptions": {
     "generateBranding": true
@@ -15,9 +15,9 @@
     "midori-privacy": {
       "id": "midori-privacy-blocker",
       "repo": "goastian/midori-privacy",
-      "version": "v2.2.4",
+      "version": "v2.2.5",
       "platform": "github",
-      "fileGlob": "midori-privacy-2.2.4-firefox.zip"
+      "fileGlob": "midori-privacy-2.2.5-firefox.zip"
     },
     "midori-newtab": {
       "id": "midori-newtab",
