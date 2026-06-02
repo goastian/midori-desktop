@@ -61,7 +61,7 @@
       "brandShortName": "Dawn",
       "brandFullName": "Midori Dawn",
       "release": {
-        "displayVersion": "11.6.3",
+        "displayVersion": "12.0",
         "github": {
           "repo": "goastian/midori-desktop"
         }
