@@ -22,3 +22,11 @@ target/
 .vscode/
 locales/
 locales/firefox-l10n/
+
+update.astian.org/
+update.astian.org/browser/
+.mozbuild/
+build/
+build-*/
+build-*/dist/
+flatpak-node/
