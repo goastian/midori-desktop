@@ -15,9 +15,9 @@
     "midori-privacy": {
       "id": "midori-privacy-blocker",
       "repo": "goastian/midori-privacy",
-      "version": "v2.2.7",
+      "version": "v2.2.8",
       "platform": "github",
-      "fileGlob": "midori-privacy-2.2.7-firefox.zip"
+      "fileGlob": "midori-privacy-2.2.8-firefox.zip"
     },
     "midori-newtab": {
       "id": "midori-newtab",
