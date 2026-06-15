@@ -5,8 +5,8 @@
   "binaryName": "midori",
   "version": {
     "product": "firefox",
-    "version": "151.0.3",
-    "candidate": "151.0.3"
+    "version": "151.0.4",
+    "candidate": "151.0.4"
   },
   "buildOptions": {
     "generateBranding": true
@@ -41,7 +41,7 @@
       "brandShortName": "Midori",
       "brandFullName": "Midori Browser",
       "release": {
-        "displayVersion": "11.8.1",
+        "displayVersion": "11.8.2",
         "github": {
           "repo": "goastian/midori-desktop"
         },
