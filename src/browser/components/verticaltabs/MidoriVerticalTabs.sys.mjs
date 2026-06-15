@@ -31,6 +31,7 @@ const PREF_VERTICAL_SHOW_PINNED_SECTION = 'midori.verticaltabs.showPinnedSection
 const PREF_VERTICAL_ESSENTIALS_ENABLED = 'midori.verticaltabs.essentials.enabled';
 const PREF_VERTICAL_ESSENTIALS_MAX = 'midori.verticaltabs.essentials.max';
 const PREF_VERTICAL_ESSENTIALS_PROMO = 'midori.verticaltabs.essentialsPromo';
+const PREF_VERTICAL_URLBAR_AUTO_SELECT = 'midori.verticaltabs.urlbar.autoSelect';
 const PREF_VERTICAL_ACCENT_MODE = 'midori.verticaltabs.accent.mode';
 const PREF_VERTICAL_ACCENT_CUSTOM = 'midori.verticaltabs.accent.custom';
 const PREF_HORIZONTAL_POSITION = 'midori.horizontaltabs.position';
@@ -54,6 +55,7 @@ const OBSERVED_PREFS = new Set([
   PREF_VERTICAL_ESSENTIALS_ENABLED,
   PREF_VERTICAL_ESSENTIALS_MAX,
   PREF_VERTICAL_ESSENTIALS_PROMO,
+  PREF_VERTICAL_URLBAR_AUTO_SELECT,
   PREF_VERTICAL_ACCENT_MODE,
   PREF_VERTICAL_ACCENT_CUSTOM,
   PREF_HORIZONTAL_POSITION,
@@ -77,6 +79,7 @@ export const MidoriVerticalTabs = {
     Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_ENABLED, this);
     Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_MAX, this);
     Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_PROMO, this);
+    Services.prefs.addObserver(PREF_VERTICAL_URLBAR_AUTO_SELECT, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_MODE, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_CUSTOM, this);
     Services.prefs.addObserver(PREF_HORIZONTAL_POSITION, this);
@@ -150,6 +153,10 @@ export const MidoriVerticalTabs = {
 
   _isEssentialsPromoEnabled() {
     return Services.prefs.getBoolPref(PREF_VERTICAL_ESSENTIALS_PROMO, true);
+  },
+
+  _isUrlbarAutoSelectEnabled() {
+    return Services.prefs.getBoolPref(PREF_VERTICAL_URLBAR_AUTO_SELECT, true);
   },
 
   _getAccentMode() {
@@ -463,7 +470,7 @@ export const MidoriVerticalTabs = {
 
     new win.MutationObserver(() => {
       const isOpen = urlbar.hasAttribute('open');
-      if (isOpen && !wasOpen && !userTyping) {
+      if (isOpen && !wasOpen && !userTyping && this._isUrlbarAutoSelectEnabled()) {
         // Only select on fresh open before any keystrokes
         input.select();
       }
