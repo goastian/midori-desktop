@@ -115,8 +115,11 @@ pref('midori.sidebar.keeptabsactive.enabled', false);
 
 // PiP prefs
 pref('media.videocontrols.picture-in-picture.audio-toggle.enabled', true);
-// PiP skin: "off", "compact", "island"
+// PiP skin: "off", "compact", "island", "mini"
 pref('midori.pip.skin', 'compact');
+// Keep PDF.js visually aligned with Midori's flat/Nova chrome while retaining
+// the upstream viewer's default controls and accessibility semantics.
+pref('midori.pdfjs.flat.enabled', true);
 
 pref('browser.discovery.enabled', false);
 pref('svg.context-properties.content.enabled', true);
@@ -232,6 +235,7 @@ pref('midori.verticaltabs.showPinnedSection', true);
 pref('midori.verticaltabs.essentials.enabled', true);
 pref('midori.verticaltabs.essentials.max', 4);
 pref('midori.verticaltabs.essentialsPromo', true);
+pref('midori.verticaltabs.urlbar.autoSelect', true);
 pref('midori.verticaltabs.accent.mode', 'workspace');
 pref('midori.verticaltabs.accent.custom', '#2d8659');
 pref('midori.horizontaltabs.position', 'top');
