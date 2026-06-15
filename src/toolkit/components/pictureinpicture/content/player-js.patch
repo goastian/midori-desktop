@@ -2,26 +2,26 @@ diff --git a/toolkit/components/pictureinpicture/content/player.js b/toolkit/com
 index 34d92dcfba54de4752036d0e251243729b6c9626..78ce1bf721fc700a27d9f2795d030e32a0f29757 100644
 --- a/toolkit/components/pictureinpicture/content/player.js
 +++ b/toolkit/components/pictureinpicture/content/player.js
-@@ -29,6 +29,8 @@ const IMPROVED_CONTROLS_ENABLED_PREF =
+@@ -29,6 +29,9 @@ const IMPROVED_CONTROLS_ENABLED_PREF =
    "media.videocontrols.picture-in-picture.improved-video-controls.enabled";
  const SEETHROUGH_MODE_ENABLED_PREF =
    "media.videocontrols.picture-in-picture.seethrough-mode.enabled";
 +const MIDORI_PIP_SKIN_PREF =
 +  "midori.pip.skin";
++const MIDORI_PIP_SKINS = new Set(["compact", "island", "mini"]);
  
  /**
   * The "showing" attribute means that we intentionally want to show controls
-@@ -379,6 +381,13 @@ let Player = {
+@@ -379,6 +381,12 @@ let Player = {
        document.documentElement.classList.add("seethrough-mode");
      }
  
 +    // Keep Midori PiP skin fully opt-in via pref.
-+    // Values: "off" (stock Firefox), "compact", "island".
++    // Values: "off" (stock Firefox), "compact", "island", "mini".
 +    const pipSkin = Services.prefs.getStringPref(MIDORI_PIP_SKIN_PREF, "off");
-+    if (pipSkin && pipSkin !== "off") {
++    if (MIDORI_PIP_SKINS.has(pipSkin)) {
 +      document.documentElement.setAttribute("midori-pip-skin", pipSkin);
 +    }
-+
      this._isInitialized = true;
    },
  
