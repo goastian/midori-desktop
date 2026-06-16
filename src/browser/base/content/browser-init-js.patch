@@ -2,28 +2,42 @@ diff --git a/browser/base/content/browser-init.js b/browser/base/content/browser
 index b64d2f52ed1eb3d0b8aa86700bc082d3fc95152b..d0099d2f49228b2fd8c24b237764014cec375b50 100644
 --- a/browser/base/content/browser-init.js
 +++ b/browser/base/content/browser-init.js
-@@ -513,6 +513,26 @@ var gBrowserInit = {
+@@ -567,6 +567,40 @@ var gBrowserInit = {
      gProtectionsHandler.init();
      gTrustPanelHandler.init();
  
-+    // Midori: Move midori-privacy extension icon into URL bar
++    // Midori: keep the built-in Midori Privacy browser action at the start of
++    // the URL bar. The Rust/WASM rewrite can register its browser-action later
++    // than the old extension, so use an observer instead of a short retry loop.
 +    {
-+      let attempts = 0;
-+      let moveWidget = () => {
-+        let widget = document.getElementById(
-+          "midori-protection_astian_org-browser-action"
-+        );
-+        let urlbarContainer = document.querySelector(".urlbar-input-container");
-+        if (widget && urlbarContainer) {
-+          widget.querySelector(".toolbarbutton-text")?.setAttribute("hidden", "true");
-+          widget.setAttribute("cui-areatype", "toolbar");
-+          urlbarContainer.insertAdjacentElement("afterbegin", widget);
-+        } else if (attempts < 50) {
-+          attempts++;
-+          setTimeout(moveWidget, 100);
++      const widgetId = "midori-protection_astian_org-browser-action";
++      const moveWidget = () => {
++        const widget = document.getElementById(widgetId);
++        const urlbarContainer = document.querySelector(".urlbar-input-container");
++        if (!widget || !urlbarContainer) {
++          return false;
 +        }
++
++        widget.querySelector(".toolbarbutton-text")?.setAttribute("hidden", "true");
++        widget.setAttribute("cui-areatype", "toolbar");
++        widget.setAttribute("midori-urlbar-action", "privacy");
++        if (widget.parentElement !== urlbarContainer || widget.previousElementSibling) {
++          urlbarContainer.prepend(widget);
++        }
++        return true;
 +      };
-+      moveWidget();
++
++      if (!moveWidget()) {
++        const navTarget = document.getElementById("nav-bar-customization-target");
++        const observerRoot = navTarget || document.getElementById("navigator-toolbox") || document;
++        const observer = new MutationObserver(() => {
++          if (moveWidget()) {
++            observer.disconnect();
++          }
++        });
++        observer.observe(observerRoot, { childList: true, subtree: true });
++        setTimeout(() => observer.disconnect(), 30000);
++      }
 +    }
 +
      let safeMode = document.getElementById("helpSafeMode");
