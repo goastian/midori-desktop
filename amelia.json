@@ -13,7 +13,7 @@
   },
   "addons": {
     "midori-privacy": {
-      "id": "midori-privacy-blocker",
+      "id": "midori-protection@astian.org",
       "repo": "goastian/midori-privacy",
       "version": "v2.3.1",
       "platform": "github",
