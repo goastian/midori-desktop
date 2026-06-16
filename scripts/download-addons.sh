@@ -6,8 +6,9 @@
 # download-addons.sh — Downloads and integrates addons from amelia.json
 # into engine/browser/extensions/ as builtin-addons for the Mozilla build system.
 #
-# Usage: bash scripts/download-addons.sh [--force]
+# Usage: bash scripts/download-addons.sh [--force] [addon-key ...]
 #   --force: Re-download and overwrite even if addon files already exist
+#   addon-key: Optional amelia.json addon key(s) to process, e.g. midori-privacy
 
 set -euo pipefail
 
@@ -77,10 +78,94 @@ sync_file_to_src() {
     cp "$src_file" "$dst_file"
 }
 
+normalize_manifest_locale() {
+    local addon_dir="$1"
+    local addon_key="$2"
+    local manifest_file="$addon_dir/manifest.json"
+
+    if [[ ! -f "$manifest_file" || ! -d "$addon_dir/_locales" ]]; then
+        return 0
+    fi
+
+    if jq -e '.default_locale? // empty' "$manifest_file" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [[ -f "$addon_dir/_locales/en/messages.json" ]]; then
+        local tmp_manifest
+        tmp_manifest="$(mktemp)"
+        jq '. + {default_locale: "en"}' "$manifest_file" > "$tmp_manifest"
+        mv "$tmp_manifest" "$manifest_file"
+        echo "INFO: Added default_locale=en for $addon_key because _locales/en/messages.json is present"
+    else
+        rm -rf "$addon_dir/_locales"
+        echo "WARNING: Removed incomplete _locales/ from $addon_key because manifest has no default_locale"
+    fi
+}
+
+normalize_manifest_wasm_policy() {
+    local addon_dir="$1"
+    local addon_key="$2"
+    local manifest_file="$addon_dir/manifest.json"
+
+    if [[ ! -f "$manifest_file" ]]; then
+        return 0
+    fi
+
+    if ! find "$addon_dir" -type f -name "*.wasm" -print -quit 2>/dev/null | grep -q .; then
+        return 0
+    fi
+
+    local manifest_version
+    manifest_version=$(jq -r '.manifest_version // empty' "$manifest_file" 2>/dev/null)
+    if [[ "$manifest_version" != "2" ]]; then
+        return 0
+    fi
+
+    local current_csp
+    current_csp=$(jq -r '.content_security_policy // empty' "$manifest_file" 2>/dev/null)
+    if [[ "$current_csp" == *"wasm-unsafe-eval"* && "$current_csp" == *"worker-src"* ]]; then
+        return 0
+    fi
+
+    local tmp_manifest
+    tmp_manifest="$(mktemp)"
+    jq '.content_security_policy = "script-src '\''self'\'' '\''wasm-unsafe-eval'\''; object-src '\''self'\''; worker-src '\''self'\''"' \
+        "$manifest_file" > "$tmp_manifest"
+    mv "$tmp_manifest" "$manifest_file"
+    echo "INFO: Added MV2 WASM/worker content_security_policy for $addon_key"
+}
+
+resolve_effective_addon_id() {
+    local addon_dir="$1"
+    local fallback_id="$2"
+    local manifest_file="$addon_dir/manifest.json"
+    local gecko_id=""
+
+    if [[ -f "$manifest_file" ]]; then
+        gecko_id=$(jq -r '.browser_specific_settings.gecko.id // .applications.gecko.id // empty' "$manifest_file" 2>/dev/null)
+    fi
+
+    if [[ -n "$gecko_id" ]]; then
+        printf '%s\n' "$gecko_id"
+    else
+        printf '%s\n' "$fallback_id"
+    fi
+}
+
 FORCE=false
-if [[ "${1:-}" == "--force" ]]; then
-    FORCE=true
-fi
+REQUESTED_ADDONS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --force)
+            FORCE=true
+            ;;
+        *)
+            REQUESTED_ADDONS+=("$1")
+            ;;
+    esac
+    shift
+done
 
 # Check dependencies
 for cmd in jq curl unzip; do
@@ -101,7 +186,17 @@ if [[ ! -d "$ENGINE_DIR" ]]; then
 fi
 
 # Read addons from amelia.json
-ADDON_KEYS=$(jq -r '.addons // {} | keys[]' "$AMELIA_JSON" 2>/dev/null)
+if [[ ${#REQUESTED_ADDONS[@]} -gt 0 ]]; then
+    for REQUESTED_ADDON in "${REQUESTED_ADDONS[@]}"; do
+        if ! jq -e --arg addon "$REQUESTED_ADDON" '.addons[$addon]' "$AMELIA_JSON" >/dev/null; then
+            echo "ERROR: Unknown addon key '$REQUESTED_ADDON' in amelia.json"
+            exit 1
+        fi
+    done
+    ADDON_KEYS="${REQUESTED_ADDONS[*]}"
+else
+    ADDON_KEYS=$(jq -r '.addons // {} | keys[]' "$AMELIA_JSON" 2>/dev/null)
+fi
 if [[ -z "$ADDON_KEYS" ]]; then
     echo "INFO: No addons defined in amelia.json"
     exit 0
@@ -117,7 +212,8 @@ for ADDON_KEY in $ADDON_KEYS; do
     echo "=== Processing addon: $ADDON_KEY ==="
 
     # Read addon config
-    ADDON_ID=$(jq -r ".addons[\"$ADDON_KEY\"].id" "$AMELIA_JSON")
+    CONFIGURED_ADDON_ID=$(jq -r ".addons[\"$ADDON_KEY\"].id" "$AMELIA_JSON")
+    ADDON_ID="$CONFIGURED_ADDON_ID"
     PLATFORM=$(jq -r ".addons[\"$ADDON_KEY\"].platform // \"unknown\"" "$AMELIA_JSON")
     EXPECTED_VERSION=$(jq -r ".addons[\"$ADDON_KEY\"].version // \"\"" "$AMELIA_JSON")
     ADDON_DIR="$EXTENSIONS_DIR/$ADDON_KEY"
@@ -181,7 +277,7 @@ for ADDON_KEY in $ADDON_KEYS; do
                     echo "WARNING: Creating stub addon for $ADDON_KEY so build can continue"
 
                     rm -rf "$ADDON_DIR"
-                    create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$ADDON_ID"
+                    create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$CONFIGURED_ADDON_ID"
                 fi
                 ;;
             amo)
@@ -224,8 +320,22 @@ for ADDON_KEY in $ADDON_KEYS; do
             flatten_single_root_if_needed "$ADDON_DIR"
         else
             echo "WARNING: Creating stub addon for $ADDON_KEY because download was not available"
-            create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$ADDON_ID"
+            create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$CONFIGURED_ADDON_ID"
         fi
+    fi
+
+    # Ensure manifest.json exists before generating build descriptors.
+    if [[ ! -f "$ADDON_DIR/manifest.json" ]]; then
+        echo "WARNING: $ADDON_KEY has no manifest.json after extraction. Creating stub manifest."
+        create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$CONFIGURED_ADDON_ID"
+    fi
+
+    normalize_manifest_locale "$ADDON_DIR" "$ADDON_KEY"
+    normalize_manifest_wasm_policy "$ADDON_DIR" "$ADDON_KEY"
+    ADDON_ID=$(resolve_effective_addon_id "$ADDON_DIR" "$CONFIGURED_ADDON_ID")
+
+    if [[ "$ADDON_ID" != "$CONFIGURED_ADDON_ID" ]]; then
+        echo "INFO: $ADDON_KEY uses manifest gecko ID: $ADDON_ID (configured fallback: $CONFIGURED_ADDON_ID)"
     fi
 
     # Always regenerate moz.build by scanning actual files in the addon directory.
@@ -305,31 +415,7 @@ for ADDON_KEY in $ADDON_KEYS; do
     # Sync jar.mn to src/ too
     sync_file_to_src "$ADDON_DIR/jar.mn" "$SRC_ADDON_DIR/jar.mn"
 
-    # Verify manifest.json exists and has required gecko ID
-    if [[ ! -f "$ADDON_DIR/manifest.json" ]]; then
-        echo "WARNING: $ADDON_KEY has no manifest.json after extraction. Creating stub manifest."
-        create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$ADDON_ID"
-
-        # Regenerate descriptors so FINAL_TARGET_FILES and jar.mn are consistent.
-        {
-            echo 'DEFINES["MOZ_APP_VERSION"] = CONFIG["MOZ_APP_VERSION"]'
-            echo 'DEFINES["MOZ_APP_MAXVERSION"] = CONFIG["MOZ_APP_MAXVERSION"]'
-            echo ''
-            echo 'JAR_MANIFESTS += ["jar.mn"]'
-            echo ''
-            echo "FINAL_TARGET_FILES.features[\"$ADDON_ID\"] += [\"manifest.json\"]"
-        } > "$ADDON_DIR/moz.build"
-
-        {
-            echo "browser.jar:"
-            echo "    builtin-addons/$ADDON_KEY/manifest.json (manifest.json)"
-        } > "$ADDON_DIR/jar.mn"
-
-        sync_file_to_src "$ADDON_DIR/moz.build" "$SRC_ADDON_DIR/moz.build"
-        sync_file_to_src "$ADDON_DIR/jar.mn" "$SRC_ADDON_DIR/jar.mn"
-    fi
-
-    GECKO_ID=$(jq -r '.browser_specific_settings.gecko.id // empty' "$ADDON_DIR/manifest.json" 2>/dev/null)
+    GECKO_ID=$(jq -r '.browser_specific_settings.gecko.id // .applications.gecko.id // empty' "$ADDON_DIR/manifest.json" 2>/dev/null)
     if [[ -z "$GECKO_ID" ]]; then
         echo "WARNING: $ADDON_KEY manifest.json has no browser_specific_settings.gecko.id"
         echo "WARNING: The extension may not load correctly as a builtin addon"
