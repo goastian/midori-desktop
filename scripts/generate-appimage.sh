@@ -97,6 +97,7 @@ copy_icon() {
     src="$BRAND_DIR/logo1024.png"
   fi
   [[ -f "$src" ]] || return 0
+  install -Dm0644 "$src" "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps/${APP_ID}.png"
   install -Dm0644 "$src" "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps/midori.png"
 }
 
@@ -168,7 +169,7 @@ cat > "$APPDIR/${APP_ID}.desktop" <<DESKTOP
 Name=${APP_NAME}
 Comment=A privacy-focused browser by Astian
 Exec=midori %u
-Icon=midori
+Icon=${APP_ID}
 Type=Application
 MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;application/x-xpinstall;application/pdf;application/json;
 StartupWMClass=midori
@@ -194,14 +195,16 @@ Name=Open the Profile Manager
 Exec=midori --ProfileManager %u
 DESKTOP
 
-ln -sfn "${APP_ID}.desktop" "$APPDIR/midori.desktop"
+install -Dm0644 "$APPDIR/${APP_ID}.desktop" "$APPDIR/midori.desktop"
 install -Dm0644 "$APPDIR/${APP_ID}.desktop" "$APPDIR/usr/share/applications/${APP_ID}.desktop"
+install -Dm0644 "$APPDIR/${APP_ID}.desktop" "$APPDIR/usr/share/applications/midori.desktop"
 
 for size in 16 22 24 32 48 64 128 256 512 1024; do
   copy_icon "$size"
 done
+install -Dm0644 "$BRAND_DIR/logo.png" "$APPDIR/${APP_ID}.png"
 install -Dm0644 "$BRAND_DIR/logo.png" "$APPDIR/midori.png"
-ln -sfn "midori.png" "$APPDIR/.DirIcon"
+ln -sfn "${APP_ID}.png" "$APPDIR/.DirIcon"
 
 if [[ -f "$ROOT_DIR/build/AppDir/distribution/policies.json" ]]; then
   install -Dm0644 "$ROOT_DIR/build/AppDir/distribution/policies.json" \
