@@ -272,7 +272,7 @@ export const MidoriVerticalTabs = {
     root.style.setProperty('--midori-vt-divider', 'color-mix(in srgb, currentColor 12%, transparent)');
     root.setAttribute('midori-vt-accent-mode', this._getAccentMode());
 
-    if (Services.locale.isAppLocaleRTL()) {
+    if (Services.locale.isAppLocaleRTL) {
       root.setAttribute('midori-vt-rtl', 'true');
     } else {
       root.removeAttribute('midori-vt-rtl');
