@@ -38,6 +38,9 @@ const PREF_SHOW_BUTTON = 'midori.workspaces.show-button';
 const PREF_SHOW_NAME = 'midori.workspaces.show-name';
 const PREF_VERTICAL = 'midori.verticaltabs.enabled';
 const PREF_SIDEBAR_VERTICAL = 'sidebar.verticalTabs';
+const PREF_UNLOAD_INACTIVE = 'midori.workspaces.unloadInactive';
+const PREF_UNLOAD_DELAY_MS = 'midori.workspaces.unloadDelayMs';
+const PREF_CHROME_TINT = 'midori.workspaces.chromeTint';
 
 const WORKSPACE_ATTR = 'midori-workspace-id';
 const WORKSPACE_SESSION_KEY = 'midoriWorkspaceId';
@@ -78,6 +81,7 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   SessionStore: 'resource:///modules/sessionstore/SessionStore.sys.mjs',
   setTimeout: 'resource://gre/modules/Timer.sys.mjs',
+  WorkspaceTabUnloader: 'resource:///modules/WorkspaceTabUnloader.sys.mjs',
 });
 
 /**
@@ -272,6 +276,7 @@ export const MidoriWorkspaces = {
     const state = this._windowStates.get(win);
     if (!state) return;
 
+    this._cancelInactiveUnload(win, state);
     this._detachTabListeners(win, state);
     this._removeTabContextMenu(win);
     this._removeUI(win);
@@ -566,6 +571,8 @@ export const MidoriWorkspaces = {
   _updateQuickIcons(win, state) {
     const doc = win.document;
 
+    this._applyChromeTint(win, state);
+
     // Vertical mode: update the dropdown button
     if (doc.getElementById(DROPDOWN_ID)) {
       this._updateDropdown(doc, state);
@@ -573,8 +580,42 @@ export const MidoriWorkspaces = {
     }
   },
 
+  /**
+   * Tint the browser chrome with the active workspace accent. Sets
+   * --midori-workspace-accent on the root so shared.inc.css can apply a
+   * subtle color-mix overlay on the toolbox. This reuses the same accent
+   * variable consumed by the vertical-tabs accent system, keeping a single
+   * source of truth. Controlled by pref midori.workspaces.chromeTint.
+   */
+  _applyChromeTint(win, state) {
+    const root = win.document?.documentElement;
+    if (!root) return;
+
+    if (!Services.prefs.getBoolPref(PREF_CHROME_TINT, true)) {
+      root.removeAttribute('midori-workspace-tint');
+      root.style.removeProperty('--midori-workspace-accent');
+      return;
+    }
+
+    const current = state.data.workspaces.find((ws) => ws.id === state.data.selectedId);
+    if (!current) {
+      root.removeAttribute('midori-workspace-tint');
+      root.style.removeProperty('--midori-workspace-accent');
+      return;
+    }
+
+    const accent = WorkspaceModel.getWorkspaceAccent(current.icon);
+    root.style.setProperty('--midori-workspace-accent', accent);
+    root.setAttribute('midori-workspace-tint', 'true');
+  },
+
   _removeUI(win) {
     const doc = win.document;
+    const root = doc.documentElement;
+    if (root) {
+      root.removeAttribute('midori-workspace-tint');
+      root.style.removeProperty('--midori-workspace-accent');
+    }
     const verticalRail = doc.getElementById(VERTICAL_RAIL_ID);
     if (verticalRail) verticalRail.remove();
     const dropdown = doc.getElementById(DROPDOWN_ID);
@@ -756,6 +797,11 @@ export const MidoriWorkspaces = {
     this._updateSelectorLabel(win.document, state);
     this._updateQuickIcons(win, state);
 
+    // Memory-aware unloading: schedule discard of now-hidden tabs that belong
+    // to inactive workspaces so they stop consuming memory while keeping the
+    // tab entry for instant on-demand reload.
+    this._scheduleInactiveUnload(win, state);
+
     // Dispatch custom event (Natsumi-style)
     try {
       const event = new win.CustomEvent('midoriWorkspaceChanged', {
@@ -765,6 +811,104 @@ export const MidoriWorkspaces = {
       });
       win.document.dispatchEvent(event);
     } catch (e) {}
+  },
+
+  // =========================================================================
+  // Memory-aware workspace unloading
+  // =========================================================================
+
+  /**
+   * Schedule a single per-window timer that discards tabs belonging to
+   * inactive workspaces. Re-scheduling on every switch keeps memory pressure
+   * low without unloading the workspace the user is actively using; the active
+   * workspace is re-evaluated when the timer fires, so quickly switching back
+   * cancels the unload for that workspace's tabs.
+   */
+  _scheduleInactiveUnload(win, state) {
+    this._cancelInactiveUnload(win, state);
+
+    if (!Services.prefs.getBoolPref(PREF_UNLOAD_INACTIVE, true)) {
+      return;
+    }
+
+    const gBrowser = win.gBrowser;
+    if (!gBrowser) return;
+
+    // Skip scheduling when nothing is currently unloadable.
+    const hasCandidate = Array.from(gBrowser.tabs).some((tab) =>
+      this._isUnloadCandidate(state, tab)
+    );
+    if (!hasCandidate) {
+      return;
+    }
+
+    const delayMs = lazy.WorkspaceTabUnloader.getUnloadDelayMs(
+      Services.prefs.getIntPref(PREF_UNLOAD_DELAY_MS, 0)
+    );
+
+    state._unloadTimer = win.setTimeout(() => {
+      state._unloadTimer = null;
+      this._unloadInactiveTabs(win, state);
+    }, delayMs);
+  },
+
+  _cancelInactiveUnload(win, state) {
+    if (state && state._unloadTimer) {
+      try {
+        win.clearTimeout(state._unloadTimer);
+      } catch (e) {}
+      state._unloadTimer = null;
+    }
+  },
+
+  /**
+   * Build the pure decision state for a tab and ask WorkspaceTabUnloader
+   * whether it is safe to discard given the active workspace.
+   */
+  _isUnloadCandidate(state, tab) {
+    if (!tab || tab.pinned || tab.closing) {
+      return false;
+    }
+
+    const activeId = state.data.selectedId;
+    const tabWorkspaceId = this._resolveTabWorkspace(state, tab, activeId);
+
+    let uriSpec = '';
+    try {
+      uriSpec = tab.linkedBrowser?.currentURI?.spec || '';
+    } catch (e) {}
+
+    return lazy.WorkspaceTabUnloader.shouldUnloadTab({
+      belongsToActiveWorkspace: tabWorkspaceId === activeId,
+      selected: !!tab.selected,
+      multiselected: !!tab.multiselected,
+      pinned: !!tab.pinned,
+      closing: !!tab.closing,
+      discarded: tab.getAttribute?.('discarded') === 'true',
+      busy: tab.getAttribute?.('busy') === 'true',
+      soundPlaying: !!tab.soundPlaying,
+      attention: !!tab.attention,
+      hasLinkedPanel: !!tab.linkedPanel,
+      autoDiscardable: tab.autoDiscardable !== false,
+      uriSpec,
+    });
+  },
+
+  _unloadInactiveTabs(win, state) {
+    if (win.closed) return;
+    const gBrowser = win.gBrowser;
+    if (!gBrowser) return;
+
+    for (const tab of Array.from(gBrowser.tabs)) {
+      if (!this._isUnloadCandidate(state, tab)) {
+        continue;
+      }
+      try {
+        gBrowser.discardBrowser(tab);
+      } catch (error) {
+        console.error('MidoriWorkspaces: Failed to discard tab', error);
+      }
+    }
   },
 
   /**

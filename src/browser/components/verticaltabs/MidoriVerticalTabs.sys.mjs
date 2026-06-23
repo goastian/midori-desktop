@@ -25,6 +25,7 @@ const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
 const PREF_VERTICAL_WIDTH = 'midori.verticaltabs.width';
 const PREF_VERTICAL_DENSITY = 'midori.verticaltabs.density';
 const PREF_VERTICAL_COMPACT = 'midori.verticaltabs.compact';
+const PREF_VERTICAL_COLLAPSE = 'midori.verticaltabs.collapse';
 const PREF_VERTICAL_FLOATING_URLBAR = 'midori.verticaltabs.floatingUrlbar';
 const PREF_VERTICAL_SHOW_RAIL = 'midori.verticaltabs.showRail';
 const PREF_VERTICAL_SHOW_PINNED_SECTION = 'midori.verticaltabs.showPinnedSection';
@@ -49,6 +50,7 @@ const OBSERVED_PREFS = new Set([
   PREF_VERTICAL_WIDTH,
   PREF_VERTICAL_DENSITY,
   PREF_VERTICAL_COMPACT,
+  PREF_VERTICAL_COLLAPSE,
   PREF_VERTICAL_FLOATING_URLBAR,
   PREF_VERTICAL_SHOW_RAIL,
   PREF_VERTICAL_SHOW_PINNED_SECTION,
@@ -73,6 +75,7 @@ export const MidoriVerticalTabs = {
     Services.prefs.addObserver(PREF_VERTICAL_WIDTH, this);
     Services.prefs.addObserver(PREF_VERTICAL_DENSITY, this);
     Services.prefs.addObserver(PREF_VERTICAL_COMPACT, this);
+    Services.prefs.addObserver(PREF_VERTICAL_COLLAPSE, this);
     Services.prefs.addObserver(PREF_VERTICAL_FLOATING_URLBAR, this);
     Services.prefs.addObserver(PREF_VERTICAL_SHOW_RAIL, this);
     Services.prefs.addObserver(PREF_VERTICAL_SHOW_PINNED_SECTION, this);
@@ -128,6 +131,10 @@ export const MidoriVerticalTabs = {
 
   _isVerticalCompact() {
     return Services.prefs.getBoolPref(PREF_VERTICAL_COMPACT, false);
+  },
+
+  _isVerticalCollapse() {
+    return Services.prefs.getBoolPref(PREF_VERTICAL_COLLAPSE, false);
   },
 
   _isFloatingUrlbarEnabled() {
@@ -218,6 +225,10 @@ export const MidoriVerticalTabs = {
     root.setAttribute('midori-vt-compact', this._isVerticalCompact() ? 'true' : 'false');
   },
 
+  _applyCollapse(root) {
+    root.setAttribute('midori-vt-collapse', this._isVerticalCollapse() ? 'true' : 'false');
+  },
+
   _applyFloatingUrlbar(root) {
     root.setAttribute(
       'midori-vt-floating-urlbar',
@@ -248,6 +259,7 @@ export const MidoriVerticalTabs = {
     this._applyDensity(root);
     this._applyWidth(root);
     this._applyCompact(root);
+    this._applyCollapse(root);
     this._applyFloatingUrlbar(root);
     this._applyShowRail(root);
     this._applyShowPinnedSection(root);
@@ -271,6 +283,7 @@ export const MidoriVerticalTabs = {
     const root = doc.documentElement;
     root.removeAttribute('midori-vt-density');
     root.removeAttribute('midori-vt-compact');
+    root.removeAttribute('midori-vt-collapse');
     root.removeAttribute('midori-vt-floating-urlbar');
     root.removeAttribute('midori-vt-show-rail');
     root.removeAttribute('midori-vt-show-pinned-section');

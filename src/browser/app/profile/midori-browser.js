@@ -172,6 +172,14 @@ pref('midori.workspaces.enabled', true);
 pref('midori.workspaces.show-button', true);
 pref('midori.workspaces.show-name', true);
 
+// Memory-aware workspaces: discard (unload) tabs of inactive workspaces after
+// switching away, freeing their memory while keeping the tab for instant
+// on-demand reload. Delay is clamped to [5000, 1800000] ms.
+pref('midori.workspaces.unloadInactive', true);
+pref('midori.workspaces.unloadDelayMs', 45000);
+// Tint the browser chrome with the active workspace accent color (subtle).
+pref('midori.workspaces.chromeTint', true);
+
 // ============================================================================
 // MIDORI MEMORY PROFILE
 // ============================================================================
@@ -229,6 +237,9 @@ pref('midori.verticaltabs.position', 'left');
 pref('midori.verticaltabs.width', 248);
 pref('midori.verticaltabs.density', 'normal');
 pref('midori.verticaltabs.compact', false);
+// Collapse the vertical sidebar to a narrow icon rail that expands on hover
+// (pure-CSS edge sensor, no global mousemove). Off by default.
+pref('midori.verticaltabs.collapse', false);
 pref('midori.verticaltabs.floatingUrlbar', true);
 pref('midori.verticaltabs.showRail', true);
 pref('midori.verticaltabs.showPinnedSection', true);
@@ -283,6 +294,10 @@ pref('sidebar.visibility', 'hide');
 // Hide the toolbar when scrolling down to maximize content area
 // The toolbar reappears when scrolling up or moving the mouse to the top
 pref('midori.autohide.toolbar', true);
+// Briefly reveal the hidden toolbar on navigation so the new address is
+// readable, then auto-hide again (Zen-style compact flash).
+pref('midori.autohide.flashOnLocationChange', true);
+pref('midori.autohide.flashDurationMs', 1200);
 
 // ============================================================================
 // MIDORI PRIVACY (replaces Firefox Enhanced Tracking Protection)

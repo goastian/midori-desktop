@@ -17,11 +17,17 @@
  */
 
 const PREF_AUTOHIDE = 'midori.autohide.toolbar';
+const PREF_FLASH_ON_NAV = 'midori.autohide.flashOnLocationChange';
+const PREF_FLASH_DURATION = 'midori.autohide.flashDurationMs';
 const TOOLBOX_HIDDEN_ATTR = 'midori-autohide-hidden';
 const MOUSE_REVEAL_ZONE_PX = 10;
 const WHEEL_HIDE_THRESHOLD = 40;
 const WHEEL_SHOW_THRESHOLD = -30;
 const IDLE_RESET_MS = 300;
+// Bounds for the location-change flash reveal duration.
+const FLASH_DURATION_DEFAULT_MS = 1200;
+const FLASH_DURATION_MIN_MS = 300;
+const FLASH_DURATION_MAX_MS = 5000;
 // Delay before re-measuring toolbox height to avoid getBoundingClientRect()
 // while a CSS transition is still running (avoids compositor sync stall).
 const HEIGHT_REMEASURE_DELAY_MS = 250;
@@ -104,6 +110,11 @@ export const AutoHideToolbar = {
     // Track async handles so we can cancel them when the window is detached
     let rafId = null;
     let heightRemeasureTimer = null;
+    let flashTimer = null;
+    // Thin fixed strip at the top edge that reveals the toolbar on hover.
+    // Replaces a global `mousemove` listener (which fired on every pointer
+    // move across the whole window) with a single edge-triggered element.
+    let edgeSensor = null;
 
     // Debounced height update — fires only after transitions have settled
     const scheduleHeightUpdate = () => {
@@ -134,6 +145,7 @@ export const AutoHideToolbar = {
       state.isHidden = false;
       state.accumulatedDelta = 0;
       toolbox.removeAttribute(TOOLBOX_HIDDEN_ATTR);
+      syncEdgeSensor();
     };
 
     const hide = () => {
@@ -148,6 +160,15 @@ export const AutoHideToolbar = {
       // attach-time and refreshed via scheduleHeightUpdate() after transitions.
       state.isHidden = true;
       toolbox.setAttribute(TOOLBOX_HIDDEN_ATTR, 'true');
+      syncEdgeSensor();
+    };
+
+    // The edge sensor only needs to intercept the pointer while the toolbar
+    // is hidden; otherwise it stays click-through so it never blocks chrome.
+    const syncEdgeSensor = () => {
+      if (edgeSensor) {
+        edgeSensor.style.pointerEvents = state.isHidden ? 'auto' : 'none';
+      }
     };
 
     // --- Wheel event on the browser panel detects scroll direction ---
@@ -185,18 +206,35 @@ export const AutoHideToolbar = {
       browserPanel.addEventListener('wheel', onWheel, { passive: true, capture: true });
     }
 
-    // --- Mouse near top edge reveals toolbar ---
-    const onMouseMove = (e) => {
+    // --- Mouse near top edge reveals toolbar (edge-sensor element) ---
+    // Instead of a global `mousemove` listener that processes every pointer
+    // move, a thin fixed strip at the very top of the window fires a single
+    // `mouseenter` when the pointer crosses into the reveal zone. It is
+    // click-through (pointer-events:none) whenever the toolbar is visible.
+    const XHTML_NS = 'http://www.w3.org/1999/xhtml';
+    edgeSensor = doc.createElementNS(XHTML_NS, 'div');
+    edgeSensor.id = 'midori-autohide-edge-sensor';
+    edgeSensor.style.cssText =
+      'position:fixed;top:0;left:0;right:0;' +
+      `height:${MOUSE_REVEAL_ZONE_PX}px;` +
+      'z-index:2147483647;pointer-events:none;margin:0;padding:0;' +
+      'background:transparent;';
+    doc.documentElement.appendChild(edgeSensor);
+    syncEdgeSensor();
+
+    const onSensorEnter = () => {
       if (!this._enabled) return;
-      const nearTop = e.screenY - win.screenY <= MOUSE_REVEAL_ZONE_PX;
-      if (nearTop && !state.mouseNearTop) {
-        state.mouseNearTop = true;
-        show();
-      } else if (!nearTop) {
-        state.mouseNearTop = false;
-      }
+      state.mouseNearTop = true;
+      show();
     };
-    doc.addEventListener('mousemove', onMouseMove, { passive: true });
+    edgeSensor.addEventListener('mouseenter', onSensorEnter, { passive: true });
+
+    // Once the pointer leaves the revealed toolbar, clear the near-top guard
+    // so a subsequent wheel-scroll or flash-timeout can hide it again.
+    const onToolboxLeave = () => {
+      state.mouseNearTop = false;
+    };
+    toolbox.addEventListener('mouseleave', onToolboxLeave, { passive: true });
 
     // --- Urlbar focus prevents hiding ---
     const onUrlbarFocus = () => {
@@ -230,6 +268,44 @@ export const AutoHideToolbar = {
     };
     win.gBrowser?.tabContainer?.addEventListener('TabSelect', onTabSelect);
 
+    // --- Location change: briefly flash the toolbar so the user can read the
+    // new address before it hides again (Zen-style compact reveal). ---
+    const flash = () => {
+      if (!this._enabled || win.fullScreen) return;
+      if (!Services.prefs.getBoolPref(PREF_FLASH_ON_NAV, true)) return;
+      if (!state.isHidden) return;
+
+      const duration = Math.min(
+        Math.max(
+          Services.prefs.getIntPref(PREF_FLASH_DURATION, FLASH_DURATION_DEFAULT_MS),
+          FLASH_DURATION_MIN_MS
+        ),
+        FLASH_DURATION_MAX_MS
+      );
+
+      show();
+      if (flashTimer !== null) {
+        win.clearTimeout(flashTimer);
+      }
+      flashTimer = win.setTimeout(() => {
+        flashTimer = null;
+        // hide() already guards mouse-near-top / focus / popup / fullscreen,
+        // so a user interacting with the revealed toolbar keeps it visible.
+        hide();
+      }, duration);
+    };
+
+    const progressListener = {
+      onLocationChange(browser, webProgress, _request, _location, flags) {
+        if (!webProgress?.isTopLevel) return;
+        // Ignore same-document navigations (anchor jumps, history.pushState).
+        const SAME_DOC = Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT;
+        if (flags & SAME_DOC) return;
+        flash();
+      },
+    };
+    win.gBrowser?.addTabsProgressListener(progressListener);
+
     // --- Window resize: re-measure height ---
     const onResize = () => {
       scheduleHeightUpdate();
@@ -252,7 +328,9 @@ export const AutoHideToolbar = {
 
     this._windowListeners.set(win, {
       onWheel,
-      onMouseMove,
+      onSensorEnter,
+      onToolboxLeave,
+      edgeSensor,
       onUrlbarFocus,
       onUrlbarBlur,
       onPopupShown,
@@ -262,6 +340,7 @@ export const AutoHideToolbar = {
       onResize,
       show,
       browserPanel,
+      progressListener,
       // Cancels all pending async work — called by _detachFromWindow
       cancelPending: () => {
         if (rafId !== null) {
@@ -276,6 +355,10 @@ export const AutoHideToolbar = {
         if (heightRemeasureTimer !== null) {
           win.clearTimeout(heightRemeasureTimer);
           heightRemeasureTimer = null;
+        }
+        if (flashTimer !== null) {
+          win.clearTimeout(flashTimer);
+          flashTimer = null;
         }
       },
     });
@@ -304,10 +387,22 @@ export const AutoHideToolbar = {
     }
 
     if (doc) {
-      doc.removeEventListener('mousemove', listeners.onMouseMove, { passive: true });
       doc.removeEventListener('popupshown', listeners.onPopupShown, true);
       doc.removeEventListener('popuphidden', listeners.onPopupHidden, true);
       doc.removeEventListener('keydown', listeners.onKeyDown, true);
+    }
+
+    if (toolbox && listeners.onToolboxLeave) {
+      toolbox.removeEventListener('mouseleave', listeners.onToolboxLeave, { passive: true });
+    }
+
+    if (listeners.edgeSensor) {
+      try {
+        listeners.edgeSensor.removeEventListener('mouseenter', listeners.onSensorEnter, {
+          passive: true,
+        });
+        listeners.edgeSensor.remove();
+      } catch (e) {}
     }
 
     win?.removeEventListener('resize', listeners.onResize, { passive: true });
@@ -319,6 +414,11 @@ export const AutoHideToolbar = {
     }
 
     win.gBrowser?.tabContainer?.removeEventListener('TabSelect', listeners.onTabSelect);
+    if (listeners.progressListener) {
+      try {
+        win.gBrowser?.removeTabsProgressListener(listeners.progressListener);
+      } catch (e) {}
+    }
     this._windowListeners.delete(win);
   },
 
