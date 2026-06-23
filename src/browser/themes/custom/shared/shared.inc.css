@@ -546,13 +546,18 @@ menupopup:not([position]) {
 
 #midori-workspace-selector:hover {
   background-color: var(--midori-btn-hover,
-    color-mix(in srgb, currentColor 8%, transparent)) !important;
+    color-mix(in srgb, var(--midori-workspace-accent, currentColor) 10%, transparent)) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--midori-workspace-accent, AccentColor) 35%,
+    transparent
+  ) !important;
 }
 
 #midori-workspace-selector:active,
 #midori-workspace-selector[open="true"] {
   background-color: var(--midori-btn-active,
-    color-mix(in srgb, AccentColor 18%, transparent)) !important;
+    color-mix(in srgb, var(--midori-workspace-accent, AccentColor) 18%, transparent)) !important;
 }
 
 /* Explicit workspace label — always visible */
