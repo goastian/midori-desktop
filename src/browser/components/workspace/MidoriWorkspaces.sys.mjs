@@ -571,7 +571,7 @@ export const MidoriWorkspaces = {
   _updateQuickIcons(win, state) {
     const doc = win.document;
 
-    this._applyChromeTint(win, state);
+    this._applyChromeTint(doc, state);
 
     // Vertical mode: update the dropdown button
     if (doc.getElementById(DROPDOWN_ID)) {
@@ -583,12 +583,13 @@ export const MidoriWorkspaces = {
   /**
    * Tint the browser chrome with the active workspace accent. Sets
    * --midori-workspace-accent on the root so shared.inc.css can apply a
-   * subtle color-mix overlay on the toolbox. This reuses the same accent
-   * variable consumed by the vertical-tabs accent system, keeping a single
-   * source of truth. Controlled by pref midori.workspaces.chromeTint.
+   * subtle color-mix overlay on the toolbox (works in BOTH vertical and
+   * horizontal tab modes). This reuses the same accent variable consumed by
+   * the vertical-tabs accent system, keeping a single source of truth.
+   * Controlled by pref midori.workspaces.chromeTint.
    */
-  _applyChromeTint(win, state) {
-    const root = win.document?.documentElement;
+  _applyChromeTint(doc, state) {
+    const root = doc?.documentElement;
     if (!root) return;
 
     if (!Services.prefs.getBoolPref(PREF_CHROME_TINT, true)) {
@@ -644,6 +645,10 @@ export const MidoriWorkspaces = {
   },
 
   _updateSelectorLabel(doc, state) {
+    // Apply the per-workspace chrome tint here too so it works on horizontal
+    // startup (horizontal init uses _updateSelectorLabel, not _updateQuickIcons).
+    this._applyChromeTint(doc, state);
+
     // Update horizontal mode selector
     const selector = doc.getElementById(SELECTOR_ID);
     if (selector) {
