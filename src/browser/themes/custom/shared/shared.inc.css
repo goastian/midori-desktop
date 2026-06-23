@@ -816,15 +816,15 @@ menupopup:not([position]) {
 }
 
 :root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"]::part(items-wrapper) {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: var(--tab-height-with-margin-padding);
-  gap: 4px;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px;
   padding-inline: var(--midori-vt-density-pad) !important;
 }
 
 :root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"] .tabbrowser-tab {
-  min-height: 34px !important;
+  width: 100% !important;
+  min-height: 32px !important;
 }
 
 :root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"] .tabbrowser-tab .tab-background {
@@ -855,9 +855,10 @@ menupopup:not([position]) {
   .tab-content::after {
   content: "★";
   position: absolute;
-  inset-block-start: -1px;
-  inset-inline-end: 1px;
-  font-size: 8px;
+  inset-block-start: 50%;
+  inset-inline-end: 6px;
+  transform: translateY(-50%);
+  font-size: 9px;
   line-height: 1;
   opacity: 0.95;
   color: var(--midori-vt-accent);
@@ -873,12 +874,12 @@ menupopup:not([position]) {
 }
 
 :root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"] .tab-content {
-  justify-content: center !important;
-  padding-inline: 0 !important;
+  justify-content: flex-start !important;
+  padding-inline: 8px !important;
 }
 
 :root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"] .tab-label-container {
-  display: none !important;
+  display: flex !important;
 }
 
 /* --------------------- ESSENTIALS PROMO CARD --------------------- */
