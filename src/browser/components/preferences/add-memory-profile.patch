@@ -21,9 +21,9 @@ index 7d6bbc54d21bf149dd1b99a38ca803654e6908eb..59e90de62343af0285d4081b52e7d229
  <!-- Default browser -->
  <html:setting-group groupid="defaultBrowser" data-category="paneGeneral" hidden="true" />
  
-@@ -371,6 +383,27 @@
+@@ -192,6 +204,27 @@
  <!-- Performance -->
- <html:setting-group groupid="performance" data-category="paneGeneral" hidden="true" />
+ <html:setting-group groupid="performance" data-category="paneGeneral" hidden="true" data-srd-migrated="" />
  
 +<!-- Midori Memory Profile -->
 +<groupbox id="memoryProfileGroup" data-category="paneGeneral" hidden="true">
@@ -53,52 +53,22 @@ diff --git a/browser/components/preferences/main.js b/browser/components/prefere
 index 8f8da3c4cabb4a05b50431b1feeff8f1f1abcf6e..9fdf32842fdfacadd8351512a89c891e8c9d24ba 100644
 --- a/browser/components/preferences/main.js
 +++ b/browser/components/preferences/main.js
-@@ -32,6 +32,7 @@ ChromeUtils.defineESModuleGetters(this, {
-   FormAutofillPreferences:
-     "resource://autofill/FormAutofillPreferences.sys.mjs",
-   getMozRemoteImageURL: "moz-src:///toolkit/modules/FaviconUtils.sys.mjs",
+@@ -36,3 +36,4 @@ ChromeUtils.defineESModuleGetters(this, {
+  FormAutofillPreferences:
+    "resource://autofill/FormAutofillPreferences.sys.mjs",
 +  MemoryProfileManager: "resource:///modules/MemoryProfileManager.sys.mjs",
  });
- 
- // Constants & Enumeration Values
-@@ -211,6 +212,9 @@ Preferences.addAll([
-   { id: "dom.ipc.processCount.web", type: "int" },
-   { id: "layers.acceleration.disabled", type: "bool", inverted: true },
+@@ -97,6 +98,9 @@ Preferences.addAll([
+   { id: "browser.startup.windowsLaunchOnLogin.enabled", type: "bool" },
+   { id: "browser.privatebrowsing.autostart", type: "bool" },
  
 +  // Midori Memory Profile
 +  { id: "midori.memory.profile", type: "int" },
 +
-   // Files and Applications
-   { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
- 
-@@ -2876,7 +2880,7 @@ SettingGroupManager.registerGroups({
-           {
-             id: "browserLayoutHorizontalTabs",
-             value: "false",
--            l10nId: "browser-layout-horizontal-tabs2",
-+            l10nId: "browser-layout-horizontal-tabs",
-             controlAttrs: {
-               class: "setting-chooser-item",
-               imagesrc:
-@@ -2886,7 +2890,7 @@ SettingGroupManager.registerGroups({
-           {
-             id: "browserLayoutVerticalTabs",
-             value: "true",
--            l10nId: "browser-layout-vertical-tabs2",
-+            l10nId: "browser-layout-vertical-tabs",
-             controlAttrs: {
-               class: "setting-chooser-item",
-               imagesrc:
-@@ -2897,7 +2901,7 @@ SettingGroupManager.registerGroups({
-       },
-       {
-         id: "browserLayoutShowSidebar",
--        l10nId: "browser-layout-show-sidebar2",
-+        l10nId: "browser-layout-show-sidebar",
-       },
-     ],
-   },
-@@ -5235,6 +5239,29 @@ var gMainPane = {
+   // AI Controls, these pref values can affect settings on the main pane and
+   // have base Settings here
+   { id: "browser.ai.control.default", type: "string" },
+@@ -805,6 +809,29 @@ var gMainPane = {
      initSettingGroup("profiles");
      initSettingGroup("profilePane");
  
@@ -128,4 +98,34 @@ index 8f8da3c4cabb4a05b50431b1feeff8f1f1abcf6e..9fdf32842fdfacadd8351512a89c891e
      setEventListener("manageBrowserLanguagesButton", "command", function () {
        gMainPane.showBrowserLanguagesSubDialog({ search: false });
      });
-
+diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
+index 5b5b3a1c7cf47a6c7a7f3131381e0817138df4d2..47a066db57d05cabdd54031e7edcf14fab1e54a9 100644
+--- a/browser/components/preferences/config/tabs-browsing.mjs
++++ b/browser/components/preferences/config/tabs-browsing.mjs
+@@ -593,7 +593,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "browserLayoutHorizontalTabs",
+             value: "false",
+-            l10nId: "browser-layout-horizontal-tabs2",
++            l10nId: "browser-layout-horizontal-tabs",
+             controlAttrs: {
+               class: "setting-chooser-item",
+               imagesrc:
+@@ -603,7 +603,7 @@ SettingGroupManager.registerGroups({
+           {
+             id: "browserLayoutVerticalTabs",
+             value: "true",
+-            l10nId: "browser-layout-vertical-tabs2",
++            l10nId: "browser-layout-vertical-tabs",
+             controlAttrs: {
+               class: "setting-chooser-item",
+               imagesrc:
+@@ -614,7 +614,7 @@ SettingGroupManager.registerGroups({
+       },
+       {
+         id: "browserLayoutShowSidebar",
+-        l10nId: "browser-layout-show-sidebar2",
++        l10nId: "browser-layout-show-sidebar",
+       },
+     ],
+   },
