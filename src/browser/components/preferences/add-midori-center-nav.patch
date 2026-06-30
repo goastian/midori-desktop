@@ -24,19 +24,18 @@ diff --git a/browser/components/preferences/preferences.xhtml b/browser/componen
 index b006d5e5e64c418fbf930c010401e4ea3a3647a3..3b5d2a3f0a17aa55ab462a0843760f8de8bcbb20 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
-@@ -160,9 +160,14 @@
+@@ -191,9 +191,14 @@
    <html:moz-page-nav-button id="category-more-from-mozilla"
      hidden="true"
      view="paneMoreFromMozilla"
-     iconsrc="chrome://browser/skin/preferences/mozilla-logo.svg"
-     data-l10n-id="more-from-moz-title">
+     iconsrc="chrome://browser/skin/preferences/mozilla-16.svg"
+     data-l10n-id="more-from-moz-title2">
    </html:moz-page-nav-button>
-+      <html:moz-page-nav-button id="category-midori-center"
-+        view="paneMidoriCenter"
-+        iconsrc="chrome://browser/skin/preferences/category-general.svg"
-+        data-l10n-id="pane-midori-center-title">
-+      </html:moz-page-nav-button>
++  <html:moz-page-nav-button id="category-midori-center"
++    view="paneMidoriCenter"
++    iconsrc="chrome://browser/skin/preferences/category-general.svg"
++    data-l10n-id="pane-midori-center-title">
++  </html:moz-page-nav-button>
  
    <!-- Hidden sub-page entries (CSS display:none via .hidden-category).
         These keep gotoPref() routing working for sub-pages that are
-
