@@ -84,6 +84,329 @@ settings-category-labs =
     .tooltiptext = { -firefoxlabs-brand-name }
 pane-experimental-description4 = Give our experimental features a try! They’re in development and evolving, which could impact how { -brand-short-name } works. We only receive data about your use of these features if you have <a data-l10n-name="data-collection">technical and interaction data</a> turned on.
 
+## Firefox 152 settings redesign compatibility
+
+pane-home-startup-title2 = Home
+pane-search-title2 = Search
+pane-privacy-title3 = Privacy & Security
+pane-passwords-autofill-title2 = Passwords & Autofill
+pane-appearance-title = Appearance
+pane-downloads-title2 = Downloads
+pane-tabs-browsing-title2 = Tabs and Browsing
+pane-accessibility-title = Accessibility
+pane-languages-title2 = Languages
+pane-ai-controls-title2 = AI Controls
+pane-permissions-data-title2 = Permissions and Data
+settings-pane-labs-title2 = { -firefoxlabs-brand-name }
+pane-about-firefox-title = About { -brand-short-name }
+
+category-home2 =
+    .tooltiptext = { pane-home-startup-title2 }
+category-search2 =
+    .tooltiptext = { pane-search-title2 }
+category-privacy3 =
+    .tooltiptext = { pane-privacy-title3 }
+category-passwords-autofill =
+    .tooltiptext = { pane-passwords-autofill-title2 }
+category-appearance =
+    .tooltiptext = { pane-appearance-title }
+category-downloads =
+    .tooltiptext = { pane-downloads-title2 }
+category-tabs-browsing =
+    .tooltiptext = { pane-tabs-browsing-title2 }
+category-accessibility =
+    .tooltiptext = { pane-accessibility-title }
+category-languages2 =
+    .tooltiptext = { pane-languages-title2 }
+category-ai-controls2 =
+    .tooltiptext = { pane-ai-controls-title2 }
+category-permissions-data =
+    .tooltiptext = { pane-permissions-data-title2 }
+category-about-firefox =
+    .tooltiptext = { pane-about-firefox-title }
+
+addons-button-label2 = Extensions and themes
+help-button-label2 = { -brand-short-name } support
+
+preferences-appearance-header = Appearance
+preferences-accessibility-header = Accessibility
+preferences-languages-header3 = Languages
+preferences-passwords-autofill-header = Passwords & Autofill
+preferences-ai-controls-header3 = AI Controls
+permissions-data-section = Permissions and Data
+pane-downloads3 = Downloads
+about-firefox-header = About { -brand-short-name }
+settings-pane-labs-header = { -firefoxlabs-brand-name }
+
+appearance-group2 =
+    .label = Website appearance
+    .description = Some websites adapt their color scheme based on your preferences. Choose which color scheme you’d like to use for those sites.
+
+preferences-web-appearance-choice-auto3 =
+    .label = Automatic
+    .title = Automatically change website backgrounds and content based on your system settings and { -brand-short-name } theme.
+
+browser-theme-group =
+    .label = Themes
+    .description = Customize the look of { -brand-short-name }.
+
+browser-theme-manage-link =
+    .label = Manage themes
+
+related-settings-group =
+    .label = Related settings
+
+related-settings-accessibility-link =
+    .label = Accessibility
+
+related-settings-home-link =
+    .label = Home
+
+related-settings-tabs-browsing-link =
+    .label = Tabs and Browsing
+
+download-save-files-header =
+    .label = Downloads
+
+download-save-where-3 =
+    .label = Save files to
+    .accesskey = v
+
+download-always-ask-where2 =
+    .label = Always ask where to save files
+    .accesskey = A
+
+download-private-browsing-delete2 =
+    .label = Delete files downloaded in private browsing when all private windows are closed
+    .accesskey = D
+
+applications-setting2 =
+    .label = Applications
+    .description = Choose how { -brand-short-name } handles the files you download from the web or the applications you use while browsing.
+
+applications-save-for-new-types2 =
+    .label = Save files
+    .accesskey = S
+
+applications-ask-before-handling2 =
+    .label = Ask whether to open or save files
+    .accesskey = A
+
+browser-layout-horizontal-tabs =
+    .label = Horizontal tabs
+    .title = Tabs at the top
+    .description = Tabs at the top
+
+browser-layout-vertical-tabs =
+    .label = Vertical tabs
+    .title = Tabs on the side, in the sidebar
+    .description = Tabs on the side, in the sidebar
+
+browser-layout-show-sidebar =
+    .label = Show sidebar
+    .description = Quickly access bookmarks, tabs from your phone, AI chatbots, and more without leaving your main view.
+
+keyboard-and-scrolling-group =
+    .label = Keyboard and scrolling
+
+motion-and-link-group =
+    .label = Motion and links
+
+preferences-default-zoom-select =
+    .label = Default zoom
+
+preferences-text-zoom-override-warning2 =
+    .message = Warning: If you select “Zoom text only” and your default zoom is not set to 100%, it may cause some sites or content to break.
+
+preferences-fonts-family =
+    .label = Default font
+
+preferences-fonts-size =
+    .label = Size
+
+preferences-fonts-advanced-settings =
+    .label = Advanced settings
+
+update-application-heading =
+    .label = { -brand-short-name } Updates
+    .description = Keep { -brand-short-name } up to date for the best performance, stability, and security.
+
+update-application-updates-managed-by-os =
+    .message = Updates are managed by your operating system.
+
+update-history-2 =
+    .label = Update history
+
+update-application-installation =
+    .label = Update installation
+
+update-application-warning-cross-user-setting-2 =
+    .message = This setting will apply to all accounts and profiles using this installation of { -brand-short-name }.
+
+update-application-auto-2 =
+    .label = Automatically install updates
+
+update-application-check-choose-2 =
+    .label = Check for updates but let you choose to install them
+
+update-application-suppress-prompts-heading =
+    .label = Update notifications
+
+update-application-suppress-prompts-2 =
+    .label = Show fewer update notification prompts
+
+tabs-browsing-section = Tabs and Browsing
+page-navigation-group =
+    .label = Page navigation
+
+switch-to-new-tabs-2 =
+    .label = When you open a link, image, or media in a new tab, switch to it immediately
+    .accesskey = h
+
+settings-tabs-show-group-and-tab-suggestions =
+    .label = Suggest tab groups and tabs
+
+browser-containers-enabled-2 =
+    .label = Enable container tabs
+
+browser-containers-settings-2 =
+    .label = Settings…
+
+settings-media-group =
+    .label = Media
+
+browsing-picture-in-picture-toggle-enabled-2 =
+    .label = Enable picture-in-picture video controls
+
+recommendations-group =
+    .label = Recommendations
+
+performance-use-recommended-settings-checkbox-2 =
+    .label = Use recommended performance settings
+    .accesskey = U
+
+browser-language-heading =
+    .label = Browser language
+    .description = Choose the language used to display menus, messages, and notifications from { -brand-short-name }.
+
+browser-language-preferred-label =
+    .label = Preferred language
+
+browser-language-fallback-label =
+    .label = Fallback language
+
+privacy-panel-settings-header =
+    .label = Privacy dashboard
+
+privacy-panel-breach-alerts =
+    .label = Show breach alerts
+
+preferences-etp-custom-cookie-behavior-accept-all =
+    .label = Allow all cookies
+
+preferences-etp-custom-cookie-behavior-block-cross-site-cookies =
+    .label = Block cross-site cookies
+
+preferences-etp-custom-cookie-behavior-block-unvisited =
+    .label = Block cookies from unvisited websites
+
+preferences-etp-custom-cookie-behavior-block-all-cross-site-cookies =
+    .label = Block all third-party cookies
+
+preferences-etp-custom-cookie-behavior-isolate-cross-site-cookies =
+    .label = Isolate cross-site cookies
+
+preferences-etp-custom-cookie-behavior-block-all =
+    .label = Block all cookies
+
+security-privacy-issue-warning-test =
+    .label = Test warning
+    .description = This warning is used for testing privacy recommendations.
+
+preferences-ai-controls-block-confirmation-smart-window =
+    .message = This will turn off Smart Window AI features.
+
+ai-window-default-section =
+    .label = Default AI window
+
+ai-window-features-group =
+    .label = AI features
+
+ai-window-personalize-header =
+    .label = Personalization
+
+ai-window-personalize-button =
+    .label = Personalize
+
+ai-window-open-sidebar =
+    .label = Open sidebar
+
+ai-window-is-default-window =
+    .label = Use as default AI window
+
+ai-window-activate-link =
+    .label = Activate
+
+ai-window-learn-from-browsing-activity =
+    .label = Learn from browsing activity
+
+ai-window-learn-from-chat-activity =
+    .label = Learn from chat activity
+
+ai-window-memories-section =
+    .label = Memories
+
+ai-window-manage-memories-header =
+    .label = Manage memories
+
+ai-window-manage-memories-button =
+    .label = Manage memories
+
+ai-window-memory-delete-button =
+    .label = Delete
+
+ai-window-delete-all-memories-button =
+    .label = Delete all memories
+
+smart-window-model-section =
+    .label = Model
+
+smart-window-select-label =
+    .label = Choose model
+
+smart-window-model-fast =
+    .label = Fast
+
+smart-window-model-flexible =
+    .label = Flexible
+
+smart-window-model-personal =
+    .label = Personal
+
+smart-window-model-custom =
+    .label = Custom
+
+smart-window-model-custom-info =
+    .label = Configure a custom model provider.
+
+smart-window-model-custom-more-link =
+    .label = Learn more
+
+smart-window-model-custom-name =
+    .label = Name
+
+smart-window-model-custom-url =
+    .label = URL
+
+smart-window-model-custom-token =
+    .label = API token
+
+smart-window-model-custom-save =
+    .label = Save
+
+smart-window-model-custom-save-confirmation =
+    .message = Custom model saved.
+
 pane-experimental-reset =
   .label = Restore Defaults
   .accesskey = R
