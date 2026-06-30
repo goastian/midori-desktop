@@ -226,6 +226,26 @@ pref('midori.gradient.stops', '[{"color":"#2d8659","position":0},{"color":"#1a5c
 pref('midori.gradient.texture', 'none');
 pref('midori.gradient.texture.opacity', 50);
 
+pref('network.predictor.enable-hover-on-ssl', true);
+pref('pdfjs.enableScripting', false);
+pref('pdfjs.enableHighlightEditor', true);
+pref('browser.urlbar.trending.featureGate', false);
+pref('browser.urlbar.weather.featureGate', false);
+pref('browser.urlbar.quickactions.enabled', true);
+pref('browser.urlbar.clipboard.featureGate', true);
+pref('browser.urlbar.trimHttps', true);
+pref('browser.urlbar.untrimOnUserInteraction.featureGate', true);
+pref('browser.search.suggest.enabled', false);
+pref('browser.urlbar.keepPanelOpenDuringImeComposition', true);
+pref('browser.formfill.enable', false);
+pref('browser.urlbar.closeOnWindowBlur', false);
+pref('browser.urlbar.trustPanel.featureGate', false);
+pref('browser.tabs.hoverPreview.enabled', false);
+pref('widget.non-native-theme.scrollbar.style', 2);
+pref('browser.tabs.closeWindowWithLastTab', false);
+pref(' browser.settings-redesign.enabled', true);
+pref('browser.privatebrowsing.resetPBM.enabled', false);
+
 // ============================================================================
 // MIDORI VERTICAL TABS (Natsumi-style)
 // ============================================================================
