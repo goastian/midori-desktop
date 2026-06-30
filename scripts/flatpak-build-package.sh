@@ -7,6 +7,11 @@ set -euo pipefail
 
 APP_ID="${FLATPAK_ID:-org.astian.midori_browser}"
 PREFIX="${FLATPAK_DEST:-/app}"
+
+if [ -z "${FLATPAK_DEST:-}" ] && [ ! -w /app ]; then
+  PREFIX="$PWD/build/flatpak/app"
+  echo "Using local Flatpak destination: $PREFIX"
+fi
 FLATPAK_BUILD_ARCH="${FLATPAK_ARCH:-$(uname -m)}"
 
 case "$FLATPAK_BUILD_ARCH" in
@@ -39,25 +44,47 @@ export npm_config_fund=false
 export npm_config_offline=true
 export npm_config_cache="$PWD/flatpak-node/npm-cache"
 
-node scripts/flatpak-patch-npm-git-deps.mjs
-npm ci --offline --ignore-scripts --cache "$npm_config_cache"
-bash scripts/patch-amelia.sh
-npm run brand
-npm run bootstrap
+arch_pattern_primary="linux-${SURFER_COMPAT}"
+arch_pattern_alt="linux-${SURFER_COMPAT/x86_64/x64}"
+arch_pattern_alt="${arch_pattern_alt/aarch64/arm64}"
+package_archive="$(find dist -maxdepth 1 -type f \( -name "*${arch_pattern_primary}*.tar.xz" -o -name "*${arch_pattern_alt}*.tar.xz" \) | sort | tail -n 1)"
 
-if [ "$SURFER_COMPAT" = "aarch64" ]; then
-  npm run build:linux-arm64
+if [ -n "$package_archive" ] && [ "${MIDORI_FLATPAK_REUSE_DIST:-1}" = "1" ]; then
+  echo "Reusing existing Linux package archive: $package_archive"
 else
-  npm run build:linux-x64
+  node scripts/flatpak-patch-npm-git-deps.mjs
+  if ! npm ci --offline --ignore-scripts --cache "$npm_config_cache"; then
+    echo "npm ci --offline failed, retrying with npm install fallback"
+    npm_config_offline=false npm install --ignore-scripts --cache "$npm_config_cache"
+  fi
+  bash scripts/patch-amelia.sh
+  npm run brand
+  if [ "${MIDORI_FLATPAK_SKIP_BOOTSTRAP:-1}" = "1" ]; then
+    echo "Skipping bootstrap for Flatpak packaging (MIDORI_FLATPAK_SKIP_BOOTSTRAP=1)"
+  else
+    npm run bootstrap
+  fi
+
+  if [ "${MIDORI_FLATPAK_DISABLE_WASM_SANDBOXED_LIBS:-1}" = "1" ]; then
+    FLATPAK_MOZCONFIG="$PWD/engine/mozconfig.flatpak"
+    cat > "$FLATPAK_MOZCONFIG" <<EOF
+. "$PWD/engine/mozconfig"
+ac_add_options --without-wasm-sandboxed-libraries
+EOF
+    export MOZCONFIG="$FLATPAK_MOZCONFIG"
+    echo "Using Flatpak mozconfig override: $MOZCONFIG"
+  fi
+
+  if [ "$SURFER_COMPAT" = "aarch64" ]; then
+    npm run build:linux-arm64
+  else
+    npm run build:linux-x64
+  fi
+
+  bash scripts/download-tor.sh linux "$SURFER_COMPAT"
+  amelia package
+  package_archive="$(find dist -maxdepth 1 -type f \( -name "*${arch_pattern_primary}*.tar.xz" -o -name "*${arch_pattern_alt}*.tar.xz" \) | sort | tail -n 1)"
 fi
-
-bash scripts/download-tor.sh linux "$SURFER_COMPAT"
-amelia package
-
-# Buscar específicamente el archivo que corresponde a la plataforma actual
-ARCH_PATTERN="linux-${SURFER_COMPAT/x86_64/x64}"
-ARCH_PATTERN="${ARCH_PATTERN/aarch64/arm64}"
-package_archive="$(find dist -maxdepth 1 -type f -name "*${ARCH_PATTERN}*.tar.xz" | sort | head -n 1)"
 
 if [ -z "$package_archive" ]; then
   echo "No Linux package archive was produced under dist/" >&2

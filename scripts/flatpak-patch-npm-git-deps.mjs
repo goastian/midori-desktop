@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(process.cwd());
@@ -7,15 +7,39 @@ const lockPath = resolve(root, 'package-lock.json');
 const gitDependencyPath = 'flatpak-node/git/is-apple-silicon';
 const gitDependencyPackage = resolve(root, gitDependencyPath, 'package.json');
 
+function ensureLocalGitDependency() {
+  if (existsSync(gitDependencyPackage)) {
+    return;
+  }
+
+  const dependencyDir = resolve(root, gitDependencyPath);
+  mkdirSync(dependencyDir, { recursive: true });
+
+  // Minimal local replacement for the Git dependency used by amelia.
+  const pkg = {
+    name: 'is-apple-silicon',
+    version: '1.0.1',
+    description: 'Detect if host machine is Apple Silicon',
+    main: 'index.js',
+    license: 'MIT',
+  };
+
+  writeFileSync(resolve(dependencyDir, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+  writeFileSync(
+    resolve(dependencyDir, 'index.js'),
+    "module.exports = function isAppleSilicon() {\n" +
+      "  return process.platform === 'darwin' && process.arch === 'arm64';\n" +
+      "};\n",
+    'utf8',
+  );
+}
+
 if (!existsSync(lockPath)) {
   console.error('package-lock.json not found');
   process.exit(1);
 }
 
-if (!existsSync(gitDependencyPackage)) {
-  console.error(`Flatpak git dependency source not found: ${gitDependencyPackage}`);
-  process.exit(1);
-}
+ensureLocalGitDependency();
 
 const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
 
