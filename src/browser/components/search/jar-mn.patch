@@ -1,13 +1,9 @@
 diff --git a/browser/components/search/jar.mn b/browser/components/search/jar.mn
-index 1d2abe61e160ca3d2ebb2e12ed9671c7e6e49934..a8547e7a34f265f44808f471cb2677b9c3071aaf 100644
+index a8547e7a34f265f44808f471cb2677b9c3071aaf..3a790b7c1b41de442d31c71cb4744b0e9bca8438 100644
 --- a/browser/components/search/jar.mn
 +++ b/browser/components/search/jar.mn
-@@ -10,6 +10,7 @@ browser.jar:
-         content/browser/search/searchbar.js                         (content/searchbar.js)
+@@ -11,4 +11,3 @@ browser.jar:
          content/browser/contentSearchHandoffUI.mjs                  (content/contentSearchHandoffUI.mjs)
          content/browser/contentSearchHandoffUI.css                  (content/contentSearchHandoffUI.css)
--        search-extensions/                                          (extensions/**)
-+        search-extensions/astiango/manifest.json                    (extensions/astiango/manifest.json)
-+        search-extensions/qwant/manifest.json                       (extensions/qwant/manifest.json)
- 
- % resource search-extensions %search-extensions/ contentaccessible=yes
+         search-extensions/astiango/manifest.json                    (extensions/astiango/manifest.json)
+-        search-extensions/qwant/manifest.json                       (extensions/qwant/manifest.json)
