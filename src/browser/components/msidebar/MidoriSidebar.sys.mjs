@@ -13,6 +13,13 @@ ChromeUtils.defineESModuleGetters(lazy, {
 const PREF_VERTICAL_TABS = 'midori.verticaltabs.enabled';
 const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
 const PREF_SEEDED_DEFAULT_PANELS = 'midori.msidebar.seededDefaultPanels';
+const CONTENT_CTX_SEPARATOR_ID = 'midori-msidebar-content-context-separator';
+const CONTENT_CTX_OPEN_ID = 'midori-msidebar-content-open';
+const CONTENT_CTX_TEMP_ID = 'midori-msidebar-content-open-temp';
+const CONTENT_CTX_EXTENSION_ID = 'midori-msidebar-content-extension';
+const TAB_CTX_SEPARATOR_ID = 'midori-msidebar-tab-context-separator';
+const TAB_CTX_OPEN_ID = 'midori-msidebar-tab-open';
+const TAB_CTX_TEMP_ID = 'midori-msidebar-tab-open-temp';
 
 export const MidoriSidebar = {
   _initialized: false,
@@ -108,6 +115,7 @@ export const MidoriSidebar = {
       this._stores.set(win, store);
 
       ui.setStore(store);
+      this._initContextMenus(win);
       this._syncWindowUI(win);
       this._log('ui-ready');
     } catch {
@@ -214,6 +222,7 @@ export const MidoriSidebar = {
         ui.destroy();
       } catch {}
     }
+    this._cleanupContextMenus(win);
     this._uis.delete(win);
     this._stores.delete(win);
     const t = this._saveTimers.get(win);
@@ -234,6 +243,185 @@ export const MidoriSidebar = {
       const ks = win.document.getElementById('midori-msidebar-keyset');
       ks?.remove?.();
     } catch {}
+  },
+
+  _initContextMenus(win) {
+    this._initContentContextMenu(win);
+    this._initTabContextMenu(win);
+  },
+
+  _createMenuItem(doc, id, label, command) {
+    let item = doc.getElementById(id);
+    if (item) return item;
+    item = doc.createXULElement('menuitem');
+    item.id = id;
+    item.setAttribute('label', label);
+    item.addEventListener('command', command);
+    return item;
+  },
+
+  _createSeparator(doc, id) {
+    let sep = doc.getElementById(id);
+    if (sep) return sep;
+    sep = doc.createXULElement('menuseparator');
+    sep.id = id;
+    return sep;
+  },
+
+  _initContentContextMenu(win) {
+    const doc = win?.document;
+    const popup = doc?.getElementById?.('contentAreaContextMenu');
+    if (!doc || !popup || doc._midoriMSidebarContentContextInit) return;
+
+    const sep = this._createSeparator(doc, CONTENT_CTX_SEPARATOR_ID);
+    const openItem = this._createMenuItem(doc, CONTENT_CTX_OPEN_ID, 'Open in Sidebar', () => {
+      this._openContextPanel(win, { temporary: false });
+    });
+    const tempItem = this._createMenuItem(doc, CONTENT_CTX_TEMP_ID, 'Open in Temporary Sidebar Panel', () => {
+      this._openContextPanel(win, { temporary: true });
+    });
+    const extItem = this._createMenuItem(doc, CONTENT_CTX_EXTENSION_ID, 'Send extension sidebar to rail', () => {
+      this._openContextPanel(win, { temporary: false, extensionOnly: true });
+    });
+
+    popup.appendChild(sep);
+    popup.appendChild(openItem);
+    popup.appendChild(tempItem);
+    popup.appendChild(extItem);
+
+    const onShowing = (event) => {
+      if (event.target?.id !== 'contentAreaContextMenu') return;
+      this._updateContentContextMenu(win);
+    };
+    popup.addEventListener('popupshowing', onShowing);
+    doc._midoriMSidebarContentContextInit = true;
+    doc._midoriMSidebarContentContextHandler = onShowing;
+  },
+
+  _initTabContextMenu(win) {
+    const doc = win?.document;
+    const popup = doc?.getElementById?.('tabContextMenu');
+    if (!doc || !popup || doc._midoriMSidebarTabContextInit) return;
+
+    const sep = this._createSeparator(doc, TAB_CTX_SEPARATOR_ID);
+    const openItem = this._createMenuItem(doc, TAB_CTX_OPEN_ID, 'Open Tab in Sidebar', () => {
+      this._openTabPanel(win, { temporary: false });
+    });
+    const tempItem = this._createMenuItem(doc, TAB_CTX_TEMP_ID, 'Open Tab as Temporary Sidebar Panel', () => {
+      this._openTabPanel(win, { temporary: true });
+    });
+
+    popup.appendChild(sep);
+    popup.appendChild(openItem);
+    popup.appendChild(tempItem);
+
+    const onShowing = (event) => {
+      if (event.target?.id !== 'tabContextMenu') return;
+      this._updateTabContextMenu(win);
+    };
+    popup.addEventListener('popupshowing', onShowing);
+    doc._midoriMSidebarTabContextInit = true;
+    doc._midoriMSidebarTabContextHandler = onShowing;
+  },
+
+  _cleanupContextMenus(win) {
+    const doc = win?.document;
+    if (!doc) return;
+    try {
+      const contentPopup = doc.getElementById('contentAreaContextMenu');
+      const handler = doc._midoriMSidebarContentContextHandler;
+      if (contentPopup && handler) contentPopup.removeEventListener('popupshowing', handler);
+    } catch {}
+    try {
+      const tabPopup = doc.getElementById('tabContextMenu');
+      const handler = doc._midoriMSidebarTabContextHandler;
+      if (tabPopup && handler) tabPopup.removeEventListener('popupshowing', handler);
+    } catch {}
+    for (const id of [
+      CONTENT_CTX_SEPARATOR_ID,
+      CONTENT_CTX_OPEN_ID,
+      CONTENT_CTX_TEMP_ID,
+      CONTENT_CTX_EXTENSION_ID,
+      TAB_CTX_SEPARATOR_ID,
+      TAB_CTX_OPEN_ID,
+      TAB_CTX_TEMP_ID,
+    ]) {
+      try {
+        doc.getElementById(id)?.remove?.();
+      } catch {}
+    }
+    doc._midoriMSidebarContentContextInit = false;
+    doc._midoriMSidebarTabContextInit = false;
+  },
+
+  _contextPayload(win) {
+    const context = win.gContextMenu;
+    const linkUrl = context?.linkURL || context?.linkUrl || '';
+    const pageUrl = context?.browser?.currentURI?.spec || win.gBrowser?.selectedBrowser?.currentURI?.spec || '';
+    const url = linkUrl || pageUrl;
+    let title = '';
+    try {
+      title = context?.linkTextStr || context?.browser?.contentTitle || win.gBrowser?.selectedTab?.label || '';
+    } catch {}
+    return { url, title };
+  },
+
+  _tabPayload(win) {
+    const tab = win.TabContextMenu?.contextTab || win.gBrowser?.selectedTab;
+    const browser = tab?.linkedBrowser;
+    return {
+      url: browser?.currentURI?.spec || '',
+      title: tab?.label || browser?.contentTitle || '',
+      userContextId: Number.parseInt(tab?.getAttribute?.('usercontextid') || '0', 10) || 0,
+    };
+  },
+
+  _isMozExtensionUrl(url) {
+    return typeof url === 'string' && url.startsWith('moz-extension://');
+  },
+
+  _updateContentContextMenu(win) {
+    const doc = win?.document;
+    const payload = this._contextPayload(win);
+    const canOpen = !!payload.url && /^(https?:|file:|moz-extension:)/.test(payload.url);
+    const isExtension = this._isMozExtensionUrl(payload.url);
+    for (const id of [CONTENT_CTX_SEPARATOR_ID, CONTENT_CTX_OPEN_ID, CONTENT_CTX_TEMP_ID]) {
+      const node = doc?.getElementById?.(id);
+      if (node) node.hidden = !canOpen;
+    }
+    const extItem = doc?.getElementById?.(CONTENT_CTX_EXTENSION_ID);
+    if (extItem) extItem.hidden = !isExtension;
+  },
+
+  _updateTabContextMenu(win) {
+    const doc = win?.document;
+    const payload = this._tabPayload(win);
+    const canOpen = !!payload.url && /^(https?:|file:|moz-extension:)/.test(payload.url);
+    for (const id of [TAB_CTX_SEPARATOR_ID, TAB_CTX_OPEN_ID, TAB_CTX_TEMP_ID]) {
+      const node = doc?.getElementById?.(id);
+      if (node) node.hidden = !canOpen;
+    }
+  },
+
+  _openContextPanel(win, { temporary = false, extensionOnly = false } = {}) {
+    const payload = this._contextPayload(win);
+    if (extensionOnly && !this._isMozExtensionUrl(payload.url)) return;
+    this._openPanel(win, { ...payload, temporary });
+  },
+
+  _openTabPanel(win, { temporary = false } = {}) {
+    this._openPanel(win, { ...this._tabPayload(win), temporary });
+  },
+
+  _openPanel(win, payload) {
+    const ui = this._uis.get(win);
+    if (!ui?.addPanelFromContext) return;
+    const panel = ui.addPanelFromContext(payload);
+    if (!panel) return;
+    try {
+      Services.prefs.setBoolPref(Prefs.PREF_ENABLED, true);
+    } catch {}
+    this._syncWindowUI(win);
   },
 
   _scheduleRetry(win) {

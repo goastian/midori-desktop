@@ -17,6 +17,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   PlacesUtils: 'resource://gre/modules/PlacesUtils.sys.mjs',
 });
 
+const PANEL_KEYSET_ID = 'midori-msidebar-panel-shortcuts';
+const FAVICON_FETCH_GAP_MS = 350;
+
 function createXul(doc, tag) {
   if (doc.createXULElement) return doc.createXULElement(tag);
   return doc.createElement(tag);
@@ -185,6 +188,10 @@ function ensureStyle(doc) {
   border-color:var(--focus-outline-color);
   outline:1px solid var(--focus-outline-color);
 }
+#midori-msidebar-edit-panel textbox[invalid='true']{
+  border-color:#d92222;
+  outline:1px solid #d92222;
+}
 
 #midori-msidebar-edit-panel menulist{
   background-color:var(--sidebar-background-color);
@@ -281,6 +288,24 @@ function containerColorForUserContext(userContextId) {
   }
 }
 
+function containerOptions() {
+  const options = [{ id: 0, label: 'Default container', color: '' }];
+  try {
+    const ids =
+      lazy.ContextualIdentityService.getPublicIdentities?.()?.map((identity) => identity.userContextId) ||
+      lazy.ContextualIdentityService.getUserContextIds?.() ||
+      [];
+    for (const id of ids) {
+      const numericId = Number(id);
+      if (!Number.isInteger(numericId) || numericId <= 0) continue;
+      const identity = lazy.ContextualIdentityService.getPublicIdentityFromId(numericId);
+      const label = identity?.name || identity?.l10nId || `Container ${numericId}`;
+      options.push({ id: numericId, label, color: containerColorForUserContext(numericId) || '' });
+    }
+  } catch {}
+  return options;
+}
+
 function escapeCssUrl(url) {
   if (typeof url !== 'string') return '';
   return url.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
@@ -323,6 +348,119 @@ function clampZoom(z) {
   return Math.max(0.3, Math.min(3, typeof z === 'number' ? z : 1));
 }
 
+const PANEL_NAMED_KEYS = {
+  ArrowDown: { keycode: 'VK_DOWN', label: 'Down' },
+  ArrowLeft: { keycode: 'VK_LEFT', label: 'Left' },
+  ArrowRight: { keycode: 'VK_RIGHT', label: 'Right' },
+  ArrowUp: { keycode: 'VK_UP', label: 'Up' },
+  Backspace: { keycode: 'VK_BACK', label: 'Backspace' },
+  Delete: { keycode: 'VK_DELETE', label: 'Delete' },
+  End: { keycode: 'VK_END', label: 'End' },
+  Enter: { keycode: 'VK_RETURN', label: 'Enter' },
+  Escape: { keycode: 'VK_ESCAPE', label: 'Esc' },
+  Home: { keycode: 'VK_HOME', label: 'Home' },
+  Insert: { keycode: 'VK_INSERT', label: 'Insert' },
+  PageDown: { keycode: 'VK_PAGE_DOWN', label: 'PageDown' },
+  PageUp: { keycode: 'VK_PAGE_UP', label: 'PageUp' },
+  Space: { keycode: 'VK_SPACE', label: 'Space' },
+  Tab: { keycode: 'VK_TAB', label: 'Tab' },
+};
+
+function panelNamedKeyDefinition(key) {
+  if (!key) return null;
+  if (/^F([1-9]|1[0-2])$/i.test(key)) {
+    const label = key.toUpperCase();
+    return { keycode: `VK_${label}`, label };
+  }
+  return PANEL_NAMED_KEYS[key] || null;
+}
+
+function normalizePanelModifier(modifier) {
+  const normalized = modifier?.trim()?.toLowerCase();
+  switch (normalized) {
+    case 'accel':
+    case 'control':
+    case 'ctrl':
+      return 'Ctrl';
+    case 'alt':
+    case 'option':
+      return 'Alt';
+    case 'shift':
+      return 'Shift';
+    case 'cmd':
+    case 'command':
+    case 'meta':
+      return 'Meta';
+    default:
+      return '';
+  }
+}
+
+function normalizePanelShortcutKey(key) {
+  if (!key || typeof key !== 'string') return '';
+  const trimmed = key.trim();
+  const named = panelNamedKeyDefinition(trimmed);
+  if (named) return named.label;
+  if (trimmed.length === 1) return trimmed.toUpperCase();
+  return trimmed;
+}
+
+export function normalizePanelShortcut(shortcut) {
+  if (!shortcut || typeof shortcut !== 'string') return '';
+  const parts = shortcut
+    .split('+')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!parts.length) return '';
+  if (parts.length === 1 && normalizePanelModifier(parts[0])) return '';
+  const key = normalizePanelShortcutKey(parts.at(-1));
+  if (!key) return '';
+  const modifiers = new Set(parts.slice(0, -1).map(normalizePanelModifier).filter(Boolean));
+  return [...['Ctrl', 'Alt', 'Shift', 'Meta'].filter((modifier) => modifiers.has(modifier)), key].join('+');
+}
+
+function panelModifierToXul(modifier) {
+  switch (modifier.toLowerCase()) {
+    case 'ctrl':
+      return 'control';
+    case 'meta':
+      return 'meta';
+    case 'alt':
+      return 'alt';
+    case 'shift':
+      return 'shift';
+    default:
+      return modifier.toLowerCase();
+  }
+}
+
+export function panelShortcutToXul(shortcut) {
+  const normalized = normalizePanelShortcut(shortcut);
+  if (!normalized) return null;
+  const parts = normalized.split('+');
+  const keyLabel = parts.at(-1);
+  const modifiers = parts.slice(0, -1).map(panelModifierToXul).join(',');
+  const named = panelNamedKeyDefinition(keyLabel);
+  if (named?.keycode) {
+    return { key: '', keycode: named.keycode, modifiers };
+  }
+  return { key: keyLabel.toLowerCase(), keycode: '', modifiers };
+}
+
+export function panelShortcutEntries(panels) {
+  const entries = [];
+  const used = new Set();
+  for (const panel of Array.isArray(panels) ? panels : []) {
+    const shortcut = normalizePanelShortcut(panel?.shortcut || '');
+    if (!panel?.id || !shortcut || used.has(shortcut)) continue;
+    const parsed = panelShortcutToXul(shortcut);
+    if (!parsed || (!parsed.key && !parsed.keycode)) continue;
+    used.add(shortcut);
+    entries.push({ panelId: panel.id, shortcut, parsed });
+  }
+  return entries;
+}
+
 export function panelPeriodicReloadDelayMs(panel) {
   const reload = panel?.periodicReload;
   if (!reload?.enabled) return 0;
@@ -339,14 +477,37 @@ export function panelDisplayTitle(panel, browserTitle = '') {
   return staticTitle || safeHostname(panel?.url || '') || panel?.url || 'Panel';
 }
 
+export function panelLastUrl(store, panel) {
+  if (!panel?.restoreLastUrl) return panel?.url || '';
+  const safeUrl = sanitizeUrl(store?.last?.panelUrls?.[panel.id]);
+  return safeUrl || panel?.url || '';
+}
+
+export function startupPanelIdForStore(store) {
+  const panels = Array.isArray(store?.panels) ? store.panels : [];
+  const selectedId = store?.last?.selectedPanelId;
+  if (selectedId && panels.some((panel) => panel.id === selectedId && panel.loadOnStartup)) {
+    return selectedId;
+  }
+  return panels.find((panel) => panel.loadOnStartup)?.id || null;
+}
+
 export function buildPanelSelectorScript(selector) {
   if (typeof selector !== 'string' || !selector.trim()) return '';
   const safeSelector = JSON.stringify(selector.trim().slice(0, 500));
   return `(() => {
-    const target = document.querySelector(${safeSelector});
-    if (!target || !document.body || !document.body.contains(target)) {
+    let target = null;
+    try {
+      target = document.querySelector(${safeSelector});
+    } catch {
+      document.documentElement.setAttribute('data-midori-msidebar-selector-invalid', ${safeSelector});
       return false;
     }
+    if (!target || !document.body || !document.body.contains(target)) {
+      document.documentElement.setAttribute('data-midori-msidebar-selector-miss', ${safeSelector});
+      return false;
+    }
+    document.documentElement.setAttribute('data-midori-msidebar-selector-hit', ${safeSelector});
     const keep = new Set();
     let node = target;
     while (node && node !== document.body) {
@@ -371,6 +532,36 @@ export function buildPanelSelectorScript(selector) {
     window.scrollTo(0, 0);
     return true;
   })();`;
+}
+
+export function validatePanelEditInput({ url, shortcut, cssSelector } = {}) {
+  return {
+    url: !url || !!sanitizeUrl(url),
+    shortcut: !shortcut || !!panelShortcutToXul(shortcut),
+    cssSelector: !cssSelector || (typeof cssSelector === 'string' && cssSelector.trim().length <= 500),
+  };
+}
+
+export function shouldPersistFavicon(panel, faviconUrl) {
+  if (panel?.favicon?.mode === 'static') return false;
+  const safeUrl = sanitizeUrl(faviconUrl);
+  if (!safeUrl || safeUrl === defaultFaviconSpec()) return false;
+  return safeUrl.startsWith('http') || safeUrl.startsWith('moz-extension://') || safeUrl.startsWith('file://');
+}
+
+export function buildPanelOptionsFromContext(payload = {}, resolver = resolveSidebarActionPanelForUrl) {
+  const url = sanitizeUrl(payload.url);
+  if (!url) return null;
+
+  const resolved = resolver?.(url) || null;
+  return {
+    url: resolved?.url || url,
+    title: resolved?.title || payload.title || '',
+    temporary: !!payload.temporary,
+    userContextId: Number.isInteger(payload.userContextId) ? payload.userContextId : 0,
+    webExtensionId: resolved?.extensionId || payload.webExtensionId || '',
+    faviconUrl: resolved?.iconUrl || payload.faviconUrl || '',
+  };
 }
 
 function clampFloatingNumber(value, min, max, fallback) {
@@ -684,6 +875,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const faviconCache = new Map();
   const faviconPending = new Set();
   const faviconRetryAt = new Map();
+  const faviconQueue = [];
+  const faviconQueued = new Set();
+  let faviconPumpTimer = null;
+  let lastFaviconFetchAt = 0;
+  const selectorAppliedKeys = new Map();
   let splitterDrag = null;
   let railDragPanelId = null;
   const desktopReloadPanels = new Set();
@@ -693,6 +889,39 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   let activePromptAdapter = null;
   let activeNotificationBridge = null;
   let activeAudioEventsCleanup = null;
+
+  function setSelectedPanelId(panelId) {
+    if (!panelId) return;
+    store.last = store.last || {};
+    store.last.selectedPanelId = panelId;
+  }
+
+  function currentUrlForBrowser(browserEl) {
+    try {
+      const spec = browserEl?.currentURI?.spec;
+      if (spec) return spec;
+    } catch {}
+    try {
+      const spec = browserEl?.browsingContext?.currentURI?.spec;
+      if (spec) return spec;
+    } catch {}
+    try {
+      const src = browserEl?.getAttribute?.('src');
+      if (src) return src;
+    } catch {}
+    return '';
+  }
+
+  function rememberPanelUrl(panel, browserEl = activeBrowser) {
+    if (!panel?.id || !panel.restoreLastUrl) return;
+    const safeUrl = sanitizeUrl(currentUrlForBrowser(browserEl));
+    if (!safeUrl) return;
+    store.last = store.last || {};
+    store.last.panelUrls = store.last.panelUrls || {};
+    if (store.last.panelUrls[panel.id] === safeUrl) return;
+    store.last.panelUrls[panel.id] = safeUrl;
+    onStoreChanged?.(store);
+  }
 
   function teardownActivePanelBridges() {
     stopPeriodicReload();
@@ -741,6 +970,56 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     }, delayMs);
   }
 
+  function syncPanelShortcuts() {
+    try {
+      doc.getElementById(PANEL_KEYSET_ID)?.remove?.();
+    } catch {}
+    const entries = panelShortcutEntries(store.panels);
+    if (!entries.length) return;
+    const keyset = createXul(doc, 'keyset');
+    keyset.id = PANEL_KEYSET_ID;
+    for (const entry of entries) {
+      const key = createXul(doc, 'key');
+      key.id = `midori-msidebar-shortcut-${entry.panelId}`;
+      if (entry.parsed.key) key.setAttribute('key', entry.parsed.key);
+      if (entry.parsed.keycode) key.setAttribute('keycode', entry.parsed.keycode);
+      if (entry.parsed.modifiers) key.setAttribute('modifiers', entry.parsed.modifiers);
+      key.addEventListener(
+        'command',
+        (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          Services.prefs.setBoolPref(Prefs.PREF_ENABLED, true);
+          openPanelFromShortcut(entry.panelId);
+        },
+        true
+      );
+      keyset.appendChild(key);
+    }
+    doc.documentElement.appendChild(keyset);
+  }
+
+  function chooseInitialPanelId() {
+    return startupPanelIdForStore(store);
+  }
+
+  function chooseVisiblePanelId() {
+    const selectedId = store.last?.selectedPanelId;
+    if (selectedId && store.panels.some((panel) => panel.id === selectedId)) {
+      return selectedId;
+    }
+    return store.panels[0]?.id || null;
+  }
+
+  function openPanelFromShortcut(panelId) {
+    const panel = store.panels.find((item) => item.id === panelId);
+    if (!panel) return;
+    panelAreaHiddenByUser = false;
+    setSelectedPanelId(panel.id);
+    setActivePanel(panel.id);
+    setVisible(true);
+  }
+
   function setPanelAudioState(panelId, playing) {
     if (!panelId) return;
     panelAudioState.set(panelId, !!playing);
@@ -750,6 +1029,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function panelIconSpec(panel) {
     const staticFavicon = panel?.favicon?.mode === 'static' ? panel?.favicon?.value : '';
     if (typeof staticFavicon === 'string' && staticFavicon.trim()) return staticFavicon;
+    const persisted = sanitizeUrl(store?.last?.favicons?.[panel?.id]);
+    if (persisted) {
+      faviconCache.set(panel.id, persisted);
+      return persisted;
+    }
     return faviconCache.get(panel?.id) || faviconFallbackForPanel(panel);
   }
 
@@ -810,6 +1094,39 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     return synced || panel;
   }
 
+  function createPanelFromOptions(options = {}) {
+    const normalized = buildPanelOptionsFromContext(options);
+    if (!normalized) return null;
+    const panel = createPanel({
+      url: normalized.url,
+      title: normalized.title,
+      userContextId: normalized.userContextId,
+    });
+    if (!panel) return null;
+    panel.temporary = !!normalized.temporary;
+    panel.pinned = !panel.temporary;
+    panel.webExtensionId = normalized.webExtensionId || '';
+    if (normalized.faviconUrl) {
+      panel.favicon = {
+        mode: 'static',
+        value: normalized.faviconUrl,
+      };
+    }
+    return synchronizePanelWithSidebarAction(panel) || panel;
+  }
+
+  function addPanel(options = {}) {
+    const panel = createPanelFromOptions(options);
+    if (!panel) return null;
+    store.panels.push(panel);
+    setSelectedPanelId(panel.id);
+    syncPanelShortcuts();
+    onStoreChanged?.(store);
+    setActivePanel(panel.id);
+    setVisible(true);
+    return panel;
+  }
+
   function clearRailDropTarget() {
     for (const btn of buttonsBox.querySelectorAll('[data-drop-target="true"]')) {
       btn.removeAttribute('data-drop-target');
@@ -828,10 +1145,51 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       store.panels = reorderPanelsById(store.panels, panel.id, targetPanelId);
     }
     store.last = store.last || {};
-    store.last.selectedPanelId = panel.id;
+    setSelectedPanelId(panel.id);
+    syncPanelShortcuts();
     onStoreChanged?.(store);
     setActivePanel(panel.id);
     return true;
+  }
+
+  function closePanel(panelId, { preserveSelection = false } = {}) {
+    const idx = store.panels.findIndex((panel) => panel.id === panelId);
+    if (idx === -1) return false;
+    const wasActive = activePanelId === panelId;
+    store.panels.splice(idx, 1);
+    desktopReloadPanels.delete(panelId);
+    selectorAppliedKeys.delete(panelId);
+    panelAudioState.delete(panelId);
+    panelNotificationCount.delete(panelId);
+    faviconCache.delete(panelId);
+    faviconPending.delete(panelId);
+    faviconQueued.delete(panelId);
+    faviconRetryAt.delete(panelId);
+    for (let i = faviconQueue.length - 1; i >= 0; i--) {
+      if (faviconQueue[i]?.id === panelId) faviconQueue.splice(i, 1);
+    }
+    try {
+      delete store.last?.panelUrls?.[panelId];
+      delete store.last?.favicons?.[panelId];
+    } catch {}
+    if (!preserveSelection && store.last?.selectedPanelId === panelId) {
+      store.last.selectedPanelId = store.panels[Math.max(0, idx - 1)]?.id || store.panels[0]?.id || null;
+    }
+    syncPanelShortcuts();
+    onStoreChanged?.(store);
+    if (wasActive) setStore(store);
+    else renderButtons();
+    return true;
+  }
+
+  function pinTemporaryPanel(panelId) {
+    const updated = updatePanel(panelId, (panel) => {
+      panel.temporary = false;
+      panel.pinned = true;
+      return panel;
+    });
+    if (updated) renderButtons();
+    return !!updated;
   }
 
   function incrementPanelNotificationBadge(panelId, amount = 1) {
@@ -944,6 +1302,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
     } catch {}
     onStoreChanged?.(store);
+    syncPanelShortcuts();
     return next;
   }
 
@@ -1063,6 +1422,57 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     } catch {}
   }
 
+  function persistPanelFavicon(panel, spec) {
+    if (!panel?.id || !shouldPersistFavicon(panel, spec)) return;
+    store.last = store.last || {};
+    store.last.favicons = store.last.favicons || {};
+    if (store.last.favicons[panel.id] === spec) return;
+    store.last.favicons[panel.id] = spec;
+    onStoreChanged?.(store);
+  }
+
+  function pumpFaviconQueue() {
+    faviconPumpTimer = null;
+    const panel = faviconQueue.shift();
+    if (!panel?.id) return;
+    faviconQueued.delete(panel.id);
+
+    const now = Date.now();
+    const wait = Math.max(0, FAVICON_FETCH_GAP_MS - (now - lastFaviconFetchAt));
+    if (wait > 0) {
+      faviconQueue.unshift(panel);
+      faviconQueued.add(panel.id);
+      faviconPumpTimer = win.setTimeout(pumpFaviconQueue, wait);
+      return;
+    }
+
+    lastFaviconFetchAt = now;
+    const pid = panel.id;
+    faviconPending.add(pid);
+    resolveFaviconSpecForPanel(panel).then((spec) => {
+      faviconPending.delete(pid);
+      const resolved = spec || defaultFaviconSpec();
+      faviconCache.set(pid, resolved);
+      persistPanelFavicon(panel, resolved);
+      const btn = buttonsBox.querySelector(`[midori-msidebar-panel-id="${pid}"]`);
+      if (btn) setPanelButtonIcon(btn, resolved);
+      if (!spec || resolved === defaultFaviconSpec()) {
+        faviconRetryAt.set(pid, Date.now() + 30_000);
+      } else {
+        faviconRetryAt.delete(pid);
+      }
+      if (faviconQueue.length && !faviconPumpTimer) {
+        faviconPumpTimer = win.setTimeout(pumpFaviconQueue, FAVICON_FETCH_GAP_MS);
+      }
+    }).catch(() => {
+      faviconPending.delete(pid);
+      faviconRetryAt.set(pid, Date.now() + 60_000);
+      if (faviconQueue.length && !faviconPumpTimer) {
+        faviconPumpTimer = win.setTimeout(pumpFaviconQueue, FAVICON_FETCH_GAP_MS);
+      }
+    });
+  }
+
   function ensureFavicon(panel) {
     const pid = panel?.id;
     if (!pid) return;
@@ -1077,20 +1487,18 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (now < nextAt) return;
     const cached = faviconCache.get(pid);
     if (cached && cached !== defaultFaviconSpec()) return;
-    if (faviconPending.has(pid)) return;
-    faviconPending.add(pid);
-    resolveFaviconSpecForPanel(panel).then((spec) => {
-      faviconPending.delete(pid);
-      const resolved = spec || defaultFaviconSpec();
-      faviconCache.set(pid, resolved);
+    const persisted = sanitizeUrl(store?.last?.favicons?.[pid]);
+    if (persisted) {
+      faviconCache.set(pid, persisted);
       const btn = buttonsBox.querySelector(`[midori-msidebar-panel-id="${pid}"]`);
-      if (btn) setPanelButtonIcon(btn, resolved);
-      if (!spec || resolved === defaultFaviconSpec()) {
-        faviconRetryAt.set(pid, Date.now() + 30_000);
-      } else {
-        faviconRetryAt.delete(pid);
-      }
-    });
+      if (btn) setPanelButtonIcon(btn, persisted);
+      return;
+    }
+    if (faviconPending.has(pid)) return;
+    if (faviconQueued.has(pid)) return;
+    faviconQueued.add(pid);
+    faviconQueue.push(panel);
+    if (!faviconPumpTimer) faviconPumpTimer = win.setTimeout(pumpFaviconQueue, 0);
   }
 
   function applyFloatingGeometry(panel) {
@@ -1236,9 +1644,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   function applyPanelSelector(panel, browserEl) {
     if (!panel?.cssSelector?.enabled || !panel.cssSelector.value || !browserEl) return;
+    const currentUrl = currentUrlForBrowser(browserEl) || panel.url || '';
+    const selectorKey = `${currentUrl}\n${panel.cssSelector.value}`;
+    if (selectorAppliedKeys.get(panel.id) === selectorKey) return;
     const script = buildPanelSelectorScript(panel.cssSelector.value);
     if (!script) return;
     try {
+      selectorAppliedKeys.set(panel.id, selectorKey);
       const frameScript = `(() => {
         const document = content.document;
         const window = content;
@@ -1248,6 +1660,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       return;
     } catch {}
     try {
+      selectorAppliedKeys.set(panel.id, selectorKey);
       browserEl.browsingContext?.currentWindowGlobal?.drawSnapshot;
       browserEl.loadURI?.(`javascript:${encodeURIComponent(script)}`, {
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
@@ -1262,11 +1675,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     panelAreaHiddenByUser = false;
     activePanelId = panel.id;
     currentPanelFloating = !!panel.floating?.enabled;
-    store.last = store.last || {};
-    store.last.selectedPanelId = panel.id;
+    setSelectedPanelId(panel.id);
     clearBrowser();
+    const loadUrl = panelLastUrl(store, panel);
     const browserEl = createPanelBrowser(win, {
       ...panel,
+      url: loadUrl,
       mobile: !!panel.mobile && !desktopReloadPanels.has(panel.id),
     });
     activeBrowser = browserEl;
@@ -1304,6 +1718,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         syncNavButtons();
         applyZoomToBrowser(activeBrowser, panel.zoom);
         syncPanelAudioFromBrowser(panel.id, activeBrowser);
+        rememberPanelUrl(panel, activeBrowser);
         updateActivePanelTitle(panel);
         applyPanelSelector(panel, activeBrowser);
         try {
@@ -1313,6 +1728,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       },
       true
     );
+    activeBrowser.addEventListener('pageshow', () => rememberPanelUrl(panel, activeBrowser), true);
+    activeBrowser.addEventListener('TabAttrModified', () => rememberPanelUrl(panel, activeBrowser), true);
     activeBrowser.addEventListener('DOMTitleChanged', () => updateActivePanelTitle(panel), true);
     activeBrowser.addEventListener('DOMLinkAdded', () => ensureFavicon(panel), true);
     try {
@@ -1322,7 +1739,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       applyZoomToBrowser(activeBrowser, panel.zoom);
     } catch {}
     stack.appendChild(browserEl);
-    titleBaseText = panelDisplayTitle(panel);
+    titleBaseText = panelDisplayTitle({ ...panel, url: loadUrl });
     titleLabel.setAttribute('value', titleBaseText);
     if (currentPanelFloating) {
       boxArea.setAttribute('overlay', 'true');
@@ -1370,8 +1787,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const panel = buildPanelFromInput(url);
     if (!panel) return;
     store.panels.push(panel);
-    store.last = store.last || {};
-    store.last.selectedPanelId = panel.id;
+    setSelectedPanelId(panel.id);
+    syncPanelShortcuts();
     onStoreChanged?.(store);
     setActivePanel(panel.id);
   }
@@ -1431,8 +1848,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
             panelAreaHiddenByUser = true;
             _ahOpen = false;
             if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
-            store.last = store.last || {};
-            store.last.selectedPanelId = panel.id;
+            setSelectedPanelId(panel.id);
             setBoolAttr(boxArea, 'collapsed', true);
             boxArea.style.display = '';
             syncSplitterVisibility();
@@ -1444,6 +1860,16 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           panelAreaHiddenByUser = false;
           if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
           setActivePanel(panel.id);
+        },
+        true
+      );
+      btn.addEventListener(
+        'auxclick',
+        (e) => {
+          if (e.button !== 1 || !panel.temporary) return;
+          e.preventDefault();
+          e.stopPropagation();
+          closePanel(panel.id);
         },
         true
       );
@@ -1504,6 +1930,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           if (dragged && dragged !== panel.id) {
             const reordered = reorderPanelsById(store.panels, dragged, panel.id);
             store.panels = reordered;
+            syncPanelShortcuts();
             onStoreChanged?.(store);
             renderButtons();
           } else if (!dragged) {
@@ -1573,6 +2000,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       setBoolAttr(splitter, 'hidden', true);
       syncEdgeTriggerVisibility();
       return;
+    }
+    if (!activePanelId) {
+      const targetId = chooseVisiblePanelId();
+      if (targetId) setActivePanel(targetId);
     }
     if (currentPanelFloating) {
       setBoolAttr(main, 'collapsed', false);
@@ -1936,6 +2367,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         })
       );
     }
+    if (target?.temporary) {
+      panelMenu.appendChild(
+        menuItem('Pin temporary panel', () => {
+          pinTemporaryPanel(panelMenuTargetId);
+        })
+      );
+    }
     panelMenu.appendChild(
       menuItem(target?.floating?.enabled ? 'Dock' : 'Floating', () => {
         const next = updatePanel(panelMenuTargetId, (p) => {
@@ -2014,15 +2452,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     panelMenu.appendChild(menuSeparator());
     panelMenu.appendChild(
       menuItem('Eliminar', () => {
-        const idx = store.panels.findIndex((p) => p.id === panelMenuTargetId);
-        if (idx === -1) return;
-        store.panels.splice(idx, 1);
-        desktopReloadPanels.delete(panelMenuTargetId);
-        if (store.last?.selectedPanelId === panelMenuTargetId) {
-          store.last.selectedPanelId = store.panels[0]?.id;
-        }
-        onStoreChanged?.(store);
-        setStore(store);
+        closePanel(panelMenuTargetId);
       })
     );
     panelMenu.appendChild(
@@ -2436,7 +2866,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
     }
     syncToolbarPrefs();
-    const targetId = previousActivePanelId || store.last?.selectedPanelId;
+    syncPanelShortcuts();
+    const targetId = previousActivePanelId || (visible ? chooseVisiblePanelId() : chooseInitialPanelId());
     if (targetId && store.panels.some((panel) => panel.id === targetId)) {
       setActivePanel(targetId);
     } else {
@@ -2589,6 +3020,20 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       uaMenu.value = panel.mobile ? 'mobile' : 'desktop';
       pnGeneral.appendChild(formRow('User agent', uaMenu, 'flex: 1;'));
 
+      const containerMenu = createXul(doc, 'menulist');
+      containerMenu.setAttribute('style', 'min-width: 240px;');
+      const containerPopup = createXul(doc, 'menupopup');
+      for (const opt of containerOptions()) {
+        const mi = createXul(doc, 'menuitem');
+        mi.setAttribute('label', opt.label);
+        mi.setAttribute('value', String(opt.id));
+        if (opt.color) mi.style.setProperty('--midori-msidebar-container-color', opt.color);
+        containerPopup.appendChild(mi);
+      }
+      containerMenu.appendChild(containerPopup);
+      containerMenu.value = String(panel.userContextId || 0);
+      pnGeneral.appendChild(formRow('Container', containerMenu, 'flex: 1;'));
+
       const chkTemporary = createXul(doc, 'checkbox');
       chkTemporary.setAttribute('label', 'Temporary');
       chkTemporary.setAttribute('checked', panel.temporary ? 'true' : 'false');
@@ -2614,7 +3059,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       chkMuted.setAttribute('checked', panel.muted ? 'true' : 'false');
       pnGeneral.appendChild(chkMuted);
 
-      pnGeneral._controls = { chkPinned, uaMenu, chkTemporary, chkUnload, chkLoadOnStartup, chkRestoreLast, chkMuted };
+      pnGeneral._controls = { chkPinned, uaMenu, containerMenu, chkTemporary, chkUnload, chkLoadOnStartup, chkRestoreLast, chkMuted };
     }
 
     // TAB 2: Title & Favicon
@@ -2811,6 +3256,40 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       pnHide._controls = { chkHideToolbar, chkHideSoundIcon, chkHideNotifBadge };
     }
 
+    function syncEditorValidation() {
+      const tf = pnTitleFavicon._controls;
+      const sc = pnShortcut._controls;
+      const cs = pnCSS._controls;
+      const values = {
+        shortcut: sc.txtShortcut.value,
+        cssSelector: cs.chkCssEnabled.checked ? cs.txtCss.value : '',
+      };
+      const validity = validatePanelEditInput(values);
+      const invalidShortcut = !validity.shortcut;
+      const invalidSelector = !validity.cssSelector;
+      sc.txtShortcut.setAttribute('invalid', invalidShortcut ? 'true' : 'false');
+      cs.txtCss.setAttribute('invalid', invalidSelector ? 'true' : 'false');
+      try {
+        cs.txtCss.disabled = !cs.chkCssEnabled.checked;
+        tf.txtTitle.disabled = tf.titleModeMenu.value !== 'static';
+        tf.txtFavicon.disabled = tf.favModeMenu.value !== 'static';
+        btnOK.disabled = invalidShortcut || invalidSelector;
+      } catch {}
+    }
+
+    for (const control of [
+      pnTitleFavicon._controls.titleModeMenu,
+      pnTitleFavicon._controls.favModeMenu,
+      pnShortcut._controls.txtShortcut,
+      pnCSS._controls.chkCssEnabled,
+      pnCSS._controls.txtCss,
+    ]) {
+      try {
+        control.addEventListener('command', syncEditorValidation, true);
+        control.addEventListener('input', syncEditorValidation, true);
+      } catch {}
+    }
+
     // Dialog buttons
     const btnOK = createXul(doc, 'button');
     btnOK.setAttribute('label', 'OK');
@@ -2831,6 +3310,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         const g = pnGeneral._controls;
         p.pinned = g.chkPinned.checked;
         p.mobile = g.uaMenu.value === 'mobile';
+        p.userContextId = parseInt(g.containerMenu.value, 10) || 0;
         if (!p.mobile) {
           desktopReloadPanels.delete(panelId);
         }
@@ -2868,7 +3348,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         };
 
         const sc = pnShortcut._controls;
-        p.shortcut = sc.txtShortcut.value;
+        p.shortcut = normalizePanelShortcut(sc.txtShortcut.value);
 
         const cs = pnCSS._controls;
         p.cssSelector = {
@@ -2902,6 +3382,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     }, true);
 
     doc.documentElement.appendChild(dlgWrapper);
+    syncEditorValidation();
     // Focus the first input for better UX
     try {
       const firstInput = dlgWrapper.querySelector('textbox, checkbox, menulist');
@@ -2934,6 +3415,15 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       edgeTrigger.remove();
     } catch {}
     try {
+      if (faviconPumpTimer) win.clearTimeout(faviconPumpTimer);
+      faviconPumpTimer = null;
+      faviconQueue.length = 0;
+      faviconQueued.clear();
+    } catch {}
+    try {
+      doc.getElementById(PANEL_KEYSET_ID)?.remove?.();
+    } catch {}
+    try {
       doc.documentElement.removeAttribute('midori-msidebar-injected');
     } catch {}
   }
@@ -2955,6 +3445,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     setCssWidth,
     refresh,
     destroy,
+    addPanelFromContext(options = {}) {
+      return addPanel(options);
+    },
     get settingsAnchor() {
       return btnSettings;
     },

@@ -121,15 +121,34 @@ export function validateStore(store, options = {}) {
   }
 
   const selectedPanelId =
-    typeof last.selectedPanelId === 'string' && seen.has(last.selectedPanelId)
+    typeof last.selectedPanelId === 'string' && fixedPanels.some((panel) => panel.id === last.selectedPanelId)
       ? last.selectedPanelId
       : null;
+
+  const fixedPanelIds = new Set(fixedPanels.map((panel) => panel.id));
+  const panelUrls = {};
+  if (last.panelUrls && typeof last.panelUrls === 'object') {
+    for (const [panelId, url] of Object.entries(last.panelUrls)) {
+      if (!fixedPanelIds.has(panelId)) continue;
+      const safeUrl = sanitizeUrl(url);
+      if (safeUrl) panelUrls[panelId] = safeUrl;
+    }
+  }
+
+  const favicons = {};
+  if (last.favicons && typeof last.favicons === 'object') {
+    for (const [panelId, url] of Object.entries(last.favicons)) {
+      if (!fixedPanelIds.has(panelId)) continue;
+      const safeUrl = sanitizeUrl(url);
+      if (safeUrl) favicons[panelId] = safeUrl;
+    }
+  }
 
   return {
     version: STORE_VERSION,
     settings: { ...settings },
     panels: fixedPanels,
-    last: { selectedPanelId },
+    last: { selectedPanelId, panelUrls, favicons },
   };
 }
 
