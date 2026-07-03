@@ -31,7 +31,16 @@ export async function loadStore() {
 export async function saveStore(store) {
   const path = getStorePath();
   const validated = validateStore(store);
-  await IOUtils.writeJSON(path, validated);
+  const tmpPath = `${path}.tmp`;
+  await IOUtils.writeJSON(tmpPath, validated);
+  try {
+    await IOUtils.move(tmpPath, path, { overwrite: true });
+  } catch (error) {
+    try {
+      await IOUtils.remove(tmpPath);
+    } catch {}
+    throw error;
+  }
   return validated;
 }
 

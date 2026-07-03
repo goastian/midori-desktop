@@ -35,22 +35,28 @@ function ensureStyle(doc) {
 #midori-msidebar-edge-trigger[position='left']{left:0;}
 #midori-msidebar-edge-trigger[position='right']{right:0;}
 #midori-msidebar-edge-trigger[hidden='true']{display:none;pointer-events:none;}
-#midori-msidebar-main{display:flex;flex-direction:column;gap:var(--space-small,8px);padding:var(--space-small,8px) calc(var(--space-small,8px)/2);background:var(--toolbox-bgcolor);color:var(--toolbox-color);min-width:var(--midori-msidebar-main-width);box-sizing:border-box;}
+#midori-msidebar-main{display:flex;flex-direction:column;align-items:center;gap:var(--space-small,8px);padding:var(--space-small,8px) calc(var(--space-small,8px)/2);background:var(--toolbox-bgcolor);color:var(--toolbox-color);min-width:var(--midori-msidebar-main-width);max-width:var(--midori-msidebar-main-width);box-sizing:border-box;overflow-y:auto;scrollbar-width:none;}
+#midori-msidebar-buttons{display:flex;flex-direction:column;align-items:center;gap:var(--space-small,8px);min-width:100%;}
 #midori-msidebar-main[collapsed='true']{pointer-events:none;opacity:0;min-width:0;padding:0;margin:0;}
 #midori-msidebar-main[animated='true']:not([initializing]){transition:opacity var(--midori-msidebar-anim) ease, min-width var(--midori-msidebar-anim) ease, padding var(--midori-msidebar-anim) ease;}
-#midori-msidebar-main .toolbarbutton-1{padding:0 !important;}
-.midori-msidebar-icon{min-width:calc(var(--midori-msidebar-main-width) - 8px);min-height:34px;padding:0;margin:0;}
-#midori-msidebar-main .toolbarbutton-1{border-radius:var(--border-radius-medium);background:transparent;}
+#midori-msidebar-main .toolbarbutton-1{padding:0 !important;display:flex;align-items:center;justify-content:center;}
+.midori-msidebar-icon{width:calc(var(--midori-msidebar-main-width) - 10px);min-width:calc(var(--midori-msidebar-main-width) - 10px);height:36px;min-height:36px;padding:0;margin:0;}
+#midori-msidebar-main .toolbarbutton-1{border-radius:var(--border-radius-medium);background:transparent;box-sizing:border-box;}
 #midori-msidebar-main .toolbarbutton-1:hover{background:color-mix(in srgb, currentColor 8%, transparent);}
 #midori-msidebar-main .toolbarbutton-1[data-drop-target='true']{outline:2px solid var(--focus-outline-color);outline-offset:-2px;}
 #midori-msidebar-main .toolbarbutton-1:active{background:color-mix(in srgb, currentColor 12%, transparent);}
 #midori-msidebar-main .toolbarbutton-1,#midori-msidebar-box-toolbar .toolbarbutton-1{-moz-context-properties:fill;fill:currentColor;}
+#midori-msidebar-main .toolbarbutton-icon,#midori-msidebar-box-toolbar .toolbarbutton-icon{margin-inline:auto;}
 #midori-msidebar-main .toolbarbutton-text{display:none;}
 .midori-msidebar-panel-btn .toolbarbutton-text{display:none;}
 .midori-msidebar-panel-btn .toolbarbutton-icon{width:18px;height:18px;}
 .midori-msidebar-panel-btn{list-style-image:url("chrome://global/skin/icons/defaultFavicon.svg");position:relative;overflow:visible;}
-.midori-msidebar-panel-btn[checked='true']{background:color-mix(in srgb, currentColor 10%, transparent);}
-.midori-msidebar-panel-btn[data-sound-playing='true']::after{content:"";position:absolute;right:3px;bottom:2px;width:12px;height:12px;background:url("chrome://browser/skin/notification-icons/speaker.svg") center/12px 12px no-repeat;opacity:0.95;pointer-events:none;}
+.midori-msidebar-panel-btn[checked='true']{background:color-mix(in srgb, currentColor 12%, transparent);}
+.midori-msidebar-panel-btn[temporary='true']{background:color-mix(in srgb, var(--attention-dot-color, #0060df) 14%, transparent);}
+.midori-msidebar-panel-btn[unloaded='true'] .toolbarbutton-icon{opacity:var(--toolbarbutton-disabled-opacity, .55);}
+.midori-msidebar-panel-btn[loading='true']{list-style-image:url("chrome://global/skin/icons/loading.svg");}
+.midori-msidebar-panel-btn[data-sound-playing='true']::after{content:"";position:absolute;right:3px;bottom:2px;width:12px;height:12px;background:url("chrome://browser/skin/tabbrowser/tab-audio-playing-small.svg") center/12px 12px no-repeat;opacity:0.95;pointer-events:none;}
+.midori-msidebar-panel-btn[data-muted='true']::after{content:"";position:absolute;right:3px;bottom:2px;width:12px;height:12px;background:url("chrome://browser/skin/tabbrowser/tab-audio-muted-small.svg") center/12px 12px no-repeat;opacity:0.95;pointer-events:none;}
 .midori-msidebar-panel-btn[data-notification-badge]::before{content:attr(data-notification-badge);position:absolute;top:1px;right:1px;min-width:12px;height:12px;padding:0 3px;border-radius:999px;background:#d92222;color:#fff;font-size:9px;font-weight:700;line-height:12px;text-align:center;pointer-events:none;}
 
 #midori-msidebar-toggle{list-style-image:url("chrome://browser/skin/sidebars.svg");}
@@ -60,6 +66,9 @@ function ensureStyle(doc) {
 #midori-msidebar-nav-forward{list-style-image:url("chrome://browser/skin/forward.svg");}
 #midori-msidebar-nav-reload{list-style-image:url("chrome://global/skin/icons/reload.svg");}
 #midori-msidebar-nav-home{list-style-image:url("chrome://browser/skin/home.svg");}
+#midori-msidebar-zoom-out{list-style-image:url("${zoomIconDataUri('out')}");}
+#midori-msidebar-zoom-reset{list-style-image:url("${zoomIconDataUri('reset')}");}
+#midori-msidebar-zoom-in{list-style-image:url("${zoomIconDataUri('in')}");}
 #midori-msidebar-box-area{display:flex;height:100%;width:var(--midori-msidebar-width);min-width:200px;box-sizing:border-box;}
 #midori-msidebar-box-area[collapsed='true']{width:0;min-width:0;opacity:0;overflow:hidden;}
 #midori-msidebar-box-area[collapsed='true']:not([autohide-target='true']){pointer-events:none;}
@@ -74,7 +83,7 @@ function ensureStyle(doc) {
 #midori-msidebar-box-title{flex:1;min-width:0;}
 #midori-msidebar-box-title label{margin:0;min-width:0;max-width:100%;}
 #midori-msidebar-box-toolbar{display:flex;gap:4px;}
-#midori-msidebar-box-toolbar .toolbarbutton-1{min-width:28px;min-height:28px;}
+#midori-msidebar-box-toolbar .toolbarbutton-1{min-width:28px;min-height:28px;padding:0 !important;}
 #midori-msidebar-box-toolbar[autohide='true']{opacity:0;pointer-events:none;transition:opacity var(--midori-msidebar-anim) ease;}
 #midori-msidebar-box-header:hover #midori-msidebar-box-toolbar[autohide='true']{opacity:1;pointer-events:auto;}
 #midori-msidebar-browser-stack{flex:1;min-height:0;}
@@ -312,6 +321,56 @@ function faviconFallbackForPanel(panel) {
 
 function clampZoom(z) {
   return Math.max(0.3, Math.min(3, typeof z === 'number' ? z : 1));
+}
+
+export function panelPeriodicReloadDelayMs(panel) {
+  const reload = panel?.periodicReload;
+  if (!reload?.enabled) return 0;
+  const seconds = typeof reload.seconds === 'number' ? reload.seconds : 300;
+  return Math.max(30, Math.min(86400, seconds)) * 1000;
+}
+
+export function panelDisplayTitle(panel, browserTitle = '') {
+  const dynamicTitle = typeof browserTitle === 'string' ? browserTitle.trim() : '';
+  if (panel?.title?.mode === 'dynamic' && dynamicTitle) {
+    return dynamicTitle.slice(0, 240);
+  }
+  const staticTitle = typeof panel?.title?.value === 'string' ? panel.title.value.trim() : '';
+  return staticTitle || safeHostname(panel?.url || '') || panel?.url || 'Panel';
+}
+
+export function buildPanelSelectorScript(selector) {
+  if (typeof selector !== 'string' || !selector.trim()) return '';
+  const safeSelector = JSON.stringify(selector.trim().slice(0, 500));
+  return `(() => {
+    const target = document.querySelector(${safeSelector});
+    if (!target || !document.body || !document.body.contains(target)) {
+      return false;
+    }
+    const keep = new Set();
+    let node = target;
+    while (node && node !== document.body) {
+      keep.add(node);
+      node = node.parentElement;
+    }
+    keep.add(document.body);
+    for (const parent of [...keep]) {
+      for (const child of [...parent.children]) {
+        if (!keep.has(child) && child.nodeName !== 'STYLE' && child.nodeName !== 'SCRIPT') {
+          child.setAttribute('hidden', 'true');
+        }
+      }
+      parent.style.margin = '0';
+      parent.style.padding = '0';
+      parent.style.minWidth = '0';
+      parent.style.minHeight = '0';
+      parent.style.overflow = parent === document.body ? 'hidden' : 'visible';
+      parent.style.transform = 'none';
+    }
+    target.scrollIntoView({ block: 'start', inline: 'nearest' });
+    window.scrollTo(0, 0);
+    return true;
+  })();`;
 }
 
 function clampFloatingNumber(value, min, max, fallback) {
@@ -630,11 +689,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const desktopReloadPanels = new Set();
   const panelAudioState = new Map();
   const panelNotificationCount = new Map();
+  let periodicReloadTimer = null;
   let activePromptAdapter = null;
   let activeNotificationBridge = null;
   let activeAudioEventsCleanup = null;
 
   function teardownActivePanelBridges() {
+    stopPeriodicReload();
     if (activeAudioEventsCleanup) {
       try {
         activeAudioEventsCleanup();
@@ -653,6 +714,31 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       } catch {}
       activePromptAdapter = null;
     }
+  }
+
+  function stopPeriodicReload() {
+    if (!periodicReloadTimer) return;
+    try {
+      win.clearInterval(periodicReloadTimer);
+    } catch {}
+    periodicReloadTimer = null;
+  }
+
+  function startPeriodicReload(panel) {
+    stopPeriodicReload();
+    const delayMs = panelPeriodicReloadDelayMs(panel);
+    if (!delayMs) return;
+    periodicReloadTimer = win.setInterval(() => {
+      try {
+        if (!activeBrowser || activePanelId !== panel.id) return;
+        if (typeof activeBrowser.reload === 'function') {
+          activeBrowser.reload();
+          return;
+        }
+        const src = activeBrowser.getAttribute?.('src') || panel.url;
+        if (src) activeBrowser.setAttribute('src', src);
+      } catch {}
+    }, delayMs);
   }
 
   function setPanelAudioState(panelId, playing) {
@@ -781,6 +867,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       btn.setAttribute('data-sound-playing', 'true');
     } else {
       btn.removeAttribute('data-sound-playing');
+    }
+
+    if (panel?.muted && !panel?.hide?.soundIcon) {
+      btn.setAttribute('data-muted', 'true');
+    } else {
+      btn.removeAttribute('data-muted');
     }
 
     if (decorations.badgeText) {
@@ -1117,6 +1209,52 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     setBoolAttr(btnForward, 'hidden', autoForward && !canForward);
   }
 
+  function browserTitleForPanel(browserEl) {
+    try {
+      const title = browserEl?.contentTitle || browserEl?.currentURI?.displaySpec || '';
+      if (title) return title;
+    } catch {}
+    try {
+      const title = browserEl?.browsingContext?.currentWindowGlobal?.documentTitle || '';
+      if (title) return title;
+    } catch {}
+    try {
+      const title = browserEl?.ownerGlobal?.gBrowser?.getTabForBrowser?.(browserEl)?.label || '';
+      if (title) return title;
+    } catch {}
+    return '';
+  }
+
+  function updateActivePanelTitle(panel) {
+    if (!panel || activePanelId !== panel.id) return;
+    titleBaseText = panelDisplayTitle(panel, browserTitleForPanel(activeBrowser));
+    try {
+      titleLabel.setAttribute('value', titleBaseText);
+    } catch {}
+    renderButtons();
+  }
+
+  function applyPanelSelector(panel, browserEl) {
+    if (!panel?.cssSelector?.enabled || !panel.cssSelector.value || !browserEl) return;
+    const script = buildPanelSelectorScript(panel.cssSelector.value);
+    if (!script) return;
+    try {
+      const frameScript = `(() => {
+        const document = content.document;
+        const window = content;
+        ${script}
+      })();`;
+      browserEl.messageManager?.loadFrameScript?.(`data:application/javascript,${encodeURIComponent(frameScript)}`, false);
+      return;
+    } catch {}
+    try {
+      browserEl.browsingContext?.currentWindowGlobal?.drawSnapshot;
+      browserEl.loadURI?.(`javascript:${encodeURIComponent(script)}`, {
+        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+      });
+    } catch {}
+  }
+
   function setActivePanel(panelId) {
     const sourcePanel = store.panels.find((p) => p.id === panelId);
     if (!sourcePanel) return;
@@ -1166,6 +1304,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         syncNavButtons();
         applyZoomToBrowser(activeBrowser, panel.zoom);
         syncPanelAudioFromBrowser(panel.id, activeBrowser);
+        updateActivePanelTitle(panel);
+        applyPanelSelector(panel, activeBrowser);
         try {
           faviconCache.delete(panel.id);
         } catch {}
@@ -1173,6 +1313,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       },
       true
     );
+    activeBrowser.addEventListener('DOMTitleChanged', () => updateActivePanelTitle(panel), true);
+    activeBrowser.addEventListener('DOMLinkAdded', () => ensureFavicon(panel), true);
     try {
       applyMuteToBrowser(activeBrowser, panel.muted);
     } catch {}
@@ -1180,7 +1322,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       applyZoomToBrowser(activeBrowser, panel.zoom);
     } catch {}
     stack.appendChild(browserEl);
-    titleBaseText = panel.title?.value || safeHostname(panel.url) || panel.url;
+    titleBaseText = panelDisplayTitle(panel);
     titleLabel.setAttribute('value', titleBaseText);
     if (currentPanelFloating) {
       boxArea.setAttribute('overlay', 'true');
@@ -1215,6 +1357,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     syncToolbarPrefs();
     syncNavButtons();
     ensureFavicon(panel);
+    startPeriodicReload(panel);
     onStoreChanged?.(store);
   }
 
@@ -1242,11 +1385,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       btn.classList.add('toolbarbutton-1', 'midori-msidebar-icon', 'midori-msidebar-panel-btn');
       btn.setAttribute('draggable', 'true');
       btn.setAttribute('label', '');
-      btn.setAttribute('aria-label', panel.title?.value || safeHostname(panel.url) || panel.url || 'Panel');
+      btn.setAttribute('aria-label', panelDisplayTitle(panel));
       const tt = tooltipTextForPanel(panel);
       if (tt) btn.setAttribute('tooltiptext', tt);
       btn.setAttribute('midori-msidebar-panel-id', panel.id);
       btn.setAttribute('container-indicator', indicator);
+      if (panel.temporary) btn.setAttribute('temporary', 'true');
+      if (panel.id !== selected || panelAreaHiddenByUser) btn.setAttribute('unloaded', 'true');
       const cc = containerColorForUserContext(panel.userContextId);
       if (cc) btn.style.setProperty('--midori-msidebar-container-color', cc);
       setPanelButtonIcon(btn, panelIconSpec(panel));
