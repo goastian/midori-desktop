@@ -11,8 +11,9 @@
 # has no diff in engine/), the original patch is preserved and a warning
 # is printed. This prevents accidental patch destruction after updates.
 #
-# Usage: bash scripts/recalculate-patches.sh [--force]
+# Usage: bash scripts/recalculate-patches.sh [--force] [--prune-empty]
 #   --force: Overwrite patches even if the new content is empty
+#   --prune-empty: Delete patches whose target has no diff in engine/
 
 set -euo pipefail
 
@@ -22,14 +23,41 @@ ENGINE_DIR="$PROJECT_DIR/engine"
 SRC_DIR="$PROJECT_DIR/src"
 
 FORCE=false
-if [[ "${1:-}" == "--force" ]]; then
-  FORCE=true
-fi
+PRUNE_EMPTY=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force)
+      FORCE=true
+      ;;
+    --prune-empty)
+      PRUNE_EMPTY=true
+      ;;
+    *)
+      echo "ERROR: Unknown option: $1"
+      echo "Usage: bash scripts/recalculate-patches.sh [--force] [--prune-empty]"
+      exit 1
+      ;;
+  esac
+  shift
+done
 
 IGNORE_FILES=(
   "shared.nsh"
   "ignorePrefs.json"
 )
+
+generate_diff_for_target() {
+  local target="$1"
+
+  if (cd "$ENGINE_DIR" && git ls-files --error-unmatch "$target" >/dev/null 2>&1); then
+    cd "$ENGINE_DIR" && git diff --src-prefix=a/ --dst-prefix=b/ --full-index "$target" 2>/dev/null || true
+    return
+  fi
+
+  # New files applied by git patches remain untracked in engine/, so regular
+  # git diff cannot see them. Export them as an add-file diff against /dev/null.
+  cd "$ENGINE_DIR" && git diff --no-index --src-prefix=a/ --dst-prefix=b/ --full-index -- /dev/null "$target" 2>/dev/null || true
+}
 
 # Verify engine/ exists and has a git repo
 if [[ ! -d "$ENGINE_DIR/.git" ]]; then
@@ -57,6 +85,7 @@ TOTAL=0
 UPDATED=0
 SKIPPED=0
 EMPTY_WARNED=0
+PRUNED=0
 FAILED=0
 
 echo "=== Recalculating patches ==="
@@ -94,14 +123,14 @@ while read -r patch_file; do
   fi
 
   # Generate the new patch content using git diff
-  new_content=$(cd "$ENGINE_DIR" && git diff --src-prefix=a/ --dst-prefix=b/ --full-index "$first_target" 2>/dev/null || true)
+  new_content=$(generate_diff_for_target "$first_target")
 
   # For multi-file patches, concatenate diffs for all targets
   if [[ $(echo "$target_files" | wc -l) -gt 1 ]]; then
     new_content=""
     while IFS= read -r tf; do
       if [[ -f "$ENGINE_DIR/$tf" ]]; then
-        file_diff=$(cd "$ENGINE_DIR" && git diff --src-prefix=a/ --dst-prefix=b/ --full-index "$tf" 2>/dev/null || true)
+        file_diff=$(generate_diff_for_target "$tf")
         if [[ -n "$file_diff" ]]; then
           new_content="${new_content}${file_diff}"$'\n'
         fi
@@ -113,8 +142,14 @@ while read -r patch_file; do
   if [[ -z "$new_content" || ${#new_content} -lt 10 ]]; then
     echo "WARNING: Empty diff for $patch_file"
     echo "  Target: $first_target"
-    echo "  The original patch is PRESERVED (not overwritten)."
     EMPTY_WARNED=$((EMPTY_WARNED + 1))
+    if [[ "$PRUNE_EMPTY" == true ]]; then
+      echo "  --prune-empty: Deleting obsolete patch."
+      rm -f "$patch_file"
+      PRUNED=$((PRUNED + 1))
+      continue
+    fi
+    echo "  The original patch is PRESERVED (not overwritten)."
     if [[ "$FORCE" == true ]]; then
       echo "  --force: Overwriting anyway (patch will be empty)."
       echo "" > "$patch_file"
@@ -133,6 +168,7 @@ echo "=== Patch recalculation complete ==="
 echo "  Updated: $UPDATED"
 echo "  Skipped: $SKIPPED"
 echo "  Empty (preserved): $EMPTY_WARNED"
+echo "  Pruned: $PRUNED"
 if [[ $FAILED -gt 0 ]]; then
   echo "  Failed: $FAILED"
 fi
