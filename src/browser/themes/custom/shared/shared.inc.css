@@ -558,6 +558,11 @@ menupopup:not([position]) {
 #midori-workspace-selector[open="true"] {
   background-color: var(--midori-btn-active,
     color-mix(in srgb, var(--midori-workspace-accent, AccentColor) 18%, transparent)) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--midori-workspace-accent, AccentColor) 45%,
+    transparent
+  ) !important;
 }
 
 /* Explicit workspace label — always visible */
@@ -727,6 +732,19 @@ menupopup:not([position]) {
   background: color-mix(
     in srgb,
     var(--midori-workspace-accent) 14%,
+    transparent
+  ) !important;
+}
+
+:root[midori-vertical-tabs] #midori-workspace-dropdown[open="true"] {
+  border-color: color-mix(
+    in srgb,
+    var(--midori-workspace-accent) 46%,
+    transparent
+  ) !important;
+  background: color-mix(
+    in srgb,
+    var(--midori-workspace-accent) 12%,
     transparent
   ) !important;
 }
@@ -1189,6 +1207,13 @@ menupopup:not([position]) {
     1px solid color-mix(in srgb, currentColor 12%, transparent)) !important;
   border-radius: 10px !important;
   padding-block: 4px !important;
+  min-width: 220px !important;
+}
+
+#midori-workspace-popup menuitem {
+  border-radius: 7px !important;
+  margin: 1px 2px !important;
+  min-height: 30px !important;
 }
 
 /* Active workspace item highlight */
@@ -1196,10 +1221,11 @@ menupopup:not([position]) {
   font-weight: 700 !important;
   background-color: color-mix(
     in srgb,
-    var(--focus-outline-color, AccentColor) 12%,
+    var(--midori-workspace-accent, var(--focus-outline-color, AccentColor)) 12%,
     transparent
   ) !important;
   border-radius: 6px !important;
+  color: var(--midori-workspace-accent, var(--focus-outline-color, AccentColor)) !important;
 }
 
 /* New Workspace action item */

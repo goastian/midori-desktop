@@ -6,22 +6,30 @@ export const MAX_WORKSPACES = 25;
 export const MAX_NAME_LENGTH = 32;
 
 export const WORKSPACE_ICONS = [
-  { id: 'default', emoji: '🏠' },
-  { id: 'work', emoji: '💼' },
-  { id: 'personal', emoji: '👤' },
-  { id: 'shopping', emoji: '🛒' },
-  { id: 'social', emoji: '💬' },
-  { id: 'dev', emoji: '💻' },
-  { id: 'research', emoji: '🔬' },
-  { id: 'music', emoji: '🎵' },
-  { id: 'gaming', emoji: '🎮' },
-  { id: 'finance', emoji: '💰' },
-  { id: 'travel', emoji: '✈️' },
-  { id: 'education', emoji: '📚' },
-  { id: 'health', emoji: '❤️' },
-  { id: 'news', emoji: '📰' },
-  { id: 'creative', emoji: '🎨' },
-  { id: 'star', emoji: '⭐' },
+  { id: 'default', emoji: '🏠', label: 'Home' },
+  { id: 'work', emoji: '💼', label: 'Work' },
+  { id: 'personal', emoji: '👤', label: 'Personal' },
+  { id: 'shopping', emoji: '🛒', label: 'Shopping' },
+  { id: 'social', emoji: '💬', label: 'Social' },
+  { id: 'dev', emoji: '💻', label: 'Development' },
+  { id: 'research', emoji: '🔬', label: 'Research' },
+  { id: 'music', emoji: '🎵', label: 'Music' },
+  { id: 'gaming', emoji: '🎮', label: 'Gaming' },
+  { id: 'finance', emoji: '💰', label: 'Finance' },
+  { id: 'travel', emoji: '✈️', label: 'Travel' },
+  { id: 'education', emoji: '📚', label: 'Education' },
+  { id: 'health', emoji: '❤️', label: 'Health' },
+  { id: 'news', emoji: '📰', label: 'News' },
+  { id: 'creative', emoji: '🎨', label: 'Creative' },
+  { id: 'star', emoji: '⭐', label: 'Favorite' },
+  { id: 'focus', emoji: '🎯', label: 'Focus' },
+  { id: 'mail', emoji: '✉️', label: 'Mail' },
+  { id: 'video', emoji: '🎬', label: 'Video' },
+  { id: 'calendar', emoji: '📅', label: 'Calendar' },
+  { id: 'idea', emoji: '💡', label: 'Ideas' },
+  { id: 'secure', emoji: '🔒', label: 'Secure' },
+  { id: 'automation', emoji: '⚙️', label: 'Automation' },
+  { id: 'archive', emoji: '🗃️', label: 'Archive' },
 ];
 
 export const WORKSPACE_ACCENTS = {
@@ -41,6 +49,14 @@ export const WORKSPACE_ACCENTS = {
   news: '#64748b',
   creative: '#d946ef',
   star: '#eab308',
+  focus: '#f43f5e',
+  mail: '#0f766e',
+  video: '#7c3aed',
+  calendar: '#2563eb',
+  idea: '#ca8a04',
+  secure: '#475569',
+  automation: '#0891b2',
+  archive: '#78716c',
 };
 
 const VALID_ICON_IDS = new Set(WORKSPACE_ICONS.map((icon) => icon.id));
@@ -60,6 +76,11 @@ export function validateIconId(iconId) {
 export function getEmojiForIcon(iconId) {
   const icon = WORKSPACE_ICONS.find((item) => item.id === iconId);
   return icon ? icon.emoji : '🏠';
+}
+
+export function getLabelForIcon(iconId) {
+  const icon = WORKSPACE_ICONS.find((item) => item.id === iconId);
+  return icon ? icon.label : 'Home';
 }
 
 export function getWorkspaceAccent(iconId) {

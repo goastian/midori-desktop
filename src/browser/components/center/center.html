@@ -536,6 +536,28 @@
               <span class="toggle-slider"></span>
             </label>
           </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Unload inactive workspaces</strong>
+              <p>Discard safe background tabs from workspaces you are not using.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-workspaces-unload">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Workspace accent</strong>
+              <p>Tint the browser chrome with the active workspace color.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-workspaces-tint">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
         </div>
 
         <div class="setting-group" id="workspace-manager-panel">
@@ -546,6 +568,8 @@
             </div>
             <span id="workspace-count" class="workspace-count-badge">0 / 25</span>
           </div>
+
+          <div id="workspace-summary-strip" class="workspace-summary-strip" aria-label="Workspace shortcuts"></div>
 
           <div class="workspace-create-row">
             <input

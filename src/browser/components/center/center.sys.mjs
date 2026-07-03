@@ -43,30 +43,33 @@ const PREF_MAP = {
   "pref-workspaces-enabled":{ pref: "midori.workspaces.enabled",      type: "bool" },
   "pref-workspaces-button": { pref: "midori.workspaces.show-button",  type: "bool" },
   "pref-workspaces-name":   { pref: "midori.workspaces.show-name",    type: "bool" },
+  "pref-workspaces-unload": { pref: "midori.workspaces.unloadInactive", type: "bool" },
+  "pref-workspaces-tint":   { pref: "midori.workspaces.chromeTint",   type: "bool" },
 };
 
 const FALLBACK_WORKSPACE_ICONS = [
-  { id: "default", emoji: "🏠" },
-  { id: "work", emoji: "💼" },
-  { id: "personal", emoji: "👤" },
-  { id: "shopping", emoji: "🛒" },
-  { id: "social", emoji: "💬" },
-  { id: "dev", emoji: "💻" },
-  { id: "research", emoji: "🔬" },
-  { id: "music", emoji: "🎵" },
-  { id: "gaming", emoji: "🎮" },
-  { id: "finance", emoji: "💰" },
-  { id: "travel", emoji: "✈️" },
-  { id: "education", emoji: "📚" },
-  { id: "health", emoji: "❤️" },
-  { id: "news", emoji: "📰" },
-  { id: "creative", emoji: "🎨" },
-  { id: "star", emoji: "⭐" },
+  { id: "default", emoji: "🏠", label: "Home" },
+  { id: "work", emoji: "💼", label: "Work" },
+  { id: "personal", emoji: "👤", label: "Personal" },
+  { id: "shopping", emoji: "🛒", label: "Shopping" },
+  { id: "social", emoji: "💬", label: "Social" },
+  { id: "dev", emoji: "💻", label: "Development" },
+  { id: "research", emoji: "🔬", label: "Research" },
+  { id: "music", emoji: "🎵", label: "Music" },
+  { id: "gaming", emoji: "🎮", label: "Gaming" },
+  { id: "finance", emoji: "💰", label: "Finance" },
+  { id: "travel", emoji: "✈️", label: "Travel" },
+  { id: "education", emoji: "📚", label: "Education" },
+  { id: "health", emoji: "❤️", label: "Health" },
+  { id: "news", emoji: "📰", label: "News" },
+  { id: "creative", emoji: "🎨", label: "Creative" },
+  { id: "star", emoji: "⭐", label: "Favorite" },
 ];
 
 const workspaceUI = {
   panel: null,
   count: null,
+  summary: null,
   createName: null,
   createIcon: null,
   createBtn: null,
@@ -321,7 +324,7 @@ function populateIconSelect(selectEl, icons, selectedIcon) {
   for (const icon of icons) {
     const option = document.createElement("option");
     option.value = icon.id;
-    option.textContent = `${icon.emoji} ${icon.id}`;
+    option.textContent = `${icon.emoji} ${icon.label || icon.id}`;
     selectEl.appendChild(option);
   }
 
@@ -349,6 +352,9 @@ async function refreshWorkspaceManager() {
   if (!enabled) {
     workspaceUI.count.textContent = "0 / 0";
     workspaceUI.list.textContent = "";
+    if (workspaceUI.summary) {
+      workspaceUI.summary.textContent = "";
+    }
     workspaceUI.empty.hidden = false;
     workspaceUI.empty.textContent = "Enable Workspaces to start managing them.";
     clearWorkspaceStatus();
@@ -360,6 +366,9 @@ async function refreshWorkspaceManager() {
   if (!api || !win) {
     workspaceUI.count.textContent = "0 / 0";
     workspaceUI.list.textContent = "";
+    if (workspaceUI.summary) {
+      workspaceUI.summary.textContent = "";
+    }
     workspaceUI.empty.hidden = false;
     workspaceUI.empty.textContent = "Workspace service is unavailable in this context.";
     setWorkspaceStatus("Could not connect to the workspace service.", true);
@@ -384,6 +393,9 @@ async function refreshWorkspaceManager() {
   workspaceUI.createName.maxLength = maxNameLength;
 
   workspaceUI.list.textContent = "";
+  if (workspaceUI.summary) {
+    workspaceUI.summary.textContent = "";
+  }
 
   if (!workspaces.length) {
     workspaceUI.empty.hidden = false;
@@ -395,11 +407,43 @@ async function refreshWorkspaceManager() {
 
   for (let index = 0; index < workspaces.length; index++) {
     const ws = workspaces[index];
+    const icon = icons.find((item) => item.id === ws.icon) || icons[0];
+
+    if (workspaceUI.summary) {
+      const summaryItem = document.createElement("button");
+      summaryItem.type = "button";
+      summaryItem.className = "workspace-summary-item";
+      if (ws.isSelected) {
+        summaryItem.classList.add("workspace-summary-item-active");
+      }
+      summaryItem.title = `${ws.name} · ${ws.tabCount} tab${ws.tabCount === 1 ? "" : "s"}`;
+      summaryItem.textContent = icon?.emoji || "🏠";
+      summaryItem.addEventListener("click", async () => {
+        api.switchWorkspace(win, ws.id);
+        await refreshWorkspaceManager();
+      });
+      workspaceUI.summary.appendChild(summaryItem);
+    }
+
     const row = document.createElement("article");
     row.className = "workspace-item";
+    if (ws.isSelected) {
+      row.classList.add("workspace-item-active");
+    }
+    row.style.setProperty("--workspace-row-accent", api.getWorkspaceAccent?.(ws.icon) || "var(--mc-green-500)");
 
     const top = document.createElement("div");
     top.className = "workspace-item-top";
+
+    const identity = document.createElement("div");
+    identity.className = "workspace-identity";
+    const iconEl = document.createElement("span");
+    iconEl.className = "workspace-icon";
+    iconEl.textContent = icon?.emoji || "🏠";
+    const titleEl = document.createElement("strong");
+    titleEl.textContent = ws.name;
+    identity.appendChild(iconEl);
+    identity.appendChild(titleEl);
 
     const badges = document.createElement("div");
     badges.className = "workspace-badges";
@@ -423,6 +467,7 @@ async function refreshWorkspaceManager() {
     tabsBadge.textContent = `${ws.tabCount} tab${ws.tabCount === 1 ? "" : "s"}`;
     badges.appendChild(tabsBadge);
 
+    top.appendChild(identity);
     top.appendChild(badges);
 
     const form = document.createElement("div");
@@ -555,6 +600,7 @@ async function refreshWorkspaceManager() {
 async function initWorkspaceManager() {
   workspaceUI.panel = document.getElementById("workspace-manager-panel");
   workspaceUI.count = document.getElementById("workspace-count");
+  workspaceUI.summary = document.getElementById("workspace-summary-strip");
   workspaceUI.createName = document.getElementById("workspace-create-name");
   workspaceUI.createIcon = document.getElementById("workspace-create-icon");
   workspaceUI.createBtn = document.getElementById("workspace-create-btn");
