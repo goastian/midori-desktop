@@ -1,5 +1,5 @@
 diff --git a/services/settings/dumps/main/search-config-v2.json b/services/settings/dumps/main/search-config-v2.json
-index 6b34fe02250e1d8a14f7219414a227a27dbbfa11..033e08d0b0d18152fbce38c4dac1c1bda29c333e 100644
+index b8b72adcb7a8f1760f72aa01c4a0234ff4544f25..9c71378306eaa5255f409f8b7cfdec6311431e63 100644
 --- a/services/settings/dumps/main/search-config-v2.json
 +++ b/services/settings/dumps/main/search-config-v2.json
 @@ -113,7 +113,7 @@

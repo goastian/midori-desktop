@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-init.js b/browser/base/content/browser-init.js
-index b64d2f52ed1eb3d0b8aa86700bc082d3fc95152b..d0099d2f49228b2fd8c24b237764014cec375b50 100644
+index 0aa4baea8e5e6d742fc6cd3333068e7eb64b5bbc..3fe44d531439ca365900647f86e43cd74980c284 100644
 --- a/browser/base/content/browser-init.js
 +++ b/browser/base/content/browser-init.js
-@@ -567,6 +567,40 @@ var gBrowserInit = {
+@@ -572,6 +572,40 @@ var gBrowserInit = {
      gProtectionsHandler.init();
      gTrustPanelHandler.init();
  

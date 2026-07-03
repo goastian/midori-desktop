@@ -1,8 +1,8 @@
 diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
-index 36eafe35063f02fe3d4acaab24a08dc1b7b0ae24..300123f7e52cf5889a2e43d2bad41aa93153f724 100644
+index 83e52b260c380b8a4fdcb9146c36a048adffba68..ec9ef0aa356e3c1b068ef7bdcba362d9f819c5db 100644
 --- a/browser/installer/package-manifest.in
 +++ b/browser/installer/package-manifest.in
-@@ -378,17 +378,17 @@ bin/libfreebl_64int_3.so
+@@ -382,17 +382,17 @@ bin/libfreebl_64int_3.so
  ; [MaintenanceService]
  ;
  #ifdef MOZ_MAINTENANCE_SERVICE
@@ -24,7 +24,7 @@ index 36eafe35063f02fe3d4acaab24a08dc1b7b0ae24..300123f7e52cf5889a2e43d2bad41aa9
  #if defined(XP_WIN)
  @BINPATH@/@DLL_PREFIX@mozwer@DLL_SUFFIX@
  #endif
-@@ -452,3 +452,7 @@ bin/libfreebl_64int_3.so
+@@ -456,3 +456,7 @@ bin/libfreebl_64int_3.so
  #if defined(BUILT_BY_MOZILLA)
  @RESPATH@/distribution/*
  #endif

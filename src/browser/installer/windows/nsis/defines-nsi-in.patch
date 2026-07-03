@@ -1,23 +1,16 @@
 diff --git a/browser/installer/windows/nsis/defines.nsi.in b/browser/installer/windows/nsis/defines.nsi.in
-index c6bb41695d70d17e5691e0d1856b79f7111d5026..8a9393a79a60aca23f80fc989fe2ae333ba54e39 100644
+index a9bf2d67ce522054442be664bda1434c63609ea1..618dec2d757b7bd2e1b5d1d3fee8e302e34db7db 100644
 --- a/browser/installer/windows/nsis/defines.nsi.in
 +++ b/browser/installer/windows/nsis/defines.nsi.in
-@@ -81,10 +81,11 @@
- !define RELEASE_OR_BETA
- #endif
- 
- # Due to official and beta using the same branding this is needed to
- # differentiante between the url used by the stub for downloading.
+@@ -86,6 +86,7 @@
  !if "@MOZ_UPDATE_CHANNEL@" == "beta"
  !define BETA_UPDATE_CHANNEL
  !endif
 +!define BaseURLStubPing ""
  
  # ARCH is used when it is necessary to differentiate the x64 registry keys from
-@@ -143,9 +144,9 @@
- # so the stub installer uses an estimate. The size is derived from the size of
- # the complete installer, the size of the extracted complete installer, and at
- # least 15 MB additional for working room.
+ # the x86 registry keys (e.g. the uninstall registry key).
+@@ -147,7 +148,7 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
  !define APPROXIMATE_REQUIRED_SPACE_MB "145"
  
  # Constants for parts of the telemetry submission URL
@@ -25,3 +18,4 @@ index c6bb41695d70d17e5691e0d1856b79f7111d5026..8a9393a79a60aca23f80fc989fe2ae33
 +!define TELEMETRY_BASE_URL 
  !define TELEMETRY_NAMESPACE firefox-installer
  !define TELEMETRY_INSTALL_PING_VERSION 1
+ !define TELEMETRY_INSTALL_PING_DOCTYPE install

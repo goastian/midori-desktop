@@ -1,8 +1,8 @@
 diff --git a/browser/components/moz.build b/browser/components/moz.build
-index 63b59082d8c8be455530f81ed19d8fac49937200..41ec7fde77fb039cba1cf4275d7a01753b9eee99 100644
+index 799e5246e6d11a3725129975154f524b8fe00a16..ef851ef46ad2446bfe31a15568aa8a9574194abc 100644
 --- a/browser/components/moz.build
 +++ b/browser/components/moz.build
-@@ -80,6 +80,9 @@ DIRS += [
+@@ -81,6 +81,9 @@ DIRS += [
      "webrtc",
  ]
  

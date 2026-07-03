@@ -1,41 +1,33 @@
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index 2d6cba7fac0c7de6d7c4a819f2c7ad20ce10bb33..4baad21014891d03590b45692e0e3067d779fd09 100644
+index e95831780d00111f27bb4ad78a6ed8ec39cf886e..b1a2053d50c277beabdd2ba737b1b58d89afb098 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -452,9 +452,14 @@ function init_all() {
-    gSearchResultsPane.init();
-    gMainPane.preInit();
+@@ -583,6 +583,11 @@ function init_all() {
  
-    let categories = document.getElementById("categories");
--  categories.addEventListener("change-view", event => {
--    gotoPref(event.target.view);
--  });
-+  categories.addEventListener("change-view", event => {
+   let categories = document.getElementById("categories");
+   categories.addEventListener("change-view", event => {
 +    if (event.target.view === "paneMidoriCenter") {
 +      let mainWindow = window.browsingContext.topChromeWindow;
 +      mainWindow.openTrustedLinkIn("about:center", "tab");
 +      return;
 +    }
-+    gotoPref(event.target.view);
-+  });
+     gotoPref(event.target.view);
+   });
  
-    maybeDisplayPoliciesNotice();
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index b006d5e5e64c418fbf930c010401e4ea3a3647a3..3b5d2a3f0a17aa55ab462a0843760f8de8bcbb20 100644
+index 9760a4a35b0b3bd21edec07a70c10bccc23e4a09..b452a41071c9a9aef869c3e2816b5e21d79db90d 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
-@@ -191,9 +191,14 @@
-   <html:moz-page-nav-button id="category-more-from-mozilla"
-     hidden="true"
-     view="paneMoreFromMozilla"
-     iconsrc="chrome://browser/skin/preferences/mozilla-16.svg"
-     data-l10n-id="more-from-moz-title2">
-   </html:moz-page-nav-button>
+@@ -200,6 +200,11 @@
+         iconsrc="chrome://browser/skin/preferences/mozilla-16.svg"
+         data-l10n-id="more-from-moz-title2">
+       </html:moz-page-nav-button>
 +  <html:moz-page-nav-button id="category-midori-center"
 +    view="paneMidoriCenter"
 +    iconsrc="chrome://browser/skin/preferences/category-general.svg"
 +    data-l10n-id="pane-midori-center-title">
 +  </html:moz-page-nav-button>
  
-   <!-- Hidden sub-page entries (CSS display:none via .hidden-category).
-        These keep gotoPref() routing working for sub-pages that are
+       <!-- Hidden sub-page entries (CSS display:none via .hidden-category).
+            These keep gotoPref() routing working for sub-pages that are
+

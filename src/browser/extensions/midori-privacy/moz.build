@@ -3,31 +3,25 @@ DEFINES["MOZ_APP_MAXVERSION"] = CONFIG["MOZ_APP_MAXVERSION"]
 
 JAR_MANIFESTS += ["jar.mn"]
 
-FINAL_TARGET_FILES.features["midori-privacy-blocker"] += ["manifest.json"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["257.js"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["706.js"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["706.js.LICENSE.txt"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["a1772829ced8231dce29.wasm"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["background.js"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["background.js.LICENSE.txt"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["blocked.html"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["blocked.js"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["cosmetics.js"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["manifest.json"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["popup.html"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["popup.js"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["popup.js.LICENSE.txt"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["settings.html"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["settings.js"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["settings.js.LICENSE.txt"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["stats.html"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["stats.js"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["stats.js.LICENSE.txt"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"] += ["yt.js"]
 
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["background"] += ["background/index.js"]
-
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["content"] += ["content/cosmetic.js"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["content"] += ["content/scriptlets.js"]
-
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon-128.png"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon-16.png"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon-32.png"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon-48.png"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["icons"] += ["icons/icon.svg"]
-
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["_locales"]["en"] += ["_locales/en/messages.json"]
-
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["options"] += ["options/options.css"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["options"] += ["options/options.html"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["options"] += ["options/options.js"]
-
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["popup"] += ["popup/popup.css"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["popup"] += ["popup/popup.html"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["popup"] += ["popup/popup.js"]
-
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["setup"] += ["setup/setup.css"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["setup"] += ["setup/setup.html"]
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["setup"] += ["setup/setup.js"]
-
-FINAL_TARGET_FILES.features["midori-privacy-blocker"]["shared"] += ["shared/styles.css"]
+FINAL_TARGET_FILES.features["midori-protection@astian.org"]["icons"] += ["icons/shield.svg"]

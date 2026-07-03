@@ -1,12 +1,8 @@
 diff --git a/browser/components/newtab/AboutNewTabRedirector.sys.mjs b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
-index adf3fb810bd257617150abb201ebaa2f9e7bc95f..387573a402eb7d3f190648dd96e7445afeb20950 100644
+index 33ebe5111a15dcfba5c446efd1292cce4b29af34..0e306cf1348084424baf45575bca2cd2cb5b8e41 100644
 --- a/browser/components/newtab/AboutNewTabRedirector.sys.mjs
 +++ b/browser/components/newtab/AboutNewTabRedirector.sys.mjs
-@@ -425,14 +425,34 @@ class BaseAboutNewTabRedirector {
-    * the newtab page has no effect on the result of this function.
-    */
-   get defaultURL() {
-     if (this.remoteRendererEnabled) {
+@@ -429,10 +429,30 @@ class BaseAboutNewTabRedirector {
        return "resource://newtab/data/content/remote-renderer-host.html";
      }
  
@@ -41,7 +37,7 @@ index adf3fb810bd257617150abb201ebaa2f9e7bc95f..387573a402eb7d3f190648dd96e7445a
      return [
        "resource://newtab/prerendered/",
        "activity-stream",
-@@ -463,6 +483,8 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
+@@ -476,6 +496,8 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
    #suspendedChannels = [];
    #addonInitializedPromise = null;
    #addonInitializedResolver = null;
@@ -50,7 +46,7 @@ index adf3fb810bd257617150abb201ebaa2f9e7bc95f..387573a402eb7d3f190648dd96e7445a
  
    constructor() {
      super();
-@@ -471,6 +493,23 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
+@@ -484,6 +506,23 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
      this.#addonInitializedPromise = promise;
      this.#addonInitializedResolver = resolve;
  
@@ -74,7 +70,7 @@ index adf3fb810bd257617150abb201ebaa2f9e7bc95f..387573a402eb7d3f190648dd96e7445a
      ChromeUtils.registerWindowActor("AboutNewTab", {
        parent: {
          esModuleURI: "resource:///actors/AboutNewTabParent.sys.mjs",
-@@ -498,6 +537,34 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
+@@ -512,6 +551,34 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
      this.wrappedJSObject = this;
    }
  
@@ -109,7 +105,7 @@ index adf3fb810bd257617150abb201ebaa2f9e7bc95f..387573a402eb7d3f190648dd96e7445a
    /**
     * Waits for the AddonManager to be fully initialized, and for the built-in
     * addon to be ready. Once that's done, it tterates any suspended channels and
-@@ -543,9 +610,9 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
+@@ -557,9 +624,9 @@ export class AboutNewTabRedirectorParent extends BaseAboutNewTabRedirector {
        return this.#getSuspendedChannel(resultChannel);
      }
  

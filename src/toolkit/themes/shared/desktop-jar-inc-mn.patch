@@ -1,8 +1,8 @@
 diff --git a/toolkit/themes/shared/desktop-jar.inc.mn b/toolkit/themes/shared/desktop-jar.inc.mn
-index c8e6055a804f586c2c2dad0b836600e67222fcb4..f8337d993e3d7aba44b716dd6a8cc08155595b98 100644
+index b89a7a1c91eb07c58cbd06bebd11cc8f53312dcf..f44a4fa2b757f76d95f7d38b71bfa74dc230c91f 100644
 --- a/toolkit/themes/shared/desktop-jar.inc.mn
 +++ b/toolkit/themes/shared/desktop-jar.inc.mn
-@@ -149,6 +149,7 @@
+@@ -160,6 +160,7 @@
    skin/classic/global/narrate/slow.svg                     (../../shared/narrate/slow.svg)
    skin/classic/global/narrate/headphone.svg                (../../shared/narrate/headphone.svg)
    skin/classic/global/narrate/headphone-active.svg         (../../shared/narrate/headphone-active.svg)

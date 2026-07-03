@@ -1,5 +1,5 @@
 diff --git a/toolkit/components/pictureinpicture/content/player.js b/toolkit/components/pictureinpicture/content/player.js
-index 34d92dcfba54de4752036d0e251243729b6c9626..78ce1bf721fc700a27d9f2795d030e32a0f29757 100644
+index 34d92dcfba54de4752036d0e251243729b6c9626..e39f957bae2ad2cd15be2f6109ca5c1a66269f0a 100644
 --- a/toolkit/components/pictureinpicture/content/player.js
 +++ b/toolkit/components/pictureinpicture/content/player.js
 @@ -29,6 +29,9 @@ const IMPROVED_CONTROLS_ENABLED_PREF =
@@ -12,7 +12,7 @@ index 34d92dcfba54de4752036d0e251243729b6c9626..78ce1bf721fc700a27d9f2795d030e32
  
  /**
   * The "showing" attribute means that we intentionally want to show controls
-@@ -379,6 +381,12 @@ let Player = {
+@@ -379,6 +382,12 @@ let Player = {
        document.documentElement.classList.add("seethrough-mode");
      }
  

@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-siteIdentity.js b/browser/base/content/browser-siteIdentity.js
-index cff28e1cdb550357662e8a7a41856e80b1de0018..02503c1178a286fbd8ec25635f041d4cf5e5d59d 100644
+index c6d060853cd3dab9d5c02bdc8de707b8fbde4b6d..794bebd2314a15dd00e8eae5b1fec38ec2039eff 100644
 --- a/browser/base/content/browser-siteIdentity.js
 +++ b/browser/base/content/browser-siteIdentity.js
-@@ -974,10 +974,13 @@ var gIdentityHandler = {
+@@ -981,10 +981,13 @@ var gIdentityHandler = {
      }
  
      // Hide the shield icon if it is a chrome page.

@@ -1,8 +1,8 @@
 diff --git a/toolkit/components/pdfjs/jar.mn b/toolkit/components/pdfjs/jar.mn
-index 9e087510e65007674a5c7e6514aa141fbbbd5b79..0f6242c6885348ddb03de8e3038e2eb6a55f3f09 100644
+index 2b5a220dbe4fcc5218da8583332ad4d9f5df26c7..f3056a58b5021788716d4cd0bf50a55cf497631a 100644
 --- a/toolkit/components/pdfjs/jar.mn
 +++ b/toolkit/components/pdfjs/jar.mn
-@@ -29,6 +29,7 @@ pdfjs.jar:
+@@ -30,6 +30,7 @@ pdfjs.jar:
   content/PdfjsContextMenu.sys.mjs (content/PdfjsContextMenu.sys.mjs)
   content/web/viewer.html (content/web/viewer.html)
   content/web/viewer.css (content/web/viewer.css)

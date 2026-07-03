@@ -1,5 +1,5 @@
 diff --git a/toolkit/components/pdfjs/content/web/viewer.html b/toolkit/components/pdfjs/content/web/viewer.html
-index 6f6404afc08cd7c4fd3ea4db258aa6e822ac84e7..fc7ba263ea33fd2d6377d57e3e3c18a88ff45c2e 100644
+index 9c59a64afb3dcab05f3122d22c2e1f3ba3556d21..6a795ee092831ed1b1553d64d7a6818f727f0f1b 100644
 --- a/toolkit/components/pdfjs/content/web/viewer.html
 +++ b/toolkit/components/pdfjs/content/web/viewer.html
 @@ -30,6 +30,7 @@ See https://github.com/adobe-type-tools/cmap-resources

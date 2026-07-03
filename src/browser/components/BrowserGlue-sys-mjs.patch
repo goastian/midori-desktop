@@ -1,8 +1,8 @@
 diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/BrowserGlue.sys.mjs
-index 75cdab491d35dc30be6c0a4ec6ab88e6fb4239aa..7c13d813c5a5d5ed2468c6704ed2039c94794d50 100644
+index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dccacc9cb58f 100644
 --- a/browser/components/BrowserGlue.sys.mjs
 +++ b/browser/components/BrowserGlue.sys.mjs
-@@ -76,6 +76,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
+@@ -77,6 +77,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
      "resource:///modules/WebProtocolHandlerRegistrar.sys.mjs",
    WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
    setTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -17,7 +17,7 @@ index 75cdab491d35dc30be6c0a4ec6ab88e6fb4239aa..7c13d813c5a5d5ed2468c6704ed2039c
  });
  
  XPCOMUtils.defineLazyServiceGetters(lazy, {
-@@ -1695,6 +1703,132 @@ BrowserGlue.prototype = {
+@@ -1696,6 +1704,132 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
@@ -150,7 +150,7 @@ index 75cdab491d35dc30be6c0a4ec6ab88e6fb4239aa..7c13d813c5a5d5ed2468c6704ed2039c
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1813,4 +1947,20 @@ BrowserGlue.prototype = {
+@@ -1814,4 +1948,20 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),

@@ -1,8 +1,8 @@
 diff --git a/browser/components/about/components.conf b/browser/components/about/components.conf
-index cb90dd44b467a11ef01b71ad9f0d0d7f0745d5f0..357da93221b6de0eac3487e4850f2745e3eb94d9 100644
+index 669c6912f636ee29703bec015ce54fbd5fed90ad..35215ec4022c9f529236a168dbeb2d942c8f04ce 100644
 --- a/browser/components/about/components.conf
 +++ b/browser/components/about/components.conf
-@@ -8,6 +8,7 @@ pages = [
+@@ -6,6 +6,7 @@ pages = [
      'aichatcontent',
      'asrouter',
      'blocked',
@@ -10,7 +10,7 @@ index cb90dd44b467a11ef01b71ad9f0d0d7f0745d5f0..357da93221b6de0eac3487e4850f2745
      'certerror',
      'downloads',
      'framecrashed',
-@@ -28,6 +29,7 @@ pages = [
+@@ -26,6 +27,7 @@ pages = [
      'robots',
      'sessionrestore',
      'settings',

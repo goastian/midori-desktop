@@ -1,8 +1,8 @@
 diff --git a/browser/components/urlbar/content/SmartbarInput.mjs b/browser/components/urlbar/content/SmartbarInput.mjs
-index 98006b2203e03c755e6cf0e5e90c2587fd469278..b427f859e93a7e58b9038d70d6655bfcc84d4bf4 100644
+index 089dc6f71bc9577b2fcbea6376d955c7f780ef91..3533c447fa66f6a7521691d3ccc4f957cf27dcc7 100644
 --- a/browser/components/urlbar/content/SmartbarInput.mjs
 +++ b/browser/components/urlbar/content/SmartbarInput.mjs
-@@ -1125,11 +1125,20 @@ export class SmartbarInput extends HTMLElement {
+@@ -1173,11 +1173,20 @@ ${
        // If we update the URI while restoring a session, set the proxyState to
        // invalid, because we don't have a valid security state to show via site
        // identity yet. See Bug 1746383.

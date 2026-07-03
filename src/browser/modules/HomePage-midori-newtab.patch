@@ -1,5 +1,5 @@
 diff --git a/browser/modules/HomePage.sys.mjs b/browser/modules/HomePage.sys.mjs
-index b681ccd00e3976a2f15f2b5035a6e8a84df227c4..e4fd2247f0475fc79543d3b888565dc7e275a8e3 100644
+index 762962c7ca610905f738440d6cd06461f99c2bd9..5c073e974d3d56e275ac4c466d16847492197f53 100644
 --- a/browser/modules/HomePage.sys.mjs
 +++ b/browser/modules/HomePage.sys.mjs
 @@ -15,7 +15,7 @@ ChromeUtils.defineESModuleGetters(lazy, {

@@ -1,5 +1,5 @@
 diff --git a/browser/locales-preview/aiFeatures.ftl b/browser/locales-preview/aiFeatures.ftl
-index 39bffc661cf..9fb1d95cb74 100644
+index fe9d18672bf647f7aeff7af2c114ad7eeb8a1c58..5082c219df2e7dce97c13677e174d9959deb38b0 100644
 --- a/browser/locales-preview/aiFeatures.ftl
 +++ b/browser/locales-preview/aiFeatures.ftl
 @@ -3,6 +3,60 @@

@@ -1,8 +1,8 @@
 diff --git a/browser/themes/shared/browser-shared.css b/browser/themes/shared/browser-shared.css
-index 57b8dc0eda212de09918cbbaec3582a2f84b8312..31eab42106d2686c44f06cabe1418890bccce075 100644
+index 2287d8f9fd5a86be00a0e9d7635a119fca446f50..c5b5042172fd665d93952b82f2013e5556f8fc3e 100644
 --- a/browser/themes/shared/browser-shared.css
 +++ b/browser/themes/shared/browser-shared.css
-@@ -31,6 +31,8 @@
+@@ -34,6 +34,8 @@
  @import url("chrome://browser/skin/UITour.css");
  @import url("chrome://browser/skin/formautofill-notification.css");
  

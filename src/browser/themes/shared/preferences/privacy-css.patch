@@ -1,8 +1,11 @@
 diff --git a/browser/themes/shared/preferences/privacy.css b/browser/themes/shared/preferences/privacy.css
-index 1e68941cbe94ddd7f9732e39315816211221c9ba..6c15388786898f5d2977cb65db9cdd25c2e9fdd7 100644
+index e81a1e037e03b4967b53c30c1e5bd663708b1ed6..6588d1f2e28e04cfb0c769feb6c39d2b2e7eb621 100644
 --- a/browser/themes/shared/preferences/privacy.css
 +++ b/browser/themes/shared/preferences/privacy.css
-@@ -76,3 +76,7 @@
+@@ -73,7 +73,11 @@
+   list-style-image: url(chrome://browser/skin/notification-icons/serial.svg);
+ }
+ 
 -/* Content Blocking */
 +/* Content Blocking - Hidden: replaced by midori-privacy extension */
 +#trackingGroup {
@@ -11,3 +14,4 @@ index 1e68941cbe94ddd7f9732e39315816211221c9ba..6c15388786898f5d2977cb65db9cdd25
 +
  
  /* Override styling that sets descriptions as grey */
+ #trackingGroup description.indent,

@@ -1,8 +1,8 @@
 diff --git a/toolkit/components/search/SearchService.sys.mjs b/toolkit/components/search/SearchService.sys.mjs
-index f06d2a2d080e88d17a5e74084bfa14178da22637..6dd781a77bc2f729732f16ba3a45132066e4e330 100644
+index 62f96d71142b7aba06a93c201ea072f579fa7809..90a61cfb22a9b825318299c0b2b0d7d163637f52 100644
 --- a/toolkit/components/search/SearchService.sys.mjs
 +++ b/toolkit/components/search/SearchService.sys.mjs
-@@ -2798,9 +2798,46 @@ export const SearchService = new (class SearchService {
+@@ -2793,9 +2793,46 @@ export const SearchService = new (class SearchService {
        this._settings.setMetaDataAttribute(key, value);
      }
  
@@ -50,7 +50,7 @@ index f06d2a2d080e88d17a5e74084bfa14178da22637..6dd781a77bc2f729732f16ba3a451320
    }
  
    #setDefaultFromSelector(refinedConfig) {
-@@ -3947,11 +3984,41 @@ class SearchDefaultOverrideAllowlistHandler {
+@@ -3995,11 +4032,41 @@ class SearchDefaultOverrideAllowlistHandler {
      let searchProvider =
        extension.manifest.chrome_settings_overrides.search_provider;
  

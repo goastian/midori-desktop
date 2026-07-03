@@ -1,5 +1,6 @@
 diff --git a/toolkit/themes/shared/pictureinpicture/midori-pip.css b/toolkit/themes/shared/pictureinpicture/midori-pip.css
 new file mode 100644
+index 0000000000000000000000000000000000000000..719e1109dbd999103f36a2d9572f34d4a14e0234
 --- /dev/null
 +++ b/toolkit/themes/shared/pictureinpicture/midori-pip.css
 @@ -0,0 +1,403 @@
@@ -406,78 +407,3 @@ new file mode 100644
 +:root[midori-pip-skin="mini"] #unpip[mac="true"] {
 +  left: auto;
 +  right: 8px;
-+}
-+
-+:root[midori-pip-skin="mini"] #timestamp {
-+  width: auto;
-+  min-width: 9ch;
-+  padding-inline: 8px;
-+  font-size: 0.72rem;
-+  letter-spacing: 0;
-+  text-align: center;
-+}
-+
-+:root[midori-pip-skin="mini"] .controls-bottom-upper {
-+  width: calc(100% - 12px);
-+  margin-inline: 6px;
-+}
-+
-+:root[midori-pip-skin="mini"] #scrubber {
-+  height: 4px;
-+  border-radius: 999px;
-+}
-+
-+:root[midori-pip-skin="mini"] #scrubber,
-+:root[midori-pip-skin="mini"] #audio-scrubber {
-+  border: none;
-+}
-+
-+:root[midori-pip-skin="mini"] #scrubber::-moz-range-track,
-+:root[midori-pip-skin="mini"] #audio-scrubber::-moz-range-track {
-+  background-color: rgba(255, 255, 255, 0.22);
-+}
-+
-+:root[midori-pip-skin="mini"] #scrubber::-moz-range-progress,
-+:root[midori-pip-skin="mini"] #audio-scrubber::-moz-range-progress {
-+  background-color: #fff;
-+}
-+
-+:root[midori-pip-skin="mini"] #scrubber::-moz-range-thumb {
-+  width: 8px;
-+  height: 8px;
-+  border: 2px solid #fff;
-+}
-+
-+:root[midori-pip-skin="mini"] #settings {
-+  right: 8px;
-+  bottom: calc(var(--midori-pip-controls-bottom) + 42px);
-+}
-+
-+:root[midori-pip-skin="mini"] #settings > .panel-fieldset {
-+  border: var(--midori-pip-border);
-+  border-radius: 10px;
-+  background-color: var(--midori-pip-surface-strong);
-+  box-shadow: var(--midori-pip-shadow);
-+}
-+
-+:root[midori-pip-skin="compact"] .control-button:focus-visible,
-+:root[midori-pip-skin="compact"] #close:focus-visible,
-+:root[midori-pip-skin="compact"] #unpip:focus-visible,
-+:root[midori-pip-skin="island"] .control-button:focus-visible,
-+:root[midori-pip-skin="island"] #close:focus-visible,
-+:root[midori-pip-skin="island"] #unpip:focus-visible,
-+:root[midori-pip-skin="mini"] .control-button:focus-visible,
-+:root[midori-pip-skin="mini"] #close:focus-visible,
-+:root[midori-pip-skin="mini"] #unpip:focus-visible {
-+  outline: 2px solid color-mix(in srgb, AccentColor 70%, #fff 15%);
-+  outline-offset: 2px;
-+}
-+
-+@media (prefers-reduced-motion: reduce) {
-+  :root[midori-pip-skin] *,
-+  :root[midori-pip-skin] *::before,
-+  :root[midori-pip-skin] *::after {
-+    animation-duration: 1ms !important;
-+    transition-duration: 1ms !important;
-+  }
-+}

@@ -1,5 +1,5 @@
 diff --git a/browser/installer/windows/msix/AppxManifest.xml.in b/browser/installer/windows/msix/AppxManifest.xml.in
-index b81a73518a183b7b1d178793886c66f44651058d..89690a4177229b70013bcf35ec1d805fff7e1b26 100644
+index 246f15595dadbeee8229db53bf9904e89f7622ae..1b97b72a3befd76e51d2fc0144934dd447b3844a 100644
 --- a/browser/installer/windows/msix/AppxManifest.xml.in
 +++ b/browser/installer/windows/msix/AppxManifest.xml.in
 @@ -61,6 +61,7 @@

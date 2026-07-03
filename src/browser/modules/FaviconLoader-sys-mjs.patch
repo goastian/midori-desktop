@@ -1,5 +1,5 @@
 diff --git a/browser/modules/FaviconLoader.sys.mjs b/browser/modules/FaviconLoader.sys.mjs
-index c4358f549ae602b31fa5989cc8aee32f770140c3..8c2b898ab79dba72925e979082c366ba4db10078 100644
+index 10f8044a248b692368da1b868b9b9597c611be5c..ee336d8f1ea4ae0e44e4ecb060389eaf69244af7 100644
 --- a/browser/modules/FaviconLoader.sys.mjs
 +++ b/browser/modules/FaviconLoader.sys.mjs
 @@ -433,7 +433,14 @@ function extractIconSize(aSizes) {

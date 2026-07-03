@@ -1,8 +1,8 @@
 diff --git a/browser/components/about/AboutRedirector.cpp b/browser/components/about/AboutRedirector.cpp
-index 059aff206b67d1ad9de864cdb33195bca24ac633..8d0be8f46ba72114a47aab27f464a214647b7535 100644
+index 958db7176c110afa7179cdeb703ce9532a3cacd7..e914b9c36a033c9add9a1d85f239dffdc2a32f13 100644
 --- a/browser/components/about/AboutRedirector.cpp
 +++ b/browser/components/about/AboutRedirector.cpp
-@@ -125,6 +125,10 @@ static const RedirEntry kRedirMap[] = {
+@@ -124,6 +124,10 @@ static const RedirEntry kRedirMap[] = {
           nsIAboutModule::HIDE_FROM_ABOUTABOUT},
      {"preferences", "chrome://browser/content/preferences/preferences.xhtml",
       nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},

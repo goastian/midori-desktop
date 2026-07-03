@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-sets.js b/browser/base/content/browser-sets.js
-index d9ab2ad00b862d56ea7aa8e2469d050d8df7f5dc..bae4568233fcfb0686a9e9beb6898ef23568c4f2 100644
+index d41f556749685d11778aed69d1fcc752e250e3bc..0eb86833001387c5ad8db60a26928f12ae1548c7 100644
 --- a/browser/base/content/browser-sets.js
 +++ b/browser/base/content/browser-sets.js
-@@ -242,6 +242,18 @@ document.addEventListener(
+@@ -257,6 +257,18 @@ document.addEventListener(
            case "Tools:PrivateBrowsing":
              OpenBrowserWindow({ private: true });
              break;

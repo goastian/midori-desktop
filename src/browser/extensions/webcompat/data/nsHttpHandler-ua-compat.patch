@@ -1,8 +1,8 @@
 diff --git a/netwerk/protocol/http/nsHttpHandler.cpp b/netwerk/protocol/http/nsHttpHandler.cpp
-index aed960fc27e3572fa9ecaf31ae8ad4f53ad2dda2..56d53cd4c3073b99860b17ce48b6527c1efd5a52 100644
+index c45cb9f041962918449b31aaff0a9d435dea06b1..de878ff47e322c6f727b5a84a8f923b0c384861c 100644
 --- a/netwerk/protocol/http/nsHttpHandler.cpp
 +++ b/netwerk/protocol/http/nsHttpHandler.cpp
-@@ -1066,8 +1066,11 @@ void nsHttpHandler::BuildUserAgent() {
+@@ -1069,8 +1069,11 @@ void nsHttpHandler::BuildUserAgent() {
      mUserAgent += ' ';
      mUserAgent += mCompatFirefox;
    }
