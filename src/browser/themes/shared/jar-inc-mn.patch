@@ -2,12 +2,17 @@ diff --git a/browser/themes/shared/jar.inc.mn b/browser/themes/shared/jar.inc.mn
 index e3bdc11e449fb2cd2a4033a1d8c1bba00455e748..a7d086f3b8ab265e9d1f6aa45f4fe276bfb867f3 100644
 --- a/browser/themes/shared/jar.inc.mn
 +++ b/browser/themes/shared/jar.inc.mn
-@@ -18,7 +18,7 @@
+@@ -18,6 +18,12 @@
    skin/classic/browser/aiWindowSidebar.css                     (../shared/aiWindowSidebar.css)
    skin/classic/browser/blockedSite.css                         (../shared/blockedSite.css)
    skin/classic/browser/browser-colors.css                      (../shared/browser-colors.css)
--  skin/classic/browser/browser-shared.css                      (../shared/browser-shared.css)
-+* skin/classic/browser/browser-shared.css                      (../shared/browser-shared.css)
+ * skin/classic/browser/browser-shared.css                      (../shared/browser-shared.css)
++  skin/classic/browser/modblur-assets/close-themes.svg         (../custom/shared/modblur-assets/close-themes.svg)
++  skin/classic/browser/modblur-assets/maximize-themes.svg      (../custom/shared/modblur-assets/maximize-themes.svg)
++  skin/classic/browser/modblur-assets/minimize-themes.svg      (../custom/shared/modblur-assets/minimize-themes.svg)
++  skin/classic/browser/modblur-assets/noise-512x512.png        (../custom/shared/modblur-assets/noise-512x512.png)
++  skin/classic/browser/modblur-assets/spill-light.svg          (../custom/shared/modblur-assets/spill-light.svg)
++  skin/classic/browser/modblur-assets/spill.svg                (../custom/shared/modblur-assets/spill.svg)
    skin/classic/browser/formautofill-notification.css           (../shared/formautofill-notification.css)
    skin/classic/browser/identity-credential-notification.css    (../shared/identity-credential-notification.css)
    skin/classic/browser/menupanel.css                           (../shared/menupanel.css)
