@@ -13,17 +13,15 @@ welcome-dialog-import = Import Information
 welcome-dialog-import-subtext = Pick up where you left off in your last browser
 welcome-dialog-import-action = Import
 
-welcome-dialog-theme = Pick A Theme
-welcome-dialog-theme-action = Continue
-
-welcome-dialog-gradient = Customize Your Toolbar
-welcome-dialog-gradient-subtext = Add a custom gradient to make your browser truly yours
-welcome-dialog-gradient-customize = Create your own gradient...
-welcome-dialog-gradient-type = Type
-welcome-dialog-gradient-angle = Angle
-welcome-dialog-gradient-colors = Colors
-welcome-dialog-gradient-texture = Texture
-welcome-dialog-gradient-action = Apply & Continue
+welcome-dialog-color = Choose Your Midori Color
+welcome-dialog-color-subtext = Select the accent used by tabs, workspaces, and browser controls
+welcome-dialog-color-jade = Jade
+welcome-dialog-color-ocean = Ocean
+welcome-dialog-color-sunrise = Sunrise
+welcome-dialog-color-forest = Forest
+welcome-dialog-color-midnight = Midnight
+welcome-dialog-color-ember = Ember
+welcome-dialog-color-action = Apply & Continue
 
 welcome-dialog-tablayout = Choose Your Tab Layout
 welcome-dialog-tablayout-subtext = Pick how you want your tabs organized — you can change this anytime in settings
