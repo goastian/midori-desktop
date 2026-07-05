@@ -440,36 +440,6 @@
           </div>
         </div>
 
-        <!-- Gradient -->
-        <div class="setting-group">
-          <h2 class="group-title">Custom Gradient</h2>
-          <div class="setting-row">
-            <div class="setting-info">
-              <strong>Enable custom gradient</strong>
-              <p>Apply a custom gradient to the browser chrome.</p>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="pref-gradient-enabled">
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Picture-in-Picture -->
-        <div class="setting-group">
-          <h2 class="group-title">Picture-in-Picture</h2>
-          <div class="setting-row">
-            <div class="setting-info">
-              <strong>PiP window style</strong>
-              <p>Choose the visual style for the Picture-in-Picture player.</p>
-            </div>
-            <select id="pref-pip-skin" class="select-input">
-              <option value="off">Stock (Firefox default)</option>
-              <option value="compact">Compact</option>
-              <option value="island">Island</option>
-            </select>
-          </div>
-        </div>
       </section>
 
       <!-- VISUAL MODS PAGE -->
@@ -524,6 +494,13 @@
               <span class="visual-preview preview-icons"><i></i><i></i><i></i></span>
               <strong>Restore icons in main menu</strong>
               <small>Bring visual rhythm back to the main menu.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-window-frame">
+              <span class="visual-preview preview-card-theme"><i></i><i></i></span>
+              <strong>Window Frame border mods</strong>
+              <small>Add a subtle framed browser surface.</small>
             </label>
           </div>
         </div>
@@ -593,7 +570,7 @@
 
         <div class="setting-group visual-mods-group">
           <h2 class="group-title">Search, privacy, and New Tab</h2>
-          <p class="group-desc">Privacy blur, searchbar, homepage shortcuts, widgets, and experimental blur modules.</p>
+          <p class="group-desc">Privacy blur, searchbar, and experimental blur modules.</p>
 
           <div class="visual-mod-grid">
             <label class="visual-mod-card">
@@ -629,34 +606,6 @@
               <span class="visual-preview preview-blur"><i></i><i></i></span>
               <strong>Experimental: Extra Blur mods</strong>
               <small>Blur panels, searchbar, and vertical expand surfaces.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-newtab-shortcut-title">
-              <span class="visual-preview preview-shortcuts"><i></i><i></i><i></i></span>
-              <strong>Remove title text from homepage shortcuts</strong>
-              <small>Icon-first shortcuts in New Tab.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-newtab-center-widgets">
-              <span class="visual-preview preview-widgets"><i></i><i></i></span>
-              <strong>Center Widgets in New Tab</strong>
-              <small>Centered widget layout where supported.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-circular-shortcuts">
-              <span class="visual-preview preview-circles"><i></i><i></i><i></i></span>
-              <strong>Circular homepage shortcuts</strong>
-              <small>Round shortcut tiles.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-wallpaper-blur">
-              <span class="visual-preview preview-wallpaper"><i></i></span>
-              <strong>Wallpaper Blur in New tab page</strong>
-              <small>Softens wallpaper backgrounds.</small>
             </label>
 
             <label class="visual-mod-card">

@@ -20,10 +20,8 @@ const ADDON_IDS = {
 // ---- Pref mapping: element ID → { pref, type } ----
 const PREF_MAP = {
   "pref-autohide-toolbar":  { pref: "midori.autohide.toolbar",        type: "bool" },
-  "pref-gradient-enabled":  { pref: "midori.gradient.enabled",        type: "bool" },
   "pref-tabsleep-enabled":  { pref: "midori.tabsleep.enabled",        type: "bool" },
   "pref-tabsleep-timeout":  { pref: "midori.tabsleep.timeoutMinutes", type: "int" },
-  "pref-pip-skin":          { pref: "midori.pip.skin",                type: "string" },
   "pref-vtabs-width":       { pref: "midori.verticaltabs.width",      type: "int" },
   "pref-vtabs-density":     { pref: "midori.verticaltabs.density",    type: "string" },
   "pref-vtabs-compact":     { pref: "midori.verticaltabs.compact",    type: "bool" },
@@ -63,12 +61,8 @@ const PREF_MAP = {
   "pref-modblur-active-tab-static": { pref: "midori.modblur.tabs.activeStaticWidth", type: "bool" },
   "pref-modblur-sound-tab": { pref: "midori.modblur.tabs.soundColor", type: "bool" },
   "pref-modblur-hide-all-tabs": { pref: "midori.modblur.tabs.hideAllTabsButton", type: "bool" },
-  "pref-modblur-newtab-shortcut-title": { pref: "midori.modblur.newtab.hideShortcutTitles", type: "bool" },
-  "pref-modblur-newtab-center-widgets": { pref: "midori.modblur.newtab.centerWidgets", type: "bool" },
   "pref-modblur-popout-searchbar": { pref: "midori.modblur.search.popoutBlur", type: "bool" },
   "pref-modblur-extra-blur": { pref: "midori.modblur.blur.extra", type: "bool" },
-  "pref-modblur-circular-shortcuts": { pref: "midori.modblur.newtab.circularShortcuts", type: "bool" },
-  "pref-modblur-wallpaper-blur": { pref: "midori.modblur.newtab.wallpaperBlur", type: "bool" },
   "pref-modblur-spill-theme": { pref: "midori.modblur.theme.spill", type: "bool" },
   "pref-modblur-card-theme": { pref: "midori.modblur.theme.card", type: "bool" },
   "pref-modblur-acrylic": { pref: "midori.modblur.blur.acrylic", type: "bool" },
