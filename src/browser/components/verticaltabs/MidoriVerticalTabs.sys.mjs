@@ -1025,6 +1025,21 @@ toolbar .toolbarbutton-1 {
   --midori-vt-accent: AccentColor;
   --midori-vt-divider: color-mix(in srgb, currentColor 12%, transparent);
 }
+
+@media -moz-pref("midori.modblur.verticalTabs.compact") {
+  :root[midori-vertical-tabs] {
+    --midori-vt-density-pad: 3px;
+    --midori-vt-tab-radius: 8px;
+  }
+}
+
+@media -moz-pref("midori.modblur.verticalTabs.hideScrollbar") {
+  :root[midori-vertical-tabs] .tabbrowser-arrowscrollbox,
+  :root[midori-vertical-tabs] #tabbrowser-tabs,
+  :root[midori-vertical-tabs] #vertical-tabs {
+    scrollbar-width: none !important;
+  }
+}
 `
     );
   },
