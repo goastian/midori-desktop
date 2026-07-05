@@ -144,7 +144,7 @@ export const MidoriSidebar = {
     ui.setAnimated?.(animationsEnabled);
     ui.setAutohideMode?.(autohideMode);
     ui.setAutohide(autohideEnabled);
-    ui.setVisible(enabled);
+    ui.setVisible(enabled, { openPanel: false });
     ui.refresh?.();
   },
 
