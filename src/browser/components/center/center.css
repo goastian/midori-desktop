@@ -327,6 +327,14 @@ body::before {
   .card-icon-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
 }
 
+.card-icon-mint {
+  background: #cffafe;
+  color: #0e7490;
+}
+@media (prefers-color-scheme: dark) {
+  .card-icon-mint { background: rgba(34, 211, 238, 0.15); color: #67e8f9; }
+}
+
 .card-text {
   flex: 1;
   min-width: 0;
@@ -498,6 +506,143 @@ body::before {
   font-size: 12.5px;
   color: var(--mc-text-muted);
   line-height: 1.4;
+}
+
+/* ---- Visual Mods ---- */
+.visual-mods-group {
+  padding: 20px;
+}
+
+.visual-mod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.visual-mod-card {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  grid-template-areas:
+    "check preview"
+    "check title"
+    "check desc";
+  gap: 6px 10px;
+  min-height: 132px;
+  padding: 12px;
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-sm);
+  background: color-mix(in srgb, var(--mc-surface) 92%, var(--mc-green-50));
+  cursor: pointer;
+  transition: border-color var(--mc-transition), box-shadow var(--mc-transition), transform var(--mc-transition);
+}
+
+.visual-mod-card:hover {
+  border-color: var(--mc-green-400);
+  box-shadow: var(--mc-shadow-sm);
+  transform: translateY(-1px);
+}
+
+.visual-mod-card input {
+  grid-area: check;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--mc-green-500);
+}
+
+.visual-mod-card strong {
+  grid-area: title;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.visual-mod-card small {
+  grid-area: desc;
+  color: var(--mc-text-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.visual-preview {
+  grid-area: preview;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid var(--mc-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mc-green-500) 18%, transparent), transparent 48%),
+    var(--mc-bg-subtle);
+}
+
+.visual-preview i {
+  display: block;
+  width: 28px;
+  height: 12px;
+  border-radius: 4px;
+  background: var(--mc-green-500);
+  opacity: 0.78;
+}
+
+.preview-window-controls i { width: 10px; height: 10px; border-radius: 50%; }
+.preview-window-controls i:nth-child(1) { background: #ef4444; }
+.preview-window-controls i:nth-child(2) { background: #f59e0b; }
+.preview-window-controls i:nth-child(3) { background: var(--mc-green-500); }
+.preview-vtabs,
+.preview-vtabs-clean { flex-direction: column; align-items: flex-start; }
+.preview-vtabs i,
+.preview-vtabs-clean i { width: 72%; height: 7px; }
+.preview-centered-tabs { justify-content: center; }
+.preview-menu,
+.preview-menu-hide,
+.preview-icons,
+.preview-widgets,
+.preview-card-theme { flex-direction: column; align-items: stretch; }
+.preview-menu i,
+.preview-menu-hide i,
+.preview-icons i,
+.preview-widgets i,
+.preview-card-theme i { width: 100%; height: 7px; }
+.preview-disabled::after,
+.preview-hide-button::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-top: 2px solid #ef4444;
+  transform: rotate(-18deg);
+}
+.preview-search-outline,
+.preview-popout,
+.preview-blur,
+.preview-acrylic { justify-content: center; }
+.preview-search-outline i,
+.preview-popout i,
+.preview-blur i,
+.preview-acrylic i { width: 76%; height: 20px; border-radius: 999px; }
+.preview-shortcuts i,
+.preview-circles i { width: 18px; height: 18px; }
+.preview-circles i { border-radius: 50%; }
+.preview-wallpaper,
+.preview-spill {
+  background:
+    radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--mc-green-400) 55%, transparent), transparent 28%),
+    linear-gradient(135deg, #0f766e, #0f172a);
+}
+.preview-spill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 68% 35%, rgba(255,255,255,0.35), transparent 24%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .visual-mod-card {
+    background: color-mix(in srgb, var(--mc-surface) 92%, var(--mc-green-900));
+  }
 }
 
 /* ---- Toggle Switch ---- */

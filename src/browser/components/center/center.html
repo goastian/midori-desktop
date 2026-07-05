@@ -43,6 +43,17 @@
           </svg>
           <span>Sidebar</span>
         </button>
+        <button class="nav-item" data-page="visual-mods">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 5.5h12"/>
+            <path d="M4 10h12"/>
+            <path d="M4 14.5h12"/>
+            <circle cx="7" cy="5.5" r="2"/>
+            <circle cx="13" cy="10" r="2"/>
+            <circle cx="9" cy="14.5" r="2"/>
+          </svg>
+          <span>Visual Mods</span>
+        </button>
         <button class="nav-item" data-page="workspaces">
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="2" y="2" width="7" height="7" rx="1.5"/>
@@ -110,6 +121,24 @@
             <div class="card-text">
               <h3>Sidebar</h3>
               <p>Configure the multi-panel sidebar</p>
+            </div>
+            <svg class="card-arrow" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+          </button>
+
+          <button class="overview-card" data-navigate="visual-mods">
+            <div class="card-icon-wrap card-icon-mint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M4 7h16"/>
+                <path d="M4 12h16"/>
+                <path d="M4 17h16"/>
+                <circle cx="8" cy="7" r="2"/>
+                <circle cx="15" cy="12" r="2"/>
+                <circle cx="11" cy="17" r="2"/>
+              </svg>
+            </div>
+            <div class="card-text">
+              <h3>Visual Mods</h3>
+              <p>Enable Mod Blur styles and extras</p>
             </div>
             <svg class="card-arrow" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
           </button>
@@ -439,6 +468,217 @@
               <option value="compact">Compact</option>
               <option value="island">Island</option>
             </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- VISUAL MODS PAGE -->
+      <section id="page-visual-mods" class="page">
+        <div class="page-header">
+          <h1 class="page-title">Visual Mods</h1>
+          <p class="page-subtitle">Select and add extra styles and functions based on Firefox-Mod-Blur, adapted to Midori colors.</p>
+        </div>
+
+        <div class="setting-group visual-mods-group">
+          <h2 class="group-title">Chrome and navigation</h2>
+          <p class="group-desc">These options affect horizontal tabs, vertical tabs, the toolbar, and browser panels.</p>
+
+          <div class="visual-mod-grid">
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-window-controls">
+              <span class="visual-preview preview-window-controls"><i></i><i></i><i></i></span>
+              <strong>Min-max-close buttons style</strong>
+              <small>Mac-style buttons using Midori green accents.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-bookmarks-popout">
+              <span class="visual-preview preview-bar-popout"><i></i><i></i><i></i></span>
+              <strong>Bookmarks bar popout</strong>
+              <small>Reveal bookmarks on hover without JS autohide.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-bookmarks-clean">
+              <span class="visual-preview preview-bar-clean"><i></i><i></i><i></i></span>
+              <strong>Bookmarks bar modifications</strong>
+              <small>Cleaner spacing and toolbar-matched color.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-extension-clean">
+              <span class="visual-preview preview-menu"><i></i><i></i><i></i></span>
+              <strong>Extension menu changes</strong>
+              <small>Compact rows, smaller icons, cleaner separators.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-extension-hide-manage">
+              <span class="visual-preview preview-menu-hide"><i></i><i></i><i></i></span>
+              <strong>Hide extension button</strong>
+              <small>Hide the manage extensions footer button.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-icons-menu">
+              <span class="visual-preview preview-icons"><i></i><i></i><i></i></span>
+              <strong>Restore icons in main menu</strong>
+              <small>Bring visual rhythm back to the main menu.</small>
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-group visual-mods-group">
+          <h2 class="group-title">Tabs</h2>
+          <p class="group-desc">Compact and Mod Blur tab options for both navigation modes.</p>
+
+          <div class="visual-mod-grid">
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-compact-vertical">
+              <span class="visual-preview preview-vtabs"><i></i><i></i><i></i></span>
+              <strong>More compact Vertical Tabs</strong>
+              <small>Smaller rows and tighter vertical tab spacing.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-centered-tabs">
+              <span class="visual-preview preview-centered-tabs"><i></i><i></i><i></i></span>
+              <strong>Centered Tabs</strong>
+              <small>Center horizontal tabs inside the tab strip.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-hide-tab-preview">
+              <span class="visual-preview preview-disabled"><i></i><i></i><i></i></span>
+              <strong>Hide Tab preview panel</strong>
+              <small>Disable hover preview cards visually.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-hide-vertical-scrollbar">
+              <span class="visual-preview preview-vtabs-clean"><i></i><i></i><i></i></span>
+              <strong>Hide scrollbar when Vertical tabs overflow</strong>
+              <small>Cleaner vertical tab overflow.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-tabs-top">
+              <span class="visual-preview preview-tabs-top"><i></i><i></i><i></i></span>
+              <strong>Tabs on top</strong>
+              <small>Force horizontal tabs above the navigation bar.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-active-tab-static">
+              <span class="visual-preview preview-static-tab"><i></i><i></i><i></i></span>
+              <strong>Active tab has static width</strong>
+              <small>Keep the active tab steady while switching.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-sound-tab">
+              <span class="visual-preview preview-sound-tab"><i></i><i></i><i></i></span>
+              <strong>Colored sound playing tab</strong>
+              <small>Highlight audio tabs with the Midori accent.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-hide-all-tabs">
+              <span class="visual-preview preview-hide-button"><i></i><i></i><i></i></span>
+              <strong>Hide List all tabs button</strong>
+              <small>Remove the overflow list button until needed upstream.</small>
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-group visual-mods-group">
+          <h2 class="group-title">Search, privacy, and New Tab</h2>
+          <p class="group-desc">Privacy blur, searchbar, homepage shortcuts, widgets, and experimental blur modules.</p>
+
+          <div class="visual-mod-grid">
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-privacy-blur">
+              <span class="visual-preview preview-privacy"><i></i><i></i><i></i></span>
+              <strong>Privacy mods</strong>
+              <small>Blur account identity text in chrome menus.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-search-outline">
+              <span class="visual-preview preview-search-outline"><i></i></span>
+              <strong>Enable Search Box focus outline</strong>
+              <small>Stronger Midori focus ring on search fields.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-search-buttons">
+              <span class="visual-preview preview-search-buttons"><i></i><i></i><i></i></span>
+              <strong>Always show Search Bar buttons</strong>
+              <small>Keep page action buttons visible.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-popout-searchbar">
+              <span class="visual-preview preview-popout"><i></i></span>
+              <strong>Experimental: Popout Searchbar with Blur</strong>
+              <small>Blurred expanded urlbar, opt-in only.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-extra-blur">
+              <span class="visual-preview preview-blur"><i></i><i></i></span>
+              <strong>Experimental: Extra Blur mods</strong>
+              <small>Blur panels, searchbar, and vertical expand surfaces.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-newtab-shortcut-title">
+              <span class="visual-preview preview-shortcuts"><i></i><i></i><i></i></span>
+              <strong>Remove title text from homepage shortcuts</strong>
+              <small>Icon-first shortcuts in New Tab.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-newtab-center-widgets">
+              <span class="visual-preview preview-widgets"><i></i><i></i></span>
+              <strong>Center Widgets in New Tab</strong>
+              <small>Centered widget layout where supported.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-circular-shortcuts">
+              <span class="visual-preview preview-circles"><i></i><i></i><i></i></span>
+              <strong>Circular homepage shortcuts</strong>
+              <small>Round shortcut tiles.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-wallpaper-blur">
+              <span class="visual-preview preview-wallpaper"><i></i></span>
+              <strong>Wallpaper Blur in New tab page</strong>
+              <small>Softens wallpaper backgrounds.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-spill-theme">
+              <span class="visual-preview preview-spill"><i></i></span>
+              <strong>Spill style theme</strong>
+              <small>Mod Blur spill texture recolored for Midori.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-card-theme">
+              <span class="visual-preview preview-card-theme"><i></i><i></i></span>
+              <strong>Card Style theme</strong>
+              <small>Stronger panel card separation.</small>
+            </label>
+
+            <label class="visual-mod-card">
+              <input type="checkbox" id="pref-modblur-acrylic">
+              <span class="visual-preview preview-acrylic"><i></i></span>
+              <strong>On Pause - Acrylic MicaForEveryone</strong>
+              <small>Experimental acrylic-style chrome blur.</small>
+            </label>
           </div>
         </div>
       </section>
