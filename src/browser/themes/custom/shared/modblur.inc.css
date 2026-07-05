@@ -1,0 +1,284 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Midori Mod Blur optional modules.
+ * Kept separate from shared.inc.css so the base chrome stays readable.
+ */
+
+@media -moz-pref("midori.modblur.windowControls.macStyle") {
+  :root:not([customizing]) .titlebar-buttonbox-container {
+    align-items: center !important;
+    max-height: var(--pf-navbar-height) !important;
+  }
+
+  :root:not([customizing]) .titlebar-button {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    max-width: 30px !important;
+    max-height: 30px !important;
+    margin-inline: 2px !important;
+    padding: 0 !important;
+    border-radius: var(--pf-border-radius-sm) !important;
+    background-color: transparent !important;
+    appearance: none !important;
+    -moz-context-properties: fill, stroke !important;
+  }
+
+  :root:not([customizing]) .titlebar-min {
+    list-style-image: url("modblur-assets/minimize-themes.svg") !important;
+  }
+
+  :root:not([customizing]) .titlebar-max,
+  :root:not([customizing]) .titlebar-restore {
+    list-style-image: url("modblur-assets/maximize-themes.svg") !important;
+  }
+
+  :root:not([customizing]) .titlebar-close {
+    list-style-image: url("modblur-assets/close-themes.svg") !important;
+  }
+
+  :root:not([customizing]) .titlebar-button:hover {
+    background-color: var(--pf-toolbar-bgcolor-hover) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.window.frame") {
+  :root:not([sizemode="fullscreen"]) #navigator-toolbox {
+    margin: 6px 6px 0 !important;
+    border: 1px solid var(--pf-border-color) !important;
+    border-radius: var(--pf-window-radius) var(--pf-window-radius) 0 0 !important;
+  }
+
+  :root:not([sizemode="fullscreen"]) #tabbrowser-tabbox {
+    margin-inline: 6px !important;
+    border: 1px solid var(--pf-border-color) !important;
+    border-top: 0 !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.bookmarks.clean") {
+  #PersonalToolbar {
+    min-height: 34px !important;
+    padding-inline: var(--pf-separation) !important;
+    background: var(--pf-sidebar-bgcolor) !important;
+    color: var(--pf-text-color) !important;
+  }
+
+  #PlacesToolbarItems > .bookmark-item {
+    border-radius: var(--pf-border-radius-sm) !important;
+    padding: 4px 8px !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.bookmarks.popout") {
+  :root:not([customizing]) #PersonalToolbar {
+    max-height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding-block: 0 !important;
+    opacity: 0;
+    transition: max-height var(--pf-ts-25), opacity var(--pf-ts-15), padding var(--pf-ts-25) !important;
+  }
+
+  :root:not([customizing]) #navigator-toolbox:hover #PersonalToolbar,
+  :root:not([customizing]) #PersonalToolbar[customizing] {
+    max-height: 38px !important;
+    padding-block: 4px !important;
+    opacity: 1;
+  }
+}
+
+@media -moz-pref("midori.modblur.extensions.cleanMenu") {
+  #unified-extensions-view {
+    --uei-icon-size: 18px !important;
+    --panel-subview-body-padding: 6px !important;
+  }
+
+  #unified-extensions-view .unified-extensions-item {
+    margin-block: 2px !important;
+    border-radius: var(--pf-border-radius-sm) !important;
+  }
+
+  #unified-extensions-view .unified-extensions-item-menu-button.subviewbutton {
+    margin-inline-end: 4px !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.extensions.hideManageButton") {
+  #unified-extensions-manage-extensions {
+    display: none !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.privacy.blurIdentity") {
+  #appMenu-fxa-label2,
+  #appMenu-fxa-status2,
+  #fxa-menu-header-description,
+  #fxa-menu-email {
+    filter: blur(5px);
+    transition: filter var(--pf-ts-15);
+  }
+
+  #appMenu-fxa-label2:hover,
+  #appMenu-fxa-status2:hover,
+  #fxa-menu-header-description:hover,
+  #fxa-menu-email:hover {
+    filter: none;
+  }
+}
+
+@media -moz-pref("midori.modblur.icons.mainMenu") {
+  #appMenu-new-tab-button2,
+  #appMenu-new-window-button2,
+  #appMenu-new-private-window-button2,
+  #appMenu-bookmarks-button,
+  #appMenu-history-button,
+  #appMenu-downloads-button,
+  #appMenu-extensions-themes-button,
+  #appMenu-settings-button {
+    list-style-image: var(--menuitem-icon, inherit) !important;
+    -moz-context-properties: fill, stroke !important;
+    fill: currentColor !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.verticalTabs.compact") {
+  :root[midori-vertical-tabs] {
+    --pf-tab-height: 30px;
+    --pf-pinned-height: 40px;
+    --midori-vt-density-pad: 3px;
+  }
+
+  :root[midori-vertical-tabs] .tabbrowser-tab {
+    min-height: 30px !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.verticalTabs.hideScrollbar") {
+  :root[midori-vertical-tabs] #vertical-tabs,
+  :root[midori-vertical-tabs] #tabbrowser-tabs,
+  :root[midori-vertical-tabs] .tabbrowser-arrowscrollbox {
+    scrollbar-width: none !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.tabs.centered") {
+  :root[midori-horizontal-tabs] #tabbrowser-tabs {
+    margin-inline: auto !important;
+    max-width: min(100%, 920px) !important;
+  }
+
+  :root[midori-horizontal-tabs] #tabbrowser-arrowscrollbox {
+    justify-content: center !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.tabs.hidePreviewPanel") {
+  #tab-preview-panel,
+  .tab-preview-panel {
+    display: none !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.tabs.onTop") {
+  :root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #TabsToolbar {
+    order: 0 !important;
+  }
+
+  :root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #nav-bar {
+    order: 1 !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.tabs.activeStaticWidth") {
+  :root[midori-horizontal-tabs] .tabbrowser-tab[selected] {
+    min-width: 160px !important;
+    max-width: 160px !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.tabs.soundColor") {
+  .tabbrowser-tab[soundplaying] .tab-background,
+  .tabbrowser-tab[muted] .tab-background {
+    background-color: color-mix(in srgb, var(--pf-accent-color) 26%, var(--pf-tab-selected-bgcolor)) !important;
+  }
+
+  .tabbrowser-tab[soundplaying] .tab-icon-overlay,
+  .tabbrowser-tab[muted] .tab-icon-overlay {
+    fill: var(--pf-accent-color) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.tabs.hideAllTabsButton") {
+  #alltabs-button {
+    display: none !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.search.focusOutline") {
+  #urlbar[focused] .urlbar-background,
+  #searchbar:focus-within {
+    outline: 2px solid color-mix(in srgb, var(--pf-accent-color) 45%, transparent) !important;
+    outline-offset: 2px !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.search.buttonsAlways") {
+  #urlbar:not([open]) .urlbar-page-action:not([disabled]) {
+    width: calc(var(--urlbar-min-height) - 2px - 2 * var(--urlbar-container-padding)) !important;
+    padding-inline: var(--urlbar-icon-padding) !important;
+    opacity: 1 !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.search.popoutBlur") {
+  #urlbar[open] {
+    backdrop-filter: blur(18px) saturate(1.3);
+  }
+
+  #urlbar[open] .urlbar-background,
+  #urlbar[open] #urlbar-background {
+    background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 82%, transparent) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.blur.extra") {
+  panel[type="arrow"] .panel-arrowcontent,
+  .browserContainer > findbar {
+    backdrop-filter: blur(16px) saturate(1.25);
+    background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 82%, transparent) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.blur.acrylic") {
+  #navigator-toolbox,
+  #PersonalToolbar,
+  :root[midori-vertical-tabs] #vertical-tabs {
+    background-image:
+      url("modblur-assets/noise-512x512.png"),
+      linear-gradient(135deg, color-mix(in srgb, var(--pf-accent-color) 20%, transparent), transparent 55%) !important;
+    background-color: color-mix(in srgb, var(--pf-sidebar-bgcolor) 84%, transparent) !important;
+    backdrop-filter: blur(20px) saturate(1.2);
+  }
+}
+
+@media -moz-pref("midori.modblur.theme.spill") {
+  :root:not([inDOMFullscreen], [chromehidden~="toolbar"], [taskbartab]) #browser {
+    background:
+      url("modblur-assets/spill.svg") right top / 360px auto no-repeat,
+      radial-gradient(circle at 15% 0, color-mix(in srgb, var(--pf-accent-color), transparent 76%), transparent 36%),
+      linear-gradient(180deg, var(--pf-browser-bgcolor), var(--pf-browser-bgcolor-2)) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.theme.card") {
+  #tabbrowser-tabbox,
+  panel[type="arrow"] .panel-arrowcontent,
+  .browserContainer > findbar {
+    border: 1px solid color-mix(in srgb, var(--pf-text-color), transparent 82%) !important;
+    box-shadow: 0 18px 50px color-mix(in srgb, black 20%, transparent) !important;
+  }
+}
