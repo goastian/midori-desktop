@@ -999,10 +999,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     doc.documentElement.appendChild(keyset);
   }
 
-  function chooseInitialPanelId() {
-    return startupPanelIdForStore(store);
-  }
-
   function chooseVisiblePanelId() {
     const selectedId = store.last?.selectedPanelId;
     if (selectedId && store.panels.some((panel) => panel.id === selectedId)) {
@@ -1988,7 +1984,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     true
   );
 
-  function setVisible(nextVisible) {
+  function setVisible(nextVisible, { openPanel = true } = {}) {
     visible = !!nextVisible;
     if (!visible) {
       if (hidePanelWhenHidden) {
@@ -2001,7 +1997,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       syncEdgeTriggerVisibility();
       return;
     }
-    if (!activePanelId) {
+    if (openPanel && !activePanelId) {
       const targetId = chooseVisiblePanelId();
       if (targetId) setActivePanel(targetId);
     }
@@ -2867,7 +2863,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     }
     syncToolbarPrefs();
     syncPanelShortcuts();
-    const targetId = previousActivePanelId || (visible ? chooseVisiblePanelId() : chooseInitialPanelId());
+    const targetId = previousActivePanelId || (visible ? chooseVisiblePanelId() : null);
     if (targetId && store.panels.some((panel) => panel.id === targetId)) {
       setActivePanel(targetId);
     } else {
