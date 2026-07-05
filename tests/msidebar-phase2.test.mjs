@@ -16,11 +16,21 @@ if (!globalThis.ChromeUtils) {
 }
 
 const {
+  buildPanelOptionsFromContext,
+  buildPanelSelectorScript,
   computeFloatingPlacement,
   computeFloatingZIndex,
   computePanelButtonDecorations,
   extractPanelDropPayload,
+  panelDisplayTitle,
+  panelLastUrl,
+  panelPeriodicReloadDelayMs,
+  panelShortcutEntries,
+  panelShortcutToXul,
   reorderPanelsById,
+  shouldPersistFavicon,
+  startupPanelIdForStore,
+  validatePanelEditInput,
 } = await import('../src/browser/components/msidebar/SidebarUI.mjs');
 
 function createEventTarget() {
@@ -112,10 +122,11 @@ test('temporary panels are excluded from persisted store by default', () => {
   const persisted = validateStore(store);
   assert.equal(persisted.panels.length, 1);
   assert.equal(persisted.panels[0].id, 'stable');
-  assert.equal(persisted.last.selectedPanelId, 'temp');
+  assert.equal(persisted.last.selectedPanelId, null);
 
   const runtime = validateStore(store, { includeTemporary: true });
   assert.equal(runtime.panels.length, 2);
+  assert.equal(runtime.last.selectedPanelId, 'temp');
 });
 
 test('floating placement honors anchor and alwaysOnTop uses high z-index', () => {
@@ -202,6 +213,194 @@ test('panel decorations honor hide toggles for sound and badge', () => {
 
   assert.equal(out.showSoundIcon, false);
   assert.equal(out.badgeText, '99+');
+});
+
+test('panel metadata helpers drive dynamic title selector and periodic reload integration', () => {
+  const panel = {
+    id: 'panel',
+    url: 'https://example.com/app',
+    title: { mode: 'dynamic', value: 'Fallback title' },
+    periodicReload: { enabled: true, seconds: 45 },
+    cssSelector: { enabled: true, value: '#inbox [data-label="Today"]' },
+  };
+
+  assert.equal(panelDisplayTitle(panel, 'Runtime title'), 'Runtime title');
+  assert.equal(panelDisplayTitle(panel, ''), 'Fallback title');
+  assert.equal(panelPeriodicReloadDelayMs(panel), 45_000);
+
+  const clampedPanel = {
+    periodicReload: { enabled: true, seconds: 1 },
+  };
+  assert.equal(panelPeriodicReloadDelayMs(clampedPanel), 30_000);
+  assert.equal(panelPeriodicReloadDelayMs({ periodicReload: { enabled: false, seconds: 60 } }), 0);
+
+  const script = buildPanelSelectorScript(panel.cssSelector.value);
+  assert.match(script, /document\.querySelector/);
+  assert.match(script, /scrollIntoView/);
+  assert.ok(script.includes(JSON.stringify(panel.cssSelector.value)));
+  assert.equal(buildPanelSelectorScript(''), '');
+});
+
+test('panel shortcuts normalize dedupe and expose XUL key metadata', () => {
+  const parsed = panelShortcutToXul('control + shift + e');
+  assert.deepEqual(parsed, {
+    key: 'e',
+    keycode: '',
+    modifiers: 'control,shift',
+  });
+
+  const entries = panelShortcutEntries([
+    { id: 'mail', shortcut: 'Ctrl+Shift+E' },
+    { id: 'duplicate', shortcut: 'control+shift+e' },
+    { id: 'calendar', shortcut: 'Alt+F8' },
+    { id: 'empty', shortcut: '' },
+  ]);
+
+  assert.deepEqual(
+    entries.map((entry) => [entry.panelId, entry.shortcut, entry.parsed.key || entry.parsed.keycode]),
+    [
+      ['mail', 'Ctrl+Shift+E', 'e'],
+      ['calendar', 'Alt+F8', 'VK_F8'],
+    ]
+  );
+});
+
+test('restoreLastUrl and loadOnStartup use validated persisted panel state', () => {
+  const store = validateStore(
+    {
+      version: 2,
+      settings: {},
+      last: {
+        selectedPanelId: 'calendar',
+        panelUrls: {
+          mail: 'https://mail.example.com/inbox',
+          calendar: 'https://calendar.example.com/week',
+          broken: 'javascript:alert(1)',
+        },
+        favicons: {
+          mail: 'https://mail.example.com/favicon.ico',
+          calendar: 'data:image/svg+xml,broken',
+        },
+      },
+      panels: [
+        {
+          id: 'mail',
+          url: 'https://mail.example.com/',
+          title: { mode: 'dynamic', value: 'Mail' },
+          favicon: { mode: 'dynamic', value: '' },
+          floating: { enabled: false, anchor: 'center', alwaysOnTop: false, x: 0, y: 0, w: 480, h: 640 },
+          pinned: true,
+          dockWidth: null,
+          zoom: 1,
+          mobile: false,
+          temporary: false,
+          unloadOnClose: false,
+          periodicReload: { enabled: false, seconds: 300 },
+          shortcut: '',
+          cssSelector: { enabled: false, value: '' },
+          hide: { toolbar: false, soundIcon: false, notificationBadge: false },
+          userContextId: 0,
+          muted: false,
+          loadOnStartup: true,
+          restoreLastUrl: true,
+          geometry: { width: 480, height: 640, offsetX: 12, offsetY: 12 },
+        },
+        {
+          id: 'calendar',
+          url: 'https://calendar.example.com/',
+          title: { mode: 'dynamic', value: 'Calendar' },
+          favicon: { mode: 'dynamic', value: '' },
+          floating: { enabled: false, anchor: 'center', alwaysOnTop: false, x: 0, y: 0, w: 480, h: 640 },
+          pinned: true,
+          dockWidth: null,
+          zoom: 1,
+          mobile: false,
+          temporary: false,
+          unloadOnClose: false,
+          periodicReload: { enabled: false, seconds: 300 },
+          shortcut: '',
+          cssSelector: { enabled: false, value: '' },
+          hide: { toolbar: false, soundIcon: false, notificationBadge: false },
+          userContextId: 0,
+          muted: false,
+          loadOnStartup: false,
+          restoreLastUrl: true,
+          geometry: { width: 480, height: 640, offsetX: 12, offsetY: 12 },
+        },
+      ],
+    },
+    { includeTemporary: true }
+  );
+
+  assert.equal(store.last.panelUrls.mail, 'https://mail.example.com/inbox');
+  assert.equal(store.last.panelUrls.broken, undefined);
+  assert.equal(store.last.favicons.mail, 'https://mail.example.com/favicon.ico');
+  assert.equal(store.last.favicons.calendar, undefined);
+  assert.equal(panelLastUrl(store, store.panels[0]), 'https://mail.example.com/inbox');
+  assert.equal(panelLastUrl(store, { ...store.panels[0], restoreLastUrl: false }), 'https://mail.example.com/');
+  assert.equal(startupPanelIdForStore(store), 'mail');
+
+  const selectedStartupStore = {
+    ...store,
+    last: { ...store.last, selectedPanelId: 'calendar' },
+    panels: store.panels.map((panel) => ({ ...panel, loadOnStartup: panel.id === 'calendar' })),
+  };
+  assert.equal(startupPanelIdForStore(selectedStartupStore), 'calendar');
+});
+
+test('context menu payload resolves sidebar_action panels and editor validation rejects risky input', () => {
+  const sidebarActionPanel = buildPanelOptionsFromContext(
+    {
+      url: 'moz-extension://fixture/background.html',
+      title: 'Extension internals',
+      temporary: true,
+      userContextId: 4,
+    },
+    () => ({
+      url: 'moz-extension://fixture/sidebar.html',
+      title: 'Fixture Sidebar',
+      extensionId: 'fixture@example',
+      iconUrl: 'moz-extension://fixture/icons/sidebar.svg',
+    })
+  );
+
+  assert.deepEqual(sidebarActionPanel, {
+    url: 'moz-extension://fixture/sidebar.html',
+    title: 'Fixture Sidebar',
+    temporary: true,
+    userContextId: 4,
+    webExtensionId: 'fixture@example',
+    faviconUrl: 'moz-extension://fixture/icons/sidebar.svg',
+  });
+
+  const normalPanel = buildPanelOptionsFromContext(
+    {
+      url: 'https://example.com/current?x=1',
+      title: 'Current page',
+      userContextId: 2,
+    },
+    () => null
+  );
+
+  assert.equal(normalPanel.url, 'https://example.com/current?x=1');
+  assert.equal(normalPanel.title, 'Current page');
+  assert.equal(normalPanel.temporary, false);
+  assert.equal(normalPanel.userContextId, 2);
+  assert.equal(buildPanelOptionsFromContext({ url: 'javascript:alert(1)' }), null);
+
+  assert.deepEqual(validatePanelEditInput({ url: 'https://example.com', shortcut: 'Ctrl+Shift+E', cssSelector: '#app' }), {
+    url: true,
+    shortcut: true,
+    cssSelector: true,
+  });
+  assert.equal(validatePanelEditInput({ url: 'javascript:alert(1)' }).url, false);
+  assert.equal(validatePanelEditInput({ shortcut: 'Ctrl+' }).shortcut, false);
+  assert.equal(validatePanelEditInput({ cssSelector: 'x'.repeat(501) }).cssSelector, false);
+
+  assert.equal(shouldPersistFavicon({ favicon: { mode: 'dynamic' } }, 'https://example.com/favicon.ico'), true);
+  assert.equal(shouldPersistFavicon({ favicon: { mode: 'dynamic' } }, 'moz-extension://fixture/icon.svg'), true);
+  assert.equal(shouldPersistFavicon({ favicon: { mode: 'static' } }, 'https://example.com/favicon.ico'), false);
+  assert.equal(shouldPersistFavicon({ favicon: { mode: 'dynamic' } }, 'chrome://mozapps/skin/places/defaultFavicon.svg'), false);
 });
 
 test('reorderPanelsById moves source panel before target', () => {

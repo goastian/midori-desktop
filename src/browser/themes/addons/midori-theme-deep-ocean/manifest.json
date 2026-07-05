@@ -6,7 +6,7 @@
       "strict_min_version": "120.0"
     }
   },
-  "version": "2.1.0",
+  "version": "2.2.0",
   "name": "Midori — Onyx & Jade",
   "description": "Negro carbón con firma jade-teal translúcida Astian. Lujo discreto y premium.",
   "author": "Astian, Inc.",
@@ -16,13 +16,18 @@
     "128": "icon.svg"
   },
   "theme": {
+    "images": {
+      "additional_backgrounds": [
+        "header.svg"
+      ]
+    },
     "colors": {
-      "frame": "#0D0D0D",
+      "frame": "#0C1111",
       "frame_inactive": "#090909",
       "tab_background_text": "#E6F7F3",
       "tab_text": "#E6F7F3",
-      "tab_loading": "#1FBEC0",
-      "tab_line": "#1FBEC0",
+      "tab_loading": "#63E6D6",
+      "tab_line": "#63E6D6",
       "toolbar": "#181818",
       "toolbar_text": "#E6F7F3",
       "toolbar_field": "#222222",
@@ -30,8 +35,8 @@
       "toolbar_field_border": "#2B3D3B",
       "toolbar_field_focus": "#282828",
       "toolbar_field_text_focus": "#E6F7F3",
-      "toolbar_field_border_focus": "#1FBEC0",
-      "toolbar_field_highlight": "#233735",
+      "toolbar_field_border_focus": "#63E6D6",
+      "toolbar_field_highlight": "#25413D",
       "toolbar_field_highlight_text": "#E6F7F3",
       "toolbar_top_separator": "transparent",
       "toolbar_bottom_separator": "#222222",
@@ -41,19 +46,25 @@
       "popup": "#181818",
       "popup_text": "#E6F7F3",
       "popup_border": "#2B3D3B",
-      "popup_highlight": "#233735",
+      "popup_highlight": "#25413D",
       "popup_highlight_text": "#E6F7F3",
       "sidebar": "#121212",
       "sidebar_text": "#E6F7F3",
-      "sidebar_highlight": "#233735",
+      "sidebar_highlight": "#25413D",
       "sidebar_highlight_text": "#E6F7F3",
       "sidebar_border": "#222222",
       "icons": "#6FDCD2",
-      "icons_attention": "#1FBEC0",
+      "icons_attention": "#63E6D6",
       "button_background_hover": "#222222",
       "button_background_active": "#2B3D3B"
     },
     "properties": {
+      "additional_backgrounds_alignment": [
+        "right top"
+      ],
+      "additional_backgrounds_tiling": [
+        "no-repeat"
+      ],
       "color_scheme": "dark",
       "content_color_scheme": "auto"
     }

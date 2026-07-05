@@ -6,7 +6,7 @@
       "strict_min_version": "120.0"
     }
   },
-  "version": "2.1.0",
+  "version": "2.2.0",
   "name": "Midori — Sand & Sage",
   "description": "Arenas cálidas con firma teal fría. Contraste de temperatura, premium y moderno.",
   "author": "Astian, Inc.",
@@ -16,44 +16,55 @@
     "128": "icon.svg"
   },
   "theme": {
+    "images": {
+      "additional_backgrounds": [
+        "header.svg"
+      ]
+    },
     "colors": {
-      "frame": "#FAF6EF",
+      "frame": "#FFF6E6",
       "frame_inactive": "#f4efe6",
       "tab_background_text": "#2A3A33",
       "tab_text": "#2A3A33",
-      "tab_loading": "#0E8E9C",
-      "tab_line": "#0E8E9C",
-      "toolbar": "#F1EADC",
+      "tab_loading": "#F4A83A",
+      "tab_line": "#F4A83A",
+      "toolbar": "#F7EBD4",
       "toolbar_text": "#2A3A33",
       "toolbar_field": "#ffffff",
       "toolbar_field_text": "#2A3A33",
       "toolbar_field_border": "#DECDAE",
       "toolbar_field_focus": "#ffffff",
       "toolbar_field_text_focus": "#2A3A33",
-      "toolbar_field_border_focus": "#0E8E9C",
-      "toolbar_field_highlight": "#e9ddc7",
+      "toolbar_field_border_focus": "#F4A83A",
+      "toolbar_field_highlight": "#F5E0BC",
       "toolbar_field_highlight_text": "#2A3A33",
       "toolbar_top_separator": "transparent",
       "toolbar_bottom_separator": "#DECDAE",
       "ntp_background": "#FAF6EF",
       "ntp_card_background": "#ffffff",
       "ntp_text": "#2A3A33",
-      "popup": "#F1EADC",
+      "popup": "#F8EEDB",
       "popup_text": "#2A3A33",
       "popup_border": "#DECDAE",
-      "popup_highlight": "#e3d6bd",
+      "popup_highlight": "#F1D9B2",
       "popup_highlight_text": "#2A3A33",
-      "sidebar": "#F3ECDF",
+      "sidebar": "#F7EDDB",
       "sidebar_text": "#2A3A33",
-      "sidebar_highlight": "#dccdb1",
+      "sidebar_highlight": "#EED6AD",
       "sidebar_highlight_text": "#2A3A33",
       "sidebar_border": "#DECDAE",
       "icons": "#0B7382",
-      "icons_attention": "#0E8E9C",
-      "button_background_hover": "#e9ddc7",
+      "icons_attention": "#F4A83A",
+      "button_background_hover": "#F5E0BC",
       "button_background_active": "#DECDAE"
     },
     "properties": {
+      "additional_backgrounds_alignment": [
+        "right top"
+      ],
+      "additional_backgrounds_tiling": [
+        "no-repeat"
+      ],
       "color_scheme": "light",
       "content_color_scheme": "auto"
     }

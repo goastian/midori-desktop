@@ -6,7 +6,7 @@
       "strict_min_version": "120.0"
     }
   },
-  "version": "2.1.0",
+  "version": "2.2.0",
   "name": "Midori — Midnight Sage",
   "description": "Medianoche técnico con firma teal luminosa Astian. Frío, exclusivo y premium.",
   "author": "Astian, Inc.",
@@ -16,22 +16,27 @@
     "128": "icon.svg"
   },
   "theme": {
+    "images": {
+      "additional_backgrounds": [
+        "header.svg"
+      ]
+    },
     "colors": {
-      "frame": "#0A1016",
+      "frame": "#091119",
       "frame_inactive": "#070c11",
       "tab_background_text": "#EAF3F2",
       "tab_text": "#EAF3F2",
-      "tab_loading": "#2FB9C9",
-      "tab_line": "#2FB9C9",
-      "toolbar": "#101924",
+      "tab_loading": "#58DAD2",
+      "tab_line": "#58DAD2",
+      "toolbar": "#111C27",
       "toolbar_text": "#EAF3F2",
       "toolbar_field": "#1C2A38",
       "toolbar_field_text": "#EAF3F2",
       "toolbar_field_border": "#25404A",
       "toolbar_field_focus": "#22323F",
       "toolbar_field_text_focus": "#EAF3F2",
-      "toolbar_field_border_focus": "#2FB9C9",
-      "toolbar_field_highlight": "#173039",
+      "toolbar_field_border_focus": "#58DAD2",
+      "toolbar_field_highlight": "#193B43",
       "toolbar_field_highlight_text": "#EAF3F2",
       "toolbar_top_separator": "transparent",
       "toolbar_bottom_separator": "#1F3640",
@@ -41,19 +46,25 @@
       "popup": "#101924",
       "popup_text": "#EAF3F2",
       "popup_border": "#233844",
-      "popup_highlight": "#1B3742",
+      "popup_highlight": "#1D4149",
       "popup_highlight_text": "#EAF3F2",
       "sidebar": "#0C141C",
       "sidebar_text": "#EAF3F2",
-      "sidebar_highlight": "#1B3742",
+      "sidebar_highlight": "#1D4149",
       "sidebar_highlight_text": "#EAF3F2",
       "sidebar_border": "#1C2A38",
       "icons": "#6FD0DA",
-      "icons_attention": "#2FB9C9",
+      "icons_attention": "#58DAD2",
       "button_background_hover": "#1C2A38",
       "button_background_active": "#233844"
     },
     "properties": {
+      "additional_backgrounds_alignment": [
+        "right top"
+      ],
+      "additional_backgrounds_tiling": [
+        "no-repeat"
+      ],
       "color_scheme": "dark",
       "content_color_scheme": "auto"
     }
