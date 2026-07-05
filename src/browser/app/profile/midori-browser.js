@@ -202,13 +202,41 @@ pref('midori.tabsleep.excludeHosts', '');
 pref('dom.ipc.forkserver.enable', true);
 
 // ============================================================================
-// MIDORI FLAT DESIGN THEMES
+// MIDORI MOD BLUR CHROME
 // ============================================================================
-// Theme mode: auto | light | dark
-pref('midori.theme.mode', 'auto');
+// Midori owns chrome styling through bundled CSS instead of WebExtension themes.
+pref('extensions.activeThemeID', 'default-theme@mozilla.org');
+pref('midori.colorway', 'jade');
 
-// Set Midori Breeze as the default active theme
-pref('extensions.activeThemeID', 'midori-theme-jade-mist@midori.astian.org');
+// Firefox-Mod-Blur inspired modules, recolored for Midori. Heavy blur and
+// autohide-like behavior stays opt-in to avoid navigation stalls.
+pref('midori.modblur.windowControls.macStyle', false);
+pref('midori.modblur.bookmarks.popout', false);
+pref('midori.modblur.bookmarks.clean', true);
+pref('midori.modblur.privacy.blurIdentity', true);
+pref('midori.modblur.extensions.cleanMenu', true);
+pref('midori.modblur.extensions.hideManageButton', false);
+pref('midori.modblur.icons.mainMenu', true);
+pref('midori.modblur.verticalTabs.compact', false);
+pref('midori.modblur.verticalTabs.hideScrollbar', false);
+pref('midori.modblur.tabs.centered', false);
+pref('midori.modblur.tabs.hidePreviewPanel', false);
+pref('midori.modblur.tabs.onTop', false);
+pref('midori.modblur.tabs.activeStaticWidth', true);
+pref('midori.modblur.tabs.soundColor', true);
+pref('midori.modblur.tabs.hideAllTabsButton', false);
+pref('midori.modblur.window.frame', false);
+pref('midori.modblur.search.focusOutline', true);
+pref('midori.modblur.search.buttonsAlways', false);
+pref('midori.modblur.search.popoutBlur', false);
+pref('midori.modblur.blur.extra', false);
+pref('midori.modblur.blur.acrylic', false);
+pref('midori.modblur.newtab.hideShortcutTitles', false);
+pref('midori.modblur.newtab.centerWidgets', false);
+pref('midori.modblur.newtab.circularShortcuts', false);
+pref('midori.modblur.newtab.wallpaperBlur', false);
+pref('midori.modblur.theme.spill', false);
+pref('midori.modblur.theme.card', false);
 
 // GPU-accelerated rendering for smooth UI
 pref('gfx.webrender.all', true);
@@ -218,7 +246,7 @@ pref('toolkit.legacyUserProfileCustomizations.stylesheets', true);
 // ============================================================================
 // MIDORI CUSTOM GRADIENT SYSTEM
 // ============================================================================
-// Allow users to define custom gradients for the browser chrome
+// Legacy gradient prefs stay disabled so old profiles do not enable them during migration.
 pref('midori.gradient.enabled', false);
 pref('midori.gradient.type', 'linear');
 pref('midori.gradient.angle', 135);
@@ -313,7 +341,7 @@ pref('sidebar.visibility', 'hide');
 // ============================================================================
 // Hide the toolbar when scrolling down to maximize content area
 // The toolbar reappears when scrolling up or moving the mouse to the top
-pref('midori.autohide.toolbar', true);
+pref('midori.autohide.toolbar', false);
 // Briefly reveal the hidden toolbar on navigation so the new address is
 // readable, then auto-hide again (Zen-style compact flash).
 pref('midori.autohide.flashOnLocationChange', true);
