@@ -430,85 +430,93 @@ input[type='checkbox'] {
   }
 }
 
-/* ===== Gradient Page ===== */
+/* ===== Color Page ===== */
 
-/* Preset gradient grid */
-#gradient.page {
+/* Color page */
+#color.page {
   justify-content: flex-start;
   padding-top: 24px;
 }
 
-.gradientPresetsGrid {
+.colorway-options {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
-  max-width: 480px;
+  grid-template-columns: repeat(3, minmax(112px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+  max-width: 520px;
   width: 100%;
   animation: fadeIn 0.5s ease-out 0.25s backwards;
 }
 
-.gradient-preset-card {
+.colorway-card {
   position: relative;
-  width: 100%;
-  aspect-ratio: 2.5 / 1;
-  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  min-height: 112px;
+  padding: 12px 10px;
+  border-radius: 12px;
   cursor: pointer;
-  border: 2px solid transparent;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
+  border: 2px solid color-mix(in srgb, currentColor 12%, transparent);
+  background: var(--in-content-box-background, #f9f9f9);
+  text-align: center;
   user-select: none;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
   animation: fadeInUp 0.5s ease-out backwards;
 }
 
-.gradient-preset-card:nth-child(1) {
+.colorway-card:nth-child(1) {
   animation-delay: 0.15s;
 }
-.gradient-preset-card:nth-child(2) {
+.colorway-card:nth-child(2) {
   animation-delay: 0.2s;
 }
-.gradient-preset-card:nth-child(3) {
+.colorway-card:nth-child(3) {
   animation-delay: 0.25s;
 }
-.gradient-preset-card:nth-child(4) {
+.colorway-card:nth-child(4) {
   animation-delay: 0.3s;
 }
-.gradient-preset-card:nth-child(5) {
+.colorway-card:nth-child(5) {
   animation-delay: 0.35s;
 }
-.gradient-preset-card:nth-child(6) {
+.colorway-card:nth-child(6) {
   animation-delay: 0.4s;
 }
-.gradient-preset-card:nth-child(7) {
-  animation-delay: 0.45s;
-}
-.gradient-preset-card:nth-child(8) {
-  animation-delay: 0.5s;
-}
-.gradient-preset-card:nth-child(9) {
-  animation-delay: 0.55s;
+
+.colorway-card[data-tone="light"] {
+  background: #f8fbf8;
+  color: #142a24;
 }
 
-.gradient-preset-card:hover {
-  transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+.colorway-card[data-tone="dark"] {
+  background: #202126;
+  color: #f3f8f7;
 }
 
-.gradient-preset-card.selected {
-  border-color: #ffffff;
-  box-shadow:
-    0 0 0 2px var(--in-content-primary-button-background, #0061e0),
-    0 4px 16px rgba(0, 0, 0, 0.25);
+.colorway-card:hover {
+  border-color: color-mix(in srgb, AccentColor 40%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
 }
 
-.gradient-preset-card.selected::after {
+.colorway-card.selected {
+  border-color: AccentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, AccentColor 25%, transparent);
+}
+
+.colorway-card.selected::after {
   content: '\2713';
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: 8px;
+  right: 8px;
   width: 20px;
   height: 20px;
-  background: var(--in-content-primary-button-background, #0061e0);
+  background: AccentColor;
   color: #fff;
   border-radius: 50%;
   display: flex;
@@ -521,248 +529,91 @@ input[type='checkbox'] {
   animation: checkPop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-.gradient-preset-name {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 4px 8px;
-  font-size: 0.7em;
-  font-weight: 600;
-  color: #ffffff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.4));
-  border-radius: 0 0 8px 8px;
-}
-
-/* "No Gradient" card */
-.gradient-preset-card.no-gradient {
-  background: var(--in-content-box-background, rgba(255, 255, 255, 0.6));
-  border: 2px dashed var(--in-content-box-border-color, rgba(0, 0, 0, 0.15));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.gradient-preset-card.no-gradient .gradient-preset-name {
-  position: static;
-  background: none;
-  color: inherit;
-  text-shadow: none;
-  text-align: center;
-  padding: 0;
-  font-size: 0.8em;
-}
-
-/* Gradient customizer details */
-.gradient-customizer {
-  width: 100%;
-  max-width: 480px;
-  margin-bottom: 12px;
-  animation: fadeIn 0.5s ease-out 0.5s backwards;
-}
-
-.gradient-customizer summary {
-  cursor: pointer;
-  font-size: 0.9em;
-  font-weight: 600;
-  color: var(--in-content-link-color, #0061e0);
-  padding: 8px 0;
-  user-select: none;
-  transition: color 0.2s ease;
-}
-
-.gradient-customizer summary:hover {
-  text-decoration: underline;
-}
-
-.gradient-editor {
-  background: var(--in-content-box-background, rgba(255, 255, 255, 0.6));
-  border: 1px solid var(--in-content-box-border-color, rgba(0, 0, 0, 0.15));
-  border-radius: 12px;
-  padding: 16px;
-  margin-top: 8px;
-  animation: fadeInUp 0.3s ease-out;
-}
-
-/* Live preview bar */
-.gradient-preview {
-  width: 100%;
-  height: 48px;
-  border-radius: 8px;
-  margin-bottom: 14px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  transition: background 0.3s ease;
-  background: linear-gradient(135deg, #2d8659, #1a5c3a);
-}
-
-/* Controls */
-.gradient-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.control-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.control-row label {
-  font-size: 0.82em;
-  font-weight: 600;
-  min-width: 60px;
-  opacity: 0.85;
-}
-
-.control-row select {
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--in-content-box-border-color, rgba(0, 0, 0, 0.15));
-  background: var(--in-content-page-background, #fff);
-  font-size: 0.85em;
-  min-width: 90px;
-}
-
-.control-row input[type='range'] {
-  flex: 1;
-  min-width: 100px;
-  accent-color: var(--in-content-primary-button-background, #0061e0);
-}
-
-#angleValue {
-  font-size: 0.82em;
-  font-weight: 600;
-  min-width: 36px;
-  text-align: right;
-}
-
-/* Color stops */
-.color-stops {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.color-stop {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--in-content-page-background, #fff);
-  border: 1px solid var(--in-content-box-border-color, rgba(0, 0, 0, 0.15));
-  border-radius: 8px;
-  padding: 3px 6px;
-  transition: box-shadow 0.2s ease;
-}
-
-.color-stop:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.color-stop input[type='color'] {
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  padding: 0;
-  background: none;
-}
-
-.color-stop input[type='color']::-moz-color-swatch {
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  border-radius: 5px;
-}
-
-.color-stop .remove-stop {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--in-content-deemphasized-text, #999);
-  padding: 0 2px;
-  line-height: 1;
-  min-width: auto;
-  transition: color 0.2s ease;
-}
-
-.color-stop .remove-stop:hover {
-  color: #e53935;
-}
-
-.icon-btn {
-  width: 28px;
-  height: 28px;
+.colorway-preview {
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  border: 1px dashed var(--in-content-box-border-color, rgba(0, 0, 0, 0.2));
-  background: transparent;
-  cursor: pointer;
-  font-size: 16px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
+    0 8px 20px rgba(0, 0, 0, 0.14);
+}
+
+.colorway-preview.jade {
+  background:
+    radial-gradient(circle at 72% 26%, rgba(255, 255, 255, 0.55) 0 8%, transparent 9%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.2) 0 3px, transparent 3px 7px),
+    linear-gradient(145deg, #0eae5b, #0e9dae);
+}
+
+.colorway-preview.ocean {
+  background:
+    repeating-radial-gradient(circle at 28% 34%, rgba(255, 255, 255, 0.26) 0 2px, transparent 2px 7px),
+    linear-gradient(145deg, #0e9dae, #7bd7e8);
+}
+
+.colorway-preview.sunrise {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0 2px, transparent 2px 9px),
+    linear-gradient(145deg, #f3b454, #0eae5b);
+}
+
+.colorway-preview.forest {
+  background:
+    radial-gradient(circle at 28% 28%, rgba(41, 197, 139, 0.38), transparent 34%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 6px),
+    linear-gradient(145deg, #07150d, #0eae5b);
+}
+
+.colorway-preview.midnight {
+  background:
+    radial-gradient(circle at 65% 30%, rgba(47, 157, 226, 0.42), transparent 28%),
+    repeating-radial-gradient(circle at 40% 45%, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 8px),
+    linear-gradient(145deg, #0a1020, #0e9dae);
+}
+
+.colorway-preview.ember {
+  background:
+    radial-gradient(circle at 35% 32%, rgba(255, 199, 120, 0.34), transparent 30%),
+    repeating-linear-gradient(30deg, rgba(255, 255, 255, 0.11) 0 2px, transparent 2px 8px),
+    linear-gradient(145deg, #2a1111, #e15d42);
+}
+
+.colorway-card h3 {
+  margin: 0;
+  font-size: 13px;
   font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  color: var(--in-content-deemphasized-text, #999);
-  padding: 0;
-  min-width: auto;
 }
 
-.icon-btn:hover {
-  border-color: var(--in-content-primary-button-background, #0061e0);
-  color: var(--in-content-primary-button-background, #0061e0);
-  background: color-mix(
-    in srgb,
-    var(--in-content-primary-button-background, #0061e0) 8%,
-    transparent
-  );
-}
-
-/* Responsive for gradient page */
 @media (max-width: 520px) {
-  .gradientPresetsGrid {
+  .colorway-options {
     grid-template-columns: repeat(2, 1fr);
+    max-width: 300px;
   }
 }
 
 @media (max-height: 480px) {
-  #gradient.page {
+  #color.page {
     padding-top: 16px;
   }
 
-  #gradient.page h2 {
+  #color.page h2 {
     font-size: 1.3em;
     margin: 4px 0;
   }
 
-  #gradient.page p {
+  #color.page p {
     margin: 2px 0 10px 0;
     font-size: 0.9em;
   }
 
-  .gradient-preset-card {
-    aspect-ratio: 3 / 1;
-  }
-
-  .gradient-preview {
-    height: 32px;
-  }
-
-  .gradientPresetsGrid {
-    gap: 5px;
+  .colorway-options {
+    gap: 8px;
     margin-bottom: 8px;
   }
 }
 
 @media (prefers-color-scheme: dark) {
-  .gradient-editor {
-    background: var(--in-content-box-background, rgba(255, 255, 255, 0.05));
-  }
-
-  .gradient-preset-card.no-gradient {
+  .colorway-card {
     background: var(--in-content-box-background, rgba(255, 255, 255, 0.05));
   }
 }
