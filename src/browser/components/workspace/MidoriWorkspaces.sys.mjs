@@ -407,7 +407,7 @@ export const MidoriWorkspaces = {
     // Build the selector button (no type="menu" — we open popup manually)
     const selector = doc.createXULElement('toolbarbutton');
     selector.id = SELECTOR_ID;
-    selector.className = 'toolbarbutton-1 chromeclass-toolbar-additional midori-workspace-btn';
+    selector.className = 'chromeclass-toolbar-additional midori-workspace-btn';
     selector.setAttribute('removable', 'false');
     selector.setAttribute('overflows', 'false');
     selector.setAttribute('tooltiptext', 'Workspaces \u2014 Click to switch workspace');
