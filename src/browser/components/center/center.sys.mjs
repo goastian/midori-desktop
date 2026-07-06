@@ -66,6 +66,7 @@ const PREF_MAP = {
   "pref-modblur-spill-theme": { pref: "midori.modblur.theme.spill", type: "bool" },
   "pref-modblur-card-theme": { pref: "midori.modblur.theme.card", type: "bool" },
   "pref-modblur-acrylic": { pref: "midori.modblur.blur.acrylic", type: "bool" },
+  "pref-arc-mode": { pref: "midori.arcmode.enabled", type: "bool" },
 };
 
 const FALLBACK_WORKSPACE_ICONS = [
@@ -1052,7 +1053,7 @@ function initPrefs() {
 }
 
 function isVerticalLayout(layout) {
-  return layout === "vertical-left" || layout === "vertical-right";
+  return layout === "vertical-left" || layout === "vertical-right" || layout === "arc-zen";
 }
 
 function setVerticalSidebarVisibility(layout) {
@@ -1108,6 +1109,9 @@ function initVerticalSidebarControls() {
 
 // ---- Tab layout ----
 function getTabLayout() {
+  if (readPref("midori.arcmode.enabled", "bool")) {
+    return "arc-zen";
+  }
   const vertEnabled = readPref("midori.verticaltabs.enabled", "bool");
   if (vertEnabled) {
     const pos = readPref("midori.verticaltabs.position", "string") || "left";
@@ -1118,11 +1122,22 @@ function getTabLayout() {
 }
 
 function setTabLayout(layout) {
-  const vertical = layout === "vertical-left" || layout === "vertical-right";
+  const arc = layout === "arc-zen";
+  const vertical = arc || layout === "vertical-left" || layout === "vertical-right";
+  Services.prefs.setBoolPref("midori.arcmode.enabled", arc);
   Services.prefs.setBoolPref("midori.verticaltabs.enabled", vertical);
   if (vertical) {
     const vtabsSide = layout === "vertical-right" ? "right" : "left";
     Services.prefs.setCharPref("midori.verticaltabs.position", vtabsSide);
+    if (arc) {
+      Services.prefs.setIntPref("midori.verticaltabs.width", 252);
+      Services.prefs.setCharPref("midori.verticaltabs.density", "normal");
+      Services.prefs.setBoolPref("midori.verticaltabs.floatingUrlbar", true);
+      Services.prefs.setBoolPref("midori.verticaltabs.showRail", true);
+      Services.prefs.setBoolPref("midori.msidebar.enabled", true);
+      Services.prefs.setBoolPref("midori.msidebar.autohide.enabled", true);
+      Services.prefs.setCharPref("midori.msidebar.autohide.mode", "overlay");
+    }
     // Keep the multi-sidebar on the opposite side
     Services.prefs.setCharPref(
       "midori.msidebar.position",
@@ -1137,6 +1152,10 @@ function setTabLayout(layout) {
       layout === "horizontal-bottom" ? "bottom" : "top"
     );
   }
+  const arcToggle = document.getElementById("pref-arc-mode");
+  if (arcToggle) {
+    arcToggle.checked = arc;
+  }
 }
 
 function initTabLayout() {
@@ -1145,14 +1164,36 @@ function initTabLayout() {
   const current = getTabLayout();
   setVerticalSidebarVisibility(current);
 
+  const selectLayoutCard = layout => {
+    grid.querySelectorAll(".layout-card").forEach(card => {
+      card.classList.toggle("selected", card.dataset.layout === layout);
+    });
+  };
+
+  selectLayoutCard(current);
   for (const card of grid.querySelectorAll(".layout-card")) {
-    card.classList.toggle("selected", card.dataset.layout === current);
     card.addEventListener("click", () => {
-      grid.querySelectorAll(".layout-card").forEach(c => c.classList.remove("selected"));
-      card.classList.add("selected");
       const layout = card.dataset.layout;
+      selectLayoutCard(layout);
       setTabLayout(layout);
       setVerticalSidebarVisibility(layout);
+    });
+  }
+
+  const arcToggle = document.getElementById("pref-arc-mode");
+  if (arcToggle) {
+    arcToggle.checked = current === "arc-zen";
+    arcToggle.addEventListener("change", () => {
+      if (arcToggle.checked) {
+        selectLayoutCard("arc-zen");
+        setTabLayout("arc-zen");
+        setVerticalSidebarVisibility("arc-zen");
+        return;
+      }
+      Services.prefs.setBoolPref("midori.arcmode.enabled", false);
+      const next = getTabLayout();
+      selectLayoutCard(next);
+      setVerticalSidebarVisibility(next);
     });
   }
 }

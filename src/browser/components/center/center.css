@@ -1383,6 +1383,39 @@ body::before {
 .lp-sidebar.left { border-right: 1px solid var(--mc-border); }
 .lp-sidebar.right { border-left: 1px solid var(--mc-border); }
 
+.lp-arc-zen {
+  gap: 4px;
+  padding: 5px;
+  background: color-mix(in srgb, var(--mc-green-500), var(--mc-bg) 86%);
+}
+
+.lp-arc-zen .lp-sidebar {
+  border: 1px solid var(--mc-border);
+  border-radius: 5px;
+}
+
+.lp-arc-zen .lp-content {
+  border: 1px solid var(--mc-border);
+  border-radius: 7px;
+  background: var(--mc-surface);
+}
+
+.lp-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 14px;
+  align-items: center;
+  justify-content: center;
+}
+
+.lp-rail span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mc-green-500);
+}
+
 .lp-vtab {
   width: 14px;
   height: 5px;

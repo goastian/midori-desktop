@@ -35,6 +35,7 @@ const PREF_VERTICAL_ESSENTIALS_PROMO = 'midori.verticaltabs.essentialsPromo';
 const PREF_VERTICAL_URLBAR_AUTO_SELECT = 'midori.verticaltabs.urlbar.autoSelect';
 const PREF_VERTICAL_ACCENT_MODE = 'midori.verticaltabs.accent.mode';
 const PREF_VERTICAL_ACCENT_CUSTOM = 'midori.verticaltabs.accent.custom';
+const PREF_ARC_MODE_ENABLED = 'midori.arcmode.enabled';
 const PREF_HORIZONTAL_POSITION = 'midori.horizontaltabs.position';
 const STYLE_ID = 'midori-verticaltabs-style';
 const ESSENTIALS_PROMO_ID = 'midori-essentials-promo';
@@ -60,6 +61,7 @@ const OBSERVED_PREFS = new Set([
   PREF_VERTICAL_URLBAR_AUTO_SELECT,
   PREF_VERTICAL_ACCENT_MODE,
   PREF_VERTICAL_ACCENT_CUSTOM,
+  PREF_ARC_MODE_ENABLED,
   PREF_HORIZONTAL_POSITION,
 ]);
 
@@ -85,6 +87,7 @@ export const MidoriVerticalTabs = {
     Services.prefs.addObserver(PREF_VERTICAL_URLBAR_AUTO_SELECT, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_MODE, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_CUSTOM, this);
+    Services.prefs.addObserver(PREF_ARC_MODE_ENABLED, this);
     Services.prefs.addObserver(PREF_HORIZONTAL_POSITION, this);
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
 
@@ -99,7 +102,10 @@ export const MidoriVerticalTabs = {
   },
 
   isEnabled() {
-    return Services.prefs.getBoolPref(PREF_ENABLED, false);
+    return (
+      Services.prefs.getBoolPref(PREF_ENABLED, false) ||
+      this._isArcModeEnabled()
+    );
   },
 
   setEnabled(enabled) {
@@ -109,6 +115,10 @@ export const MidoriVerticalTabs = {
   _getVerticalSide() {
     const side = Services.prefs.getStringPref(PREF_VERTICAL_POSITION, 'left');
     return side === 'right' ? 'right' : 'left';
+  },
+
+  _isArcModeEnabled() {
+    return Services.prefs.getBoolPref(PREF_ARC_MODE_ENABLED, false);
   },
 
   _getHorizontalPosition() {
@@ -266,6 +276,7 @@ export const MidoriVerticalTabs = {
     this._applyEssentialsPromo(root);
     root.setAttribute('midori-vt-essentials-enabled', this._isEssentialsEnabled() ? 'true' : 'false');
     root.setAttribute('midori-vt-essentials-max', String(this._getEssentialsMax()));
+    root.setAttribute('midori-arc-mode', this._isArcModeEnabled() ? 'true' : 'false');
 
     const accent = this._resolveVerticalAccent(doc);
     root.style.setProperty('--midori-vt-accent', accent);
@@ -296,6 +307,7 @@ export const MidoriVerticalTabs = {
     root.removeAttribute('midori-vt-pinned-count');
     root.removeAttribute('midori-vt-accent-mode');
     root.removeAttribute('midori-vt-rtl');
+    root.removeAttribute('midori-arc-mode');
     root.style.removeProperty('--midori-vt-width');
     root.style.removeProperty('--midori-vt-density-pad');
     root.style.removeProperty('--midori-vt-tab-radius');
