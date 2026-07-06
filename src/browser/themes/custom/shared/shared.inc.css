@@ -530,39 +530,87 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
 }
 
 :root[midori-vertical-tabs][midori-arc-mode="true"] {
-  --pf-browser-separation: 12px;
-  --pf-sidebar-width: var(--midori-vt-width, 252px);
+  --pf-browser-separation: 10px;
+  --pf-sidebar-width: var(--midori-vt-width, 220px);
   --midori-msidebar-main-width: 52px;
-  --pf-browser-radius: 14px;
-  --pf-window-radius: 16px;
-  --pf-navbar-bgcolor: color-mix(in srgb, var(--pf-sidebar-bgcolor), transparent 18%);
-  --pf-tab-selected-bgcolor: color-mix(in srgb, var(--pf-accent-color), var(--pf-panel-bgcolor) 82%);
+  --pf-browser-radius: 10px;
+  --pf-window-radius: 10px;
+  --pf-navbar-bgcolor: var(--pf-sidebar-bgcolor);
+  --pf-tab-selected-bgcolor: color-mix(in srgb, var(--pf-accent-color), var(--pf-panel-bgcolor) 80%);
   --pf-urlbar-width-max: 640px;
 }
 
 :root[midori-vertical-tabs][midori-arc-mode="true"]:not([inDOMFullscreen], [chromehidden~="toolbar"], [taskbartab]) #navigator-toolbox {
-  padding-block-start: 6px !important;
-  background: var(--pf-sidebar-bgcolor) !important;
+  position: fixed !important;
+  z-index: 45 !important;
+  top: 0 !important;
+  right: 0 !important;
+  left: 0 !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  padding: 0 10px !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  transition: height 160ms ease, opacity 140ms ease !important;
+}
+
+:root[midori-vertical-tabs][midori-arc-mode="true"]:not([inDOMFullscreen], [chromehidden~="toolbar"], [taskbartab]) #navigator-toolbox:hover,
+:root[midori-vertical-tabs][midori-arc-mode="true"]:not([inDOMFullscreen], [chromehidden~="toolbar"], [taskbartab]) #navigator-toolbox:focus-within {
+  height: 48px !important;
+  opacity: 1 !important;
+  overflow: visible !important;
 }
 
 :root[midori-vertical-tabs][midori-arc-mode="true"] #nav-bar {
-  min-height: 46px !important;
-  margin-inline: var(--pf-browser-separation) !important;
+  min-height: 40px !important;
+  margin-block-start: 4px !important;
+  margin-inline: 0 !important;
   padding-inline: 8px !important;
-  border: 1px solid var(--pf-border-color-light) !important;
-  border-radius: var(--pf-window-radius) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 42%, transparent) !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: color-mix(in srgb, var(--pf-sidebar-bgcolor), var(--pf-panel-bgcolor) 18%) !important;
+  box-shadow: 0 10px 28px color-mix(in srgb, black 18%, transparent) !important;
+}
+
+:root[midori-vertical-tabs][midori-arc-mode="true"] #PersonalToolbar {
+  display: none !important;
 }
 
 :root[midori-vertical-tabs][midori-arc-mode="true"] #sidebar-box {
-  margin-block-start: 0 !important;
-  border: 1px solid var(--pf-border-color-light) !important;
+  width: var(--pf-sidebar-width) !important;
+  min-width: 190px !important;
+  max-width: 300px !important;
+  margin: var(--pf-browser-separation) 0 var(--pf-browser-separation) var(--pf-browser-separation) !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: var(--pf-sidebar-bgcolor) !important;
   box-shadow: none !important;
 }
 
+:root[midori-vertical-tabs][midori-arc-mode="true"] #sidebar-header {
+  display: none !important;
+}
+
 :root[midori-vertical-tabs][midori-arc-mode="true"] #tabbrowser-tabbox {
-  border: 1px solid var(--pf-border-color-light) !important;
-  box-shadow: 0 12px 36px color-mix(in srgb, black 16%, transparent) !important;
+  margin: var(--pf-browser-separation) var(--pf-browser-separation) var(--pf-browser-separation) 0 !important;
+  border: 10px solid color-mix(in srgb, var(--pf-sidebar-bgcolor), var(--pf-browser-bgcolor) 18%) !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+  background: color-mix(in srgb, var(--pf-sidebar-bgcolor), var(--pf-browser-bgcolor) 18%) !important;
+}
+
+:root[midori-vertical-tabs="right"][midori-arc-mode="true"] #tabbrowser-tabbox {
+  margin-inline: var(--pf-browser-separation) 0 !important;
+}
+
+:root[midori-vertical-tabs][midori-arc-mode="true"] #tabbrowser-tabpanels,
+:root[midori-vertical-tabs][midori-arc-mode="true"] #tabbrowser-tabpanels .browserContainer,
+:root[midori-vertical-tabs][midori-arc-mode="true"] #tabbrowser-tabpanels .browserStack,
+:root[midori-vertical-tabs][midori-arc-mode="true"] browser {
+  border-radius: 10px !important;
+  background: var(--pf-panel-bgcolor) !important;
 }
 
 :root[midori-vertical-tabs][midori-arc-mode="true"] #midori-msidebar-main {
@@ -581,7 +629,7 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
 
 :root[midori-vertical-tabs][midori-arc-mode="true"] #midori-msidebar-box {
   border: 1px solid var(--pf-border-color) !important;
-  border-radius: var(--pf-window-radius) !important;
+  border-radius: 10px !important;
   background: color-mix(in srgb, var(--pf-panel-bgcolor), transparent 4%) !important;
   box-shadow: 0 18px 48px color-mix(in srgb, black 22%, transparent) !important;
 }

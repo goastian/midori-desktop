@@ -246,20 +246,6 @@
               </div>
               <span class="layout-label">Bottom</span>
             </button>
-            <button class="layout-card" data-layout="vertical-left">
-              <div class="layout-preview lp-vertical-left">
-                <div class="lp-sidebar left"><span class="lp-vtab active"></span><span class="lp-vtab"></span><span class="lp-vtab"></span></div>
-                <div class="lp-content"></div>
-              </div>
-              <span class="layout-label">Vertical</span>
-            </button>
-            <button class="layout-card" data-layout="vertical-right">
-              <div class="layout-preview lp-vertical-right">
-                <div class="lp-content"></div>
-                <div class="lp-sidebar right"><span class="lp-vtab active"></span><span class="lp-vtab"></span><span class="lp-vtab"></span></div>
-              </div>
-              <span class="layout-label">Vertical (Right)</span>
-            </button>
             <button class="layout-card" data-layout="arc-zen">
               <div class="layout-preview lp-arc-zen">
                 <div class="lp-sidebar left"><span class="lp-vtab active"></span><span class="lp-vtab"></span><span class="lp-vtab"></span></div>
@@ -270,145 +256,6 @@
             </button>
           </div>
 
-          <div id="verticalSidebarSection" class="vertical-sidebar-section" data-vertical-active="false">
-            <h3 class="setting-subtitle">Vertical sidebar</h3>
-            <p class="group-desc">Tune how the vertical sidebar looks and behaves.</p>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <strong>Sidebar width</strong>
-                <p>Adjust the vertical tabs sidebar width.</p>
-              </div>
-              <div class="slider-control">
-                <input
-                  type="range"
-                  id="pref-vtabs-width"
-                  min="180"
-                  max="360"
-                  step="1"
-                  data-value-target="pref-vtabs-width-value"
-                >
-                <span id="pref-vtabs-width-value" class="slider-value">248 px</span>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <strong>Density</strong>
-                <p>Choose tab spacing inside the vertical sidebar.</p>
-              </div>
-              <fieldset id="pref-vtabs-density" class="radio-group">
-                <label><input type="radio" name="pref-vtabs-density" value="compact"> Compact</label>
-                <label><input type="radio" name="pref-vtabs-density" value="normal"> Normal</label>
-                <label><input type="radio" name="pref-vtabs-density" value="comfortable"> Comfortable</label>
-              </fieldset>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <strong>Compact tabs</strong>
-                <p>Use a tighter visual tab style.</p>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="pref-vtabs-compact">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <strong>Floating URL bar</strong>
-                <p>Keep the URL bar floating over content when open.</p>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="pref-vtabs-floating-urlbar">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <strong>Show rail</strong>
-                <p>Display the workspace quick-access rail above tabs.</p>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="pref-vtabs-show-rail">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <strong>Show pinned section</strong>
-                <p>Display the dedicated pinned tabs block above regular tabs.</p>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="pref-vtabs-show-pinned-section">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <strong>Enable essentials</strong>
-                <p>Allow a curated subset of pinned tabs to be marked as essentials.</p>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="pref-vtabs-essentials-enabled">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row" id="pref-vtabs-essentials-max-row">
-              <div class="setting-info">
-                <strong>Max essentials</strong>
-                <p>Set the maximum number of essential tabs shown in the pinned area.</p>
-              </div>
-              <input type="number" id="pref-vtabs-essentials-max" class="number-input" min="1" max="12" step="1">
-            </div>
-
-            <div class="setting-row" id="pref-vtabs-essentials-promo-row">
-              <div class="setting-info">
-                <strong>Show essentials promo</strong>
-                <p>When there are no essentials, show a helper card to add your current tab.</p>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="pref-vtabs-essentials-promo">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <strong>Show workspace name</strong>
-                <p>Show the active workspace name near its icon.</p>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="pref-vtabs-workspace-name">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <div class="setting-info">
-                <strong>Accent mode</strong>
-                <p>Select where the vertical sidebar accent color comes from.</p>
-              </div>
-              <fieldset id="pref-vtabs-accent-mode" class="segmented-control">
-                <label><input type="radio" name="pref-vtabs-accent-mode" value="workspace"> Workspace</label>
-                <label><input type="radio" name="pref-vtabs-accent-mode" value="system"> System</label>
-                <label><input type="radio" name="pref-vtabs-accent-mode" value="custom"> Custom</label>
-              </fieldset>
-            </div>
-
-            <div class="setting-row" id="pref-vtabs-accent-custom-row" hidden>
-              <div class="setting-info">
-                <strong>Custom accent color</strong>
-                <p>Used only when Accent mode is set to Custom.</p>
-              </div>
-              <input type="color" id="pref-vtabs-accent-custom" class="color-input">
-            </div>
-          </div>
         </div>
 
         <!-- Auto-hide Toolbar -->
@@ -511,12 +358,6 @@
               <small>Add a subtle framed browser surface.</small>
             </label>
 
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-arc-mode">
-              <span class="visual-preview preview-vtabs-clean"><i></i><i></i><i></i></span>
-              <strong>Zen / Arc mode</strong>
-              <small>Vertical tabs, floating sidebar, and Arc-style content frame.</small>
-            </label>
           </div>
         </div>
 

@@ -1218,18 +1218,8 @@ body::before {
 /* ---- Tab Layout Grid ---- */
 .layout-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
-}
-
-.vertical-sidebar-section {
-  margin-top: 18px;
-  border-top: 1px solid var(--mc-border);
-  padding-top: 14px;
-}
-
-.vertical-sidebar-section[data-vertical-active="false"] {
-  display: none;
 }
 
 .setting-subtitle {

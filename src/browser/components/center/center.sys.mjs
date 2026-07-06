@@ -22,18 +22,6 @@ const PREF_MAP = {
   "pref-autohide-toolbar":  { pref: "midori.autohide.toolbar",        type: "bool" },
   "pref-tabsleep-enabled":  { pref: "midori.tabsleep.enabled",        type: "bool" },
   "pref-tabsleep-timeout":  { pref: "midori.tabsleep.timeoutMinutes", type: "int" },
-  "pref-vtabs-width":       { pref: "midori.verticaltabs.width",      type: "int" },
-  "pref-vtabs-density":     { pref: "midori.verticaltabs.density",    type: "string" },
-  "pref-vtabs-compact":     { pref: "midori.verticaltabs.compact",    type: "bool" },
-  "pref-vtabs-floating-urlbar": { pref: "midori.verticaltabs.floatingUrlbar", type: "bool" },
-  "pref-vtabs-show-rail":   { pref: "midori.verticaltabs.showRail",   type: "bool" },
-  "pref-vtabs-show-pinned-section": { pref: "midori.verticaltabs.showPinnedSection", type: "bool" },
-  "pref-vtabs-essentials-enabled": { pref: "midori.verticaltabs.essentials.enabled", type: "bool" },
-  "pref-vtabs-essentials-max": { pref: "midori.verticaltabs.essentials.max", type: "int" },
-  "pref-vtabs-essentials-promo": { pref: "midori.verticaltabs.essentialsPromo", type: "bool" },
-  "pref-vtabs-workspace-name": { pref: "midori.workspaces.show-name", type: "bool" },
-  "pref-vtabs-accent-mode": { pref: "midori.verticaltabs.accent.mode", type: "string" },
-  "pref-vtabs-accent-custom": { pref: "midori.verticaltabs.accent.custom", type: "string" },
   "pref-msidebar-enabled":  { pref: "midori.msidebar.enabled",        type: "bool" },
   "pref-msidebar-position": { pref: "midori.msidebar.position",       type: "string" },
   "pref-msidebar-width":    { pref: "midori.msidebar.width",          type: "int" },
@@ -66,7 +54,6 @@ const PREF_MAP = {
   "pref-modblur-spill-theme": { pref: "midori.modblur.theme.spill", type: "bool" },
   "pref-modblur-card-theme": { pref: "midori.modblur.theme.card", type: "bool" },
   "pref-modblur-acrylic": { pref: "midori.modblur.blur.acrylic", type: "bool" },
-  "pref-arc-mode": { pref: "midori.arcmode.enabled", type: "bool" },
 };
 
 const FALLBACK_WORKSPACE_ICONS = [
@@ -1052,70 +1039,13 @@ function initPrefs() {
   }
 }
 
-function isVerticalLayout(layout) {
-  return layout === "vertical-left" || layout === "vertical-right" || layout === "arc-zen";
-}
-
-function setVerticalSidebarVisibility(layout) {
-  const section = document.getElementById("verticalSidebarSection");
-  if (!section) {
-    return;
-  }
-  section.dataset.verticalActive = isVerticalLayout(layout) ? "true" : "false";
-}
-
-function initVerticalSidebarControls() {
-  const accentModeFieldset = document.getElementById("pref-vtabs-accent-mode");
-  const customColorRow = document.getElementById("pref-vtabs-accent-custom-row");
-  const essentialsToggle = document.getElementById("pref-vtabs-essentials-enabled");
-  const essentialsMax = document.getElementById("pref-vtabs-essentials-max");
-  const essentialsMaxRow = document.getElementById("pref-vtabs-essentials-max-row");
-  const essentialsPromo = document.getElementById("pref-vtabs-essentials-promo");
-  const essentialsPromoRow = document.getElementById("pref-vtabs-essentials-promo-row");
-  if (!accentModeFieldset || !customColorRow) {
-    return;
-  }
-
-  const syncCustomColorVisibility = () => {
-    const selected = accentModeFieldset.querySelector("input[type=radio]:checked")?.value;
-    customColorRow.hidden = selected !== "custom";
-  };
-
-  accentModeFieldset.addEventListener("change", syncCustomColorVisibility);
-  syncCustomColorVisibility();
-
-  const syncEssentialsControls = () => {
-    if (!essentialsToggle) {
-      return;
-    }
-    const enabled = !!essentialsToggle.checked;
-    if (essentialsMax) {
-      essentialsMax.disabled = !enabled;
-    }
-    if (essentialsPromo) {
-      essentialsPromo.disabled = !enabled;
-    }
-    if (essentialsMaxRow) {
-      essentialsMaxRow.classList.toggle("setting-row-disabled", !enabled);
-    }
-    if (essentialsPromoRow) {
-      essentialsPromoRow.classList.toggle("setting-row-disabled", !enabled);
-    }
-  };
-
-  essentialsToggle?.addEventListener("change", syncEssentialsControls);
-  syncEssentialsControls();
-}
-
 // ---- Tab layout ----
 function getTabLayout() {
-  if (readPref("midori.arcmode.enabled", "bool")) {
+  if (
+    readPref("midori.arcmode.enabled", "bool") ||
+    readPref("midori.verticaltabs.enabled", "bool")
+  ) {
     return "arc-zen";
-  }
-  const vertEnabled = readPref("midori.verticaltabs.enabled", "bool");
-  if (vertEnabled) {
-    const pos = readPref("midori.verticaltabs.position", "string") || "left";
-    return pos === "right" ? "vertical-right" : "vertical-left";
   }
   const hPos = readPref("midori.horizontaltabs.position", "string") || "top";
   return hPos === "bottom" ? "horizontal-bottom" : "horizontal-top";
@@ -1123,38 +1053,27 @@ function getTabLayout() {
 
 function setTabLayout(layout) {
   const arc = layout === "arc-zen";
-  const vertical = arc || layout === "vertical-left" || layout === "vertical-right";
   Services.prefs.setBoolPref("midori.arcmode.enabled", arc);
-  Services.prefs.setBoolPref("midori.verticaltabs.enabled", vertical);
-  if (vertical) {
-    const vtabsSide = layout === "vertical-right" ? "right" : "left";
-    Services.prefs.setCharPref("midori.verticaltabs.position", vtabsSide);
-    if (arc) {
-      Services.prefs.setIntPref("midori.verticaltabs.width", 252);
-      Services.prefs.setCharPref("midori.verticaltabs.density", "normal");
-      Services.prefs.setBoolPref("midori.verticaltabs.floatingUrlbar", true);
-      Services.prefs.setBoolPref("midori.verticaltabs.showRail", true);
-      Services.prefs.setBoolPref("midori.msidebar.enabled", true);
-      Services.prefs.setBoolPref("midori.msidebar.autohide.enabled", true);
-      Services.prefs.setCharPref("midori.msidebar.autohide.mode", "overlay");
-    }
-    // Keep the multi-sidebar on the opposite side
-    Services.prefs.setCharPref(
-      "midori.msidebar.position",
-      vtabsSide === "left" ? "right" : "left"
-    );
-    // Also sync the dropdown in the Sidebar settings page if it's loaded
+  Services.prefs.setBoolPref("midori.verticaltabs.enabled", arc);
+  if (arc) {
+    Services.prefs.setCharPref("midori.verticaltabs.position", "left");
+    Services.prefs.setIntPref("midori.verticaltabs.width", 220);
+    Services.prefs.setCharPref("midori.verticaltabs.density", "normal");
+    Services.prefs.setBoolPref("midori.verticaltabs.floatingUrlbar", true);
+    Services.prefs.setBoolPref("midori.verticaltabs.showRail", true);
+    Services.prefs.setBoolPref("midori.verticaltabs.showPinnedSection", true);
+    Services.prefs.setBoolPref("midori.msidebar.enabled", true);
+    Services.prefs.setCharPref("midori.msidebar.position", "right");
+    Services.prefs.setBoolPref("midori.msidebar.autohide.enabled", true);
+    Services.prefs.setCharPref("midori.msidebar.autohide.mode", "overlay");
+    Services.prefs.setBoolPref("midori.autohide.toolbar", true);
     const posSelect = document.getElementById("pref-msidebar-position");
-    if (posSelect) posSelect.value = vtabsSide === "left" ? "right" : "left";
+    if (posSelect) posSelect.value = "right";
   } else {
     Services.prefs.setCharPref(
       "midori.horizontaltabs.position",
       layout === "horizontal-bottom" ? "bottom" : "top"
     );
-  }
-  const arcToggle = document.getElementById("pref-arc-mode");
-  if (arcToggle) {
-    arcToggle.checked = arc;
   }
 }
 
@@ -1162,7 +1081,6 @@ function initTabLayout() {
   const grid = document.getElementById("tabLayoutGrid");
   if (!grid) return;
   const current = getTabLayout();
-  setVerticalSidebarVisibility(current);
 
   const selectLayoutCard = layout => {
     grid.querySelectorAll(".layout-card").forEach(card => {
@@ -1176,24 +1094,6 @@ function initTabLayout() {
       const layout = card.dataset.layout;
       selectLayoutCard(layout);
       setTabLayout(layout);
-      setVerticalSidebarVisibility(layout);
-    });
-  }
-
-  const arcToggle = document.getElementById("pref-arc-mode");
-  if (arcToggle) {
-    arcToggle.checked = current === "arc-zen";
-    arcToggle.addEventListener("change", () => {
-      if (arcToggle.checked) {
-        selectLayoutCard("arc-zen");
-        setTabLayout("arc-zen");
-        setVerticalSidebarVisibility("arc-zen");
-        return;
-      }
-      Services.prefs.setBoolPref("midori.arcmode.enabled", false);
-      const next = getTabLayout();
-      selectLayoutCard(next);
-      setVerticalSidebarVisibility(next);
     });
   }
 }
@@ -1243,7 +1143,6 @@ function initVersionInfo() {
 document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
   initPrefs();
-  initVerticalSidebarControls();
   initAddonControls();
   initTabLayout();
   initVersionInfo();
