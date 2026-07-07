@@ -53,6 +53,7 @@ const PREF_MAP = {
   "pref-modblur-extra-blur": { pref: "midori.modblur.blur.extra", type: "bool" },
   "pref-modblur-spill-theme": { pref: "midori.modblur.theme.spill", type: "bool" },
   "pref-modblur-card-theme": { pref: "midori.modblur.theme.card", type: "bool" },
+  "pref-modblur-soft-texture": { pref: "midori.modblur.theme.softTexture", type: "bool" },
   "pref-modblur-acrylic": { pref: "midori.modblur.blur.acrylic", type: "bool" },
 };
 

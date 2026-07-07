@@ -623,6 +623,10 @@ body::before {
 .preview-popout i,
 .preview-blur i,
 .preview-acrylic i { width: 76%; height: 20px; border-radius: 999px; }
+.preview-search-outline i {
+  border: 1px solid color-mix(in srgb, var(--mc-green-500) 68%, white);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mc-green-500) 18%, transparent);
+}
 .preview-shortcuts i,
 .preview-circles i { width: 18px; height: 18px; }
 .preview-circles i { border-radius: 50%; }
@@ -637,6 +641,12 @@ body::before {
   position: absolute;
   inset: 0;
   background: radial-gradient(circle at 68% 35%, rgba(255,255,255,0.35), transparent 24%);
+}
+.preview-soft-texture {
+  background-image:
+    url("chrome://browser/skin/modblur-assets/noise-512x512.png"),
+    linear-gradient(135deg, color-mix(in srgb, var(--mc-green-500) 18%, transparent), transparent 48%);
+  background-size: 96px 96px, auto;
 }
 
 @media (prefers-color-scheme: dark) {
