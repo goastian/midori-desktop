@@ -237,6 +237,7 @@ pref('midori.modblur.newtab.circularShortcuts', false);
 pref('midori.modblur.newtab.wallpaperBlur', false);
 pref('midori.modblur.theme.spill', false);
 pref('midori.modblur.theme.card', false);
+pref('midori.modblur.theme.softTexture', true);
 pref('midori.arcmode.enabled', false);
 
 // GPU-accelerated rendering for smooth UI
