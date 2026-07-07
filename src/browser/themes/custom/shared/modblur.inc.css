@@ -131,6 +131,24 @@
 }
 
 @media -moz-pref("midori.modblur.icons.mainMenu") {
+  #appMenu-popup .subviewbutton {
+    min-height: 32px !important;
+    margin: 2px 6px !important;
+    padding-inline: 10px !important;
+    border-radius: var(--pf-border-radius-sm) !important;
+  }
+
+  #appMenu-popup .subviewbutton:not([disabled="true"]):hover,
+  #appMenu-popup .subviewbutton:not([disabled="true"]):is([open], :active) {
+    background-color: color-mix(in srgb, var(--pf-accent-color) 16%, transparent) !important;
+    color: var(--pf-text-color) !important;
+  }
+
+  #appMenu-popup toolbarseparator {
+    margin-block: 4px !important;
+    opacity: 0.58;
+  }
+
   #appMenu-new-tab-button2,
   #appMenu-new-window-button2,
   #appMenu-new-private-window-button2,
@@ -142,6 +160,28 @@
     list-style-image: var(--menuitem-icon, inherit) !important;
     -moz-context-properties: fill, stroke !important;
     fill: currentColor !important;
+  }
+}
+
+@media not (-moz-platform: macos) {
+  @media -moz-pref("midori.modblur.icons.mainMenu") {
+    menupopup {
+      --panel-padding: 6px !important;
+    }
+
+    menu,
+    menuitem,
+    menucaption {
+      --menuitem-border-radius: var(--pf-border-radius-sm) !important;
+      --menuitem-padding: 5px 12px !important;
+      --menuitem-margin: 2px !important;
+    }
+
+    menuitem:where([_moz-menuactive]:not([disabled="true"])),
+    menu:where([_moz-menuactive]:not([disabled="true"])) {
+      background: color-mix(in srgb, var(--pf-accent-color) 18%, transparent) !important;
+      color: var(--pf-text-color) !important;
+    }
   }
 }
 
@@ -219,10 +259,32 @@
 }
 
 @media -moz-pref("midori.modblur.search.focusOutline") {
-  #urlbar[focused] .urlbar-background,
+  #urlbar:not([open]) .urlbar-background,
+  #urlbar:not([open]) #urlbar-background,
+  #searchbar {
+    border: 1px solid color-mix(in srgb, var(--pf-text-color), transparent 88%) !important;
+    outline: none !important;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent) !important;
+    transition:
+      background-color var(--pf-ts-25),
+      border-color var(--pf-ts-25),
+      box-shadow var(--pf-ts-25) !important;
+  }
+
+  #urlbar:not([focused]):hover .urlbar-background,
+  #urlbar:not([focused]):hover #urlbar-background,
+  #searchbar:hover {
+    border-color: color-mix(in srgb, var(--pf-text-color), transparent 78%) !important;
+  }
+
+  #urlbar[focused]:not([open]) .urlbar-background,
+  #urlbar[focused]:not([open]) #urlbar-background,
   #searchbar:focus-within {
-    outline: 2px solid color-mix(in srgb, var(--pf-accent-color) 45%, transparent) !important;
-    outline-offset: 2px !important;
+    border-color: color-mix(in srgb, var(--pf-accent-color) 62%, var(--pf-border-color)) !important;
+    outline: none !important;
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--pf-accent-color) 18%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 10%, transparent) !important;
   }
 }
 

@@ -47,6 +47,8 @@
   --pf-navbar-padding-block: 7px;
   --pf-navbar-height: calc(var(--pf-toolbaritem-size) + (var(--pf-navbar-padding-block) * 2));
   --pf-tab-height: 36px;
+  --pf-newtab-button-size: 28px;
+  --pf-newtab-icon-size: 16px;
   --pf-pinned-height: 48px;
   --pf-urlbar-height: 36px;
   --pf-urlbar-input-height: 56px;
@@ -323,6 +325,33 @@ toolbar .toolbarbutton-1 > .toolbarbutton-badge-stack {
 
 toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):active > .toolbarbutton-icon {
   transform: scale(0.95);
+}
+
+:root[midori-horizontal-tabs] #tabs-newtab-button,
+:root[midori-horizontal-tabs] #TabsToolbar #new-tab-button {
+  --toolbarbutton-padding-inner: 6px !important;
+  align-self: center !important;
+  min-width: var(--pf-newtab-button-size) !important;
+  min-height: var(--pf-newtab-button-size) !important;
+  max-width: var(--pf-newtab-button-size) !important;
+  max-height: var(--pf-newtab-button-size) !important;
+  padding: 0 !important;
+}
+
+:root[midori-horizontal-tabs] #tabs-newtab-button > .toolbarbutton-icon,
+:root[midori-horizontal-tabs] #tabs-newtab-button > .toolbarbutton-badge-stack,
+:root[midori-horizontal-tabs] #TabsToolbar #new-tab-button > .toolbarbutton-icon,
+:root[midori-horizontal-tabs] #TabsToolbar #new-tab-button > .toolbarbutton-badge-stack {
+  align-self: center !important;
+  width: var(--pf-newtab-icon-size) !important;
+  height: var(--pf-newtab-icon-size) !important;
+  min-width: var(--pf-newtab-icon-size) !important;
+  min-height: var(--pf-newtab-icon-size) !important;
+  max-width: var(--pf-newtab-icon-size) !important;
+  max-height: var(--pf-newtab-icon-size) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: translateY(1px);
 }
 
 .private-browsing-indicator-with-label,
@@ -1093,21 +1122,32 @@ toolbarbutton[disabled="true"] {
 
 @media not (-moz-platform: macos) {
   menupopup {
+    appearance: none !important;
     --panel-background: var(--pf-panel-bgcolor) !important;
     --panel-color: var(--pf-text-color) !important;
     --panel-text-color: var(--pf-text-color) !important;
+    --menu-background-color: var(--pf-panel-bgcolor) !important;
+    --menu-color: var(--pf-text-color) !important;
+    --menuitem-hover-background-color: var(--pf-toolbar-bgcolor-hover) !important;
+    --menuitem-hover-color: var(--pf-text-color) !important;
     --panel-padding: 5px 4px !important;
     color: var(--pf-text-color) !important;
     background: var(--pf-panel-bgcolor) !important;
+    background-color: var(--pf-panel-bgcolor) !important;
+    border: 1px solid var(--pf-border-color) !important;
+    border-radius: var(--pf-border-radius-sm) !important;
   }
 
   menu,
   menuitem,
   menucaption {
+    appearance: none !important;
+    background-color: transparent !important;
     color: var(--pf-text-color) !important;
     --menuitem-border-radius: 5px !important;
     --menuitem-padding: 3px 10px;
     --menuitem-margin: 1px;
+    fill: currentColor !important;
   }
 
   menuitem[disabled="true"],
@@ -1117,8 +1157,8 @@ toolbarbutton[disabled="true"] {
 
   menuitem:where([_moz-menuactive]:not([disabled="true"])),
   menu:where([_moz-menuactive]:not([disabled="true"])) {
-    background: var(--pf-accent-color) !important;
-    color: #fff !important;
+    background: var(--pf-toolbar-bgcolor-hover) !important;
+    color: var(--pf-text-color) !important;
   }
 }
 
