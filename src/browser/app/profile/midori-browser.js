@@ -455,16 +455,16 @@ pref('signon.firefoxRelay.feature', '', locked);
 pref('signon.firefoxRelay.base_url', '', locked);
 
 // ============================================================================
-// DISABLE AUTOMATIC UPDATES POINTING TO MOZILLA SERVERS
+// MIDORI APP UPDATES
 // ============================================================================
-// Keep background update surfaces off, but let the updater use the host
+// Keep background update surfaces off, but allow manual checks to use the host
 // defined at build time in application.ini (MOZ_APPUPDATE_HOST).
-pref('app.update.enabled', false, locked);
+pref('app.update.enabled', true, locked);
 pref('app.update.auto', false, locked);
-pref('app.update.staging.enabled', false, locked);
+pref('app.update.staging.enabled', true, locked);
 pref('app.update.background.scheduling.enabled', false, locked);
 pref('app.update.BITS.enabled', false, locked);
-pref('app.update.service.enabled', false, locked);
+pref('app.update.service.enabled', true, locked);
 pref('app.update.silent', false, locked);
 pref('app.update.checkInstallTime', false, locked);
 pref('app.update.notifyDuringDownload', false, locked);
