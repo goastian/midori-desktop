@@ -982,6 +982,32 @@ tab-group .tab-group-label {
   --urlbar-icon-fill-opacity: 1;
 }
 
+#urlbar:not([open]) #identity-box[pageproxystate="invalid"] {
+  margin-inline: 2px 4px !important;
+}
+
+#urlbar:not([open]) #identity-box[pageproxystate="invalid"] > .identity-box-button {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  margin: 0 !important;
+  padding: 6px !important;
+  border-radius: 8px !important;
+  background-color: transparent !important;
+}
+
+#urlbar:not([open]) #identity-box[pageproxystate="invalid"]:hover > .identity-box-button,
+#urlbar:not([open]) #identity-box[pageproxystate="invalid"][open] > .identity-box-button {
+  background-color: var(--pf-toolbar-bgcolor-hover) !important;
+}
+
+#urlbar:not([open]) #identity-box[pageproxystate="invalid"] #identity-icon {
+  width: 16px !important;
+  height: 16px !important;
+  margin: 0 !important;
+  fill: color-mix(in srgb, var(--pf-icon-color), transparent 10%) !important;
+}
+
 #translations-button-locale,
 #identity-icon-label,
 #trust-label,
