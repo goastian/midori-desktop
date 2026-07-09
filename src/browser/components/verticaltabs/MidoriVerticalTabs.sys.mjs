@@ -44,6 +44,7 @@ const FIRST_REGULAR_PINNED_ATTR = 'midori-first-regular-pinned';
 const ESSENTIALS_CTX_SEPARATOR_ID = 'midori-context-essentials-separator';
 const ESSENTIALS_CTX_ADD_ID = 'midori-context-add-essential';
 const ESSENTIALS_CTX_REMOVE_ID = 'midori-context-remove-essential';
+const PINNED_STATE_ATTRS = new Set(['pinned', ESSENTIAL_ATTR]);
 
 const OBSERVED_PREFS = new Set([
   PREF_ENABLED,
@@ -836,7 +837,21 @@ export const MidoriVerticalTabs = {
     if (!doc || doc._midoriEssentialsPromoInit) return;
     doc._midoriEssentialsPromoInit = true;
 
+    let updateFrame = 0;
     const update = () => {
+      if (updateFrame) {
+        return;
+      }
+      updateFrame = win.requestAnimationFrame(() => {
+        updateFrame = 0;
+        this._updatePinnedState(win);
+      });
+    };
+    const updateNow = () => {
+      if (updateFrame) {
+        win.cancelAnimationFrame(updateFrame);
+        updateFrame = 0;
+      }
       this._updatePinnedState(win);
     };
 
@@ -853,13 +868,18 @@ export const MidoriVerticalTabs = {
         this._handlePinnedTabMove(win, event.target);
         update();
       });
-      tabContainer.addEventListener('TabAttrModified', update);
+      tabContainer.addEventListener('TabAttrModified', event => {
+        const changed = event.detail?.changed || [];
+        if (changed.some(attr => PINNED_STATE_ATTRS.has(attr))) {
+          update();
+        }
+      });
       tabContainer.addEventListener('TabClose', update);
       tabContainer.addEventListener('TabOpen', update);
       tabContainer.addEventListener('TabSelect', update);
     }
 
-    update();
+    updateNow();
   },
 
   _refreshAllWindows() {
