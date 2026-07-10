@@ -31,31 +31,57 @@ const PREF_MAP = {
   "pref-workspaces-name":   { pref: "midori.workspaces.show-name",    type: "bool" },
   "pref-workspaces-unload": { pref: "midori.workspaces.unloadInactive", type: "bool" },
   "pref-workspaces-tint":   { pref: "midori.workspaces.chromeTint",   type: "bool" },
-  "pref-modblur-window-controls": { pref: "midori.modblur.windowControls.macStyle", type: "bool" },
+  "pref-modblur-window-controls": { pref: "midori.modblur.windowControls.style", type: "string" },
   "pref-modblur-bookmarks-popout": { pref: "midori.modblur.bookmarks.popout", type: "bool" },
   "pref-modblur-bookmarks-clean": { pref: "midori.modblur.bookmarks.clean", type: "bool" },
+  "pref-modblur-bookmarks-folders": { pref: "midori.modblur.bookmarks.hideFolderIcons", type: "bool" },
+  "pref-modblur-bookmarks-transparent": { pref: "midori.modblur.bookmarks.transparent", type: "bool" },
   "pref-modblur-privacy-blur": { pref: "midori.modblur.privacy.blurIdentity", type: "bool" },
-  "pref-modblur-extension-clean": { pref: "midori.modblur.extensions.cleanMenu", type: "bool" },
+  "pref-modblur-privacy-tabs": { pref: "midori.modblur.privacy.blurTabs", type: "bool" },
+  "pref-modblur-extension-style": { pref: "midori.modblur.extensions.style", type: "string" },
+  "pref-modblur-extension-columns": { pref: "midori.modblur.extensions.columns", type: "int" },
+  "pref-modblur-extension-icon-size": { pref: "midori.modblur.extensions.iconSize", type: "int" },
   "pref-modblur-extension-hide-manage": { pref: "midori.modblur.extensions.hideManageButton", type: "bool" },
+  "pref-modblur-extension-hide-separator": { pref: "midori.modblur.extensions.hideSeparator", type: "bool" },
+  "pref-modblur-extension-hide-faded": { pref: "midori.modblur.extensions.hideFaded", type: "bool" },
   "pref-modblur-icons-menu": { pref: "midori.modblur.icons.mainMenu", type: "bool" },
+  "pref-modblur-icons-tabs-overview": { pref: "midori.modblur.icons.tabsOverview", type: "bool" },
+  "pref-modblur-icons-midori-menu": { pref: "midori.modblur.icons.midoriMenu", type: "bool" },
+  "pref-modblur-icons-github": { pref: "midori.modblur.icons.github", type: "bool" },
+  "pref-modblur-icons-ublock": { pref: "midori.modblur.icons.ublock", type: "bool" },
   "pref-modblur-compact-vertical": { pref: "midori.modblur.verticalTabs.compact", type: "bool" },
   "pref-modblur-centered-tabs": { pref: "midori.modblur.tabs.centered", type: "bool" },
   "pref-modblur-hide-tab-preview": { pref: "midori.modblur.tabs.hidePreviewPanel", type: "bool" },
   "pref-modblur-hide-vertical-scrollbar": { pref: "midori.modblur.verticalTabs.hideScrollbar", type: "bool" },
   "pref-modblur-search-outline": { pref: "midori.modblur.search.focusOutline", type: "bool" },
   "pref-modblur-tabs-top": { pref: "midori.modblur.tabs.onTop", type: "bool" },
-  "pref-modblur-window-frame": { pref: "midori.modblur.window.frame", type: "bool" },
+  "pref-modblur-window-frame": { pref: "midori.modblur.window.frameStyle", type: "string" },
   "pref-modblur-search-buttons": { pref: "midori.modblur.search.buttonsAlways", type: "bool" },
   "pref-modblur-active-tab-static": { pref: "midori.modblur.tabs.activeStaticWidth", type: "bool" },
   "pref-modblur-sound-tab": { pref: "midori.modblur.tabs.soundColor", type: "bool" },
   "pref-modblur-hide-all-tabs": { pref: "midori.modblur.tabs.hideAllTabsButton", type: "bool" },
-  "pref-modblur-popout-searchbar": { pref: "midori.modblur.search.popoutBlur", type: "bool" },
+  "pref-modblur-popout-searchbar": { pref: "midori.modblur.search.popoutStyle", type: "string" },
+  "pref-modblur-panel-blur": { pref: "midori.modblur.blur.panels", type: "bool" },
+  "pref-modblur-search-blur": { pref: "midori.modblur.blur.searchbar", type: "bool" },
+  "pref-modblur-vertical-expand-blur": { pref: "midori.modblur.blur.verticalExpand", type: "bool" },
   "pref-modblur-extra-blur": { pref: "midori.modblur.blur.extra", type: "bool" },
   "pref-modblur-spill-theme": { pref: "midori.modblur.theme.spill", type: "bool" },
-  "pref-modblur-card-theme": { pref: "midori.modblur.theme.card", type: "bool" },
+  "pref-modblur-card-theme": { pref: "midori.modblur.theme.cardStyle", type: "string" },
   "pref-modblur-soft-texture": { pref: "midori.modblur.theme.softTexture", type: "bool" },
   "pref-modblur-acrylic": { pref: "midori.modblur.blur.acrylic", type: "bool" },
+  "pref-modblur-newtab-hide-titles": { pref: "midori.modblur.newtab.hideShortcutTitles", type: "bool" },
+  "pref-modblur-newtab-center-widgets": { pref: "midori.modblur.newtab.centerWidgetsStyle", type: "string" },
+  "pref-modblur-newtab-circular": { pref: "midori.modblur.newtab.circularShortcuts", type: "bool" },
+  "pref-modblur-newtab-wallpaper-blur": { pref: "midori.modblur.newtab.wallpaperBlur", type: "int" },
 };
+
+const MODBLUR_PREFS = [...new Set(
+  Object.values(PREF_MAP)
+    .map(({ pref }) => pref)
+    .filter(pref => pref.startsWith("midori.modblur."))
+)];
+
+let modBlurUndoSnapshot = null;
 
 const FALLBACK_WORKSPACE_ICONS = [
   { id: "default", emoji: "🏠", label: "Home" },
@@ -1032,12 +1058,217 @@ function initPrefs() {
       }
     } else if (el.type === "number") {
       el.value = val;
-      el.addEventListener("change", () => writePref(pref, type, parseInt(el.value, 10)));
+      el.addEventListener("change", () => {
+        const min = Number.isFinite(el.minAsNumber) ? el.minAsNumber : Number.MIN_SAFE_INTEGER;
+        const max = Number.isFinite(el.maxAsNumber) ? el.maxAsNumber : Number.MAX_SAFE_INTEGER;
+        const next = Math.min(max, Math.max(min, parseInt(el.value, 10)));
+        el.value = String(next);
+        writePref(pref, type, next);
+      });
     } else if (el.type === "color") {
       el.value = String(val);
       el.addEventListener("change", () => writePref(pref, type, el.value));
     }
   }
+}
+
+function isModControlEnabled(control) {
+  if (!control || control.disabled) {
+    return false;
+  }
+  if (control.type === "checkbox") {
+    return control.checked;
+  }
+  if (control.type === "number") {
+    return Number(control.value) > 0;
+  }
+  return !["", "off", "none", "system"].includes(String(control.value));
+}
+
+function setModControlAvailability(control, available, reason = "") {
+  if (!control) {
+    return;
+  }
+  control.disabled = !available;
+  const row = control.closest(".mod-row");
+  row?.classList.toggle("is-unavailable", !available);
+  if (!available && reason) {
+    row?.setAttribute("data-unavailable-reason", reason);
+  } else {
+    row?.removeAttribute("data-unavailable-reason");
+  }
+}
+
+function updateModBlurDependencies() {
+  const extensionStyle = document.getElementById("pref-modblur-extension-style")?.value || "off";
+  setModControlAvailability(
+    document.getElementById("pref-modblur-extension-columns"),
+    extensionStyle === "grid",
+    "Choose Icon grid to change this value."
+  );
+  setModControlAvailability(
+    document.getElementById("pref-modblur-extension-icon-size"),
+    extensionStyle !== "off",
+    "Choose Compact list or Icon grid to change this value."
+  );
+
+  const combinedBlur = document.getElementById("pref-modblur-extra-blur")?.checked;
+  for (const id of ["pref-modblur-panel-blur", "pref-modblur-search-blur", "pref-modblur-vertical-expand-blur"]) {
+    setModControlAvailability(
+      document.getElementById(id),
+      !combinedBlur,
+      "Combined extra blur already includes this effect."
+    );
+  }
+}
+
+function updateModBlurSummary() {
+  updateModBlurDependencies();
+  const controls = [...document.querySelectorAll("[data-mod-control]")];
+  const enabled = controls.filter(isModControlEnabled).length;
+  const count = document.getElementById("modblur-enabled-count");
+  if (count) {
+    count.textContent = `${enabled} of ${controls.length} active`;
+  }
+
+  for (const control of controls) {
+    control.closest(".mod-row")?.classList.toggle("is-active", isModControlEnabled(control));
+  }
+}
+
+function setModBlurStatus(message, kind = "success") {
+  const status = document.getElementById("modblur-status");
+  if (!status) {
+    return;
+  }
+  status.textContent = message;
+  status.dataset.kind = kind;
+  status.hidden = !message;
+}
+
+function readTypedPref(pref, type) {
+  switch (type) {
+    case Services.prefs.PREF_BOOL:
+      return Services.prefs.getBoolPref(pref);
+    case Services.prefs.PREF_INT:
+      return Services.prefs.getIntPref(pref);
+    case Services.prefs.PREF_STRING:
+      return Services.prefs.getStringPref(pref);
+  }
+  return undefined;
+}
+
+function restoreTypedPref(pref, type, value) {
+  switch (type) {
+    case Services.prefs.PREF_BOOL:
+      Services.prefs.setBoolPref(pref, value);
+      break;
+    case Services.prefs.PREF_INT:
+      Services.prefs.setIntPref(pref, value);
+      break;
+    case Services.prefs.PREF_STRING:
+      Services.prefs.setStringPref(pref, value);
+      break;
+  }
+}
+
+function syncModBlurControl(pref) {
+  for (const [id, mapping] of Object.entries(PREF_MAP)) {
+    if (mapping.pref !== pref) {
+      continue;
+    }
+    const control = document.getElementById(id);
+    const value = readPref(mapping.pref, mapping.type);
+    if (!control || value === undefined) {
+      continue;
+    }
+    if (control.type === "checkbox") {
+      control.checked = !!value;
+    } else {
+      control.value = String(value);
+    }
+  }
+}
+
+function initModBlurCatalog() {
+  const controls = [...document.querySelectorAll("[data-mod-control]")];
+  const search = document.getElementById("modblur-search");
+  const resetButton = document.getElementById("modblur-reset");
+  const undoButton = document.getElementById("modblur-undo");
+
+  for (const control of controls) {
+    control.addEventListener("change", () => {
+      updateModBlurSummary();
+      const title = control.closest(".mod-row")?.querySelector(".mod-title")?.textContent?.trim();
+      setModBlurStatus(`${title || "Modification"} saved. The change applies immediately.`);
+    });
+  }
+
+  search?.addEventListener("input", () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    for (const row of document.querySelectorAll(".mod-row")) {
+      const haystack = `${row.dataset.search || ""} ${row.textContent || ""}`.toLocaleLowerCase();
+      row.hidden = !!query && !haystack.includes(query);
+    }
+    for (const group of document.querySelectorAll(".visual-mods-group")) {
+      group.hidden = !group.querySelector(".mod-row:not([hidden])");
+    }
+    const visible = document.querySelectorAll(".mod-row:not([hidden])").length;
+    const results = document.getElementById("modblur-search-results");
+    if (results) {
+      results.textContent = query ? `${visible} matching modifications` : "";
+    }
+  });
+
+  resetButton?.addEventListener("click", () => {
+    modBlurUndoSnapshot = MODBLUR_PREFS
+      .filter(pref => Services.prefs.prefHasUserValue(pref))
+      .map(pref => {
+        const type = Services.prefs.getPrefType(pref);
+        return { pref, type, value: readTypedPref(pref, type) };
+      });
+    for (const pref of MODBLUR_PREFS) {
+      if (Services.prefs.prefHasUserValue(pref)) {
+        Services.prefs.clearUserPref(pref);
+      }
+      syncModBlurControl(pref);
+    }
+    updateModBlurSummary();
+    if (undoButton) {
+      undoButton.hidden = modBlurUndoSnapshot.length === 0;
+    }
+    setModBlurStatus("Visual modifications restored to Midori defaults.");
+  });
+
+  undoButton?.addEventListener("click", () => {
+    for (const { pref, type, value } of modBlurUndoSnapshot || []) {
+      restoreTypedPref(pref, type, value);
+      syncModBlurControl(pref);
+    }
+    modBlurUndoSnapshot = null;
+    undoButton.hidden = true;
+    updateModBlurSummary();
+    setModBlurStatus("Previous visual modification settings restored.");
+  });
+
+  const observer = {
+    observe(_subject, _topic, pref) {
+      syncModBlurControl(pref);
+      updateModBlurSummary();
+    },
+  };
+  for (const pref of MODBLUR_PREFS) {
+    Services.prefs.addObserver(pref, observer);
+  }
+  window.addEventListener("unload", () => {
+    for (const pref of MODBLUR_PREFS) {
+      try {
+        Services.prefs.removeObserver(pref, observer);
+      } catch {}
+    }
+  }, { once: true });
+
+  updateModBlurSummary();
 }
 
 // ---- Tab layout ----
@@ -1103,13 +1334,29 @@ function initTabLayout() {
 function initNavigation() {
   const navItems = document.querySelectorAll(".nav-item");
   const pages = document.querySelectorAll(".page");
+  const validPages = new Set([...navItems].map(item => item.dataset.page));
 
-  function navigateTo(pageId) {
-    navItems.forEach(n => n.classList.toggle("active", n.dataset.page === pageId));
-    pages.forEach(p => {
-      const isTarget = p.id === `page-${pageId}`;
-      p.classList.toggle("active", isTarget);
+  function navigateTo(pageId, { updateHistory = true } = {}) {
+    const targetPage = validPages.has(pageId) ? pageId : "home";
+    navItems.forEach(n => {
+      const active = n.dataset.page === targetPage;
+      n.classList.toggle("active", active);
+      if (active) {
+        n.setAttribute("aria-current", "page");
+      } else {
+        n.removeAttribute("aria-current");
+      }
     });
+    pages.forEach(p => {
+      const isTarget = p.id === `page-${targetPage}`;
+      p.classList.toggle("active", isTarget);
+      p.hidden = !isTarget;
+    });
+    document.title = `${document.querySelector(`#page-${targetPage} .page-title`)?.textContent || "Midori Center"} — Midori Center`;
+    if (updateHistory && window.location.hash !== `#${targetPage}`) {
+      window.history.pushState(null, "", `#${targetPage}`);
+    }
+    document.getElementById("center-content")?.scrollTo({ top: 0 });
   }
 
   navItems.forEach(btn => {
@@ -1120,6 +1367,11 @@ function initNavigation() {
   document.querySelectorAll(".overview-card[data-navigate]").forEach(card => {
     card.addEventListener("click", () => navigateTo(card.dataset.navigate));
   });
+
+  window.addEventListener("hashchange", () => {
+    navigateTo(window.location.hash.slice(1), { updateHistory: false });
+  });
+  navigateTo(window.location.hash.slice(1), { updateHistory: false });
 }
 
 // ---- Version info ----
@@ -1135,8 +1387,8 @@ function initVersionInfo() {
     const homeDetail = document.getElementById("home-version-detail");
 
     if (sidebarVer) sidebarVer.textContent = `${name} ${version}`;
-    if (sidebarEng) sidebarEng.textContent = `Firefox ${platformVersion || appInfo?.platformVersion || ""}`;
-    if (homeDetail) homeDetail.textContent = `v${version} · Firefox ${platformVersion || appInfo?.platformVersion || ""}`;
+    if (sidebarEng) sidebarEng.textContent = `Gecko ${platformVersion || appInfo?.platformVersion || ""}`;
+    if (homeDetail) homeDetail.textContent = `v${version} · Gecko ${platformVersion || appInfo?.platformVersion || ""}`;
   } catch {}
 }
 
@@ -1144,6 +1396,7 @@ function initVersionInfo() {
 document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
   initPrefs();
+  initModBlurCatalog();
   initAddonControls();
   initTabLayout();
   initVersionInfo();

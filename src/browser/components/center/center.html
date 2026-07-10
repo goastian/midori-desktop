@@ -2,7 +2,7 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="chrome://browser/content/center/center.css">
 </head>
 <body>
+  <a class="skip-link" href="#center-content">Skip to settings</a>
   <div id="center-root">
     <!-- Sidebar Navigation -->
     <nav id="center-sidebar">
@@ -86,12 +87,12 @@
     </nav>
 
     <!-- Main Content Area -->
-    <main id="center-content">
+    <main id="center-content" tabindex="-1">
       <!-- HOME PAGE -->
       <section id="page-home" class="page active">
         <div class="page-header">
-          <h1 class="page-title">Welcome to Midori Center</h1>
-          <p class="page-subtitle">Customize your browser experience — make Midori truly yours.</p>
+          <h1 class="page-title">Midori settings</h1>
+          <p class="page-subtitle">Choose a section to change tabs, sidebars, visual modifications, workspaces, or shortcuts.</p>
         </div>
 
         <div class="cards-grid">
@@ -138,7 +139,7 @@
             </div>
             <div class="card-text">
               <h3>Visual Mods</h3>
-              <p>Enable Mod Blur styles and extras</p>
+              <p>Configure bundled adaptations</p>
             </div>
             <svg class="card-arrow" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
           </button>
@@ -252,7 +253,7 @@
                 <div class="lp-content"></div>
                 <div class="lp-rail right"><span></span><span></span><span></span></div>
               </div>
-              <span class="layout-label">Zen / Arc</span>
+              <span class="layout-label">Midori Vertical</span>
             </button>
           </div>
 
@@ -299,200 +300,162 @@
 
       <!-- VISUAL MODS PAGE -->
       <section id="page-visual-mods" class="page">
-        <div class="page-header">
-          <h1 class="page-title">Visual Mods</h1>
-          <p class="page-subtitle">Select and add extra styles and functions based on Firefox-Mod-Blur, adapted to Midori colors.</p>
-        </div>
-
-        <div class="setting-group visual-mods-group">
-          <h2 class="group-title">Chrome and navigation</h2>
-          <p class="group-desc">These options affect horizontal tabs, vertical tabs, the toolbar, and browser panels.</p>
-
-          <div class="visual-mod-grid">
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-window-controls">
-              <span class="visual-preview preview-window-controls"><i></i><i></i><i></i></span>
-              <strong>Min-max-close buttons style</strong>
-              <small>Mac-style buttons using Midori green accents.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-bookmarks-popout">
-              <span class="visual-preview preview-bar-popout"><i></i><i></i><i></i></span>
-              <strong>Bookmarks bar popout</strong>
-              <small>Reveal bookmarks on hover without JS autohide.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-bookmarks-clean">
-              <span class="visual-preview preview-bar-clean"><i></i><i></i><i></i></span>
-              <strong>Bookmarks bar modifications</strong>
-              <small>Cleaner spacing and toolbar-matched color.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-extension-clean">
-              <span class="visual-preview preview-menu"><i></i><i></i><i></i></span>
-              <strong>Extension menu changes</strong>
-              <small>Compact rows, smaller icons, cleaner separators.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-extension-hide-manage">
-              <span class="visual-preview preview-menu-hide"><i></i><i></i><i></i></span>
-              <strong>Hide extension button</strong>
-              <small>Hide the manage extensions footer button.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-icons-menu">
-              <span class="visual-preview preview-icons"><i></i><i></i><i></i></span>
-              <strong>Main menu polish</strong>
-              <small>Icons, spacing, hover, and softer menu corners.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-window-frame">
-              <span class="visual-preview preview-card-theme"><i></i><i></i></span>
-              <strong>Window Frame border mods</strong>
-              <small>Add a subtle framed browser surface.</small>
-            </label>
-
+        <header class="page-header mod-page-header">
+          <div>
+            <p class="page-eyebrow">Appearance / Midori</p>
+            <h1 class="page-title">Visual modifications</h1>
+            <p class="page-subtitle">Built into Midori. Choose a modification and it applies immediately—there is nothing else to download.</p>
           </div>
+          <a class="source-link" href="https://github.com/datguypiko/Firefox-Mod-Blur" target="_blank" rel="noopener">View upstream project</a>
+        </header>
+
+        <div class="mod-catalog-toolbar" aria-label="Visual modification tools">
+          <label class="mod-search-wrap" for="modblur-search">
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="9" r="5.5"/><path d="m13 13 4 4"/></svg>
+            <input id="modblur-search" type="search" placeholder="Find a modification" autocomplete="off">
+          </label>
+          <span id="modblur-enabled-count" class="mod-count" aria-live="polite"></span>
+          <button id="modblur-reset" class="secondary-button" type="button">Restore defaults</button>
+        </div>
+        <p id="modblur-search-results" class="mod-search-results" aria-live="polite"></p>
+        <div class="mod-status-row">
+          <p id="modblur-status" class="mod-status" aria-live="polite" hidden></p>
+          <button id="modblur-undo" class="text-button" type="button" hidden>Undo</button>
         </div>
 
-        <div class="setting-group visual-mods-group">
-          <h2 class="group-title">Tabs</h2>
-          <p class="group-desc">Compact and Mod Blur tab options for both navigation modes.</p>
-
-          <div class="visual-mod-grid">
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-compact-vertical">
-              <span class="visual-preview preview-vtabs"><i></i><i></i><i></i></span>
-              <strong>More compact Vertical Tabs</strong>
-              <small>Smaller rows and tighter vertical tab spacing.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-centered-tabs">
-              <span class="visual-preview preview-centered-tabs"><i></i><i></i><i></i></span>
-              <strong>Centered Tabs</strong>
-              <small>Center horizontal tabs inside the tab strip.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-hide-tab-preview">
-              <span class="visual-preview preview-disabled"><i></i><i></i><i></i></span>
-              <strong>Hide Tab preview panel</strong>
-              <small>Disable hover preview cards visually.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-hide-vertical-scrollbar">
-              <span class="visual-preview preview-vtabs-clean"><i></i><i></i><i></i></span>
-              <strong>Hide scrollbar when Vertical tabs overflow</strong>
-              <small>Cleaner vertical tab overflow.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-tabs-top">
-              <span class="visual-preview preview-tabs-top"><i></i><i></i><i></i></span>
-              <strong>Tabs on top</strong>
-              <small>Force horizontal tabs above the navigation bar.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-active-tab-static">
-              <span class="visual-preview preview-static-tab"><i></i><i></i><i></i></span>
-              <strong>Active tab has static width</strong>
-              <small>Keep the active tab steady while switching.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-sound-tab">
-              <span class="visual-preview preview-sound-tab"><i></i><i></i><i></i></span>
-              <strong>Colored sound playing tab</strong>
-              <small>Highlight audio tabs with the Midori accent.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-hide-all-tabs">
-              <span class="visual-preview preview-hide-button"><i></i><i></i><i></i></span>
-              <strong>Hide List all tabs button</strong>
-              <small>Remove the overflow list button until needed upstream.</small>
-            </label>
+        <section class="setting-group visual-mods-group" aria-labelledby="mod-window-title">
+          <div class="mod-group-heading">
+            <div><p class="group-kicker">Browser chrome</p><h2 id="mod-window-title" class="group-title">Window, toolbar, and bookmarks</h2></div>
+            <p class="group-desc">Controls that affect the browser frame. Platform-specific options say so explicitly.</p>
           </div>
-        </div>
-
-        <div class="setting-group visual-mods-group">
-          <h2 class="group-title">Search, privacy, and New Tab</h2>
-          <p class="group-desc">Privacy blur, searchbar, and experimental blur modules.</p>
-
-          <div class="visual-mod-grid">
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-privacy-blur">
-              <span class="visual-preview preview-privacy"><i></i><i></i><i></i></span>
-              <strong>Privacy mods</strong>
-              <small>Blur account identity text in chrome menus.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-search-outline">
-              <span class="visual-preview preview-search-outline"><i></i></span>
-              <strong>Clean Urlbar focus</strong>
-              <small>Subtle border and focus ring without pill styling.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-search-buttons">
-              <span class="visual-preview preview-search-buttons"><i></i><i></i><i></i></span>
-              <strong>Always show Search Bar buttons</strong>
-              <small>Keep page action buttons visible.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-popout-searchbar">
-              <span class="visual-preview preview-popout"><i></i></span>
-              <strong>Experimental: Popout Searchbar with Blur</strong>
-              <small>Blurred expanded urlbar, opt-in only.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-extra-blur">
-              <span class="visual-preview preview-blur"><i></i><i></i></span>
-              <strong>Experimental: Extra Blur mods</strong>
-              <small>Blur panels, searchbar, and vertical expand surfaces.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-spill-theme">
-              <span class="visual-preview preview-spill"><i></i></span>
-              <strong>Spill style theme</strong>
-              <small>Mod Blur spill texture recolored for Midori.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-card-theme">
-              <span class="visual-preview preview-card-theme"><i></i><i></i></span>
-              <strong>Card Style theme</strong>
-              <small>Stronger panel card separation.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-soft-texture">
-              <span class="visual-preview preview-soft-texture"><i></i><i></i></span>
-              <strong>Soft texture surfaces</strong>
-              <small>Subtle grain on chrome surfaces without extra blur.</small>
-            </label>
-
-            <label class="visual-mod-card">
-              <input type="checkbox" id="pref-modblur-acrylic">
-              <span class="visual-preview preview-acrylic"><i></i></span>
-              <strong>On Pause - Acrylic MicaForEveryone</strong>
-              <small>Experimental acrylic-style chrome blur.</small>
-            </label>
+          <div class="mod-list">
+            <div class="mod-row" data-search="window controls mac operating system left right minimize maximize close">
+              <div class="mod-copy"><label id="label-modblur-window-controls" class="mod-title" for="pref-modblur-window-controls">Window control buttons</label><p>Choose system buttons or a compact macOS-inspired treatment and its position.</p><span class="mod-scope">Windows and Linux</span></div>
+              <select id="pref-modblur-window-controls" class="mod-select" data-mod-control aria-labelledby="label-modblur-window-controls">
+                <option value="system">System default</option><option value="system-left">System · left</option><option value="mac-left">Mac style · left</option><option value="mac-right">Mac style · right</option>
+              </select>
+            </div>
+            <div class="mod-row" data-search="frame border padded window style shadow">
+              <div class="mod-copy"><label id="label-modblur-window-frame" class="mod-title" for="pref-modblur-window-frame">Window frame border</label><p>Add compact or roomy separation between browser chrome and page content.</p></div>
+              <select id="pref-modblur-window-frame" class="mod-select" data-mod-control aria-labelledby="label-modblur-window-frame"><option value="none">Off</option><option value="compact">Compact frame</option><option value="padded">Padded frame</option></select>
+            </div>
+            <div class="mod-row" data-search="bookmarks bar popout hover">
+              <div class="mod-copy"><span id="label-modblur-bookmarks-popout" class="mod-title">Bookmarks bar on hover</span><p>Keep the bar out of the way until the pointer reaches the toolbar.</p><span class="mod-scope">Pointer users</span></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-bookmarks-popout" data-mod-control aria-labelledby="label-modblur-bookmarks-popout"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="bookmarks clean compact spacing color toolbar">
+              <div class="mod-copy"><span id="label-modblur-bookmarks-clean" class="mod-title">Compact bookmarks bar</span><p>Use tighter spacing and the same surface color as the toolbar.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-bookmarks-clean" data-mod-control aria-labelledby="label-modblur-bookmarks-clean"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="bookmarks folder icons hide">
+              <div class="mod-copy"><span id="label-modblur-bookmarks-folders" class="mod-title">Hide bookmark folder icons</span><p>Show folder names without repeating a folder glyph on every item.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-bookmarks-folders" data-mod-control aria-labelledby="label-modblur-bookmarks-folders"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="bookmarks transparent centered bar">
+              <div class="mod-copy"><span id="label-modblur-bookmarks-transparent" class="mod-title">Transparent bookmarks bar</span><p>Let the current Midori chrome surface continue behind the bookmarks bar.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-bookmarks-transparent" data-mod-control aria-labelledby="label-modblur-bookmarks-transparent"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="restore icons main application menu">
+              <div class="mod-copy"><span id="label-modblur-icons-menu" class="mod-title">Restore icons in the main menu</span><p>Add familiar icons to New tab, History, Downloads, Settings, and other commands.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-icons-menu" data-mod-control aria-labelledby="label-modblur-icons-menu"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="icon tabs overview files view">
+              <div class="mod-copy"><span id="label-modblur-icons-tabs-overview" class="mod-title">Alternative tabs overview icon</span><p>Use a simpler file-stack symbol for Midori’s tabs overview.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-icons-tabs-overview" data-mod-control aria-labelledby="label-modblur-icons-tabs-overview"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="menu icon midori logo brand">
+              <div class="mod-copy"><span id="label-modblur-icons-midori-menu" class="mod-title">Midori icon for the main menu</span><p>Replace the hamburger glyph with the Midori mark.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-icons-midori-menu" data-mod-control aria-labelledby="label-modblur-icons-midori-menu"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="github bookmark icon high contrast white">
+              <div class="mod-copy"><span id="label-modblur-icons-github" class="mod-title">High-contrast GitHub bookmark icon</span><p>Make GitHub bookmarks readable on light and dark bookmark bars.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-icons-github" data-mod-control aria-labelledby="label-modblur-icons-github"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="ublock origin extension icon monochrome">
+              <div class="mod-copy"><span id="label-modblur-icons-ublock" class="mod-title">Monochrome uBlock Origin icon</span><p>Use a quieter extension icon that follows the current toolbar color.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-icons-ublock" data-mod-control aria-labelledby="label-modblur-icons-ublock"><span aria-hidden="true"></span></label>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <section class="setting-group visual-mods-group" aria-labelledby="mod-extension-title">
+          <div class="mod-group-heading"><div><p class="group-kicker">Menus and privacy</p><h2 id="mod-extension-title" class="group-title">Extensions and identity</h2></div><p class="group-desc">Extension layout controls remain visible and reversible.</p></div>
+          <div class="mod-list">
+            <div class="mod-row" data-search="extension menu changes compact grid style">
+              <div class="mod-copy"><label id="label-modblur-extension-style" class="mod-title" for="pref-modblur-extension-style">Extension menu layout</label><p>Choose a compact list or an icon grid. Grid size is configured below.</p></div>
+              <select id="pref-modblur-extension-style" class="mod-select" data-mod-control aria-labelledby="label-modblur-extension-style"><option value="off">Midori default</option><option value="compact">Compact list</option><option value="grid">Icon grid</option></select>
+            </div>
+            <div class="mod-row" data-search="number extensions row columns grid 1 10">
+              <div class="mod-copy"><label id="label-modblur-extension-columns" class="mod-title" for="pref-modblur-extension-columns">Extensions per row</label><p>Used by the icon grid layout. Choose 1–10.</p><span class="mod-scope">Grid layout</span></div>
+              <input id="pref-modblur-extension-columns" class="mod-number" type="number" min="1" max="10" step="1" data-mod-control aria-labelledby="label-modblur-extension-columns">
+            </div>
+            <div class="mod-row" data-search="extension menu icon size 12 30">
+              <div class="mod-copy"><label id="label-modblur-extension-icon-size" class="mod-title" for="pref-modblur-extension-icon-size">Extension icon size</label><p>Set menu icons from 12–30 pixels.</p></div>
+              <div class="mod-unit-control"><input id="pref-modblur-extension-icon-size" class="mod-number" type="number" min="12" max="30" step="1" data-mod-control aria-labelledby="label-modblur-extension-icon-size"><span>px</span></div>
+            </div>
+            <div class="mod-row" data-search="hide manage extensions button footer">
+              <div class="mod-copy"><span id="label-modblur-extension-hide-manage" class="mod-title">Hide “Manage extensions”</span><p>Remove the footer shortcut from the extension menu.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-extension-hide-manage" data-mod-control aria-labelledby="label-modblur-extension-hide-manage"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="extension separator hide inactive">
+              <div class="mod-copy"><span id="label-modblur-extension-hide-separator" class="mod-title">Hide the inactive separator</span><p>Remove the divider between active and unavailable extensions.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-extension-hide-separator" data-mod-control aria-labelledby="label-modblur-extension-hide-separator"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="hide faded inactive unavailable extensions">
+              <div class="mod-copy"><span id="label-modblur-extension-hide-faded" class="mod-title">Hide inactive extensions</span><p>Do not show extensions that cannot run on the current page.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-extension-hide-faded" data-mod-control aria-labelledby="label-modblur-extension-hide-faded"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="privacy blur email username identity account sync menu">
+              <div class="mod-copy"><span id="label-modblur-privacy-blur" class="mod-title">Blur account identity</span><p>Blur account names and email addresses until hovered or focused.</p><span class="mod-scope">Main and Sync menus</span></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-privacy-blur" data-mod-control aria-labelledby="label-modblur-privacy-blur"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="privacy blur tabs content titles favicon hover">
+              <div class="mod-copy"><span id="label-modblur-privacy-tabs" class="mod-title">Blur tab contents</span><p>Hide tab titles and icons until the tab is hovered or keyboard-focused.</p><span class="mod-scope mod-scope-warning">May slow tab recognition</span></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-privacy-tabs" data-mod-control aria-labelledby="label-modblur-privacy-tabs"><span aria-hidden="true"></span></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="setting-group visual-mods-group" aria-labelledby="mod-tabs-title">
+          <div class="mod-group-heading"><div><p class="group-kicker">Navigation</p><h2 id="mod-tabs-title" class="group-title">Tabs and address bar</h2></div><p class="group-desc">A scope label tells you when an option is visible.</p></div>
+          <div class="mod-list">
+            <div class="mod-row" data-search="compact vertical tabs"><div class="mod-copy"><span id="label-modblur-compact-vertical" class="mod-title">More compact vertical tabs</span><p>Reduce tab height and spacing without shrinking the close target.</p><span class="mod-scope">Vertical tabs</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-compact-vertical" data-mod-control aria-labelledby="label-modblur-compact-vertical"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="centered horizontal tabs"><div class="mod-copy"><span id="label-modblur-centered-tabs" class="mod-title">Centered tabs</span><p>Center the horizontal tab strip when there is free space.</p><span class="mod-scope">Horizontal tabs</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-centered-tabs" data-mod-control aria-labelledby="label-modblur-centered-tabs"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="hide tab preview panel hover"><div class="mod-copy"><span id="label-modblur-hide-tab-preview" class="mod-title">Hide tab preview panel</span><p>Keep hover previews from covering page content.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-hide-tab-preview" data-mod-control aria-labelledby="label-modblur-hide-tab-preview"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="hide scrollbar vertical tabs overflow"><div class="mod-copy"><span id="label-modblur-hide-vertical-scrollbar" class="mod-title">Hide the vertical-tab scrollbar</span><p>Scrolling still works with wheel, touchpad, and keyboard.</p><span class="mod-scope">Vertical tabs</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-hide-vertical-scrollbar" data-mod-control aria-labelledby="label-modblur-hide-vertical-scrollbar"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="tabs on top horizontal"><div class="mod-copy"><span id="label-modblur-tabs-top" class="mod-title">Tabs on top</span><p>Place horizontal tabs above the address bar.</p><span class="mod-scope">Horizontal tabs</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-tabs-top" data-mod-control aria-labelledby="label-modblur-tabs-top"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="active selected tab static fixed width"><div class="mod-copy"><span id="label-modblur-active-tab-static" class="mod-title">Static active-tab width</span><p>Keep the selected tab at a stable width while switching.</p><span class="mod-scope">Horizontal tabs</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-active-tab-static" data-mod-control aria-labelledby="label-modblur-active-tab-static"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="colored sound playing audio tab mute"><div class="mod-copy"><span id="label-modblur-sound-tab" class="mod-title">Highlight sound-playing tabs</span><p>Use the Midori accent for tabs that play or mute audio.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-sound-tab" data-mod-control aria-labelledby="label-modblur-sound-tab"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="hide list all tabs overflow button"><div class="mod-copy"><span id="label-modblur-hide-all-tabs" class="mod-title">Hide “List all tabs”</span><p>Remove the overflow menu button from the tab strip.</p><span class="mod-scope mod-scope-warning">Reduces an alternate navigation path</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-hide-all-tabs" data-mod-control aria-labelledby="label-modblur-hide-all-tabs"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="search address url bar focus outline"><div class="mod-copy"><span id="label-modblur-search-outline" class="mod-title">Address-bar focus outline</span><p>Show a clear, high-contrast focus ring for keyboard and pointer use.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-search-outline" data-mod-control aria-labelledby="label-modblur-search-outline"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="always show search address bar buttons page actions"><div class="mod-copy"><span id="label-modblur-search-buttons" class="mod-title">Always show address-bar buttons</span><p>Keep page actions visible instead of revealing them on hover.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-search-buttons" data-mod-control aria-labelledby="label-modblur-search-buttons"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="experimental popout searchbar blur no animation"><div class="mod-copy"><label id="label-modblur-popout-searchbar" class="mod-title" for="pref-modblur-popout-searchbar">Popout address bar with blur</label><p>Choose the animated or reduced-motion treatment.</p><span class="mod-scope mod-scope-experimental">Experimental</span></div><select id="pref-modblur-popout-searchbar" class="mod-select" data-mod-control aria-labelledby="label-modblur-popout-searchbar"><option value="off">Off</option><option value="animated">Animated</option><option value="still">No animation</option></select></div>
+          </div>
+        </section>
+
+        <section class="setting-group visual-mods-group" aria-labelledby="mod-effects-title">
+          <div class="mod-group-heading"><div><p class="group-kicker">Surfaces</p><h2 id="mod-effects-title" class="group-title">Blur and themes</h2></div><p class="group-desc">Transparent effects may vary with graphics drivers and operating-system composition.</p></div>
+          <div class="mod-list">
+            <div class="mod-row" data-search="panel menu blur experimental"><div class="mod-copy"><span id="label-modblur-panel-blur" class="mod-title">Panel menu blur</span><p>Blur arrow panels while preserving readable foreground contrast.</p><span class="mod-scope mod-scope-experimental">Experimental</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-panel-blur" data-mod-control aria-labelledby="label-modblur-panel-blur"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="searchbar urlbar blur experimental"><div class="mod-copy"><span id="label-modblur-search-blur" class="mod-title">Address-bar blur</span><p>Apply blur only to the expanded address bar.</p><span class="mod-scope mod-scope-experimental">Experimental</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-search-blur" data-mod-control aria-labelledby="label-modblur-search-blur"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="vertical tabs expand blur experimental"><div class="mod-copy"><span id="label-modblur-vertical-expand-blur" class="mod-title">Vertical-tabs expansion blur</span><p>Blur the floating vertical-tabs surface when it expands.</p><span class="mod-scope mod-scope-experimental">Vertical tabs</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-vertical-expand-blur" data-mod-control aria-labelledby="label-modblur-vertical-expand-blur"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="combined extra blur panels search vertical"><div class="mod-copy"><span id="label-modblur-extra-blur" class="mod-title">Combined extra blur</span><p>Enable panel, address-bar, and vertical expansion blur together.</p><span class="mod-scope mod-scope-experimental">Experimental</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-extra-blur" data-mod-control aria-labelledby="label-modblur-extra-blur"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="spill style theme new tab"><div class="mod-copy"><span id="label-modblur-spill-theme" class="mod-title">Spill theme</span><p>Add restrained organic color to browser chrome and New Tab.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-spill-theme" data-mod-control aria-labelledby="label-modblur-spill-theme"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="card style theme 1 2 new tab panels"><div class="mod-copy"><label id="label-modblur-card-theme" class="mod-title" for="pref-modblur-card-theme">Card theme</label><p>Choose subtle borders or a stronger elevated treatment.</p></div><select id="pref-modblur-card-theme" class="mod-select" data-mod-control aria-labelledby="label-modblur-card-theme"><option value="off">Off</option><option value="subtle">Style 1 · subtle</option><option value="elevated">Style 2 · elevated</option></select></div>
+            <div class="mod-row" data-search="soft texture grain surfaces"><div class="mod-copy"><span id="label-modblur-soft-texture" class="mod-title">Soft surface texture</span><p>Add light grain without relying on heavy transparency.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-soft-texture" data-mod-control aria-labelledby="label-modblur-soft-texture"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="acrylic mica windows experimental"><div class="mod-copy"><span id="label-modblur-acrylic" class="mod-title">Acrylic surface</span><p>Midori’s built-in acrylic approximation; no external MicaForEveryone install is required.</p><span class="mod-scope mod-scope-experimental">Experimental</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-acrylic" data-mod-control aria-labelledby="label-modblur-acrylic"><span aria-hidden="true"></span></label></div>
+          </div>
+        </section>
+
+        <section class="setting-group visual-mods-group" aria-labelledby="mod-newtab-title">
+          <div class="mod-group-heading"><div><p class="group-kicker">Midori New Tab</p><h2 id="mod-newtab-title" class="group-title">Shortcuts, widgets, and wallpaper</h2></div><p class="group-desc">These styles are bundled into the Midori New Tab add-on during import.</p></div>
+          <div class="mod-list">
+            <div class="mod-row" data-search="remove hide title text homepage new tab shortcuts"><div class="mod-copy"><span id="label-modblur-newtab-hide-titles" class="mod-title">Hide shortcut titles</span><p>Show shortcut icons without the text label underneath.</p><span class="mod-scope">New Tab</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-newtab-hide-titles" data-mod-control aria-labelledby="label-modblur-newtab-hide-titles"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="center widgets new tab keep title text"><div class="mod-copy"><label id="label-modblur-newtab-center-widgets" class="mod-title" for="pref-modblur-newtab-center-widgets">Center New Tab widgets</label><p>Center the dashboard and choose whether shortcut titles remain visible.</p><span class="mod-scope">New Tab</span></div><select id="pref-modblur-newtab-center-widgets" class="mod-select" data-mod-control aria-labelledby="label-modblur-newtab-center-widgets"><option value="off">Off</option><option value="hide-titles">Center · hide titles</option><option value="keep-titles">Center · keep titles</option></select></div>
+            <div class="mod-row" data-search="circular homepage new tab shortcuts icons"><div class="mod-copy"><span id="label-modblur-newtab-circular" class="mod-title">Circular shortcut icons</span><p>Use circular icon containers for New Tab shortcuts.</p><span class="mod-scope">New Tab</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-newtab-circular" data-mod-control aria-labelledby="label-modblur-newtab-circular"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="wallpaper blur background new tab intensity 1 10"><div class="mod-copy"><label id="label-modblur-newtab-wallpaper-blur" class="mod-title" for="pref-modblur-newtab-wallpaper-blur">Wallpaper blur</label><p>Set New Tab wallpaper blur from 0 (off) to 10.</p><span class="mod-scope">New Tab</span></div><div class="mod-unit-control"><input id="pref-modblur-newtab-wallpaper-blur" class="mod-number" type="number" min="0" max="10" step="1" data-mod-control aria-labelledby="label-modblur-newtab-wallpaper-blur"><span>/ 10</span></div></div>
+          </div>
+        </section>
       </section>
 
       <!-- SIDEBAR PAGE -->
