@@ -6,46 +6,89 @@
  * Kept separate from shared.inc.css so the base chrome stays readable.
  */
 
-@media -moz-pref("midori.modblur.windowControls.macStyle") {
+@media -moz-pref("midori.modblur.windowControls.macStyle") or -moz-pref("midori.modblur.windowControls.style", "mac-left") or -moz-pref("midori.modblur.windowControls.style", "mac-right") {
   :root:not([customizing]) .titlebar-buttonbox-container {
     align-items: center !important;
     max-height: var(--pf-navbar-height) !important;
+    padding-inline: 8px !important;
+  }
+
+  :root:not([customizing]) .titlebar-buttonbox {
+    align-items: center !important;
+    gap: 8px !important;
   }
 
   :root:not([customizing]) .titlebar-button {
-    width: 30px !important;
-    height: 30px !important;
-    min-width: 30px !important;
-    min-height: 30px !important;
-    max-width: 30px !important;
-    max-height: 30px !important;
-    margin-inline: 2px !important;
+    width: 13px !important;
+    height: 13px !important;
+    min-width: 13px !important;
+    min-height: 13px !important;
+    max-width: 13px !important;
+    max-height: 13px !important;
+    margin: 0 !important;
     padding: 0 !important;
-    border-radius: var(--pf-border-radius-sm) !important;
-    background-color: transparent !important;
+    border: 0 !important;
+    border-radius: 50% !important;
     appearance: none !important;
-    -moz-context-properties: fill, stroke !important;
+    list-style-image: none !important;
+    box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.22) !important;
+  }
+
+  :root:not([customizing]) .titlebar-button > .toolbarbutton-icon {
+    display: none !important;
   }
 
   :root:not([customizing]) .titlebar-min {
-    list-style-image: url("modblur-assets/minimize-themes.svg") !important;
+    order: 2 !important;
+    background-color: #ffbd2e !important;
   }
 
-  :root:not([customizing]) .titlebar-max,
-  :root:not([customizing]) .titlebar-restore {
-    list-style-image: url("modblur-assets/maximize-themes.svg") !important;
+  :root:not([customizing]) :is(.titlebar-max, .titlebar-restore) {
+    order: 3 !important;
+    background-color: #28c840 !important;
   }
 
   :root:not([customizing]) .titlebar-close {
-    list-style-image: url("modblur-assets/close-themes.svg") !important;
+    order: 1 !important;
+    background-color: #ff5f57 !important;
   }
 
   :root:not([customizing]) .titlebar-button:hover {
-    background-color: var(--pf-toolbar-bgcolor-hover) !important;
+    filter: brightness(0.9) saturate(1.08) !important;
   }
 }
 
-@media -moz-pref("midori.modblur.window.frame") {
+@media -moz-pref("midori.modblur.windowControls.style", "mac-left") or -moz-pref("midori.modblur.windowControls.style", "system-left") {
+  :root:not([customizing]) :is(#TabsToolbar, #nav-bar) > .titlebar-buttonbox-container {
+    position: absolute !important;
+    inset-block: 0 !important;
+    inset-inline-start: 0 !important;
+    inset-inline-end: auto !important;
+    order: -1 !important;
+    z-index: 4 !important;
+  }
+
+  :root:not([customizing]) #nav-bar {
+    padding-inline-start: 84px !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.windowControls.style", "mac-right") {
+  :root:not([customizing]) :is(#TabsToolbar, #nav-bar) > .titlebar-buttonbox-container {
+    position: absolute !important;
+    inset-block: 0 !important;
+    inset-inline-start: auto !important;
+    inset-inline-end: 0 !important;
+    order: 999 !important;
+    z-index: 4 !important;
+  }
+
+  :root:not([customizing]) #nav-bar {
+    padding-inline-end: 84px !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.window.frame") or -moz-pref("midori.modblur.window.frameStyle", "compact") or -moz-pref("midori.modblur.window.frameStyle", "padded") {
   :root:not([sizemode="fullscreen"]) #navigator-toolbox {
     margin: 6px 6px 0 !important;
     border: 1px solid var(--pf-border-color) !important;
@@ -56,6 +99,18 @@
     margin-inline: 6px !important;
     border: 1px solid var(--pf-border-color) !important;
     border-top: 0 !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.window.frameStyle", "padded") {
+  :root:not([sizemode="fullscreen"]) #navigator-toolbox {
+    margin: 10px 10px 0 !important;
+  }
+
+  :root:not([sizemode="fullscreen"]) #tabbrowser-tabbox {
+    margin-inline: 10px !important;
+    margin-bottom: 10px !important;
+    border-radius: 0 0 var(--pf-window-radius) var(--pf-window-radius) !important;
   }
 }
 
@@ -91,13 +146,33 @@
   }
 }
 
-@media -moz-pref("midori.modblur.extensions.cleanMenu") {
+@media -moz-pref("midori.modblur.bookmarks.hideFolderIcons") {
+  #PlacesToolbarItems > .bookmark-item[container] > .toolbarbutton-icon,
+  #PlacesToolbarItems > .bookmark-item[container] > .menu-iconic-left {
+    display: none !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.bookmarks.transparent") {
+  #PersonalToolbar,
+  #PlacesToolbarItems {
+    background-color: transparent !important;
+    background-image: none !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.extensions.style", "compact") or -moz-pref("midori.modblur.extensions.style", "grid") {
   #unified-extensions-view {
     --uei-icon-size: 18px !important;
     --panel-subview-body-padding: 6px !important;
+    width: min(360px, calc(100vw - 24px)) !important;
   }
 
-  #unified-extensions-view .unified-extensions-item {
+  #unified-extensions-view .panel-subview-body {
+    padding: 4px 6px 6px !important;
+  }
+
+  #unified-extensions-view :is(.unified-extensions-item, unified-extensions-item) {
     margin-block: 2px !important;
     border-radius: var(--pf-border-radius-sm) !important;
   }
@@ -107,8 +182,115 @@
   }
 }
 
+@media -moz-pref("midori.modblur.extensions.style", "compact") {
+  #unified-extensions-view :is(.unified-extensions-item, unified-extensions-item) .unified-extensions-item-row-wrapper {
+    min-height: 36px !important;
+  }
+
+  #unified-extensions-view .unified-extensions-item-action-button {
+    min-height: 36px !important;
+    padding: 4px 8px !important;
+  }
+
+  #unified-extensions-view .unified-extensions-item-message-deck,
+  #unified-extensions-view .unified-extensions-item-message {
+    display: none !important;
+  }
+
+  #unified-extensions-view .unified-extensions-item-menu-button.subviewbutton {
+    min-width: 32px !important;
+    padding: 2px !important;
+  }
+
+  #unified-extensions-view .unified-extensions-item-menu-button.subviewbutton > .toolbarbutton-icon {
+    padding: 6px !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.extensions.style", "grid") {
+  #unified-extensions-view #overflowed-extensions-list,
+  #unified-extensions-view #unified-extensions-area,
+  #unified-extensions-view .unified-extensions-list {
+    display: grid !important;
+    grid-template-columns: repeat(var(--midori-modblur-extension-columns, 4), minmax(42px, 1fr)) !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+
+  #unified-extensions-view .unified-extensions-item-action-button {
+    min-width: 38px !important;
+    min-height: 38px !important;
+    justify-content: center !important;
+    padding: 6px !important;
+  }
+
+  #unified-extensions-view .unified-extensions-item-contents,
+  #unified-extensions-view .unified-extensions-item-menu-button {
+    display: none !important;
+  }
+
+  #unified-extensions-view :is(.unified-extensions-item, unified-extensions-item),
+  #unified-extensions-view .unified-extensions-item-row-wrapper {
+    min-width: 38px !important;
+    width: auto !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.extensions.columns", 1) { #unified-extensions-view { --midori-modblur-extension-columns: 1; } }
+@media -moz-pref("midori.modblur.extensions.columns", 2) { #unified-extensions-view { --midori-modblur-extension-columns: 2; } }
+@media -moz-pref("midori.modblur.extensions.columns", 3) { #unified-extensions-view { --midori-modblur-extension-columns: 3; } }
+@media -moz-pref("midori.modblur.extensions.columns", 4) { #unified-extensions-view { --midori-modblur-extension-columns: 4; } }
+@media -moz-pref("midori.modblur.extensions.columns", 5) { #unified-extensions-view { --midori-modblur-extension-columns: 5; } }
+@media -moz-pref("midori.modblur.extensions.columns", 6) { #unified-extensions-view { --midori-modblur-extension-columns: 6; } }
+@media -moz-pref("midori.modblur.extensions.columns", 7) { #unified-extensions-view { --midori-modblur-extension-columns: 7; } }
+@media -moz-pref("midori.modblur.extensions.columns", 8) { #unified-extensions-view { --midori-modblur-extension-columns: 8; } }
+@media -moz-pref("midori.modblur.extensions.columns", 9) { #unified-extensions-view { --midori-modblur-extension-columns: 9; } }
+@media -moz-pref("midori.modblur.extensions.columns", 10) { #unified-extensions-view { --midori-modblur-extension-columns: 10; } }
+
+@media -moz-pref("midori.modblur.extensions.iconSize", 12) { #unified-extensions-view { --uei-icon-size: 12px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 13) { #unified-extensions-view { --uei-icon-size: 13px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 14) { #unified-extensions-view { --uei-icon-size: 14px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 15) { #unified-extensions-view { --uei-icon-size: 15px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 16) { #unified-extensions-view { --uei-icon-size: 16px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 17) { #unified-extensions-view { --uei-icon-size: 17px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 18) { #unified-extensions-view { --uei-icon-size: 18px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 19) { #unified-extensions-view { --uei-icon-size: 19px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 20) { #unified-extensions-view { --uei-icon-size: 20px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 21) { #unified-extensions-view { --uei-icon-size: 21px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 22) { #unified-extensions-view { --uei-icon-size: 22px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 23) { #unified-extensions-view { --uei-icon-size: 23px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 24) { #unified-extensions-view { --uei-icon-size: 24px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 25) { #unified-extensions-view { --uei-icon-size: 25px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 26) { #unified-extensions-view { --uei-icon-size: 26px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 27) { #unified-extensions-view { --uei-icon-size: 27px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 28) { #unified-extensions-view { --uei-icon-size: 28px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 29) { #unified-extensions-view { --uei-icon-size: 29px !important; } }
+@media -moz-pref("midori.modblur.extensions.iconSize", 30) { #unified-extensions-view { --uei-icon-size: 30px !important; } }
+
 @media -moz-pref("midori.modblur.extensions.hideManageButton") {
   #unified-extensions-manage-extensions {
+    display: none !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.extensions.hideSeparator") {
+  #unified-extensions-view #unified-extensions-area {
+    border-bottom: 0 !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+  }
+}
+
+@media not -moz-pref("midori.modblur.extensions.hideSeparator") {
+  #unified-extensions-view #unified-extensions-area:has(+ .unified-extensions-list > :is(.unified-extensions-item, unified-extensions-item)) {
+    margin-bottom: 4px !important;
+    padding-bottom: 6px !important;
+    border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.extensions.hideFaded") {
+  #unified-extensions-view #unified-extensions-area + .unified-extensions-list {
     display: none !important;
   }
 }
@@ -125,8 +307,23 @@
   #appMenu-fxa-label2:hover,
   #appMenu-fxa-status2:hover,
   #fxa-menu-header-description:hover,
-  #fxa-menu-email:hover {
+  #fxa-menu-email:hover,
+  #appMenu-fxa-label2:focus-visible,
+  #appMenu-fxa-status2:focus-visible,
+  #fxa-menu-header-description:focus-visible,
+  #fxa-menu-email:focus-visible {
     filter: none;
+  }
+}
+
+@media -moz-pref("midori.modblur.privacy.blurTabs") {
+  #tabbrowser-tabs .tabbrowser-tab .tab-content {
+    filter: blur(4px) !important;
+    transition: filter var(--pf-ts-15) !important;
+  }
+
+  #tabbrowser-tabs .tabbrowser-tab:is(:hover, [visuallyselected], :focus-visible) .tab-content {
+    filter: none !important;
   }
 }
 
@@ -160,6 +357,40 @@
     list-style-image: var(--menuitem-icon, inherit) !important;
     -moz-context-properties: fill, stroke !important;
     fill: currentColor !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.icons.tabsOverview") {
+  #navigator-toolbox #firefox-view-button {
+    list-style-image: url("modblur-assets/files.svg") !important;
+    -moz-context-properties: fill, stroke !important;
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.icons.midoriMenu") {
+  #navigator-toolbox #PanelUI-menu-button {
+    list-style-image: url("chrome://branding/content/about-logo.svg") !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.icons.github") {
+  .bookmark-item[image^="page-icon:https://github.com/"] > :is(.toolbarbutton-icon, .menu-icon),
+  .bookmark-item[image^="page-icon:http://github.com/"] > :is(.toolbarbutton-icon, .menu-icon) {
+    list-style-image: url("modblur-assets/github.svg") !important;
+    -moz-context-properties: fill !important;
+    fill: currentColor !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.icons.ublock") {
+  #ublock0_raymondhill_net-BAP {
+    --webextension-menupanel-image: url("modblur-assets/shield.svg") !important;
+    --webextension-toolbar-image-light: url("modblur-assets/shield.svg") !important;
+    --webextension-toolbar-image-dark: url("modblur-assets/shield.svg") !important;
+    --webextension-menupanel-image-light: url("modblur-assets/shield.svg") !important;
+    --webextension-menupanel-image-dark: url("modblur-assets/shield.svg") !important;
   }
 }
 
@@ -218,6 +449,7 @@
 
 @media -moz-pref("midori.modblur.tabs.hidePreviewPanel") {
   #tab-preview-panel,
+  #tabbrowser-tab-tooltip,
   .tab-preview-panel {
     display: none !important;
   }
@@ -296,7 +528,7 @@
   }
 }
 
-@media -moz-pref("midori.modblur.search.popoutBlur") {
+@media -moz-pref("midori.modblur.search.popoutBlur") or -moz-pref("midori.modblur.search.popoutStyle", "animated") or -moz-pref("midori.modblur.search.popoutStyle", "still") or -moz-pref("midori.modblur.blur.searchbar") or -moz-pref("midori.modblur.blur.extra") {
   #urlbar[open] {
     backdrop-filter: blur(18px) saturate(1.3);
   }
@@ -307,11 +539,32 @@
   }
 }
 
-@media -moz-pref("midori.modblur.blur.extra") {
+@media -moz-pref("midori.modblur.search.popoutStyle", "animated") {
+  #urlbar[open] {
+    transform: translateY(3px) scale(1.01);
+    transition: transform var(--pf-ts-25) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.search.popoutStyle", "still") {
+  #urlbar[open] {
+    transition: none !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.blur.extra") or -moz-pref("midori.modblur.blur.panels") {
   panel[type="arrow"] .panel-arrowcontent,
   .browserContainer > findbar {
     backdrop-filter: blur(16px) saturate(1.25);
     background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 82%, transparent) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.blur.extra") or -moz-pref("midori.modblur.blur.verticalExpand") {
+  :root[midori-vertical-tabs] #vertical-tabs,
+  :root[midori-vertical-tabs] #sidebar-main {
+    backdrop-filter: blur(18px) saturate(1.2) !important;
+    background-color: color-mix(in srgb, var(--pf-sidebar-bgcolor) 82%, transparent) !important;
   }
 }
 
@@ -336,11 +589,18 @@
   }
 }
 
-@media -moz-pref("midori.modblur.theme.card") {
+@media -moz-pref("midori.modblur.theme.card") or -moz-pref("midori.modblur.theme.cardStyle", "subtle") or -moz-pref("midori.modblur.theme.cardStyle", "elevated") {
   #tabbrowser-tabbox,
   panel[type="arrow"] .panel-arrowcontent,
   .browserContainer > findbar {
     border: 1px solid color-mix(in srgb, var(--pf-text-color), transparent 82%) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.theme.card") or -moz-pref("midori.modblur.theme.cardStyle", "elevated") {
+  #tabbrowser-tabbox,
+  panel[type="arrow"] .panel-arrowcontent,
+  .browserContainer > findbar {
     box-shadow: 0 18px 50px color-mix(in srgb, black 20%, transparent) !important;
   }
 }
