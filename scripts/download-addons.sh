@@ -136,6 +136,29 @@ normalize_manifest_wasm_policy() {
     echo "INFO: Added MV2 WASM/worker content_security_policy for $addon_key"
 }
 
+apply_source_overlays() {
+    local addon_dir="$1"
+    local addon_key="$2"
+    local overlay_dir="$PROJECT_DIR/src/browser/extensions/addon-overlays/$addon_key"
+
+    if [[ ! -d "$overlay_dir" ]]; then
+        return 0
+    fi
+
+    echo "INFO: Applying Midori source overlays for $addon_key"
+    while IFS= read -r -d '' overlay_file; do
+        local relative_path="${overlay_file#"$overlay_dir/"}"
+        mkdir -p "$(dirname "$addon_dir/$relative_path")"
+        cp "$overlay_file" "$addon_dir/$relative_path"
+    done < <(find "$overlay_dir" -type f -print0 | sort -z)
+
+    if [[ "$addon_key" == "midori-newtab" && -f "$addon_dir/midori-modblur.css" && -f "$addon_dir/index.html" ]]; then
+        if ! grep -q 'href="/midori-modblur.css"' "$addon_dir/index.html"; then
+            sed -i 's#</head>#    <link rel="stylesheet" href="/midori-modblur.css">\n  </head>#' "$addon_dir/index.html"
+        fi
+    fi
+}
+
 resolve_effective_addon_id() {
     local addon_dir="$1"
     local fallback_id="$2"
@@ -332,6 +355,7 @@ for ADDON_KEY in $ADDON_KEYS; do
 
     normalize_manifest_locale "$ADDON_DIR" "$ADDON_KEY"
     normalize_manifest_wasm_policy "$ADDON_DIR" "$ADDON_KEY"
+    apply_source_overlays "$ADDON_DIR" "$ADDON_KEY"
     ADDON_ID=$(resolve_effective_addon_id "$ADDON_DIR" "$CONFIGURED_ADDON_ID")
 
     if [[ "$ADDON_ID" != "$CONFIGURED_ADDON_ID" ]]; then
@@ -356,6 +380,9 @@ for ADDON_KEY in $ADDON_KEYS; do
 
         # Add files in subdirectories as FINAL_TARGET_FILES with subdir keys
         while IFS= read -r -d '' dir; do
+            if ! find "$dir" -type f -print -quit 2>/dev/null | grep -q .; then
+                continue
+            fi
             DIRNAME=$(basename "$dir")
             echo ''
             # Check for nested subdirectories (e.g. _locales/en/)
@@ -401,6 +428,9 @@ for ADDON_KEY in $ADDON_KEYS; do
 
         # Add directories with glob patterns
         while IFS= read -r -d '' dir; do
+            if ! find "$dir" -type f -print -quit 2>/dev/null | grep -q .; then
+                continue
+            fi
             DIRNAME=$(basename "$dir")
             # Use ** glob for directories that may have subdirs (like _locales)
             if find "$dir" -mindepth 2 -type f -print -quit 2>/dev/null | grep -q .; then
