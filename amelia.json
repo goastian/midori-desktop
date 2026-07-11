@@ -15,9 +15,9 @@
     "midori-privacy": {
       "id": "midori-protection@astian.org",
       "repo": "goastian/midori-privacy",
-      "version": "v2.3.6",
+      "version": "v2.3.7",
       "platform": "github",
-      "fileGlob": "midori-privacy-adblock-2.3.6-firefox.zip"
+      "fileGlob": "midori-privacy-adblock-2.3.7-firefox.zip"
     },
     "midori-newtab": {
       "id": "midori-newtab",
