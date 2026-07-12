@@ -816,18 +816,39 @@ html, body {
 .mod-select {
   min-width: 164px;
   padding: 8px 32px 8px 10px;
+  color-scheme: inherit;
 }
 
 .mod-select option,
 .select-input option {
-  background-color: var(--mc-surface);
-  color: var(--mc-text);
+  background-color: var(--mc-surface) !important;
+  color: var(--mc-text) !important;
 }
 
 .mod-select option:checked,
 .select-input option:checked {
-  background-color: var(--mc-sidebar-active-bg);
-  color: var(--mc-sidebar-active-text);
+  background-color: var(--mc-sidebar-active-bg) !important;
+  color: var(--mc-sidebar-active-text) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mod-select,
+  .select-input {
+    background-color: #111713 !important;
+    color: #ecf3ef !important;
+  }
+
+  .mod-select option,
+  .select-input option {
+    background-color: #1d2521 !important;
+    color: #ecf3ef !important;
+  }
+
+  .mod-select option:checked,
+  .select-input option:checked {
+    background-color: #174c3a !important;
+    color: #f1fff8 !important;
+  }
 }
 
 .mod-number {
