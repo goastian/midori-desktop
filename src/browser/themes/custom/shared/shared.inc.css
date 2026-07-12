@@ -152,6 +152,54 @@
   }
 }
 
+/* Keep light Midori colorways in step with Firefox/system dark appearance.
+ * Dark colorways are declared below and keep their own distinctive surfaces.
+ * This also prevents native dark popups from receiving dark foreground text
+ * from a light colorway. */
+:root[lwtheme-brighttext] {
+  --pf-browser-bgcolor: #0b1411;
+  --pf-browser-bgcolor-2: #111b22;
+  --pf-sidebar-bgcolor: #111a17;
+  --pf-panel-bgcolor: #18211e;
+  --pf-text-color: #edf5f1;
+  --pf-url-text-color: color-mix(in srgb, var(--pf-accent-color), white 34%);
+  --pf-toolbar-bgcolor: rgba(248, 250, 249, 0.08);
+  --pf-toolbar-bgcolor-hover: rgba(248, 250, 249, 0.14);
+  --pf-toolbar-bgcolor-active: color-mix(in srgb, var(--pf-accent-color) 24%, transparent);
+  --pf-toolbar-bgcolor-inactive: rgba(248, 250, 249, 0.055);
+  --pf-tabbar-bgcolor: color-mix(in srgb, var(--pf-accent-color) 7%, transparent);
+  --pf-navbar-bgcolor: rgba(255, 255, 255, 0.07);
+  --pf-urlbar-bgcolor: #1a2521;
+  --pf-input-bgcolor: rgba(255, 255, 255, 0.055);
+  --pf-tab-selected-bgcolor: rgba(238, 245, 242, 0.15);
+  --pf-favicon-bgcolor: rgba(237, 245, 241, 0.18);
+  --pf-favicon-border-color: rgba(237, 245, 241, 0.2);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([lwtheme]) {
+    --pf-browser-bgcolor: #0b1411;
+    --pf-browser-bgcolor-2: #111b22;
+    --pf-sidebar-bgcolor: #111a17;
+    --pf-panel-bgcolor: #18211e;
+    --pf-text-color: #edf5f1;
+    --pf-url-text-color: color-mix(in srgb, var(--pf-accent-color), white 34%);
+    --pf-toolbar-bgcolor: rgba(248, 250, 249, 0.08);
+    --pf-toolbar-bgcolor-hover: rgba(248, 250, 249, 0.14);
+    --pf-toolbar-bgcolor-active: color-mix(in srgb, var(--pf-accent-color) 24%, transparent);
+    --pf-toolbar-bgcolor-inactive: rgba(248, 250, 249, 0.055);
+    --pf-tabbar-bgcolor: color-mix(in srgb, var(--pf-accent-color) 7%, transparent);
+    --pf-navbar-bgcolor: rgba(255, 255, 255, 0.07);
+    --pf-urlbar-bgcolor: #1a2521;
+    --pf-input-bgcolor: rgba(255, 255, 255, 0.055);
+    --pf-tab-selected-bgcolor: rgba(238, 245, 242, 0.15);
+    --pf-favicon-bgcolor: rgba(237, 245, 241, 0.18);
+    --pf-favicon-border-color: rgba(237, 245, 241, 0.2);
+    color-scheme: dark;
+  }
+}
+
 @media -moz-pref("midori.colorway", "forest") {
   :root {
     --pf-accent-color: #29c58b;
@@ -1146,46 +1194,66 @@ toolbarbutton[disabled="true"] {
   --uei-icon-size: var(--icon-size);
 }
 
-@media not (-moz-platform: macos) {
-  menupopup {
-    appearance: none !important;
-    --panel-background: var(--pf-panel-bgcolor) !important;
-    --panel-color: var(--pf-text-color) !important;
-    --panel-text-color: var(--pf-text-color) !important;
-    --menu-background-color: var(--pf-panel-bgcolor) !important;
-    --menu-color: var(--pf-text-color) !important;
-    --menuitem-hover-background-color: var(--pf-toolbar-bgcolor-hover) !important;
-    --menuitem-hover-color: var(--pf-text-color) !important;
-    --panel-padding: 5px 4px !important;
-    color: var(--pf-text-color) !important;
-    background: var(--pf-panel-bgcolor) !important;
-    background-color: var(--pf-panel-bgcolor) !important;
-    border: 1px solid var(--pf-border-color) !important;
-    border-radius: var(--pf-border-radius-sm) !important;
-  }
+/* XUL menus can be painted by a native dark popup even when the active
+ * Midori colorway is light.  Style the popup and its anonymous content on
+ * every platform so foreground and surface always come from one palette. */
+menupopup {
+  appearance: none !important;
+  --panel-background: var(--pf-panel-bgcolor) !important;
+  --panel-background-color: var(--pf-panel-bgcolor) !important;
+  --panel-color: var(--pf-text-color) !important;
+  --panel-text-color: var(--pf-text-color) !important;
+  --menu-background-color: var(--pf-panel-bgcolor) !important;
+  --menu-color: var(--pf-text-color) !important;
+  --menuitem-hover-background-color: var(--pf-toolbar-bgcolor-hover) !important;
+  --menuitem-hover-color: var(--pf-text-color) !important;
+  --panel-padding: 5px 4px !important;
+  color: var(--pf-text-color) !important;
+  background: var(--pf-panel-bgcolor) !important;
+  background-color: var(--pf-panel-bgcolor) !important;
+  border: 1px solid var(--pf-border-color) !important;
+  border-radius: var(--pf-border-radius-sm) !important;
+}
 
-  menu,
-  menuitem,
-  menucaption {
-    appearance: none !important;
-    background-color: transparent !important;
-    color: var(--pf-text-color) !important;
-    --menuitem-border-radius: 5px !important;
-    --menuitem-padding: 3px 10px;
-    --menuitem-margin: 1px;
-    fill: currentColor !important;
-  }
+menu,
+menuitem,
+menucaption {
+  appearance: none !important;
+  --menu-color: var(--pf-text-color) !important;
+  --panel-color: var(--pf-text-color) !important;
+  --panel-text-color: var(--pf-text-color) !important;
+  background-color: transparent !important;
+  color: var(--pf-text-color) !important;
+  --menuitem-border-radius: 5px !important;
+  --menuitem-padding: 3px 10px;
+  --menuitem-margin: 1px;
+  fill: currentColor !important;
+}
 
-  menuitem[disabled="true"],
-  menu[disabled="true"] {
-    color: var(--panel-disabled-color) !important;
-  }
+menu :is(.menu-text, .menu-iconic-text, .menu-accel),
+menuitem :is(.menu-text, .menu-iconic-text, .menu-accel),
+menucaption :is(.menu-text, .menu-iconic-text, .menu-accel) {
+  color: inherit !important;
+}
 
-  menuitem:where([_moz-menuactive]:not([disabled="true"])),
-  menu:where([_moz-menuactive]:not([disabled="true"])) {
-    background: var(--pf-toolbar-bgcolor-hover) !important;
-    color: var(--pf-text-color) !important;
-  }
+menu :is(.menu-icon, .menu-right),
+menuitem :is(.menu-icon, .menu-right) {
+  color: inherit !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+menuitem[disabled="true"],
+menu[disabled="true"] {
+  --menu-color: var(--panel-disabled-color) !important;
+  color: var(--panel-disabled-color) !important;
+}
+
+menuitem:where([_moz-menuactive]:not([disabled="true"])),
+menu:where([_moz-menuactive]:not([disabled="true"])) {
+  --menu-color: var(--pf-text-color) !important;
+  background: var(--pf-toolbar-bgcolor-hover) !important;
+  color: var(--pf-text-color) !important;
 }
 
 .browserContainer > findbar {
