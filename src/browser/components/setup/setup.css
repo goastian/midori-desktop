@@ -4,6 +4,78 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
+/* The setup surface follows the explicit Midori colorway. System appearance
+ * must not override a choice the user makes on this page. */
+:root {
+  color-scheme: light;
+  --setup-accent: #0eae5b;
+  --setup-bg: #eff8f3;
+  --setup-surface: #ffffff;
+  --setup-text: #142a24;
+  --setup-border: #cbdcd4;
+  --in-content-page-background: var(--setup-bg);
+  --in-content-page-color: var(--setup-text);
+  --in-content-box-background: var(--setup-surface);
+  --in-content-box-border-color: var(--setup-border);
+  --in-content-border-color: var(--setup-border);
+  --in-content-primary-button-background: var(--setup-accent);
+  --in-content-primary-button-background-hover: color-mix(in srgb, var(--setup-accent), black 10%);
+  --in-content-primary-button-text-color: #ffffff;
+}
+
+@media -moz-pref("midori.colorway", "ocean") {
+  :root {
+    --setup-accent: #0e9dae;
+    --setup-bg: #eefafe;
+    --setup-surface: #ffffff;
+    --setup-text: #12303a;
+    --setup-border: #c5dce2;
+  }
+}
+
+@media -moz-pref("midori.colorway", "sunrise") {
+  :root {
+    --setup-accent: #c97818;
+    --setup-bg: #fff6e8;
+    --setup-surface: #fffefd;
+    --setup-text: #352617;
+    --setup-border: #e3d3b9;
+  }
+}
+
+@media -moz-pref("midori.colorway", "forest") {
+  :root {
+    color-scheme: dark;
+    --setup-accent: #29c58b;
+    --setup-bg: #07150d;
+    --setup-surface: #151d1a;
+    --setup-text: #eaf3f2;
+    --setup-border: #34443e;
+  }
+}
+
+@media -moz-pref("midori.colorway", "midnight") {
+  :root {
+    color-scheme: dark;
+    --setup-accent: #2f9de2;
+    --setup-bg: #0a1020;
+    --setup-surface: #151d27;
+    --setup-text: #eaf3f2;
+    --setup-border: #354356;
+  }
+}
+
+@media -moz-pref("midori.colorway", "ember") {
+  :root {
+    color-scheme: dark;
+    --setup-accent: #e15d42;
+    --setup-bg: #201111;
+    --setup-surface: #24191d;
+    --setup-text: #fff1ed;
+    --setup-border: #50363c;
+  }
+}
+
 /* ===== Keyframe animations ===== */
 @keyframes fadeInUp {
   from {
@@ -77,6 +149,8 @@ body {
   box-sizing: border-box;
   animation: fadeIn 0.4s ease-out;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--setup-text);
+  background: var(--setup-bg);
 }
 
 /* ===== Step indicator ===== */
@@ -340,15 +414,17 @@ p {
   animation: fadeInUp 0.6s ease-out 0.15s backwards;
 }
 
-@media (prefers-color-scheme: light) {
-  .dark-only {
-    display: none;
-  }
+.dark-only {
+  display: none;
 }
 
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .light-only {
     display: none;
+  }
+
+  .dark-only {
+    display: block;
   }
 
   .cardGroup .card {
@@ -499,14 +575,14 @@ input[type='checkbox'] {
 }
 
 .colorway-card:hover {
-  border-color: color-mix(in srgb, AccentColor 40%, transparent);
+  border-color: color-mix(in srgb, var(--setup-accent) 40%, transparent);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   transform: translateY(-2px);
 }
 
 .colorway-card.selected {
-  border-color: AccentColor;
-  box-shadow: 0 0 0 3px color-mix(in srgb, AccentColor 25%, transparent);
+  border-color: var(--setup-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--setup-accent) 25%, transparent);
 }
 
 .colorway-card.selected::after {
@@ -516,7 +592,7 @@ input[type='checkbox'] {
   right: 8px;
   width: 20px;
   height: 20px;
-  background: AccentColor;
+  background: var(--setup-accent);
   color: #fff;
   border-radius: 50%;
   display: flex;
@@ -541,40 +617,32 @@ input[type='checkbox'] {
 .colorway-preview.jade {
   background:
     radial-gradient(circle at 72% 26%, rgba(255, 255, 255, 0.55) 0 8%, transparent 9%),
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.2) 0 3px, transparent 3px 7px),
     linear-gradient(145deg, #0eae5b, #0e9dae);
 }
 
 .colorway-preview.ocean {
-  background:
-    repeating-radial-gradient(circle at 28% 34%, rgba(255, 255, 255, 0.26) 0 2px, transparent 2px 7px),
-    linear-gradient(145deg, #0e9dae, #7bd7e8);
+  background: linear-gradient(145deg, #0e9dae, #7bd7e8);
 }
 
 .colorway-preview.sunrise {
-  background:
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0 2px, transparent 2px 9px),
-    linear-gradient(145deg, #f3b454, #0eae5b);
+  background: linear-gradient(145deg, #f3b454, #0eae5b);
 }
 
 .colorway-preview.forest {
   background:
     radial-gradient(circle at 28% 28%, rgba(41, 197, 139, 0.38), transparent 34%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 6px),
     linear-gradient(145deg, #07150d, #0eae5b);
 }
 
 .colorway-preview.midnight {
   background:
     radial-gradient(circle at 65% 30%, rgba(47, 157, 226, 0.42), transparent 28%),
-    repeating-radial-gradient(circle at 40% 45%, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 8px),
     linear-gradient(145deg, #0a1020, #0e9dae);
 }
 
 .colorway-preview.ember {
   background:
     radial-gradient(circle at 35% 32%, rgba(255, 199, 120, 0.34), transparent 30%),
-    repeating-linear-gradient(30deg, rgba(255, 255, 255, 0.11) 0 2px, transparent 2px 8px),
     linear-gradient(145deg, #2a1111, #e15d42);
 }
 
@@ -612,7 +680,7 @@ input[type='checkbox'] {
   }
 }
 
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .colorway-card {
     background: var(--in-content-box-background, rgba(255, 255, 255, 0.05));
   }
@@ -647,14 +715,14 @@ input[type='checkbox'] {
 }
 
 .tablayout-card:hover {
-  border-color: color-mix(in srgb, AccentColor 40%, transparent);
+  border-color: color-mix(in srgb, var(--setup-accent) 40%, transparent);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   transform: translateY(-2px);
 }
 
 .tablayout-card.selected {
-  border-color: AccentColor;
-  box-shadow: 0 0 0 3px color-mix(in srgb, AccentColor 25%, transparent);
+  border-color: var(--setup-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--setup-accent) 25%, transparent);
 }
 
 .tablayout-card h3 {
@@ -713,7 +781,7 @@ input[type='checkbox'] {
 }
 
 .preview-tab.active {
-  background: AccentColor;
+  background: var(--setup-accent);
   width: 52px;
 }
 
@@ -752,7 +820,7 @@ input[type='checkbox'] {
 }
 
 .preview-vtab.active {
-  background: AccentColor;
+  background: var(--setup-accent);
 }
 
 /* Responsive */
@@ -763,7 +831,7 @@ input[type='checkbox'] {
   }
 }
 
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .tablayout-card {
     background: var(--in-content-box-background, rgba(255, 255, 255, 0.05));
   }
@@ -791,9 +859,9 @@ input[type='checkbox'] {
   font-weight: 800;
   color: #fff;
   margin-bottom: 8px;
-  background: linear-gradient(145deg, AccentColor, color-mix(in srgb, AccentColor 68%, #29c58b));
+  background: linear-gradient(145deg, var(--setup-accent), color-mix(in srgb, var(--setup-accent) 68%, #29c58b));
   box-shadow:
-    0 8px 26px color-mix(in srgb, AccentColor 30%, transparent),
+    0 8px 26px color-mix(in srgb, var(--setup-accent) 30%, transparent),
     inset 0 -2px 4px rgba(0, 0, 0, 0.2);
   animation: checkPop 0.55s ease-out 0.1s backwards;
 }

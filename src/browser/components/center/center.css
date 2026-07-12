@@ -34,22 +34,116 @@
   --mc-transition: 0.15s ease-out;
 }
 
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "ocean") {
+  :root {
+    --mc-green-50: #ecfeff;
+    --mc-green-100: #cffafe;
+    --mc-green-200: #a5f3fc;
+    --mc-green-400: #22d3ee;
+    --mc-green-500: #06b6d4;
+    --mc-green-600: #0891b2;
+    --mc-green-700: #0e7490;
+    --mc-green-800: #155e75;
+    --mc-green-900: #164e63;
+    --mc-bg: #eefafe;
+    --mc-bg-subtle: #dff3f7;
+    --mc-surface: #ffffff;
+    --mc-border: #c6dce2;
+    --mc-border-hover: #9fbfc8;
+    --mc-text: #12303a;
+    --mc-text-muted: #4d6871;
+    --mc-sidebar-bg: #e2f2f5;
+  }
+}
+
+@media -moz-pref("midori.colorway", "sunrise") {
+  :root {
+    --mc-green-50: #fff7ed;
+    --mc-green-100: #ffedd5;
+    --mc-green-200: #fed7aa;
+    --mc-green-400: #fb923c;
+    --mc-green-500: #f97316;
+    --mc-green-600: #d97706;
+    --mc-green-700: #b45309;
+    --mc-green-800: #92400e;
+    --mc-green-900: #78350f;
+    --mc-bg: #fff6e8;
+    --mc-bg-subtle: #f6ead6;
+    --mc-surface: #fffefd;
+    --mc-border: #e4d4ba;
+    --mc-border-hover: #cdb78f;
+    --mc-text: #352617;
+    --mc-text-muted: #715d45;
+    --mc-sidebar-bg: #f7ecd9;
+  }
+}
+
+@media -moz-pref("midori.colorway", "forest") {
   :root {
     color-scheme: dark;
-    --mc-bg:         #111713;
-    --mc-bg-subtle:  #1a211d;
-    --mc-surface:    #1d2521;
+    --mc-green-400: #42d8a2;
+    --mc-green-500: #29c58b;
+    --mc-green-600: #18a873;
+    --mc-green-700: #11835a;
+    --mc-bg:         #07150d;
+    --mc-bg-subtle:  #101c17;
+    --mc-surface:    #151d1a;
     --mc-border:     #35413b;
     --mc-border-hover: #526159;
-    --mc-text:       #ecf3ef;
+    --mc-text:       #eaf3f2;
     --mc-text-muted: #aab8b1;
-    --mc-sidebar-bg: #171e1a;
-    --mc-sidebar-active-bg: rgba(16, 185, 129, 0.12);
+    --mc-sidebar-bg: #0e1714;
+    --mc-sidebar-active-bg: rgba(41, 197, 139, 0.14);
     --mc-sidebar-active-text: var(--mc-green-400);
     --mc-shadow-sm:  0 1px 3px rgba(0,0,0,0.2);
     --mc-shadow-md:  0 4px 12px rgba(0,0,0,0.25);
     --mc-shadow-lg:  0 8px 24px rgba(0,0,0,0.3);
+  }
+}
+
+@media -moz-pref("midori.colorway", "midnight") {
+  :root {
+    color-scheme: dark;
+    --mc-green-400: #60b8ef;
+    --mc-green-500: #2f9de2;
+    --mc-green-600: #197fbe;
+    --mc-green-700: #14679c;
+    --mc-bg: #0a1020;
+    --mc-bg-subtle: #101827;
+    --mc-surface: #151d27;
+    --mc-border: #354356;
+    --mc-border-hover: #52677f;
+    --mc-text: #eaf3f2;
+    --mc-text-muted: #a9b8c6;
+    --mc-sidebar-bg: #101924;
+    --mc-sidebar-active-bg: rgba(47, 157, 226, 0.16);
+    --mc-sidebar-active-text: var(--mc-green-400);
+    --mc-shadow-sm: 0 1px 3px rgba(0,0,0,0.22);
+    --mc-shadow-md: 0 4px 12px rgba(0,0,0,0.28);
+    --mc-shadow-lg: 0 8px 24px rgba(0,0,0,0.34);
+  }
+}
+
+@media -moz-pref("midori.colorway", "ember") {
+  :root {
+    color-scheme: dark;
+    --mc-green-400: #f07a62;
+    --mc-green-500: #e15d42;
+    --mc-green-600: #c74731;
+    --mc-green-700: #a63829;
+    --mc-bg: #201111;
+    --mc-bg-subtle: #25151d;
+    --mc-surface: #24191d;
+    --mc-border: #50363c;
+    --mc-border-hover: #76515a;
+    --mc-text: #fff1ed;
+    --mc-text-muted: #d6b7b0;
+    --mc-sidebar-bg: #1b1216;
+    --mc-sidebar-active-bg: rgba(225, 93, 66, 0.16);
+    --mc-sidebar-active-text: var(--mc-green-400);
+    --mc-shadow-sm: 0 1px 3px rgba(0,0,0,0.22);
+    --mc-shadow-md: 0 4px 12px rgba(0,0,0,0.28);
+    --mc-shadow-lg: 0 8px 24px rgba(0,0,0,0.34);
   }
 }
 
@@ -315,7 +409,7 @@ html, body {
   background: var(--mc-green-100);
   color: var(--mc-green-700);
 }
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .card-icon-green { background: rgba(16, 185, 129, 0.15); color: var(--mc-green-400); }
 }
 
@@ -323,7 +417,7 @@ html, body {
   background: #ccfbf1;
   color: #0f766e;
 }
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .card-icon-teal { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; }
 }
 
@@ -331,7 +425,7 @@ html, body {
   background: #d1fae5;
   color: #065f46;
 }
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .card-icon-emerald { background: rgba(52, 211, 153, 0.15); color: #6ee7b7; }
 }
 
@@ -339,7 +433,7 @@ html, body {
   background: #fef3c7;
   color: #b45309;
 }
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .card-icon-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
 }
 
@@ -347,7 +441,7 @@ html, body {
   background: #cffafe;
   color: #0e7490;
 }
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .card-icon-mint { background: rgba(34, 211, 238, 0.15); color: #67e8f9; }
 }
 
@@ -444,7 +538,7 @@ html, body {
   border-color: var(--mc-green-500);
 }
 
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .info-link {
     color: var(--mc-green-400);
     border-color: rgba(52, 211, 153, 0.3);
@@ -542,7 +636,7 @@ html, body {
   text-transform: uppercase;
 }
 
-@media (prefers-color-scheme: dark) {
+@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
   .page-eyebrow,
   .group-kicker {
     color: var(--mc-green-400);
@@ -829,26 +923,6 @@ html, body {
 .select-input option:checked {
   background-color: var(--mc-sidebar-active-bg) !important;
   color: var(--mc-sidebar-active-text) !important;
-}
-
-@media (prefers-color-scheme: dark) {
-  .mod-select,
-  .select-input {
-    background-color: #111713 !important;
-    color: #ecf3ef !important;
-  }
-
-  .mod-select option,
-  .select-input option {
-    background-color: #1d2521 !important;
-    color: #ecf3ef !important;
-  }
-
-  .mod-select option:checked,
-  .select-input option:checked {
-    background-color: #174c3a !important;
-    color: #f1fff8 !important;
-  }
 }
 
 .mod-number {
