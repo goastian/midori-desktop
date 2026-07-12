@@ -1399,6 +1399,16 @@ toolbarbutton[data-extensionid="midori-protection@astian.org"] .toolbarbutton-te
   margin-block-start: calc(-1 * var(--midori-toolbox-height, var(--pf-navbar-height))) !important;
 }
 
+/* Firefox's breakout urlbar is promoted to the popover top layer, so it does
+ * not reliably follow the transformed toolbox. Hide that promoted layer only
+ * for the settled autohide state; focus and open popups already prevent hide(). */
+:root[midori-toolbar-autohide-hidden="true"]:not([inFullscreen], [customizing])
+  :is(#nav-bar, #urlbar-container, #urlbar) {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 :root[inFullscreen] #navigator-toolbox[midori-autohide-hidden="true"],
 :root[customizing] #navigator-toolbox[midori-autohide-hidden="true"] {
   transform: none !important;
@@ -1408,4 +1418,11 @@ toolbarbutton[data-extensionid="midori-protection@astian.org"] .toolbarbutton-te
 
 :root:is([inFullscreen], [customizing])[midori-toolbar-autohide-hidden="true"] #browser {
   margin-block-start: 0 !important;
+}
+
+:root:is([inFullscreen], [customizing])[midori-toolbar-autohide-hidden="true"]
+  :is(#nav-bar, #urlbar-container, #urlbar) {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
