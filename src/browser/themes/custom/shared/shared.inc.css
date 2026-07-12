@@ -379,6 +379,49 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   order: 0 !important;
 }
 
+/* Bottom tabs live outside #navigator-toolbox, so they need an explicit
+ * Midori theme context instead of Firefox's toolbar-local color variables. */
+:root[midori-horizontal-tabs="bottom"]:not([chromehidden~="toolbar"], [taskbartab]) #TabsToolbar {
+  --toolbar-bgcolor: var(--pf-sidebar-bgcolor) !important;
+  --toolbar-color: var(--pf-text-color) !important;
+  --lwt-accent-color: var(--pf-sidebar-bgcolor) !important;
+  --lwt-text-color: var(--pf-text-color) !important;
+  --lwt-tab-text: var(--pf-text-color) !important;
+  --tab-selected-textcolor: var(--pf-text-color) !important;
+  --toolbarbutton-icon-fill: var(--pf-icon-color) !important;
+  --toolbarbutton-background-color-hover: var(--pf-toolbar-bgcolor-hover) !important;
+  --toolbarbutton-background-color-active: var(--pf-toolbar-bgcolor-active) !important;
+  border-top: 1px solid var(--pf-border-color-light) !important;
+  border-bottom: 0 !important;
+  background:
+    linear-gradient(var(--pf-tabbar-bgcolor), var(--pf-tabbar-bgcolor)),
+    var(--pf-sidebar-bgcolor) !important;
+  color: var(--pf-text-color) !important;
+}
+
+:root[midori-horizontal-tabs="bottom"] #TabsToolbar-customization-target,
+:root[midori-horizontal-tabs="bottom"] #tabbrowser-tabs,
+:root[midori-horizontal-tabs="bottom"] .tabbrowser-tab,
+:root[midori-horizontal-tabs="bottom"] .tab-content {
+  --tab-label-color: var(--pf-text-color) !important;
+  --tab-selected-textcolor: var(--pf-text-color) !important;
+  color: var(--pf-text-color) !important;
+}
+
+:root[midori-horizontal-tabs="bottom"] .tab-background:is([selected], [multiselected]) {
+  background-color: var(--pf-tab-selected-bgcolor) !important;
+  box-shadow: var(--pf-tab-selected-shadow) !important;
+}
+
+:root[midori-horizontal-tabs="bottom"] .tabbrowser-tab:hover .tab-background:not([selected], [multiselected]) {
+  background-color: var(--pf-toolbar-bgcolor-hover) !important;
+}
+
+:root[midori-horizontal-tabs="bottom"] :is(#tabs-newtab-button, #new-tab-button) {
+  color: var(--pf-icon-color) !important;
+  fill: currentColor !important;
+}
+
 :root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #PersonalToolbar {
   order: 2 !important;
   width: 100% !important;

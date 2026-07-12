@@ -2040,6 +2040,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function applyOrder() {
     const parent = browser;
     if (!parent) return;
+    const tabboxOrder = Number.parseFloat(
+      tabbox.style.order || win.getComputedStyle(tabbox).order || '0'
+    );
+    const contentOrder = Number.isFinite(tabboxOrder) ? tabboxOrder : 0;
     if (position === 'left') {
       splitter.setAttribute('resizebefore', 'sibling');
       splitter.setAttribute('resizeafter', 'none');
@@ -2048,6 +2052,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       wrapper.appendChild(boxArea);
       wrapper.appendChild(splitter);
       parent.insertBefore(wrapper, tabbox);
+      wrapper.style.order = String(contentOrder - 0.5);
     } else {
       splitter.setAttribute('resizebefore', 'none');
       splitter.setAttribute('resizeafter', 'sibling');
@@ -2057,6 +2062,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       wrapper.appendChild(main);
       const aiSplitter = doc.getElementById('ai-window-splitter');
       parent.insertBefore(wrapper, aiSplitter || null);
+      wrapper.style.order = String(contentOrder + 0.5);
     }
     edgeTrigger.setAttribute('position', position);
   }

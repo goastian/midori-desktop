@@ -904,10 +904,36 @@ export const MidoriVerticalTabs = {
 /* --- Bottom tabs: TabsToolbar is moved after #browser via JS --- */
 :root[midori-horizontal-tabs='bottom'] #TabsToolbar {
   flex: none !important;  /* Don't stretch — only take natural height */
-  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent) !important;
+  --toolbar-bgcolor: var(--pf-sidebar-bgcolor) !important;
+  --toolbar-color: var(--pf-text-color) !important;
+  --lwt-accent-color: var(--pf-sidebar-bgcolor) !important;
+  --lwt-text-color: var(--pf-text-color) !important;
+  --lwt-tab-text: var(--pf-text-color) !important;
+  --tab-selected-textcolor: var(--pf-text-color) !important;
+  --toolbarbutton-icon-fill: var(--pf-icon-color) !important;
+  border-top: 1px solid var(--pf-border-color-light) !important;
   border-bottom: none !important;
-  background-color: var(--toolbar-bgcolor) !important;
-  color: var(--toolbar-color, inherit) !important;
+  background:
+    linear-gradient(var(--pf-tabbar-bgcolor), var(--pf-tabbar-bgcolor)),
+    var(--pf-sidebar-bgcolor) !important;
+  color: var(--pf-text-color) !important;
+}
+
+:root[midori-horizontal-tabs='bottom'] #tabbrowser-tabs,
+:root[midori-horizontal-tabs='bottom'] .tabbrowser-tab,
+:root[midori-horizontal-tabs='bottom'] .tab-content {
+  --tab-label-color: var(--pf-text-color) !important;
+  --tab-selected-textcolor: var(--pf-text-color) !important;
+  color: var(--pf-text-color) !important;
+}
+
+:root[midori-horizontal-tabs='bottom'] .tab-background:is([selected], [multiselected]) {
+  background-color: var(--pf-tab-selected-bgcolor) !important;
+  box-shadow: var(--pf-tab-selected-shadow) !important;
+}
+
+:root[midori-horizontal-tabs='bottom'] .tabbrowser-tab:hover .tab-background:not([selected], [multiselected]) {
+  background-color: var(--pf-toolbar-bgcolor-hover) !important;
 }
 
 /* Hide titlebar spacers & window buttons — they must stay at the top */
@@ -983,20 +1009,33 @@ toolbar .toolbarbutton-1 {
 .browserContainer > findbar {
   display: flex !important;
   position: absolute !important;
-  top: 20px;
-  width: min(550px, 90%) !important;
-  right: 20px !important;
+  top: 12px;
+  width: min(640px, calc(100% - 24px)) !important;
+  right: 12px !important;
   left: auto !important;
-  min-height: 70px;
-  height: auto !important;
-  flex-wrap: wrap;
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 7px 8px !important;
+  box-sizing: border-box !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
   border-radius: 12px !important;
-  background: var(--toolbar-bgcolor) !important;
-  border: 1px solid color-mix(in srgb, currentColor 12%, transparent) !important;
+  background: var(--pf-panel-bgcolor, var(--toolbar-bgcolor)) !important;
+  color: var(--pf-text-color, var(--toolbar-color)) !important;
+  border: 1px solid var(--pf-border-color, color-mix(in srgb, currentColor 12%, transparent)) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
   animation: midori-findbar-appear 0.2s ease !important;
   z-index: 10;
   transition: opacity 0.15s ease, top 0.15s ease !important;
+}
+
+.browserContainer > findbar .findbar-container {
+  flex-wrap: nowrap !important;
+  min-width: 0 !important;
+  min-height: 28px !important;
+  height: 28px !important;
+  margin-inline-start: 0 !important;
+  overflow: hidden !important;
 }
 
 .browserContainer > findbar[hidden] {
@@ -1006,7 +1045,20 @@ toolbar .toolbarbutton-1 {
 }
 
 .browserContainer > findbar .findbar-textbox {
+  width: 20em !important;
+  max-width: 36vw !important;
   border-radius: 8px !important;
+  background-color: var(--pf-input-bgcolor, var(--toolbar-field-background-color)) !important;
+  color: var(--pf-text-color, var(--toolbar-field-text-color)) !important;
+  caret-color: var(--pf-accent-color, AccentColor) !important;
+  border-color: var(--pf-border-color, var(--input-border-color)) !important;
+}
+
+.browserContainer > findbar .findbar-closebutton {
+  position: static !important;
+  flex: 0 0 auto !important;
+  margin: 0 0 0 4px !important;
+  padding: 4px !important;
 }
 
 /* --- Status panel pill (flat) --- */
