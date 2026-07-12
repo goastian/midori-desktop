@@ -20,6 +20,7 @@ const PREF_AUTOHIDE = 'midori.autohide.toolbar';
 const PREF_FLASH_ON_NAV = 'midori.autohide.flashOnLocationChange';
 const PREF_FLASH_DURATION = 'midori.autohide.flashDurationMs';
 const TOOLBOX_HIDDEN_ATTR = 'midori-autohide-hidden';
+const ROOT_HIDDEN_ATTR = 'midori-toolbar-autohide-hidden';
 const MOUSE_REVEAL_ZONE_PX = 10;
 const WHEEL_HIDE_THRESHOLD = 40;
 const WHEEL_SHOW_THRESHOLD = -30;
@@ -101,7 +102,12 @@ export const AutoHideToolbar = {
 
     // Measure and set the toolbox height as a CSS variable
     const updateToolboxHeight = () => {
-      const height = toolbox.getBoundingClientRect().height;
+      const rect = toolbox.getBoundingClientRect();
+      const style = win.getComputedStyle(toolbox);
+      const marginBlock =
+        (Number.parseFloat(style.marginBlockStart) || 0) +
+        (Number.parseFloat(style.marginBlockEnd) || 0);
+      const height = rect.height + marginBlock;
       if (height > 0) {
         doc.documentElement.style.setProperty('--midori-toolbox-height', height + 'px');
       }
@@ -111,6 +117,7 @@ export const AutoHideToolbar = {
     let rafId = null;
     let heightRemeasureTimer = null;
     let flashTimer = null;
+    let toolboxResizeObserver = null;
     // Thin fixed strip at the top edge that reveals the toolbar on hover.
     // Replaces a global `mousemove` listener (which fired on every pointer
     // move across the whole window) with a single edge-triggered element.
@@ -140,11 +147,25 @@ export const AutoHideToolbar = {
       rafPending: false,
     };
 
+    // Layout changes such as switching tab position, density, bookmarks, or
+    // colorway can change the toolbox after the initial measurement. Keep the
+    // cached translation distance current so no partial toolbar is left over
+    // the themed window surface while autohide is active.
+    if (typeof win.ResizeObserver === 'function') {
+      toolboxResizeObserver = new win.ResizeObserver(() => {
+        if (!state.isHidden) {
+          scheduleHeightUpdate();
+        }
+      });
+      toolboxResizeObserver.observe(toolbox);
+    }
+
     const show = () => {
       if (!state.isHidden) return;
       state.isHidden = false;
       state.accumulatedDelta = 0;
       toolbox.removeAttribute(TOOLBOX_HIDDEN_ATTR);
+      doc.documentElement.removeAttribute(ROOT_HIDDEN_ATTR);
       syncEdgeSensor();
     };
 
@@ -160,6 +181,7 @@ export const AutoHideToolbar = {
       // attach-time and refreshed via scheduleHeightUpdate() after transitions.
       state.isHidden = true;
       toolbox.setAttribute(TOOLBOX_HIDDEN_ATTR, 'true');
+      doc.documentElement.setAttribute(ROOT_HIDDEN_ATTR, 'true');
       syncEdgeSensor();
     };
 
@@ -341,6 +363,7 @@ export const AutoHideToolbar = {
       show,
       browserPanel,
       progressListener,
+      toolboxResizeObserver,
       // Cancels all pending async work — called by _detachFromWindow
       cancelPending: () => {
         if (rafId !== null) {
@@ -360,6 +383,8 @@ export const AutoHideToolbar = {
           win.clearTimeout(flashTimer);
           flashTimer = null;
         }
+        toolboxResizeObserver?.disconnect();
+        toolboxResizeObserver = null;
       },
     });
   },
@@ -377,6 +402,7 @@ export const AutoHideToolbar = {
       toolbox.removeAttribute(TOOLBOX_HIDDEN_ATTR);
       toolbox.removeAttribute('midori-autohide');
     }
+    doc?.documentElement?.removeAttribute(ROOT_HIDDEN_ATTR);
     doc?.documentElement?.style?.removeProperty('--midori-toolbox-height');
 
     if (listeners.browserPanel) {

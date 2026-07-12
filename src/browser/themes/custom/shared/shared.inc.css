@@ -108,6 +108,12 @@
   color-scheme: light;
 }
 
+#main-window {
+  --lwt-accent-color: var(--pf-sidebar-bgcolor) !important;
+  --lwt-accent-color-inactive: var(--pf-sidebar-bgcolor) !important;
+  background: var(--pf-browser-bgcolor) !important;
+}
+
 @media -moz-pref("midori.colorway", "ocean") {
   :root {
     --pf-accent-color: #0e9dae;
@@ -1371,14 +1377,26 @@ toolbarbutton[data-extensionid="midori-protection@astian.org"] .toolbarbutton-te
 /* CSS-only autohide shell. JS autohide is off by default; if enabled by the
    user, keep it transform-based so it does not fight Parfait layout. */
 #navigator-toolbox[midori-autohide] {
-  transition: transform var(--pf-ts-25), opacity var(--pf-ts-15) !important;
+  transition: transform var(--pf-ts-25) !important;
   will-change: transform;
+  opacity: 1 !important;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--pf-accent-color), transparent 90%), transparent 48%),
+    var(--pf-sidebar-bgcolor) !important;
+}
+
+:root:has(#navigator-toolbox[midori-autohide]) #browser {
+  transition: margin-block-start var(--pf-ts-25) !important;
 }
 
 #navigator-toolbox[midori-autohide-hidden="true"] {
   transform: translateY(calc(-1 * var(--midori-toolbox-height, var(--pf-navbar-height)))) !important;
-  opacity: 0 !important;
+  opacity: 1 !important;
   pointer-events: none !important;
+}
+
+:root[midori-toolbar-autohide-hidden="true"]:not([inFullscreen], [customizing]) #browser {
+  margin-block-start: calc(-1 * var(--midori-toolbox-height, var(--pf-navbar-height))) !important;
 }
 
 :root[inFullscreen] #navigator-toolbox[midori-autohide-hidden="true"],
@@ -1386,4 +1404,8 @@ toolbarbutton[data-extensionid="midori-protection@astian.org"] .toolbarbutton-te
   transform: none !important;
   opacity: 1 !important;
   pointer-events: auto !important;
+}
+
+:root:is([inFullscreen], [customizing])[midori-toolbar-autohide-hidden="true"] #browser {
+  margin-block-start: 0 !important;
 }
