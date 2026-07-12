@@ -36,9 +36,6 @@
   --pf-tab-selected-bgcolor: rgba(255, 255, 255, 0.86);
   --pf-favicon-bgcolor: rgba(255, 255, 255, 0.86);
   --pf-favicon-border-color: color-mix(in srgb, var(--pf-text-color), transparent 82%);
-  --pf-theme-texture:
-    repeating-linear-gradient(45deg, rgba(14, 174, 91, 0.045) 0 2px, transparent 2px 9px);
-
   --pf-separation: 8px;
   --pf-browser-separation: 10px;
   --pf-sidebar-width: var(--midori-vt-width, 248px);
@@ -123,8 +120,6 @@
     --pf-tabbar-bgcolor: rgba(14, 157, 174, 0.07);
     --pf-navbar-bgcolor: rgba(14, 157, 174, 0.1);
     --pf-urlbar-bgcolor: #ffffff;
-    --pf-theme-texture:
-      repeating-radial-gradient(circle at 20% 30%, rgba(14, 157, 174, 0.08) 0 1px, transparent 1px 8px);
     color-scheme: light;
   }
 }
@@ -146,57 +141,7 @@
     --pf-tabbar-bgcolor: rgba(217, 139, 43, 0.075);
     --pf-navbar-bgcolor: rgba(217, 139, 43, 0.115);
     --pf-urlbar-bgcolor: #fffefd;
-    --pf-theme-texture:
-      repeating-linear-gradient(135deg, rgba(217, 139, 43, 0.075) 0 2px, transparent 2px 10px);
     color-scheme: light;
-  }
-}
-
-/* Keep light Midori colorways in step with Firefox/system dark appearance.
- * Dark colorways are declared below and keep their own distinctive surfaces.
- * This also prevents native dark popups from receiving dark foreground text
- * from a light colorway. */
-:root[lwtheme-brighttext] {
-  --pf-browser-bgcolor: #0b1411;
-  --pf-browser-bgcolor-2: #111b22;
-  --pf-sidebar-bgcolor: #111a17;
-  --pf-panel-bgcolor: #18211e;
-  --pf-text-color: #edf5f1;
-  --pf-url-text-color: color-mix(in srgb, var(--pf-accent-color), white 34%);
-  --pf-toolbar-bgcolor: rgba(248, 250, 249, 0.08);
-  --pf-toolbar-bgcolor-hover: rgba(248, 250, 249, 0.14);
-  --pf-toolbar-bgcolor-active: color-mix(in srgb, var(--pf-accent-color) 24%, transparent);
-  --pf-toolbar-bgcolor-inactive: rgba(248, 250, 249, 0.055);
-  --pf-tabbar-bgcolor: color-mix(in srgb, var(--pf-accent-color) 7%, transparent);
-  --pf-navbar-bgcolor: rgba(255, 255, 255, 0.07);
-  --pf-urlbar-bgcolor: #1a2521;
-  --pf-input-bgcolor: rgba(255, 255, 255, 0.055);
-  --pf-tab-selected-bgcolor: rgba(238, 245, 242, 0.15);
-  --pf-favicon-bgcolor: rgba(237, 245, 241, 0.18);
-  --pf-favicon-border-color: rgba(237, 245, 241, 0.2);
-  color-scheme: dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([lwtheme]) {
-    --pf-browser-bgcolor: #0b1411;
-    --pf-browser-bgcolor-2: #111b22;
-    --pf-sidebar-bgcolor: #111a17;
-    --pf-panel-bgcolor: #18211e;
-    --pf-text-color: #edf5f1;
-    --pf-url-text-color: color-mix(in srgb, var(--pf-accent-color), white 34%);
-    --pf-toolbar-bgcolor: rgba(248, 250, 249, 0.08);
-    --pf-toolbar-bgcolor-hover: rgba(248, 250, 249, 0.14);
-    --pf-toolbar-bgcolor-active: color-mix(in srgb, var(--pf-accent-color) 24%, transparent);
-    --pf-toolbar-bgcolor-inactive: rgba(248, 250, 249, 0.055);
-    --pf-tabbar-bgcolor: color-mix(in srgb, var(--pf-accent-color) 7%, transparent);
-    --pf-navbar-bgcolor: rgba(255, 255, 255, 0.07);
-    --pf-urlbar-bgcolor: #1a2521;
-    --pf-input-bgcolor: rgba(255, 255, 255, 0.055);
-    --pf-tab-selected-bgcolor: rgba(238, 245, 242, 0.15);
-    --pf-favicon-bgcolor: rgba(237, 245, 241, 0.18);
-    --pf-favicon-border-color: rgba(237, 245, 241, 0.2);
-    color-scheme: dark;
   }
 }
 
@@ -221,8 +166,6 @@
     --pf-tab-selected-bgcolor: rgba(238, 239, 243, 0.15);
     --pf-favicon-bgcolor: rgba(234, 243, 242, 0.22);
     --pf-favicon-border-color: rgba(234, 243, 242, 0.18);
-    --pf-theme-texture:
-      repeating-linear-gradient(90deg, rgba(41, 197, 139, 0.055) 0 1px, transparent 1px 7px);
     color-scheme: dark;
   }
 }
@@ -248,8 +191,6 @@
     --pf-tab-selected-bgcolor: rgba(238, 239, 243, 0.15);
     --pf-favicon-bgcolor: rgba(234, 243, 242, 0.22);
     --pf-favicon-border-color: rgba(234, 243, 242, 0.18);
-    --pf-theme-texture:
-      repeating-radial-gradient(circle at 34% 28%, rgba(47, 157, 226, 0.08) 0 1px, transparent 1px 9px);
     color-scheme: dark;
   }
 }
@@ -275,8 +216,6 @@
     --pf-tab-selected-bgcolor: rgba(238, 239, 243, 0.15);
     --pf-favicon-bgcolor: rgba(255, 241, 237, 0.22);
     --pf-favicon-border-color: rgba(255, 241, 237, 0.18);
-    --pf-theme-texture:
-      repeating-linear-gradient(30deg, rgba(225, 93, 66, 0.075) 0 2px, transparent 2px 8px);
     color-scheme: dark;
   }
 }
@@ -299,7 +238,6 @@
 
 :root:not([inDOMFullscreen], [chromehidden~="toolbar"], [taskbartab]) #browser {
   background:
-    var(--pf-theme-texture),
     radial-gradient(circle at 15% 0, color-mix(in srgb, var(--pf-accent-color-2), transparent 86%), transparent 36%),
     linear-gradient(180deg, var(--pf-browser-bgcolor), var(--pf-browser-bgcolor-2)) !important;
 }
@@ -326,7 +264,6 @@
 #navigator-toolbox {
   border-bottom: 0 !important;
   background:
-    var(--pf-theme-texture),
     linear-gradient(135deg, color-mix(in srgb, var(--pf-accent-color), transparent 90%), transparent 48%),
     var(--pf-sidebar-bgcolor) !important;
 }
@@ -422,7 +359,6 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   min-height: calc(var(--pf-tab-height) + 8px) !important;
   padding-inline: var(--pf-separation) !important;
   background:
-    var(--pf-theme-texture),
     var(--pf-tabbar-bgcolor) !important;
   color: var(--pf-text-color) !important;
 }
@@ -529,7 +465,6 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   margin: 0 0 var(--pf-browser-separation) var(--pf-browser-separation) !important;
   border-radius: var(--pf-browser-radius) !important;
   background:
-    var(--pf-theme-texture),
     var(--pf-sidebar-bgcolor) !important;
   box-shadow: inset 0 0 0 1px var(--pf-border-color-light) !important;
   overflow: clip !important;
@@ -781,7 +716,6 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
 
 #midori-msidebar-main {
   background:
-    var(--pf-theme-texture),
     var(--pf-sidebar-bgcolor) !important;
   color: var(--pf-text-color) !important;
 }
