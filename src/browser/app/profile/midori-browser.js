@@ -241,11 +241,11 @@ pref('midori.modblur.tabs.hideAllTabsButton', false);
 pref('midori.modblur.window.frame', false);
 pref('midori.modblur.window.frameStyle', 'none');
 pref('midori.modblur.search.focusOutline', true);
-pref('midori.modblur.search.buttonsAlways', false);
+pref('midori.modblur.search.buttonsAlways', true);
 pref('midori.modblur.search.popoutBlur', false);
 pref('midori.modblur.search.popoutStyle', 'off');
 pref('midori.modblur.blur.extra', false);
-pref('midori.modblur.blur.panels', false);
+pref('midori.modblur.blur.panels', true);
 pref('midori.modblur.blur.searchbar', false);
 pref('midori.modblur.blur.verticalExpand', false);
 pref('midori.modblur.blur.acrylic', false);
@@ -283,6 +283,14 @@ pref('browser.urlbar.trending.featureGate', false);
 pref('browser.urlbar.weather.featureGate', false);
 pref('browser.urlbar.quickactions.enabled', true);
 pref('browser.urlbar.clipboard.featureGate', true);
+// Keep Firefox's native favicon discovery enabled. Midori does not replace the
+// loader, so tabs, history, bookmarks, and address-bar results share one cache.
+pref('browser.chrome.site_icons', true);
+// Preserve Firefox's native page actions. Their availability still follows the
+// current document; Mod Blur only keeps the controls discoverable in the URL bar.
+pref('reader.parse-on-load.enabled', true);
+pref('browser.translations.enable', true);
+pref('browser.translations.select.enable', true);
 pref('browser.urlbar.trimHttps', true);
 pref('browser.urlbar.untrimOnUserInteraction.featureGate', true);
 pref('browser.search.suggest.enabled', false);
