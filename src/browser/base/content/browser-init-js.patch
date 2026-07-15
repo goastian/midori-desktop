@@ -2,10 +2,20 @@ diff --git a/browser/base/content/browser-init.js b/browser/base/content/browser
 index 0aa4baea8e5e6d742fc6cd3333068e7eb64b5bbc..3fe44d531439ca365900647f86e43cd74980c284 100644
 --- a/browser/base/content/browser-init.js
 +++ b/browser/base/content/browser-init.js
-@@ -572,6 +572,40 @@ var gBrowserInit = {
+@@ -572,6 +572,50 @@ var gBrowserInit = {
      gProtectionsHandler.init();
      gTrustPanelHandler.init();
  
++    // Midori: materialize Firefox's built-in bookmark action after page-action
++    // initialization so the star is never lost from the URL bar.
++    {
++      const bookmarkAction = PageActions.actionForID("bookmark");
++      if (bookmarkAction) {
++        BrowserPageActions.placeActionInUrlbar(bookmarkAction);
++      }
++      BookmarkingUI.updateStarState();
++    }
++
 +    // Midori: keep the built-in Midori Privacy browser action at the start of
 +    // the URL bar. The Rust/WASM rewrite can register its browser-action later
 +    // than the old extension, so use an observer instead of a short retry loop.
