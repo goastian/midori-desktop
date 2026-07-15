@@ -337,6 +337,10 @@
     opacity: 0.58;
   }
 
+  #context-navigation:not([hidden]) {
+    background-color: color-mix(in srgb, var(--pf-accent-color) 13%, var(--pf-panel-bgcolor)) !important;
+  }
+
   #appMenu-new-tab-button2,
   #appMenu-new-window-button2,
   #appMenu-new-private-window-button2,
@@ -512,10 +516,61 @@
 }
 
 @media -moz-pref("midori.modblur.search.buttonsAlways") {
-  #urlbar:not([open]) .urlbar-page-action:not([disabled]) {
+  #page-action-buttons > :is(#star-button-box, #reader-mode-button, #translations-button) {
+    display: flex !important;
+    visibility: visible !important;
     width: calc(var(--urlbar-min-height) - 2px - 2 * var(--urlbar-container-padding)) !important;
+    min-width: calc(var(--urlbar-min-height) - 2px - 2 * var(--urlbar-container-padding)) !important;
     padding-inline: var(--urlbar-icon-padding) !important;
     opacity: 1 !important;
+  }
+
+  #page-action-buttons > :is(#reader-mode-button, #translations-button)[hidden="true"] {
+    opacity: 0.38 !important;
+    pointer-events: none !important;
+  }
+}
+
+/* Firefox's native in-toolbar urlbar is the default. The large centered
+ * Firefox-Mod-Blur treatment only exists when the user selects it in
+ * about:center. */
+@media -moz-pref("midori.modblur.search.popoutStyle", "animated") or -moz-pref("midori.modblur.search.popoutStyle", "still") {
+  #urlbar[open] {
+    left: calc(50% - 360px) !important;
+    top: 25% !important;
+    width: 80vw !important;
+    max-width: var(--pf-urlbar-width-max) !important;
+    margin: 0 !important;
+    --urlbar-height: 36px !important;
+    --urlbar-inner-border-radius: calc(var(--pf-urlbar-sr-radius) - 2px);
+    color: var(--pf-text-color) !important;
+  }
+
+  #urlbar[open] .urlbar-background,
+  #urlbar[open] #urlbar-background {
+    border: none !important;
+    border-radius: var(--pf-urlbar-fl-radius) !important;
+    background-color: var(--pf-panel-bgcolor) !important;
+    box-shadow: var(--pf-urlbar-border) !important;
+  }
+
+  #urlbar[open] > .urlbar-input-container {
+    align-items: center;
+    padding-inline: 11px !important;
+    --urlbar-container-height: var(--pf-urlbar-input-height);
+    color: var(--pf-text-color) !important;
+  }
+
+  #urlbar[open] #urlbar-input {
+    caret-color: var(--pf-accent-color) !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+  }
+
+  @media (max-width: 900px) {
+    #urlbar[open] {
+      left: 10vw !important;
+    }
   }
 }
 
@@ -533,7 +588,7 @@
 @media -moz-pref("midori.modblur.search.popoutStyle", "animated") {
   #urlbar[open] {
     transform: translateY(3px) scale(1.01);
-    transition: transform var(--pf-ts-25) !important;
+    transition: transform var(--pf-ts-25), opacity var(--pf-ts-15) !important;
   }
 }
 
@@ -545,9 +600,23 @@
 
 @media -moz-pref("midori.modblur.blur.extra") or -moz-pref("midori.modblur.blur.panels") {
   panel[type="arrow"] .panel-arrowcontent,
+  menupopup:not(#ContentSelectDropdownPopup),
   .browserContainer > findbar {
-    backdrop-filter: blur(16px) saturate(1.25);
-    background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 82%, transparent) !important;
+    backdrop-filter: blur(20px) saturate(1.3);
+    background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 76%, transparent) !important;
+    border-color: color-mix(in srgb, var(--pf-border-color) 72%, transparent) !important;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 16%, transparent),
+      0 20px 54px color-mix(in srgb, black 24%, transparent) !important;
+  }
+
+  menupopup:not(#ContentSelectDropdownPopup) {
+    appearance: menupopup !important;
+    --panel-background: color-mix(in srgb, var(--pf-panel-bgcolor) 76%, transparent) !important;
+    --panel-background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 76%, transparent) !important;
+    --menu-background-color: transparent !important;
+    --panel-box-shadow-margin: 0 !important;
+    background: transparent !important;
   }
 }
 
