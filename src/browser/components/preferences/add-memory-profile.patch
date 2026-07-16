@@ -36,8 +36,8 @@ index f6badc31b612c9198c56bb06751e9bbc4a0dd54b..f7b8f7f8b616b231a80322ec93879b10
 +           flex="1"/>
 +    <menulist id="memoryProfileMenulist" preference="midori.memory.profile" sizetopopup="always">
 +      <menupopup>
-+        <menuitem value="0" label="Performance (Higher RAM, faster)"/>
-+        <menuitem value="1" label="Balanced (Recommended)"/>
++        <menuitem value="0" label="Performance (Recommended, Firefox baseline)"/>
++        <menuitem value="1" label="Balanced (Lower RAM, may be slower)"/>
 +        <menuitem value="2" label="Low Memory (Lower RAM, slower)"/>
 +        <menuitem value="3" label="Gaming/AI (WebGPU, Maximum Performance)"/>
 +      </menupopup>
@@ -53,15 +53,7 @@ diff --git a/browser/components/preferences/main.js b/browser/components/prefere
 index c86e54bb6f5e00d9d7bdd81154857a5be97f909c..2aa89e281ada1017771715a7d170737e17a99976 100644
 --- a/browser/components/preferences/main.js
 +++ b/browser/components/preferences/main.js
-@@ -36,6 +36,7 @@ ChromeUtils.defineESModuleGetters(this, {
-   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
-   FormAutofillPreferences:
-     "resource://autofill/FormAutofillPreferences.sys.mjs",
-+  MemoryProfileManager: "resource:///modules/MemoryProfileManager.sys.mjs",
- });
- 
- ChromeUtils.importESModule(
-@@ -97,6 +98,9 @@ Preferences.addAll([
+@@ -97,6 +97,9 @@ Preferences.addAll([
    { id: "browser.startup.windowsLaunchOnLogin.enabled", type: "bool" },
    { id: "browser.privatebrowsing.autostart", type: "bool" },
  
@@ -71,7 +63,7 @@ index c86e54bb6f5e00d9d7bdd81154857a5be97f909c..2aa89e281ada1017771715a7d170737e
    // AI Controls, these pref values can affect settings on the main pane and
    // have base Settings here
    { id: "browser.ai.control.default", type: "string" },
-@@ -804,6 +808,29 @@ var gMainPane = {
+@@ -804,6 +807,15 @@ var gMainPane = {
      initSettingGroup("profiles");
      initSettingGroup("profilePane");
  
@@ -81,20 +73,6 @@ index c86e54bb6f5e00d9d7bdd81154857a5be97f909c..2aa89e281ada1017771715a7d170737e
 +      centerBtn.addEventListener("command", function () {
 +        let mainWindow = window.browsingContext.topChromeWindow;
 +        mainWindow.openTrustedLinkIn("about:center", "tab");
-+      });
-+    }
-+
-+    // Midori Memory Profile handler
-+    let memoryMenulist = document.getElementById("memoryProfileMenulist");
-+    if (memoryMenulist) {
-+      memoryMenulist.addEventListener("command", function () {
-+        let profileIndex = parseInt(memoryMenulist.value, 10);
-+        try {
-+          MemoryProfileManager.applyProfile(profileIndex);
-+          console.log("MemoryProfileManager: Profile changed to " + profileIndex);
-+        } catch (e) {
-+          console.error("MemoryProfileManager: Failed to apply profile", e);
-+        }
 +      });
 +    }
 +
@@ -132,4 +110,3 @@ index 0c03ff70f9784a3b12119326687dc12c99a7dd82..4daa04789bb023bb4e60b5644a303a0a
        },
      ],
    },
-

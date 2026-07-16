@@ -866,7 +866,7 @@ export const MidoriWorkspaces = {
   _scheduleInactiveUnload(win, state) {
     this._cancelInactiveUnload(win, state);
 
-    if (!Services.prefs.getBoolPref(PREF_UNLOAD_INACTIVE, true)) {
+    if (!Services.prefs.getBoolPref(PREF_UNLOAD_INACTIVE, false)) {
       return;
     }
 
@@ -927,6 +927,7 @@ export const MidoriWorkspaces = {
       busy: tab.getAttribute?.('busy') === 'true',
       soundPlaying: !!tab.soundPlaying,
       attention: !!tab.attention,
+      hasBeforeUnload: !!tab.linkedBrowser?.hasBeforeUnload,
       hasLinkedPanel: !!tab.linkedPanel,
       autoDiscardable: tab.autoDiscardable !== false,
       uriSpec,

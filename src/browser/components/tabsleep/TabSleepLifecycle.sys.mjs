@@ -89,6 +89,7 @@ export const TabSleepLifecycle = {
     busy,
     soundPlaying,
     attention,
+    hasBeforeUnload,
     hasLinkedPanel,
     autoDiscardable,
     uriSpec,
@@ -108,6 +109,7 @@ export const TabSleepLifecycle = {
       busy ||
       soundPlaying ||
       attention ||
+      hasBeforeUnload ||
       !hasLinkedPanel ||
       autoDiscardable === false
     ) {

@@ -108,7 +108,7 @@ export const MidoriTabSleep = {
   },
 
   _refreshPrefs() {
-    this._enabled = Services.prefs.getBoolPref(PREF_ENABLED, true);
+    this._enabled = Services.prefs.getBoolPref(PREF_ENABLED, false);
     this._timeoutMs = lazy.TabSleepLifecycle.getTimeoutMs(
       Services.prefs.getIntPref(
         PREF_TIMEOUT_MINUTES,
@@ -262,6 +262,7 @@ export const MidoriTabSleep = {
       busy: tab.getAttribute?.('busy') === 'true',
       soundPlaying: !!tab.soundPlaying,
       attention: !!tab.attention,
+      hasBeforeUnload: !!tab.linkedBrowser?.hasBeforeUnload,
       hasLinkedPanel: !!tab.linkedPanel,
       autoDiscardable: tab.autoDiscardable !== false,
       uriSpec,
@@ -289,6 +290,7 @@ export const MidoriTabSleep = {
           state.busy ||
           state.soundPlaying ||
           state.attention ||
+          state.hasBeforeUnload ||
           !state.hasLinkedPanel ||
           state.autoDiscardable === false ||
           lazy.TabSleepLifecycle.isUriExcluded(state.uriSpec) ||

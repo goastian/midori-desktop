@@ -8,7 +8,18 @@
 #include Fastfox.js
 #include Smoothfox.js
 #include Securefox.js
-#include Memoryfox.js
+
+// Profile 0 follows Firefox's partitioned cache and connection warm-up
+// defaults. Securefox disables these latency-sensitive features; restoring the
+// upstream values removes the measured repeat-navigation penalty while Firefox
+// site isolation and cache partitioning remain enabled.
+pref("browser.cache.disk.enable", true);
+pref("network.http.speculative-parallel-limit", 20);
+pref("network.dns.disablePrefetch", false);
+pref("network.dns.disablePrefetchFromHTTPS", false);
+pref("network.prefetch-next", true);
+pref("browser.urlbar.speculativeConnect.enabled", true);
+pref("browser.places.speculativeConnect.enabled", true);
 
 // Midori Browser Mods
 // Produce a pure Firefox User-Agent for full web compatibility.
@@ -175,7 +186,7 @@ pref('midori.workspaces.show-name', true);
 // Memory-aware workspaces: discard (unload) tabs of inactive workspaces after
 // switching away, freeing their memory while keeping the tab for instant
 // on-demand reload. Delay is clamped to [5000, 1800000] ms.
-pref('midori.workspaces.unloadInactive', true);
+pref('midori.workspaces.unloadInactive', false);
 pref('midori.workspaces.unloadDelayMs', 45000);
 // Tint the browser chrome with the active workspace accent color (subtle).
 pref('midori.workspaces.chromeTint', true);
@@ -184,17 +195,19 @@ pref('midori.workspaces.chromeTint', true);
 // MIDORI MEMORY PROFILE
 // ============================================================================
 // Memory profile setting (0=Performance, 1=Balanced, 2=Low Memory)
-// Default: 1 (Balanced) - good compromise between RAM usage and performance
-pref('midori.memory.profile', 2);
+// Default: 0 (Performance) - Firefox-compatible process/cache behavior.
+// Profiles 1-3 remain available as explicit resource-saving/specialized modes.
+pref('midori.memory.profile', 0);
 
-// Enable tab unloading when system memory is low
-pref('browser.tabs.unloadOnLowMemory', true);
+// Avoid surprise page reloads and form-state loss. Users can explicitly enable
+// Midori Tab Sleep or a memory-saving profile when they prefer RAM savings.
+pref('browser.tabs.unloadOnLowMemory', false);
 
 // Keep native inactivity unloading aligned with Midori tab sleep defaults.
 pref('browser.tabs.min_inactive_duration_before_unload', 600000);
 
-// Automatically discard inactive tabs after 10 minutes by default.
-pref('midori.tabsleep.enabled', true);
+// Automatic discarding is opt-in; hidden background work must not disappear.
+pref('midori.tabsleep.enabled', false);
 pref('midori.tabsleep.timeoutMinutes', 10);
 pref('midori.tabsleep.excludeHosts', '');
 

@@ -66,6 +66,7 @@ export const WorkspaceTabUnloader = {
    * @param {boolean} state.busy Tab is currently loading.
    * @param {boolean} state.soundPlaying Tab is producing audio.
    * @param {boolean} state.attention Tab is requesting attention.
+   * @param {boolean} state.hasBeforeUnload Page protects unsaved state.
    * @param {boolean} state.hasLinkedPanel Tab has a live browser panel.
    * @param {boolean} state.autoDiscardable Tab opted out of auto discard when false.
    * @param {string}  state.uriSpec Current top-level URI of the tab.
@@ -81,6 +82,7 @@ export const WorkspaceTabUnloader = {
     busy,
     soundPlaying,
     attention,
+    hasBeforeUnload,
     hasLinkedPanel,
     autoDiscardable,
     uriSpec,
@@ -98,6 +100,7 @@ export const WorkspaceTabUnloader = {
       busy ||
       soundPlaying ||
       attention ||
+      hasBeforeUnload ||
       !hasLinkedPanel ||
       autoDiscardable === false
     ) {
