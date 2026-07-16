@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { validateStore } from '../src/browser/components/msidebar/SidebarModel.mjs';
+import { isReservedBrowserShortcut } from '../src/browser/components/shortcuts/ShortcutPolicy.sys.mjs';
 import {
   applyBrowserMobileView,
   createPanelNotificationBridge,
@@ -263,6 +264,20 @@ test('panel shortcuts normalize dedupe and expose XUL key metadata', () => {
       ['calendar', 'Alt+F8', 'VK_F8'],
     ]
   );
+});
+
+test('bookmark shortcut remains reserved for the browser', () => {
+  assert.equal(isReservedBrowserShortcut('Ctrl+D'), true);
+  assert.equal(isReservedBrowserShortcut('control + d'), true);
+  assert.equal(isReservedBrowserShortcut('Meta+D'), true);
+  assert.equal(isReservedBrowserShortcut('Ctrl+Shift+D'), false);
+
+  const entries = panelShortcutEntries([
+    { id: 'bookmark-conflict', shortcut: 'Ctrl+D' },
+    { id: 'mail', shortcut: 'Ctrl+Shift+E' },
+  ]);
+  assert.deepEqual(entries.map((entry) => entry.panelId), ['mail']);
+  assert.equal(validatePanelEditInput({ shortcut: 'Ctrl+D' }).shortcut, false);
 });
 
 test('restoreLastUrl and loadOnStartup use validated persisted panel state', () => {
