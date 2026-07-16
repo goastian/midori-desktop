@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as SidebarPrefs from 'resource:///modules/msidebar/SidebarPrefs.mjs';
+import { isReservedBrowserShortcut } from './shortcuts/ShortcutPolicy.sys.mjs';
+
+export { isReservedBrowserShortcut };
 
 const KEYSET_ID = 'midori-shortcuts-keyset';
 
@@ -293,7 +296,12 @@ export function getShortcutValue(pref) {
 }
 
 export function setShortcutValue(pref, value) {
-  Services.prefs.setStringPref(pref, normalizeShortcutString(value));
+  const normalized = normalizeShortcutString(value);
+  if (isReservedBrowserShortcut(normalized)) {
+    return false;
+  }
+  Services.prefs.setStringPref(pref, normalized);
+  return true;
 }
 
 export const MidoriShortcuts = {
@@ -348,7 +356,7 @@ export const MidoriShortcuts = {
 
     for (const definition of SHORTCUT_DEFINITIONS) {
       const shortcut = getShortcutValue(definition.pref);
-      if (!shortcut) {
+      if (!shortcut || isReservedBrowserShortcut(shortcut)) {
         continue;
       }
 

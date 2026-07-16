@@ -7,3 +7,7 @@
 EXTRA_JS_MODULES += [
     "MidoriShortcuts.sys.mjs",
 ]
+
+EXTRA_JS_MODULES.shortcuts += [
+    "ShortcutPolicy.sys.mjs",
+]

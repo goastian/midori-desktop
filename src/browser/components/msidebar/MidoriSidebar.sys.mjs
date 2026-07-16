@@ -14,10 +14,12 @@ const PREF_VERTICAL_TABS = 'midori.verticaltabs.enabled';
 const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
 const PREF_SEEDED_DEFAULT_PANELS = 'midori.msidebar.seededDefaultPanels';
 const CONTENT_CTX_SEPARATOR_ID = 'midori-msidebar-content-context-separator';
+const CONTENT_CTX_MENU_ID = 'midori-msidebar-content-menu';
 const CONTENT_CTX_OPEN_ID = 'midori-msidebar-content-open';
 const CONTENT_CTX_TEMP_ID = 'midori-msidebar-content-open-temp';
 const CONTENT_CTX_EXTENSION_ID = 'midori-msidebar-content-extension';
 const TAB_CTX_SEPARATOR_ID = 'midori-msidebar-tab-context-separator';
+const TAB_CTX_MENU_ID = 'midori-msidebar-tab-menu';
 const TAB_CTX_OPEN_ID = 'midori-msidebar-tab-open';
 const TAB_CTX_TEMP_ID = 'midori-msidebar-tab-open-temp';
 
@@ -284,10 +286,17 @@ export const MidoriSidebar = {
       this._openContextPanel(win, { temporary: false, extensionOnly: true });
     });
 
+    const menu = doc.createXULElement('menu');
+    menu.id = CONTENT_CTX_MENU_ID;
+    menu.setAttribute('label', 'Open in Midori Sidebar');
+    const submenu = doc.createXULElement('menupopup');
+    submenu.appendChild(openItem);
+    submenu.appendChild(tempItem);
+    submenu.appendChild(extItem);
+    menu.appendChild(submenu);
+
     popup.appendChild(sep);
-    popup.appendChild(openItem);
-    popup.appendChild(tempItem);
-    popup.appendChild(extItem);
+    popup.appendChild(menu);
 
     const onShowing = (event) => {
       if (event.target?.id !== 'contentAreaContextMenu') return;
@@ -311,9 +320,16 @@ export const MidoriSidebar = {
       this._openTabPanel(win, { temporary: true });
     });
 
+    const menu = doc.createXULElement('menu');
+    menu.id = TAB_CTX_MENU_ID;
+    menu.setAttribute('label', 'Open Tab in Midori Sidebar');
+    const submenu = doc.createXULElement('menupopup');
+    submenu.appendChild(openItem);
+    submenu.appendChild(tempItem);
+    menu.appendChild(submenu);
+
     popup.appendChild(sep);
-    popup.appendChild(openItem);
-    popup.appendChild(tempItem);
+    popup.appendChild(menu);
 
     const onShowing = (event) => {
       if (event.target?.id !== 'tabContextMenu') return;
@@ -339,10 +355,12 @@ export const MidoriSidebar = {
     } catch {}
     for (const id of [
       CONTENT_CTX_SEPARATOR_ID,
+      CONTENT_CTX_MENU_ID,
       CONTENT_CTX_OPEN_ID,
       CONTENT_CTX_TEMP_ID,
       CONTENT_CTX_EXTENSION_ID,
       TAB_CTX_SEPARATOR_ID,
+      TAB_CTX_MENU_ID,
       TAB_CTX_OPEN_ID,
       TAB_CTX_TEMP_ID,
     ]) {
@@ -385,7 +403,7 @@ export const MidoriSidebar = {
     const payload = this._contextPayload(win);
     const canOpen = !!payload.url && /^(https?:|file:|moz-extension:)/.test(payload.url);
     const isExtension = this._isMozExtensionUrl(payload.url);
-    for (const id of [CONTENT_CTX_SEPARATOR_ID, CONTENT_CTX_OPEN_ID, CONTENT_CTX_TEMP_ID]) {
+    for (const id of [CONTENT_CTX_SEPARATOR_ID, CONTENT_CTX_MENU_ID]) {
       const node = doc?.getElementById?.(id);
       if (node) node.hidden = !canOpen;
     }
@@ -397,7 +415,7 @@ export const MidoriSidebar = {
     const doc = win?.document;
     const payload = this._tabPayload(win);
     const canOpen = !!payload.url && /^(https?:|file:|moz-extension:)/.test(payload.url);
-    for (const id of [TAB_CTX_SEPARATOR_ID, TAB_CTX_OPEN_ID, TAB_CTX_TEMP_ID]) {
+    for (const id of [TAB_CTX_SEPARATOR_ID, TAB_CTX_MENU_ID]) {
       const node = doc?.getElementById?.(id);
       if (node) node.hidden = !canOpen;
     }

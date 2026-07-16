@@ -10,6 +10,7 @@ import {
   destroyBrowser,
 } from './SidebarPanelHost.mjs';
 import * as Prefs from './SidebarPrefs.mjs';
+import { isReservedBrowserShortcut } from '../shortcuts/ShortcutPolicy.sys.mjs';
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -62,7 +63,7 @@ function ensureStyle(doc) {
 .midori-msidebar-panel-btn[data-muted='true']::after{content:"";position:absolute;right:3px;bottom:2px;width:12px;height:12px;background:url("chrome://browser/skin/tabbrowser/tab-audio-muted-small.svg") center/12px 12px no-repeat;opacity:0.95;pointer-events:none;}
 .midori-msidebar-panel-btn[data-notification-badge]::before{content:attr(data-notification-badge);position:absolute;top:1px;right:1px;min-width:12px;height:12px;padding:0 3px;border-radius:999px;background:#d92222;color:#fff;font-size:9px;font-weight:700;line-height:12px;text-align:center;pointer-events:none;}
 
-#midori-msidebar-toggle{list-style-image:url("chrome://browser/skin/sidebars.svg");}
+#midori-msidebar-toggle{list-style-image:url("chrome://browser/skin/sidebar-expanded.svg");}
 #midori-msidebar-add{list-style-image:url("chrome://global/skin/icons/plus.svg");}
 #midori-msidebar-settings{list-style-image:url("chrome://global/skin/icons/settings.svg");}
 #midori-msidebar-nav-back{list-style-image:url("chrome://browser/skin/back.svg");}
@@ -452,7 +453,7 @@ export function panelShortcutEntries(panels) {
   const used = new Set();
   for (const panel of Array.isArray(panels) ? panels : []) {
     const shortcut = normalizePanelShortcut(panel?.shortcut || '');
-    if (!panel?.id || !shortcut || used.has(shortcut)) continue;
+    if (!panel?.id || !shortcut || isReservedBrowserShortcut(shortcut) || used.has(shortcut)) continue;
     const parsed = panelShortcutToXul(shortcut);
     if (!parsed || (!parsed.key && !parsed.keycode)) continue;
     used.add(shortcut);
@@ -537,7 +538,7 @@ export function buildPanelSelectorScript(selector) {
 export function validatePanelEditInput({ url, shortcut, cssSelector } = {}) {
   return {
     url: !url || !!sanitizeUrl(url),
-    shortcut: !shortcut || !!panelShortcutToXul(shortcut),
+    shortcut: !shortcut || (!isReservedBrowserShortcut(shortcut) && !!panelShortcutToXul(shortcut)),
     cssSelector: !cssSelector || (typeof cssSelector === 'string' && cssSelector.trim().length <= 500),
   };
 }

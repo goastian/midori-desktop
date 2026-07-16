@@ -739,6 +739,10 @@ function findShortcutConflict(definitions, currentPref, candidate) {
   return null;
 }
 
+function isReservedShortcut(candidate) {
+  return !!getShortcutsApi()?.isReservedBrowserShortcut?.(candidate);
+}
+
 function syncShortcutFieldValue(input, definition) {
   const api = getShortcutsApi();
   const savedValue = api?.getShortcutValue?.(definition.pref) || "";
@@ -839,6 +843,14 @@ function buildShortcutRow(definitions, definition) {
         return;
       }
 
+      if (isReservedShortcut(pendingShortcut)) {
+        input.classList.add("shortcut-field-error");
+        conflict.hidden = false;
+        conflict.textContent = `${pendingShortcut} is reserved for bookmarking the current page.`;
+        setShortcutStatus(`${pendingShortcut} is reserved by the browser. Choose another shortcut.`, true);
+        return;
+      }
+
       const conflictDef = findShortcutConflict(definitions, definition.pref, pendingShortcut);
       if (conflictDef) {
         input.classList.add("shortcut-field-error");
@@ -865,6 +877,14 @@ function buildShortcutRow(definitions, definition) {
     input.value = api?.formatShortcutForDisplay?.(captured) || captured;
     input.classList.add("shortcut-field-capturing");
     input.classList.remove("shortcut-field-error", "shortcut-field-success");
+
+    if (isReservedShortcut(captured)) {
+      conflict.hidden = false;
+      conflict.textContent = `${captured} is reserved for bookmarking the current page.`;
+      input.classList.add("shortcut-field-error");
+      setShortcutStatus(`${captured} is reserved by the browser.`, true);
+      return;
+    }
 
     const conflictDef = findShortcutConflict(definitions, definition.pref, captured);
     if (conflictDef) {
