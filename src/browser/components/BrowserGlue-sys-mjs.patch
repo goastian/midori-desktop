@@ -2,13 +2,14 @@ diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/Browser
 index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dccacc9cb58f 100644
 --- a/browser/components/BrowserGlue.sys.mjs
 +++ b/browser/components/BrowserGlue.sys.mjs
-@@ -77,6 +77,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
+@@ -77,6 +77,15 @@ ChromeUtils.defineESModuleGetters(lazy, {
      "resource:///modules/WebProtocolHandlerRegistrar.sys.mjs",
    WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
    setTimeout: "resource://gre/modules/Timer.sys.mjs",
 +  AutoHideToolbar: "resource:///modules/AutoHideToolbar.sys.mjs",
 +  MemoryProfileManager: "resource:///modules/MemoryProfileManager.sys.mjs",
 +  MidoriGradient: "resource:///modules/MidoriGradient.sys.mjs",
++  MidoriProfileMigration: "resource:///modules/MidoriProfileMigration.sys.mjs",
 +  MidoriSidebar: "resource:///modules/MidoriSidebar.sys.mjs",
 +  MidoriShortcuts: "resource:///modules/MidoriShortcuts.sys.mjs",
 +  MidoriTabSleep: "resource:///modules/MidoriTabSleep.sys.mjs",
@@ -17,7 +18,18 @@ index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dcca
  });
  
  XPCOMUtils.defineLazyServiceGetters(lazy, {
-@@ -1696,6 +1704,132 @@ BrowserGlue.prototype = {
+@@ -397,3 +406,10 @@ BrowserGlue.prototype = {
++    // Preserve themes and toolbar customizations when upgrading from 11.8.x.
++    try {
++      lazy.MidoriProfileMigration.migrate();
++    } catch (e) {
++      console.error("Midori: Failed to migrate the legacy profile", e);
++    }
++
+     // check if we're in safe mode
+     if (Services.appinfo.inSafeMode) {
+       Services.ww.openWindow(
+@@ -1696,6 +1712,132 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {

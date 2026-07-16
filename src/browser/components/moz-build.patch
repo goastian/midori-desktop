@@ -6,8 +6,8 @@ index 799e5246e6d11a3725129975154f524b8fe00a16..ef851ef46ad2446bfe31a15568aa8a95
      "webrtc",
  ]
  
-+# Pulse: Custom components
-+DIRS += ["autohide", "center", "cws", "gradient", "memory", "msidebar", "setup", "shortcuts", "tabsleep", "tor", "verticaltabs", "workspace"]
++# Midori custom components
++DIRS += ["autohide", "center", "cws", "gradient", "memory", "msidebar", "profilemigration", "setup", "shortcuts", "tabsleep", "tor", "verticaltabs", "workspace"]
 +
  DIRS += ["build"]
  

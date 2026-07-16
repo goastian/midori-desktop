@@ -74,6 +74,9 @@
   --pf-fx-bounce: cubic-bezier(0.47, 1.84, 0.41, 0.8);
   --pf-fx-sidebar: cubic-bezier(0.125, 1.125, 0.25, 1.0125);
 
+}
+
+:root:not([lwtheme]) {
   --toolbar-bgcolor: var(--pf-sidebar-bgcolor) !important;
   --toolbar-color: var(--pf-text-color) !important;
   --arrowpanel-background: var(--pf-panel-bgcolor) !important;
@@ -108,14 +111,41 @@
   color-scheme: light;
 }
 
-#main-window {
+/* WebExtension themes keep ownership of their native Firefox variables. Midori
+ * consumes those values for its custom surfaces instead of painting a jade
+ * colorway over the user's selected theme. */
+:root[lwtheme] {
+  --pf-accent-color: var(--lwt-toolbarbutton-icon-fill-attention, AccentColor);
+  --pf-accent-color-2: var(--lwt-toolbarbutton-icon-fill, var(--lwt-text-color));
+  --pf-browser-bgcolor: var(--lwt-accent-color);
+  --pf-browser-bgcolor-2: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
+  --pf-sidebar-bgcolor: var(--toolbar-bgcolor, var(--lwt-accent-color));
+  --pf-panel-bgcolor: var(--arrowpanel-background, var(--toolbar-bgcolor));
+  --pf-text-color: var(--toolbar-color, var(--lwt-text-color));
+  --pf-url-text-color: var(--toolbar-field-color, var(--lwt-text-color));
+  --pf-icon-color: var(--lwt-toolbarbutton-icon-fill, var(--lwt-text-color));
+  --pf-icon-color-active: var(--lwt-toolbarbutton-icon-fill-attention, var(--pf-accent-color));
+  --pf-toolbar-bgcolor: color-mix(in srgb, var(--pf-text-color), transparent 92%);
+  --pf-toolbar-bgcolor-hover: color-mix(in srgb, var(--pf-text-color), transparent 86%);
+  --pf-toolbar-bgcolor-active: color-mix(in srgb, var(--pf-accent-color), transparent 78%);
+  --pf-toolbar-bgcolor-inactive: color-mix(in srgb, var(--pf-text-color), transparent 95%);
+  --pf-tabbar-bgcolor: color-mix(in srgb, var(--lwt-accent-color), transparent 8%);
+  --pf-navbar-bgcolor: var(--toolbar-bgcolor, var(--lwt-accent-color));
+  --pf-urlbar-bgcolor: var(--toolbar-field-background-color, var(--toolbar-bgcolor));
+  --pf-input-bgcolor: var(--toolbar-field-background-color, var(--toolbar-bgcolor));
+  --pf-tab-selected-bgcolor: var(--tab-selected-bgcolor, var(--toolbar-bgcolor));
+  --pf-border-color: var(--arrowpanel-border-color, color-mix(in srgb, var(--pf-text-color), transparent 82%));
+  --pf-border-color-light: color-mix(in srgb, var(--pf-text-color), transparent 90%);
+}
+
+#main-window:not([lwtheme]) {
   --lwt-accent-color: var(--pf-sidebar-bgcolor) !important;
   --lwt-accent-color-inactive: var(--pf-sidebar-bgcolor) !important;
   background: var(--pf-browser-bgcolor) !important;
 }
 
 @media -moz-pref("midori.colorway", "ocean") {
-  :root {
+  :root:not([lwtheme]) {
     --pf-accent-color: #0e9dae;
     --pf-accent-color-2: #7bd7e8;
     --pf-browser-bgcolor: #eefafe;
@@ -136,7 +166,7 @@
 }
 
 @media -moz-pref("midori.colorway", "sunrise") {
-  :root {
+  :root:not([lwtheme]) {
     --pf-accent-color: #d98b2b;
     --pf-accent-color-2: #0eae5b;
     --pf-browser-bgcolor: #fff6e8;
@@ -157,7 +187,7 @@
 }
 
 @media -moz-pref("midori.colorway", "forest") {
-  :root {
+  :root:not([lwtheme]) {
     --pf-accent-color: #29c58b;
     --pf-accent-color-2: #0eae5b;
     --pf-browser-bgcolor: #07150d;
@@ -182,7 +212,7 @@
 }
 
 @media -moz-pref("midori.colorway", "midnight") {
-  :root {
+  :root:not([lwtheme]) {
     --pf-accent-color: #2f9de2;
     --pf-accent-color-2: #0e9dae;
     --pf-browser-bgcolor: #0a1020;
@@ -207,7 +237,7 @@
 }
 
 @media -moz-pref("midori.colorway", "ember") {
-  :root {
+  :root:not([lwtheme]) {
     --pf-accent-color: #e15d42;
     --pf-accent-color-2: #f3b454;
     --pf-browser-bgcolor: #201111;
@@ -505,8 +535,7 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   color: var(--pf-text-color) !important;
 }
 
-:root[midori-horizontal-tabs]:not([customizing]) .titlebar-spacer,
-:root[midori-horizontal-tabs]:not([customizing]) toolbarspring {
+:root[midori-horizontal-tabs]:not([customizing]) .titlebar-spacer {
   display: none !important;
 }
 
@@ -515,8 +544,15 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
 }
 
 @media (max-width: 768px) {
-  :root[midori-horizontal-tabs] #TabsToolbar-customization-target {
-    visibility: collapse;
+  :root[midori-horizontal-tabs] #midori-workspace-selector {
+    width: var(--pf-toolbaritem-size) !important;
+    min-width: var(--pf-toolbaritem-size) !important;
+    max-width: var(--pf-toolbaritem-size) !important;
+    padding-inline: 0 !important;
+  }
+
+  :root[midori-horizontal-tabs] #midori-workspace-selector-label {
+    display: none !important;
   }
 }
 
