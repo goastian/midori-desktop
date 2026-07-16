@@ -54,7 +54,7 @@ const PREF_MAP = {
   "pref-modblur-hide-tab-preview": { pref: "midori.modblur.tabs.hidePreviewPanel", type: "bool" },
   "pref-modblur-hide-vertical-scrollbar": { pref: "midori.modblur.verticalTabs.hideScrollbar", type: "bool" },
   "pref-modblur-search-outline": { pref: "midori.modblur.search.focusOutline", type: "bool" },
-  "pref-modblur-tabs-top": { pref: "midori.modblur.tabs.onTop", type: "bool" },
+  "pref-modblur-tabs-layout": { pref: "midori.modblur.tabs.layout", type: "string" },
   "pref-modblur-window-frame": { pref: "midori.modblur.window.frameStyle", type: "string" },
   "pref-modblur-search-buttons": { pref: "midori.modblur.search.buttonsAlways", type: "bool" },
   "pref-modblur-active-tab-static": { pref: "midori.modblur.tabs.activeStaticWidth", type: "bool" },
@@ -82,6 +82,9 @@ const MODBLUR_PREFS = [...new Set(
 )];
 
 let modBlurUndoSnapshot = null;
+
+const TAB_LAYOUT_PREF = "midori.modblur.tabs.layout";
+const LEGACY_TABS_ON_TOP_PREF = "midori.modblur.tabs.onTop";
 
 const FALLBACK_WORKSPACE_ICONS = [
   { id: "default", emoji: "🏠", label: "Home" },
@@ -153,6 +156,20 @@ function writePref(prefName, type, value) {
     case "bool":   Services.prefs.setBoolPref(prefName, value);   break;
     case "int":    Services.prefs.setIntPref(prefName, value);    break;
     case "string": Services.prefs.setCharPref(prefName, value);   break;
+  }
+}
+
+function migrateLegacyTabLayoutPref() {
+  const hasLayoutChoice = Services.prefs.prefHasUserValue(TAB_LAYOUT_PREF);
+  const hasLegacyChoice = Services.prefs.prefHasUserValue(LEGACY_TABS_ON_TOP_PREF);
+
+  if (!hasLayoutChoice && hasLegacyChoice) {
+    const tabsOnTop = Services.prefs.getBoolPref(LEGACY_TABS_ON_TOP_PREF, false);
+    Services.prefs.setStringPref(TAB_LAYOUT_PREF, tabsOnTop ? "tabs-top" : "urlbar-top");
+  }
+
+  if (hasLegacyChoice) {
+    Services.prefs.clearUserPref(LEGACY_TABS_ON_TOP_PREF);
   }
 }
 
@@ -1395,6 +1412,7 @@ function initVersionInfo() {
 // ---- Boot ----
 document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
+  migrateLegacyTabLayoutPref();
   initPrefs();
   initModBlurCatalog();
   initAddonControls();

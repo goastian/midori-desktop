@@ -9,6 +9,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const welcomeSeenPref = 'midori.welcome.seen';
+const urlbarLayoutPref = 'midori.modblur.tabs.layout';
 
 class Page {
   /**
@@ -97,11 +98,28 @@ class TabLayout extends Page {
     this._horizontalBottomCard = document.getElementById('tablayoutHorizontalBottom');
     this._verticalLeftCard = document.getElementById('tablayoutVertical');
     this._verticalRightCard = document.getElementById('tablayoutVerticalRight');
+    this._urlbarOrderSection = document.getElementById('urlbarOrderSection');
+    this._addressTopCard = document.getElementById('urlbarOrderAddressTop');
+    this._tabsTopCard = document.getElementById('urlbarOrderTabsTop');
 
     this._horizontalTopCard.addEventListener('click', () => this._select('horizontal-top'));
     this._horizontalBottomCard.addEventListener('click', () => this._select('horizontal-bottom'));
     this._verticalLeftCard.addEventListener('click', () => this._select('vertical-left'));
     this._verticalRightCard.addEventListener('click', () => this._select('vertical-right'));
+    this._addressTopCard.addEventListener('click', () => this._selectUrlbarOrder('urlbar-top'));
+    this._tabsTopCard.addEventListener('click', () => this._selectUrlbarOrder('tabs-top'));
+    this._addressTopCard.addEventListener('keydown', (event) => this._handleUrlbarOrderKeydown(event));
+    this._tabsTopCard.addEventListener('keydown', (event) => this._handleUrlbarOrderKeydown(event));
+
+    const vertical = Services.prefs.getBoolPref('midori.verticaltabs.enabled', false);
+    const verticalPosition = Services.prefs.getCharPref('midori.verticaltabs.position', 'left');
+    const horizontalPosition = Services.prefs.getCharPref('midori.horizontaltabs.position', 'top');
+    const mode = vertical
+      ? (verticalPosition === 'right' ? 'vertical-right' : 'vertical-left')
+      : (horizontalPosition === 'bottom' ? 'horizontal-bottom' : 'horizontal-top');
+
+    this._select(mode);
+    this._selectUrlbarOrder(Services.prefs.getCharPref(urlbarLayoutPref, 'urlbar-top'));
   }
 
   _select(mode) {
@@ -110,6 +128,7 @@ class TabLayout extends Page {
     this._horizontalBottomCard.classList.toggle('selected', mode === 'horizontal-bottom');
     this._verticalLeftCard.classList.toggle('selected', mode === 'vertical-left');
     this._verticalRightCard.classList.toggle('selected', mode === 'vertical-right');
+    this._urlbarOrderSection.hidden = mode !== 'horizontal-top';
 
     lazy.MidoriVerticalTabs.setEnabled(vertical);
 
@@ -121,6 +140,33 @@ class TabLayout extends Page {
         mode === 'horizontal-bottom' ? 'bottom' : 'top'
       );
     }
+  }
+
+  _selectUrlbarOrder(layout) {
+    const value = layout === 'tabs-top' ? 'tabs-top' : 'urlbar-top';
+    const addressTop = value === 'urlbar-top';
+
+    this._addressTopCard.classList.toggle('selected', addressTop);
+    this._tabsTopCard.classList.toggle('selected', !addressTop);
+    this._addressTopCard.setAttribute('aria-checked', String(addressTop));
+    this._tabsTopCard.setAttribute('aria-checked', String(!addressTop));
+    this._addressTopCard.tabIndex = addressTop ? 0 : -1;
+    this._tabsTopCard.tabIndex = addressTop ? -1 : 0;
+
+    Services.prefs.setCharPref(urlbarLayoutPref, value);
+  }
+
+  _handleUrlbarOrderKeydown(event) {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      return;
+    }
+
+    event.preventDefault();
+    const value = event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'Home'
+      ? 'urlbar-top'
+      : 'tabs-top';
+    this._selectUrlbarOrder(value);
+    (value === 'urlbar-top' ? this._addressTopCard : this._tabsTopCard).focus();
   }
 }
 

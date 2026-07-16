@@ -450,13 +450,31 @@
   }
 }
 
-@media -moz-pref("midori.modblur.tabs.onTop") {
+/* Firefox-Mod-Blur layout: navigation first, horizontal tabs directly below
+ * it, and bookmarks last. Vertical tabs keep their native structure. */
+:root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #toolbar-menubar {
+  order: 0 !important;
+}
+
+:root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #nav-bar {
+  order: 1 !important;
+}
+
+:root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #TabsToolbar {
+  order: 2 !important;
+}
+
+:root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #PersonalToolbar {
+  order: 3 !important;
+}
+
+@media -moz-pref("midori.modblur.tabs.layout", "tabs-top") or -moz-pref("midori.modblur.tabs.onTop") {
   :root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #TabsToolbar {
-    order: 0 !important;
+    order: 1 !important;
   }
 
   :root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #nav-bar {
-    order: 1 !important;
+    order: 2 !important;
   }
 }
 
@@ -515,18 +533,89 @@
   }
 }
 
+@media not -moz-pref("midori.modblur.search.buttonsAlways") {
+  #page-action-buttons {
+    min-width: 0 !important;
+    overflow: visible !important;
+    padding-inline-start: 0 !important;
+  }
+
+  #page-action-buttons .urlbar-page-action:not([hidden]) {
+    margin-inline-end: calc(-16px - 2 * var(--urlbar-icon-padding)) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition:
+      margin-inline-end 150ms ease-in-out,
+      opacity 100ms ease-in-out !important;
+  }
+
+  #urlbar:is(:hover, [focused]) #page-action-buttons > :is(#star-button-box, #reader-mode-button, #translations-button) {
+    display: flex !important;
+    visibility: visible !important;
+    width: calc(var(--urlbar-min-height) - 2 * var(--urlbar-container-inset)) !important;
+    min-width: calc(var(--urlbar-min-height) - 2 * var(--urlbar-container-inset)) !important;
+    margin-inline-end: 0 !important;
+    padding: var(--urlbar-icon-padding) !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  #urlbar:is(:hover, [focused]) #page-action-buttons > :is(#reader-mode-button, #translations-button)[hidden="true"] {
+    opacity: 0.42 !important;
+    pointer-events: none !important;
+  }
+
+  #urlbar:is(:hover, [focused]) #page-action-buttons > .urlbar-page-action:not([hidden]),
+  #page-action-buttons:hover > .urlbar-page-action:not([hidden]),
+  #page-action-buttons:focus-within > .urlbar-page-action:not([hidden]),
+  #page-action-buttons .urlbar-page-action:is([open], :focus-visible),
+  #page-action-buttons #star-button-box:has(#star-button[starred]) {
+    display: flex !important;
+    visibility: visible !important;
+    width: calc(var(--urlbar-min-height) - 2 * var(--urlbar-container-inset)) !important;
+    min-width: calc(var(--urlbar-min-height) - 2 * var(--urlbar-container-inset)) !important;
+    margin-inline-end: 0 !important;
+    padding: var(--urlbar-icon-padding) !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transition:
+      margin-inline-end 100ms ease,
+      opacity 100ms ease !important;
+  }
+
+  #page-action-buttons::before {
+    content: none !important;
+    display: none !important;
+  }
+}
+
 @media -moz-pref("midori.modblur.search.buttonsAlways") {
+  #page-action-buttons {
+    display: flex !important;
+    visibility: visible !important;
+    min-width: auto !important;
+    overflow: visible !important;
+  }
+
+  #page-action-buttons > .urlbar-page-action:not([hidden]) {
+    margin-inline-end: 0 !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
   #page-action-buttons > :is(#star-button-box, #reader-mode-button, #translations-button) {
     display: flex !important;
     visibility: visible !important;
-    width: calc(var(--urlbar-min-height) - 2px - 2 * var(--urlbar-container-padding)) !important;
-    min-width: calc(var(--urlbar-min-height) - 2px - 2 * var(--urlbar-container-padding)) !important;
-    padding-inline: var(--urlbar-icon-padding) !important;
+    width: calc(var(--urlbar-min-height) - 2 * var(--urlbar-container-inset)) !important;
+    min-width: calc(var(--urlbar-min-height) - 2 * var(--urlbar-container-inset)) !important;
+    margin-inline-end: 0 !important;
+    padding: var(--urlbar-icon-padding) !important;
     opacity: 1 !important;
+    pointer-events: auto !important;
   }
 
   #page-action-buttons > :is(#reader-mode-button, #translations-button)[hidden="true"] {
-    opacity: 0.38 !important;
+    opacity: 0.42 !important;
     pointer-events: none !important;
   }
 }
@@ -599,24 +688,70 @@
 }
 
 @media -moz-pref("midori.modblur.blur.extra") or -moz-pref("midori.modblur.blur.panels") {
+  :is(panel[type="arrow"], menupopup:not(#ContentSelectDropdownPopup)) {
+    color-scheme: dark;
+    --panel-background: rgba(29, 29, 32, 0.88) !important;
+    --panel-background-color: rgba(29, 29, 32, 0.88) !important;
+    --panel-color: rgba(255, 255, 255, 0.94) !important;
+    --panel-text-color: rgba(255, 255, 255, 0.94) !important;
+    --panel-disabled-color: rgba(255, 255, 255, 0.42) !important;
+    --panel-border-color: rgba(255, 255, 255, 0.14) !important;
+    --panel-separator-color: rgba(255, 255, 255, 0.12) !important;
+    --menu-background-color: transparent !important;
+    --menu-color: rgba(255, 255, 255, 0.94) !important;
+    --menuitem-hover-background-color: rgba(255, 255, 255, 0.12) !important;
+    --menuitem-hover-color: white !important;
+    --panel-border-radius: 8px !important;
+    --menuitem-border-radius: 4px !important;
+    color: rgba(255, 255, 255, 0.94) !important;
+  }
+
   panel[type="arrow"] .panel-arrowcontent,
   menupopup:not(#ContentSelectDropdownPopup),
   .browserContainer > findbar {
-    backdrop-filter: blur(20px) saturate(1.3);
-    background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 76%, transparent) !important;
-    border-color: color-mix(in srgb, var(--pf-border-color) 72%, transparent) !important;
+    backdrop-filter: blur(22px) saturate(1.35) brightness(0.78);
+    background-color: rgba(29, 29, 32, 0.84) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+    border-radius: 8px !important;
     box-shadow:
-      inset 0 1px 0 color-mix(in srgb, white 16%, transparent),
-      0 20px 54px color-mix(in srgb, black 24%, transparent) !important;
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 18px 46px rgba(8, 8, 14, 0.48) !important;
   }
 
   menupopup:not(#ContentSelectDropdownPopup) {
     appearance: menupopup !important;
-    --panel-background: color-mix(in srgb, var(--pf-panel-bgcolor) 76%, transparent) !important;
-    --panel-background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 76%, transparent) !important;
-    --menu-background-color: transparent !important;
     --panel-box-shadow-margin: 0 !important;
     background: transparent !important;
+  }
+
+  menupopup:not(#ContentSelectDropdownPopup) > :is(menu, menuitem, menucaption) {
+    --menu-color: rgba(255, 255, 255, 0.94) !important;
+    --panel-color: rgba(255, 255, 255, 0.94) !important;
+    --panel-text-color: rgba(255, 255, 255, 0.94) !important;
+    color: rgba(255, 255, 255, 0.94) !important;
+  }
+
+  menupopup:not(#ContentSelectDropdownPopup) > :is(menu, menuitem):where([_moz-menuactive]:not([disabled="true"])) {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: white !important;
+  }
+
+  menupopup:not(#ContentSelectDropdownPopup) > menuseparator {
+    border-color: rgba(255, 255, 255, 0.12) !important;
+  }
+
+  #context-navigation:not([hidden]) {
+    margin-inline: 0 !important;
+    padding: 4px !important;
+    border-radius: 8px 8px 0 0 !important;
+    background-color: rgba(12, 12, 15, 0.64) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.12) !important;
+  }
+
+  .animatable-menupopup,
+  panel[type="arrow"] {
+    animation: none !important;
+    transition: none !important;
   }
 }
 

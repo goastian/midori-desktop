@@ -186,6 +186,49 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         </div>
       </div>
 
+      <section class="urlbar-order-section" id="urlbarOrderSection" aria-labelledby="urlbarOrderTitle">
+        <h3 id="urlbarOrderTitle" data-l10n-id="welcome-dialog-urlbar-order"></h3>
+        <p data-l10n-id="welcome-dialog-urlbar-order-subtext"></p>
+
+        <div class="urlbar-order-options" role="radiogroup" aria-labelledby="urlbarOrderTitle">
+          <div
+            class="urlbar-order-card selected"
+            id="urlbarOrderAddressTop"
+            role="radio"
+            tabindex="0"
+            aria-checked="true"
+          >
+            <div class="urlbar-order-preview" aria-hidden="true">
+              <div class="preview-address-row"><span></span></div>
+              <div class="preview-tabs-row"><span class="active"></span><span></span><span></span></div>
+              <div class="preview-page-area"></div>
+            </div>
+            <div class="urlbar-order-copy">
+              <h4 data-l10n-id="welcome-dialog-urlbar-order-address-top"></h4>
+              <p data-l10n-id="welcome-dialog-urlbar-order-address-top-desc"></p>
+            </div>
+          </div>
+
+          <div
+            class="urlbar-order-card"
+            id="urlbarOrderTabsTop"
+            role="radio"
+            tabindex="0"
+            aria-checked="false"
+          >
+            <div class="urlbar-order-preview" aria-hidden="true">
+              <div class="preview-tabs-row"><span class="active"></span><span></span><span></span></div>
+              <div class="preview-address-row"><span></span></div>
+              <div class="preview-page-area"></div>
+            </div>
+            <div class="urlbar-order-copy">
+              <h4 data-l10n-id="welcome-dialog-urlbar-order-tabs-top"></h4>
+              <p data-l10n-id="welcome-dialog-urlbar-order-tabs-top-desc"></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <hbox>
         <button
           id="tablayoutBack"

@@ -33,6 +33,12 @@ welcome-dialog-tablayout-vertical = Vertical
 welcome-dialog-tablayout-vertical-desc = Modern sidebar with floating URL bar
 welcome-dialog-tablayout-vertical-right = Vertical (Right)
 welcome-dialog-tablayout-vertical-right-desc = Vertical tabs on the right
+welcome-dialog-urlbar-order = Choose the address bar position
+welcome-dialog-urlbar-order-subtext = This choice applies to horizontal tabs at the top and can be changed later in Midori Center
+welcome-dialog-urlbar-order-address-top = Address bar above tabs
+welcome-dialog-urlbar-order-address-top-desc = Midori's compact layout
+welcome-dialog-urlbar-order-tabs-top = Tabs above address bar
+welcome-dialog-urlbar-order-tabs-top-desc = Classic browser layout
 welcome-dialog-tablayout-action = Continue
 
 welcome-dialog-msidebar = Enable Sidebar

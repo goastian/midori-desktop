@@ -234,6 +234,8 @@ pref('midori.modblur.verticalTabs.compact', false);
 pref('midori.modblur.verticalTabs.hideScrollbar', false);
 pref('midori.modblur.tabs.centered', false);
 pref('midori.modblur.tabs.hidePreviewPanel', false);
+pref('midori.modblur.tabs.layout', 'urlbar-top');
+// Legacy compatibility. about:center migrates user values to tabs.layout.
 pref('midori.modblur.tabs.onTop', false);
 pref('midori.modblur.tabs.activeStaticWidth', true);
 pref('midori.modblur.tabs.soundColor', true);
@@ -241,7 +243,7 @@ pref('midori.modblur.tabs.hideAllTabsButton', false);
 pref('midori.modblur.window.frame', false);
 pref('midori.modblur.window.frameStyle', 'none');
 pref('midori.modblur.search.focusOutline', true);
-pref('midori.modblur.search.buttonsAlways', true);
+pref('midori.modblur.search.buttonsAlways', false);
 pref('midori.modblur.search.popoutBlur', false);
 pref('midori.modblur.search.popoutStyle', 'off');
 pref('midori.modblur.blur.extra', false);
