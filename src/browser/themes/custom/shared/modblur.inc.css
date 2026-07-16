@@ -688,64 +688,67 @@
 }
 
 @media -moz-pref("midori.modblur.blur.extra") or -moz-pref("midori.modblur.blur.panels") {
+  /* Blur is an effect, not a colorway. Keep every popup on the palette chosen
+   * by Midori/Firefox instead of silently switching the surface to dark. */
   :is(panel[type="arrow"], menupopup:not(#ContentSelectDropdownPopup)) {
-    color-scheme: dark;
-    --panel-background: rgba(29, 29, 32, 0.88) !important;
-    --panel-background-color: rgba(29, 29, 32, 0.88) !important;
-    --panel-color: rgba(255, 255, 255, 0.94) !important;
-    --panel-text-color: rgba(255, 255, 255, 0.94) !important;
-    --panel-disabled-color: rgba(255, 255, 255, 0.42) !important;
-    --panel-border-color: rgba(255, 255, 255, 0.14) !important;
-    --panel-separator-color: rgba(255, 255, 255, 0.12) !important;
+    --panel-background: color-mix(in srgb, var(--pf-panel-bgcolor) 88%, transparent) !important;
+    --panel-background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 88%, transparent) !important;
+    --panel-color: var(--pf-text-color) !important;
+    --panel-text-color: var(--pf-text-color) !important;
+    --panel-disabled-color: color-mix(in srgb, var(--pf-text-color), transparent 48%) !important;
+    --panel-border-color: var(--pf-border-color) !important;
+    --panel-separator-color: color-mix(in srgb, var(--pf-text-color), transparent 88%) !important;
     --menu-background-color: transparent !important;
-    --menu-color: rgba(255, 255, 255, 0.94) !important;
-    --menuitem-hover-background-color: rgba(255, 255, 255, 0.12) !important;
-    --menuitem-hover-color: white !important;
+    --menu-color: var(--pf-text-color) !important;
+    --menuitem-hover-background-color: var(--pf-toolbar-bgcolor-hover) !important;
+    --menuitem-hover-color: var(--pf-text-color) !important;
     --panel-border-radius: 8px !important;
     --menuitem-border-radius: 4px !important;
-    color: rgba(255, 255, 255, 0.94) !important;
+    color: var(--pf-text-color) !important;
   }
 
   panel[type="arrow"] .panel-arrowcontent,
   menupopup:not(#ContentSelectDropdownPopup),
   .browserContainer > findbar {
-    backdrop-filter: blur(22px) saturate(1.35) brightness(0.78);
-    background-color: rgba(29, 29, 32, 0.84) !important;
-    border-color: rgba(255, 255, 255, 0.14) !important;
+    backdrop-filter: blur(22px) saturate(1.35);
+    background-color: color-mix(in srgb, var(--pf-panel-bgcolor) 88%, transparent) !important;
+    border-color: var(--pf-border-color) !important;
     border-radius: 8px !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 18px 46px rgba(8, 8, 14, 0.48) !important;
+      inset 0 1px 0 color-mix(in srgb, var(--pf-text-color), transparent 92%),
+      0 18px 46px rgba(0, 0, 0, 0.28) !important;
   }
 
   menupopup:not(#ContentSelectDropdownPopup) {
-    appearance: menupopup !important;
+    appearance: none !important;
     --panel-box-shadow-margin: 0 !important;
-    background: transparent !important;
+    background: color-mix(in srgb, var(--pf-panel-bgcolor) 88%, transparent) !important;
   }
 
   menupopup:not(#ContentSelectDropdownPopup) > :is(menu, menuitem, menucaption) {
-    --menu-color: rgba(255, 255, 255, 0.94) !important;
-    --panel-color: rgba(255, 255, 255, 0.94) !important;
-    --panel-text-color: rgba(255, 255, 255, 0.94) !important;
-    color: rgba(255, 255, 255, 0.94) !important;
+    --menu-color: var(--pf-text-color) !important;
+    --panel-color: var(--pf-text-color) !important;
+    --panel-text-color: var(--pf-text-color) !important;
+    color: var(--pf-text-color) !important;
   }
 
   menupopup:not(#ContentSelectDropdownPopup) > :is(menu, menuitem):where([_moz-menuactive]:not([disabled="true"])) {
-    background: rgba(255, 255, 255, 0.12) !important;
-    color: white !important;
+    background: var(--pf-toolbar-bgcolor-hover) !important;
+    color: var(--pf-text-color) !important;
   }
 
   menupopup:not(#ContentSelectDropdownPopup) > menuseparator {
-    border-color: rgba(255, 255, 255, 0.12) !important;
+    border-color: color-mix(in srgb, var(--pf-text-color), transparent 88%) !important;
   }
 
   #context-navigation:not([hidden]) {
     margin-inline: 0 !important;
     padding: 4px !important;
     border-radius: 8px 8px 0 0 !important;
-    background-color: rgba(12, 12, 15, 0.64) !important;
-    border-bottom-color: rgba(255, 255, 255, 0.12) !important;
+    color: var(--pf-text-color) !important;
+    fill: var(--pf-icon-color) !important;
+    background-color: var(--pf-toolbar-bgcolor-inactive) !important;
+    border-bottom-color: color-mix(in srgb, var(--pf-text-color), transparent 88%) !important;
   }
 
   .animatable-menupopup,
