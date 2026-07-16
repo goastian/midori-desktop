@@ -37,6 +37,7 @@ test('discard decision: due inactive tabs are discarded, guarded tabs are skippe
     busy: false,
     soundPlaying: false,
     attention: false,
+    hasBeforeUnload: false,
     hasLinkedPanel: true,
     autoDiscardable: true,
     uriSpec: 'https://astian.org/docs',
@@ -56,6 +57,13 @@ test('discard decision: due inactive tabs are discarded, guarded tabs are skippe
     TabSleepLifecycle.shouldDiscardTab({
       ...baseState,
       soundPlaying: true,
+    }),
+    false
+  );
+  assert.equal(
+    TabSleepLifecycle.shouldDiscardTab({
+      ...baseState,
+      hasBeforeUnload: true,
     }),
     false
   );
