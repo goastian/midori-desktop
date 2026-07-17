@@ -15,6 +15,7 @@ export default [
       'locales/**',
       'node_modules/**',
       'dist/**',
+      'flatpak-node/**',
       'obj-*/**',
       // Mozilla pref files use special syntax (pref(), #include) that ESLint cannot parse
       'src/browser/app/profile/**',
@@ -62,6 +63,17 @@ export default [
   // Scripts at project root level
   {
     files: ['*.js', '*.mjs', 'scripts/**/*.js', 'scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+
+  {
+    files: ['tests/**/*.js', 'tests/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

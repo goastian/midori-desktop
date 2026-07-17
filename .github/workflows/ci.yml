@@ -37,113 +37,32 @@ jobs:
       - name: License check
         run: npm run lc
 
-  build-check:
-    name: Build Check (Linux x86_64)
+  build-metadata:
+    name: Resolve Build Metadata
     runs-on: ubuntu-latest
-    timeout-minutes: 360
     needs: lint
-    env:
-      SURFER_COMPAT: x86_64
-      SCCACHE_DIR: ~/.cache/sccache
-      RUSTC_WRAPPER: sccache
-      CARGO_INCREMENTAL: 0
+    outputs:
+      display_version: ${{ steps.version.outputs.display_version }}
     steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
-            /usr/share/swift /usr/local/.ghcup || true
-          sudo docker image prune --all --force 2>/dev/null || true
-          sudo apt-get autoremove -y 2>/dev/null || true
-          sudo apt-get clean 2>/dev/null || true
-          df -h
-
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
-
-      - name: Setup sccache
+      - name: Resolve display version
+        id: version
         run: |
-          SCCACHE_VERSION="v0.8.1"
-          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
-          sudo mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/
-          sccache --version
+          DISPLAY_VERSION=$(jq -r '.brands.release.release.displayVersion' amelia.json)
+          test -n "$DISPLAY_VERSION"
+          test "$DISPLAY_VERSION" != "null"
+          echo "display_version=$DISPLAY_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Restore sccache cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/sccache
-          key: sccache-ci-x86_64-${{ github.sha }}
-          restore-keys: |
-            sccache-ci-x86_64-
-
-      - name: Setup Rust
-        run: |
-          if [ -f .rust-toolchain ]; then
-            RUST_VERSION=$(cat .rust-toolchain)
-          else
-            RUST_VERSION="1.83"
-          fi
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$RUST_VERSION"
-          . "$HOME/.cargo/env"
-          rustc --version
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            libgtk-3-dev \
-            libdbus-glib-1-dev \
-            libxt-dev \
-            libasound2-dev \
-            libpulse-dev \
-            libpython3-dev \
-            libdrm-dev \
-            libcurl4-openssl-dev \
-            libx11-xcb-dev \
-            nasm \
-            yasm \
-            clang \
-            lld \
-            llvm \
-            xvfb
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Ensure branding/unofficial exists
-        run: |
-          mkdir -p engine/browser/branding/unofficial
-          touch engine/browser/branding/unofficial/logo.png
-          touch engine/browser/branding/unofficial/logo-mac.png
-          touch engine/browser/branding/unofficial/firefox.ico
-          touch engine/browser/branding/unofficial/firefox64.ico
-          echo 'dummy' > engine/browser/branding/unofficial/branding.nsi
-
-      - name: Apply Amelia patches
-        run: bash scripts/patch-amelia.sh
-
-      - name: Debug Amelia branding patch
-        run: |
-          echo '--- branding-patch.js after patch ---'
-          head -40 node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js || tail -40 node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js
-          echo '--- END ---'
-
-      - name: Initialize Amelia (download + import + bootstrap)
-        run: npm run init
-
-      - name: Build check (dev mode)
-        run: |
-          . "$HOME/.cargo/env"
-          npm run build
+  build-all-platforms:
+    name: Compile All Platforms
+    needs: build-metadata
+    uses: ./.github/workflows/build.yml
+    with:
+      display_version: ${{ needs.build-metadata.outputs.display_version }}
+      build_type: release
+      platforms: all
+      use_sccache: true
+      package_artifacts: false
+    secrets: inherit

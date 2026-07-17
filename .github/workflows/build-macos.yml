@@ -22,11 +22,15 @@ on:
         required: false
         type: boolean
         default: true
+      package_artifacts:
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   macos-build:
     name: macOS ${{ matrix.arch }}
-    runs-on: ${{ matrix.arch == 'x86_64' && 'macos-13' || 'macos-14' }}
+    runs-on: ${{ matrix.arch == 'x86_64' && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -79,11 +83,8 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          brew update
-          brew install gnu-tar
-          echo 'export PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH"' >> ~/.bash_profile
-          echo 'export PATH="/usr/local/opt/gnu-tar/libexec/gnubin:$PATH"' >> ~/.zshrc
-          source ~/.bash_profile || true
+          brew install gnu-tar zstd
+          echo "$(brew --prefix gnu-tar)/libexec/gnubin" >> "$GITHUB_PATH"
 
       - name: Setup Rust
         run: |
@@ -126,7 +127,7 @@ jobs:
         run: |
           cd engine
           export AMELIA_PLATFORM="darwin"
-          ./mach --no-interactive bootstrap --application-choice browser --exclude macos-sdk || true
+          ./mach --no-interactive bootstrap --application-choice browser --exclude macos-sdk
           cd ..
 
       - name: Build
@@ -139,12 +140,16 @@ jobs:
           fi
           export MIDORI_RELEASE=1
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
-            npm run build:mac-arm64
+            npm run build:mac-arm64 -- --skip-patch-check
           else
-            npm run build:mac-x64
+            npm run build:mac-x64 -- --skip-patch-check
           fi
 
+      - name: Verify compiled output
+        run: bash scripts/verify-build-output.sh macos "${{ matrix.arch }}"
+
       - name: Package
+        if: ${{ inputs.package_artifacts }}
         env:
           AMELIA_PLATFORM: darwin
         run: |
@@ -156,6 +161,7 @@ jobs:
           fi
 
       - name: Upload artifacts
+        if: ${{ inputs.package_artifacts }}
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}

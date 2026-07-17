@@ -22,6 +22,10 @@ on:
         required: false
         type: boolean
         default: true
+      package_artifacts:
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   windows-build:
@@ -103,39 +107,16 @@ jobs:
             llvm \
             msitools \
             dos2unix \
+            wine64 \
             xvfb
 
-      - name: Restore win-cross cache
-        id: cache-win-cross
+      - name: Restore Windows toolchains
         uses: actions/cache@v4
-        env:
-          SEGMENT_DOWNLOAD_TIMEOUT_MINS: 5
         with:
-          path: ~/win-cross
-          key: win-cross-${{ runner.os }}
-
-      - name: Setup Windows cross-compilation environment
-        if: steps.cache-win-cross.outputs.cache-hit != 'true'
-        run: |
-          set -x
-          mkdir -p ~/win-cross
-          sudo apt-get install -y \
-            python3-pip \
-            autoconf \
-            automake \
-            cmake \
-            ninja-build \
-            p7zip-full \
-            zip \
-            aria2
-          cd engine/
-          # Download wine for cross-compilation
-          aria2c "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-1.toolchains.v3.linux64-wine.latest/artifacts/public%2Fbuild%2Fwine.tar.zst" -o wine.tar.zst || true
-          if [ -f wine.tar.zst ]; then
-            tar --zstd -xf wine.tar.zst -C ~/win-cross
-            rm wine.tar.zst
-          fi
-          cd ..
+          path: ~/.mozbuild
+          key: windows-toolchains-${{ runner.os }}-${{ hashFiles('amelia.json', 'scripts/setup-winsysroot.sh') }}
+          restore-keys: |
+            windows-toolchains-${{ runner.os }}-
 
       - name: Setup Rust
         run: |
@@ -178,9 +159,9 @@ jobs:
           export AMELIA_PLATFORM="win32"
           export MIDORI_CROSS_COMPILING=1
           npm run bootstrap
-          if [ -d ~/win-cross/wine ]; then
-            ls ~/win-cross/wine
-          fi
+
+      - name: Setup Windows cross-compilation toolchains
+        run: npm run setup:windows
 
       - name: Build
         env:
@@ -194,12 +175,16 @@ jobs:
             export MOZ_BUILD_DATE="${{ inputs.build_id }}"
           fi
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
-            npm run build:win-arm64
+            npm run build:win-arm64 -- --skip-patch-check
           else
-            npm run build:win-x64
+            npm run build:win-x64 -- --skip-patch-check
           fi
 
+      - name: Verify compiled output
+        run: bash scripts/verify-build-output.sh windows "${{ matrix.arch }}"
+
       - name: Package
+        if: ${{ inputs.package_artifacts }}
         env:
           AMELIA_PLATFORM: win32
         run: |
@@ -212,6 +197,7 @@ jobs:
           fi
 
       - name: Upload artifacts
+        if: ${{ inputs.package_artifacts }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.arch }}

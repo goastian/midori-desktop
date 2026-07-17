@@ -34,6 +34,11 @@ on:
         required: false
         type: boolean
         default: true
+      package_artifacts:
+        description: 'Package and upload distributable artifacts'
+        required: false
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       display_version:
@@ -48,6 +53,10 @@ on:
         type: string
         default: all
       use_sccache:
+        required: false
+        type: boolean
+        default: true
+      package_artifacts:
         required: false
         type: boolean
         default: true
@@ -158,6 +167,9 @@ jobs:
             -hcf midori.source.tar.zst \
             -C engine .
 
+      - name: Prepare Flatpak source bundle
+        if: ${{ inputs.package_artifacts }}
+        run: |
           FLATPAK_SOURCE="midori-${{ inputs.display_version }}-src.tar.xz"
           FLATPAK_STAGE="$(mktemp -d)"
           trap 'rm -rf "$FLATPAK_STAGE"' EXIT
@@ -205,6 +217,7 @@ jobs:
           retention-days: 2
 
       - name: Upload Flatpak source bundle
+        if: ${{ inputs.package_artifacts }}
         uses: actions/upload-artifact@v4
         with:
           name: midori-src.tar.xz
@@ -224,6 +237,7 @@ jobs:
       build_type: ${{ inputs.build_type }}
       build_id: ${{ needs.build-metadata.outputs.build_id }}
       use_sccache: ${{ inputs.use_sccache }}
+      package_artifacts: ${{ inputs.package_artifacts }}
     secrets: inherit
 
   # ---------------------------------------------------------------------------
@@ -239,6 +253,7 @@ jobs:
       build_type: ${{ inputs.build_type }}
       build_id: ${{ needs.build-metadata.outputs.build_id }}
       use_sccache: ${{ inputs.use_sccache }}
+      package_artifacts: ${{ inputs.package_artifacts }}
     secrets: inherit
 
   # ---------------------------------------------------------------------------
@@ -254,13 +269,46 @@ jobs:
       build_type: ${{ inputs.build_type }}
       build_id: ${{ needs.build-metadata.outputs.build_id }}
       use_sccache: ${{ inputs.use_sccache }}
+      package_artifacts: ${{ inputs.package_artifacts }}
     secrets: inherit
+
+  verify-builds:
+    name: Verify Platform Builds
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-macos, build-windows]
+    if: always()
+    env:
+      LINUX_RESULT: ${{ needs.build-linux.result }}
+      MACOS_RESULT: ${{ needs.build-macos.result }}
+      WINDOWS_RESULT: ${{ needs.build-windows.result }}
+    steps:
+      - name: Verify selected platforms compiled
+        run: |
+          verify_result() {
+            local platform="$1"
+            local result="$2"
+            if [ "$result" != "success" ]; then
+              echo "${platform} build result: ${result}"
+              exit 1
+            fi
+            echo "${platform} build result: success"
+          }
+
+          if [ "${{ inputs.platforms }}" = "all" ] || [ "${{ inputs.platforms }}" = "linux" ]; then
+            verify_result "Linux" "$LINUX_RESULT"
+          fi
+          if [ "${{ inputs.platforms }}" = "all" ] || [ "${{ inputs.platforms }}" = "macos" ]; then
+            verify_result "macOS" "$MACOS_RESULT"
+          fi
+          if [ "${{ inputs.platforms }}" = "all" ] || [ "${{ inputs.platforms }}" = "windows" ]; then
+            verify_result "Windows" "$WINDOWS_RESULT"
+          fi
 
   verify-artifacts:
     name: Verify Build Artifacts
     runs-on: ubuntu-latest
     needs: [build-linux, build-macos, build-windows]
-    if: always()
+    if: ${{ always() && inputs.package_artifacts }}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
