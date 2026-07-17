@@ -1,0 +1,78 @@
+diff --git a/browser/components/preferences/config/languages.mjs b/browser/components/preferences/config/languages.mjs
+index 7dd8ff65d5..b092b0d08e 100644
+--- a/browser/components/preferences/config/languages.mjs
++++ b/browser/components/preferences/config/languages.mjs
+@@ -313,9 +313,17 @@ class BrowserLanguagesSetting extends Preferences.AsyncSetting {
+ 
+   // @ts-expect-error Arrays aren't typed currently.
+   async get() {
+-    return this.#pendingLocales
+-      ? [...this.#pendingLocales]
+-      : [...Services.locale.appLocalesAsBCP47];
++    if (this.#pendingLocales) {
++      return [...this.#pendingLocales];
++    }
++    let requestedLocales = Services.locale.requestedLocales;
++    if (requestedLocales.length > 1) {
++      return [...requestedLocales];
++    }
++    let fallback = Services.locale.appLocalesAsBCP47.find(
++      locale => !requestedLocales.includes(locale)
++    );
++    return fallback ? [...requestedLocales, fallback] : [...requestedLocales];
+   }
+ 
+   async visible() {
+diff --git a/browser/components/preferences/tests/languages/browser_browser_languages_fallback.js b/browser/components/preferences/tests/languages/browser_browser_languages_fallback.js
+index 42998da52d..17b4f8e6d0 100644
+--- a/browser/components/preferences/tests/languages/browser_browser_languages_fallback.js
++++ b/browser/components/preferences/tests/languages/browser_browser_languages_fallback.js
+@@ -166,6 +166,48 @@ add_task(async function testFallbackExcludesPreferredLanguage() {
+   BrowserTestUtils.removeTab(gBrowser.selectedTab);
+ });
+ 
++add_task(async function testFallbackUsesRequestedLocaleOrder() {
++  await SpecialPowers.pushPrefEnv({
++    set: [
++      ["intl.multilingual.enabled", true],
++      ["intl.multilingual.downloadEnabled", false],
++      ["intl.multilingual.liveReload", true],
++      ["intl.multilingual.liveReloadBidirectional", true],
++      ["intl.locale.requested", "zh-CN"],
++      ["extensions.langpacks.signatures.required", false],
++    ],
++  });
++
++  let addons = await installLangpacks(["zh-CN", "zh-TW", "de"]);
++  let doc = await openLanguagesPrefs();
++  let win = doc.defaultView;
++  await waitForLanguageUI(doc);
++
++  await changeLocale(doc, "zh-TW");
++  await BrowserTestUtils.waitForCondition(
++    () => Services.locale.requestedLocales[0] === "zh-TW",
++    "Traditional Chinese is live-applied"
++  );
++
++  let fallbackControl = getSettingControl("browserLanguageFallback", win);
++  await waitForSettingVisible("browserLanguageFallback", win);
++  is(fallbackControl.controlEl.value, "zh-CN", "Previous locale is fallback");
++
++  await changeMozSelectValue(fallbackControl.controlEl, "de");
++  await BrowserTestUtils.waitForCondition(
++    () => fallbackControl.controlEl.value === "de",
++    "Requested fallback remains selected"
++  );
++  Assert.deepEqual(
++    Services.locale.requestedLocales,
++    ["zh-TW", "de"],
++    "Fallback order matches the explicit user selection"
++  );
++
++  await Promise.all(addons.map(addon => addon.uninstall()));
++  BrowserTestUtils.removeTab(gBrowser.selectedTab);
++});
++
+ // Changing the fallback language when liveReload is off should show a restart
+ // message and record the "reorder" telemetry event.
+ add_task(async function testFallbackChangeShowsRestart() {
