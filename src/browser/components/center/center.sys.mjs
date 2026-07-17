@@ -50,6 +50,8 @@ const PREF_MAP = {
   "pref-modblur-icons-github": { pref: "midori.modblur.icons.github", type: "bool" },
   "pref-modblur-icons-ublock": { pref: "midori.modblur.icons.ublock", type: "bool" },
   "pref-modblur-compact-vertical": { pref: "midori.modblur.verticalTabs.compact", type: "bool" },
+  "pref-modblur-autohide-tabs": { pref: "midori.modblur.tabs.autohide", type: "bool" },
+  "pref-modblur-show-inactive-tabs": { pref: "midori.modblur.tabs.showWhileInactive", type: "bool" },
   "pref-modblur-centered-tabs": { pref: "midori.modblur.tabs.centered", type: "bool" },
   "pref-modblur-hide-tab-preview": { pref: "midori.modblur.tabs.hidePreviewPanel", type: "bool" },
   "pref-modblur-hide-vertical-scrollbar": { pref: "midori.modblur.verticalTabs.hideScrollbar", type: "bool" },

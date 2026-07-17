@@ -245,6 +245,8 @@ pref('midori.modblur.icons.github', false);
 pref('midori.modblur.icons.ublock', false);
 pref('midori.modblur.verticalTabs.compact', false);
 pref('midori.modblur.verticalTabs.hideScrollbar', false);
+pref('midori.modblur.tabs.autohide', false);
+pref('midori.modblur.tabs.showWhileInactive', false);
 pref('midori.modblur.tabs.centered', false);
 pref('midori.modblur.tabs.hidePreviewPanel', false);
 pref('midori.modblur.tabs.layout', 'urlbar-top');
