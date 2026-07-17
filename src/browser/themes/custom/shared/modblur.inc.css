@@ -120,6 +120,17 @@
 }
 
 @media -moz-pref("midori.modblur.bookmarks.popout") {
+  #PersonalToolbar {
+    --uc-bm-height: 24px;
+    --uc-bm-padding: 5px;
+    padding: 1px 6px !important;
+    position: relative !important;
+  }
+
+  :root[uidensity="touch"] #PersonalToolbar {
+    --uc-bm-padding: 6px;
+  }
+
   :root:not([customizing]) #PersonalToolbar {
     max-height: 0 !important;
     min-height: 0 !important;
@@ -129,11 +140,35 @@
     transition: max-height var(--pf-ts-25), opacity var(--pf-ts-15), padding var(--pf-ts-25) !important;
   }
 
+  #PlacesToolbarItems > .bookmark-item {
+    padding-block: var(--uc-bm-padding) !important;
+    padding-inline: 6px !important;
+  }
+
+  #PlacesToolbarItems > .bookmark-item .toolbarbutton-icon {
+    opacity: 0 !important;
+    transition: opacity 200ms linear 200ms !important;
+  }
+
+  #PlacesToolbarItems > .bookmark-item .toolbarbutton-text {
+    opacity: 0 !important;
+    transition: opacity 140ms linear 200ms !important;
+  }
+
   :root:not([customizing]) #navigator-toolbox:hover #PersonalToolbar,
+  :root:not([customizing]) #navigator-toolbox:focus-within #PersonalToolbar,
+  :root:not([customizing]):has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #PersonalToolbar,
   :root:not([customizing]) #PersonalToolbar[customizing] {
-    max-height: 38px !important;
-    padding-block: 4px !important;
+    max-height: calc(var(--uc-bm-height) + 2 * var(--uc-bm-padding) + 2px) !important;
+    padding-block: 1px !important;
     opacity: 1;
+  }
+
+  :root:not([customizing]) #navigator-toolbox:hover #PlacesToolbarItems > .bookmark-item :is(.toolbarbutton-icon, .toolbarbutton-text),
+  :root:not([customizing]) #navigator-toolbox:focus-within #PlacesToolbarItems > .bookmark-item :is(.toolbarbutton-icon, .toolbarbutton-text),
+  :root:not([customizing]):has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #PlacesToolbarItems > .bookmark-item :is(.toolbarbutton-icon, .toolbarbutton-text) {
+    opacity: 1 !important;
+    transition-delay: 40ms !important;
   }
 }
 
@@ -447,6 +482,62 @@
   #tabbrowser-tab-tooltip,
   .tab-preview-panel {
     display: none !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.tabs.autohide") {
+  :root[midori-horizontal-tabs] {
+    --uc-tabs-hide-animation-duration: 40ms;
+    --uc-tabs-hide-animation-delay: 200ms;
+  }
+
+  :root[midori-horizontal-tabs]:not([customizing], [chromehidden~="menubar"]) #TabsToolbar,
+  :root[midori-horizontal-tabs]:not([customizing], [chromehidden~="menubar"]) #navigator-toolbox:is(:hover, :focus-within),
+  :root[midori-horizontal-tabs]:not([customizing], [chromehidden~="menubar"]):has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #navigator-toolbox {
+    margin-bottom: calc(0px - 2 * var(--tab-block-margin) - var(--tab-min-height));
+  }
+
+  :root[midori-horizontal-tabs] #navigator-toolbox {
+    --browser-area-z-index-toolbox: 3;
+    transition: margin-bottom var(--uc-tabs-hide-animation-duration) ease-out var(--uc-tabs-hide-animation-delay) !important;
+  }
+
+  :root[midori-horizontal-tabs] #TabsToolbar:not([customizing]) {
+    visibility: hidden;
+    padding-block: 0 !important;
+    transition:
+      visibility 0ms linear var(--uc-tabs-hide-animation-delay),
+      margin-bottom var(--uc-tabs-hide-animation-duration) ease-out var(--uc-tabs-hide-animation-delay) !important;
+  }
+
+  :root[midori-horizontal-tabs] #navigator-toolbox:is(:hover, :focus-within) > #TabsToolbar,
+  :root[midori-horizontal-tabs]:has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #navigator-toolbox > #TabsToolbar {
+    visibility: visible;
+    margin-bottom: 0;
+    transition-delay: 18ms, 0ms !important;
+  }
+
+  #tabbrowser-tabs:not([secondarytext-unsupported]) .tab-label-container {
+    max-height: var(--tab-min-height);
+  }
+
+  .tab-label {
+    line-height: 20px !important;
+  }
+
+  :root[uidensity="compact"] .tab-label {
+    line-height: 18px !important;
+  }
+
+  @media -moz-pref("midori.modblur.tabs.showWhileInactive") {
+    :root[midori-horizontal-tabs] #navigator-toolbox:-moz-window-inactive {
+      margin-bottom: calc(0px - 2 * var(--tab-block-margin) - var(--tab-min-height));
+    }
+
+    :root[midori-horizontal-tabs] #navigator-toolbox:-moz-window-inactive > #TabsToolbar {
+      visibility: visible;
+      margin-bottom: 0;
+    }
   }
 }
 
