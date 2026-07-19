@@ -294,6 +294,10 @@ browser-language-preferred-label =
 
 browser-language-fallback-label =
     .label = Fallback language
+    .description = Used when preferred language localization is incomplete.
+
+browser-language-install-error =
+    .message = { -brand-short-name } can’t update your languages right now. Check that you are connected to the internet or try again.
 
 privacy-panel-settings-header =
     .label = Privacy dashboard
@@ -1314,6 +1318,9 @@ home-prefs-content-header =
 home-prefs-content-header2 = { -firefox-home-brand-name } Content
 home-prefs-content-description2 = Choose what content you want on your { -firefox-home-brand-name } screen.
 
+home-prefs-firefox-logo-header =
+    .label = { -brand-short-name } logo
+
 home-prefs-search-header =
     .label = Web Search
 home-prefs-search-header2 =
@@ -1321,6 +1328,8 @@ home-prefs-search-header2 =
 home-prefs-shortcuts-header =
     .label = Shortcuts
 home-prefs-shortcuts-description = Sites you save or visit
+home-prefs-shortcuts-select =
+    .aria-label = Shortcuts
 home-prefs-shortcuts-by-option-sponsored =
     .label = Sponsored shortcuts
 
@@ -1352,6 +1361,8 @@ home-prefs-highlights-option-most-recent-download =
 home-prefs-recent-activity-header =
     .label = Recent activity
 home-prefs-recent-activity-description = A selection of recent sites and content
+home-prefs-recent-activity-select =
+    .aria-label = Recent activity
 home-prefs-weather-header =
   .label = Weather
 home-prefs-weather-description = Today’s forecast at a glance
@@ -1367,6 +1378,14 @@ home-prefs-lists-header =
 # Timer is a widget on New Tab, similar to the Pomodoro timer.
 home-prefs-timer-header =
     .label = Timer
+
+# Sports is a widget on New Tab showing sports scores and schedules.
+home-prefs-sports-widget-header =
+    .label = Sports
+
+# Clock is a widget on New Tab that displays time zones around the world.
+home-prefs-clocks-header =
+    .label = Clock
 
 # "Support" here means to help sustain or contribute to something, especially through funding or sponsorship.
 home-prefs-support-firefox-header =
@@ -1387,6 +1406,15 @@ home-prefs-choose-wallpaper-link = Choose a wallpaper
 
 home-prefs-choose-wallpaper-link2 =
     .label = Choose a wallpaper
+
+# Informational message bar that appears when Firefox Home options are disabled.
+home-prefs-firefox-home-disabled-notice =
+    .message = To use these features, set new tabs or new windows to { -firefox-home-brand-name }.
+
+# Variables:
+#   $extension (string) - Name of the extension
+home-prefs-homepage-extension-option =
+    .label = Extension ({ $extension })
 
 # Variables:
 #   $num (number) - Number of rows displayed
@@ -1595,6 +1623,9 @@ containers-remove-button =
 
 account-sync-section =
     .heading = Account and sync
+
+pane-account-sync-title2 = Account and sync
+    .title = Account and sync
 
 sync-group-label =
     .label = Sync

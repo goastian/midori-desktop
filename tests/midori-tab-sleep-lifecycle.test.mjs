@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { TabSleepLifecycle } from '../src/browser/components/tabsleep/TabSleepLifecycle.sys.mjs';
+
+const readSource = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 test('timeout configuration: defaults and bounds are enforced', () => {
   assert.equal(TabSleepLifecycle.getTimeoutMinutes(undefined), 10);
@@ -105,4 +108,45 @@ test('scheduler delay: next evaluation is bounded and follows earliest deadline'
     }),
     1000
   );
+});
+
+test('scheduler lifecycle: no timer survives without an attached browser window', () => {
+  assert.equal(
+    TabSleepLifecycle.shouldScheduleEvaluation({
+      initialized: true,
+      enabled: true,
+      attachedWindowCount: 1,
+    }),
+    true
+  );
+  assert.equal(
+    TabSleepLifecycle.shouldScheduleEvaluation({
+      initialized: true,
+      enabled: true,
+      attachedWindowCount: 0,
+    }),
+    false
+  );
+  assert.equal(
+    TabSleepLifecycle.shouldScheduleEvaluation({
+      initialized: false,
+      enabled: true,
+      attachedWindowCount: 1,
+    }),
+    false
+  );
+  assert.equal(
+    TabSleepLifecycle.shouldScheduleEvaluation({
+      initialized: true,
+      enabled: false,
+      attachedWindowCount: 1,
+    }),
+    false
+  );
+
+  const source = readSource(
+    '../src/browser/components/tabsleep/MidoriTabSleep.sys.mjs'
+  );
+  assert.match(source, /this\._windowState\.has\(subject\)/);
+  assert.match(source, /attachedWindowCount: this\._attachedWindowCount/);
 });

@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { validateStore } from '../src/browser/components/msidebar/SidebarModel.mjs';
-import { isReservedBrowserShortcut } from '../src/browser/components/shortcuts/ShortcutPolicy.sys.mjs';
+import {
+  isReservedBrowserShortcut,
+  isSafeGlobalShortcut,
+} from '../src/browser/components/shortcuts/ShortcutPolicy.sys.mjs';
 import {
   applyBrowserMobileView,
   createPanelNotificationBridge,
@@ -278,6 +281,31 @@ test('bookmark shortcut remains reserved for the browser', () => {
   ]);
   assert.deepEqual(entries.map((entry) => entry.panelId), ['mail']);
   assert.equal(validatePanelEditInput({ shortcut: 'Ctrl+D' }).shortcut, false);
+});
+
+test('global shortcuts cannot capture ordinary text input', () => {
+  assert.equal(isSafeGlobalShortcut('A'), false);
+  assert.equal(isSafeGlobalShortcut('Shift+A'), false);
+  assert.equal(isSafeGlobalShortcut('Enter'), false);
+  assert.equal(isSafeGlobalShortcut('Ctrl+A'), true);
+  assert.equal(isSafeGlobalShortcut('Alt+Shift+A'), true);
+  assert.equal(isSafeGlobalShortcut('F8'), true);
+
+  assert.equal(panelShortcutToXul('A'), null);
+  assert.equal(panelShortcutToXul('Shift+A'), null);
+  assert.deepEqual(panelShortcutToXul('F8'), {
+    key: '',
+    keycode: 'VK_F8',
+    modifiers: '',
+  });
+
+  const entries = panelShortcutEntries([
+    { id: 'unsafe-letter', shortcut: 'M' },
+    { id: 'unsafe-shift-letter', shortcut: 'Shift+M' },
+    { id: 'safe', shortcut: 'Ctrl+Alt+M' },
+  ]);
+  assert.deepEqual(entries.map((entry) => entry.panelId), ['safe']);
+  assert.equal(validatePanelEditInput({ shortcut: 'M' }).shortcut, false);
 });
 
 test('restoreLastUrl and loadOnStartup use validated persisted panel state', () => {

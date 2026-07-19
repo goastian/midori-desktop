@@ -100,7 +100,7 @@ test('profile switching has one observer-owned application path', () => {
     preferencesPatch,
     /MemoryProfileManager\.applyProfile/
   );
-  assert.match(browserGluePatch, /lazy\.MemoryProfileManager\.init\(\)/);
+  assert.match(browserGluePatch, /lazy\.MidoriBrowserServices\.init\(\)/);
   assert.doesNotMatch(
     browserGluePatch,
     /lazy\.MemoryProfileManager\.applyProfile/
