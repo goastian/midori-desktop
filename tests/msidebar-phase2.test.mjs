@@ -22,6 +22,7 @@ if (!globalThis.ChromeUtils) {
 const {
   buildPanelOptionsFromContext,
   buildPanelSelectorScript,
+  computeSidebarEdgeOrder,
   computeFloatingPlacement,
   computeFloatingZIndex,
   computePanelButtonDecorations,
@@ -54,6 +55,22 @@ function createEventTarget() {
     },
   };
 }
+
+test('web-panel edge order uses valid integers for physical LTR and RTL sides', () => {
+  assert.equal(computeSidebarEdgeOrder('left', false), -1_000_000);
+  assert.equal(computeSidebarEdgeOrder('right', false), 1_000_000);
+  assert.equal(computeSidebarEdgeOrder('left', true), 1_000_000);
+  assert.equal(computeSidebarEdgeOrder('right', true), -1_000_000);
+
+  for (const value of [
+    computeSidebarEdgeOrder('left', false),
+    computeSidebarEdgeOrder('right', false),
+    computeSidebarEdgeOrder('left', true),
+    computeSidebarEdgeOrder('right', true),
+  ]) {
+    assert.equal(Number.isInteger(value), true);
+  }
+});
 
 test('mobile view: applies iPhone UA and deviceSizeIsPageSize toggle', () => {
   const browser = {
