@@ -629,7 +629,7 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
 }
 
 :root[midori-vertical-tabs][midori-vt-collapse="true"] #sidebar-box:hover,
-:root[midori-vertical-tabs][midori-vt-collapse="true"] #sidebar-box:focus-within {
+:root[midori-vertical-tabs][midori-vt-collapse="true"] #sidebar-box:has(:focus-visible) {
   width: var(--pf-sidebar-width) !important;
   min-width: var(--pf-sidebar-width) !important;
   max-width: var(--pf-sidebar-width) !important;
@@ -705,6 +705,10 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   box-shadow: none !important;
 }
 
+:root[midori-vertical-tabs="right"][midori-arc-mode="true"] #sidebar-box {
+  margin-inline: 0 var(--pf-browser-separation) !important;
+}
+
 :root[midori-vertical-tabs][midori-arc-mode="true"] #sidebar-header {
   display: none !important;
 }
@@ -733,7 +737,15 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   min-width: 52px !important;
   max-width: 52px !important;
   padding: 10px 6px !important;
-  border-inline-start: 1px solid var(--pf-border-color-light);
+  border: 0;
+}
+
+:root[midori-vertical-tabs][midori-arc-mode="true"] #midori-msidebar-main[position="left"] {
+  border-right: 1px solid var(--pf-border-color-light);
+}
+
+:root[midori-vertical-tabs][midori-arc-mode="true"] #midori-msidebar-main[position="right"] {
+  border-left: 1px solid var(--pf-border-color-light);
 }
 
 :root[midori-vertical-tabs][midori-arc-mode="true"] #midori-msidebar-box-area[overlay="true"] {
