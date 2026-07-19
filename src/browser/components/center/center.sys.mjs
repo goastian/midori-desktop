@@ -26,6 +26,8 @@ const PREF_MAP = {
   "pref-msidebar-position": { pref: "midori.msidebar.position",       type: "string" },
   "pref-msidebar-width":    { pref: "midori.msidebar.width",          type: "int" },
   "pref-msidebar-autohide": { pref: "midori.msidebar.autohide.enabled", type: "bool" },
+  "pref-msidebar-autohide-mode": { pref: "midori.msidebar.autohide.mode", type: "string" },
+  "pref-verticaltabs-collapse": { pref: "midori.verticaltabs.collapse", type: "bool" },
   "pref-workspaces-enabled":{ pref: "midori.workspaces.enabled",      type: "bool" },
   "pref-workspaces-button": { pref: "midori.workspaces.show-button",  type: "bool" },
   "pref-workspaces-name":   { pref: "midori.workspaces.show-name",    type: "bool" },
@@ -158,6 +160,27 @@ function writePref(prefName, type, value) {
     case "bool":   Services.prefs.setBoolPref(prefName, value);   break;
     case "int":    Services.prefs.setIntPref(prefName, value);    break;
     case "string": Services.prefs.setCharPref(prefName, value);   break;
+  }
+}
+
+function syncPrefElement(id, pref, type) {
+  const el = document.getElementById(id);
+  const val = readPref(pref, type);
+  if (!el || val === undefined) return;
+
+  if (el.type === "checkbox") {
+    el.checked = !!val;
+  } else if (el.tagName === "SELECT" || el.type === "range" || el.type === "number" || el.type === "color") {
+    el.value = String(val);
+  } else if (el.tagName === "FIELDSET") {
+    const radios = [...el.querySelectorAll("input[type=radio]")];
+    const selected = radios.find(radio => radio.value === String(val)) || radios[0];
+    if (selected) selected.checked = true;
+  }
+
+  if (el.type === "range" && el.dataset.valueTarget) {
+    const valueTarget = document.getElementById(el.dataset.valueTarget);
+    if (valueTarget) valueTarget.textContent = `${el.value} px`;
   }
 }
 
@@ -1056,13 +1079,11 @@ function initPrefs() {
     const el = document.getElementById(id);
     if (!el) continue;
     const val = readPref(pref, type);
-    if (val === undefined) continue;
+    if (val !== undefined) syncPrefElement(id, pref, type);
 
     if (el.type === "checkbox") {
-      el.checked = !!val;
       el.addEventListener("change", () => writePref(pref, type, el.checked));
     } else if (el.type === "range") {
-      el.value = String(val);
       const valueTarget = el.dataset.valueTarget ? document.getElementById(el.dataset.valueTarget) : null;
       const syncRangeValue = () => {
         if (valueTarget) {
@@ -1078,14 +1099,13 @@ function initPrefs() {
         writePref(pref, type, parseInt(el.value, 10));
       });
     } else if (el.tagName === "SELECT") {
-      el.value = String(val);
       el.addEventListener("change", () => writePref(pref, type, el.value));
     } else if (el.tagName === "FIELDSET") {
       const radios = [...el.querySelectorAll("input[type=radio]")];
       if (!radios.length) {
         continue;
       }
-      const current = String(val);
+      const current = val === undefined ? radios[0].value : String(val);
       const selected = radios.find(radio => radio.value === current) || radios[0];
       selected.checked = true;
       for (const radio of radios) {
@@ -1096,7 +1116,6 @@ function initPrefs() {
         });
       }
     } else if (el.type === "number") {
-      el.value = val;
       el.addEventListener("change", () => {
         const min = Number.isFinite(el.minAsNumber) ? el.minAsNumber : Number.MIN_SAFE_INTEGER;
         const max = Number.isFinite(el.maxAsNumber) ? el.maxAsNumber : Number.MAX_SAFE_INTEGER;
@@ -1105,10 +1124,86 @@ function initPrefs() {
         writePref(pref, type, next);
       });
     } else if (el.type === "color") {
-      el.value = String(val);
       el.addEventListener("change", () => writePref(pref, type, el.value));
     }
   }
+}
+
+function updateSidebarControlAvailability() {
+  const enabled = document.getElementById("pref-msidebar-enabled")?.checked ?? false;
+  const autohide = document.getElementById("pref-msidebar-autohide")?.checked ?? false;
+  const vertical =
+    readPref("midori.verticaltabs.enabled", "bool") ||
+    readPref("midori.arcmode.enabled", "bool");
+
+  for (const id of [
+    "pref-msidebar-position",
+    "pref-msidebar-width",
+    "pref-msidebar-autohide",
+  ]) {
+    const control = document.getElementById(id);
+    if (!control) continue;
+    control.disabled = !enabled;
+    control.closest(".setting-row")?.classList.toggle("setting-row-disabled", !enabled);
+  }
+
+  const mode = document.getElementById("pref-msidebar-autohide-mode");
+  const modeAvailable = enabled && autohide;
+  if (mode) {
+    mode.disabled = !modeAvailable;
+    mode.closest(".setting-row")?.classList.toggle("setting-row-disabled", !modeAvailable);
+  }
+
+  const collapse = document.getElementById("pref-verticaltabs-collapse");
+  if (collapse) {
+    collapse.disabled = !vertical;
+    collapse.closest(".setting-row")?.classList.toggle("setting-row-disabled", !vertical);
+  }
+}
+
+function initSidebarControls() {
+  const observedPrefs = new Set([
+    "midori.msidebar.enabled",
+    "midori.msidebar.position",
+    "midori.msidebar.width",
+    "midori.msidebar.autohide.enabled",
+    "midori.msidebar.autohide.mode",
+    "midori.verticaltabs.collapse",
+    "midori.verticaltabs.enabled",
+    "midori.arcmode.enabled",
+  ]);
+  const controlsByPref = new Map();
+  for (const [id, config] of Object.entries(PREF_MAP)) {
+    if (!observedPrefs.has(config.pref)) continue;
+    const controls = controlsByPref.get(config.pref) || [];
+    controls.push({ id, ...config });
+    controlsByPref.set(config.pref, controls);
+  }
+
+  for (const id of ["pref-msidebar-enabled", "pref-msidebar-autohide"]) {
+    document.getElementById(id)?.addEventListener("change", updateSidebarControlAvailability);
+  }
+
+  const observer = {
+    observe(_subject, _topic, pref) {
+      for (const config of controlsByPref.get(pref) || []) {
+        syncPrefElement(config.id, config.pref, config.type);
+      }
+      updateSidebarControlAvailability();
+    },
+  };
+  for (const pref of observedPrefs) {
+    Services.prefs.addObserver(pref, observer);
+  }
+  window.addEventListener("unload", () => {
+    for (const pref of observedPrefs) {
+      try {
+        Services.prefs.removeObserver(pref, observer);
+      } catch {}
+    }
+  }, { once: true });
+
+  updateSidebarControlAvailability();
 }
 
 function isModControlEnabled(control) {
@@ -1333,13 +1428,7 @@ function setTabLayout(layout) {
     Services.prefs.setBoolPref("midori.verticaltabs.floatingUrlbar", true);
     Services.prefs.setBoolPref("midori.verticaltabs.showRail", true);
     Services.prefs.setBoolPref("midori.verticaltabs.showPinnedSection", true);
-    Services.prefs.setBoolPref("midori.msidebar.enabled", true);
-    Services.prefs.setCharPref("midori.msidebar.position", "right");
-    Services.prefs.setBoolPref("midori.msidebar.autohide.enabled", true);
-    Services.prefs.setCharPref("midori.msidebar.autohide.mode", "overlay");
     Services.prefs.setBoolPref("midori.autohide.toolbar", true);
-    const posSelect = document.getElementById("pref-msidebar-position");
-    if (posSelect) posSelect.value = "right";
   } else {
     Services.prefs.setCharPref(
       "midori.horizontaltabs.position",
@@ -1436,6 +1525,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
   migrateLegacyTabLayoutPref();
   initPrefs();
+  initSidebarControls();
   initModBlurCatalog();
   initAddonControls();
   initTabLayout();

@@ -251,10 +251,20 @@
               <div class="layout-preview lp-arc-zen">
                 <div class="lp-sidebar left"><span class="lp-vtab active"></span><span class="lp-vtab"></span><span class="lp-vtab"></span></div>
                 <div class="lp-content"></div>
-                <div class="lp-rail right"><span></span><span></span><span></span></div>
               </div>
               <span class="layout-label">Midori Vertical</span>
             </button>
+          </div>
+
+          <div class="setting-row" id="verticaltabs-collapse-row">
+            <div class="setting-info">
+              <strong>Collapse the vertical tab manager</strong>
+              <p>Reduce Workspaces and tabs to a narrow rail that expands on hover or keyboard focus.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-verticaltabs-collapse">
+              <span class="toggle-slider"></span>
+            </label>
           </div>
 
         </div>
@@ -508,6 +518,17 @@
               <input type="checkbox" id="pref-msidebar-autohide">
               <span class="toggle-slider"></span>
             </label>
+          </div>
+
+          <div class="setting-row" id="msidebar-autohide-mode-row">
+            <div class="setting-info">
+              <strong>Web-panel opening mode</strong>
+              <p>Overlay covers page content; Inline reserves width and moves the page.</p>
+            </div>
+            <select id="pref-msidebar-autohide-mode" class="select-input">
+              <option value="overlay">Overlay</option>
+              <option value="inline">Inline</option>
+            </select>
           </div>
         </div>
       </section>
