@@ -243,17 +243,111 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
     </div>
 
     <div class="page" id="msidebar">
-      <h2 data-l10n-id="welcome-dialog-msidebar"></h2>
+      <h2 id="msidebarTitle" data-l10n-id="welcome-dialog-msidebar"></h2>
       <p data-l10n-id="welcome-dialog-msidebar-subtext"></p>
 
-      <div class="tablayout-options">
-        <div class="tablayout-card selected" id="msidebarEnable">
+      <div class="tablayout-options msidebar-enable-options" role="radiogroup" aria-labelledby="msidebarTitle">
+        <div
+          class="tablayout-card selected"
+          id="msidebarEnable"
+          role="radio"
+          tabindex="0"
+          aria-checked="true"
+        >
           <h3 data-l10n-id="welcome-dialog-msidebar-enable"></h3>
         </div>
-        <div class="tablayout-card" id="msidebarDisable">
+        <div
+          class="tablayout-card"
+          id="msidebarDisable"
+          role="radio"
+          tabindex="-1"
+          aria-checked="false"
+        >
           <h3 data-l10n-id="welcome-dialog-msidebar-disable"></h3>
         </div>
       </div>
+
+      <section class="setup-customization" aria-labelledby="msidebarCustomizationTitle">
+        <fieldset class="setup-control-group" id="msidebarPositionGroup">
+          <legend id="msidebarCustomizationTitle" data-l10n-id="welcome-dialog-msidebar-position"></legend>
+          <p class="setup-group-description" id="msidebarPositionHorizontalHint" data-l10n-id="welcome-dialog-msidebar-position-horizontal-desc"></p>
+          <p class="setup-group-description" id="msidebarPositionVerticalHint" data-l10n-id="welcome-dialog-msidebar-position-vertical-desc" hidden></p>
+
+          <div class="sidebar-position-options">
+            <label class="sidebar-position-card" data-side="left" for="msidebarPositionLeft">
+              <input type="radio" id="msidebarPositionLeft" name="msidebarPosition" value="left" />
+              <span class="sidebar-position-preview" aria-hidden="true">
+                <span class="setup-preview-content"></span>
+                <span class="setup-preview-sidebar"></span>
+              </span>
+              <span data-l10n-id="welcome-dialog-msidebar-position-left"></span>
+            </label>
+
+            <label class="sidebar-position-card" data-side="right" for="msidebarPositionRight">
+              <input type="radio" id="msidebarPositionRight" name="msidebarPosition" value="right" />
+              <span class="sidebar-position-preview" aria-hidden="true">
+                <span class="setup-preview-content"></span>
+                <span class="setup-preview-sidebar"></span>
+              </span>
+              <span data-l10n-id="welcome-dialog-msidebar-position-right"></span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="setup-control-group" id="autohideGroup">
+          <legend data-l10n-id="welcome-dialog-autohide"></legend>
+          <p class="setup-group-description" data-l10n-id="welcome-dialog-autohide-desc"></p>
+
+          <label class="setup-switch-row" id="msidebarAutohideRow" for="msidebarAutohide">
+            <span class="setup-switch-copy">
+              <strong data-l10n-id="welcome-dialog-autohide-sidebar"></strong>
+              <small data-l10n-id="welcome-dialog-autohide-sidebar-desc"></small>
+            </span>
+            <input type="checkbox" id="msidebarAutohide" />
+            <span class="setup-switch-track" aria-hidden="true"></span>
+          </label>
+
+          <div class="setup-select-row dependent-control" id="msidebarAutohideModeRow">
+            <label for="msidebarAutohideMode">
+              <strong data-l10n-id="welcome-dialog-autohide-sidebar-mode"></strong>
+              <small data-l10n-id="welcome-dialog-autohide-sidebar-mode-desc"></small>
+            </label>
+            <select id="msidebarAutohideMode">
+              <option value="overlay" data-l10n-id="welcome-dialog-autohide-sidebar-mode-overlay"></option>
+              <option value="inline" data-l10n-id="welcome-dialog-autohide-sidebar-mode-inline"></option>
+            </select>
+          </div>
+
+          <label class="setup-switch-row" id="horizontalTabsAutohideRow" for="horizontalTabsAutohide">
+            <span class="setup-switch-copy">
+              <strong data-l10n-id="welcome-dialog-autohide-horizontal-tabs"></strong>
+              <small data-l10n-id="welcome-dialog-autohide-horizontal-tabs-desc"></small>
+            </span>
+            <input type="checkbox" id="horizontalTabsAutohide" />
+            <span class="setup-switch-track" aria-hidden="true"></span>
+          </label>
+
+          <label class="setup-switch-row dependent-control" id="inactiveWindowTabsRow" for="showInactiveWindowTabs">
+            <span class="setup-switch-copy">
+              <strong data-l10n-id="welcome-dialog-autohide-inactive-tabs"></strong>
+              <small data-l10n-id="welcome-dialog-autohide-inactive-tabs-desc"></small>
+            </span>
+            <input type="checkbox" id="showInactiveWindowTabs" />
+            <span class="setup-switch-track" aria-hidden="true"></span>
+          </label>
+
+          <label class="setup-switch-row" id="verticalTabsAutohideRow" for="verticalTabsAutohide" hidden>
+            <span class="setup-switch-copy">
+              <strong data-l10n-id="welcome-dialog-autohide-vertical-tabs"></strong>
+              <small data-l10n-id="welcome-dialog-autohide-vertical-tabs-desc"></small>
+            </span>
+            <input type="checkbox" id="verticalTabsAutohide" />
+            <span class="setup-switch-track" aria-hidden="true"></span>
+          </label>
+
+          <p class="setup-layout-notice" id="bottomTabsAutohideNotice" data-l10n-id="welcome-dialog-autohide-bottom-tabs" hidden></p>
+        </fieldset>
+      </section>
 
       <hbox>
         <button

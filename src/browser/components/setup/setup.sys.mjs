@@ -1,6 +1,16 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import {
+  getAutohideAvailability,
+  getSidebarArrangement,
+  getSidebarSideForLayout,
+  getTabLayoutFromPrefs,
+  isVerticalTabLayout,
+  normalizeSide,
+  normalizeTabLayout,
+} from './SetupCustomizationPolicy.sys.mjs';
+
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -10,6 +20,30 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const welcomeSeenPref = 'midori.welcome.seen';
 const urlbarLayoutPref = 'midori.modblur.tabs.layout';
+const PREF_ARC_MODE = 'midori.arcmode.enabled';
+const PREF_VERTICAL_TABS = 'midori.verticaltabs.enabled';
+const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
+const PREF_VERTICAL_COLLAPSE = 'midori.verticaltabs.collapse';
+const PREF_HORIZONTAL_POSITION = 'midori.horizontaltabs.position';
+const PREF_MSIDEBAR_ENABLED = 'midori.msidebar.enabled';
+const PREF_MSIDEBAR_POSITION = 'midori.msidebar.position';
+const PREF_MSIDEBAR_AUTOHIDE = 'midori.msidebar.autohide.enabled';
+const PREF_MSIDEBAR_AUTOHIDE_MODE = 'midori.msidebar.autohide.mode';
+const PREF_HORIZONTAL_AUTOHIDE = 'midori.modblur.tabs.autohide';
+const PREF_SHOW_INACTIVE_TABS = 'midori.modblur.tabs.showWhileInactive';
+const MSIDEBAR_SETUP_PREFS = [
+  PREF_ARC_MODE,
+  PREF_VERTICAL_TABS,
+  PREF_VERTICAL_POSITION,
+  PREF_VERTICAL_COLLAPSE,
+  PREF_HORIZONTAL_POSITION,
+  PREF_MSIDEBAR_ENABLED,
+  PREF_MSIDEBAR_POSITION,
+  PREF_MSIDEBAR_AUTOHIDE,
+  PREF_MSIDEBAR_AUTOHIDE_MODE,
+  PREF_HORIZONTAL_AUTOHIDE,
+  PREF_SHOW_INACTIVE_TABS,
+];
 
 class Page {
   /**
@@ -111,38 +145,71 @@ class TabLayout extends Page {
     this._addressTopCard.addEventListener('keydown', (event) => this._handleUrlbarOrderKeydown(event));
     this._tabsTopCard.addEventListener('keydown', (event) => this._handleUrlbarOrderKeydown(event));
 
-    const vertical = Services.prefs.getBoolPref('midori.verticaltabs.enabled', false);
-    const verticalPosition = Services.prefs.getCharPref('midori.verticaltabs.position', 'left');
-    const horizontalPosition = Services.prefs.getCharPref('midori.horizontaltabs.position', 'top');
-    const mode = vertical
-      ? (verticalPosition === 'right' ? 'vertical-right' : 'vertical-left')
-      : (horizontalPosition === 'bottom' ? 'horizontal-bottom' : 'horizontal-top');
-
-    this._select(mode);
-    this._selectUrlbarOrder(Services.prefs.getCharPref(urlbarLayoutPref, 'urlbar-top'));
+    this._syncFromPrefs();
   }
 
   _select(mode) {
-    const vertical = mode === 'vertical-left' || mode === 'vertical-right';
-    this._horizontalTopCard.classList.toggle('selected', mode === 'horizontal-top');
-    this._horizontalBottomCard.classList.toggle('selected', mode === 'horizontal-bottom');
-    this._verticalLeftCard.classList.toggle('selected', mode === 'vertical-left');
-    this._verticalRightCard.classList.toggle('selected', mode === 'vertical-right');
-    this._urlbarOrderSection.hidden = mode !== 'horizontal-top';
+    const layout = normalizeTabLayout(mode);
+    const vertical = isVerticalTabLayout(layout);
 
+    Services.prefs.setBoolPref(PREF_ARC_MODE, false);
     lazy.MidoriVerticalTabs.setEnabled(vertical);
 
     if (vertical) {
-      Services.prefs.setCharPref('midori.verticaltabs.position', mode === 'vertical-right' ? 'right' : 'left');
+      Services.prefs.setCharPref(
+        PREF_VERTICAL_POSITION,
+        layout === 'vertical-right' ? 'right' : 'left'
+      );
     } else {
       Services.prefs.setCharPref(
-        'midori.horizontaltabs.position',
-        mode === 'horizontal-bottom' ? 'bottom' : 'top'
+        PREF_HORIZONTAL_POSITION,
+        layout === 'horizontal-bottom' ? 'bottom' : 'top'
       );
     }
+
+    this._render(layout);
   }
 
-  _selectUrlbarOrder(layout) {
+  _render(mode) {
+    const layout = normalizeTabLayout(mode);
+    this._mode = layout;
+    this._horizontalTopCard.classList.toggle('selected', layout === 'horizontal-top');
+    this._horizontalBottomCard.classList.toggle('selected', layout === 'horizontal-bottom');
+    this._verticalLeftCard.classList.toggle('selected', layout === 'vertical-left');
+    this._verticalRightCard.classList.toggle('selected', layout === 'vertical-right');
+    this._urlbarOrderSection.hidden = layout !== 'horizontal-top';
+  }
+
+  _syncFromPrefs() {
+    this._render(
+      getTabLayoutFromPrefs({
+        verticalTabsEnabled: Services.prefs.getBoolPref(
+          PREF_VERTICAL_TABS,
+          false
+        ),
+        arcModeEnabled: Services.prefs.getBoolPref(PREF_ARC_MODE, false),
+        verticalTabsSide: Services.prefs.getCharPref(
+          PREF_VERTICAL_POSITION,
+          'left'
+        ),
+        horizontalTabsPosition: Services.prefs.getCharPref(
+          PREF_HORIZONTAL_POSITION,
+          'top'
+        ),
+      })
+    );
+    this._selectUrlbarOrder(
+      Services.prefs.getCharPref(urlbarLayoutPref, 'urlbar-top'),
+      { persist: false }
+    );
+  }
+
+  show() {
+    this._syncFromPrefs();
+    super.show();
+  }
+
+  _selectUrlbarOrder(layout, { persist = true } = {}) {
     const value = layout === 'tabs-top' ? 'tabs-top' : 'urlbar-top';
     const addressTop = value === 'urlbar-top';
 
@@ -153,7 +220,9 @@ class TabLayout extends Page {
     this._addressTopCard.tabIndex = addressTop ? 0 : -1;
     this._tabsTopCard.tabIndex = addressTop ? -1 : 0;
 
-    Services.prefs.setCharPref(urlbarLayoutPref, value);
+    if (persist) {
+      Services.prefs.setCharPref(urlbarLayoutPref, value);
+    }
   }
 
   _handleUrlbarOrderKeydown(event) {
@@ -175,18 +244,247 @@ class MSidebar extends Page {
     super(id);
     this._enableCard = document.getElementById('msidebarEnable');
     this._disableCard = document.getElementById('msidebarDisable');
+    this._positionHorizontalHint = document.getElementById(
+      'msidebarPositionHorizontalHint'
+    );
+    this._positionVerticalHint = document.getElementById(
+      'msidebarPositionVerticalHint'
+    );
+    this._positionInputs = Array.from(
+      document.querySelectorAll('input[name="msidebarPosition"]')
+    );
+    this._sidebarAutohide = document.getElementById('msidebarAutohide');
+    this._sidebarAutohideMode = document.getElementById(
+      'msidebarAutohideMode'
+    );
+    this._horizontalTabsAutohide = document.getElementById(
+      'horizontalTabsAutohide'
+    );
+    this._showInactiveWindowTabs = document.getElementById(
+      'showInactiveWindowTabs'
+    );
+    this._verticalTabsAutohide = document.getElementById(
+      'verticalTabsAutohide'
+    );
+    this._horizontalTabsAutohideRow = document.getElementById(
+      'horizontalTabsAutohideRow'
+    );
+    this._inactiveWindowTabsRow = document.getElementById(
+      'inactiveWindowTabsRow'
+    );
+    this._verticalTabsAutohideRow = document.getElementById(
+      'verticalTabsAutohideRow'
+    );
+    this._bottomTabsAutohideNotice = document.getElementById(
+      'bottomTabsAutohideNotice'
+    );
 
-    this._enableCard.addEventListener('click', () => this._select(true));
-    this._disableCard.addEventListener('click', () => this._select(false));
+    this._enableCard.addEventListener('click', () => this._selectEnabled(true));
+    this._disableCard.addEventListener('click', () => this._selectEnabled(false));
+    this._enableCard.addEventListener('keydown', event =>
+      this._handleEnabledKeydown(event)
+    );
+    this._disableCard.addEventListener('keydown', event =>
+      this._handleEnabledKeydown(event)
+    );
+    for (const input of this._positionInputs) {
+      input.addEventListener('change', () => {
+        if (input.checked) {
+          this._selectPosition(input.value);
+        }
+      });
+    }
+    this._sidebarAutohide.addEventListener('change', () => {
+      Services.prefs.setBoolPref(
+        PREF_MSIDEBAR_AUTOHIDE,
+        this._sidebarAutohide.checked
+      );
+      this._updateAvailability();
+    });
+    this._sidebarAutohideMode.addEventListener('change', () => {
+      Services.prefs.setCharPref(
+        PREF_MSIDEBAR_AUTOHIDE_MODE,
+        this._sidebarAutohideMode.value === 'inline' ? 'inline' : 'overlay'
+      );
+    });
+    this._horizontalTabsAutohide.addEventListener('change', () => {
+      Services.prefs.setBoolPref(
+        PREF_HORIZONTAL_AUTOHIDE,
+        this._horizontalTabsAutohide.checked
+      );
+      this._updateAvailability();
+    });
+    this._showInactiveWindowTabs.addEventListener('change', () => {
+      Services.prefs.setBoolPref(
+        PREF_SHOW_INACTIVE_TABS,
+        this._showInactiveWindowTabs.checked
+      );
+    });
+    this._verticalTabsAutohide.addEventListener('change', () => {
+      Services.prefs.setBoolPref(
+        PREF_VERTICAL_COLLAPSE,
+        this._verticalTabsAutohide.checked
+      );
+    });
 
-    const enabled = Services.prefs.getBoolPref('midori.msidebar.enabled', false);
-    this._select(enabled);
+    this._prefObserver = {
+      observe: () => this._syncFromPrefs(),
+    };
+    for (const pref of MSIDEBAR_SETUP_PREFS) {
+      Services.prefs.addObserver(pref, this._prefObserver);
+    }
+    window.addEventListener('pagehide', () => {
+      for (const pref of MSIDEBAR_SETUP_PREFS) {
+        try {
+          Services.prefs.removeObserver(pref, this._prefObserver);
+        } catch {}
+      }
+    }, { once: true });
+
+    this._syncFromPrefs();
   }
 
-  _select(enabled) {
+  _selectEnabled(enabled) {
+    Services.prefs.setBoolPref(PREF_MSIDEBAR_ENABLED, !!enabled);
+    this._renderEnabled(enabled);
+    if (enabled) {
+      const selectedSide = this._positionInputs.find(input => input.checked)?.value;
+      this._selectPosition(selectedSide);
+    }
+    this._updateAvailability();
+  }
+
+  _renderEnabled(enabled) {
     this._enableCard.classList.toggle('selected', !!enabled);
     this._disableCard.classList.toggle('selected', !enabled);
-    Services.prefs.setBoolPref('midori.msidebar.enabled', !!enabled);
+    this._enableCard.setAttribute('aria-checked', String(!!enabled));
+    this._disableCard.setAttribute('aria-checked', String(!enabled));
+    this._enableCard.tabIndex = enabled ? 0 : -1;
+    this._disableCard.tabIndex = enabled ? -1 : 0;
+  }
+
+  _handleEnabledKeydown(event) {
+    if (![' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    let enabled = event.currentTarget === this._enableCard;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      enabled = true;
+    } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      enabled = false;
+    }
+    this._selectEnabled(enabled);
+    (enabled ? this._enableCard : this._disableCard).focus();
+  }
+
+  _getTabLayout() {
+    return getTabLayoutFromPrefs({
+      verticalTabsEnabled: Services.prefs.getBoolPref(
+        PREF_VERTICAL_TABS,
+        false
+      ),
+      arcModeEnabled: Services.prefs.getBoolPref(PREF_ARC_MODE, false),
+      verticalTabsSide: Services.prefs.getCharPref(
+        PREF_VERTICAL_POSITION,
+        'left'
+      ),
+      horizontalTabsPosition: Services.prefs.getCharPref(
+        PREF_HORIZONTAL_POSITION,
+        'top'
+      ),
+    });
+  }
+
+  _selectPosition(side) {
+    const arrangement = getSidebarArrangement({
+      sidebarSide: normalizeSide(side),
+    });
+    Services.prefs.setCharPref(
+      PREF_MSIDEBAR_POSITION,
+      arrangement.sidebarSide
+    );
+    for (const input of this._positionInputs) {
+      input.checked = input.value === arrangement.sidebarSide;
+    }
+    this._updateLayoutUI();
+  }
+
+  _updateLayoutUI() {
+    const layout = this._getTabLayout();
+    const vertical = isVerticalTabLayout(layout);
+    this._positionHorizontalHint.hidden = vertical;
+    this._positionVerticalHint.hidden = !vertical;
+  }
+
+  _updateAvailability() {
+    const sidebarEnabled = Services.prefs.getBoolPref(
+      PREF_MSIDEBAR_ENABLED,
+      false
+    );
+    const layout = this._getTabLayout();
+    const availability = getAutohideAvailability({
+      tabLayout: layout,
+      sidebarEnabled,
+      sidebarAutohideEnabled: this._sidebarAutohide.checked,
+      horizontalTabsAutohideEnabled: this._horizontalTabsAutohide.checked,
+    });
+
+    for (const input of this._positionInputs) {
+      input.disabled = !sidebarEnabled;
+    }
+    this._sidebarAutohide.disabled = !availability.sidebar;
+    this._sidebarAutohideMode.disabled = !availability.sidebarMode;
+    this._horizontalTabsAutohideRow.hidden = !availability.horizontalTabs;
+    this._horizontalTabsAutohide.disabled = !availability.horizontalTabs;
+    this._inactiveWindowTabsRow.hidden = !availability.horizontalTabs;
+    this._showInactiveWindowTabs.disabled = !availability.inactiveWindowTabs;
+    this._verticalTabsAutohideRow.hidden = !availability.verticalTabs;
+    this._verticalTabsAutohide.disabled = !availability.verticalTabs;
+    this._bottomTabsAutohideNotice.hidden = layout !== 'horizontal-bottom';
+  }
+
+  _syncFromPrefs() {
+    const enabled = Services.prefs.getBoolPref(PREF_MSIDEBAR_ENABLED, false);
+    const sidebarSide = getSidebarSideForLayout({
+      storedSidebarSide: Services.prefs.getCharPref(
+        PREF_MSIDEBAR_POSITION,
+        'left'
+      ),
+    });
+
+    this._renderEnabled(enabled);
+    for (const input of this._positionInputs) {
+      input.checked = input.value === sidebarSide;
+    }
+    this._sidebarAutohide.checked = Services.prefs.getBoolPref(
+      PREF_MSIDEBAR_AUTOHIDE,
+      false
+    );
+    this._sidebarAutohideMode.value =
+      Services.prefs.getCharPref(PREF_MSIDEBAR_AUTOHIDE_MODE, 'overlay') ===
+      'inline'
+        ? 'inline'
+        : 'overlay';
+    this._horizontalTabsAutohide.checked = Services.prefs.getBoolPref(
+      PREF_HORIZONTAL_AUTOHIDE,
+      false
+    );
+    this._showInactiveWindowTabs.checked = Services.prefs.getBoolPref(
+      PREF_SHOW_INACTIVE_TABS,
+      false
+    );
+    this._verticalTabsAutohide.checked = Services.prefs.getBoolPref(
+      PREF_VERTICAL_COLLAPSE,
+      false
+    );
+    this._updateLayoutUI();
+    this._updateAvailability();
+  }
+
+  show() {
+    this._syncFromPrefs();
+    super.show();
   }
 }
 
@@ -244,7 +542,7 @@ class Pages {
   }
 }
 
-const pages = new Pages([
+new Pages([
   new Page('welcome'),
   new Import('import'),
   new ColorTheme('color'),
