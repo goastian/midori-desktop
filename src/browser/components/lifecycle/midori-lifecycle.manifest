@@ -1,0 +1,1 @@
+category browser-quit-application-granted resource:///modules/MidoriBrowserServices.sys.mjs MidoriBrowserServices.uninit
