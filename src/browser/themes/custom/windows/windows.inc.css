@@ -5,9 +5,20 @@
  * Midori Browser — Windows-specific Flat Design adjustments
  */
 
-/* Windows 10/11 snap layout hover fix */
+/* Windows 10/11 snap layout and titlebar hit-testing */
 :root[tabsintitlebar] .titlebar-buttonbox-container {
   margin-inline-end: env(titlebar-area-x, 0px);
+  position: relative !important;
+  z-index: 4 !important;
+  pointer-events: auto !important;
+  -moz-window-dragging: no-drag !important;
+}
+
+:root[tabsintitlebar] :is(.titlebar-buttonbox, .titlebar-button) {
+  position: relative;
+  z-index: 4;
+  pointer-events: auto !important;
+  -moz-window-dragging: no-drag !important;
 }
 
 /* Windows scrollbar thin styling */
