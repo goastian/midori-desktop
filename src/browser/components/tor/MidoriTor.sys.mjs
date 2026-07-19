@@ -29,9 +29,11 @@
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  AsyncShutdown: 'resource://gre/modules/AsyncShutdown.sys.mjs',
   BrowserWindowTracker: 'resource:///modules/BrowserWindowTracker.sys.mjs',
   MidoriTorLifecycle: 'resource:///modules/MidoriTorLifecycle.sys.mjs',
   PrivateBrowsingUtils: 'resource://gre/modules/PrivateBrowsingUtils.sys.mjs',
+  Subprocess: 'resource://gre/modules/Subprocess.sys.mjs',
 });
 
 const PREF_ENABLED = 'midori.tor.enabled';
@@ -43,6 +45,7 @@ const PREF_PREWARM_ENABLED = 'midori.tor.prewarm.enabled';
 const PREF_PREWARM_IDLE_TIMEOUT_MS = 'midori.tor.prewarm.idle_timeout_ms';
 const PREF_BOOTSTRAP_TIMEOUT_MS = 'midori.tor.bootstrap_timeout_ms';
 const PREF_STOP_AFTER_LAST_WINDOW_MS = 'midori.tor.stop_after_last_window_ms';
+const PREF_SHUTDOWN_TIMEOUT_MS = 'midori.tor.shutdown_timeout_ms';
 
 const ENV_TOR_BINARY = 'MIDORI_TOR_BINARY';
 const ENV_TOR_DIR = 'MIDORI_TOR_DIR';
@@ -85,9 +88,15 @@ export const MidoriTor = {
   _torBinaryAvailable: false,
   _torBinaryPathResolved: '',
   _startPromise: null,
+  _launchPromise: null,
+  _processExitPromise: null,
+  _stopPromise: null,
+  _stopRequested: false,
   _stopAfterLastWindowTimer: null,
   _prewarmIdleScheduled: false,
-  _shutdownHandled: false,
+  _shutdownStarted: false,
+  _shutdownPromise: null,
+  _shutdownBlocker: null,
 
   // Circuit info (Fase 7 — UI status panel)
   _exitNodeIP: null,
@@ -110,7 +119,6 @@ export const MidoriTor = {
       return;
     }
     this._initialized = true;
-    this._shutdownHandled = false;
     log('Initializing MidoriTor module...');
 
     // Generate a random control password for this session
@@ -137,11 +145,10 @@ export const MidoriTor = {
     // Watch for window open/close to inject Tor indicator CSS
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
-      // Kill Tor process when the browser exits so ports don't stay occupied
-      Services.obs.addObserver(this, 'quit-application');
-      Services.obs.addObserver(this, 'quit-application-granted');
-      this._schedulePrewarmOnIdle();
-      log('MidoriTor initialized successfully. Tor binary available:', this._torBinaryAvailable);
+    Services.obs.addObserver(this, 'quit-application-granted');
+    this._registerShutdownBlocker();
+    this._schedulePrewarmOnIdle();
+    log('MidoriTor initialized successfully. Tor binary available:', this._torBinaryAvailable);
   },
 
   /**
@@ -180,6 +187,57 @@ export const MidoriTor = {
   // Process Management
   // ===========================================================================
 
+  _registerShutdownBlocker() {
+    if (this._shutdownBlocker) {
+      return;
+    }
+
+    const phase = lazy.AsyncShutdown.appShutdownConfirmed;
+    if (phase.isClosed) {
+      this._shutdownStarted = true;
+      return;
+    }
+
+    const blocker = () => this.shutdown();
+    try {
+      lazy.AsyncShutdown.appShutdownConfirmed.addBlocker(
+        'MidoriTor: stopping embedded Tor process',
+        blocker,
+        { fetchState: () => this._getShutdownState() }
+      );
+      this._shutdownBlocker = blocker;
+    } catch (e) {
+      this._shutdownStarted = true;
+      warn('Could not register Tor shutdown blocker:', e);
+    }
+  },
+
+  _getShutdownState() {
+    return {
+      state: this._state,
+      pid: this._process?.pid ?? null,
+      launchPending: !!this._launchPromise,
+      stopPending: !!this._stopPromise,
+      processExitPending: !!this._processExitPromise,
+    };
+  },
+
+  shutdown() {
+    if (!this._shutdownPromise) {
+      this._shutdownStarted = true;
+      this._shutdownPromise = this._shutdown();
+    }
+    return this._shutdownPromise;
+  },
+
+  async _shutdown() {
+    log('Browser exiting — stopping Tor process...');
+    const stopped = await this.stop({ reason: 'shutdown' });
+    if (!stopped && (this._process || this._launchPromise)) {
+      this._trace('shutdown-incomplete', this._getShutdownState());
+    }
+  },
+
   /**
    * Start the Tor process if not already running.
    * @returns {Promise<boolean>} true if Tor started/is running successfully
@@ -187,6 +245,10 @@ export const MidoriTor = {
   async start() {
     if (!this._initialized) {
       this.init();
+    }
+
+    if (this._shutdownStarted || this._stopRequested) {
+      return false;
     }
 
     if (!Services.prefs.getBoolPref(PREF_ENABLED, true)) {
@@ -205,11 +267,26 @@ export const MidoriTor = {
       return this._startPromise;
     }
 
+    if (
+      !lazy.MidoriTorLifecycle.canStartProcess({
+        shutdownStarted: this._shutdownStarted,
+        stopRequested: this._stopRequested,
+        stopPending: !!this._stopPromise,
+        hasProcess: !!this._process,
+      })
+    ) {
+      warn('Tor process launch skipped because another process is still tracked');
+      return false;
+    }
+
     this._startPromise = this._startInternal();
     try {
       return await this._startPromise;
     } finally {
       this._startPromise = null;
+      if (!this._shutdownStarted && !this._process && !this._stopPromise) {
+        this._stopRequested = false;
+      }
     }
   },
 
@@ -218,7 +295,16 @@ export const MidoriTor = {
    * @returns {Promise<boolean>}
    */
   async _startInternal() {
-    if (this._state === STATE_BOOTSTRAPPING || this._state === STATE_STARTING) {
+    if (
+      this._state === STATE_BOOTSTRAPPING ||
+      this._state === STATE_STARTING ||
+      !lazy.MidoriTorLifecycle.canStartProcess({
+        shutdownStarted: this._shutdownStarted,
+        stopRequested: this._stopRequested,
+        stopPending: !!this._stopPromise,
+        hasProcess: !!this._process,
+      })
+    ) {
       return false;
     }
 
@@ -243,11 +329,16 @@ export const MidoriTor = {
       // Write torrc configuration
       const torrcFile = this._writeTorrc();
 
-        // Evict any stale Tor process that may be holding our ports from a
-        // previous browser session that didn't shut down cleanly.
-        this._trace('evict-begin', { controlPort: TOR_CONTROL_PORT });
-        await this._evictTorOnPorts();
-        this._trace('evict-end', { controlPort: TOR_CONTROL_PORT });
+      // Evict any stale Tor process that may be holding our ports from a
+      // previous browser session that didn't shut down cleanly.
+      this._trace('evict-begin', { controlPort: TOR_CONTROL_PORT });
+      await this._evictTorOnPorts();
+      this._trace('evict-end', { controlPort: TOR_CONTROL_PORT });
+
+      if (this._shutdownStarted || this._stopRequested) {
+        this._setState(STATE_DISCONNECTED);
+        return false;
+      }
 
       // Build platform launcher details that isolate library lookup for Tor.
       const launchInfo = this._buildTorLaunchInfo({
@@ -257,35 +348,37 @@ export const MidoriTor = {
       });
       log('Tor launch prepared', {
         os: Services.appinfo.OS,
-        program: launchInfo.programFile.path,
-        args: launchInfo.args,
+        program: launchInfo.command,
+        args: launchInfo.arguments,
         torrc: torrcFile.path,
       });
 
-      const process = Cc['@mozilla.org/process/util;1'].createInstance(Ci.nsIProcess);
-      process.init(launchInfo.programFile);
-
-      const args = launchInfo.args;
       this._processFailed = false;
-      process.runAsync(args, args.length, {
-        observe: (_subject, topic) => {
-          if (topic === 'process-finished' || topic === 'process-failed') {
-            // Signal _waitForBootstrap to abort immediately
-            this._processFailed = true;
-            this._trace('process-exit', {
-              topic,
-              state: this._state,
-            });
-            if (this._state !== STATE_STOPPING) {
-              console.warn('MidoriTor: Tor process exited unexpectedly, topic:', topic);
-              this._setState(STATE_DISCONNECTED);
-              this._process = null;
-            }
-          }
-        },
+      const launchPromise = lazy.Subprocess.call({
+        ...launchInfo,
+        environmentAppend: true,
+        stderr: 'ignore',
+        workdir: torDir,
       });
+      this._launchPromise = launchPromise;
+
+      let process;
+      try {
+        process = await launchPromise;
+      } finally {
+        if (this._launchPromise === launchPromise) {
+          this._launchPromise = null;
+        }
+      }
 
       this._process = process;
+      this._watchProcessExit(process);
+
+      if (this._shutdownStarted || this._stopRequested) {
+        await this.stop({ reason: 'launch-cancelled' });
+        return false;
+      }
+
       const bootstrapTimeoutMs = this._getBootstrapTimeoutMs();
       this._setState(STATE_BOOTSTRAPPING);
       this._trace('bootstrap-enter', { timeoutMs: bootstrapTimeoutMs, pollMs: BOOTSTRAP_POLL_MS });
@@ -302,7 +395,7 @@ export const MidoriTor = {
 
       // Wait for bootstrap to complete
       const bootstrapped = await this._waitForBootstrap(bootstrapTimeoutMs);
-      if (bootstrapped) {
+      if (bootstrapped && !this._shutdownStarted && !this._stopRequested) {
         this._setState(STATE_CONNECTED);
         this._trace('bootstrap-complete', {
           progress: this._bootstrapProgress,
@@ -323,21 +416,45 @@ export const MidoriTor = {
         lastSummary: this._bootstrapSummary,
         lastControlError: this._lastControlError,
       });
-      this.stop();
-      this._setState(STATE_ERROR);
+      await this.stop({ reason: 'bootstrap-timeout' });
+      if (!this._shutdownStarted) {
+        this._setState(STATE_ERROR);
+      }
       return false;
     } catch (e) {
       console.error('MidoriTor: Failed to start Tor process', e);
       this._trace('start-failed', { message: String(e) });
-      this._setState(STATE_ERROR);
+      await this.stop({ reason: 'start-failed' });
+      if (!this._shutdownStarted) {
+        this._setState(STATE_ERROR);
+      }
       return false;
     }
   },
 
   /**
    * Stop the Tor process.
+   * @param {{reason?: string}} options
+   * @returns {Promise<boolean>}
    */
-  stop() {
+  stop({ reason = 'manual' } = {}) {
+    this._stopRequested = true;
+    if (!this._stopPromise) {
+      const operation = this._stopInternal(reason);
+      const trackedOperation = operation.finally(() => {
+        if (this._stopPromise === trackedOperation) {
+          this._stopPromise = null;
+          if (!this._shutdownStarted && !this._process && !this._startPromise) {
+            this._stopRequested = false;
+          }
+        }
+      });
+      this._stopPromise = trackedOperation;
+    }
+    return this._stopPromise;
+  },
+
+  async _stopInternal(reason) {
     this._cancelStopAfterLastWindowTimer();
 
     // Restore hardening before stopping — ensures global prefs are clean
@@ -349,19 +466,122 @@ export const MidoriTor = {
     this._exitNodeCountry = null;
     this._circuitPath = [];
 
-    if (!this._process) {
+    const timeoutMs = this._getShutdownTimeoutMs();
+    const deadlineAt = Date.now() + timeoutMs;
+    const launchPromise = this._launchPromise;
+    if (launchPromise) {
+      const launchTimedOut = {};
+      const launchOutcome = await this._withTimeout(
+        launchPromise.then(
+          value => ({ value }),
+          failure => ({ failure })
+        ),
+        Math.max(0, deadlineAt - Date.now()),
+        launchTimedOut
+      );
+      if (launchOutcome === launchTimedOut) {
+        warn('Timed out waiting for the Tor launch operation during stop');
+        this._trace('stop-launch-timeout', { reason, timeoutMs });
+        return false;
+      }
+      if ('failure' in launchOutcome) {
+        this._trace('stop-launch-failed', {
+          reason,
+          message: String(launchOutcome.failure),
+        });
+      }
+    }
+
+    const process = this._process;
+    if (!process) {
       this._setState(STATE_DISCONNECTED);
-      return;
+      if (!this._startPromise && !this._shutdownStarted) {
+        this._stopRequested = false;
+      }
+      return true;
     }
 
     this._setState(STATE_STOPPING);
-    try {
-      this._process.kill();
-    } catch (e) {
-      // Process may already be dead
+    this._trace('stop-begin', { reason, pid: process.pid, timeoutMs });
+
+    const exitTimedOut = {};
+    const exitOutcome = await this._withTimeout(
+      Promise.resolve()
+        .then(() => process.kill(this._shutdownStarted ? 0 : 500))
+        .then(
+          value => ({ value }),
+          failure => ({ failure })
+        ),
+      Math.max(0, deadlineAt - Date.now()),
+      exitTimedOut
+    );
+
+    if (exitOutcome === exitTimedOut) {
+      warn('Timed out waiting for the Tor process to exit');
+      this._trace('stop-timeout', { reason, pid: process.pid, timeoutMs });
+      if (!this._shutdownStarted) {
+        this._setState(STATE_ERROR);
+      }
+      return false;
     }
+
+    if ('failure' in exitOutcome) {
+      warn('Failed to stop Tor process:', exitOutcome.failure);
+      this._trace('stop-failed', {
+        reason,
+        message: String(exitOutcome.failure),
+      });
+      if (!this._shutdownStarted) {
+        this._setState(STATE_ERROR);
+      }
+      return false;
+    }
+
+    this._handleProcessExit(process, exitOutcome.value);
+    return true;
+  },
+
+  _watchProcessExit(process) {
+    const exitPromise = process.wait().then(
+      result => {
+        this._handleProcessExit(process, result);
+        return result;
+      },
+      failure => {
+        if (this._process === process) {
+          this._processFailed = true;
+          this._processExitPromise = null;
+          warn('Failed while waiting for the Tor process:', failure);
+          this._trace('process-wait-failed', { message: String(failure) });
+        }
+        return null;
+      }
+    );
+    this._processExitPromise = exitPromise;
+  },
+
+  _handleProcessExit(process, result) {
+    if (this._process !== process) {
+      return;
+    }
+
+    const expected =
+      this._state === STATE_STOPPING || this._stopRequested || this._shutdownStarted;
+    this._trace('process-exit', {
+      exitCode: result?.exitCode ?? null,
+      expected,
+      state: this._state,
+    });
+    this._processFailed = !expected;
     this._process = null;
+    this._processExitPromise = null;
     this._bootstrapProgress = 0;
+    if (!this._shutdownStarted && !this._stopPromise) {
+      this._stopRequested = false;
+    }
+    if (!expected) {
+      warn('Tor process exited unexpectedly with code:', result?.exitCode ?? 'unknown');
+    }
     this._setState(STATE_DISCONNECTED);
   },
 
@@ -736,7 +956,9 @@ export const MidoriTor = {
         this._stopAfterLastWindowTimer = null;
         if (this._torWindows.size === 0) {
           log('No Tor windows after grace period, stopping Tor');
-          this.stop();
+          this.stop({ reason: 'last-window' }).catch(e => {
+            warn('Failed to stop Tor after the last window closed:', e);
+          });
         }
       },
       stopDelayMs,
@@ -1430,111 +1652,20 @@ export const MidoriTor = {
   },
 
   /**
-   * Build launch program + args for Tor across platforms.
-   * Linux/macOS run a generated shell launcher.
-   * Windows runs a generated batch launcher via cmd.exe.
+   * Build direct process launch details with bundled library lookup.
    * @param {{torBinaryPath: string, torDir: string, torrcPath: string}} options
-   * @returns {{programFile: nsIFile, args: string[]}}
+   * @returns {{command: string, arguments: string[], environment: object}}
    */
   _buildTorLaunchInfo({ torBinaryPath, torDir, torrcPath }) {
-    if (Services.appinfo.OS === 'WINNT') {
-      const wrapperFile = this._createTorWrapperWindows(torBinaryPath, torDir);
-      const cmdFile = this._getWindowsCmdFile();
-      const command = `call "${wrapperFile.path}" -f "${torrcPath}"`;
-      return {
-        programFile: cmdFile,
-        args: ['/d', '/c', command],
-      };
-    }
-
-    const wrapperFile = this._createTorWrapperUnix(torBinaryPath, torDir);
     return {
-      programFile: wrapperFile,
-      args: ['-f', torrcPath],
+      command: torBinaryPath,
+      arguments: ['-f', torrcPath],
+      environment: lazy.MidoriTorLifecycle.buildLaunchEnvironment({
+        platform: Services.appinfo.OS,
+        torDir,
+        environment: lazy.Subprocess.getEnvironment(),
+      }),
     };
-  },
-
-  /**
-   * Create a shell launcher that constrains library lookup to the bundled
-   * tor/ directory for the Tor subprocess.
-   * @param {string} torBinaryPath
-   * @param {string} torDir
-   * @returns {nsIFile}
-   */
-  _createTorWrapperUnix(torBinaryPath, torDir) {
-    const profileDir = Services.dirsvc.get('ProfD', Ci.nsIFile);
-    const wrapperFile = profileDir.clone();
-    wrapperFile.append('midori-tor-wrapper-unix.sh');
-
-    const script = [
-      '#!/bin/sh',
-      'set -e',
-      '# Midori Tor wrapper: isolate Tor dependencies from system libraries',
-      `export LD_LIBRARY_PATH="${torDir}${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}"`,
-      `export DYLD_LIBRARY_PATH="${torDir}${'$'}{DYLD_LIBRARY_PATH:+:${'$'}DYLD_LIBRARY_PATH}"`,
-      `exec "${torBinaryPath}" "$@" 2>&1`,
-      '',
-    ].join('\n');
-
-    this._writeTextFile(wrapperFile, script, 0o755);
-    log('Created Unix Tor launcher at:', wrapperFile.path);
-    return wrapperFile;
-  },
-
-  /**
-   * Create a Windows batch launcher that prepends bundled tor/ to PATH only
-   * for the Tor subprocess.
-   * @param {string} torBinaryPath
-   * @param {string} torDir
-   * @returns {nsIFile}
-   */
-  _createTorWrapperWindows(torBinaryPath, torDir) {
-    const profileDir = Services.dirsvc.get('ProfD', Ci.nsIFile);
-    const wrapperFile = profileDir.clone();
-    wrapperFile.append('midori-tor-wrapper-win.bat');
-
-    const script = [
-      '@echo off',
-      'setlocal',
-      `set "TOR_DIR=${torDir}"`,
-      'set "PATH=%TOR_DIR%;%PATH%"',
-      `"${torBinaryPath}" %*`,
-      '',
-    ].join('\r\n');
-
-    this._writeTextFile(wrapperFile, script, 0o600);
-    log('Created Windows Tor launcher at:', wrapperFile.path);
-    return wrapperFile;
-  },
-
-  /**
-   * Resolve cmd.exe for Windows launcher execution.
-   * @returns {nsIFile}
-   */
-  _getWindowsCmdFile() {
-    const env = Cc['@mozilla.org/process/environment;1'].getService(Ci.nsIEnvironment);
-    const cmdPath = env.get('ComSpec') || 'C:\\Windows\\System32\\cmd.exe';
-    const cmdFile = Cc['@mozilla.org/file/local;1'].createInstance(Ci.nsIFile);
-    cmdFile.initWithPath(cmdPath);
-    if (!cmdFile.exists()) {
-      throw new Error(`cmd.exe not found at ${cmdPath}`);
-    }
-    return cmdFile;
-  },
-
-  /**
-   * Write plain text to a file with the given unix mode.
-   * @param {nsIFile} file
-   * @param {string} content
-   * @param {number} mode
-   */
-  _writeTextFile(file, content, mode) {
-    const outputStream = Cc['@mozilla.org/network/file-output-stream;1'].createInstance(
-      Ci.nsIFileOutputStream
-    );
-    outputStream.init(file, 0x02 | 0x08 | 0x20, mode, 0);
-    outputStream.write(content, content.length);
-    outputStream.close();
   },
 
   /**
@@ -1569,8 +1700,8 @@ export const MidoriTor = {
       `CookieAuthentication 1`,
       `CookieAuthFile ${cookieAuthFile.path}`,
       `DataDirectory ${torDataDir.path}`,
-        // Logging — single stderr directive (nsIProcess runs without a tty)
-        `Log notice stderr`,
+      // Logging — single stderr directive
+      `Log notice stderr`,
     ];
 
       // Only include GeoIP directives when the files are actually present.
@@ -1684,11 +1815,16 @@ export const MidoriTor = {
     return lazy.MidoriTorLifecycle.getPrewarmIdleTimeoutMs(configured);
   },
 
+  _getShutdownTimeoutMs() {
+    const configured = Services.prefs.getIntPref(PREF_SHUTDOWN_TIMEOUT_MS, 5000);
+    return lazy.MidoriTorLifecycle.getShutdownTimeoutMs(configured);
+  },
+
   /**
    * Schedule optional Tor prewarm using browser idle dispatch.
    */
   _schedulePrewarmOnIdle() {
-    if (this._prewarmIdleScheduled) {
+    if (this._prewarmIdleScheduled || this._shutdownStarted || this._stopRequested) {
       return;
     }
     if (!Services.prefs.getBoolPref(PREF_PREWARM_ENABLED, false)) {
@@ -1701,7 +1837,7 @@ export const MidoriTor = {
 
     ChromeUtils.idleDispatch(async () => {
       this._prewarmIdleScheduled = false;
-      if (Services.startup.shuttingDown) {
+      if (Services.startup.shuttingDown || this._shutdownStarted || this._stopRequested) {
         return;
       }
       try {
@@ -1725,7 +1861,12 @@ export const MidoriTor = {
     while (Date.now() - startTime < timeoutMs) {
       pollAttempt++;
       // Abort immediately if the process died
-      if (this._processFailed || !this._process) {
+      if (
+        this._processFailed ||
+        !this._process ||
+        this._shutdownStarted ||
+        this._stopRequested
+      ) {
         warn('Bootstrap aborted: Tor process is no longer running');
         this._trace('bootstrap-abort', {
           reason: 'process-not-running',
@@ -2374,13 +2515,30 @@ export const MidoriTor = {
    * @param {T} fallback
    * @returns {Promise<T>}
    */
-  async _withTimeout(promise, timeoutMs, fallback) {
-    const timeoutPromise = this._sleep(timeoutMs).then(() => fallback);
-    try {
-      return await Promise.race([promise, timeoutPromise]);
-    } catch {
-      return fallback;
-    }
+  _withTimeout(promise, timeoutMs, fallback) {
+    return new Promise(resolve => {
+      const timer = Cc['@mozilla.org/timer;1'].createInstance(Ci.nsITimer);
+      let settled = false;
+      const finish = value => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        try {
+          timer.cancel();
+        } catch {
+          // Timer already fired.
+        }
+        resolve(value);
+      };
+
+      timer.initWithCallback(
+        () => finish(fallback),
+        timeoutMs,
+        Ci.nsITimer.TYPE_ONE_SHOT
+      );
+      Promise.resolve(promise).then(finish, () => finish(fallback));
+    });
   },
 
   /**
@@ -2614,6 +2772,9 @@ export const MidoriTor = {
     if (!this._initialized) {
       this.init();
     }
+    if (this._shutdownStarted || this._stopRequested) {
+      return false;
+    }
     const shouldPrewarm = lazy.MidoriTorLifecycle.shouldAttemptPrewarm({
       prewarmEnabled: Services.prefs.getBoolPref(PREF_PREWARM_ENABLED, false),
       torEnabled: Services.prefs.getBoolPref(PREF_ENABLED, true),
@@ -2681,15 +2842,8 @@ export const MidoriTor = {
       case 'domwindowclosed':
         this._handleTorWindowClosed(subject, 'observer');
         break;
-      case 'quit-application':
       case 'quit-application-granted':
-        if (this._shutdownHandled) {
-          break;
-        }
-        this._shutdownHandled = true;
-        // Browser is closing — kill Tor process immediately so ports are freed.
-        log('Browser exiting — stopping Tor process...');
-        this.stop();
+        this.shutdown();
         break;
     }
   },

@@ -14,6 +14,10 @@ const PREWARM_IDLE_TIMEOUT_DEFAULT_MS = 10000;
 const PREWARM_IDLE_TIMEOUT_MIN_MS = 1000;
 const PREWARM_IDLE_TIMEOUT_MAX_MS = 120000;
 
+const SHUTDOWN_TIMEOUT_DEFAULT_MS = 5000;
+const SHUTDOWN_TIMEOUT_MIN_MS = 1000;
+const SHUTDOWN_TIMEOUT_MAX_MS = 15000;
+
 function clampNumber(value, fallback, min, max) {
   if (!Number.isFinite(value)) {
     return fallback;
@@ -47,6 +51,40 @@ export const MidoriTorLifecycle = {
       PREWARM_IDLE_TIMEOUT_MIN_MS,
       PREWARM_IDLE_TIMEOUT_MAX_MS
     );
+  },
+
+  getShutdownTimeoutMs(configured) {
+    return clampNumber(
+      configured,
+      SHUTDOWN_TIMEOUT_DEFAULT_MS,
+      SHUTDOWN_TIMEOUT_MIN_MS,
+      SHUTDOWN_TIMEOUT_MAX_MS
+    );
+  },
+
+  buildLaunchEnvironment({ platform, torDir, environment = {} }) {
+    const getEnvironmentKey = name =>
+      Object.keys(environment).find(key => key.toUpperCase() === name) || name;
+    const prepend = (key, separator) => {
+      const current = environment[key];
+      return current ? `${torDir}${separator}${current}` : torDir;
+    };
+
+    if (platform === 'WINNT') {
+      const pathKey = getEnvironmentKey('PATH');
+      return { [pathKey]: prepend(pathKey, ';') };
+    }
+
+    const ldLibraryPathKey = getEnvironmentKey('LD_LIBRARY_PATH');
+    const dyldLibraryPathKey = getEnvironmentKey('DYLD_LIBRARY_PATH');
+    return {
+      [ldLibraryPathKey]: prepend(ldLibraryPathKey, ':'),
+      [dyldLibraryPathKey]: prepend(dyldLibraryPathKey, ':'),
+    };
+  },
+
+  canStartProcess({ shutdownStarted, stopRequested, stopPending, hasProcess }) {
+    return !shutdownStarted && !stopRequested && !stopPending && !hasProcess;
   },
 
   shouldAttemptOnDemandStart({ torEnabled, torBinaryAvailable, isConnected }) {
