@@ -318,7 +318,7 @@ pref('browser.urlbar.trustPanel.featureGate', false);
 pref('browser.tabs.hoverPreview.enabled', false);
 pref('widget.non-native-theme.scrollbar.style', 2);
 pref('browser.tabs.closeWindowWithLastTab', false);
-pref(' browser.settings-redesign.enabled', true);
+pref('browser.settings-redesign.enabled', true);
 pref('browser.privatebrowsing.resetPBM.enabled', false);
 
 // ============================================================================
@@ -418,6 +418,7 @@ pref('midori.tor.prewarm.enabled', false);
 pref('midori.tor.prewarm.idle_timeout_ms', 10000);
 pref('midori.tor.bootstrap_timeout_ms', 300000);
 pref('midori.tor.stop_after_last_window_ms', 15000);
+pref('midori.tor.shutdown_timeout_ms', 5000);
 
 // ============================================================================
 // DISABLE POCKET (reinforce)
