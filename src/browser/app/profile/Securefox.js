@@ -1468,7 +1468,7 @@ user_pref("permissions.default.desktop-notification", 2);
    
 // PREF: default permission for Location Requests
 // 0=always ask (default), 1=allow, 2=block
-user_pref("permissions.default.geo", 2);
+user_pref("permissions.default.geo", 0);
 
 // PREF: use alternative geolocation service instead of Google
 // [NOTE] Mozilla's geolocation service was discontinued in June 2024 [1].

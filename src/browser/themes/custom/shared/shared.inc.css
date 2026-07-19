@@ -1017,6 +1017,43 @@ tab-group .tab-group-label {
   --urlbar-icon-fill-opacity: 1;
 }
 
+/* Firefox hides invalid-page identity children. Keep active permission
+ * anchors visible and interactive without exposing inactive identity UI. */
+#identity-box[pageproxystate="invalid"]:has(> #notification-popup-box:not([hidden])),
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box:has(> #notification-popup-box:not([hidden])) {
+  display: inline-flex !important;
+  pointer-events: auto !important;
+  -moz-user-focus: normal !important;
+}
+
+#identity-box[pageproxystate="invalid"] > #notification-popup-box:not([hidden]),
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box > #notification-popup-box:not([hidden]) {
+  display: inline-flex !important;
+}
+
+#identity-box[pageproxystate="invalid"]:has(> #identity-permission-box:is([open="true"], [hasPermissions], [hasSharingIcon])),
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box:has(> #identity-permission-box:is([open="true"], [hasPermissions], [hasSharingIcon])) {
+  display: inline-flex !important;
+  pointer-events: auto !important;
+  -moz-user-focus: normal !important;
+}
+
+#identity-box[pageproxystate="invalid"] > #identity-permission-box[open="true"],
+#identity-box[pageproxystate="invalid"] > #identity-permission-box[hasPermissions],
+#identity-box[pageproxystate="invalid"] > #identity-permission-box[hasSharingIcon],
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[open="true"],
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[hasPermissions],
+.urlbar-input-container[pageproxystate="invalid"] > #identity-box > #identity-permission-box[hasSharingIcon] {
+  display: inline-flex !important;
+}
+
+#urlbar[pageproxystate="invalid"] #identity-box:has(> #notification-popup-box:not([hidden])),
+#urlbar[pageproxystate="invalid"] #identity-box:has(> #identity-permission-box:is([open="true"], [hasPermissions], [hasSharingIcon])) {
+  display: inline-flex !important;
+  pointer-events: auto !important;
+  -moz-user-focus: normal !important;
+}
+
 #urlbar:not([open]) #identity-box[pageproxystate="invalid"] {
   margin-inline: 2px 4px !important;
 }
@@ -1046,7 +1083,6 @@ tab-group .tab-group-label {
 #identity-icon-label,
 #trust-label,
 #urlbar-label-box,
-#identity-permission-box > #blocked-permissions-container,
 .searchmode-switcher-content {
   display: none !important;
 }
