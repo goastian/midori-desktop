@@ -3,16 +3,6 @@
     "DisableAppUpdate": true,
     "AppAutoUpdate": false,
     "ManualAppUpdateOnly": true,
-    "BackgroundAppUpdate": false,
-    "Preferences": {
-      "midori.tor.enabled": {
-        "Value": false,
-        "Status": "locked"
-      },
-      "midori.tor.prewarm.enabled": {
-        "Value": false,
-        "Status": "locked"
-      }
-    }
+    "BackgroundAppUpdate": false
   }
 }
