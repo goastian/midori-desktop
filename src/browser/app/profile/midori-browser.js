@@ -405,22 +405,6 @@ pref('browser.contentblocking.category', 'custom');
 pref('browser.protections_panel.enabled', false);
 
 // ============================================================================
-// MIDORI TOR INTEGRATION
-// ============================================================================
-// Embedded Tor proxy for private browsing with network anonymity.
-// When enabled, users can open "Tor Windows" (private + SOCKS5 via Tor).
-pref('midori.tor.enabled', true);
-pref('midori.tor.socks_port', 9150);
-pref('midori.tor.bridges.enabled', false);
-pref('midori.tor.bridges.list', '');
-pref('midori.tor.binary_path', '');
-pref('midori.tor.prewarm.enabled', false);
-pref('midori.tor.prewarm.idle_timeout_ms', 10000);
-pref('midori.tor.bootstrap_timeout_ms', 300000);
-pref('midori.tor.stop_after_last_window_ms', 15000);
-pref('midori.tor.shutdown_timeout_ms', 5000);
-
-// ============================================================================
 // DISABLE POCKET (reinforce)
 // ============================================================================
 pref('extensions.pocket.enabled', false, locked);

@@ -81,7 +81,6 @@ EOF
     npm run build:linux-x64
   fi
 
-  bash scripts/download-tor.sh linux "$SURFER_COMPAT"
   amelia package
   package_archive="$(find dist -maxdepth 1 -type f \( -name "*${arch_pattern_primary}*.tar.xz" -o -name "*${arch_pattern_alt}*.tar.xz" \) | sort | tail -n 1)"
 fi

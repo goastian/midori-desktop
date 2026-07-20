@@ -65,7 +65,7 @@ index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dcca
      // check if we're in safe mode
      if (Services.appinfo.inSafeMode) {
        Services.ww.openWindow(
-@@ -1696,6 +1727,66 @@ BrowserGlue.prototype = {
+@@ -1696,6 +1727,52 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
@@ -94,20 +94,6 @@ index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dcca
 +    // =========================================================================
 +
 +    // =========================================================================
-+    // Midori Tor - Optional idle prewarm startup hook
-+    try {
-+      if (Services.prefs.getBoolPref("midori.tor.prewarm.enabled", false)) {
-+        const { MidoriTor } = ChromeUtils.importESModule(
-+          "resource:///modules/MidoriTor.sys.mjs"
-+        );
-+        MidoriTor.init();
-+      }
-+    } catch (e) {
-+      console.error("Midori: Failed to initialize MidoriTor prewarm", e);
-+    }
-+    // =========================================================================
-+
-+    // =========================================================================
 +    // Midori Chrome Web Store - register install actor on chromewebstore.google.com
 +    try {
 +      ChromeUtils.registerWindowActor("MidoriCWS", {
@@ -132,7 +118,7 @@ index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dcca
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1814,4 +1905,20 @@ BrowserGlue.prototype = {
+@@ -1814,4 +1891,20 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
