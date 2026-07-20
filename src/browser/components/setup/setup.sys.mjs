@@ -14,6 +14,8 @@ import {
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AboutNewTab: 'resource:///modules/AboutNewTab.sys.mjs',
+  ExtensionParent: 'resource://gre/modules/ExtensionParent.sys.mjs',
   MigrationUtils: 'resource:///modules/MigrationUtils.sys.mjs',
   MidoriVerticalTabs: 'resource:///modules/MidoriVerticalTabs.sys.mjs',
 });
@@ -31,6 +33,7 @@ const PREF_MSIDEBAR_AUTOHIDE = 'midori.msidebar.autohide.enabled';
 const PREF_MSIDEBAR_AUTOHIDE_MODE = 'midori.msidebar.autohide.mode';
 const PREF_HORIZONTAL_AUTOHIDE = 'midori.modblur.tabs.autohide';
 const PREF_SHOW_INACTIVE_TABS = 'midori.modblur.tabs.showWhileInactive';
+const MIDORI_NEWTAB_EXTENSION_ID = 'midoritabs@astian.org';
 const MSIDEBAR_SETUP_PREFS = [
   PREF_ARC_MODE,
   PREF_VERTICAL_TABS,
@@ -507,11 +510,17 @@ class Pages {
     this.currentPage++;
 
     if (this.currentPage >= this.pages.length) {
-      // Mark setup as completed so it won't show again
       Services.prefs.setBoolPref(welcomeSeenPref, true);
 
-      // Navigate this tab to the homepage instead of closing
-      window.location.href = 'about:newtab';
+      let newTabURL = lazy.AboutNewTab.newTabURL;
+      if (newTabURL === 'about:newtab') {
+        const policy = lazy.ExtensionParent.WebExtensionPolicy.getByID(
+          MIDORI_NEWTAB_EXTENSION_ID
+        );
+        newTabURL = policy?.getURL('index.html') ?? newTabURL;
+      }
+
+      window.location.replace(newTabURL);
       return;
     }
 

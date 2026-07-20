@@ -1,0 +1,16 @@
+diff --git a/browser/modules/HomePage.sys.mjs b/browser/modules/HomePage.sys.mjs
+--- a/browser/modules/HomePage.sys.mjs
++++ b/browser/modules/HomePage.sys.mjs
+@@ -7,2 +7,3 @@
+ ChromeUtils.defineESModuleGetters(lazy, {
++  AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
+   CustomizableUI:
+@@ -120,1 +121,8 @@ export let HomePage = {
++    if (
++      homePages == "about:newtab" &&
++      lazy.AboutNewTab.newTabURL != "about:newtab"
++    ) {
++      homePages = lazy.AboutNewTab.newTabURL;
++    }
++
+     return homePages;

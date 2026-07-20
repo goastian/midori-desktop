@@ -1,5 +1,5 @@
 diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/BrowserGlue.sys.mjs
-index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dccacc9cb58f 100644
+index d07aaa3fbb..a90160fb13 100644
 --- a/browser/components/BrowserGlue.sys.mjs
 +++ b/browser/components/BrowserGlue.sys.mjs
 @@ -77,6 +77,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
@@ -11,7 +11,25 @@ index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dcca
  });
  
  XPCOMUtils.defineLazyServiceGetters(lazy, {
-@@ -215,6 +217,21 @@ BrowserGlue.prototype = {
+@@ -191,6 +193,9 @@ BrowserGlue.prototype = {
+       case "notifications-open-settings":
+         this._openPreferences("privacy-permissions");
+         break;
++      case "newtab-url-changed":
++        this._replacePendingNewTabOverrides();
++        break;
+       case "final-ui-startup":
+         this._beforeUIStartup();
+         break;
+@@ -200,6 +205,7 @@ BrowserGlue.prototype = {
+         break;
+       case "sessionstore-windows-restored":
+         this._onWindowsRestored();
++        this._replacePendingNewTabOverrides();
+         break;
+       case "browser:purge-session-history":
+         // reset the console service's error buffer
+@@ -215,6 +221,21 @@ BrowserGlue.prototype = {
        case "quit-application-granted":
          this._onQuitApplicationGranted();
          break;
@@ -33,15 +51,19 @@ index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dcca
        case "browser-lastwindow-close-requested":
          if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
            // The application is not actually quitting, but the last full browser
-@@ -340,6 +357,7 @@ BrowserGlue.prototype = {
+@@ -336,8 +357,10 @@ BrowserGlue.prototype = {
+     let os = Services.obs;
+     [
        "notifications-open-settings",
++      "newtab-url-changed",
        "final-ui-startup",
        "browser-delayed-startup-finished",
 +      "domwindowclosed",
        "sessionstore-windows-restored",
        "browser:purge-session-history",
        "quit-application-requested",
-@@ -365,6 +383,12 @@ BrowserGlue.prototype = {
+@@ -361,6 +384,12 @@ BrowserGlue.prototype = {
+ 
    // cleanup (called on application shutdown)
    _dispose: function BG__dispose() {
 +    try {
@@ -53,8 +75,10 @@ index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dcca
      // AboutHomeStartupCache might write to the cache during
      // quit-application-granted, so we defer uninitialization
      // until here.
-     lazy.AboutHomeStartupCache.uninit();
-@@ -397,3 +421,10 @@ BrowserGlue.prototype = {
+@@ -386,6 +415,13 @@ BrowserGlue.prototype = {
+   _beforeUIStartup: function BG__beforeUIStartup() {
+     lazy.SessionStartup.init();
+ 
 +    // Preserve themes and toolbar customizations when upgrading from 11.8.x.
 +    try {
 +      lazy.MidoriProfileMigration.migrate();
@@ -65,7 +89,47 @@ index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dcca
      // check if we're in safe mode
      if (Services.appinfo.inSafeMode) {
        Services.ww.openWindow(
-@@ -1696,6 +1727,52 @@ BrowserGlue.prototype = {
+@@ -757,8 +793,39 @@ BrowserGlue.prototype = {
+     Glean.gfxDisplay.scaling.accumulateSingleSample(scaling);
+   },
+ 
++  _replacePendingNewTabOverrides(aWindow = null) {
++    const windows = aWindow
++      ? [aWindow]
++      : lazy.BrowserWindowTracker.orderedWindows;
++
++    for (const win of windows) {
++      const newTabURL = win.BROWSER_NEW_TAB_URL;
++      if (!newTabURL.startsWith("moz-extension://")) {
++        continue;
++      }
++
++      const uri = Services.io.newURI(newTabURL);
++      const triggeringPrincipal =
++        Services.scriptSecurityManager.getSystemPrincipal();
++
++      for (const tab of win.gBrowser.tabs) {
++        const browser = tab.linkedBrowser;
++        if (browser.currentURI.spec != "about:newtab") {
++          continue;
++        }
++
++        browser.loadURI(uri, {
++          loadFlags: Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY,
++          triggeringPrincipal,
++        });
++      }
++    }
++  },
++
+   // the first browser window has finished initializing
+   _onFirstWindowLoaded: function BG__onFirstWindowLoaded(aWindow) {
++    this._replacePendingNewTabOverrides(aWindow);
++
+     // A channel for "remote troubleshooting" code...
+     let channel = new lazy.WebChannel(
+       "remote-troubleshooting",
+@@ -1696,6 +1763,52 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
@@ -118,7 +182,7 @@ index d07aaa3fbb8ccb02ae00d845649dc9c1d623cba5..0ea950d5fe717125d37cfb72e9d8dcca
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1814,4 +1891,20 @@ BrowserGlue.prototype = {
+@@ -1814,4 +1927,20 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
