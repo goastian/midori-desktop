@@ -132,6 +132,10 @@ export const TabSleepLifecycle = {
     return now >= deadlineMs;
   },
 
+  shouldScheduleEvaluation({ initialized, enabled, attachedWindowCount }) {
+    return initialized && enabled && attachedWindowCount > 0;
+  },
+
   getNextEvaluationDelayMs({ now, timeoutMs, candidates = [] }) {
     let nextDeadlineMs = null;
 

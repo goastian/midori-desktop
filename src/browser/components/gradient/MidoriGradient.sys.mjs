@@ -403,17 +403,28 @@ ${textureLayer}
   },
 
   uninit() {
-    Services.prefs.removeObserver(PREF_ENABLED, this);
-    Services.prefs.removeObserver(PREF_TYPE, this);
-    Services.prefs.removeObserver(PREF_ANGLE, this);
-    Services.prefs.removeObserver(PREF_STOPS, this);
-    Services.prefs.removeObserver(PREF_TEXTURE, this);
-    Services.prefs.removeObserver(PREF_TEXTURE_OPACITY, this);
+    if (!this._initialized) {
+      return;
+    }
+
+    this._initialized = false;
+    for (const pref of [
+      PREF_ENABLED,
+      PREF_TYPE,
+      PREF_ANGLE,
+      PREF_STOPS,
+      PREF_TEXTURE,
+      PREF_TEXTURE_OPACITY,
+    ]) {
+      try {
+        Services.prefs.removeObserver(pref, this);
+      } catch {}
+    }
 
     try {
       Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
       Services.obs.removeObserver(this, 'domwindowclosed');
-    } catch (e) {}
+    } catch {}
 
     // Remove injected style sheets
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
@@ -421,6 +432,5 @@ ${textureLayer}
       if (existing) existing.remove();
     }
 
-    this._initialized = false;
   },
 };

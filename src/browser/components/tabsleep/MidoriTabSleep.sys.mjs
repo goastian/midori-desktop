@@ -46,6 +46,7 @@ export const MidoriTabSleep = {
   _timeoutMs: 600000,
   _excludeHosts: [],
   _windowState: new WeakMap(),
+  _attachedWindowCount: 0,
   _lastActivity: new WeakMap(),
   _timer: null,
 
@@ -72,6 +73,7 @@ export const MidoriTabSleep = {
     }
 
     this._initialized = false;
+    this._enabled = false;
     this._clearTimer();
 
     try {
@@ -85,6 +87,7 @@ export const MidoriTabSleep = {
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
       this._cleanupWindow(win);
     }
+    this._attachedWindowCount = 0;
   },
 
   observe(subject, topic) {
@@ -101,7 +104,7 @@ export const MidoriTabSleep = {
       return;
     }
 
-    if (topic === 'domwindowclosed' && isBrowserWindow(subject)) {
+    if (topic === 'domwindowclosed' && this._windowState.has(subject)) {
       this._cleanupWindow(subject);
       this._scheduleNextEvaluation();
     }
@@ -124,6 +127,7 @@ export const MidoriTabSleep = {
       for (const win of Services.wm.getEnumerator('navigator:browser')) {
         this._cleanupWindow(win);
       }
+      this._attachedWindowCount = 0;
       return;
     }
 
@@ -178,6 +182,7 @@ export const MidoriTabSleep = {
     win.gBrowser.addTabsProgressListener(progressListener);
 
     this._windowState.set(win, { eventListener, progressListener });
+    this._attachedWindowCount += 1;
 
     const now = Date.now();
     for (const tab of win.gBrowser.tabs) {
@@ -187,7 +192,7 @@ export const MidoriTabSleep = {
 
   _cleanupWindow(win) {
     const state = this._windowState.get(win);
-    if (!state || !isBrowserWindow(win)) {
+    if (!state) {
       return;
     }
 
@@ -202,6 +207,7 @@ export const MidoriTabSleep = {
     } catch {}
 
     this._windowState.delete(win);
+    this._attachedWindowCount = Math.max(0, this._attachedWindowCount - 1);
   },
 
   _handleTabEvent(event) {
@@ -339,7 +345,13 @@ export const MidoriTabSleep = {
   },
 
   _scheduleNextEvaluation() {
-    if (!this._enabled) {
+    if (
+      !lazy.TabSleepLifecycle.shouldScheduleEvaluation({
+        initialized: this._initialized,
+        enabled: this._enabled,
+        attachedWindowCount: this._attachedWindowCount,
+      })
+    ) {
       this._clearTimer();
       return;
     }

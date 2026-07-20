@@ -3,9 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as SidebarPrefs from 'resource:///modules/msidebar/SidebarPrefs.mjs';
-import { isReservedBrowserShortcut } from './shortcuts/ShortcutPolicy.sys.mjs';
+import {
+  isReservedBrowserShortcut,
+  isSafeGlobalShortcut,
+} from './shortcuts/ShortcutPolicy.sys.mjs';
 
-export { isReservedBrowserShortcut };
+export { isReservedBrowserShortcut, isSafeGlobalShortcut };
 
 const KEYSET_ID = 'midori-shortcuts-keyset';
 
@@ -238,7 +241,7 @@ function modifierToXul(modifier) {
 
 function shortcutToXul(shortcut) {
   const normalized = normalizeShortcutString(shortcut);
-  if (!normalized) {
+  if (!normalized || !isSafeGlobalShortcut(normalized)) {
     return null;
   }
 
@@ -292,12 +295,16 @@ export function getShortcutDefinitions() {
 }
 
 export function getShortcutValue(pref) {
-  return normalizeShortcutString(Services.prefs.getStringPref(pref, ''));
+  const normalized = normalizeShortcutString(Services.prefs.getStringPref(pref, ''));
+  return !normalized || isSafeGlobalShortcut(normalized) ? normalized : '';
 }
 
 export function setShortcutValue(pref, value) {
   const normalized = normalizeShortcutString(value);
-  if (isReservedBrowserShortcut(normalized)) {
+  if (
+    normalized &&
+    (!isSafeGlobalShortcut(normalized) || isReservedBrowserShortcut(normalized))
+  ) {
     return false;
   }
   Services.prefs.setStringPref(pref, normalized);
@@ -423,6 +430,26 @@ export const MidoriShortcuts = {
     const match = /^workspace-(\d+)$/.exec(action);
     if (match) {
       await switchWorkspaceAtIndex(win, Number(match[1]) - 1);
+    }
+  },
+
+  uninit() {
+    if (!this._initialized) {
+      return;
+    }
+
+    this._initialized = false;
+    for (const pref of getUniquePrefs()) {
+      try {
+        Services.prefs.removeObserver(pref, this);
+      } catch {}
+    }
+    try {
+      Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
+    } catch {}
+
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
+      win.document?.getElementById(KEYSET_ID)?.remove();
     }
   },
 };

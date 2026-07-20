@@ -81,6 +81,7 @@ const WorkspaceModel = ChromeUtils.importESModule(
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   SessionStore: 'resource:///modules/sessionstore/SessionStore.sys.mjs',
+  clearTimeout: 'resource://gre/modules/Timer.sys.mjs',
   setTimeout: 'resource://gre/modules/Timer.sys.mjs',
   WorkspaceTabUnloader: 'resource:///modules/WorkspaceTabUnloader.sys.mjs',
 });
@@ -165,6 +166,7 @@ export const MidoriWorkspaces = {
   },
 
   _scheduleSave() {
+    if (!this._initialized) return;
     this._storeDirty = true;
     if (this._saveTimer) return;
 
@@ -244,11 +246,12 @@ export const MidoriWorkspaces = {
   },
 
   async _initWindow(win) {
-    if (!this.isEnabled()) return;
+    if (!this._initialized || !this.isEnabled()) return;
     if (this._windowStates.has(win)) return;
 
     const windowId = this._getWindowId(win);
     const data = await this._getWindowData(windowId);
+    if (!this._initialized || !this.isEnabled() || win.closed) return;
 
     const state = {
       windowId,
@@ -268,6 +271,10 @@ export const MidoriWorkspaces = {
       }
     }
 
+    if (!this._initialized || this._windowStates.get(win) !== state || win.closed) {
+      return;
+    }
+
     this._injectUI(win, state);
     this._initTabContextMenu(win, state);
     this._syncWindowTabMembership(win, state);
@@ -280,6 +287,18 @@ export const MidoriWorkspaces = {
     if (!state) return;
 
     this._cancelInactiveUnload(win, state);
+    if (state._verticalRetryTimer) {
+      win.clearTimeout(state._verticalRetryTimer);
+      state._verticalRetryTimer = null;
+    }
+    for (const timer of state._tabCloseTimers || []) {
+      lazy.clearTimeout(timer);
+    }
+    state._tabCloseTimers?.clear();
+    if (win.__midoriWsAnimTimeout) {
+      win.clearTimeout(win.__midoriWsAnimTimeout);
+      win.__midoriWsAnimTimeout = null;
+    }
     this._detachTabListeners(win, state);
     this._removeTabContextMenu(win);
     this._removeUI(win);
@@ -328,7 +347,7 @@ export const MidoriWorkspaces = {
     // Already injected?
     if (doc.getElementById(QUICK_ICONS_ID) || doc.getElementById(SELECTOR_ID)) return;
     // Window closed?
-    if (win.closed) return;
+    if (!this._initialized || this._windowStates.get(win) !== state || win.closed) return;
 
     const success = this._injectVerticalUI(win, state);
     if (success) return;
@@ -338,7 +357,8 @@ export const MidoriWorkspaces = {
       console.log(
         `MidoriWorkspaces: Vertical DOM not ready (attempt ${attempt + 1}/${MAX_ATTEMPTS}), retrying in ${delay}ms...`
       );
-      win.setTimeout(() => {
+      state._verticalRetryTimer = win.setTimeout(() => {
+        state._verticalRetryTimer = null;
         this._injectVerticalWithRetry(win, state, attempt + 1);
       }, delay);
     } else {
@@ -1010,11 +1030,18 @@ export const MidoriWorkspaces = {
     state._onTabClose = (event) => {
       this._forgetTabWorkspace(state, event.target);
       // After closing, ensure at least one visible tab exists
-      lazy.setTimeout(() => {
-        if (!win.closed) {
+      state._tabCloseTimers ||= new Set();
+      const timer = lazy.setTimeout(() => {
+        state._tabCloseTimers.delete(timer);
+        if (
+          this._initialized &&
+          this._windowStates.get(win) === state &&
+          !win.closed
+        ) {
           this._ensureVisibleTab(win, state);
         }
       }, 50);
+      state._tabCloseTimers.add(timer);
     };
 
     state._onTabRestored = (event) => {
@@ -1925,28 +1952,38 @@ export const MidoriWorkspaces = {
   // =========================================================================
 
   uninit() {
-    Services.prefs.removeObserver(PREF_ENABLED, this);
-    Services.prefs.removeObserver(PREF_SHOW_BUTTON, this);
-    Services.prefs.removeObserver(PREF_SHOW_NAME, this);
-    Services.prefs.removeObserver(PREF_VERTICAL, this);
-    Services.prefs.removeObserver(PREF_SIDEBAR_VERTICAL, this);
-    Services.prefs.removeObserver(PREF_CHROME_TINT, this);
-    Services.prefs.removeObserver(PREF_UNLOAD_INACTIVE, this);
+    if (!this._initialized) {
+      return;
+    }
+
+    this._initialized = false;
+    for (const pref of [
+      PREF_ENABLED,
+      PREF_SHOW_BUTTON,
+      PREF_SHOW_NAME,
+      PREF_VERTICAL,
+      PREF_SIDEBAR_VERTICAL,
+      PREF_CHROME_TINT,
+      PREF_UNLOAD_INACTIVE,
+    ]) {
+      try {
+        Services.prefs.removeObserver(pref, this);
+      } catch {}
+    }
 
     try {
       Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
       Services.obs.removeObserver(this, 'domwindowclosed');
-    } catch (e) {}
+    } catch {}
 
-    // Show all tabs and remove UI from all windows
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
-      this._showAllTabs(win);
       this._destroyWindow(win);
     }
 
-    // Final save
-    this._flushSave();
-
-    this._initialized = false;
+    if (this._saveTimer) {
+      lazy.clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+    void this._flushSave();
   },
 };

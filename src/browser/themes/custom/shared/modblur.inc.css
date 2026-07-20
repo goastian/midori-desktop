@@ -6,7 +6,7 @@
  * Kept separate from shared.inc.css so the base chrome stays readable.
  */
 
-@media -moz-pref("midori.modblur.windowControls.macStyle") or -moz-pref("midori.modblur.windowControls.style", "mac-left") or -moz-pref("midori.modblur.windowControls.style", "mac-right") {
+@media -moz-pref("midori.modblur.windowControls.style", "mac-left") or -moz-pref("midori.modblur.windowControls.style", "mac-right") {
   :root:not([customizing]) .titlebar-buttonbox-container {
     align-items: center !important;
     flex: 0 0 auto !important;
@@ -66,7 +66,7 @@
     position: relative !important;
     inset: auto !important;
     order: -1 !important;
-    z-index: auto !important;
+    z-index: 4 !important;
   }
 }
 
@@ -75,7 +75,7 @@
     position: relative !important;
     inset: auto !important;
     order: 999 !important;
-    z-index: auto !important;
+    z-index: 4 !important;
   }
 }
 
@@ -486,23 +486,23 @@
 }
 
 @media -moz-pref("midori.modblur.tabs.autohide") {
-  :root[midori-horizontal-tabs] {
+  :root[midori-horizontal-tabs="top"] {
     --uc-tabs-hide-animation-duration: 40ms;
     --uc-tabs-hide-animation-delay: 200ms;
   }
 
-  :root[midori-horizontal-tabs]:not([customizing], [chromehidden~="menubar"]) #TabsToolbar,
-  :root[midori-horizontal-tabs]:not([customizing], [chromehidden~="menubar"]) #navigator-toolbox:is(:hover, :focus-within),
-  :root[midori-horizontal-tabs]:not([customizing], [chromehidden~="menubar"]):has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #navigator-toolbox {
+  :root[midori-horizontal-tabs="top"]:not([customizing], [chromehidden~="menubar"]) #TabsToolbar,
+  :root[midori-horizontal-tabs="top"]:not([customizing], [chromehidden~="menubar"]) #navigator-toolbox:is(:hover, :focus-within),
+  :root[midori-horizontal-tabs="top"]:not([customizing], [chromehidden~="menubar"]):has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #navigator-toolbox {
     margin-bottom: calc(0px - 2 * var(--tab-block-margin) - var(--tab-min-height));
   }
 
-  :root[midori-horizontal-tabs] #navigator-toolbox {
+  :root[midori-horizontal-tabs="top"] #navigator-toolbox {
     --browser-area-z-index-toolbox: 3;
     transition: margin-bottom var(--uc-tabs-hide-animation-duration) ease-out var(--uc-tabs-hide-animation-delay) !important;
   }
 
-  :root[midori-horizontal-tabs] #TabsToolbar:not([customizing]) {
+  :root[midori-horizontal-tabs="top"] #TabsToolbar:not([customizing]) {
     visibility: hidden;
     padding-block: 0 !important;
     transition:
@@ -510,31 +510,31 @@
       margin-bottom var(--uc-tabs-hide-animation-duration) ease-out var(--uc-tabs-hide-animation-delay) !important;
   }
 
-  :root[midori-horizontal-tabs] #navigator-toolbox:is(:hover, :focus-within) > #TabsToolbar,
-  :root[midori-horizontal-tabs]:has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #navigator-toolbox > #TabsToolbar {
+  :root[midori-horizontal-tabs="top"] #navigator-toolbox:is(:hover, :focus-within) > #TabsToolbar,
+  :root[midori-horizontal-tabs="top"]:has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #navigator-toolbox > #TabsToolbar {
     visibility: visible;
     margin-bottom: 0;
     transition-delay: 18ms, 0ms !important;
   }
 
-  #tabbrowser-tabs:not([secondarytext-unsupported]) .tab-label-container {
+  :root[midori-horizontal-tabs="top"] #tabbrowser-tabs:not([secondarytext-unsupported]) .tab-label-container {
     max-height: var(--tab-min-height);
   }
 
-  .tab-label {
+  :root[midori-horizontal-tabs="top"] .tab-label {
     line-height: 20px !important;
   }
 
-  :root[uidensity="compact"] .tab-label {
+  :root[midori-horizontal-tabs="top"][uidensity="compact"] .tab-label {
     line-height: 18px !important;
   }
 
   @media -moz-pref("midori.modblur.tabs.showWhileInactive") {
-    :root[midori-horizontal-tabs] #navigator-toolbox:-moz-window-inactive {
+    :root[midori-horizontal-tabs="top"] #navigator-toolbox:-moz-window-inactive {
       margin-bottom: calc(0px - 2 * var(--tab-block-margin) - var(--tab-min-height));
     }
 
-    :root[midori-horizontal-tabs] #navigator-toolbox:-moz-window-inactive > #TabsToolbar {
+    :root[midori-horizontal-tabs="top"] #navigator-toolbox:-moz-window-inactive > #TabsToolbar {
       visibility: visible;
       margin-bottom: 0;
     }

@@ -12,6 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const PREF_VERTICAL_TABS = 'midori.verticaltabs.enabled';
 const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
+const PREF_ARC_MODE = 'midori.arcmode.enabled';
 const PREF_SEEDED_DEFAULT_PANELS = 'midori.msidebar.seededDefaultPanels';
 const CONTENT_CTX_SEPARATOR_ID = 'midori-msidebar-content-context-separator';
 const CONTENT_CTX_MENU_ID = 'midori-msidebar-content-menu';
@@ -22,6 +23,27 @@ const TAB_CTX_SEPARATOR_ID = 'midori-msidebar-tab-context-separator';
 const TAB_CTX_MENU_ID = 'midori-msidebar-tab-menu';
 const TAB_CTX_OPEN_ID = 'midori-msidebar-tab-open';
 const TAB_CTX_TEMP_ID = 'midori-msidebar-tab-open-temp';
+const OBSERVED_PREFS = [
+  Prefs.PREF_ENABLED,
+  Prefs.PREF_POSITION,
+  Prefs.PREF_WIDTH,
+  Prefs.PREF_AUTOHIDE_ENABLED,
+  Prefs.PREF_AUTOHIDE_MODE,
+  Prefs.PREF_ANIMATIONS_ENABLED,
+  Prefs.PREF_HIDE_PANEL_WHEN_HIDDEN,
+  Prefs.PREF_NEW_PANEL_BUTTON_POSITION,
+  Prefs.PREF_GEOMETRY_HINT,
+  Prefs.PREF_CONTAINER_INDICATOR,
+  Prefs.PREF_TOOLTIP_MODE,
+  Prefs.PREF_TOOLTIP_FULL_URL,
+  Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE,
+  Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE_BACK,
+  Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE_FORWARD,
+  Prefs.PREF_DEBUG,
+  PREF_VERTICAL_TABS,
+  PREF_VERTICAL_POSITION,
+  PREF_ARC_MODE,
+];
 
 export const MidoriSidebar = {
   _initialized: false,
@@ -35,24 +57,9 @@ export const MidoriSidebar = {
     this._initialized = true;
     this._log('init');
 
-    Services.prefs.addObserver(Prefs.PREF_ENABLED, this);
-    Services.prefs.addObserver(Prefs.PREF_POSITION, this);
-    Services.prefs.addObserver(Prefs.PREF_WIDTH, this);
-    Services.prefs.addObserver(Prefs.PREF_AUTOHIDE_ENABLED, this);
-    Services.prefs.addObserver(Prefs.PREF_AUTOHIDE_MODE, this);
-    Services.prefs.addObserver(Prefs.PREF_ANIMATIONS_ENABLED, this);
-    Services.prefs.addObserver(Prefs.PREF_HIDE_PANEL_WHEN_HIDDEN, this);
-    Services.prefs.addObserver(Prefs.PREF_NEW_PANEL_BUTTON_POSITION, this);
-    Services.prefs.addObserver(Prefs.PREF_GEOMETRY_HINT, this);
-    Services.prefs.addObserver(Prefs.PREF_CONTAINER_INDICATOR, this);
-    Services.prefs.addObserver(Prefs.PREF_TOOLTIP_MODE, this);
-    Services.prefs.addObserver(Prefs.PREF_TOOLTIP_FULL_URL, this);
-    Services.prefs.addObserver(Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE, this);
-    Services.prefs.addObserver(Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE_BACK, this);
-    Services.prefs.addObserver(Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE_FORWARD, this);
-    Services.prefs.addObserver(Prefs.PREF_DEBUG, this);
-    Services.prefs.addObserver(PREF_VERTICAL_TABS, this);
-    Services.prefs.addObserver(PREF_VERTICAL_POSITION, this);
+    for (const pref of OBSERVED_PREFS) {
+      Services.prefs.addObserver(pref, this);
+    }
 
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
@@ -103,6 +110,9 @@ export const MidoriSidebar = {
 
     try {
       const store = await loadStore();
+      if (!this._initialized || win.closed) {
+        return;
+      }
       const ui = createSidebarUI(win, {
         onStoreChanged: (nextStore) => this._scheduleSave(win, nextStore),
       });
@@ -134,7 +144,7 @@ export const MidoriSidebar = {
     }
 
     const enabled = Prefs.getEnabled();
-    const position = this._getEffectiveSidebarPosition(win);
+    const position = Prefs.getPosition();
     const width = Prefs.getWidth();
     const autohideEnabled = Prefs.getAutohideEnabled();
     const autohideMode = Prefs.getAutohideMode();
@@ -190,6 +200,7 @@ export const MidoriSidebar = {
   },
 
   _scheduleSave(win, nextStore) {
+    if (!this._initialized) return;
     const ui = this._uis.get(win);
     if (!ui) return;
 
@@ -206,6 +217,7 @@ export const MidoriSidebar = {
 
     const timer = lazy.setTimeout(() => {
       this._saveTimers.delete(win);
+      if (!this._initialized) return;
       saveStore(persistedValidated).catch(() => {});
     }, 400);
     this._saveTimers.set(win, timer);
@@ -443,11 +455,12 @@ export const MidoriSidebar = {
   },
 
   _scheduleRetry(win) {
-    if (!win || !win.document) return;
+    if (!this._initialized || !win || !win.document) return;
     const existing = this._retryTimers.get(win);
     if (existing) return;
     const timer = lazy.setTimeout(() => {
       this._retryTimers.delete(win);
+      if (!this._initialized) return;
       this._applyToWindow(win);
     }, 750);
     this._retryTimers.set(win, timer);
@@ -484,7 +497,7 @@ export const MidoriSidebar = {
   },
 
   _applyFirefoxSidebarDefaults() {
-    const verticalTabs = Services.prefs.getBoolPref(PREF_VERTICAL_TABS, false);
+    const verticalTabs = this._getVerticalTabsEnabled();
     const enabled = Services.prefs.getBoolPref(Prefs.PREF_ENABLED, false);
     // When vertical tabs are active, defer to MidoriVerticalTabs for sidebar prefs
     if (verticalTabs) return;
@@ -514,30 +527,31 @@ export const MidoriSidebar = {
   },
 
   _getVerticalTabsEnabled() {
-    return Services.prefs.getBoolPref(PREF_VERTICAL_TABS, false);
+    return (
+      Services.prefs.getBoolPref(PREF_VERTICAL_TABS, false) ||
+      Services.prefs.getBoolPref(PREF_ARC_MODE, false)
+    );
   },
 
-  _getVerticalTabsSide(win = null) {
-    try {
-      const attr = win?.document?.documentElement?.getAttribute?.('midori-vertical-tabs');
-      if (attr === 'left' || attr === 'right') {
-        return attr;
-      }
-    } catch {}
-    // Read directly from the vtabs position pref — guaranteed up-to-date since
-    // setTabLayout writes it synchronously before any pref observer fires.
-    try {
-      const side = Services.prefs.getStringPref(PREF_VERTICAL_POSITION, 'left');
-      return side === 'right' ? 'right' : 'left';
-    } catch {}
-    return 'left';
-  },
-
-  _getEffectiveSidebarPosition(win = null) {
-    const preferred = Prefs.getPosition();
-    if (!this._getVerticalTabsEnabled()) {
-      return preferred;
+  uninit() {
+    if (!this._initialized) {
+      return;
     }
-    return this._getVerticalTabsSide(win) === 'left' ? 'right' : 'left';
+
+    this._initialized = false;
+    for (const pref of OBSERVED_PREFS) {
+      try {
+        Services.prefs.removeObserver(pref, this);
+      } catch {}
+    }
+    try {
+      Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
+      Services.obs.removeObserver(this, 'domwindowclosed');
+    } catch {}
+
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
+      this._cleanupWindow(win);
+    }
+
   },
 };

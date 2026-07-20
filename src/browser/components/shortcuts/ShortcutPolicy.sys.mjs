@@ -16,6 +16,8 @@ const MODIFIER_ALIASES = new Map([
 
 const MODIFIER_ORDER = ['Ctrl', 'Alt', 'Shift', 'Meta'];
 const RESERVED_BROWSER_SHORTCUTS = new Set(['Ctrl+D', 'Meta+D']);
+const PRIMARY_MODIFIERS = new Set(['Ctrl', 'Alt', 'Meta']);
+const MODIFIER_KEYS = new Set(['ALT', 'CONTROL', 'CTRL', 'META', 'SHIFT']);
 
 function canonicalizeShortcut(shortcut) {
   if (typeof shortcut !== 'string') return '';
@@ -45,4 +47,16 @@ function canonicalizeShortcut(shortcut) {
  */
 export function isReservedBrowserShortcut(shortcut) {
   return RESERVED_BROWSER_SHORTCUTS.has(canonicalizeShortcut(shortcut));
+}
+
+export function isSafeGlobalShortcut(shortcut) {
+  const canonical = canonicalizeShortcut(shortcut);
+  if (!canonical) return false;
+
+  const parts = canonical.split('+');
+  const key = parts.at(-1);
+  if (!key || MODIFIER_KEYS.has(key)) return false;
+  if (/^F([1-9]|1[0-2])$/.test(key)) return true;
+
+  return parts.slice(0, -1).some(modifier => PRIMARY_MODIFIERS.has(modifier));
 }

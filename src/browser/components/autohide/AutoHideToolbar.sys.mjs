@@ -44,7 +44,7 @@ export const AutoHideToolbar = {
     }
     this._initialized = true;
 
-    this._enabled = Services.prefs.getBoolPref(PREF_AUTOHIDE, true);
+    this._enabled = Services.prefs.getBoolPref(PREF_AUTOHIDE, false);
     Services.prefs.addObserver(PREF_AUTOHIDE, this);
 
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
@@ -63,7 +63,7 @@ export const AutoHideToolbar = {
     switch (topic) {
       case 'nsPref:changed':
         if (data === PREF_AUTOHIDE) {
-          this._enabled = Services.prefs.getBoolPref(PREF_AUTOHIDE, true);
+          this._enabled = Services.prefs.getBoolPref(PREF_AUTOHIDE, false);
           for (const win of Services.wm.getEnumerator('navigator:browser')) {
             if (this._enabled) {
               this._attachToWindow(win);
@@ -115,6 +115,7 @@ export const AutoHideToolbar = {
 
     // Track async handles so we can cancel them when the window is detached
     let rafId = null;
+    let initialMeasureTimer = null;
     let heightRemeasureTimer = null;
     let flashTimer = null;
     let toolboxResizeObserver = null;
@@ -135,7 +136,10 @@ export const AutoHideToolbar = {
     };
 
     // Initial measurement: defer to let layout settle
-    win.setTimeout(updateToolboxHeight, 150);
+    initialMeasureTimer = win.setTimeout(() => {
+      initialMeasureTimer = null;
+      updateToolboxHeight();
+    }, 150);
 
     const state = {
       isHidden: false,
@@ -371,6 +375,10 @@ export const AutoHideToolbar = {
           rafId = null;
           state.rafPending = false;
         }
+        if (initialMeasureTimer !== null) {
+          win.clearTimeout(initialMeasureTimer);
+          initialMeasureTimer = null;
+        }
         if (state.resetTimer !== null) {
           win.clearTimeout(state.resetTimer);
           state.resetTimer = null;
@@ -428,7 +436,7 @@ export const AutoHideToolbar = {
           passive: true,
         });
         listeners.edgeSensor.remove();
-      } catch (e) {}
+      } catch {}
     }
 
     win?.removeEventListener('resize', listeners.onResize, { passive: true });
@@ -443,21 +451,28 @@ export const AutoHideToolbar = {
     if (listeners.progressListener) {
       try {
         win.gBrowser?.removeTabsProgressListener(listeners.progressListener);
-      } catch (e) {}
+      } catch {}
     }
     this._windowListeners.delete(win);
   },
 
   uninit() {
-    Services.prefs.removeObserver(PREF_AUTOHIDE, this);
+    if (!this._initialized) {
+      return;
+    }
+
+    this._initialized = false;
+    this._enabled = false;
+    try {
+      Services.prefs.removeObserver(PREF_AUTOHIDE, this);
+    } catch {}
     try {
       Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
       Services.obs.removeObserver(this, 'domwindowclosed');
-    } catch (e) {}
+    } catch {}
 
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
       this._detachFromWindow(win);
     }
-    this._initialized = false;
   },
 };

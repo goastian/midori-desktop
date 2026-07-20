@@ -68,6 +68,7 @@ const OBSERVED_PREFS = new Set([
 
 export const MidoriVerticalTabs = {
   _initialized: false,
+  _windowState: new WeakMap(),
 
   init() {
     if (this._initialized) return;
@@ -91,6 +92,7 @@ export const MidoriVerticalTabs = {
     Services.prefs.addObserver(PREF_ARC_MODE_ENABLED, this);
     Services.prefs.addObserver(PREF_HORIZONTAL_POSITION, this);
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
+    Services.obs.addObserver(this, 'domwindowclosed');
 
     this._syncFirefoxPrefs();
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
@@ -322,6 +324,8 @@ export const MidoriVerticalTabs = {
       this._refreshAllWindows();
     } else if (topic === 'browser-delayed-startup-finished') {
       this._applyToWindow(subject);
+    } else if (topic === 'domwindowclosed') {
+      this._cleanupWindow(subject);
     }
   },
 
@@ -335,7 +339,13 @@ export const MidoriVerticalTabs = {
     Services.prefs.setBoolPref('sidebar.revamp', enabled);
     if (enabled) {
       Services.prefs.setCharPref('sidebar.visibility', 'always-show');
-      Services.prefs.setBoolPref('sidebar.position_start', this._getVerticalSide() === 'left');
+      const logicalStartSide = Services.locale.isAppLocaleRTL
+        ? 'right'
+        : 'left';
+      Services.prefs.setBoolPref(
+        'sidebar.position_start',
+        this._getVerticalSide() === logicalStartSide
+      );
     }
   },
 
@@ -377,6 +387,30 @@ export const MidoriVerticalTabs = {
 
     // --- Auto-select URL bar content on open (Natsumi urlbar.uc.mjs) ---
     this._initUrlbarAutoSelect(win);
+  },
+
+  _getWindowState(win) {
+    let state = this._windowState.get(win);
+    if (!state) {
+      state = { listeners: [], observers: [], cleanups: [] };
+      this._windowState.set(win, state);
+    }
+    return state;
+  },
+
+  _trackWindowListener(win, target, type, listener, options) {
+    target.addEventListener(type, listener, options);
+    this._getWindowState(win).listeners.push({
+      target,
+      type,
+      listener,
+      options,
+    });
+  },
+
+  _trackWindowObserver(win, observer) {
+    this._getWindowState(win).observers.push(observer);
+    return observer;
   },
 
   /**
@@ -445,6 +479,7 @@ export const MidoriVerticalTabs = {
     const observeTab = (tab) => {
       const obs = new win.MutationObserver(() => copyTabIcon(tab));
       obs.observe(tab, { attributes: true, attributeFilter: ['image'] });
+      this._trackWindowObserver(win, obs);
     };
 
     // Process existing pinned tabs
@@ -458,7 +493,7 @@ export const MidoriVerticalTabs = {
         observeTab(tab);
       }
       // Watch for newly pinned tabs
-      new win.MutationObserver((mutations) => {
+      const containerObserver = new win.MutationObserver((mutations) => {
         for (const m of mutations) {
           for (const node of m.addedNodes) {
             if (node.nodeName === 'tab') {
@@ -467,7 +502,9 @@ export const MidoriVerticalTabs = {
             }
           }
         }
-      }).observe(container, { childList: true });
+      });
+      containerObserver.observe(container, { childList: true });
+      this._trackWindowObserver(win, containerObserver);
     }
   },
 
@@ -492,9 +529,12 @@ export const MidoriVerticalTabs = {
     if (!input) return;
 
     // Suppress auto-select once the user starts typing
-    input.addEventListener('keydown', () => { userTyping = true; }, true);
+    const onKeyDown = () => {
+      userTyping = true;
+    };
+    this._trackWindowListener(win, input, 'keydown', onKeyDown, true);
 
-    new win.MutationObserver(() => {
+    const urlbarObserver = new win.MutationObserver(() => {
       const isOpen = urlbar.hasAttribute('open');
       if (isOpen && !wasOpen && !userTyping && this._isUrlbarAutoSelectEnabled()) {
         // Only select on fresh open before any keystrokes
@@ -505,7 +545,9 @@ export const MidoriVerticalTabs = {
         userTyping = false;
       }
       wasOpen = isOpen;
-    }).observe(urlbar, { attributes: true, attributeFilter: ['open'] });
+    });
+    urlbarObserver.observe(urlbar, { attributes: true, attributeFilter: ['open'] });
+    this._trackWindowObserver(win, urlbarObserver);
   },
 
   _updatePinnedState(win) {
@@ -789,7 +831,7 @@ export const MidoriVerticalTabs = {
       this._updateEssentialsContextMenu(win);
     };
 
-    popup.addEventListener('popupshowing', onPopupShowing);
+    this._trackWindowListener(win, popup, 'popupshowing', onPopupShowing);
     doc._midoriEssentialsContextMenuInit = true;
     doc._midoriEssentialsContextMenuPopupHandler = onPopupShowing;
 
@@ -856,27 +898,41 @@ export const MidoriVerticalTabs = {
     };
 
     doc._midoriEssentialsPromoUpdate = update;
+    this._getWindowState(win).cleanups.push(() => {
+      if (updateFrame) {
+        win.cancelAnimationFrame(updateFrame);
+        updateFrame = 0;
+      }
+    });
 
     const tabContainer = win.gBrowser?.tabContainer;
     if (tabContainer) {
-      tabContainer.addEventListener('TabPinned', event => {
+      const onTabPinned = event => {
         this._handlePinnedTabMove(win, event.target);
         update();
-      });
-      tabContainer.addEventListener('TabUnpinned', update);
-      tabContainer.addEventListener('TabMove', event => {
+      };
+      const onTabMove = event => {
         this._handlePinnedTabMove(win, event.target);
         update();
-      });
-      tabContainer.addEventListener('TabAttrModified', event => {
+      };
+      const onTabAttrModified = event => {
         const changed = event.detail?.changed || [];
         if (changed.some(attr => PINNED_STATE_ATTRS.has(attr))) {
           update();
         }
-      });
-      tabContainer.addEventListener('TabClose', update);
-      tabContainer.addEventListener('TabOpen', update);
-      tabContainer.addEventListener('TabSelect', update);
+      };
+      this._trackWindowListener(win, tabContainer, 'TabPinned', onTabPinned);
+      this._trackWindowListener(win, tabContainer, 'TabUnpinned', update);
+      this._trackWindowListener(win, tabContainer, 'TabMove', onTabMove);
+      this._trackWindowListener(
+        win,
+        tabContainer,
+        'TabAttrModified',
+        onTabAttrModified
+      );
+      this._trackWindowListener(win, tabContainer, 'TabClose', update);
+      this._trackWindowListener(win, tabContainer, 'TabOpen', update);
+      this._trackWindowListener(win, tabContainer, 'TabSelect', update);
     }
 
     updateNow();
@@ -887,6 +943,101 @@ export const MidoriVerticalTabs = {
       if (win.document.readyState === 'complete') {
         this._applyToWindow(win);
       }
+    }
+  },
+
+  _restoreTabsToolbar(doc) {
+    const tabsToolbar = doc?.getElementById('TabsToolbar');
+    const navigatorToolbox = doc?.getElementById('navigator-toolbox');
+    if (!tabsToolbar || !navigatorToolbox) return;
+
+    const originalFlex = tabsToolbar.getAttribute('data-midori-original-flex');
+    if (originalFlex) {
+      tabsToolbar.setAttribute('flex', originalFlex);
+    }
+    tabsToolbar.removeAttribute('data-midori-original-flex');
+
+    if (tabsToolbar.parentNode !== navigatorToolbox) {
+      const menubar = doc.getElementById('toolbar-menubar');
+      if (menubar) {
+        menubar.after(tabsToolbar);
+      } else {
+        navigatorToolbox.prepend(tabsToolbar);
+      }
+    }
+  },
+
+  _cleanupWindow(win) {
+    const state = this._windowState.get(win);
+    const doc = win?.document;
+
+    if (state) {
+      for (const cleanup of state.cleanups.splice(0).reverse()) {
+        try {
+          cleanup();
+        } catch {}
+      }
+      for (const observer of state.observers.splice(0)) {
+        try {
+          observer.disconnect();
+        } catch {}
+      }
+      for (const { target, type, listener, options } of state.listeners.splice(0)) {
+        try {
+          target.removeEventListener(type, listener, options);
+        } catch {}
+      }
+      this._windowState.delete(win);
+    }
+
+    if (!doc) return;
+
+    doc.getElementById(STYLE_ID)?.remove();
+    doc.getElementById(ESSENTIALS_PROMO_ID)?.remove();
+    const contextMenu = doc.getElementById('tabContextMenu');
+    const contextHandler = doc._midoriEssentialsContextMenuPopupHandler;
+    if (contextMenu && contextHandler) {
+      contextMenu.removeEventListener('popupshowing', contextHandler);
+    }
+    doc.getElementById(ESSENTIALS_CTX_SEPARATOR_ID)?.remove();
+    doc.getElementById(ESSENTIALS_CTX_ADD_ID)?.remove();
+    doc.getElementById(ESSENTIALS_CTX_REMOVE_ID)?.remove();
+    this._restoreTabsToolbar(doc);
+    this._clearVerticalRootState(doc);
+    doc.documentElement.removeAttribute('midori-vertical-tabs');
+    doc.documentElement.removeAttribute('midori-horizontal-tabs');
+
+    for (const tab of win.gBrowser?.tabs || []) {
+      tab.style.removeProperty('--midori-tab-icon');
+      tab.removeAttribute(FIRST_REGULAR_PINNED_ATTR);
+    }
+
+    delete doc._midoriPinnedIconInit;
+    delete doc._midoriUrlbarAutoSelectInit;
+    delete doc._midoriEssentialsContextMenuInit;
+    delete doc._midoriEssentialsContextMenuPopupHandler;
+    delete doc._midoriEssentialsPromoInit;
+    delete doc._midoriEssentialsPromoUpdate;
+  },
+
+  uninit() {
+    if (!this._initialized) {
+      return;
+    }
+
+    this._initialized = false;
+    for (const pref of OBSERVED_PREFS) {
+      try {
+        Services.prefs.removeObserver(pref, this);
+      } catch {}
+    }
+    try {
+      Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
+      Services.obs.removeObserver(this, 'domwindowclosed');
+    } catch {}
+
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
+      this._cleanupWindow(win);
     }
   },
 

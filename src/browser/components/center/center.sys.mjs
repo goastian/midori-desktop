@@ -161,6 +161,13 @@ function writePref(prefName, type, value) {
     case "int":    Services.prefs.setIntPref(prefName, value);    break;
     case "string": Services.prefs.setCharPref(prefName, value);   break;
   }
+
+  if (
+    prefName === "midori.modblur.windowControls.style" &&
+    Services.prefs.prefHasUserValue("midori.modblur.windowControls.macStyle")
+  ) {
+    Services.prefs.clearUserPref("midori.modblur.windowControls.macStyle");
+  }
 }
 
 function syncPrefElement(id, pref, type) {

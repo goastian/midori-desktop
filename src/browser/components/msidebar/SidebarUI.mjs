@@ -10,7 +10,10 @@ import {
   destroyBrowser,
 } from './SidebarPanelHost.mjs';
 import * as Prefs from './SidebarPrefs.mjs';
-import { isReservedBrowserShortcut } from '../shortcuts/ShortcutPolicy.sys.mjs';
+import {
+  isReservedBrowserShortcut,
+  isSafeGlobalShortcut,
+} from '../shortcuts/ShortcutPolicy.sys.mjs';
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -20,6 +23,13 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 const PANEL_KEYSET_ID = 'midori-msidebar-panel-shortcuts';
 const FAVICON_FETCH_GAP_MS = 350;
+const SIDEBAR_EDGE_ORDER = 1_000_000;
+
+export function computeSidebarEdgeOrder(position, isRTL = false) {
+  const right = position === Prefs.POSITION_RIGHT;
+  const lowOrder = isRTL ? right : !right;
+  return lowOrder ? -SIDEBAR_EDGE_ORDER : SIDEBAR_EDGE_ORDER;
+}
 
 function createXul(doc, tag) {
   if (doc.createXULElement) return doc.createXULElement(tag);
@@ -34,11 +44,8 @@ function ensureStyle(doc) {
   style.textContent = `
 :root{--midori-msidebar-width:320px;--midori-msidebar-main-width:44px;--midori-msidebar-anim:160ms;}
 #browser{position:relative;}
-#midori-msidebar-wrapper{display:flex;flex-direction:row;height:100%;}
-#midori-msidebar-edge-trigger{position:absolute;top:0;bottom:0;width:8px;z-index:29;background:transparent;pointer-events:auto;}
-#midori-msidebar-edge-trigger[position='left']{left:0;}
-#midori-msidebar-edge-trigger[position='right']{right:0;}
-#midori-msidebar-edge-trigger[hidden='true']{display:none;pointer-events:none;}
+#midori-msidebar-wrapper{position:relative;display:flex;flex-direction:row;height:100%;order:var(--midori-msidebar-edge-order,-1000000)!important;}
+#midori-msidebar-wrapper:dir(rtl){flex-direction:row-reverse;}
 #midori-msidebar-main{display:flex;flex-direction:column;align-items:center;gap:var(--space-small,8px);padding:var(--space-small,8px) calc(var(--space-small,8px)/2);background:var(--toolbox-bgcolor);color:var(--toolbox-color);min-width:var(--midori-msidebar-main-width);max-width:var(--midori-msidebar-main-width);box-sizing:border-box;overflow-y:auto;scrollbar-width:none;}
 #midori-msidebar-buttons{display:flex;flex-direction:column;align-items:center;gap:var(--space-small,8px);min-width:100%;}
 #midori-msidebar-main[collapsed='true']{pointer-events:none;opacity:0;min-width:0;padding:0;margin:0;}
@@ -341,7 +348,7 @@ function defaultFaviconSpec() {
   return 'chrome://global/skin/icons/defaultFavicon.svg';
 }
 
-function faviconFallbackForPanel(panel) {
+function faviconFallbackForPanel(_panel) {
   return defaultFaviconSpec();
 }
 
@@ -437,7 +444,7 @@ function panelModifierToXul(modifier) {
 
 export function panelShortcutToXul(shortcut) {
   const normalized = normalizePanelShortcut(shortcut);
-  if (!normalized) return null;
+  if (!normalized || !isSafeGlobalShortcut(normalized)) return null;
   const parts = normalized.split('+');
   const keyLabel = parts.at(-1);
   const modifiers = parts.slice(0, -1).map(panelModifierToXul).join(',');
@@ -827,16 +834,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   splitter.id = 'midori-msidebar-splitter';
   splitter.classList.add('chromeclass-extrachrome', 'sidebar-splitter');
 
-  const edgeTrigger = createXul(doc, 'box');
-  edgeTrigger.id = 'midori-msidebar-edge-trigger';
-  edgeTrigger.setAttribute('position', 'left');
-  edgeTrigger.setAttribute('hidden', 'true');
-
   wrapper.appendChild(main);
   wrapper.appendChild(boxArea);
   wrapper.appendChild(splitter);
-  browser.insertBefore(wrapper, tabbox);
-  browser.appendChild(edgeTrigger);
+  browser.appendChild(wrapper);
   try {
     doc.documentElement.setAttribute('midori-msidebar-injected', 'true');
   } catch {}
@@ -1237,12 +1238,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     }
   }
 
-  function syncEdgeTriggerVisibility() {
-    const shouldShow = autohideEnabled && visible && !currentPanelFloating;
-    setBoolAttr(edgeTrigger, 'hidden', !shouldShow);
-    edgeTrigger.setAttribute('position', position);
-  }
-
   function hidePanelArea() {
     activePanelId = null;
     currentPanelFloating = false;
@@ -1259,10 +1254,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       return;
     }
     _ahOpen = !!open;
-    setBoolAttr(main, 'collapsed', !_ahOpen);
+    setBoolAttr(main, 'collapsed', !visible);
     setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !activePanelId || !_ahOpen);
     syncSplitterVisibility();
-    syncEdgeTriggerVisibility();
   }
 
   function applyDockWidth() {
@@ -1836,7 +1830,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
               setBoolAttr(boxArea, 'collapsed', false);
             }
             syncSplitterVisibility();
-            syncEdgeTriggerVisibility();
             renderButtons();
             onStoreChanged?.(store);
             return;
@@ -1849,7 +1842,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
             setBoolAttr(boxArea, 'collapsed', true);
             boxArea.style.display = '';
             syncSplitterVisibility();
-            syncEdgeTriggerVisibility();
             renderButtons();
             onStoreChanged?.(store);
             return;
@@ -1995,7 +1987,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       setBoolAttr(boxArea, 'collapsed', true);
       boxArea.style.display = '';
       setBoolAttr(splitter, 'hidden', true);
-      syncEdgeTriggerVisibility();
       return;
     }
     if (openPanel && !activePanelId) {
@@ -2018,7 +2009,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.style.display = '';
     }
     syncSplitterVisibility();
-    syncEdgeTriggerVisibility();
   }
 
   function syncSplitterVisibility() {
@@ -2039,33 +2029,27 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function applyOrder() {
-    const parent = browser;
-    if (!parent) return;
-    const tabboxOrder = Number.parseFloat(
-      tabbox.style.order || win.getComputedStyle(tabbox).order || '0'
+    const isRTL = win.getComputedStyle(browser).direction === 'rtl';
+    wrapper.style.setProperty(
+      '--midori-msidebar-edge-order',
+      String(computeSidebarEdgeOrder(position, isRTL))
     );
-    const contentOrder = Number.isFinite(tabboxOrder) ? tabboxOrder : 0;
+    const orderedChildren = position === 'left'
+      ? [main, boxArea, splitter]
+      : [splitter, boxArea, main];
     if (position === 'left') {
       splitter.setAttribute('resizebefore', 'sibling');
       splitter.setAttribute('resizeafter', 'none');
-      while (wrapper.firstChild) wrapper.firstChild.remove();
-      wrapper.appendChild(main);
-      wrapper.appendChild(boxArea);
-      wrapper.appendChild(splitter);
-      parent.insertBefore(wrapper, tabbox);
-      wrapper.style.order = String(contentOrder - 0.5);
     } else {
       splitter.setAttribute('resizebefore', 'none');
       splitter.setAttribute('resizeafter', 'sibling');
-      while (wrapper.firstChild) wrapper.firstChild.remove();
-      wrapper.appendChild(splitter);
-      wrapper.appendChild(boxArea);
-      wrapper.appendChild(main);
-      const aiSplitter = doc.getElementById('ai-window-splitter');
-      parent.insertBefore(wrapper, aiSplitter || null);
-      wrapper.style.order = String(contentOrder + 0.5);
     }
-    edgeTrigger.setAttribute('position', position);
+    for (let index = 0; index < orderedChildren.length; index++) {
+      const child = orderedChildren[index];
+      if (wrapper.children[index] !== child) {
+        wrapper.insertBefore(child, wrapper.children[index] || null);
+      }
+    }
   }
 
   function setPosition(next) {
@@ -2074,7 +2058,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     main.setAttribute('position', position);
     splitter.setAttribute('position', position);
     applyOrder();
-    syncEdgeTriggerVisibility();
     if (currentPanelFloating && activePanelId) {
       const panel = store.panels.find((p) => p.id === activePanelId);
       if (panel) applyFloatingGeometry(panel);
@@ -2094,7 +2077,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.setAttribute('overlay', 'false');
       applyDockWidth();
       syncSplitterVisibility();
-      syncEdgeTriggerVisibility();
       return;
     }
     boxArea.setAttribute('autohide-target', 'true');
@@ -2102,7 +2084,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     boxArea.setAttribute('overlay', autohideMode === 'overlay' ? 'true' : 'false');
     applyDockWidth();
     syncSplitterVisibility();
-    syncEdgeTriggerVisibility();
   }
 
   function setAutohideMode(mode) {
@@ -2115,7 +2096,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     boxArea.setAttribute('overlay', autohideEnabled && autohideMode === 'overlay' ? 'true' : 'false');
     applyDockWidth();
     syncSplitterVisibility();
-    syncEdgeTriggerVisibility();
   }
 
   function onFloatingHeaderMouseDown(e) {
@@ -2639,6 +2619,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   function _ahShow() {
     if (!_ahGuard()) return;
+    if (panelAreaHiddenByUser) return;
+    if (!activePanelId) {
+      const targetId = chooseVisiblePanelId();
+      if (targetId) setActivePanel(targetId);
+    }
+    if (!activePanelId) return;
     if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
     applyAutohideCollapsedState(true);
   }
@@ -2689,34 +2675,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     _ahScheduleHide();
   }
 
-  function onEdgeTriggerEnter() { _ahShow(); }
-  function onEdgeTriggerLeave(e) {
-    if (!_ahGuard()) return;
-    const rel = e.relatedTarget;
-    if (rel && (main.contains(rel) || rel === main || boxArea.contains(rel) || rel === boxArea || splitter.contains(rel) || rel === splitter)) return;
-    _ahScheduleHide();
-  }
-
-  function onBrowserEdgeMove(e) {
-    if (!_ahGuard() || _ahPopupOpen) return;
-    const rect = browser.getBoundingClientRect();
-    const threshold = 10;
-    const nearLeft = e.clientX <= rect.left + threshold;
-    const nearRight = e.clientX >= rect.right - threshold;
-    if ((position === 'left' && nearLeft) || (position === 'right' && nearRight)) {
-      _ahShow();
-    }
-  }
-
   main.addEventListener('mouseenter', onMainEnter);
   main.addEventListener('mouseleave', onMainLeave);
   boxArea.addEventListener('mouseenter', onBoxEnter);
   boxArea.addEventListener('mouseleave', onBoxLeave);
   splitter.addEventListener('mouseenter', onSplitterEnter);
   splitter.addEventListener('mouseleave', onSplitterLeave);
-  edgeTrigger.addEventListener('mouseenter', onEdgeTriggerEnter);
-  edgeTrigger.addEventListener('mouseleave', onEdgeTriggerLeave);
-  browser.addEventListener('mousemove', onBrowserEdgeMove, true);
 
   btnToggle.addEventListener(
     'command',
@@ -3401,9 +3365,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.removeEventListener('mouseleave', onBoxLeave);
       splitter.removeEventListener('mouseenter', onSplitterEnter);
       splitter.removeEventListener('mouseleave', onSplitterLeave);
-      edgeTrigger.removeEventListener('mouseenter', onEdgeTriggerEnter);
-      edgeTrigger.removeEventListener('mouseleave', onEdgeTriggerLeave);
-      browser.removeEventListener('mousemove', onBrowserEdgeMove, true);
     } catch {}
     if (_ahTimer) {
       try { win.clearTimeout(_ahTimer); } catch {}
@@ -3413,9 +3374,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     teardownActivePanelBridges();
     try {
       wrapper.remove();
-    } catch {}
-    try {
-      edgeTrigger.remove();
     } catch {}
     try {
       if (faviconPumpTimer) win.clearTimeout(faviconPumpTimer);

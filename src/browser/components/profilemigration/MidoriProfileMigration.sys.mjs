@@ -6,8 +6,10 @@ const MIGRATION_VERSION_PREF = "midori.profileMigration.version";
 const ACTIVE_THEME_PREF = "extensions.activeThemeID";
 const COLORWAY_PREF = "midori.colorway";
 const LEGACY_THEME_MODE_PREF = "midori.theme.mode";
+const LEGACY_WINDOW_CONTROLS_PREF = "midori.modblur.windowControls.macStyle";
+const WINDOW_CONTROLS_STYLE_PREF = "midori.modblur.windowControls.style";
 const SYSTEM_DARK_THEME_PREF = "ui.systemUsesDarkTheme";
-const CURRENT_MIGRATION_VERSION = 1;
+const CURRENT_MIGRATION_VERSION = 2;
 
 export const LEGACY_THEME_COLORWAYS = Object.freeze({
   "midori-theme-jade-mist@midori.astian.org": "jade",
@@ -72,6 +74,16 @@ export function migrateLegacyProfile(prefs = Services.prefs) {
 
   if (prefs.prefHasUserValue(LEGACY_THEME_MODE_PREF)) {
     prefs.clearUserPref(LEGACY_THEME_MODE_PREF);
+  }
+
+  if (prefs.prefHasUserValue(LEGACY_WINDOW_CONTROLS_PREF)) {
+    if (
+      prefs.getBoolPref(LEGACY_WINDOW_CONTROLS_PREF, false) &&
+      !prefs.prefHasUserValue(WINDOW_CONTROLS_STYLE_PREF)
+    ) {
+      prefs.setStringPref(WINDOW_CONTROLS_STYLE_PREF, "mac-right");
+    }
+    prefs.clearUserPref(LEGACY_WINDOW_CONTROLS_PREF);
   }
 
   prefs.setIntPref(MIGRATION_VERSION_PREF, CURRENT_MIGRATION_VERSION);

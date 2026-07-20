@@ -317,7 +317,7 @@ pref('browser.urlbar.closeOnWindowBlur', false);
 pref('browser.urlbar.trustPanel.featureGate', false);
 pref('browser.tabs.hoverPreview.enabled', false);
 pref('widget.non-native-theme.scrollbar.style', 2);
-pref('browser.tabs.closeWindowWithLastTab', false);
+pref('browser.tabs.closeWindowWithLastTab', true);
 pref('browser.settings-redesign.enabled', true);
 pref('browser.privatebrowsing.resetPBM.enabled', false);
 
