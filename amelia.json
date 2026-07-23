@@ -5,8 +5,8 @@
   "binaryName": "midori",
   "version": {
     "product": "firefox",
-    "version": "152.0.6",
-    "candidate": "152.0.6"
+    "version": "153.0",
+    "candidate": "153.0"
   },
   "buildOptions": {
     "generateBranding": true
@@ -15,7 +15,7 @@
     "midori-privacy": {
       "id": "midori-protection@astian.org",
       "repo": "goastian/midori-privacy",
-      "version": "v2.3.3",
+      "version": "v2.3.9",
       "platform": "github",
       "fileGlob": "midori-privacy-2.3.9-firefox.zip "
     },
