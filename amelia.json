@@ -41,7 +41,7 @@
       "brandShortName": "Midori",
       "brandFullName": "Midori Browser",
       "release": {
-        "displayVersion": "11.9.1",
+        "displayVersion": "11.9.2",
         "archives": {
           "windows": "windows.mar",
           "macos-aarch64": "macos-aarch64.mar",
