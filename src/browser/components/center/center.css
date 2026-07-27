@@ -291,7 +291,9 @@ html, body {
 .nav-item:focus-visible,
 .overview-card:focus-visible,
 .layout-card:focus-visible,
-.info-link:focus-visible {
+.info-link:focus-visible,
+.mc-btn:focus-visible,
+.webapp-name-input:focus-visible {
   outline: 2px solid var(--mc-green-500);
   outline-offset: 2px;
 }
@@ -1371,6 +1373,76 @@ html, body {
   opacity: 0.8;
 }
 
+/* ---- Web Apps ---- */
+.webapp-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--mc-border);
+}
+
+.webapp-list:empty {
+  display: none;
+}
+
+#webapps-manager-panel[aria-busy="true"] .webapp-list,
+.webapp-item[aria-busy="true"] {
+  opacity: 0.72;
+}
+
+.webapp-item {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 2px;
+  border-bottom: 1px solid var(--mc-border);
+}
+
+.webapp-icon {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-sm);
+  background: var(--mc-bg-subtle);
+}
+
+.webapp-details {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.webapp-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.webapp-name-input {
+  width: min(100%, 360px);
+  min-width: 0;
+  font-weight: 650;
+}
+
+.webapp-url,
+.webapp-meta {
+  overflow: hidden;
+  color: var(--mc-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webapp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 /* ---- Keyboard Shortcuts ---- */
 .shortcut-hero-panel {
   display: flex;
@@ -1565,6 +1637,15 @@ html, body {
   .shortcut-input-row,
   .shortcut-actions {
     flex-wrap: wrap;
+  }
+
+  .webapp-item {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .webapp-actions {
+    grid-column: 2;
+    justify-content: flex-start;
   }
 }
 
@@ -1835,6 +1916,24 @@ html, body {
   .workspace-manager-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .webapp-item {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .webapp-name-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .webapp-name-input {
+    width: 100%;
+  }
+
+  .webapp-actions {
+    grid-column: 1 / -1;
   }
 }
 

@@ -64,6 +64,15 @@
           </svg>
           <span>Workspaces</span>
         </button>
+        <button class="nav-item" data-page="webapps">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2.5" y="3" width="15" height="14" rx="2"/>
+            <path d="M2.5 7h15"/>
+            <path d="M10 9.5v5"/>
+            <path d="M7.5 12h5"/>
+          </svg>
+          <span>Web Apps</span>
+        </button>
         <button class="nav-item" data-page="shortcuts">
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="2.5" y="4" width="15" height="12" rx="2"/>
@@ -92,7 +101,7 @@
       <section id="page-home" class="page active">
         <div class="page-header">
           <h1 class="page-title">Midori settings</h1>
-          <p class="page-subtitle">Choose a section to change tabs, sidebars, visual modifications, workspaces, or shortcuts.</p>
+          <p class="page-subtitle">Choose a section to change tabs, sidebars, visual modifications, workspaces, web apps, or shortcuts.</p>
         </div>
 
         <div class="cards-grid">
@@ -156,6 +165,22 @@
             <div class="card-text">
               <h3>Workspaces</h3>
               <p>Manage tab groups and workspace behavior</p>
+            </div>
+            <svg class="card-arrow" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+          </button>
+
+          <button class="overview-card" data-navigate="webapps">
+            <div class="card-icon-wrap card-icon-teal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                <path d="M3 9h18"/>
+                <path d="M12 11.5v5"/>
+                <path d="M9.5 14h5"/>
+              </svg>
+            </div>
+            <div class="card-text">
+              <h3>Web Apps</h3>
+              <p>Manage websites installed as focused applications</p>
             </div>
             <svg class="card-arrow" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
           </button>
@@ -629,6 +654,42 @@
           <p id="workspace-empty" class="workspace-empty" hidden>
             No workspaces available.
           </p>
+        </div>
+      </section>
+
+      <!-- WEB APPS PAGE -->
+      <section id="page-webapps" class="page">
+        <div class="page-header">
+          <h1 class="page-title">Web Apps</h1>
+          <p class="page-subtitle">Installed websites that open in focused Midori windows.</p>
+        </div>
+
+        <div class="setting-group">
+          <h2 class="group-title">General</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong id="webapps-enabled-label">Enable Web Apps</strong>
+              <p>Allow secure sites to be installed and launched from system shortcuts.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-webapps-enabled" aria-labelledby="webapps-enabled-label">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-group" id="webapps-manager-panel" aria-labelledby="webapps-manager-title">
+          <div class="workspace-manager-header">
+            <div>
+              <h2 class="group-title" id="webapps-manager-title">Installed Web Apps</h2>
+              <p class="group-desc">Open an app or update its system integration.</p>
+            </div>
+            <span id="webapps-count" class="workspace-count-badge" aria-live="polite">0 installed</span>
+          </div>
+
+          <p id="webapps-status" class="workspace-status" role="status" aria-live="polite" hidden></p>
+          <div id="webapps-list" class="webapp-list" role="list"></div>
+          <p id="webapps-empty" class="workspace-empty">No web apps installed.</p>
         </div>
       </section>
 
