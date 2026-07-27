@@ -12,7 +12,9 @@ index 34d92dcfba54de4752036d0e251243729b6c9626..e39f957bae2ad2cd15be2f6109ca5c1a
  
  /**
   * The "showing" attribute means that we intentionally want to show controls
-@@ -379,6 +382,12 @@ let Player = {
+@@ -396,9 +399,15 @@ let Player = {
+     // In see-through mode the PiP window is made semi-transparent on hover.
+     if (Services.prefs.getBoolPref(SEETHROUGH_MODE_ENABLED_PREF, false)) {
        document.documentElement.classList.add("seethrough-mode");
      }
  
@@ -23,5 +25,6 @@ index 34d92dcfba54de4752036d0e251243729b6c9626..e39f957bae2ad2cd15be2f6109ca5c1a
 +      document.documentElement.setAttribute("midori-pip-skin", pipSkin);
 +    }
      this._isInitialized = true;
-   },
  
+     return { actor: this.actor, setupPromise };
+   },

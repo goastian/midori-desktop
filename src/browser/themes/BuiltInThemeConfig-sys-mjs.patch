@@ -28,7 +28,7 @@ index c4ff66417c43c8c56948b7de4c48cf93828a66bf..016bf798c3c6b6d7429a142f3c9cb6a4
 -  [
 -    "firefox-alpenglow@mozilla.org",
 -    {
--      version: "1.5.2",
+-      version: "1.5.3",
 -      path: "resource://builtin-themes/alpenglow/",
 -    },
 -  ],
