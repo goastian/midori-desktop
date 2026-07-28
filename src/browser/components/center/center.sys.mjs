@@ -10,6 +10,12 @@
 const WORKSPACE_CHANGE_TOPIC = "midori-workspaces-updated";
 const WORKSPACES_MODULE_URL = "resource:///modules/MidoriWorkspaces.sys.mjs";
 const SHORTCUTS_MODULE_URL = "resource:///modules/MidoriShortcuts.sys.mjs";
+const WEBAPPS_MODULE_URL = "resource:///modules/MidoriWebApps.sys.mjs";
+const WEBAPPS_CHANGE_TOPIC = "midori-webapps-changed";
+const WEBAPP_FALLBACK_ICON =
+  "chrome://browser/skin/taskbar-tabs-add-tab.svg";
+const BROWSER_WINDOW_TRACKER_MODULE_URL =
+  "resource:///modules/BrowserWindowTracker.sys.mjs";
 const ADDON_MANAGER_MODULE_URL = "resource://gre/modules/AddonManager.sys.mjs";
 
 const ADDON_IDS = {
@@ -134,6 +140,15 @@ const addonUI = {
   status: null,
 };
 
+const webAppsUI = {
+  panel: null,
+  enabled: null,
+  count: null,
+  list: null,
+  empty: null,
+  status: null,
+};
+
 let workspaceApi = null;
 let workspaceObserver = null;
 let shortcutsApi = null;
@@ -141,6 +156,14 @@ let shortcutObserver = null;
 let shortcutObservedPrefs = [];
 let shortcutFlashPref = "";
 let addonManagerApi = null;
+let webAppsApi = null;
+let webAppsObserver = null;
+let webAppsInitPromise = null;
+let webAppsRefreshFrame = 0;
+let webAppsRefreshGeneration = 0;
+let webAppsIconObserver = null;
+const webAppsPendingIcons = new WeakMap();
+let browserWindowTrackerApi = null;
 
 // ---- Read a pref by type ----
 function readPref(prefName, type) {
@@ -206,7 +229,18 @@ function migrateLegacyTabLayoutPref() {
 }
 
 function getBrowserWindow() {
-  return Services.wm.getMostRecentWindow("navigator:browser");
+  try {
+    browserWindowTrackerApi ??= ChromeUtils.importESModule(
+      BROWSER_WINDOW_TRACKER_MODULE_URL
+    ).BrowserWindowTracker;
+    return browserWindowTrackerApi.getTopWindow({
+      private: false,
+      allowTaskbarTabs: false,
+      allowFromInactiveWorkspace: true,
+    });
+  } catch {
+    return null;
+  }
 }
 
 function getWorkspaceApi() {
@@ -250,6 +284,20 @@ function getAddonManagerApi() {
   }
 
   return addonManagerApi;
+}
+
+function getWebAppsApi() {
+  if (webAppsApi) {
+    return webAppsApi;
+  }
+
+  try {
+    webAppsApi = ChromeUtils.importESModule(WEBAPPS_MODULE_URL)?.MidoriWebApps;
+  } catch {
+    webAppsApi = null;
+  }
+
+  return webAppsApi;
 }
 
 function setAddonStatus(message, isError = false) {
@@ -365,6 +413,471 @@ async function initAddonControls() {
   addonUI.vpn.addEventListener("change", async () => {
     await setAddonEnabled("vpn", addonUI.vpn.checked);
   });
+}
+
+function setWebAppsStatus(message, isError = false) {
+  if (!webAppsUI.status) return;
+  webAppsUI.status.classList.toggle("workspace-status-error", !!isError);
+  webAppsUI.status.setAttribute("role", "status");
+  webAppsUI.status.setAttribute("aria-live", isError ? "assertive" : "polite");
+  webAppsUI.status.hidden = !message;
+  webAppsUI.status.textContent = message || "";
+}
+
+function createWebAppButton(label, action, { danger = false } = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = danger ? "mc-btn mc-btn-danger" : "mc-btn";
+  button.textContent = label;
+  button.addEventListener("click", action);
+  return button;
+}
+
+function captureWebAppsViewState() {
+  const edits = new Map();
+  for (const row of webAppsUI.list?.children || []) {
+    const input = row.querySelector(".webapp-name-input");
+    if (input && input.value !== input.dataset.originalName) {
+      edits.set(row.dataset.webAppId, input.value);
+    }
+  }
+
+  const active = document.activeElement;
+  const activeRow = active?.closest?.(".webapp-item");
+  return {
+    edits,
+    activeId: activeRow?.dataset.webAppId ?? null,
+    activeAction: active?.dataset?.webAppAction ?? null,
+    selection:
+      active?.classList?.contains("webapp-name-input")
+        ? [active.selectionStart, active.selectionEnd]
+        : null,
+  };
+}
+
+function restoreWebAppsFocus(state) {
+  if (
+    !state.activeId ||
+    !document.getElementById("page-webapps")?.classList.contains("active")
+  ) {
+    return;
+  }
+
+  const row = [...webAppsUI.list.children].find(
+    item => item.dataset.webAppId === state.activeId
+  );
+  if (!row) {
+    webAppsUI.enabled.focus();
+    return;
+  }
+
+  const target = state.activeAction
+    ? row.querySelector(`[data-webapp-action="${state.activeAction}"]`)
+    : row.querySelector(".webapp-name-input");
+  target?.focus();
+  if (state.selection && target?.setSelectionRange) {
+    target.setSelectionRange(...state.selection);
+  }
+}
+
+function loadWebAppIcon(icon, app) {
+  const load = async () => {
+    try {
+      const iconUrl = await getWebAppsApi()?.getIcon?.(app.id, app.startUrl);
+      if (
+        iconUrl &&
+        icon.isConnected &&
+        icon.closest(".webapp-item")?.dataset.webAppId === app.id
+      ) {
+        icon.src = iconUrl;
+      }
+    } catch {}
+  };
+
+  if (!("IntersectionObserver" in window)) {
+    load();
+    return;
+  }
+
+  webAppsIconObserver ??= new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) {
+        continue;
+      }
+      webAppsIconObserver.unobserve(entry.target);
+      const pendingLoad = webAppsPendingIcons.get(entry.target);
+      webAppsPendingIcons.delete(entry.target);
+      pendingLoad?.();
+    }
+  });
+  webAppsPendingIcons.set(icon, load);
+  webAppsIconObserver.observe(icon);
+}
+
+function scheduleWebAppsRefresh() {
+  if (webAppsRefreshFrame || !webAppsUI.panel) {
+    return;
+  }
+  webAppsRefreshFrame = window.requestAnimationFrame(() => {
+    webAppsRefreshFrame = 0;
+    refreshWebApps().catch(error => {
+      setWebAppsStatus(error?.message || "Could not refresh web apps.", true);
+    });
+  });
+}
+
+async function runWebAppRowAction(row, action) {
+  const controls = [...row.querySelectorAll("button, input")];
+  const disabledStates = controls.map(control => control.disabled);
+  row.setAttribute("aria-busy", "true");
+  controls.forEach(control => {
+    control.disabled = true;
+  });
+  setWebAppsStatus("");
+
+  try {
+    return await action();
+  } finally {
+    if (row.isConnected) {
+      controls.forEach((control, index) => {
+        control.disabled = disabledStates[index];
+      });
+      row.removeAttribute("aria-busy");
+    }
+  }
+}
+
+async function refreshWebApps() {
+  if (
+    !webAppsUI.panel ||
+    !webAppsUI.enabled ||
+    !webAppsUI.count ||
+    !webAppsUI.list ||
+    !webAppsUI.empty ||
+    !webAppsUI.status
+  ) {
+    return;
+  }
+
+  const generation = ++webAppsRefreshGeneration;
+  webAppsUI.panel.setAttribute("aria-busy", "true");
+  try {
+    const api = getWebAppsApi();
+    if (!api) {
+      webAppsUI.enabled.checked = false;
+      webAppsUI.enabled.disabled = true;
+      webAppsUI.count.textContent = "Unavailable";
+      webAppsUI.empty.hidden = false;
+      webAppsUI.empty.textContent = "The Web Apps service could not be loaded.";
+      setWebAppsStatus("The Web Apps service is unavailable.", true);
+      return;
+    }
+
+    const supported = !!api.supported;
+    const enabled = supported && !!api.enabled;
+    webAppsUI.enabled.checked = enabled;
+    webAppsUI.enabled.disabled = !supported;
+
+    if (!supported) {
+      webAppsUI.count.textContent = "Unavailable";
+      webAppsUI.list.replaceChildren();
+      webAppsUI.empty.hidden = false;
+      webAppsUI.empty.textContent =
+        "Native web apps are currently available on Windows and Linux.";
+      setWebAppsStatus("");
+      return;
+    }
+
+    const apps = await api.list();
+    if (generation !== webAppsRefreshGeneration) {
+      return;
+    }
+
+    const viewState = captureWebAppsViewState();
+    webAppsIconObserver?.disconnect();
+    webAppsIconObserver = null;
+    webAppsUI.list.replaceChildren();
+    webAppsUI.count.textContent =
+      apps.length === 1 ? "1 installed" : `${apps.length} installed`;
+    webAppsUI.empty.hidden = apps.length > 0;
+    webAppsUI.empty.textContent = enabled
+      ? "No web apps installed."
+      : "Web apps are disabled. Installed apps remain available for removal.";
+    for (const app of apps) {
+      const row = document.createElement("div");
+      row.className = "webapp-item";
+      row.dataset.webAppId = app.id;
+      row.setAttribute("role", "listitem");
+
+      const icon = document.createElement("img");
+      icon.className = "webapp-icon";
+      icon.src = WEBAPP_FALLBACK_ICON;
+      icon.alt = "";
+      icon.addEventListener(
+        "error",
+        () => {
+          if (icon.src !== WEBAPP_FALLBACK_ICON) {
+            icon.src = WEBAPP_FALLBACK_ICON;
+          }
+        },
+        { once: true }
+      );
+
+      const details = document.createElement("div");
+      details.className = "webapp-details";
+
+      const nameRow = document.createElement("div");
+      nameRow.className = "webapp-name-row";
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.className = "text-input webapp-name-input";
+      nameInput.maxLength = 80;
+      nameInput.dataset.originalName = app.name;
+      nameInput.value = viewState.edits.get(app.id) ?? app.name;
+      nameInput.disabled = !enabled || !app.supported;
+      nameInput.setAttribute("aria-label", `Name for ${app.name}`);
+      const saveButton = createWebAppButton("Save", async () => {
+        const name = nameInput.value.trim();
+        if (!name || name === app.name) {
+          nameInput.value = app.name;
+          saveButton.disabled = true;
+          return;
+        }
+        await runWebAppRowAction(row, async () => {
+          try {
+            await api.rename(app.id, name, getBrowserWindow());
+            setWebAppsStatus("Web app renamed.");
+            scheduleWebAppsRefresh();
+          } catch (error) {
+            setWebAppsStatus(
+              error?.message || "Could not rename the web app.",
+              true
+            );
+          }
+        });
+      });
+      saveButton.dataset.webAppAction = "save";
+      saveButton.setAttribute("aria-label", `Save name for ${app.name}`);
+      saveButton.disabled =
+        !enabled ||
+        !app.supported ||
+        !nameInput.value.trim() ||
+        nameInput.value.trim() === app.name;
+      nameInput.addEventListener("input", () => {
+        const name = nameInput.value.trim();
+        saveButton.disabled =
+          !enabled || !app.supported || !name || name === app.name;
+      });
+      nameInput.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          saveButton.click();
+        } else if (event.key === "Escape") {
+          nameInput.value = app.name;
+          saveButton.disabled = true;
+          nameInput.blur();
+        }
+      });
+      nameRow.appendChild(nameInput);
+      nameRow.appendChild(saveButton);
+
+      const url = document.createElement("span");
+      url.className = "webapp-url";
+      url.textContent = app.startUrl;
+      url.title = app.startUrl;
+
+      const meta = document.createElement("span");
+      meta.className = "webapp-meta";
+      const container = app.containerName
+        ? app.containerName
+        : app.userContextId
+          ? `Container ${app.userContextId}`
+          : "Default container";
+      const shortcut = !app.supported
+        ? "Legacy URL unsupported"
+        : app.shortcutInstalled
+          ? "System shortcut ready"
+          : "System shortcut needs repair";
+      meta.textContent = `${container} | ${shortcut}`;
+
+      details.appendChild(nameRow);
+      details.appendChild(url);
+      details.appendChild(meta);
+
+      const actions = document.createElement("div");
+      actions.className = "webapp-actions";
+      const openButton = createWebAppButton("Open", () =>
+        runWebAppRowAction(row, async () => {
+          try {
+            await api.open(app.id);
+            setWebAppsStatus("");
+          } catch (error) {
+            setWebAppsStatus(
+              error?.message || "Could not open the web app.",
+              true
+            );
+          }
+        })
+      );
+      openButton.dataset.webAppAction = "open";
+      openButton.setAttribute("aria-label", `Open ${app.name}`);
+      openButton.disabled = !enabled || !app.supported;
+
+      const repairLabel = app.shortcutInstalled
+        ? "Recreate shortcut"
+        : "Create shortcut";
+      const repairButton = createWebAppButton(repairLabel, () =>
+        runWebAppRowAction(row, async () => {
+          try {
+            await api.repairShortcut(app.id, getBrowserWindow());
+            setWebAppsStatus("System shortcut repaired.");
+            scheduleWebAppsRefresh();
+          } catch (error) {
+            setWebAppsStatus(
+              error?.message || "Could not repair the system shortcut.",
+              true
+            );
+          }
+        })
+      );
+      repairButton.dataset.webAppAction = "repair";
+      repairButton.setAttribute(
+        "aria-label",
+        `${repairLabel} for ${app.name}`
+      );
+      repairButton.disabled = !enabled || !app.supported;
+
+      const removeButton = createWebAppButton(
+        "Remove",
+        () =>
+          runWebAppRowAction(row, async () => {
+            if (
+              !window.confirm(`Remove "${app.name}" from Midori and the system?`)
+            ) {
+              return;
+            }
+            try {
+              const removed = await api.uninstall(app.id);
+              if (!removed) {
+                throw new Error("The web app is no longer installed.");
+              }
+              setWebAppsStatus("Web app removed.");
+              scheduleWebAppsRefresh();
+            } catch (error) {
+              setWebAppsStatus(
+                error?.message || "Could not remove the web app.",
+                true
+              );
+            }
+          }),
+        { danger: true }
+      );
+      removeButton.dataset.webAppAction = "remove";
+      removeButton.setAttribute("aria-label", `Remove ${app.name}`);
+
+      actions.appendChild(openButton);
+      actions.appendChild(repairButton);
+      actions.appendChild(removeButton);
+
+      row.appendChild(icon);
+      row.appendChild(details);
+      row.appendChild(actions);
+      webAppsUI.list.appendChild(row);
+      loadWebAppIcon(icon, app);
+    }
+    restoreWebAppsFocus(viewState);
+  } catch (error) {
+    if (generation === webAppsRefreshGeneration) {
+      webAppsUI.count.textContent = "Unavailable";
+      webAppsUI.list.replaceChildren();
+      webAppsUI.empty.hidden = false;
+      webAppsUI.empty.textContent = "Installed web apps could not be loaded.";
+      setWebAppsStatus(
+        error?.message || "Could not read the web app registry.",
+        true
+      );
+    }
+  } finally {
+    if (generation === webAppsRefreshGeneration) {
+      webAppsUI.panel.removeAttribute("aria-busy");
+    }
+  }
+}
+
+async function initWebApps() {
+  webAppsUI.panel = document.getElementById("webapps-manager-panel");
+  webAppsUI.enabled = document.getElementById("pref-webapps-enabled");
+  webAppsUI.count = document.getElementById("webapps-count");
+  webAppsUI.list = document.getElementById("webapps-list");
+  webAppsUI.empty = document.getElementById("webapps-empty");
+  webAppsUI.status = document.getElementById("webapps-status");
+
+  if (
+    !webAppsUI.panel ||
+    !webAppsUI.enabled ||
+    !webAppsUI.count ||
+    !webAppsUI.list ||
+    !webAppsUI.empty ||
+    !webAppsUI.status
+  ) {
+    return;
+  }
+
+  webAppsUI.enabled.addEventListener("change", async () => {
+    const api = getWebAppsApi();
+    if (!api?.supported) {
+      return;
+    }
+    const enabled = webAppsUI.enabled.checked;
+    webAppsUI.enabled.disabled = true;
+    try {
+      api.setEnabled(enabled);
+      setWebAppsStatus("");
+      scheduleWebAppsRefresh();
+    } catch (error) {
+      webAppsUI.enabled.checked = !!api.enabled;
+      setWebAppsStatus(
+        error?.message || "Could not update Web Apps.",
+        true
+      );
+    } finally {
+      webAppsUI.enabled.disabled = false;
+    }
+  });
+
+  const observer = { observe: scheduleWebAppsRefresh };
+  webAppsObserver = observer;
+  Services.obs.addObserver(observer, WEBAPPS_CHANGE_TOPIC);
+  Services.prefs.addObserver("browser.taskbarTabs.enabled", observer);
+  window.addEventListener(
+    "unload",
+    () => {
+      try {
+        Services.obs.removeObserver(observer, WEBAPPS_CHANGE_TOPIC);
+        Services.prefs.removeObserver("browser.taskbarTabs.enabled", observer);
+      } catch {}
+      if (webAppsObserver === observer) {
+        webAppsObserver = null;
+      }
+      if (webAppsRefreshFrame) {
+        window.cancelAnimationFrame(webAppsRefreshFrame);
+        webAppsRefreshFrame = 0;
+      }
+      webAppsIconObserver?.disconnect();
+      webAppsIconObserver = null;
+      webAppsRefreshGeneration++;
+    },
+    { once: true }
+  );
+
+  await refreshWebApps();
+}
+
+function ensureWebAppsInitialized() {
+  webAppsInitPromise ??= initWebApps().catch(error => {
+    setWebAppsStatus(error?.message || "Could not initialize Web Apps.", true);
+  });
+  return webAppsInitPromise;
 }
 
 function getWorkspaceIcons(api) {
@@ -1490,6 +2003,9 @@ function initNavigation() {
     document.title = `${document.querySelector(`#page-${targetPage} .page-title`)?.textContent || "Midori Center"} — Midori Center`;
     if (updateHistory && window.location.hash !== `#${targetPage}`) {
       window.history.pushState(null, "", `#${targetPage}`);
+    }
+    if (targetPage === "webapps") {
+      ensureWebAppsInitialized();
     }
     document.getElementById("center-content")?.scrollTo({ top: 0 });
   }
