@@ -53,6 +53,12 @@ pref("browser.tabs.cardPreview.delayMs", 400);
 pref("cookiebanners.service.mode.privateBrowsing", 2);
 pref("browser.urlbar.update2.engineAliasRefresh", true);
 
+#if defined(XP_WIN) || defined(XP_LINUX)
+pref("browser.taskbarTabs.enabled", true);
+#else
+pref("browser.taskbarTabs.enabled", false);
+#endif
+
 // Force-enable bundled multi-language support in packaged builds.
 // Locking avoids old profile user prefs forcing multilingual support off.
 pref("intl.multilingual.enabled", true, locked);
