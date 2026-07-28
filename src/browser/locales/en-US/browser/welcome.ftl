@@ -15,6 +15,7 @@ welcome-dialog-import-action = Import
 
 welcome-dialog-color = Choose Your Midori Color
 welcome-dialog-color-subtext = Select the accent used by tabs, workspaces, and browser controls
+welcome-dialog-color-system = System
 welcome-dialog-color-jade = Jade
 welcome-dialog-color-ocean = Ocean
 welcome-dialog-color-sunrise = Sunrise

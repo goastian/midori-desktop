@@ -8,8 +8,7 @@ const COLORWAY_PREF = "midori.colorway";
 const LEGACY_THEME_MODE_PREF = "midori.theme.mode";
 const LEGACY_WINDOW_CONTROLS_PREF = "midori.modblur.windowControls.macStyle";
 const WINDOW_CONTROLS_STYLE_PREF = "midori.modblur.windowControls.style";
-const SYSTEM_DARK_THEME_PREF = "ui.systemUsesDarkTheme";
-const CURRENT_MIGRATION_VERSION = 2;
+const CURRENT_MIGRATION_VERSION = 3;
 
 export const LEGACY_THEME_COLORWAYS = Object.freeze({
   "midori-theme-jade-mist@midori.astian.org": "jade",
@@ -31,7 +30,7 @@ function colorwayForLegacyMode(prefs) {
     case "light":
       return "jade";
     case "auto":
-      return prefs.getIntPref(SYSTEM_DARK_THEME_PREF, 0) > 0 ? "forest" : "jade";
+      return "system";
     default:
       return null;
   }
@@ -64,6 +63,13 @@ export function migrateLegacyProfile(prefs = Services.prefs) {
   // Midori colorway.
   if (selectedColorway && !prefs.prefHasUserValue(COLORWAY_PREF)) {
     prefs.setStringPref(COLORWAY_PREF, selectedColorway);
+  }
+
+  if (
+    completedVersion === 2 &&
+    prefs.getStringPref(COLORWAY_PREF, "system") === "jade"
+  ) {
+    prefs.setStringPref(COLORWAY_PREF, "system");
   }
 
   if (legacyColorway && prefs.prefHasUserValue(ACTIVE_THEME_PREF)) {

@@ -115,11 +115,11 @@ class ColorTheme extends Page {
       card.addEventListener('click', () => this._select(card.dataset.colorway));
     });
 
-    this._select(Services.prefs.getCharPref('midori.colorway', 'jade'));
+    this._select(Services.prefs.getCharPref('midori.colorway', 'system'));
   }
 
   _select(colorway) {
-    const value = this._cards.some((card) => card.dataset.colorway === colorway) ? colorway : 'jade';
+    const value = this._cards.some((card) => card.dataset.colorway === colorway) ? colorway : 'system';
     this._cards.forEach((card) => {
       card.classList.toggle('selected', card.dataset.colorway === value);
     });

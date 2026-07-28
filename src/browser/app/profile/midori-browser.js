@@ -226,7 +226,7 @@ pref('dom.ipc.forkserver.enable', true);
 // ============================================================================
 // Midori owns chrome styling through bundled CSS instead of WebExtension themes.
 pref('extensions.activeThemeID', 'default-theme@mozilla.org');
-pref('midori.colorway', 'jade');
+pref('midori.colorway', 'system');
 
 // Firefox-Mod-Blur inspired modules, recolored for Midori. Heavy blur and
 // autohide-like behavior stays opt-in to avoid navigation stalls.

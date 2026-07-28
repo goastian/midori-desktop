@@ -34,6 +34,31 @@
   --mc-transition: 0.15s ease-out;
 }
 
+@media (-moz-system-dark-theme) {
+  @media -moz-pref("midori.colorway", "system") {
+    :root {
+      color-scheme: dark;
+      --mc-green-400: #42d8a2;
+      --mc-green-500: #29c58b;
+      --mc-green-600: #18a873;
+      --mc-green-700: #11835a;
+      --mc-bg: #07150d;
+      --mc-bg-subtle: #101c17;
+      --mc-surface: #151d1a;
+      --mc-border: #35413b;
+      --mc-border-hover: #526159;
+      --mc-text: #eaf3f2;
+      --mc-text-muted: #aab8b1;
+      --mc-sidebar-bg: #0e1714;
+      --mc-sidebar-active-bg: rgba(41, 197, 139, 0.14);
+      --mc-sidebar-active-text: var(--mc-green-400);
+      --mc-shadow-sm: 0 1px 3px rgba(0,0,0,0.2);
+      --mc-shadow-md: 0 4px 12px rgba(0,0,0,0.25);
+      --mc-shadow-lg: 0 8px 24px rgba(0,0,0,0.3);
+    }
+  }
+}
+
 @media -moz-pref("midori.colorway", "ocean") {
   :root {
     --mc-green-50: #ecfeff;
@@ -408,43 +433,28 @@ html, body {
 }
 
 .card-icon-green {
-  background: var(--mc-green-100);
-  color: var(--mc-green-700);
-}
-@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
-  .card-icon-green { background: rgba(16, 185, 129, 0.15); color: var(--mc-green-400); }
+  background: light-dark(var(--mc-green-100), rgba(16, 185, 129, 0.15));
+  color: light-dark(var(--mc-green-700), var(--mc-green-400));
 }
 
 .card-icon-teal {
-  background: #ccfbf1;
-  color: #0f766e;
-}
-@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
-  .card-icon-teal { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; }
+  background: light-dark(#ccfbf1, rgba(20, 184, 166, 0.15));
+  color: light-dark(#0f766e, #2dd4bf);
 }
 
 .card-icon-emerald {
-  background: #d1fae5;
-  color: #065f46;
-}
-@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
-  .card-icon-emerald { background: rgba(52, 211, 153, 0.15); color: #6ee7b7; }
+  background: light-dark(#d1fae5, rgba(52, 211, 153, 0.15));
+  color: light-dark(#065f46, #6ee7b7);
 }
 
 .card-icon-amber {
-  background: #fef3c7;
-  color: #b45309;
-}
-@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
-  .card-icon-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+  background: light-dark(#fef3c7, rgba(245, 158, 11, 0.15));
+  color: light-dark(#b45309, #fbbf24);
 }
 
 .card-icon-mint {
-  background: #cffafe;
-  color: #0e7490;
-}
-@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
-  .card-icon-mint { background: rgba(34, 211, 238, 0.15); color: #67e8f9; }
+  background: light-dark(#cffafe, rgba(34, 211, 238, 0.15));
+  color: light-dark(#0e7490, #67e8f9);
 }
 
 .card-text {
@@ -526,28 +536,18 @@ html, body {
 
 .info-link {
   font-size: 13px;
-  color: var(--mc-green-600);
+  color: light-dark(var(--mc-green-600), var(--mc-green-400));
   text-decoration: none;
   font-weight: 500;
   padding: 6px 14px;
   border-radius: var(--mc-radius-sm);
-  border: 1px solid var(--mc-green-400);
+  border: 1px solid light-dark(var(--mc-green-400), rgba(52, 211, 153, 0.3));
   transition: all var(--mc-transition);
 }
 
 .info-link:hover {
-  background: var(--mc-green-50);
+  background: light-dark(var(--mc-green-50), rgba(16, 185, 129, 0.1));
   border-color: var(--mc-green-500);
-}
-
-@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
-  .info-link {
-    color: var(--mc-green-400);
-    border-color: rgba(52, 211, 153, 0.3);
-  }
-  .info-link:hover {
-    background: rgba(16, 185, 129, 0.1);
-  }
 }
 
 /* ---- Setting Groups ---- */
@@ -630,19 +630,12 @@ html, body {
 .page-eyebrow,
 .group-kicker {
   margin-bottom: 8px;
-  color: var(--mc-green-700);
+  color: light-dark(var(--mc-green-700), var(--mc-green-400));
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1;
   text-transform: uppercase;
-}
-
-@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
-  .page-eyebrow,
-  .group-kicker {
-    color: var(--mc-green-400);
-  }
 }
 
 .source-link,

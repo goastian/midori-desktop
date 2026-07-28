@@ -148,6 +148,33 @@
   background: var(--pf-browser-bgcolor) !important;
 }
 
+@media (-moz-system-dark-theme) {
+  @media -moz-pref("midori.colorway", "system") {
+    :root:not([lwtheme]) {
+      --pf-accent-color: #29c58b;
+      --pf-accent-color-2: #0eae5b;
+      --pf-browser-bgcolor: #07150d;
+      --pf-browser-bgcolor-2: #101924;
+      --pf-sidebar-bgcolor: #0e1714;
+      --pf-panel-bgcolor: #151d1a;
+      --pf-text-color: #eaf3f2;
+      --pf-url-text-color: #48d4a1;
+      --pf-toolbar-bgcolor: rgba(248, 248, 248, 0.08);
+      --pf-toolbar-bgcolor-hover: rgba(248, 248, 248, 0.12);
+      --pf-toolbar-bgcolor-active: rgba(41, 197, 139, 0.2);
+      --pf-toolbar-bgcolor-inactive: rgba(248, 248, 248, 0.055);
+      --pf-tabbar-bgcolor: rgba(41, 197, 139, 0.055);
+      --pf-navbar-bgcolor: rgba(255, 255, 255, 0.07);
+      --pf-urlbar-bgcolor: #16211d;
+      --pf-input-bgcolor: rgba(255, 255, 255, 0.045);
+      --pf-tab-selected-bgcolor: rgba(238, 239, 243, 0.15);
+      --pf-favicon-bgcolor: rgba(234, 243, 242, 0.22);
+      --pf-favicon-border-color: rgba(234, 243, 242, 0.18);
+      color-scheme: dark;
+    }
+  }
+}
+
 @media -moz-pref("midori.colorway", "ocean") {
   :root:not([lwtheme]) {
     --pf-accent-color: #0e9dae;
