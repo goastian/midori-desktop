@@ -111,6 +111,10 @@
   color-scheme: light;
 }
 
+:root[privatebrowsingmode] {
+  --tabpanel-background-color: var(--pf-browser-bgcolor) !important;
+}
+
 /* WebExtension themes keep ownership of their native Firefox variables. Midori
  * consumes those values for its custom surfaces instead of painting a jade
  * colorway over the user's selected theme. */
