@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
+
 /**
  * AutoHideToolbar — Hides the toolbar on scroll to maximize content area.
  *
@@ -87,7 +89,7 @@ export const AutoHideToolbar = {
   },
 
   _attachToWindow(win) {
-    if (!win?.document || this._windowListeners.has(win)) {
+    if (!isRegularBrowserWindow(win) || this._windowListeners.has(win)) {
       return;
     }
 

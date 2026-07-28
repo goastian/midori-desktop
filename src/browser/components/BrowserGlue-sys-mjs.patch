@@ -29,7 +29,7 @@ index d07aaa3fbb..a90160fb13 100644
          break;
        case "browser:purge-session-history":
          // reset the console service's error buffer
-@@ -215,6 +221,21 @@ BrowserGlue.prototype = {
+@@ -215,6 +221,24 @@ BrowserGlue.prototype = {
        case "quit-application-granted":
          this._onQuitApplicationGranted();
          break;
@@ -41,7 +41,10 @@ index d07aaa3fbb..a90160fb13 100644
 +          Services.tm.dispatchToMainThread(() => {
 +            if (
 +              !Services.startup.shuttingDown &&
-+              !lazy.BrowserWindowTracker.getTopWindow()
++              !lazy.BrowserWindowTracker.getTopWindow({
++                allowTaskbarTabs: true,
++                allowFromInactiveWorkspace: true,
++              })
 +            ) {
 +              Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit);
 +            }

@@ -2,6 +2,7 @@ import * as Prefs from 'resource:///modules/msidebar/SidebarPrefs.mjs';
 import { loadStore, saveStore } from 'resource:///modules/msidebar/SidebarStore.mjs';
 import { createPanel, validateStore } from 'resource:///modules/msidebar/SidebarModel.mjs';
 import { createSidebarUI } from 'resource:///modules/msidebar/SidebarUI.mjs';
+import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -95,14 +96,17 @@ export const MidoriSidebar = {
 
   _refreshAllWindows() {
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
-      if (win.document.readyState === 'complete') {
+      if (
+        win.document.readyState === 'complete' &&
+        isRegularBrowserWindow(win)
+      ) {
         this._syncWindowUI(win);
       }
     }
   },
 
   async _applyToWindow(win) {
-    if (!win || !win.document) return;
+    if (!isRegularBrowserWindow(win)) return;
     if (this._uis.has(win)) {
       this._syncWindowUI(win);
       return;

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
+
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -23,14 +25,6 @@ const TAB_EVENT_TYPES = [
   'TabUnpinned',
   'TabBrowserDiscarded',
 ];
-
-function isBrowserWindow(win) {
-  return (
-    !!win &&
-    win.location?.href === 'chrome://browser/content/browser.xhtml' &&
-    !!win.gBrowser
-  );
-}
 
 function getTabForBrowser(browser) {
   try {
@@ -97,7 +91,7 @@ export const MidoriTabSleep = {
     }
 
     if (topic === 'browser-delayed-startup-finished') {
-      if (this._enabled && isBrowserWindow(subject)) {
+      if (this._enabled && isRegularBrowserWindow(subject)) {
         this._attachWindow(subject);
         this._scheduleNextEvaluation();
       }
@@ -132,7 +126,7 @@ export const MidoriTabSleep = {
     }
 
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
-      if (isBrowserWindow(win) && win.document.readyState === 'complete') {
+      if (isRegularBrowserWindow(win) && win.document.readyState === 'complete') {
         this._attachWindow(win);
       }
     }
@@ -141,7 +135,7 @@ export const MidoriTabSleep = {
   },
 
   _attachWindow(win) {
-    if (!isBrowserWindow(win) || this._windowState.has(win)) {
+    if (!isRegularBrowserWindow(win) || this._windowState.has(win)) {
       return;
     }
 
@@ -281,7 +275,7 @@ export const MidoriTabSleep = {
     const candidates = [];
 
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
-      if (!isBrowserWindow(win)) {
+      if (!isRegularBrowserWindow(win)) {
         continue;
       }
 
@@ -323,7 +317,7 @@ export const MidoriTabSleep = {
 
     const now = Date.now();
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
-      if (!isBrowserWindow(win)) {
+      if (!isRegularBrowserWindow(win)) {
         continue;
       }
 

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
+
 /**
  * MidoriVerticalTabs — Flat Design UI system for Midori Browser.
  *
@@ -354,7 +356,7 @@ export const MidoriVerticalTabs = {
   // =========================================================================
 
   _applyToWindow(win) {
-    if (!win || !win.document) return;
+    if (!isRegularBrowserWindow(win)) return;
     const doc = win.document;
     const existing = doc.getElementById(STYLE_ID);
     if (existing) existing.remove();

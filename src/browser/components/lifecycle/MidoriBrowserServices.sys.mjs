@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { MidoriServiceLifecycle } from 'resource:///modules/MidoriServiceLifecycle.sys.mjs';
+import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -27,9 +28,64 @@ const services = [
   { name: 'MidoriTabSleep', getService: () => lazy.MidoriTabSleep },
 ];
 
-export const MidoriBrowserServices = new MidoriServiceLifecycle(services, {
+const lifecycle = new MidoriServiceLifecycle(services, {
   onError({ phase, name, error }) {
     const action = phase === 'init' ? 'initialize' : 'uninitialize';
     console.error(`Midori: Failed to ${action} ${name}`, error);
   },
 });
+
+let browserWindowObserver = null;
+
+function findRegularBrowserWindow() {
+  for (const win of Services.wm.getEnumerator('navigator:browser')) {
+    if (isRegularBrowserWindow(win)) {
+      return win;
+    }
+  }
+  return null;
+}
+
+export const MidoriBrowserServices = {
+  init() {
+    if (browserWindowObserver) {
+      return;
+    }
+
+    browserWindowObserver = (subject, topic) => {
+      if (topic === 'browser-delayed-startup-finished') {
+        if (isRegularBrowserWindow(subject)) {
+          lifecycle.init();
+        }
+        return;
+      }
+
+      Services.tm.dispatchToMainThread(() => {
+        if (!findRegularBrowserWindow()) {
+          lifecycle.uninit();
+        }
+      });
+    };
+    Services.obs.addObserver(
+      browserWindowObserver,
+      'browser-delayed-startup-finished'
+    );
+    Services.obs.addObserver(browserWindowObserver, 'domwindowclosed');
+
+    if (findRegularBrowserWindow()) {
+      lifecycle.init();
+    }
+  },
+
+  uninit() {
+    if (browserWindowObserver) {
+      Services.obs.removeObserver(
+        browserWindowObserver,
+        'browser-delayed-startup-finished'
+      );
+      Services.obs.removeObserver(browserWindowObserver, 'domwindowclosed');
+      browserWindowObserver = null;
+    }
+    lifecycle.uninit();
+  },
+};

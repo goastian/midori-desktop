@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as SidebarPrefs from 'resource:///modules/msidebar/SidebarPrefs.mjs';
+import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
 import {
   isReservedBrowserShortcut,
   isSafeGlobalShortcut,
@@ -351,7 +352,7 @@ export const MidoriShortcuts = {
   },
 
   _applyToWindow(win) {
-    if (!win?.document) {
+    if (!isRegularBrowserWindow(win)) {
       return;
     }
 

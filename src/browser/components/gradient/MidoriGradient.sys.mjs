@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
+
 /**
  * MidoriGradient — Custom gradient system for the browser chrome.
  *
@@ -353,7 +355,7 @@ ${textureLayer}
   },
 
   _applyToWindow(win) {
-    if (!win?.document) return;
+    if (!isRegularBrowserWindow(win)) return;
 
     const doc = win.document;
     const config = this.getConfig();

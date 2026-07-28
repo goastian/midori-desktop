@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
+
 /**
  * MidoriWorkspaces — Workspace management for the Midori browser chrome.
  *
@@ -247,6 +249,7 @@ export const MidoriWorkspaces = {
 
   async _initWindow(win) {
     if (!this._initialized || !this.isEnabled()) return;
+    if (!isRegularBrowserWindow(win)) return;
     if (this._windowStates.has(win)) return;
 
     const windowId = this._getWindowId(win);
