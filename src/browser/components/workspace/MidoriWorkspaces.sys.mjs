@@ -827,7 +827,7 @@ export const MidoriWorkspaces = {
     targetTab ||= fallbackTargetTab;
 
     if (!targetTab) {
-      targetTab = gBrowser.addTab('about:newtab', {
+      targetTab = gBrowser.addTab(win.BROWSER_NEW_TAB_URL, {
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       });
       this._rememberTabWorkspace(state, targetTab, workspaceId);
@@ -1158,7 +1158,7 @@ export const MidoriWorkspaces = {
     }
 
     if (!hasVisible) {
-      const newTab = gBrowser.addTab('about:newtab', {
+      const newTab = gBrowser.addTab(win.BROWSER_NEW_TAB_URL, {
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       });
       this._rememberTabWorkspace(state, newTab, state.data.selectedId);

@@ -42,6 +42,7 @@ pref("browser.search.update", false);
 // Home page uses about:newtab so it resolves to midori-newtab extension
 pref("browser.startup.homepage", "about:newtab");
 pref("browser.startup.homepage.abouthome_cache.enabled", false);
+pref("browser.newtabpage.enabled", false, locked);
 
 pref("app.support.baseURL", "https://astian.org/community");
 pref("extensions.install_origins.enabled", true);
