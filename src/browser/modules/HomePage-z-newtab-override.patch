@@ -7,7 +7,7 @@ diff --git a/browser/modules/HomePage.sys.mjs b/browser/modules/HomePage.sys.mjs
    CustomizableUI:
 @@ -120,1 +121,8 @@ export let HomePage = {
 +    if (
-+      homePages == "about:newtab" &&
++      ["about:home", "about:newtab"].includes(homePages) &&
 +      lazy.AboutNewTab.newTabURL != "about:newtab"
 +    ) {
 +      homePages = lazy.AboutNewTab.newTabURL;

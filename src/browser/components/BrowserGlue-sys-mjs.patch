@@ -92,16 +92,33 @@ index d07aaa3fbb..a90160fb13 100644
      // check if we're in safe mode
      if (Services.appinfo.inSafeMode) {
        Services.ww.openWindow(
-@@ -757,8 +793,39 @@ BrowserGlue.prototype = {
+@@ -757,8 +793,59 @@ BrowserGlue.prototype = {
      Glean.gfxDisplay.scaling.accumulateSingleSample(scaling);
    },
  
-+  _replacePendingNewTabOverrides(aWindow = null) {
++  _newTabRestoreWindows: new WeakSet(),
++
++  _watchNewTabRestores(aWindow) {
++    if (this._newTabRestoreWindows.has(aWindow)) {
++      return;
++    }
++
++    this._newTabRestoreWindows.add(aWindow);
++    aWindow.gBrowser.tabContainer.addEventListener(
++      "SSTabRestoring",
++      event => this._replacePendingNewTabOverrides(aWindow, event.target),
++      true
++    );
++  },
++
++  _replacePendingNewTabOverrides(aWindow = null, aTab = null) {
 +    const windows = aWindow
 +      ? [aWindow]
 +      : lazy.BrowserWindowTracker.orderedWindows;
 +
 +    for (const win of windows) {
++      this._watchNewTabRestores(win);
++
 +      const newTabURL = win.BROWSER_NEW_TAB_URL;
 +      if (!newTabURL.startsWith("moz-extension://")) {
 +        continue;
@@ -111,9 +128,12 @@ index d07aaa3fbb..a90160fb13 100644
 +      const triggeringPrincipal =
 +        Services.scriptSecurityManager.getSystemPrincipal();
 +
-+      for (const tab of win.gBrowser.tabs) {
++      const tabs = aTab ? [aTab] : win.gBrowser.tabs;
++      for (const tab of tabs) {
 +        const browser = tab.linkedBrowser;
-+        if (browser.currentURI.spec != "about:newtab") {
++        if (
++          !["about:home", "about:newtab"].includes(browser.currentURI.spec)
++        ) {
 +          continue;
 +        }
 +
@@ -132,7 +152,7 @@ index d07aaa3fbb..a90160fb13 100644
      // A channel for "remote troubleshooting" code...
      let channel = new lazy.WebChannel(
        "remote-troubleshooting",
-@@ -1696,6 +1763,52 @@ BrowserGlue.prototype = {
+@@ -1696,6 +1783,52 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
@@ -185,7 +205,7 @@ index d07aaa3fbb..a90160fb13 100644
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1814,4 +1927,20 @@ BrowserGlue.prototype = {
+@@ -1814,4 +1947,20 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
