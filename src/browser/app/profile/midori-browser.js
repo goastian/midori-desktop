@@ -527,6 +527,10 @@ pref('messaging-system.rsexperimentloader.enabled', false, locked);
 pref('browser.preferences.experimental', false);
 pref('browser.preferences.experimental.hidden', true);
 
+pref('browser.backup.enabled', true);
+pref('browser.backup.archive.enabled', true);
+pref('browser.backup.restore.enabled', true);
+
 // ============================================================================
 // OUTBOUND CONNECTION AUDIT — block unnecessary Mozilla connections
 // ============================================================================
