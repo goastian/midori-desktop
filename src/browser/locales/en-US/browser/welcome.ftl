@@ -9,6 +9,16 @@ welcome-dialog-get-started = Get started
 welcome-dialog-skip = Not Now
 welcome-dialog-back = Back
 
+profile-recovery-kicker = Profile recovery
+profile-recovery-title = Choose the Midori profile to keep
+profile-recovery-description = Midori found profile data from this or an earlier installation. Review every candidate before anything is moved. No profile is selected automatically.
+profile-recovery-security-title = Encrypted safety copy
+profile-recovery-security-description = Firefox 153 creates an encrypted archive before recovery. Keep this password safe; Midori cannot recover it for you.
+profile-recovery-password = Backup password
+profile-recovery-password-confirm = Confirm password
+profile-recovery-later = Decide later
+profile-recovery-action = Back up and use this profile
+
 welcome-dialog-import = Import Information
 welcome-dialog-import-subtext = Pick up where you left off in your last browser
 welcome-dialog-import-action = Import
