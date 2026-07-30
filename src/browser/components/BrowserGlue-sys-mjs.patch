@@ -164,7 +164,7 @@ index d07aaa3fbb..a90160fb13 100644
      // A channel for "remote troubleshooting" code...
      let channel = new lazy.WebChannel(
        "remote-troubleshooting",
-@@ -1696,6 +1795,52 @@ BrowserGlue.prototype = {
+@@ -1696,6 +1795,54 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
@@ -179,9 +179,11 @@ index d07aaa3fbb..a90160fb13 100644
 +
 +    const welcomeEnabled = Services.prefs.getBoolPref(welcomeEnabledPref, true)
 +    const welcomeSeen = Services.prefs.getBoolPref(welcomeSeenPref, false)
++    const profileRecoveryRequired =
++      await lazy.MidoriProfileMigration.needsRecovery()
 +
-+    if (welcomeEnabled && !welcomeSeen)
-+      this._openSetupTab()
++    if (profileRecoveryRequired || (welcomeEnabled && !welcomeSeen))
++      this._openSetupTab(profileRecoveryRequired && welcomeSeen)
 +
 +    // =========================================================================
 +    // Midori global browser services
@@ -217,7 +219,7 @@ index d07aaa3fbb..a90160fb13 100644
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1814,4 +1959,20 @@ BrowserGlue.prototype = {
+@@ -1814,4 +1961,23 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
@@ -228,10 +230,13 @@ index d07aaa3fbb..a90160fb13 100644
 +  *
 +  * @patch Midori Browser
 +  */
-+  _openSetupTab() {
++  _openSetupTab(profileRecoveryOnly = false) {
 +    const win = lazy.BrowserWindowTracker.getTopWindow();
 +    if (win) {
-+      win.gBrowser.selectedTab = win.gBrowser.addTab('about:setup', {
++      const setupURL = profileRecoveryOnly
++        ? 'about:setup?profile-recovery=1'
++        : 'about:setup'
++      win.gBrowser.selectedTab = win.gBrowser.addTab(setupURL, {
 +        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
 +      });
 +    }

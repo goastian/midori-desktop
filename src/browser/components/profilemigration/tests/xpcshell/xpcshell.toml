@@ -1,0 +1,13 @@
+[DEFAULT]
+firefox-appdir = "browser"
+head = "../../../backup/tests/xpcshell/head.js"
+prefs = [
+  "browser.backup.archive.enabled=true",
+  "browser.backup.restore.enabled=true",
+  "browser.profiles.created=false",
+  "browser.profiles.enabled=false",
+  "security.storage.encryption.sqlite.enabled=false",
+]
+run-if = ["os != 'android'"]
+
+["test_MidoriLegacyProfileBackupResource.js"]

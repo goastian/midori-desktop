@@ -5,5 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXTRA_JS_MODULES += [
+    "MidoriLegacyProfileBackupResource.sys.mjs",
+    "MidoriProfileIdentity.sys.mjs",
     "MidoriProfileMigration.sys.mjs",
 ]
+
+XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.toml"]
