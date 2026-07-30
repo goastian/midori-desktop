@@ -17,6 +17,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AboutNewTab: 'resource:///modules/AboutNewTab.sys.mjs',
   ExtensionParent: 'resource://gre/modules/ExtensionParent.sys.mjs',
   MigrationUtils: 'resource:///modules/MigrationUtils.sys.mjs',
+  MidoriProfileMigration: 'resource:///modules/MidoriProfileMigration.sys.mjs',
   MidoriVerticalTabs: 'resource:///modules/MidoriVerticalTabs.sys.mjs',
 });
 
@@ -53,14 +54,16 @@ class Page {
    * A basic controller for individual pages
    * @param {string} id The id of the element that represents this page.
    */
-  constructor(id) {
+  constructor(id, { autoNext = true } = {}) {
     this.element = document.getElementById(id);
     this.nextEl = document.getElementById(`${id}Next`);
     this.backEl = document.getElementById(`${id}Back`);
 
-    this.nextEl.addEventListener('click', () => {
-      this.pages.next();
-    });
+    if (autoNext) {
+      this.nextEl.addEventListener('click', () => {
+        this.pages.next();
+      });
+    }
 
     if (this.backEl) {
       this.backEl.addEventListener('click', () => {
@@ -103,6 +106,137 @@ class Import extends Page {
       }
       this.nextEl.click();
     });
+  }
+}
+
+class ProfileRecovery extends Page {
+  constructor(id, state) {
+    super(id, { autoNext: false });
+    this.state = state;
+    this.selectedId = null;
+    this.candidatesEl = document.getElementById('profileRecoveryCandidates');
+    this.passwordEl = document.getElementById('profileRecoveryPassword');
+    this.passwordConfirmEl = document.getElementById(
+      'profileRecoveryPasswordConfirm'
+    );
+    this.statusEl = document.getElementById('profileRecoveryStatus');
+    this.laterEl = document.getElementById('profileRecoveryLater');
+
+    this._renderCandidates();
+    this.nextEl.disabled = true;
+    this.nextEl.addEventListener('click', () => this._migrate());
+    this.laterEl.addEventListener('click', () => this.pages.cancel());
+    this.passwordEl.addEventListener('input', () => this._validate());
+    this.passwordConfirmEl.addEventListener('input', () => this._validate());
+  }
+
+  _renderCandidates() {
+    const resourceLabels = {
+      passwords: 'Passwords',
+      bookmarks: 'Bookmarks',
+      sessions: 'Sessions',
+      containers: 'Containers',
+      workspaces: 'Spaces',
+      extensions: 'Extensions',
+    };
+
+    for (const candidate of this.state.candidates) {
+      const card = document.createElement('label');
+      card.className = 'profile-recovery-card';
+
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'profileRecoveryCandidate';
+      input.value = candidate.id;
+      input.addEventListener('change', () => {
+        this.selectedId = candidate.id;
+        for (const element of this.candidatesEl.children) {
+          element.classList.toggle(
+            'selected',
+            element.querySelector('input').checked
+          );
+        }
+        this._validate();
+      });
+
+      const heading = document.createElement('span');
+      heading.className = 'profile-recovery-card-heading';
+      const name = document.createElement('strong');
+      name.textContent = candidate.current
+        ? `${candidate.name} · Current`
+        : candidate.name;
+      const source = document.createElement('span');
+      source.textContent = candidate.sourceLabel;
+      heading.append(name, source);
+
+      const path = document.createElement('code');
+      path.textContent = candidate.path;
+
+      const details = document.createElement('span');
+      details.className = 'profile-recovery-card-details';
+      const version = candidate.engineVersion
+        ? `Firefox ${candidate.engineVersion}`
+        : 'Version unavailable';
+      const modified = candidate.lastModified
+        ? new Date(candidate.lastModified).toLocaleString()
+        : 'Date unavailable';
+      details.textContent = `${version} · ${modified}`;
+
+      const resources = document.createElement('span');
+      resources.className = 'profile-recovery-resources';
+      for (const [key, label] of Object.entries(resourceLabels)) {
+        const value = document.createElement('span');
+        const count = candidate.resources[key]?.count || 0;
+        value.textContent = `${label}: ${count || 'not found'}`;
+        value.classList.toggle('empty', count === 0);
+        resources.append(value);
+      }
+
+      card.append(input, heading, path, details, resources);
+      this.candidatesEl.append(card);
+    }
+  }
+
+  _validate() {
+    const password = this.passwordEl.value;
+    const valid =
+      this.selectedId &&
+      password.length >= 8 &&
+      password === this.passwordConfirmEl.value;
+    this.nextEl.disabled = !valid;
+    if (this.passwordConfirmEl.value && password !== this.passwordConfirmEl.value) {
+      this.statusEl.textContent = 'The backup passwords do not match.';
+    } else if (password && password.length < 8) {
+      this.statusEl.textContent = 'Use at least 8 characters.';
+    } else {
+      this.statusEl.textContent = '';
+    }
+  }
+
+  async _migrate() {
+    this.nextEl.disabled = true;
+    this.laterEl.disabled = true;
+    this.statusEl.textContent = 'Creating the encrypted backup…';
+    try {
+      const result = await lazy.MidoriProfileMigration.migrateSelectedProfile({
+        candidateId: this.selectedId,
+        selectionToken: this.state.selectionToken,
+        password: this.passwordEl.value,
+      });
+      this.passwordEl.value = '';
+      this.passwordConfirmEl.value = '';
+      if (result.status === 'kept-current' || result.status === 'already-completed') {
+        this.statusEl.textContent = 'Encrypted backup created. Your profile identity is now stable.';
+        this.pages.next();
+      } else {
+        this.statusEl.textContent = 'Migration complete. Midori is reopening the selected profile.';
+      }
+    } catch (error) {
+      console.error('Midori profile migration failed:', error);
+      this.statusEl.textContent = `Nothing was replaced. ${error.message}`;
+      this.nextEl.disabled = false;
+      this.laterEl.disabled = false;
+    }
   }
 }
 
@@ -496,10 +630,19 @@ class Pages {
    * A wrapper around all pages
    * @param {Page[]} pages The pages
    */
-  constructor(pages) {
+  constructor(pages, { recoveryOnly = false } = {}) {
     this.pages = pages;
+    this.recoveryOnly = recoveryOnly;
     this.currentPage = 0;
-    this.stepDots = document.querySelectorAll('.step-dot');
+    const indicator = document.querySelector('.step-indicator');
+    indicator.replaceChildren(
+      ...pages.map(() => {
+        const dot = document.createElement('div');
+        dot.className = 'step-dot';
+        return dot;
+      })
+    );
+    this.stepDots = indicator.querySelectorAll('.step-dot');
 
     this.pages.forEach((page) => page.setPages(this));
 
@@ -510,17 +653,10 @@ class Pages {
     this.currentPage++;
 
     if (this.currentPage >= this.pages.length) {
-      Services.prefs.setBoolPref(welcomeSeenPref, true);
-
-      let newTabURL = lazy.AboutNewTab.newTabURL;
-      if (newTabURL === 'about:newtab') {
-        const policy = lazy.ExtensionParent.WebExtensionPolicy.getByID(
-          MIDORI_NEWTAB_EXTENSION_ID
-        );
-        newTabURL = policy?.getURL('index.html') ?? newTabURL;
+      if (!this.recoveryOnly) {
+        Services.prefs.setBoolPref(welcomeSeenPref, true);
       }
-
-      window.location.replace(newTabURL);
+      this.cancel();
       return;
     }
 
@@ -531,6 +667,17 @@ class Pages {
     if (this.currentPage <= 0) return;
     this.currentPage--;
     this._displayCurrentPage();
+  }
+
+  cancel() {
+    let newTabURL = lazy.AboutNewTab.newTabURL;
+    if (newTabURL === 'about:newtab') {
+      const policy = lazy.ExtensionParent.WebExtensionPolicy.getByID(
+        MIDORI_NEWTAB_EXTENSION_ID
+      );
+      newTabURL = policy?.getURL('index.html') ?? newTabURL;
+    }
+    window.location.replace(newTabURL);
   }
 
   _displayCurrentPage() {
@@ -551,11 +698,32 @@ class Pages {
   }
 }
 
-new Pages([
-  new Page('welcome'),
-  new Import('import'),
-  new ColorTheme('color'),
-  new TabLayout('tablayout'),
-  new MSidebar('msidebar'),
-  new Page('warmwelcome'),
-]);
+let recoveryState = null;
+try {
+  recoveryState = await lazy.MidoriProfileMigration.getRecoveryState();
+} catch (error) {
+  console.error('Failed to load Midori profile candidates:', error);
+}
+
+const recoveryRequired = ['needs-selection', 'needs-confirmation'].includes(
+  recoveryState?.status
+);
+const recoveryOnly =
+  new URL(document.documentURI).searchParams.get('profile-recovery') === '1' &&
+  recoveryRequired;
+const pages = [];
+if (recoveryRequired) {
+  pages.push(new ProfileRecovery('profileRecovery', recoveryState));
+}
+if (!recoveryOnly) {
+  pages.push(
+    new Page('welcome'),
+    new Import('import'),
+    new ColorTheme('color'),
+    new TabLayout('tablayout'),
+    new MSidebar('msidebar'),
+    new Page('warmwelcome')
+  );
+}
+
+new Pages(pages, { recoveryOnly });
