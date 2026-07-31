@@ -6,6 +6,7 @@ import os
 import json
 import argparse
 import shutil
+import subprocess
 
 from check_rc_response import get_rc_response, rc_should_be_updated
 
@@ -64,16 +65,11 @@ def update_readme(last_version, new_version, is_rc=False):
 def update_l10n_last_commit_hash():
   L10N_REPO = "https://github.com/mozilla-l10n/firefox-l10n"
   try:
-    os.system(f"git clone {L10N_REPO} l10n-temp --depth 1")
+    subprocess.run(["git", "clone", L10N_REPO, "l10n-temp", "--depth", "1"], check=True)
     if not os.path.exists("build/firefox-cache"):
       os.mkdir("build/firefox-cache")
-    os.system("cat l10n-temp/.git/refs/heads/main > build/firefox-cache/l10n-last-commit-hash")
-    # Remove new line character
-    data = ""
-    with open("build/firefox-cache/l10n-last-commit-hash", "r") as f:
-      data = f.read()
-    with open("build/firefox-cache/l10n-last-commit-hash", "w") as f:
-      f.write(data.strip())
+    with open("l10n-temp/.git/refs/heads/main", "r") as src, open("build/firefox-cache/l10n-last-commit-hash", "w") as dst:
+      dst.write(src.read().strip())
   except KeyboardInterrupt:
     print("Exiting...")
   shutil.rmtree("l10n-temp")
