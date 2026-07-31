@@ -1,5 +1,6 @@
 [DEFAULT]
 firefox-appdir = "browser"
+midori-appdir = "browser"
 head = "../../../backup/tests/xpcshell/head.js"
 prefs = [
   "browser.backup.archive.enabled=true",

@@ -92,7 +92,7 @@ index d07aaa3fbb..a90160fb13 100644
      // check if we're in safe mode
      if (Services.appinfo.inSafeMode) {
        Services.ww.openWindow(
-@@ -757,8 +793,71 @@ BrowserGlue.prototype = {
+@@ -757,8 +793,69 @@ BrowserGlue.prototype = {
      Glean.gfxDisplay.scaling.accumulateSingleSample(scaling);
    },
  
@@ -143,9 +143,7 @@ index d07aaa3fbb..a90160fb13 100644
 +      const tabs = aTab ? [aTab] : win.gBrowser.tabs;
 +      for (const tab of tabs) {
 +        const browser = tab.linkedBrowser;
-+        if (
-+          !["about:home", "about:newtab"].includes(browser.currentURI.spec)
-+        ) {
++        if (!["about:home", "about:newtab"].includes(browser.currentURI.spec)) {
 +          continue;
 +        }
 +
@@ -164,26 +162,27 @@ index d07aaa3fbb..a90160fb13 100644
      // A channel for "remote troubleshooting" code...
      let channel = new lazy.WebChannel(
        "remote-troubleshooting",
-@@ -1696,6 +1795,54 @@ BrowserGlue.prototype = {
+@@ -1696,6 +1793,55 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
 +    // =========================================================================
 +    // Midori browser welcome
 +
-+    const welcomeEnabledPref = 'midori.welcome.enabled'
-+    const welcomeSeenPref = 'midori.welcome.seen'
++    const welcomeEnabledPref = "midori.welcome.enabled";
++    const welcomeSeenPref = "midori.welcome.seen";
 +
 +    // NOTE: Get bool prefs takes in two options, the pref string and a default
 +    // value if it is not defined
 +
-+    const welcomeEnabled = Services.prefs.getBoolPref(welcomeEnabledPref, true)
-+    const welcomeSeen = Services.prefs.getBoolPref(welcomeSeenPref, false)
++    const welcomeEnabled = Services.prefs.getBoolPref(welcomeEnabledPref, true);
++    const welcomeSeen = Services.prefs.getBoolPref(welcomeSeenPref, false);
 +    const profileRecoveryRequired =
-+      await lazy.MidoriProfileMigration.needsRecovery()
++      await lazy.MidoriProfileMigration.needsRecovery();
 +
-+    if (profileRecoveryRequired || (welcomeEnabled && !welcomeSeen))
-+      this._openSetupTab(profileRecoveryRequired && welcomeSeen)
++    if (profileRecoveryRequired || (welcomeEnabled && !welcomeSeen)) {
++      this._openSetupTab(profileRecoveryRequired && welcomeSeen);
++    }
 +
 +    // =========================================================================
 +    // Midori global browser services
@@ -219,27 +218,25 @@ index d07aaa3fbb..a90160fb13 100644
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1814,4 +1961,23 @@ BrowserGlue.prototype = {
+@@ -1814,4 +1960,21 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
 +
 +  /**
-+  * Opens the first-run setup tab (about:setup).
-+  * This tab is shown only once on the very first browser launch.
-+  *
-+  * @patch Midori Browser
-+  */
++   * Opens the first-run setup tab (about:setup).
++   * This tab is shown only once on the very first browser launch.
++   */
 +  _openSetupTab(profileRecoveryOnly = false) {
 +    const win = lazy.BrowserWindowTracker.getTopWindow();
 +    if (win) {
 +      const setupURL = profileRecoveryOnly
-+        ? 'about:setup?profile-recovery=1'
-+        : 'about:setup'
++        ? "about:setup?profile-recovery=1"
++        : "about:setup";
 +      win.gBrowser.selectedTab = win.gBrowser.addTab(setupURL, {
-+        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
++        triggeringPrincipal:
++          Services.scriptSecurityManager.getSystemPrincipal(),
 +      });
 +    }
 +  },
-+
  };

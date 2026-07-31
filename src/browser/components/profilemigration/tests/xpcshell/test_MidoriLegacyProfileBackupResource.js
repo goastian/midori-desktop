@@ -3,6 +3,8 @@ https://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
+/* import-globals-from ../../../backup/tests/xpcshell/head.js */
+
 const { ArchiveEncryptionState } = ChromeUtils.importESModule(
   "resource:///modules/backup/ArchiveEncryptionState.sys.mjs"
 );
@@ -60,7 +62,10 @@ async function writeFixture(profilePath) {
     ],
   ]);
   for (const [relativePath, contents] of files) {
-    await IOUtils.writeUTF8(PathUtils.join(profilePath, relativePath), contents);
+    await IOUtils.writeUTF8(
+      PathUtils.join(profilePath, ...relativePath.split("/")),
+      contents
+    );
   }
 }
 
@@ -148,6 +153,7 @@ add_task(async function test_encrypted_backup_and_safe_recovery_in_tmp() {
       false,
       "midori-profile-migration-test"
     ),
+    () => true,
     "A wrong password cannot recover the archive"
   );
 
@@ -175,7 +181,9 @@ add_task(async function test_encrypted_backup_and_safe_recovery_in_tmp() {
     "extensions/fixture@example.xpi",
   ]) {
     Assert.ok(
-      await IOUtils.exists(PathUtils.join(destination, relativePath)),
+      await IOUtils.exists(
+        PathUtils.join(destination, ...relativePath.split("/"))
+      ),
       `${relativePath} was recovered`
     );
   }
@@ -187,7 +195,9 @@ add_task(async function test_encrypted_backup_and_safe_recovery_in_tmp() {
     "storage/default/https+++unsafe.test/data",
   ]) {
     Assert.ok(
-      !(await IOUtils.exists(PathUtils.join(destination, relativePath))),
+      !(await IOUtils.exists(
+        PathUtils.join(destination, ...relativePath.split("/"))
+      )),
       `${relativePath} was not copied`
     );
   }

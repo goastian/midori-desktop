@@ -11,6 +11,7 @@ import {
   normalizeTabLayout,
 } from './SetupCustomizationPolicy.sys.mjs';
 
+const { document, window } = globalThis;
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -49,10 +50,14 @@ const MSIDEBAR_SETUP_PREFS = [
   PREF_SHOW_INACTIVE_TABS,
 ];
 
+/** Controls a single page in the setup flow. */
 class Page {
   /**
    * A basic controller for individual pages
+   *
    * @param {string} id The id of the element that represents this page.
+   * @param {object} options Page behavior options.
+   * @param {boolean} [options.autoNext=true] Advance on the primary action.
    */
   constructor(id, { autoNext = true } = {}) {
     this.element = document.getElementById(id);
@@ -89,6 +94,7 @@ class Page {
   }
 }
 
+/** Controls browser data import. */
 class Import extends Page {
   constructor(id) {
     super(id);
@@ -109,6 +115,7 @@ class Import extends Page {
   }
 }
 
+/** Controls legacy Midori profile recovery. */
 class ProfileRecovery extends Page {
   constructor(id, state) {
     super(id, { autoNext: false });
@@ -240,6 +247,7 @@ class ProfileRecovery extends Page {
   }
 }
 
+/** Controls color theme selection. */
 class ColorTheme extends Page {
   constructor(id) {
     super(id);
@@ -262,6 +270,7 @@ class ColorTheme extends Page {
   }
 }
 
+/** Controls tab layout selection. */
 class TabLayout extends Page {
   constructor(id) {
     super(id);
@@ -376,6 +385,7 @@ class TabLayout extends Page {
   }
 }
 
+/** Controls sidebar selection. */
 class MSidebar extends Page {
   constructor(id) {
     super(id);
@@ -625,10 +635,14 @@ class MSidebar extends Page {
   }
 }
 
+/** Coordinates setup flow navigation. */
 class Pages {
   /**
    * A wrapper around all pages
+   *
    * @param {Page[]} pages The pages
+   * @param {object} options Flow behavior options.
+   * @param {boolean} [options.recoveryOnly=false] Close after profile recovery.
    */
   constructor(pages, { recoveryOnly = false } = {}) {
     this.pages = pages;
@@ -664,7 +678,9 @@ class Pages {
   }
 
   back() {
-    if (this.currentPage <= 0) return;
+    if (this.currentPage <= 0) {
+      return;
+    }
     this.currentPage--;
     this._displayCurrentPage();
   }
@@ -698,32 +714,34 @@ class Pages {
   }
 }
 
-let recoveryState = null;
-try {
-  recoveryState = await lazy.MidoriProfileMigration.getRecoveryState();
-} catch (error) {
-  console.error('Failed to load Midori profile candidates:', error);
-}
+void (async () => {
+  let recoveryState = null;
+  try {
+    recoveryState = await lazy.MidoriProfileMigration.getRecoveryState();
+  } catch (error) {
+    console.error('Failed to load Midori profile candidates:', error);
+  }
 
-const recoveryRequired = ['needs-selection', 'needs-confirmation'].includes(
-  recoveryState?.status
-);
-const recoveryOnly =
-  new URL(document.documentURI).searchParams.get('profile-recovery') === '1' &&
-  recoveryRequired;
-const pages = [];
-if (recoveryRequired) {
-  pages.push(new ProfileRecovery('profileRecovery', recoveryState));
-}
-if (!recoveryOnly) {
-  pages.push(
-    new Page('welcome'),
-    new Import('import'),
-    new ColorTheme('color'),
-    new TabLayout('tablayout'),
-    new MSidebar('msidebar'),
-    new Page('warmwelcome')
+  const recoveryRequired = ['needs-selection', 'needs-confirmation'].includes(
+    recoveryState?.status
   );
-}
+  const recoveryOnly =
+    new URL(document.documentURI).searchParams.get('profile-recovery') ===
+      '1' && recoveryRequired;
+  const pages = [];
+  if (recoveryRequired) {
+    pages.push(new ProfileRecovery('profileRecovery', recoveryState));
+  }
+  if (!recoveryOnly) {
+    pages.push(
+      new Page('welcome'),
+      new Import('import'),
+      new ColorTheme('color'),
+      new TabLayout('tablayout'),
+      new MSidebar('msidebar'),
+      new Page('warmwelcome')
+    );
+  }
 
-new Pages(pages, { recoveryOnly });
+  new Pages(pages, { recoveryOnly });
+})();

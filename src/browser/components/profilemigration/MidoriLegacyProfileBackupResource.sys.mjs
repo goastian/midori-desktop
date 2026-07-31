@@ -16,6 +16,10 @@ async function isRegularFile(path) {
   }
 }
 
+function relativeFilename(path) {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+
 async function copyRegularFiles(source, destination, entries) {
   const regularEntries = [];
   for (const entry of entries) {
@@ -66,6 +70,7 @@ async function copySanitizedPrefs(source, destination) {
   return true;
 }
 
+/** Backup and recovery for the safe subset of a legacy Midori profile. */
 export class MidoriLegacyProfileBackupResource extends BackupResource {
   static get key() {
     return "midori_profile";
@@ -101,7 +106,7 @@ export class MidoriLegacyProfileBackupResource extends BackupResource {
       PathUtils.join(stagingPath, "sessionstore-backups"),
       SAFE_PROFILE_RESOURCES.sessions
         .slice(1)
-        .map(name => PathUtils.filename(name))
+        .map(relativeFilename)
     );
     const workspaces = await copyRegularFiles(
       PathUtils.join(profilePath, "Workspaces"),
@@ -129,7 +134,7 @@ export class MidoriLegacyProfileBackupResource extends BackupResource {
       PathUtils.join(destinationProfilePath, "sessionstore-backups"),
       SAFE_PROFILE_RESOURCES.sessions
         .slice(1)
-        .map(name => PathUtils.filename(name))
+        .map(relativeFilename)
     );
     await copyRegularFiles(
       PathUtils.join(recoveryPath, "Workspaces"),

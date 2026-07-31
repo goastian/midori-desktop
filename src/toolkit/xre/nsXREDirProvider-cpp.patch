@@ -1,0 +1,26 @@
+diff --git a/toolkit/xre/nsXREDirProvider.cpp b/toolkit/xre/nsXREDirProvider.cpp
+index 1ac001794f..0c6970a746 100644
+--- a/toolkit/xre/nsXREDirProvider.cpp
++++ b/toolkit/xre/nsXREDirProvider.cpp
+@@ -37,6 +37,7 @@
+ #include "mozilla/CmdLineAndEnvUtils.h"
+ #include "mozilla/Components.h"
+ #include "mozilla/DebugOnly.h"
++#include "mozilla/HelperMacros.h"
+ #include "mozilla/Services.h"
+ #include "mozilla/Omnijar.h"
+ #include "mozilla/Preferences.h"
+@@ -850,6 +850,13 @@ static nsresult HashInstallPath(nsAString& aInstallPath, nsAString& aPathHash) {
+ nsresult nsXREDirProvider::GetInstallHash(nsAString& aPathHash) {
+   nsAutoString stringToHash;
+ 
++  if (gAppData &&
++      nsDependentCString(gAppData->name).EqualsIgnoreCase("Midori")) {
++    stringToHash.AssignASCII("org.astian.midori:");
++    stringToHash.AppendASCII(MOZ_STRINGIFY(MOZ_UPDATE_CHANNEL));
++    return HashInstallPath(stringToHash, aPathHash);
++  }
++
+ #ifdef XP_WIN
+   if (mozilla::widget::WinUtils::HasPackageIdentity()) {
+     // For packages, the install path includes the version number, so it isn't
