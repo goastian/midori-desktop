@@ -132,7 +132,7 @@ class ProfileRecovery extends Page {
     this._renderCandidates();
     this.nextEl.disabled = true;
     this.nextEl.addEventListener('click', () => this._migrate());
-    this.laterEl.addEventListener('click', () => this.pages.cancel());
+    this.laterEl.addEventListener('click', () => this.pages.next());
     this.passwordEl.addEventListener('input', () => this._validate());
     this.passwordConfirmEl.addEventListener('input', () => this._validate());
   }
