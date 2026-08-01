@@ -392,13 +392,43 @@ async function writeJournal(journal, profilePath = PathUtils.profileDir) {
   return journal;
 }
 
-function appendBackupPrefs(profilePath) {
+function appendBackupPrefs(profilePath, backupDestinationPath) {
   const lineBreak = Services.appinfo.OS === "WINNT" ? "\r\n" : "\n";
+  const location = JSON.stringify(backupDestinationPath);
+  const preferences = [
+    `user_pref("browser.backup.location", ${location});`,
+    `user_pref("browser.backup.scheduled.enabled", true);`,
+  ].join(lineBreak);
   return IOUtils.writeUTF8(
     PathUtils.join(profilePath, "prefs.js"),
-    `${lineBreak}user_pref("browser.backup.scheduled.enabled", true);${lineBreak}`,
+    `${lineBreak}${preferences}${lineBreak}`,
     { mode: "appendOrCreate" }
   );
+}
+
+export async function ensureBackupDestination(
+  backupService,
+  BackupServiceClass,
+  prefs = Services.prefs
+) {
+  const prefName = BackupServiceClass.BACKUP_DIR_PREF_NAME;
+  const configuredPath = prefs.getStringPref(prefName, "");
+  if (configuredPath) {
+    return configuredPath;
+  }
+
+  const defaultParentPath = BackupServiceClass.DEFAULT_PARENT_DIR_PATH;
+  if (defaultParentPath) {
+    await backupService.setParentDirPath(defaultParentPath);
+  }
+
+  const destinationPath = prefs.getStringPref(prefName, "");
+  if (!destinationPath) {
+    throw new Error(
+      "Midori could not determine where to save the encrypted backup."
+    );
+  }
+  return destinationPath;
 }
 
 export async function getProfileRecoveryState() {
@@ -519,6 +549,10 @@ export async function migrateSelectedProfile({
     const backupService = candidate.current
       ? BackupService.init()
       : new BackupService({ MidoriLegacyProfileBackupResource });
+    const backupDestinationPath = await ensureBackupDestination(
+      backupService,
+      BackupService
+    );
     const backup = await backupService.createBackup({
       profilePath: candidate.path,
       reason: "midori-profile-migration",
@@ -593,7 +627,7 @@ export async function migrateSelectedProfile({
       PathUtils.join(encryptionDir, BackupService.ARCHIVE_ENCRYPTION_STATE_FILE),
       await encryptionState.serialize()
     );
-    await appendBackupPrefs(destinationProfilePath);
+    await appendBackupPrefs(destinationProfilePath, backupDestinationPath);
 
     const service = profileService();
     service.defaultProfile = newProfile;
