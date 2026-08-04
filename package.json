@@ -30,6 +30,7 @@
     "amelia": "amelia",
     "test": "python3.11 scripts/run_tests.py",
     "test:dbg": "python3.11 scripts/run_tests.py --jsdebugger --debug-on-failure",
+    "test:unit": "node --test tests/*.test.mjs",
     "ffprefs": "cd tools/ffprefs && cargo run --bin ffprefs -- ../../",
     "brand": "amelia set brand release",
     "recalculate-patches": "bash scripts/recalculate-patches.sh",
