@@ -261,7 +261,7 @@ pref('midori.modblur.tabs.layout', 'urlbar-top');
 pref('midori.modblur.tabs.onTop', false);
 pref('midori.modblur.tabs.activeStaticWidth', true);
 pref('midori.modblur.tabs.soundColor', true);
-pref('midori.modblur.tabs.hideAllTabsButton', false);
+pref('midori.modblur.tabs.hideAllTabsButton', true);
 pref('midori.modblur.window.frame', false);
 pref('midori.modblur.window.frameStyle', 'none');
 pref('midori.modblur.search.focusOutline', true);
