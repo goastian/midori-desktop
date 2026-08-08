@@ -15,6 +15,7 @@
     --midori-pdf-active-bg: color-mix(in srgb, AccentColor 18%, transparent);
     --midori-pdf-focus: color-mix(in srgb, AccentColor 60%, CanvasText 10%);
     --midori-pdf-shadow: 0 1px 2px color-mix(in srgb, CanvasText 10%, transparent);
+    --midori-pdf-toolbar-gap: 8px;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -57,6 +58,7 @@
 
   .toolbar {
     height: 58px !important;
+    z-index: 20000 !important;
   }
 
   #toolbarContainer {
@@ -71,8 +73,12 @@
   }
 
   #toolbarViewer {
-    width: fit-content !important;
-    gap: 10px !important;
+    width: 100% !important;
+    height: 100% !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: var(--midori-pdf-toolbar-gap) !important;
+    min-width: 0 !important;
   }
 
   #toolbarViewerLeft,
@@ -80,17 +86,22 @@
   #toolbarViewerRight {
     position: relative;
     min-height: 32px;
+    min-width: 0;
     border-radius: var(--midori-pdf-radius-pill);
   }
 
   #toolbarViewerLeft {
-    position: absolute;
-    inset-inline-start: 46px !important;
+    flex: 0 1 auto;
+    margin-inline-start: 46px !important;
   }
 
   #toolbarViewerMiddle {
-    margin-inline-start: auto !important;
-    margin-inline-end: 0 !important;
+    flex: 0 1 auto;
+    margin-inline: auto !important;
+  }
+
+  #toolbarViewerRight {
+    flex: 0 1 auto;
   }
 
   #toolbarViewerLeft::before,
@@ -107,10 +118,12 @@
     z-index: -1;
   }
 
-  #toolbarViewerLeft #sidebarToggleButton {
+  #toolbarViewerLeft :is(#viewsManagerToggleButton, #sidebarToggleButton) {
     appearance: none !important;
     position: absolute !important;
     inset-inline-start: -46px !important;
+    inset-block-start: 50% !important;
+    transform: translateY(-50%);
     width: 36px !important;
     height: 36px !important;
     border: var(--midori-pdf-border) !important;
@@ -127,19 +140,19 @@
 
   .toolbarButton:hover,
   #toolbarViewerMiddle #scaleSelect:hover,
-  #toolbarViewerLeft #sidebarToggleButton:hover {
+  #toolbarViewerLeft :is(#viewsManagerToggleButton, #sidebarToggleButton):hover {
     background-color: var(--midori-pdf-hover-bg) !important;
   }
 
   .toolbarButton.toggled,
   .toolbarButton:active,
-  #toolbarViewerLeft #sidebarToggleButton[aria-expanded="true"] {
+  #toolbarViewerLeft :is(#viewsManagerToggleButton, #sidebarToggleButton)[aria-expanded="true"] {
     background-color: var(--midori-pdf-active-bg) !important;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, AccentColor 28%, transparent) !important;
   }
 
   .toolbarButton:focus-visible,
-  #toolbarViewerLeft #sidebarToggleButton:focus-visible,
+  #toolbarViewerLeft :is(#viewsManagerToggleButton, #sidebarToggleButton):focus-visible,
   #toolbarViewerMiddle #scaleSelect:focus-visible,
   #pageNumber:focus-visible,
   .doorHangerRight :is(button, select, input):focus-visible,
@@ -235,14 +248,69 @@
     background-color: AccentColor !important;
   }
 
+  #viewsManager,
   #sidebarContainer {
-    inset-block-start: 56px !important;
-    inset-block-end: 10px !important;
+    box-sizing: border-box !important;
+    z-index: 20000 !important;
     border: var(--midori-pdf-border) !important;
     border-radius: var(--midori-pdf-radius-lg) !important;
     background-color: var(--midori-pdf-surface) !important;
     box-shadow: var(--midori-pdf-shadow) !important;
     opacity: 0;
+  }
+
+  #viewsManager {
+    inset-block-start: 44px !important;
+    inset-inline-start: -76px !important;
+    inline-size: min(var(--viewsManager-width, 290px), calc(100vw - 20px)) !important;
+    min-inline-size: min(290px, calc(100vw - 20px)) !important;
+    block-size: min(560px, calc(100vh - 66px)) !important;
+    max-block-size: calc(100vh - 66px) !important;
+    padding-block-end: 0 !important;
+    transition: opacity 160ms ease, inset-inline-start 160ms ease !important;
+  }
+
+  #viewsManager[hidden] {
+    display: flex !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  #viewsManager:not([hidden]) {
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  #outerContainer.viewsManagerOpen #viewsManager {
+    inset-inline-start: -46px !important;
+    opacity: 1 !important;
+    animation: midori-sidebar-appear 180ms ease;
+    animation-fill-mode: forwards;
+  }
+
+  #outerContainer.viewsManagerOpen #viewerContainer:not(.pdfPresentationMode) {
+    inset-inline-start: 0 !important;
+  }
+
+  #viewsManager #viewsManagerHeader,
+  #viewsManager #viewsManagerContent {
+    border: 0 !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  #viewsManager #viewsManagerContent {
+    min-block-size: 0 !important;
+  }
+
+  #viewsManager .sidebarResizer {
+    inset-inline-start: calc(100% + 4px) !important;
+  }
+
+  #sidebarContainer {
+    inset-block-start: 56px !important;
+    inset-block-end: 10px !important;
   }
 
   #sidebarContainer #toolbarSidebar,
@@ -279,32 +347,43 @@
     animation-fill-mode: forwards;
   }
 
-  .toolbarButtonWithContainer .doorHangerRight {
+  .toolbarButtonWithContainer .doorHangerRight,
+  .toolbarButtonWithContainer .editorParamsToolbar {
     top: 44px !important;
-    right: 0 !important;
+    inset-inline-end: 0 !important;
     display: block !important;
     padding: 4px !important;
+    box-sizing: border-box !important;
+    max-inline-size: min(280px, calc(100vw - 20px)) !important;
+    max-block-size: calc(100vh - 66px) !important;
+    overflow: auto !important;
     border: var(--midori-pdf-border) !important;
     border-radius: var(--midori-pdf-radius-lg) !important;
     background-color: var(--midori-pdf-surface) !important;
     box-shadow: var(--midori-pdf-shadow) !important;
     opacity: 1;
+    z-index: 30000 !important;
     transition: opacity 160ms ease, top 160ms ease;
   }
 
-  .toolbarButtonWithContainer .doorHangerRight.hidden {
+  .toolbarButtonWithContainer .doorHangerRight.hidden,
+  .toolbarButtonWithContainer .editorParamsToolbar.hidden {
     top: 24px !important;
     opacity: 0;
     pointer-events: none !important;
   }
 
   .toolbarButtonWithContainer .doorHangerRight::before,
-  .toolbarButtonWithContainer .doorHangerRight::after {
+  .toolbarButtonWithContainer .doorHangerRight::after,
+  .toolbarButtonWithContainer .editorParamsToolbar::before,
+  .toolbarButtonWithContainer .editorParamsToolbar::after {
     display: none !important;
   }
 
-  .toolbarButtonWithContainer .doorHangerRight .menuContainer {
-    overflow: visible !important;
+  .toolbarButtonWithContainer .doorHangerRight .menuContainer,
+  .toolbarButtonWithContainer .editorParamsToolbar .menuContainer {
+    max-block-size: calc(100vh - 86px) !important;
+    overflow: auto !important;
   }
 
   #documentPropertiesDialog {
@@ -334,17 +413,35 @@
     }
 
     #toolbarViewer {
-      gap: 6px !important;
+      gap: 4px !important;
     }
 
     #toolbarViewerLeft {
-      inset-inline-start: 42px !important;
+      margin-inline-start: 42px !important;
     }
 
-    #toolbarViewerLeft #sidebarToggleButton {
+    #toolbarViewerLeft :is(#viewsManagerToggleButton, #sidebarToggleButton) {
       inset-inline-start: -42px !important;
       width: 34px !important;
       height: 34px !important;
+    }
+
+    #viewsManager {
+      inset-block-start: 40px !important;
+      inline-size: min(300px, calc(100vw - 12px)) !important;
+      min-inline-size: min(300px, calc(100vw - 12px)) !important;
+      block-size: calc(100vh - 56px) !important;
+      max-block-size: calc(100vh - 56px) !important;
+    }
+
+    #outerContainer.viewsManagerOpen #viewsManager {
+      inset-inline-start: -42px !important;
+    }
+
+    .toolbarButtonWithContainer .doorHangerRight,
+    .toolbarButtonWithContainer .editorParamsToolbar {
+      max-inline-size: calc(100vw - 12px) !important;
+      max-block-size: calc(100vh - 56px) !important;
     }
 
     #viewerContainer #viewer > .page:first-of-type,
