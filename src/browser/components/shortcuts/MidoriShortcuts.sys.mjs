@@ -47,6 +47,15 @@ const SHORTCUT_DEFINITIONS = [
     action: 'toggle-sidebar',
   },
   {
+    id: 'sidebar-command-palette',
+    category: 'Sidebar',
+    title: 'Open Sidebar Commands',
+    description: 'Search sidebar panels and actions.',
+    pref: SidebarPrefs.PREF_SHORTCUT_COMMAND_PALETTE,
+    defaultValue: 'Ctrl+Alt+P',
+    action: 'sidebar-command-palette',
+  },
+  {
     id: 'workspace-previous',
     category: 'Workspaces',
     title: 'Previous Workspace',
@@ -417,6 +426,9 @@ export const MidoriShortcuts = {
           SidebarPrefs.PREF_ENABLED,
           !Services.prefs.getBoolPref(SidebarPrefs.PREF_ENABLED, false)
         );
+        return;
+      case 'sidebar-command-palette':
+        Services.obs.notifyObservers(win, 'midori-msidebar-open-command-palette');
         return;
       case 'workspace-previous':
         await switchWorkspaceRelative(win, -1);

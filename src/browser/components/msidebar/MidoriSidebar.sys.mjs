@@ -15,6 +15,7 @@ const PREF_VERTICAL_TABS = 'midori.verticaltabs.enabled';
 const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
 const PREF_ARC_MODE = 'midori.arcmode.enabled';
 const PREF_SEEDED_DEFAULT_PANELS = 'midori.msidebar.seededDefaultPanels';
+const COMMAND_PALETTE_TOPIC = 'midori-msidebar-open-command-palette';
 const CONTENT_CTX_SEPARATOR_ID = 'midori-msidebar-content-context-separator';
 const CONTENT_CTX_MENU_ID = 'midori-msidebar-content-menu';
 const CONTENT_CTX_OPEN_ID = 'midori-msidebar-content-open';
@@ -40,6 +41,8 @@ const OBSERVED_PREFS = [
   Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE,
   Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE_BACK,
   Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE_FORWARD,
+  Prefs.PREF_RAIL_EXPANDED,
+  Prefs.PREF_PRESET,
   Prefs.PREF_DEBUG,
   PREF_VERTICAL_TABS,
   PREF_VERTICAL_POSITION,
@@ -64,6 +67,7 @@ export const MidoriSidebar = {
 
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
+    Services.obs.addObserver(this, COMMAND_PALETTE_TOPIC);
 
     this._ensureToolbarWidget();
     this._applyFirefoxSidebarDefaults();
@@ -91,6 +95,18 @@ export const MidoriSidebar = {
 
     if (topic === 'domwindowclosed') {
       this._cleanupWindow(subject);
+      return;
+    }
+
+    if (topic === COMMAND_PALETTE_TOPIC) {
+      const win = subject?.document
+        ? subject
+        : Services.wm.getMostRecentWindow('navigator:browser');
+      const ui = this._uis.get(win);
+      if (!ui) return;
+      Services.prefs.setBoolPref(Prefs.PREF_ENABLED, true);
+      this._syncWindowUI(win);
+      ui.openCommandPalette?.();
     }
   },
 
@@ -551,6 +567,7 @@ export const MidoriSidebar = {
     try {
       Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
       Services.obs.removeObserver(this, 'domwindowclosed');
+      Services.obs.removeObserver(this, COMMAND_PALETTE_TOPIC);
     } catch {}
 
     for (const win of Services.wm.getEnumerator('navigator:browser')) {

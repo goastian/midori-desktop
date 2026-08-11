@@ -16,6 +16,9 @@ export const PREF_WEBPANEL_TOOLBAR_AUTOHIDE_BACK = 'midori.msidebar.webPanelTool
 export const PREF_WEBPANEL_TOOLBAR_AUTOHIDE_FORWARD = 'midori.msidebar.webPanelToolbar.autohideForward';
 export const PREF_SHORTCUT_TOGGLE_SIDEBAR = 'midori.msidebar.shortcut.toggleSidebar';
 export const PREF_SHORTCUT_TOGGLE_PANEL = 'midori.msidebar.shortcut.togglePanel';
+export const PREF_SHORTCUT_COMMAND_PALETTE = 'midori.msidebar.shortcut.commandPalette';
+export const PREF_RAIL_EXPANDED = 'midori.msidebar.rail.expanded';
+export const PREF_PRESET = 'midori.msidebar.preset';
 
 export const POSITION_LEFT = 'left';
 export const POSITION_RIGHT = 'right';
@@ -129,4 +132,17 @@ export function getShortcutToggleSidebar() {
 
 export function getShortcutTogglePanel() {
   return Services.prefs.getStringPref(PREF_SHORTCUT_TOGGLE_PANEL, '');
+}
+
+export function getShortcutCommandPalette() {
+  return Services.prefs.getStringPref(PREF_SHORTCUT_COMMAND_PALETTE, 'Ctrl+Alt+P');
+}
+
+export function getRailExpanded() {
+  return Services.prefs.getBoolPref(PREF_RAIL_EXPANDED, false);
+}
+
+export function getPreset() {
+  const preset = Services.prefs.getStringPref(PREF_PRESET, 'simple');
+  return ['simple', 'work', 'minimal', 'custom'].includes(preset) ? preset : 'simple';
 }

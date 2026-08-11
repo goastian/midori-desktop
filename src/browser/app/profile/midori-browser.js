@@ -360,7 +360,7 @@ pref('midori.msidebar.autohide.enabled', false);
 pref('midori.msidebar.autohide.mode', 'overlay');
 pref('midori.msidebar.animations.enabled', true);
 pref('midori.msidebar.debug', false);
-pref('midori.msidebar.hidePanelWhenHidden', true);
+pref('midori.msidebar.hidePanelWhenHidden', false);
 pref('midori.msidebar.newPanelButton.position', 'before');
 pref('midori.msidebar.geometryHint.enabled', true);
 pref('midori.msidebar.containerIndicator', 'left');
@@ -371,6 +371,9 @@ pref('midori.msidebar.webPanelToolbar.autohideBack', true);
 pref('midori.msidebar.webPanelToolbar.autohideForward', true);
 pref('midori.msidebar.shortcut.toggleSidebar', 'Ctrl+Alt+S');
 pref('midori.msidebar.shortcut.togglePanel', '');
+pref('midori.msidebar.shortcut.commandPalette', 'Ctrl+Alt+P');
+pref('midori.msidebar.rail.expanded', false);
+pref('midori.msidebar.preset', 'simple');
 
 pref('midori.shortcuts.general.openCenter', 'Ctrl+Alt+M');
 pref('midori.shortcuts.tabs.toggleVertical', 'Ctrl+Alt+V');

@@ -771,6 +771,12 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   border: 0;
 }
 
+:root[midori-vertical-tabs][midori-arc-mode="true"] #midori-msidebar-main[expanded="true"] {
+  width: 220px !important;
+  min-width: 220px !important;
+  max-width: 220px !important;
+}
+
 :root[midori-vertical-tabs][midori-arc-mode="true"] #midori-msidebar-main[position="left"] {
   border-right: 1px solid var(--pf-border-color-light);
 }
@@ -883,6 +889,25 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
 #midori-msidebar-main .midori-msidebar-panel-btn[checked="true"] {
   background-color: color-mix(in srgb, var(--pf-accent-color), transparent 82%) !important;
   border-color: color-mix(in srgb, var(--pf-accent-color), transparent 58%) !important;
+}
+
+#midori-msidebar-main[position="left"] .midori-msidebar-panel-btn[checked="true"] {
+  box-shadow: inset 3px 0 0 var(--pf-accent-color) !important;
+}
+
+#midori-msidebar-main[position="right"] .midori-msidebar-panel-btn[checked="true"] {
+  box-shadow: inset -3px 0 0 var(--pf-accent-color) !important;
+}
+
+#midori-msidebar-main[expanded="true"] .midori-msidebar-panel-btn {
+  justify-content: flex-start !important;
+  padding-inline: 10px !important;
+}
+
+#midori-msidebar-main[expanded="true"] .midori-msidebar-panel-btn .toolbarbutton-text {
+  color: var(--pf-text-color) !important;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 #midori-msidebar-main .midori-msidebar-panel-btn .toolbarbutton-icon {

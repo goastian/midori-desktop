@@ -276,11 +276,6 @@ export function createPanelBrowser(win, panel) {
   return browser;
 }
 
-export function setBrowserUrl(browser, url) {
-  if (!browser || !url) return;
-  browser.setAttribute('src', url);
-}
-
 export function destroyBrowser(browser) {
   try {
     browser.remove();
