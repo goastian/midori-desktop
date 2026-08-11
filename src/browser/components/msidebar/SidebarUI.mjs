@@ -192,37 +192,90 @@ function ensureStyle(doc) {
 #midori-msidebar-edit-panel{
   background-color:var(--midori-msidebar-popup-surface);
   color:var(--midori-msidebar-popup-text);
-  border:1px solid var(--sidebar-border-color);
-  border-radius:var(--border-radius-medium);
-  padding:0;
-  max-width:600px;
+  width:100%;
+  min-width:0;
 }
 
-#midori-msidebar-edit-panel > vbox{
-  padding:16px;
+.midori-msidebar-edit-dialog{
+  position:fixed;
+  inset-block-start:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  z-index:10000;
+  width:min(640px,calc(100vw - 32px));
+  max-height:calc(100vh - 48px);
+  overflow:hidden;
+  background:var(--midori-msidebar-popup-surface);
+  color:var(--midori-msidebar-popup-text);
+  border:1px solid color-mix(in srgb,currentColor 18%,transparent);
+  border-radius:14px;
+  box-shadow:0 20px 56px color-mix(in srgb,#000 34%,transparent);
 }
+
+.midori-msidebar-edit-header{
+  min-height:52px;
+  padding:12px 16px 11px 20px;
+  align-items:center;
+  border-bottom:1px solid color-mix(in srgb,currentColor 12%,transparent);
+  background:color-mix(in srgb,var(--midori-msidebar-popup-surface) 96%,currentColor 4%);
+}
+
+.midori-msidebar-edit-title-wrap{gap:2px;min-width:0;}
+.midori-msidebar-edit-title{font-size:15px;font-weight:650;letter-spacing:-.01em;}
+.midori-msidebar-edit-subtitle{color:color-mix(in srgb,currentColor 64%,transparent);font-size:12px;}
+.midori-msidebar-edit-close{list-style-image:url("chrome://global/skin/icons/close.svg");width:32px;height:32px;margin:0;padding:0!important;border-radius:7px;}
+
+.midori-msidebar-edit-scroll{
+  min-height:0;
+  max-height:calc(100vh - 164px);
+  overflow:auto;
+  padding:18px 22px 22px;
+  scrollbar-width:thin;
+}
+
+.midori-msidebar-edit-tabs{gap:16px;}
+
+.midori-msidebar-edit-footer{
+  min-height:58px;
+  padding:10px 16px;
+  gap:8px;
+  align-items:center;
+  justify-content:flex-end;
+  border-top:1px solid color-mix(in srgb,currentColor 12%,transparent);
+  background:color-mix(in srgb,var(--midori-msidebar-popup-surface) 96%,currentColor 4%);
+}
+.midori-msidebar-edit-footer button{min-width:88px;}
 
 #midori-msidebar-edit-sections{
-  background-color:color-mix(in srgb, var(--midori-msidebar-popup-surface) 92%, currentColor 8%);
-  border-bottom:1px solid var(--sidebar-border-color);
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  width:100%;
   gap:4px;
   padding:4px;
+  position:sticky;
+  top:0;
+  z-index:2;
+  border-radius:10px;
+  background-color:color-mix(in srgb,currentColor 7%,transparent);
+  box-shadow:0 -10px 0 var(--midori-msidebar-popup-surface),0 8px 12px var(--midori-msidebar-popup-surface);
 }
 
 #midori-msidebar-edit-sections button{
   appearance:none;
   background-color:transparent;
   color:var(--midori-msidebar-popup-text);
-  padding:8px 12px;
+  min-height:34px;
+  padding:6px 10px;
   border:none;
-  border-bottom:2px solid transparent;
+  border-radius:7px;
   margin:0;
   cursor:pointer;
+  transition:background-color 140ms ease,box-shadow 140ms ease;
 }
 
 #midori-msidebar-edit-sections button[selected='true']{
-  border-bottom-color:var(--focus-outline-color);
-  background-color:color-mix(in srgb, var(--focus-outline-color) 12%, transparent);
+  background-color:var(--midori-msidebar-popup-surface);
+  box-shadow:0 1px 3px color-mix(in srgb,#000 18%,transparent),inset 0 0 0 1px color-mix(in srgb,currentColor 10%,transparent);
 }
 
 #midori-msidebar-edit-sections button:hover{
@@ -232,20 +285,50 @@ function ensureStyle(doc) {
 .midori-msidebar-edit-panels{
   background-color:var(--midori-msidebar-popup-surface);
   color:var(--midori-msidebar-popup-text);
+  min-width:0;
 }
 
 .midori-msidebar-edit-section{
   background-color:var(--midori-msidebar-popup-surface);
   color:var(--midori-msidebar-popup-text);
-  padding:12px;
-  overflow:auto;
+  padding:0;
+  min-width:0;
+  animation:midori-msidebar-edit-enter 140ms ease-out;
 }
 
 .midori-msidebar-edit-help{
   color:color-mix(in srgb,currentColor 68%,transparent);
-  line-height:1.4;
-  margin:0 0 8px;
-  max-width:58ch;
+  line-height:1.45;
+  margin:0 0 2px;
+  max-width:62ch;
+  text-wrap:pretty;
+}
+
+.midori-msidebar-edit-content{gap:16px;min-width:0;}
+.midori-msidebar-edit-group{gap:9px;padding-top:15px;border-top:1px solid color-mix(in srgb,currentColor 10%,transparent);min-width:0;}
+.midori-msidebar-edit-group:first-of-type{padding-top:4px;border-top:0;}
+.midori-msidebar-edit-group-title{font-size:13px;font-weight:650;margin:0;}
+.midori-msidebar-edit-group-help{color:color-mix(in srgb,currentColor 62%,transparent);font-size:12px;line-height:1.4;margin:-3px 0 2px;max-width:62ch;}
+
+.midori-msidebar-edit-form-row{
+  display:grid;
+  grid-template-columns:150px minmax(0,1fr);
+  align-items:center;
+  gap:12px;
+  min-width:0;
+}
+
+.midori-msidebar-edit-form-column{gap:6px;min-width:0;}
+.midori-msidebar-edit-form-label{font-weight:600;min-width:0;}
+.midori-msidebar-edit-control{width:100%;min-width:0;box-sizing:border-box;}
+.midori-msidebar-edit-options{gap:7px;}
+.midori-msidebar-edit-nested{gap:10px;margin-inline-start:22px;padding:10px 12px;border-radius:9px;background:color-mix(in srgb,currentColor 5%,transparent);}
+.midori-msidebar-edit-geometry{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.midori-msidebar-edit-geometry .midori-msidebar-edit-form-row{grid-template-columns:1fr;gap:5px;}
+
+@keyframes midori-msidebar-edit-enter{
+  from{opacity:0;transform:translateY(3px);}
+  to{opacity:1;transform:translateY(0);}
 }
 
 #midori-msidebar-edit-panel checkbox{
@@ -267,8 +350,9 @@ function ensureStyle(doc) {
   background-color:var(--input-bgcolor,var(--midori-msidebar-surface));
   color:var(--input-color,var(--midori-msidebar-surface-text));
   border:1px solid var(--sidebar-border-color);
-  padding:4px 6px;
-  border-radius:2px;
+  min-height:34px;
+  padding:6px 9px;
+  border-radius:7px;
 }
 
 #midori-msidebar-edit-panel input:focus,
@@ -286,8 +370,9 @@ function ensureStyle(doc) {
   background-color:var(--input-bgcolor,var(--midori-msidebar-surface));
   color:var(--input-color,var(--midori-msidebar-surface-text));
   border:1px solid var(--sidebar-border-color);
-  padding:4px 6px;
-  border-radius:2px;
+  min-height:34px;
+  padding:4px 8px;
+  border-radius:7px;
 }
 
 #midori-msidebar-edit-panel menupopup{
@@ -306,21 +391,59 @@ function ensureStyle(doc) {
   background-color:var(--focus-outline-color);
 }
 
-#midori-msidebar-edit-panel button{
+#midori-msidebar-edit-panel button,
+.midori-msidebar-edit-footer button{
   background-color:color-mix(in srgb,currentColor 8%,transparent);
   color:var(--midori-msidebar-popup-text);
   border:1px solid var(--sidebar-border-color);
+  min-height:34px;
   padding:6px 12px;
-  border-radius:var(--border-radius-medium);
+  border-radius:7px;
   cursor:pointer;
+  transition:background-color 140ms ease,transform 100ms ease;
 }
 
-#midori-msidebar-edit-panel button:hover{
+#midori-msidebar-edit-panel button:hover,
+.midori-msidebar-edit-footer button:hover{
   background-color:color-mix(in srgb,currentColor 14%,transparent);
 }
 
-#midori-msidebar-edit-panel button:active{
-  background-color:var(--focus-outline-color);
+#midori-msidebar-edit-panel button:active,
+.midori-msidebar-edit-footer button:active{
+  transform:translateY(1px);
+}
+
+.midori-msidebar-edit-dialog button:focus-visible,
+.midori-msidebar-edit-dialog toolbarbutton:focus-visible,
+.midori-msidebar-edit-dialog checkbox:focus-visible,
+.midori-msidebar-edit-dialog menulist:focus-visible{
+  outline:2px solid var(--focus-outline-color);
+  outline-offset:2px;
+}
+
+#midori-msidebar-edit-panel button[data-primary='true'],
+.midori-msidebar-edit-footer button[data-primary='true']{
+  border-color:transparent;
+  background:var(--button-background-color-primary,var(--focus-outline-color));
+  color:var(--button-text-color-primary,#fff);
+}
+
+#midori-msidebar-edit-panel button[data-primary='true']:hover,
+.midori-msidebar-edit-footer button[data-primary='true']:hover{
+  background:var(--button-background-color-primary-hover,var(--focus-outline-color));
+}
+
+@media (max-width:680px){
+  .midori-msidebar-edit-dialog{width:calc(100vw - 20px);max-height:calc(100vh - 20px);border-radius:11px;}
+  .midori-msidebar-edit-scroll{max-height:calc(100vh - 136px);padding:14px 16px 18px;}
+  .midori-msidebar-edit-form-row{grid-template-columns:1fr;gap:5px;}
+  .midori-msidebar-edit-geometry{grid-template-columns:1fr;}
+  .midori-msidebar-edit-nested{margin-inline-start:0;}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .midori-msidebar-edit-section{animation:none;}
+  #midori-msidebar-edit-sections button,#midori-msidebar-edit-panel button{transition:none;}
 }
 `;
   doc.documentElement.appendChild(style);
@@ -3876,24 +3999,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     // Use a vbox container that will act as a lightweight dialog
     const dlgWrapper = createXul(doc, 'vbox');
     dlgWrapper.id = 'midori-msidebar-edit-dialog-wrapper';
+    dlgWrapper.classList.add('midori-msidebar-edit-dialog');
     dlgWrapper.setAttribute('role', 'dialog');
     dlgWrapper.setAttribute('aria-modal', 'true');
-    dlgWrapper.setAttribute('style', `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 10000;
-      width: min(760px, 92vw);
-      max-height: 88vh;
-      background: var(--midori-msidebar-popup-surface);
-      color: var(--midori-msidebar-popup-text);
-      border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-      border-radius: 12px;
-      box-shadow: 0 18px 48px rgba(0,0,0,0.35);
-      display: flex;
-      flex-direction: column;
-    `);
 
     // Add a semi-transparent backdrop
     const backdrop = createXul(doc, 'vbox');
@@ -3911,35 +4019,40 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
     // Title bar
     const titleBar = createXul(doc, 'hbox');
-    titleBar.setAttribute('style', `
-      padding: 12px 16px;
-      border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
-      align-items: center;
-      background: color-mix(in srgb, var(--midori-msidebar-popup-surface) 92%, currentColor 8%);
-    `);
+    titleBar.classList.add('midori-msidebar-edit-header');
+    const titleWrap = createXul(doc, 'vbox');
+    titleWrap.classList.add('midori-msidebar-edit-title-wrap');
+    titleWrap.setAttribute('flex', '1');
     const titleLabel = createXul(doc, 'label');
     titleLabel.id = 'midori-msidebar-edit-dialog-title';
+    titleLabel.classList.add('midori-msidebar-edit-title');
     titleLabel.setAttribute('value', 'Editar panel');
-    titleLabel.setAttribute('style', 'flex: 1; font-weight: bold; font-size: 1.1em;');
+    const titleSubtitle = createXul(doc, 'label');
+    titleSubtitle.classList.add('midori-msidebar-edit-subtitle');
+    titleSubtitle.setAttribute('value', panelDisplayTitle(panel));
+    titleSubtitle.setAttribute('crop', 'end');
     dlgWrapper.setAttribute('aria-labelledby', titleLabel.id);
-    titleBar.appendChild(titleLabel);
+    titleWrap.appendChild(titleLabel);
+    titleWrap.appendChild(titleSubtitle);
+    titleBar.appendChild(titleWrap);
+    const btnCloseEditor = createXul(doc, 'toolbarbutton');
+    btnCloseEditor.classList.add('toolbarbutton-1', 'midori-msidebar-edit-close');
+    btnCloseEditor.setAttribute('aria-label', 'Cerrar editor');
+    btnCloseEditor.setAttribute('tooltiptext', 'Cerrar editor');
+    titleBar.appendChild(btnCloseEditor);
     dlgWrapper.appendChild(titleBar);
 
     // Scroll container for content
     const scrollBox = createXul(doc, 'scrollbox');
-    scrollBox.setAttribute('style', `
-      flex: 1;
-      overflow: auto;
-      padding: 12px 16px 10px;
-    `);
+    scrollBox.classList.add('midori-msidebar-edit-scroll');
     dlgWrapper.appendChild(scrollBox);
 
     const dlg = createXul(doc, 'vbox');
     dlg.id = 'midori-msidebar-edit-panel';
-    dlg.setAttribute('style', 'display: flex; flex-direction: column; gap: 0;');
     scrollBox.appendChild(dlg);
 
     const tabs = createXul(doc, 'vbox');
+    tabs.classList.add('midori-msidebar-edit-tabs');
     const tabstrip = createXul(doc, 'hbox');
     tabstrip.id = 'midori-msidebar-edit-sections';
     tabstrip.setAttribute('role', 'tablist');
@@ -3957,26 +4070,28 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       tab.setAttribute('role', 'tab');
       tab.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
       tab.setAttribute('selected', index === 0 ? 'true' : 'false');
+      tab.setAttribute('tabindex', index === 0 ? '0' : '-1');
       tabstrip.appendChild(tab);
 
       const panel = createXul(doc, 'vbox');
       panel.id = `midori-msidebar-edit-tabpanel-${panelId}-${index}`;
       panel.classList.add('midori-msidebar-edit-section');
       tab.setAttribute('aria-controls', panel.id);
-      panel.setAttribute('style', 'padding: 10px 8px; overflow: auto; max-height: 52vh;');
       setBoolAttr(panel, 'hidden', index !== 0);
       tabpanels.appendChild(panel);
 
       const content = createXul(doc, 'vbox');
-      content.setAttribute('style', 'display:flex; flex-direction:column; gap:8px;');
+      content.classList.add('midori-msidebar-edit-content');
       panel.appendChild(content);
       const selectTab = () => {
         for (const [buttonIndex, button] of [...tabstrip.children].entries()) {
           const selected = buttonIndex === index;
           button.setAttribute('selected', selected ? 'true' : 'false');
           button.setAttribute('aria-selected', selected ? 'true' : 'false');
+          button.setAttribute('tabindex', selected ? '0' : '-1');
           setBoolAttr(tabpanels.children[buttonIndex], 'hidden', !selected);
         }
+        scrollBox.scrollTop = 0;
       };
       tab.addEventListener('click', selectTab, true);
       tab.addEventListener('command', selectTab, true);
@@ -3999,31 +4114,49 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
     // Helper: Create form row
     let editControlCounter = 0;
-    function formRow(label, control, style = '') {
+    function formRow(label, control) {
       const hbox = createXul(doc, 'hbox');
-      hbox.setAttribute('align', 'center');
-      hbox.setAttribute('style', `gap: 10px; margin-bottom: 10px; ${style}`);
+      hbox.classList.add('midori-msidebar-edit-form-row');
       const lbl = createXul(doc, 'label');
+      lbl.classList.add('midori-msidebar-edit-form-label');
       lbl.setAttribute('value', label);
-      lbl.setAttribute('style', 'min-width: 132px; font-weight: 600;');
       if (!control.id) control.id = `midori-msidebar-edit-control-${editControlCounter++}`;
+      control.classList.add('midori-msidebar-edit-control');
       lbl.setAttribute('control', control.id);
       hbox.appendChild(lbl);
       hbox.appendChild(control);
       return hbox;
     }
 
-    function formColumn(label, control, style = '') {
+    function formColumn(label, control) {
       const box = createXul(doc, 'vbox');
-      box.setAttribute('style', `gap: 6px; margin-bottom: 10px; ${style}`);
+      box.classList.add('midori-msidebar-edit-form-column');
       const lbl = createXul(doc, 'label');
+      lbl.classList.add('midori-msidebar-edit-form-label');
       lbl.setAttribute('value', label);
-      lbl.setAttribute('style', 'font-weight: 600;');
       if (!control.id) control.id = `midori-msidebar-edit-control-${editControlCounter++}`;
+      control.classList.add('midori-msidebar-edit-control');
       lbl.setAttribute('control', control.id);
       box.appendChild(lbl);
       box.appendChild(control);
       return box;
+    }
+
+    function editGroup(parent, title, help = '') {
+      const group = createXul(doc, 'vbox');
+      group.classList.add('midori-msidebar-edit-group');
+      const heading = createXul(doc, 'label');
+      heading.classList.add('midori-msidebar-edit-group-title');
+      heading.setAttribute('value', title);
+      group.appendChild(heading);
+      if (help) {
+        const description = createXul(doc, 'description');
+        description.classList.add('midori-msidebar-edit-group-help');
+        description.textContent = help;
+        group.appendChild(description);
+      }
+      parent.appendChild(group);
+      return group;
     }
 
     // TAB 1: General
@@ -4033,18 +4166,17 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       generalHelp.classList.add('midori-msidebar-edit-help');
       generalHelp.textContent = 'Cambia la dirección, el nombre y cómo se conserva este panel.';
       pnGeneral.appendChild(generalHelp);
+      const pageGroup = editGroup(pnGeneral, 'Página');
 
       const txtUrl = createHtml(doc, 'input');
       txtUrl.type = 'url';
       txtUrl.value = panel.url || '';
       txtUrl.setAttribute('placeholder', 'https://ejemplo.com');
-      txtUrl.setAttribute('style', 'width:100%;min-width:320px;');
-      pnGeneral.appendChild(formRow('Dirección', txtUrl, 'flex:1;'));
+      pageGroup.appendChild(formRow('Dirección', txtUrl));
 
       const chkPinned = createXul(doc, 'checkbox');
       chkPinned.setAttribute('label', 'Mantener abierto — evita que se oculte automáticamente');
       chkPinned.setAttribute('checked', panel.pinned ? 'true' : 'false');
-      pnGeneral.appendChild(chkPinned);
 
       const uaMenu = createXul(doc, 'menulist');
       uaMenu.setAttribute('style', 'min-width: 240px;');
@@ -4060,7 +4192,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
       uaMenu.appendChild(uaPopup);
       uaMenu.value = panel.mobile ? 'mobile' : 'desktop';
-      pnGeneral.appendChild(formRow('Vista', uaMenu, 'flex: 1;'));
+      pageGroup.appendChild(formRow('Vista', uaMenu));
 
       const containerMenu = createXul(doc, 'menulist');
       containerMenu.setAttribute('style', 'min-width: 240px;');
@@ -4074,27 +4206,35 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
       containerMenu.appendChild(containerPopup);
       containerMenu.value = String(panel.userContextId || 0);
-      pnGeneral.appendChild(formRow('Contenedor', containerMenu, 'flex: 1;'));
+      pageGroup.appendChild(formRow('Contenedor', containerMenu));
+
+      const lifetimeGroup = editGroup(
+        pnGeneral,
+        'Al cerrar la barra',
+        'Elige si el panel permanece disponible y si conserva la página abierta.'
+      );
+      lifetimeGroup.classList.add('midori-msidebar-edit-options');
+      lifetimeGroup.appendChild(chkPinned);
 
       const chkTemporary = createXul(doc, 'checkbox');
       chkTemporary.setAttribute('label', 'Temporal — se elimina al cerrar la ventana');
       chkTemporary.setAttribute('checked', panel.temporary ? 'true' : 'false');
-      pnGeneral.appendChild(chkTemporary);
+      lifetimeGroup.appendChild(chkTemporary);
 
       const chkKeepAlive = createXul(doc, 'checkbox');
       chkKeepAlive.setAttribute('label', 'Conservar activo — mantiene la sesión al cerrar la barra');
       chkKeepAlive.setAttribute('checked', panel.unloadOnClose ? 'false' : 'true');
-      pnGeneral.appendChild(chkKeepAlive);
+      lifetimeGroup.appendChild(chkKeepAlive);
 
       const chkRestoreLast = createXul(doc, 'checkbox');
       chkRestoreLast.setAttribute('label', 'Volver a la última página visitada');
       chkRestoreLast.setAttribute('checked', panel.restoreLastUrl ? 'true' : 'false');
-      pnGeneral.appendChild(chkRestoreLast);
+      lifetimeGroup.appendChild(chkRestoreLast);
 
       const chkMuted = createXul(doc, 'checkbox');
       chkMuted.setAttribute('label', 'Silenciar audio');
       chkMuted.setAttribute('checked', panel.muted ? 'true' : 'false');
-      pnGeneral.appendChild(chkMuted);
+      lifetimeGroup.appendChild(chkMuted);
 
       const syncPanelLifetime = () => {
         if (chkTemporary.checked) chkPinned.checked = false;
@@ -4110,13 +4250,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       pnGeneral._controls = { txtUrl, chkPinned, uaMenu, containerMenu, chkTemporary, chkKeepAlive, chkRestoreLast, chkMuted };
     }
 
-    const generalIdentityHeading = createXul(doc, 'label');
-    generalIdentityHeading.setAttribute('value', 'Identidad');
-    generalIdentityHeading.setAttribute('style', 'margin-top:14px;font-weight:600;');
-    pnGeneral.appendChild(generalIdentityHeading);
-    const pnTitleFavicon = createXul(doc, 'vbox');
-    pnTitleFavicon.setAttribute('style', 'display:flex;flex-direction:column;gap:8px;');
-    pnGeneral.appendChild(pnTitleFavicon);
+    const pnTitleFavicon = editGroup(
+      pnGeneral,
+      'Identidad',
+      'Usa el título y el icono del sitio o reemplázalos para reconocer el panel más rápido.'
+    );
     {
       const titleModeMenu = createXul(doc, 'menulist');
       const titleModePopup = createXul(doc, 'menupopup');
@@ -4131,20 +4269,14 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
       titleModeMenu.appendChild(titleModePopup);
       titleModeMenu.value = panel.title?.mode === 'static' ? 'static' : 'dynamic';
-      pnTitleFavicon.appendChild(formRow('Nombre del panel', titleModeMenu, 'flex: 1;'));
+      pnTitleFavicon.appendChild(formRow('Nombre del panel', titleModeMenu));
 
       const txtTitle = createHtml(doc, 'input');
       txtTitle.type = 'text';
       txtTitle.value = panel.title?.value || '';
       txtTitle.setAttribute('placeholder', 'Escribe un nombre');
-      txtTitle.setAttribute('style', 'width: 100%; min-width: 320px;');
-      const titleValueRow = formRow('Nombre personalizado', txtTitle, 'flex: 1;');
+      const titleValueRow = formRow('Nombre personalizado', txtTitle);
       pnTitleFavicon.appendChild(titleValueRow);
-
-      const h2 = createXul(doc, 'label');
-      h2.setAttribute('value', 'Icono');
-      h2.setAttribute('style', 'margin-top: 16px; margin-bottom: 8px; font-weight: bold;');
-      pnTitleFavicon.appendChild(h2);
 
       const favModeMenu = createXul(doc, 'menulist');
       const favModePopup = createXul(doc, 'menupopup');
@@ -4159,14 +4291,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
       favModeMenu.appendChild(favModePopup);
       favModeMenu.value = panel.favicon?.mode === 'static' ? 'static' : 'dynamic';
-      pnTitleFavicon.appendChild(formRow('Icono del panel', favModeMenu, 'flex: 1;'));
+      pnTitleFavicon.appendChild(formRow('Icono del panel', favModeMenu));
 
       const txtFavicon = createHtml(doc, 'input');
       txtFavicon.type = 'url';
       txtFavicon.value = panel.favicon?.value || '';
       txtFavicon.setAttribute('placeholder', 'https://ejemplo.com/icono.png');
-      txtFavicon.setAttribute('style', 'width: 100%; min-width: 320px;');
-      const faviconValueRow = formRow('URL del icono', txtFavicon, 'flex: 1;');
+      const faviconValueRow = formRow('URL del icono', txtFavicon);
       pnTitleFavicon.appendChild(faviconValueRow);
 
       pnTitleFavicon._controls = {
@@ -4185,15 +4316,16 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       behaviorHelp.classList.add('midori-msidebar-edit-help');
       behaviorHelp.textContent = 'El panel se muestra acoplado a la barra. Activa el modo flotante sólo si quieres colocarlo encima de la página.';
       pnPosition.appendChild(behaviorHelp);
+      const floatingGroup = editGroup(pnPosition, 'Panel flotante');
 
       const chkFloating = createXul(doc, 'checkbox');
       chkFloating.setAttribute('label', 'Usar como panel flotante');
       chkFloating.setAttribute('checked', panel.floating?.enabled ? 'true' : 'false');
-      pnPosition.appendChild(chkFloating);
+      floatingGroup.appendChild(chkFloating);
 
       const floatingDetails = createXul(doc, 'vbox');
-      floatingDetails.setAttribute('style', 'gap:8px;padding:8px 0 4px 22px;');
-      pnPosition.appendChild(floatingDetails);
+      floatingDetails.classList.add('midori-msidebar-edit-nested');
+      floatingGroup.appendChild(floatingDetails);
 
       const chkAlwaysOnTop = createXul(doc, 'checkbox');
       chkAlwaysOnTop.setAttribute('label', 'Mantener visible sobre el contenido');
@@ -4218,7 +4350,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
       anchorMenu.appendChild(anchorPopup);
       anchorMenu.value = panel.floating?.anchor || 'center';
-      floatingDetails.appendChild(formRow('Posición', anchorMenu, 'flex: 1;'));
+      floatingDetails.appendChild(formRow('Posición', anchorMenu));
 
       const geometryButton = createXul(doc, 'button');
       geometryButton.setAttribute('label', 'Ajustar posición y tamaño');
@@ -4226,31 +4358,27 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       floatingDetails.appendChild(geometryButton);
       const geometryBox = createXul(doc, 'vbox');
       geometryBox.setAttribute('hidden', 'true');
-      geometryBox.setAttribute('style', 'gap:6px;padding-top:4px;');
+      geometryBox.classList.add('midori-msidebar-edit-geometry');
       floatingDetails.appendChild(geometryBox);
 
       const txtX = createHtml(doc, 'input');
       txtX.value = String(panel.floating?.x ?? 0);
       txtX.type = 'number';
-      txtX.setAttribute('style', 'width: 110px;');
       geometryBox.appendChild(formRow('Desplazamiento horizontal', txtX));
 
       const txtY = createHtml(doc, 'input');
       txtY.value = String(panel.floating?.y ?? 0);
       txtY.type = 'number';
-      txtY.setAttribute('style', 'width: 110px;');
       geometryBox.appendChild(formRow('Desplazamiento vertical', txtY));
 
       const txtW = createHtml(doc, 'input');
       txtW.value = String(panel.floating?.w ?? 480);
       txtW.type = 'number';
-      txtW.setAttribute('style', 'width: 110px;');
       geometryBox.appendChild(formRow('Ancho', txtW));
 
       const txtH = createHtml(doc, 'input');
       txtH.value = String(panel.floating?.h ?? 640);
       txtH.type = 'number';
-      txtH.setAttribute('style', 'width: 110px;');
       geometryBox.appendChild(formRow('Alto', txtH));
 
       geometryButton.addEventListener('click', () => {
@@ -4270,13 +4398,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       pnPosition._controls = { chkFloating, chkAlwaysOnTop, anchorMenu, txtX, txtY, txtW, txtH };
     }
 
-    const behaviorLoadingHeading = createXul(doc, 'label');
-    behaviorLoadingHeading.setAttribute('value', 'Actualización automática');
-    behaviorLoadingHeading.setAttribute('style', 'margin-top:14px;font-weight:600;');
-    pnPosition.appendChild(behaviorLoadingHeading);
-    const pnLoading = createXul(doc, 'vbox');
-    pnLoading.setAttribute('style', 'display:flex;flex-direction:column;gap:8px;');
-    pnPosition.appendChild(pnLoading);
+    const pnLoading = editGroup(
+      pnPosition,
+      'Actualización automática',
+      'Úsala sólo si el sitio no actualiza su contenido por sí mismo.'
+    );
     {
       const chkPeriodicReload = createXul(doc, 'checkbox');
       chkPeriodicReload.setAttribute('label', 'Recargar este panel automáticamente');
@@ -4287,7 +4413,6 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       txtReloadSecs.value = String(Math.max(30, panel.periodicReload?.seconds || 300));
       txtReloadSecs.type = 'number';
       txtReloadSecs.setAttribute('min', '30');
-      txtReloadSecs.setAttribute('style', 'width: 140px;');
       const reloadRow = formRow('Cada cuántos segundos', txtReloadSecs);
       pnLoading.appendChild(reloadRow);
 
@@ -4306,24 +4431,22 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       advancedHelp.classList.add('midori-msidebar-edit-help');
       advancedHelp.textContent = 'Opciones para atajos y sitios que necesitan una vista personalizada. Puedes dejarlas sin cambiar.';
       pnShortcut.appendChild(advancedHelp);
+      const shortcutGroup = editGroup(pnShortcut, 'Acceso rápido');
 
       const txtShortcut = createHtml(doc, 'input');
       txtShortcut.type = 'text';
       txtShortcut.value = panel.shortcut || '';
       txtShortcut.setAttribute('placeholder', 'Por ejemplo: Ctrl+Mayús+E');
-      txtShortcut.setAttribute('style', 'width: 100%; min-width: 320px;');
-      pnShortcut.appendChild(formRow('Atajo de teclado', txtShortcut, 'flex: 1;'));
+      shortcutGroup.appendChild(formRow('Atajo de teclado', txtShortcut));
 
       pnShortcut._controls = { txtShortcut };
     }
 
-    const advancedCssHeading = createXul(doc, 'label');
-    advancedCssHeading.setAttribute('value', 'Mostrar sólo una parte del sitio');
-    advancedCssHeading.setAttribute('style', 'margin-top:14px;font-weight:600;');
-    pnShortcut.appendChild(advancedCssHeading);
-    const pnCSS = createXul(doc, 'vbox');
-    pnCSS.setAttribute('style', 'display:flex;flex-direction:column;gap:8px;');
-    pnShortcut.appendChild(pnCSS);
+    const pnCSS = editGroup(
+      pnShortcut,
+      'Contenido del sitio',
+      'Limita el panel a una zona concreta sólo cuando el sitio lo necesite.'
+    );
     {
       const chkCssEnabled = createXul(doc, 'checkbox');
       chkCssEnabled.setAttribute('label', 'Elegir contenido mediante un selector CSS');
@@ -4332,9 +4455,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
       const txtCss = createHtml(doc, 'textarea');
       txtCss.value = panel.cssSelector?.value || '';
-      txtCss.setAttribute('rows', '8');
-      txtCss.setAttribute('style', 'width: 100%; min-width: 420px; min-height: 180px; font-family: monospace;');
-      const cssRow = formColumn('Selector CSS', txtCss, 'flex: 1;');
+      txtCss.setAttribute('rows', '5');
+      txtCss.setAttribute('style', 'font-family:monospace;resize:vertical;min-height:104px;');
+      const cssRow = formColumn('Selector CSS', txtCss);
       const cssHelp = createXul(doc, 'description');
       cssHelp.classList.add('midori-msidebar-edit-help');
       cssHelp.textContent = 'Sólo para usuarios que conocen la estructura CSS del sitio. Un selector incorrecto puede ocultar todo el contenido.';
@@ -4344,13 +4467,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       pnCSS._controls = { chkCssEnabled, txtCss, cssRow };
     }
 
-    const advancedVisibilityHeading = createXul(doc, 'label');
-    advancedVisibilityHeading.setAttribute('value', 'Elementos visibles');
-    advancedVisibilityHeading.setAttribute('style', 'margin-top:14px;font-weight:600;');
-    pnShortcut.appendChild(advancedVisibilityHeading);
-    const pnHide = createXul(doc, 'vbox');
-    pnHide.setAttribute('style', 'display:flex;flex-direction:column;gap:8px;');
-    pnShortcut.appendChild(pnHide);
+    const pnHide = editGroup(
+      pnShortcut,
+      'Controles visibles',
+      'Oculta únicamente los elementos que no necesitas en este panel.'
+    );
+    pnHide.classList.add('midori-msidebar-edit-options');
     {
       const chkHideToolbar = createXul(doc, 'checkbox');
       chkHideToolbar.setAttribute('label', 'Ocultar controles del panel');
@@ -4411,18 +4533,18 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
     // Dialog buttons
     const btnOK = createXul(doc, 'button');
-    btnOK.setAttribute('label', 'Guardar cambios');
+    btnOK.setAttribute('label', 'Guardar');
+    btnOK.setAttribute('data-primary', 'true');
 
     const btnCancel = createXul(doc, 'button');
     btnCancel.setAttribute('label', 'Cancelar');
 
     dlg.appendChild(tabs);
     const buttonBox = createXul(doc, 'hbox');
-    buttonBox.setAttribute('pack', 'end');
-    buttonBox.setAttribute('style', 'margin-top: 14px; gap: 10px; padding: 0 2px;');
-    buttonBox.appendChild(btnOK);
+    buttonBox.classList.add('midori-msidebar-edit-footer');
     buttonBox.appendChild(btnCancel);
-    dlg.appendChild(buttonBox);
+    buttonBox.appendChild(btnOK);
+    dlgWrapper.appendChild(buttonBox);
 
     btnOK.addEventListener('command', () => {
       updatePanel(panelId, (p) => {
@@ -4497,13 +4619,23 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     btnCancel.addEventListener('command', () => {
       closeEditor();
     }, true);
+    btnCloseEditor.addEventListener('command', () => {
+      closeEditor();
+    }, true);
 
     doc.documentElement.appendChild(dlgWrapper);
     _ahPopupOpen = true;
     let editorDirty = false;
     dlgWrapper.addEventListener('input', () => { editorDirty = true; }, true);
     dlgWrapper.addEventListener('command', (event) => {
-      if (event.target !== btnCancel && event.target !== btnOK) editorDirty = true;
+      if (
+        event.target !== btnCancel &&
+        event.target !== btnOK &&
+        event.target !== btnCloseEditor &&
+        !tabstrip.contains(event.target)
+      ) {
+        editorDirty = true;
+      }
     }, true);
     function closeEditor({ force = false } = {}) {
       if (!force && editorDirty) {
