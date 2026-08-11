@@ -5,8 +5,8 @@
   "binaryName": "midori",
   "version": {
     "product": "firefox",
-    "version": "153.0.3",
-    "candidate": "153.0.3"
+    "version": "153.0.4",
+    "candidate": "153.0.4"
   },
   "buildOptions": {
     "generateBranding": true
@@ -24,7 +24,7 @@
       "repo": "goastian/midori-tab",
       "version": "v1.0.44",
       "platform": "github",
-      "fileGlob": "midori-tab-1.0.42-firefox.zip"
+      "fileGlob": "midori-tab-1.0.44-firefox.zip"
     },
     "midorivpn-extension": {
       "id": "midorivpn@astian.org",
