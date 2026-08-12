@@ -10,11 +10,13 @@ import {
   destroyBrowser,
 } from './SidebarPanelHost.mjs';
 import {
+  createPresetRestoreSnapshot,
   motionDuration,
   nextRovingIndex,
   normalizeFrequentSites,
   panelSemantics,
   panelsBySection,
+  parsePresetRestoreSnapshot,
   SIDEBAR_MOTION,
   SIDEBAR_PRESETS,
   summarizeMotionFrames,
@@ -159,6 +161,10 @@ function ensureStyle(doc) {
 .midori-msidebar-settings-row>label{min-width:104px;}
 .midori-msidebar-preset-row{display:flex;gap:6px;}
 .midori-msidebar-preset-row button[selected='true']{outline:2px solid var(--focus-outline-color);}
+.midori-msidebar-preset-restore{display:flex;flex-direction:column;align-items:stretch;gap:6px;margin-top:8px;padding:8px;border-radius:8px;background:color-mix(in srgb,var(--focus-outline-color) 8%,transparent);}
+.midori-msidebar-preset-restore[hidden='true']{display:none;}
+.midori-msidebar-preset-restore description{flex:1;margin:0;color:color-mix(in srgb,currentColor 72%,transparent);}
+.midori-msidebar-preset-feedback{min-height:18px;margin-top:6px;color:color-mix(in srgb,currentColor 72%,transparent);}
 
 #midori-msidebar-command-search{margin-bottom:8px;min-height:34px;}
 .midori-msidebar-command-item{display:flex;align-items:center;justify-content:flex-start;min-height:36px;padding:5px 8px;color:inherit!important;}
@@ -3337,6 +3343,23 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function applyPreset(presetId) {
     const preset = SIDEBAR_PRESETS[presetId];
     if (!preset) return;
+    if (!getPresetRestoreSnapshot()) {
+      const snapshot = createPresetRestoreSnapshot({
+        preset: Prefs.getPreset(),
+        position: Prefs.getPosition(),
+        width: Prefs.getWidth(),
+        railExpanded: Prefs.getRailExpanded(),
+        autohideEnabled: Prefs.getAutohideEnabled(),
+        autohideMode: Prefs.getAutohideMode(),
+        toolbarAutohide: Prefs.getWebPanelToolbarAutohide(),
+      });
+      if (snapshot) {
+        Services.prefs.setStringPref(
+          Prefs.PREF_PRESET_RESTORE_SNAPSHOT,
+          JSON.stringify(snapshot)
+        );
+      }
+    }
     const values = preset.prefs;
     Services.prefs.setStringPref(Prefs.PREF_POSITION, values.position);
     Services.prefs.setIntPref(Prefs.PREF_WIDTH, values.width);
@@ -3346,6 +3369,28 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     Services.prefs.setBoolPref(Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE, values.toolbarAutohide);
     Services.prefs.setStringPref(Prefs.PREF_PRESET, presetId);
     syncSettingsControls();
+    setPresetFeedback(`Preset ${preset.label} aplicado. Puedes volver a tu configuración anterior.`);
+  }
+
+  function getPresetRestoreSnapshot() {
+    return parsePresetRestoreSnapshot(Prefs.getPresetRestoreSnapshot());
+  }
+
+  function restorePresetSettings() {
+    const snapshot = getPresetRestoreSnapshot();
+    if (!snapshot) return false;
+    const values = snapshot.prefs;
+    Services.prefs.setStringPref(Prefs.PREF_POSITION, values.position);
+    Services.prefs.setIntPref(Prefs.PREF_WIDTH, values.width);
+    Services.prefs.setBoolPref(Prefs.PREF_RAIL_EXPANDED, values.railExpanded);
+    Services.prefs.setBoolPref(Prefs.PREF_AUTOHIDE_ENABLED, values.autohideEnabled);
+    Services.prefs.setStringPref(Prefs.PREF_AUTOHIDE_MODE, values.autohideMode);
+    Services.prefs.setBoolPref(Prefs.PREF_WEBPANEL_TOOLBAR_AUTOHIDE, values.toolbarAutohide);
+    Services.prefs.setStringPref(Prefs.PREF_PRESET, snapshot.preset);
+    Services.prefs.setStringPref(Prefs.PREF_PRESET_RESTORE_SNAPSHOT, '');
+    syncSettingsControls();
+    setPresetFeedback('Configuración anterior restaurada. Tus paneles no cambiaron.');
+    return true;
   }
 
   const appearanceSection = settingsSection('Apariencia');
@@ -3361,6 +3406,22 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     presetRow.appendChild(button);
   }
   appearanceSection.appendChild(presetRow);
+  const presetRestoreBox = createXul(doc, 'hbox');
+  presetRestoreBox.classList.add('midori-msidebar-preset-restore');
+  const presetRestoreDescription = createXul(doc, 'description');
+  presetRestoreDescription.textContent = 'Guardamos la configuración que tenías antes de aplicar el preset.';
+  const presetRestoreButton = createXul(doc, 'button');
+  presetRestoreButton.setAttribute('label', 'Restaurar configuración anterior');
+  presetRestoreButton.setAttribute('aria-label', 'Restaurar configuración anterior al preset');
+  presetRestoreButton.addEventListener('command', restorePresetSettings, true);
+  presetRestoreBox.appendChild(presetRestoreDescription);
+  presetRestoreBox.appendChild(presetRestoreButton);
+  appearanceSection.appendChild(presetRestoreBox);
+  const presetFeedback = createXul(doc, 'description');
+  presetFeedback.classList.add('midori-msidebar-preset-feedback');
+  presetFeedback.setAttribute('role', 'status');
+  presetFeedback.setAttribute('aria-live', 'polite');
+  appearanceSection.appendChild(presetFeedback);
   const positionSetting = selectRow(
     appearanceSection,
     'Posición',
@@ -3449,6 +3510,11 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     containerSetting.value = Prefs.getContainerIndicator();
     tooltipSetting.value = Prefs.getTooltipMode();
     fullUrlSetting.checked = Prefs.getTooltipFullUrl();
+    setBoolAttr(presetRestoreBox, 'hidden', !getPresetRestoreSnapshot());
+  }
+
+  function setPresetFeedback(message) {
+    presetFeedback.textContent = message;
   }
 
   btnSettings.addEventListener(
@@ -3524,6 +3590,14 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         run: () => win.setTimeout(() => settingsPanel.openPopup(btnSettings, 'after_end', 0, 0, false, false), 0),
       }
     );
+    if (getPresetRestoreSnapshot()) {
+      entries.push({
+        id: 'restore-preset',
+        label: 'Restaurar configuración anterior',
+        keywords: 'deshacer preset recuperar apariencia comportamiento',
+        run: restorePresetSettings,
+      });
+    }
     if (activePanelId) {
       const panel = store.panels.find((item) => item.id === activePanelId);
       if (panel) {

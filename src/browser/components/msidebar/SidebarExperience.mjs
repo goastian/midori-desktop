@@ -44,6 +44,40 @@ export const SIDEBAR_PRESETS = {
   },
 };
 
+const SIDEBAR_PRESET_IDS = new Set([...Object.keys(SIDEBAR_PRESETS), 'custom']);
+
+export function createPresetRestoreSnapshot(values = {}) {
+  const width = Number(values.width);
+  if (!Number.isFinite(width)) return null;
+  return {
+    version: 1,
+    preset: SIDEBAR_PRESET_IDS.has(values.preset) ? values.preset : 'custom',
+    prefs: {
+      position: values.position === 'right' ? 'right' : 'left',
+      width: Math.min(800, Math.max(200, Math.round(width))),
+      railExpanded: !!values.railExpanded,
+      autohideEnabled: !!values.autohideEnabled,
+      autohideMode: values.autohideMode === 'inline' ? 'inline' : 'overlay',
+      toolbarAutohide: !!values.toolbarAutohide,
+    },
+  };
+}
+
+export function parsePresetRestoreSnapshot(raw) {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.version !== 1 || !parsed.prefs) return null;
+    const snapshot = createPresetRestoreSnapshot({
+      ...parsed.prefs,
+      preset: parsed.preset,
+    });
+    return snapshot && JSON.stringify(snapshot) === JSON.stringify(parsed) ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
 export const SIDEBAR_MOTION = {
   railOpen: 180,
   railClose: 140,

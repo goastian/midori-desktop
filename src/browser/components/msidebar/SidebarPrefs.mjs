@@ -19,6 +19,7 @@ export const PREF_SHORTCUT_TOGGLE_PANEL = 'midori.msidebar.shortcut.togglePanel'
 export const PREF_SHORTCUT_COMMAND_PALETTE = 'midori.msidebar.shortcut.commandPalette';
 export const PREF_RAIL_EXPANDED = 'midori.msidebar.rail.expanded';
 export const PREF_PRESET = 'midori.msidebar.preset';
+export const PREF_PRESET_RESTORE_SNAPSHOT = 'midori.msidebar.preset.restoreSnapshot';
 
 export const POSITION_LEFT = 'left';
 export const POSITION_RIGHT = 'right';
@@ -145,4 +146,8 @@ export function getRailExpanded() {
 export function getPreset() {
   const preset = Services.prefs.getStringPref(PREF_PRESET, 'simple');
   return ['simple', 'work', 'minimal', 'custom'].includes(preset) ? preset : 'simple';
+}
+
+export function getPresetRestoreSnapshot() {
+  return Services.prefs.getStringPref(PREF_PRESET_RESTORE_SNAPSHOT, '');
 }

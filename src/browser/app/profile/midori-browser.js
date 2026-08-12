@@ -374,6 +374,7 @@ pref('midori.msidebar.shortcut.togglePanel', '');
 pref('midori.msidebar.shortcut.commandPalette', 'Ctrl+Alt+P');
 pref('midori.msidebar.rail.expanded', false);
 pref('midori.msidebar.preset', 'simple');
+pref('midori.msidebar.preset.restoreSnapshot', '');
 
 pref('midori.shortcuts.general.openCenter', 'Ctrl+Alt+M');
 pref('midori.shortcuts.tabs.toggleVertical', 'Ctrl+Alt+V');
