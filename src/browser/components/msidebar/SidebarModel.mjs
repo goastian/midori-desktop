@@ -1,4 +1,6 @@
-const STORE_VERSION = 2;
+import { normalizePanelLifecycle } from './SidebarLifecycle.mjs';
+
+const STORE_VERSION = 3;
 
 export function createDefaultStore() {
   return {
@@ -59,7 +61,11 @@ export function createPanel({ url, title, userContextId } = {}) {
     zoom: 1,
     mobile: false,
     temporary: false,
-    unloadOnClose: false,
+    unloadOnClose: true,
+    lifecycle: {
+      mode: 'idle',
+      idleMinutes: 15,
+    },
     periodicReload: {
       enabled: false,
       seconds: 300,
@@ -184,7 +190,8 @@ function migratePanel_v1_to_v2(p) {
     zoom: p.zoom,
     mobile: false,
     temporary: false,
-    unloadOnClose: false,
+    unloadOnClose: !!p.unloadOnClose,
+    lifecycle: normalizePanelLifecycle(p.lifecycle, p),
     periodicReload: {
       enabled: false,
       seconds: 300,
@@ -273,6 +280,7 @@ function normalizePanel_v2(p, safeUrl) {
     mobile: !!p.mobile,
     temporary: !!p.temporary,
     unloadOnClose: !!p.unloadOnClose,
+    lifecycle: normalizePanelLifecycle(p.lifecycle, p),
     periodicReload,
     shortcut: typeof p.shortcut === 'string' ? p.shortcut.slice(0, 50) : '',
     cssSelector,

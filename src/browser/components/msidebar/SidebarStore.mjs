@@ -4,21 +4,35 @@ function getStorePath() {
   return PathUtils.join(PathUtils.profileDir, 'midori-msidebar.json');
 }
 
+function getBackupPath() {
+  return `${getStorePath()}.bak`;
+}
+
+async function readValidStore(path) {
+  try {
+    if (!(await IOUtils.exists(path))) return null;
+    return validateStore(await IOUtils.readJSON(path));
+  } catch {
+    return null;
+  }
+}
+
 export async function loadStore() {
   const path = getStorePath();
   try {
-    const exists = await IOUtils.exists(path);
-    if (!exists) {
+    const store = await readValidStore(path);
+    if (store) return store;
+    const backup = await readValidStore(getBackupPath());
+    if (backup) {
+      await IOUtils.writeJSON(path, backup);
+      return backup;
+    }
+    if (!(await IOUtils.exists(path))) {
       const def = createDefaultStore();
       await IOUtils.writeJSON(path, def);
       return def;
     }
-    const json = await IOUtils.readJSON(path);
-    const validated = validateStore(json);
-    if (!storesEqualLoose(json, validated)) {
-      await IOUtils.writeJSON(path, validated);
-    }
-    return validated;
+    return createDefaultStore();
   } catch {
     const def = createDefaultStore();
     try {
@@ -34,6 +48,9 @@ export async function saveStore(store) {
   const tmpPath = `${path}.tmp`;
   await IOUtils.writeJSON(tmpPath, validated);
   try {
+    if (await IOUtils.exists(path)) {
+      await IOUtils.copy(path, getBackupPath());
+    }
     await IOUtils.move(tmpPath, path, { overwrite: true });
   } catch (error) {
     try {
@@ -42,12 +59,4 @@ export async function saveStore(store) {
     throw error;
   }
   return validated;
-}
-
-function storesEqualLoose(a, b) {
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
-  }
 }

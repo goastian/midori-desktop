@@ -1455,6 +1455,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     panel.temporary = !!normalized.temporary;
     panel.pinned = options.keepOpen === undefined ? !panel.temporary : !!options.keepOpen;
     panel.unloadOnClose = options.keepAlive === false;
+    panel.lifecycle = {
+      mode: options.keepAlive ? 'keep-alive' : 'idle',
+      idleMinutes: 15,
+    };
     panel.mobile = !!options.mobile;
     panel.webExtensionId = normalized.webExtensionId || '';
     if (normalized.faviconUrl) {
@@ -2348,7 +2352,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     keepOpen.setAttribute('checked', 'true');
     const keepAlive = createXul(doc, 'checkbox');
     keepAlive.setAttribute('label', 'Conservar activo — mantiene la sesión al cerrar la barra');
-    keepAlive.setAttribute('checked', 'true');
+    keepAlive.setAttribute('checked', 'false');
     const mobile = createXul(doc, 'checkbox');
     mobile.setAttribute('label', 'Usar vista móvil');
     const containerMenu = createXul(doc, 'menulist');
@@ -4632,6 +4636,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         }
         p.temporary = g.chkTemporary.checked;
         p.unloadOnClose = !g.chkKeepAlive.checked;
+        p.lifecycle = {
+          mode: g.chkKeepAlive.checked ? 'keep-alive' : 'idle',
+          idleMinutes: p.lifecycle?.idleMinutes || 15,
+        };
         p.restoreLastUrl = g.chkRestoreLast.checked;
         p.muted = g.chkMuted.checked;
 
