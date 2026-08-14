@@ -432,4 +432,4 @@ See [Development](https://gitlab.com/midori-web/midori-desktop/-/wikis/home)
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=goastian/midori-desktop&type=Date)](https://www.star-history.com/#goastian/midori-desktop&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=goastian/midori-desktop&type=Date)](https://star-history.dera.page/#goastian/midori-desktop&Date)
