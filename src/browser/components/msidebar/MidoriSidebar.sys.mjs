@@ -68,6 +68,7 @@ export const MidoriSidebar = {
 
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
+    Services.obs.addObserver(this, 'memory-pressure');
     Services.obs.addObserver(this, COMMAND_PALETTE_TOPIC);
 
     this._ensureToolbarWidget();
@@ -96,6 +97,13 @@ export const MidoriSidebar = {
 
     if (topic === 'domwindowclosed') {
       this._cleanupWindow(subject);
+      return;
+    }
+
+    if (topic === 'memory-pressure') {
+      for (const win of Services.wm.getEnumerator('navigator:browser')) {
+        this._uis.get(win)?.suspendForMemoryPressure?.();
+      }
       return;
     }
 
@@ -566,6 +574,7 @@ export const MidoriSidebar = {
     try {
       Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
       Services.obs.removeObserver(this, 'domwindowclosed');
+      Services.obs.removeObserver(this, 'memory-pressure');
       Services.obs.removeObserver(this, COMMAND_PALETTE_TOPIC);
     } catch {}
 

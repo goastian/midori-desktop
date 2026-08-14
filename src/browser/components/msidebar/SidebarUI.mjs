@@ -1,4 +1,5 @@
 import { createPanel, sanitizeUrl } from './SidebarModel.mjs';
+import { lifecyclePolicyForPanel } from './SidebarLifecycle.mjs';
 import {
   resolveSidebarActionPanelForExtensionId,
   resolveSidebarActionPanelForUrl,
@@ -73,6 +74,7 @@ function ensureStyle(doc) {
 #midori-msidebar-main .toolbarbutton-1{border-radius:var(--border-radius-medium);background:transparent;box-sizing:border-box;}
 #midori-msidebar-main .toolbarbutton-1:hover{background:color-mix(in srgb, currentColor 8%, transparent);}
 #midori-msidebar-main .toolbarbutton-1[data-drop-target='true']{outline:2px solid var(--focus-outline-color);outline-offset:-2px;}
+#midori-msidebar-main .toolbarbutton-1[data-drop-target='true'][data-drop-position='after']{box-shadow:inset 0 -3px var(--focus-outline-color);}
 #midori-msidebar-main .toolbarbutton-1:active{background:color-mix(in srgb, currentColor 12%, transparent);}
 #midori-msidebar-main .toolbarbutton-1,#midori-msidebar-box-toolbar .toolbarbutton-1{-moz-context-properties:fill;fill:currentColor;}
 #midori-msidebar-main .toolbarbutton-icon,#midori-msidebar-box-toolbar .toolbarbutton-icon{margin-inline:auto;}
@@ -849,7 +851,7 @@ export function computePanelButtonDecorations(panel, { audioPlaying = false, not
   };
 }
 
-export function reorderPanelsById(panels, sourcePanelId, targetPanelId) {
+export function reorderPanelsById(panels, sourcePanelId, targetPanelId, position = 'before') {
   if (!Array.isArray(panels)) return [];
   const next = [...panels];
   if (!sourcePanelId || !targetPanelId || sourcePanelId === targetPanelId) return next;
@@ -859,10 +861,16 @@ export function reorderPanelsById(panels, sourcePanelId, targetPanelId) {
   if (sourceIndex === -1 || targetIndex === -1) return next;
 
   const [source] = next.splice(sourceIndex, 1);
-  const insertAt = next.findIndex((panel) => panel?.id === targetPanelId);
-  if (!source || insertAt === -1) return next;
+  const targetAfterRemoval = next.findIndex((panel) => panel?.id === targetPanelId);
+  const insertAt = targetAfterRemoval + (position === 'after' ? 1 : 0);
+  if (!source || targetAfterRemoval === -1) return next;
   next.splice(insertAt, 0, source);
   return next;
+}
+
+export function dropPositionForPoint(rect, clientY) {
+  if (!rect || !Number.isFinite(clientY)) return 'before';
+  return clientY >= rect.top + rect.height / 2 ? 'after' : 'before';
 }
 
 function splitMozUrl(payload) {
@@ -1158,6 +1166,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const panelAudioState = new Map();
   const panelNotificationCount = new Map();
   let periodicReloadTimer = null;
+  let idleSuspendTimer = null;
   let activePromptAdapter = null;
   let activeNotificationBridge = null;
   let activeAudioEventsCleanup = null;
@@ -1165,6 +1174,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   let railFilterQuery = '';
   let lastFocusedRailPanelId = null;
   const panelStatuses = new Map();
+  const panelRuntime = new Map();
 
   function reducedMotionRequested() {
     try {
@@ -1199,8 +1209,70 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (!panelId) return;
     if (!status || status === 'ready') panelStatuses.delete(panelId);
     else panelStatuses.set(panelId, { status, message });
+    const previous = panelRuntime.get(panelId) || {};
+    panelRuntime.set(panelId, { ...previous, status: status || 'ready', updatedAt: Date.now() });
     if (panelId === activePanelId) renderActivePanelStatus();
     renderButtons();
+  }
+
+  function panelPermissionSummary(browserEl) {
+    const principal = browserEl?.contentPrincipal;
+    if (!principal) return [];
+    const permissions = [
+      ['camera', 'Cámara'],
+      ['microphone', 'Micrófono'],
+      ['geo', 'Ubicación'],
+      ['desktop-notification', 'Notificaciones'],
+    ];
+    return permissions.map(([type, label]) => {
+      let value = 'preguntar';
+      try {
+        const action = Services.perms.testPermissionFromPrincipal(principal, type);
+        if (action === Ci.nsIPermissionManager.ALLOW_ACTION) value = 'permitido';
+        if (action === Ci.nsIPermissionManager.DENY_ACTION) value = 'bloqueado';
+      } catch {}
+      return `${label}: ${value}`;
+    });
+  }
+
+  function openPanelDiagnostics(panelId) {
+    const panel = store.panels.find(item => item.id === panelId);
+    if (!panel) return;
+    const runtime = panelRuntime.get(panelId) || {};
+    const loaded = runtime.loadedAt ? new Date(runtime.loadedAt).toLocaleString() : 'Aún no se ha cargado';
+    const resident = activeBrowserPanelId === panelId ? '1 contexto remoto (límite por ventana: 1)' : 'Suspendido';
+    const permissions = activeBrowserPanelId === panelId ? panelPermissionSummary(activeBrowser) : [];
+    Services.prompt.alert(
+      win,
+      'Diagnóstico del panel',
+      [
+        `Estado: ${runtime.status || 'unloaded'}`,
+        `Última carga: ${loaded}`,
+        `Presupuesto de memoria: ${resident}`,
+        `Política: ${lifecyclePolicyForPanel(panel).mode}`,
+        permissions.length ? `Permisos: ${permissions.join(', ')}` : 'Permisos: abre el panel para consultarlos',
+      ].join('\n')
+    );
+  }
+
+  function cancelIdleSuspend() {
+    if (!idleSuspendTimer) return;
+    try {
+      win.clearTimeout(idleSuspendTimer);
+    } catch {}
+    idleSuspendTimer = null;
+  }
+
+  function scheduleIdleSuspend(panel) {
+    cancelIdleSuspend();
+    const lifecycle = lifecyclePolicyForPanel(panel);
+    if (!panel || lifecycle.mode !== 'idle') return;
+    idleSuspendTimer = win.setTimeout(() => {
+      idleSuspendTimer = null;
+      if (visible || activePanelId !== panel.id) return;
+      clearBrowser({ status: 'suspended' });
+      renderButtons();
+    }, lifecycle.idleMinutes * 60_000);
   }
 
   function renderActivePanelStatus() {
@@ -1485,6 +1557,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function clearRailDropTarget() {
     for (const btn of buttonsBox.querySelectorAll('[data-drop-target="true"]')) {
       btn.removeAttribute('data-drop-target');
+      btn.removeAttribute('data-drop-position');
     }
   }
 
@@ -1973,6 +2046,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       destroyBrowser(activeBrowser);
       activeBrowser = null;
     }
+    if (activeBrowserPanelId) {
+      const previous = panelRuntime.get(activeBrowserPanelId) || {};
+      panelRuntime.set(activeBrowserPanelId, { ...previous, resident: false, updatedAt: Date.now() });
+    }
     activeBrowserPanelId = null;
     for (const child of [...stack.children]) {
       if (child !== statusBox) child.remove();
@@ -2060,6 +2137,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       setPanelStatus(previousBrowserPanelId, 'suspended', 'Reanúdalo para continuar donde estabas.');
     }
     panelAreaHiddenByUser = false;
+    cancelIdleSuspend();
     activePanelId = panel.id;
     currentPanelFloating = !!panel.floating?.enabled;
     setSelectedPanelId(panel.id);
@@ -2073,6 +2151,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     });
     activeBrowser = browserEl;
     activeBrowserPanelId = panel.id;
+    panelRuntime.set(panel.id, {
+      ...(panelRuntime.get(panel.id) || {}),
+      resident: true,
+      status: 'loading',
+      lastActiveAt: Date.now(),
+      updatedAt: Date.now(),
+    });
     activePromptAdapter = createPanelPromptAdapter(win, activeBrowser, {
       onPromptShown(kind) {
         if (kind === 'media') {
@@ -2116,6 +2201,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       if (activeBrowser !== browserEl || activePanelId !== panel.id) return;
       finishLoadingStatus();
       const failed = isPanelErrorDocument(browserEl);
+      const previous = panelRuntime.get(panel.id) || {};
+      panelRuntime.set(panel.id, { ...previous, loadedAt: Date.now(), updatedAt: Date.now() });
       setPanelStatus(panel.id, failed ? 'error' : 'ready');
       syncNavButtons();
       if (failed) return;
@@ -2681,6 +2768,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           e.stopPropagation();
           clearRailDropTarget();
           btn.setAttribute('data-drop-target', 'true');
+          btn.setAttribute(
+            'data-drop-position',
+            dropPositionForPoint(btn.getBoundingClientRect(), e.clientY)
+          );
           try {
             if (e.dataTransfer) e.dataTransfer.dropEffect = dragged ? 'move' : 'copy';
           } catch {}
@@ -2701,7 +2792,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
           })();
 
           if (dragged && dragged !== panel.id) {
-            const reordered = reorderPanelsById(store.panels, dragged, panel.id);
+            const position = btn.getAttribute('data-drop-position') || 'before';
+            const reordered = reorderPanelsById(store.panels, dragged, panel.id, position);
             store.panels = reordered;
             syncPanelShortcuts();
             onStoreChanged?.(store);
@@ -2767,8 +2859,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     visible = !!nextVisible;
     if (!visible) {
       const panel = store.panels.find((item) => item.id === activePanelId);
-      if (hidePanelWhenHidden || panel?.unloadOnClose) {
+      const lifecycle = lifecyclePolicyForPanel(panel);
+      if (hidePanelWhenHidden || lifecycle.mode === 'suspend') {
+        cancelIdleSuspend();
         clearBrowser({ status: 'suspended' });
+      } else if (lifecycle.mode === 'idle') {
+        scheduleIdleSuspend(panel);
       }
       setBoolAttr(main, 'collapsed', true);
       setBoolAttr(boxArea, 'collapsed', true);
@@ -2779,6 +2875,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       }
       return;
     }
+    cancelIdleSuspend();
     if (activePanelId && !activeBrowser) {
       setActivePanel(activePanelId);
     }
@@ -3168,6 +3265,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         clearBrowser({ status: 'suspended' });
         syncNavButtons();
       })
+    );
+    panelMenu.appendChild(
+      menuItem('Diagnóstico local', () => openPanelDiagnostics(panelMenuTargetId))
     );
     panelMenu.appendChild(menuSeparator());
     panelMenu.appendChild(
@@ -3623,6 +3723,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
             label: 'Suspender panel activo',
             keywords: 'descargar liberar memoria conservar activo',
             run: () => clearBrowser({ status: 'suspended' }),
+          },
+          {
+            id: 'diagnostics',
+            label: 'Diagnóstico del panel activo',
+            keywords: 'estado memoria carga permisos',
+            run: () => openPanelDiagnostics(panel.id),
           },
           {
             id: 'edit',
@@ -4778,6 +4884,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       try { win.clearTimeout(_ahTimer); } catch {}
       _ahTimer = null;
     }
+    cancelIdleSuspend();
     clearBrowser();
     teardownActivePanelBridges();
     try {
@@ -4822,6 +4929,14 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     setAnimated,
     setCssWidth,
     refresh,
+    suspendForMemoryPressure() {
+      const panel = store.panels.find((item) => item.id === activePanelId);
+      if (!panel || visible || lifecyclePolicyForPanel(panel).mode === 'keep-alive') return false;
+      cancelIdleSuspend();
+      clearBrowser({ status: 'suspended' });
+      renderButtons();
+      return true;
+    },
     destroy,
     addPanelFromContext(options = {}) {
       return addPanel(options);
