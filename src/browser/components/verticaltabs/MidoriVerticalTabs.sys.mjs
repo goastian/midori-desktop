@@ -539,8 +539,15 @@ export const MidoriVerticalTabs = {
     const urlbarObserver = new win.MutationObserver(() => {
       const isOpen = urlbar.hasAttribute('open');
       if (isOpen && !wasOpen && !userTyping && this._isUrlbarAutoSelectEnabled()) {
-        // Only select on fresh open before any keystrokes
-        input.select();
+        win.requestAnimationFrame(() => {
+          if (
+            urlbar.hasAttribute('open') &&
+            !userTyping &&
+            doc.activeElement === input
+          ) {
+            input.select();
+          }
+        });
       }
       if (!isOpen) {
         // Reset typing flag when urlbar closes
