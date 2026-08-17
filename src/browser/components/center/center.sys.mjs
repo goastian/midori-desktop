@@ -1301,6 +1301,36 @@ function syncShortcutFieldValue(input, definition) {
   );
 }
 
+async function saveCapturedShortcut(input, definitions, definition, conflict) {
+  const pendingShortcut = input.dataset.pendingShortcut;
+  if (pendingShortcut === undefined) {
+    return false;
+  }
+
+  if (isReservedShortcut(pendingShortcut)) {
+    input.classList.add("shortcut-field-error");
+    conflict.hidden = false;
+    conflict.textContent = `${pendingShortcut} is reserved for bookmarking the current page.`;
+    setShortcutStatus(`${pendingShortcut} is reserved by the browser. Choose another shortcut.`, true);
+    return false;
+  }
+
+  const conflictDef = findShortcutConflict(definitions, definition.pref, pendingShortcut);
+  if (conflictDef) {
+    input.classList.add("shortcut-field-error");
+    conflict.hidden = false;
+    conflict.textContent = `Conflict with ${conflictDef.title}. Choose another shortcut or clear the other action first.`;
+    setShortcutStatus(`Shortcut conflict: ${conflictDef.title} already uses ${pendingShortcut}.`, true);
+    return false;
+  }
+
+  getShortcutsApi()?.setShortcutValue?.(definition.pref, pendingShortcut);
+  shortcutFlashPref = definition.pref;
+  setShortcutStatus(`${definition.title} shortcut saved.`);
+  await refreshShortcutManager();
+  return true;
+}
+
 function buildShortcutRow(definitions, definition) {
   const api = getShortcutsApi();
   const row = document.createElement("div");
@@ -1349,17 +1379,22 @@ function buildShortcutRow(definitions, definition) {
 
   input.addEventListener("focus", () => {
     input.classList.add("shortcut-field-capturing");
-    setShortcutStatus(`Press a shortcut for ${definition.title}, then press Esc to save it.`);
+    setShortcutStatus(`Press a shortcut for ${definition.title}, then move to another field to save it.`);
   });
 
   input.addEventListener("blur", () => {
+    if (input.dataset.pendingShortcut !== undefined) {
+      void saveCapturedShortcut(input, definitions, definition, conflict);
+      return;
+    }
+
     syncShortcutFieldValue(input, definition);
     clearShortcutStatus();
   });
 
   const hint = document.createElement("div");
   hint.className = "shortcut-hint";
-  hint.textContent = "Click field, press shortcut, then Esc to save.";
+  hint.textContent = "Click field, press shortcut, then move to another field to save.";
 
   const conflict = document.createElement("div");
   conflict.className = "shortcut-conflict";
@@ -1382,33 +1417,8 @@ function buildShortcutRow(definitions, definition) {
     }
 
     if (event.key === "Escape") {
-      const pendingShortcut = input.dataset.pendingShortcut;
-      if (pendingShortcut === undefined) {
-        input.blur();
-        return;
-      }
-
-      if (isReservedShortcut(pendingShortcut)) {
-        input.classList.add("shortcut-field-error");
-        conflict.hidden = false;
-        conflict.textContent = `${pendingShortcut} is reserved for bookmarking the current page.`;
-        setShortcutStatus(`${pendingShortcut} is reserved by the browser. Choose another shortcut.`, true);
-        return;
-      }
-
-      const conflictDef = findShortcutConflict(definitions, definition.pref, pendingShortcut);
-      if (conflictDef) {
-        input.classList.add("shortcut-field-error");
-        conflict.hidden = false;
-        conflict.textContent = `Conflict with ${conflictDef.title}. Choose another shortcut or clear the other action first.`;
-        setShortcutStatus(`Shortcut conflict: ${conflictDef.title} already uses ${pendingShortcut}.`, true);
-        return;
-      }
-
-      api?.setShortcutValue?.(definition.pref, pendingShortcut);
-      shortcutFlashPref = definition.pref;
-      setShortcutStatus(`${definition.title} shortcut saved.`);
-      await refreshShortcutManager();
+      delete input.dataset.pendingShortcut;
+      input.blur();
       return;
     }
 
@@ -1434,13 +1444,13 @@ function buildShortcutRow(definitions, definition) {
     const conflictDef = findShortcutConflict(definitions, definition.pref, captured);
     if (conflictDef) {
       conflict.hidden = false;
-      conflict.textContent = `Conflict with ${conflictDef.title}. Press Esc to keep editing.`;
+      conflict.textContent = `Conflict with ${conflictDef.title}. Choose another shortcut or press Esc to cancel.`;
       input.classList.add("shortcut-field-error");
       setShortcutStatus(`Conflict with ${conflictDef.title}.`, true);
     } else {
       conflict.hidden = true;
       conflict.textContent = "";
-      setShortcutStatus(`Ready to save ${captured}. Press Esc to confirm.`);
+      setShortcutStatus(`${captured} will be saved when you move to another field.`);
     }
   });
 

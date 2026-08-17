@@ -12,6 +12,7 @@ import {
 export { isReservedBrowserShortcut, isSafeGlobalShortcut };
 
 const KEYSET_ID = 'midori-shortcuts-keyset';
+const SEARCH_UI_UTILS_MODULE_URL = 'resource:///modules/SearchUIUtils.sys.mjs';
 
 export const PREF_SHORTCUT_OPEN_CENTER = 'midori.shortcuts.general.openCenter';
 export const PREF_SHORTCUT_TOGGLE_VERTICAL_TABS = 'midori.shortcuts.tabs.toggleVertical';
@@ -54,6 +55,24 @@ const SHORTCUT_DEFINITIONS = [
     pref: SidebarPrefs.PREF_SHORTCUT_COMMAND_PALETTE,
     defaultValue: 'Ctrl+Alt+P',
     action: 'sidebar-command-palette',
+  },
+  {
+    id: 'search-selected-text',
+    category: 'Quick Actions',
+    title: 'Search Selected Text',
+    description: 'Search the selected text with your default search engine.',
+    pref: 'midori.shortcuts.quickActions.searchSelectedText',
+    defaultValue: 'Ctrl+Alt+F',
+    action: 'search-selected-text',
+  },
+  {
+    id: 'duplicate-tab',
+    category: 'Quick Actions',
+    title: 'Duplicate Tab',
+    description: 'Duplicate the current tab next to the original.',
+    pref: 'midori.shortcuts.quickActions.duplicateTab',
+    defaultValue: 'Ctrl+Alt+D',
+    action: 'duplicate-tab',
   },
   {
     id: 'workspace-previous',
@@ -300,6 +319,37 @@ async function switchWorkspaceAtIndex(win, index) {
   }
 }
 
+async function getSelectedText(win) {
+  const browser = win.gBrowser?.selectedBrowser;
+  const actor = browser?.browsingContext?.currentWindowGlobal?.getActor('ContextMenu');
+  if (!actor) {
+    return '';
+  }
+
+  try {
+    return (await actor.sendQuery('ContextMenu:GetSelection'))?.text || '';
+  } catch {
+    return '';
+  }
+}
+
+async function searchSelectedText(win) {
+  const browser = win.gBrowser?.selectedBrowser;
+  const searchText = await getSelectedText(win);
+  if (!browser || !searchText) {
+    return;
+  }
+
+  const { SearchUIUtils } = ChromeUtils.importESModule(SEARCH_UI_UTILS_MODULE_URL);
+  await SearchUIUtils.loadSearch({
+    window: win,
+    searchText,
+    where: 'tab',
+    triggeringPrincipal: browser.contentPrincipal,
+    sapSource: 'contextmenu',
+  });
+}
+
 export function getShortcutDefinitions() {
   return SHORTCUT_DEFINITIONS.map((definition) => ({ ...definition }));
 }
@@ -429,6 +479,12 @@ export const MidoriShortcuts = {
         return;
       case 'sidebar-command-palette':
         Services.obs.notifyObservers(win, 'midori-msidebar-open-command-palette');
+        return;
+      case 'search-selected-text':
+        await searchSelectedText(win);
+        return;
+      case 'duplicate-tab':
+        win.BrowserCommands?.duplicateTab();
         return;
       case 'workspace-previous':
         await switchWorkspaceRelative(win, -1);

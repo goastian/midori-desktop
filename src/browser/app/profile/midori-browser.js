@@ -378,6 +378,8 @@ pref('midori.msidebar.preset.restoreSnapshot', '');
 
 pref('midori.shortcuts.general.openCenter', 'Ctrl+Alt+M');
 pref('midori.shortcuts.tabs.toggleVertical', 'Ctrl+Alt+V');
+pref('midori.shortcuts.quickActions.searchSelectedText', 'Ctrl+Alt+F');
+pref('midori.shortcuts.quickActions.duplicateTab', 'Ctrl+Alt+D');
 pref('midori.workspaces.shortcut.previous', 'Ctrl+Alt+Q');
 pref('midori.workspaces.shortcut.next', 'Ctrl+Alt+E');
 pref('midori.workspaces.shortcut.switch1', '');
