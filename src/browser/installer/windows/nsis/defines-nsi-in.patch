@@ -15,7 +15,7 @@ index a9bf2d67ce522054442be664bda1434c63609ea1..618dec2d757b7bd2e1b5d1d3fee8e302
  
  # Constants for parts of the telemetry submission URL
 -!define TELEMETRY_BASE_URL https://incoming.telemetry.mozilla.org/submit
-+!define TELEMETRY_BASE_URL 
++!define TELEMETRY_BASE_URL
  !define TELEMETRY_NAMESPACE firefox-installer
  !define TELEMETRY_INSTALL_PING_VERSION 1
  !define TELEMETRY_INSTALL_PING_DOCTYPE install

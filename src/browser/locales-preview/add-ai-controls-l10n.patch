@@ -1,11 +1,11 @@
-diff --git a/browser/locales-preview/aiFeatures.ftl b/browser/locales-preview/aiFeatures.ftl
-index fe9d18672bf647f7aeff7af2c114ad7eeb8a1c58..5082c219df2e7dce97c13677e174d9959deb38b0 100644
---- a/browser/locales-preview/aiFeatures.ftl
-+++ b/browser/locales-preview/aiFeatures.ftl
+diff --git a/browser/locales/en-US/browser/aiFeatures.ftl b/browser/locales/en-US/browser/aiFeatures.ftl
+index 9a65e0d773477009f9a70ba76556bc091b830348..8b3c57f4f9300c6f299cff9b02ed6bc35faa69a7 100644
+--- a/browser/locales/en-US/browser/aiFeatures.ftl
++++ b/browser/locales/en-US/browser/aiFeatures.ftl
 @@ -3,6 +3,60 @@
  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
  
- preferences-ai-controls-block-confirmation-smart-window = Smart Window
+ preferences-ai-controls-block-confirmation-smart-window = { -smart-window-brand-name }
 +preferences-ai-controls-description = Choose which AI features can run in your browser.
 +
 +preferences-ai-controls-state-description-before = Feature states:
@@ -60,6 +60,6 @@ index fe9d18672bf647f7aeff7af2c114ad7eeb8a1c58..5082c219df2e7dce97c13677e174d995
 +preferences-ai-controls-block-confirmation-confirm =
 +    .label = Block
 +
- smart-window-block-title = Block Smart Window?
- smart-window-block-description-both = This will delete your Smart Window chats and memories.
- smart-window-block-description-chats = This will delete your Smart Window chats.
+ smart-window-block-title = Block { -smart-window-brand-name }?
+ smart-window-block-description-both = This will delete your { -smart-window-brand-name } chats and memories.
+ smart-window-block-description-chats = This will delete your { -smart-window-brand-name } chats.
