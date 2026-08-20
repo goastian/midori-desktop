@@ -1,8 +1,8 @@
 diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/BrowserGlue.sys.mjs
-index d07aaa3fbb..a90160fb13 100644
+index 02d694adaba7da45ed7f7afa30457221759533ec..e2df20f1ae7f56fe672599156477364e3021ed79 100644
 --- a/browser/components/BrowserGlue.sys.mjs
 +++ b/browser/components/BrowserGlue.sys.mjs
-@@ -77,6 +77,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
+@@ -79,6 +79,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
      "resource:///modules/WebProtocolHandlerRegistrar.sys.mjs",
    WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
    setTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -11,7 +11,7 @@ index d07aaa3fbb..a90160fb13 100644
  });
  
  XPCOMUtils.defineLazyServiceGetters(lazy, {
-@@ -191,6 +193,9 @@ BrowserGlue.prototype = {
+@@ -194,6 +196,9 @@ BrowserGlue.prototype = {
        case "notifications-open-settings":
          this._openPreferences("privacy-permissions");
          break;
@@ -21,7 +21,7 @@ index d07aaa3fbb..a90160fb13 100644
        case "final-ui-startup":
          this._beforeUIStartup();
          break;
-@@ -200,6 +205,7 @@ BrowserGlue.prototype = {
+@@ -203,6 +208,7 @@ BrowserGlue.prototype = {
          break;
        case "sessionstore-windows-restored":
          this._onWindowsRestored();
@@ -29,7 +29,7 @@ index d07aaa3fbb..a90160fb13 100644
          break;
        case "browser:purge-session-history":
          // reset the console service's error buffer
-@@ -215,6 +221,24 @@ BrowserGlue.prototype = {
+@@ -218,6 +224,24 @@ BrowserGlue.prototype = {
        case "quit-application-granted":
          this._onQuitApplicationGranted();
          break;
@@ -54,7 +54,7 @@ index d07aaa3fbb..a90160fb13 100644
        case "browser-lastwindow-close-requested":
          if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
            // The application is not actually quitting, but the last full browser
-@@ -336,8 +357,10 @@ BrowserGlue.prototype = {
+@@ -339,8 +363,10 @@ BrowserGlue.prototype = {
      let os = Services.obs;
      [
        "notifications-open-settings",
@@ -65,7 +65,7 @@ index d07aaa3fbb..a90160fb13 100644
        "sessionstore-windows-restored",
        "browser:purge-session-history",
        "quit-application-requested",
-@@ -361,6 +384,12 @@ BrowserGlue.prototype = {
+@@ -364,6 +390,12 @@ BrowserGlue.prototype = {
  
    // cleanup (called on application shutdown)
    _dispose: function BG__dispose() {
@@ -78,7 +78,7 @@ index d07aaa3fbb..a90160fb13 100644
      // AboutHomeStartupCache might write to the cache during
      // quit-application-granted, so we defer uninitialization
      // until here.
-@@ -386,6 +415,13 @@ BrowserGlue.prototype = {
+@@ -389,6 +421,13 @@ BrowserGlue.prototype = {
    _beforeUIStartup: function BG__beforeUIStartup() {
      lazy.SessionStartup.init();
  
@@ -92,7 +92,7 @@ index d07aaa3fbb..a90160fb13 100644
      // check if we're in safe mode
      if (Services.appinfo.inSafeMode) {
        Services.ww.openWindow(
-@@ -757,8 +793,69 @@ BrowserGlue.prototype = {
+@@ -772,8 +811,69 @@ BrowserGlue.prototype = {
      Glean.gfxDisplay.scaling.accumulateSingleSample(scaling);
    },
  
@@ -162,10 +162,23 @@ index d07aaa3fbb..a90160fb13 100644
      // A channel for "remote troubleshooting" code...
      let channel = new lazy.WebChannel(
        "remote-troubleshooting",
-@@ -1696,6 +1793,55 @@ BrowserGlue.prototype = {
+@@ -940,7 +1040,8 @@ BrowserGlue.prototype = {
+     }
+     this._windowsWereRestored = true;
+ 
+-    lazy.PreonboardingSplash.maybeShowStartupSplash();
++    this._startupSplashPromise =
++      lazy.PreonboardingSplash.maybeShowStartupSplash();
+     lazy.BrowserUsageTelemetry.init();
+     lazy.SearchSERPTelemetry.init();
+ 
+@@ -1715,6 +1816,61 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
++    // Keep Midori's first-run setup behind the startup splash.
++    await this._startupSplashPromise;
++
 +    // =========================================================================
 +    // Midori browser welcome
 +
@@ -177,11 +190,14 @@ index d07aaa3fbb..a90160fb13 100644
 +
 +    const welcomeEnabled = Services.prefs.getBoolPref(welcomeEnabledPref, true);
 +    const welcomeSeen = Services.prefs.getBoolPref(welcomeSeenPref, false);
++
++    const showedFirstRunSetup =
++      welcomeEnabled && !welcomeSeen && this._openSetupTab(false, true);
 +    const profileRecoveryRequired =
 +      await lazy.MidoriProfileMigration.needsRecovery();
 +
-+    if (profileRecoveryRequired || (welcomeEnabled && !welcomeSeen)) {
-+      this._openSetupTab(profileRecoveryRequired && welcomeSeen);
++    if (profileRecoveryRequired && !showedFirstRunSetup) {
++      this._openSetupTab(true);
 +    }
 +
 +    // =========================================================================
@@ -218,25 +234,28 @@ index d07aaa3fbb..a90160fb13 100644
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1814,4 +1960,21 @@ BrowserGlue.prototype = {
+@@ -1833,4 +1989,24 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
 +
-+  /**
-+   * Opens the first-run setup tab (about:setup).
-+   * This tab is shown only once on the very first browser launch.
-+   */
-+  _openSetupTab(profileRecoveryOnly = false) {
++  _openSetupTab(profileRecoveryOnly = false, firstTab = false) {
 +    const win = lazy.BrowserWindowTracker.getTopWindow();
-+    if (win) {
-+      const setupURL = profileRecoveryOnly
-+        ? "about:setup?profile-recovery=1"
-+        : "about:setup";
-+      win.gBrowser.selectedTab = win.gBrowser.addTab(setupURL, {
-+        triggeringPrincipal:
-+          Services.scriptSecurityManager.getSystemPrincipal(),
-+      });
++    if (!win) {
++      return false;
 +    }
++
++    const setupURL = profileRecoveryOnly
++      ? "about:setup?profile-recovery=1"
++      : "about:setup";
++    const triggeringPrincipal =
++      Services.scriptSecurityManager.getSystemPrincipal();
++
++    win.gBrowser.selectedTab = win.gBrowser.addTab(setupURL, {
++      index: firstTab ? 0 : undefined,
++      triggeringPrincipal,
++    });
++
++    return true;
 +  },
  };

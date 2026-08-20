@@ -98,9 +98,7 @@ export const MidoriVerticalTabs = {
 
     this._syncFirefoxPrefs();
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
-      if (win.document.readyState === 'complete') {
-        this._applyToWindow(win);
-      }
+      this._applyToWindow(win);
     }
 
     console.log(`MidoriVerticalTabs: Initialized (enabled=${this.isEnabled()})`);

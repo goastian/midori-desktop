@@ -2,9 +2,10 @@ diff --git a/browser/base/content/browser-init.js b/browser/base/content/browser
 index 0aa4baea8e5e6d742fc6cd3333068e7eb64b5bbc..3fe44d531439ca365900647f86e43cd74980c284 100644
 --- a/browser/base/content/browser-init.js
 +++ b/browser/base/content/browser-init.js
-@@ -572,6 +572,50 @@ var gBrowserInit = {
-     gProtectionsHandler.init();
-     gTrustPanelHandler.init();
+@@ -549,7 +549,51 @@ var gBrowserInit = {
+     if (Services.prefs.getBoolPref("browser.search.widget.new", false)) {
+       document.getElementById("searchbar-new")?.delayedStartupInit();
+     }
  
 +    // Midori: materialize Firefox's built-in bookmark action after page-action
 +    // initialization so the star is never lost from the URL bar.
