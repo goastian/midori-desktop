@@ -1,0 +1,23 @@
+diff --git a/devtools/client/aboutdebugging/src/components/sidebar/Sidebar.js b/devtools/client/aboutdebugging/src/components/sidebar/Sidebar.js
+index c6dabd1d1e1d54c17bc6cfb324b496a42e417f8d..01f2def673ec9ccb69dc257d53cffec5153f7c51 100644
+--- a/devtools/client/aboutdebugging/src/components/sidebar/Sidebar.js
++++ b/devtools/client/aboutdebugging/src/components/sidebar/Sidebar.js
+@@ -43,8 +43,7 @@ const SidebarRuntimeItem = createFactory(
+ const RefreshDevicesButton = createFactory(
+   require("resource://devtools/client/aboutdebugging/src/components/sidebar/RefreshDevicesButton.js")
+ );
+-const FIREFOX_ICON =
+-  "chrome://devtools/skin/images/aboutdebugging-firefox-logo.svg";
++const BROWSER_ICON = "chrome://branding/content/about-logo.svg";
+ const CONNECT_ICON = "chrome://devtools/skin/images/settings.svg";
+ const GLOBE_ICON =
+   "chrome://devtools/skin/images/aboutdebugging-globe-icon.svg";
+@@ -212,7 +211,7 @@ class Sidebar extends PureComponent {
+         {
+           "data-l10n-id": "about-debugging-sidebar-this-firefox-title",
+           class: "qa-sidebar-item",
+-          iconSrc: FIREFOX_ICON,
++          iconSrc: BROWSER_ICON,
+           key: RUNTIMES.THIS_FIREFOX,
+           view: `${PAGE_TYPES.RUNTIME}/${RUNTIMES.THIS_FIREFOX}`,
+           to: `/runtime/${RUNTIMES.THIS_FIREFOX}`,
