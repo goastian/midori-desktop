@@ -26,10 +26,47 @@ on:
         required: false
         type: boolean
         default: true
+      source_is_prepared:
+        required: false
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: true
+        type: choice
+        options: [release, dawn]
+        default: release
+      package_artifacts:
+        required: true
+        type: boolean
+        default: true
+      use_sccache:
+        required: true
+        type: boolean
+        default: true
+      source_is_prepared:
+        required: true
+        type: boolean
+        default: false
 
 jobs:
+  prepare-source:
+    if: ${{ !inputs.source_is_prepared }}
+    uses: ./.github/workflows/prepare-source.yml
+    with:
+      display_version: ${{ inputs.display_version }}
+      build_type: ${{ inputs.build_type }}
+      package_artifacts: ${{ inputs.package_artifacts }}
+    secrets: inherit
+
   macos-build:
     name: macOS ${{ matrix.arch }}
+    needs: prepare-source
+    if: ${{ always() && (inputs.source_is_prepared || needs.prepare-source.result == 'success') }}
     runs-on: ${{ matrix.arch == 'x86_64' && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: 360
     strategy:
@@ -148,6 +185,43 @@ jobs:
       - name: Verify compiled output
         run: bash scripts/verify-build-output.sh macos "${{ matrix.arch }}"
 
+      - name: Import signing certificate
+        if: ${{ inputs.package_artifacts }}
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$CERTIFICATE" ]; then
+            echo "No macOS signing certificate configured; producing an unsigned disk image."
+            exit 0
+          fi
+          KEYCHAIN_PATH="$RUNNER_TEMP/midori-signing.keychain-db"
+          CERTIFICATE_PATH="$RUNNER_TEMP/midori-signing.p12"
+          echo "$CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Sign application bundle
+        if: ${{ inputs.package_artifacts }}
+        env:
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "No macOS signing identity configured; skipping code signing."
+            exit 0
+          fi
+          APP_BUNDLE="$(find engine/obj-* -type d -path '*/dist/Midori.app' -print -quit)"
+          test -n "$APP_BUNDLE"
+          codesign --force --deep --options runtime --timestamp \
+            --sign "$SIGNING_IDENTITY" \
+            "$APP_BUNDLE"
+          codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+
       - name: Package
         if: ${{ inputs.package_artifacts }}
         env:
@@ -159,6 +233,27 @@ jobs:
           else
             npm run package:mac-x64 -- --verbose
           fi
+
+      - name: Notarize disk image
+        if: ${{ inputs.package_artifacts }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "Apple notarization credentials are not configured; skipping notarization."
+            exit 0
+          fi
+          for dmg in dist/*.dmg; do
+            test -f "$dmg"
+            xcrun notarytool submit "$dmg" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$dmg"
+          done
 
       - name: Upload artifacts
         if: ${{ inputs.package_artifacts }}

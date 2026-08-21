@@ -12,6 +12,7 @@ export default [
     ignores: [
       'engine/**',
       'build/**',
+      '.mozbuild/**',
       'locales/**',
       'node_modules/**',
       'dist/**',

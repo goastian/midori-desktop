@@ -44,13 +44,43 @@ jobs:
 
           echo "🔄 Upstream merge detected — triggering build for v${DISPLAY_VERSION}"
 
-  build:
-    name: Build All Platforms
+  prepare-source:
+    name: Prepare Build Source
     needs: check-trigger
     if: needs.check-trigger.outputs.should_build == 'true'
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/prepare-source.yml
+    with:
+      display_version: ${{ needs.check-trigger.outputs.display_version }}
+      build_type: ${{ needs.check-trigger.outputs.build_type }}
+      package_artifacts: true
+    secrets: inherit
+
+  build-linux:
+    needs: [check-trigger, prepare-source]
+    uses: ./.github/workflows/build-linux.yml
     with:
       display_version: ${{ needs.check-trigger.outputs.display_version }}
       build_type: ${{ needs.check-trigger.outputs.build_type }}
       use_sccache: true
+      package_artifacts: true
+    secrets: inherit
+
+  build-macos:
+    needs: [check-trigger, prepare-source]
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      display_version: ${{ needs.check-trigger.outputs.display_version }}
+      build_type: ${{ needs.check-trigger.outputs.build_type }}
+      use_sccache: true
+      package_artifacts: true
+    secrets: inherit
+
+  build-windows:
+    needs: [check-trigger, prepare-source]
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      display_version: ${{ needs.check-trigger.outputs.display_version }}
+      build_type: ${{ needs.check-trigger.outputs.build_type }}
+      use_sccache: true
+      package_artifacts: true
     secrets: inherit

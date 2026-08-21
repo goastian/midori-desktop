@@ -26,10 +26,47 @@ on:
         required: false
         type: boolean
         default: true
+      source_is_prepared:
+        required: false
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: true
+        type: choice
+        options: [release, dawn]
+        default: release
+      package_artifacts:
+        required: true
+        type: boolean
+        default: true
+      use_sccache:
+        required: true
+        type: boolean
+        default: true
+      source_is_prepared:
+        required: true
+        type: boolean
+        default: false
 
 jobs:
+  prepare-source:
+    if: ${{ !inputs.source_is_prepared }}
+    uses: ./.github/workflows/prepare-source.yml
+    with:
+      display_version: ${{ inputs.display_version }}
+      build_type: ${{ inputs.build_type }}
+      package_artifacts: ${{ inputs.package_artifacts }}
+    secrets: inherit
+
   windows-build:
     name: Windows ${{ matrix.arch }}
+    needs: prepare-source
+    if: ${{ always() && (inputs.source_is_prepared || needs.prepare-source.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:

@@ -66,17 +66,44 @@ jobs:
             echo "build_type=${{ inputs.build_type }}" >> "$GITHUB_OUTPUT"
           fi
 
-  # ---------------------------------------------------------------------------
-  # Trigger the full build matrix
-  # ---------------------------------------------------------------------------
-  build:
-    name: Build All Platforms
+  prepare-source:
+    name: Prepare Release Source
     needs: prepare
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/prepare-source.yml
+    with:
+      display_version: ${{ needs.prepare.outputs.display_version }}
+      build_type: ${{ needs.prepare.outputs.build_type }}
+      package_artifacts: true
+    secrets: inherit
+
+  build-linux:
+    needs: [prepare, prepare-source]
+    uses: ./.github/workflows/build-linux.yml
     with:
       display_version: ${{ needs.prepare.outputs.display_version }}
       build_type: ${{ needs.prepare.outputs.build_type }}
       use_sccache: true
+      package_artifacts: true
+    secrets: inherit
+
+  build-macos:
+    needs: [prepare, prepare-source]
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      display_version: ${{ needs.prepare.outputs.display_version }}
+      build_type: ${{ needs.prepare.outputs.build_type }}
+      use_sccache: true
+      package_artifacts: true
+    secrets: inherit
+
+  build-windows:
+    needs: [prepare, prepare-source]
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      display_version: ${{ needs.prepare.outputs.display_version }}
+      build_type: ${{ needs.prepare.outputs.build_type }}
+      use_sccache: true
+      package_artifacts: true
     secrets: inherit
 
   # ---------------------------------------------------------------------------
@@ -85,7 +112,7 @@ jobs:
   publish:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [ prepare, build ]
+    needs: [ prepare, build-linux, build-macos, build-windows ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -109,6 +136,9 @@ jobs:
             -name "*.tar.xz" -o \
             -name "*.dmg" -o \
             -name "*.exe" -o \
+            -name "*.deb" -o \
+            -name "*.rpm" -o \
+            -name "*.flatpak" -o \
             -name "*.mar" \
           \) | while read -r file; do
             PLATFORM=$(echo "$file" | cut -d'/' -f2)

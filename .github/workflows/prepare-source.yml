@@ -1,0 +1,145 @@
+name: Prepare Build Source
+
+on:
+  workflow_call:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: false
+        type: string
+        default: release
+      package_artifacts:
+        required: false
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: true
+        type: choice
+        options: [release, dawn]
+        default: release
+      package_artifacts:
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
+            /usr/share/swift /usr/local/.ghcup || true
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get autoremove -y 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          df -h
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Apply Amelia patches
+        run: bash scripts/patch-amelia.sh
+
+      - name: Set brand
+        run: npm run brand
+
+      - name: Activate CI configuration
+        run: npm run ci -- --display-version "${{ inputs.display_version }}"
+
+      - name: Download Firefox source
+        run: npm run download
+
+      - name: Import patches
+        run: npm run import
+
+      - name: Prepare language packs
+        run: python3 scripts/prepare_l10n.py --no-cleanup
+
+      - name: Compress prepared engine source
+        run: |
+          tar \
+            --exclude='./.git' \
+            --exclude='./obj-*' \
+            --exclude='./dist' \
+            --exclude='./node_modules' \
+            --exclude='./*/node_modules' \
+            --use-compress-program=zstd \
+            -hcf midori.source.tar.zst \
+            -C engine .
+
+      - name: Prepare Flatpak source bundle
+        if: ${{ inputs.package_artifacts }}
+        run: |
+          source_bundle="midori-${{ inputs.display_version }}-src.tar.xz"
+          stage_dir="$(mktemp -d)"
+          trap 'rm -rf "$stage_dir"' EXIT
+          tar \
+            --exclude='./.git' \
+            --exclude='./.github' \
+            --exclude='./.hg' \
+            --exclude='./.svn' \
+            --exclude='./obj-*' \
+            --exclude='./dist' \
+            --exclude='./out' \
+            --exclude='./build' \
+            --exclude='./build-dir' \
+            --exclude='./.flatpak-builder' \
+            --exclude='./flatpak-repo' \
+            --exclude='./flatpak-node' \
+            --exclude='./l10n-temp' \
+            --exclude='./release-output' \
+            --exclude='./all-artifacts' \
+            --exclude='./node_modules' \
+            --exclude='./*/node_modules' \
+            --exclude='./.cache' \
+            --exclude='./.mozbuild' \
+            --exclude='./.npm' \
+            --exclude='./*.log' \
+            -cf - . | tar -xf - -C "$stage_dir"
+          tar \
+            --sort=name \
+            --mtime='UTC 2020-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -cJf "$source_bundle" \
+            -C "$stage_dir" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: midori.source.tar.zst
+          path: midori.source.tar.zst
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.package_artifacts }}
+        with:
+          name: midori-src.tar.xz
+          path: midori-${{ inputs.display_version }}-src.tar.xz
+          retention-days: 5

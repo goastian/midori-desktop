@@ -26,10 +26,47 @@ on:
         required: false
         type: boolean
         default: true
+      source_is_prepared:
+        required: false
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: true
+        type: choice
+        options: [release, dawn]
+        default: release
+      package_artifacts:
+        required: true
+        type: boolean
+        default: true
+      use_sccache:
+        required: true
+        type: boolean
+        default: true
+      source_is_prepared:
+        required: true
+        type: boolean
+        default: false
 
 jobs:
+  prepare-source:
+    if: ${{ !inputs.source_is_prepared }}
+    uses: ./.github/workflows/prepare-source.yml
+    with:
+      display_version: ${{ inputs.display_version }}
+      build_type: ${{ inputs.build_type }}
+      package_artifacts: ${{ inputs.package_artifacts }}
+    secrets: inherit
+
   linux-build:
     name: Linux ${{ matrix.arch }}
+    needs: prepare-source
+    if: ${{ always() && (inputs.source_is_prepared || needs.prepare-source.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -119,6 +156,7 @@ jobs:
             clang \
             lld \
             llvm \
+            rpm \
             xvfb
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
@@ -181,6 +219,15 @@ jobs:
             npm run package:linux-x64 -- --verbose
           fi
 
+      - name: Build Debian and RPM packages
+        if: ${{ inputs.package_artifacts }}
+        run: |
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            bash scripts/package-linux.sh aarch64 "${{ inputs.display_version }}"
+          else
+            bash scripts/package-linux.sh x86_64 "${{ inputs.display_version }}"
+          fi
+
       - name: Upload artifacts
         if: ${{ inputs.package_artifacts }}
         uses: actions/upload-artifact@v4
@@ -188,6 +235,8 @@ jobs:
           name: linux-${{ matrix.arch }}
           path: |
             dist/*.tar.xz
+            dist/*.deb
+            dist/*.rpm
             dist/*.mar
             dist/update/
           retention-days: 5
