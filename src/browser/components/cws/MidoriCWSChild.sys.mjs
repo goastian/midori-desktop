@@ -270,54 +270,6 @@ export class MidoriCWSChild extends JSWindowActorChild {
     }
   }
 
-  #anchorContainer() {
-    const doc = this.document;
-    if (!doc) return null;
-    // Try several known anchors: the header action row, then the topmost
-    // visible h1's parent.
-    return (
-      doc.querySelector('[role="banner"]') ||
-      doc.querySelector("h1")?.parentElement ||
-      doc.body
-    );
-  }
-
-  #injectButton(extensionId) {
-    const doc = this.document;
-    if (!doc || doc.getElementById(BTN_ID)) {
-      return;
-    }
-    const container = this.#anchorContainer();
-    if (!container) return;
-
-    const btn = doc.createElement("button");
-    btn.id = BTN_ID;
-    btn.type = "button";
-    btn.setAttribute(STATUS_ATTR, "idle");
-    btn.style.cssText = [
-      "all: revert",
-      "display: inline-flex",
-      "align-items: center",
-      "gap: 8px",
-      "margin: 8px 0",
-      "padding: 8px 16px",
-      "border-radius: 100px",
-      "border: none",
-      "background: #1a73e8",
-      "color: #fff",
-      "font: 500 14px/20px system-ui, sans-serif",
-      "cursor: pointer",
-      "z-index: 2147483647",
-    ].join(";");
-    btn.textContent = INSTALL_TEXT;
-
-    btn.addEventListener("click", () => this.#onClick(btn, extensionId), {
-      capture: true,
-    });
-
-    container.prepend(btn);
-  }
-
   #removeButton() {
     const existing = this.document?.getElementById(BTN_ID);
     if (existing) existing.remove();
