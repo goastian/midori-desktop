@@ -62,16 +62,15 @@ ensure_engine() {
 
 check_system_deps() {
   local missing=()
-  for dep in "$@"; do
-    if ! command -v "$dep" &>/dev/null; then
-      # Check via package manager
-      if command -v rpm &>/dev/null; then
-        rpm -q "$dep" &>/dev/null 2>&1 || missing+=("$dep")
-      elif command -v dpkg &>/dev/null; then
-        dpkg -s "$dep" &>/dev/null 2>&1 || missing+=("$dep")
-      else
-        missing+=("$dep")
-      fi
+  local spec command_name package_name
+  for spec in "$@"; do
+    command_name="${spec%%:*}"
+    package_name="${spec#*:}"
+    if [[ "$package_name" == "$spec" ]]; then
+      package_name="$command_name"
+    fi
+    if ! command -v "$command_name" &>/dev/null; then
+      missing+=("$package_name")
     fi
   done
   if [[ ${#missing[@]} -gt 0 ]]; then
@@ -106,7 +105,7 @@ setup_windows() {
   echo ""
 
   echo "→ Dependencias del sistema:"
-  check_system_deps msitools dos2unix wine || true
+  check_system_deps msibuild:msitools dos2unix:dos2unix wine:wine64
   echo ""
 
   ensure_engine
@@ -265,7 +264,7 @@ setup_windows() {
 
   # ── 9. Mozilla wine (build custom para cross-compilación) ──
   local WINE_DIR="$MOZBUILD/wine"
-  if [[ -d "$WINE_DIR/bin/wine" && "$FORCE" -eq 0 ]]; then
+  if [[ -x "$WINE_DIR/bin/wine" && "$FORCE" -eq 0 ]]; then
     echo "✔ Mozilla wine ya existe en $WINE_DIR"
   else
     echo "→ Descargando Mozilla wine (build custom para cross-compilación)..."
@@ -277,7 +276,7 @@ setup_windows() {
     if [[ -d "$ENGINE_DIR/wine" && ! -d "$WINE_DIR" ]]; then
       mv "$ENGINE_DIR/wine" "$WINE_DIR"
     fi
-    if [[ -d "$WINE_DIR/bin/wine" ]]; then
+    if [[ -x "$WINE_DIR/bin/wine" ]]; then
       echo "✔ Mozilla wine instalado"
     else
       echo "  ⚠ Mozilla wine no disponible. Se usará wine del sistema."

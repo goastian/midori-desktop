@@ -39,7 +39,7 @@ jobs:
     env:
       MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Free disk space
         run: |
@@ -51,12 +51,12 @@ jobs:
           sudo apt-get clean 2>/dev/null || true
           df -h
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
@@ -131,13 +131,13 @@ jobs:
             -cJf "$source_bundle" \
             -C "$stage_dir" .
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: midori.source.tar.zst
           path: midori.source.tar.zst
           retention-days: 2
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ inputs.package_artifacts }}
         with:
           name: midori-src.tar.xz

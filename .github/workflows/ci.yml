@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -48,7 +48,7 @@ jobs:
       display_version: ${{ steps.version.outputs.display_version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Resolve display version
         id: version
@@ -65,7 +65,7 @@ jobs:
     with:
       display_version: ${{ needs.build-metadata.outputs.display_version }}
       build_type: release
-      package_artifacts: false
+      package_artifacts: ${{ github.event_name == 'push' }}
     secrets: inherit
 
   build-linux:
@@ -75,7 +75,7 @@ jobs:
       display_version: ${{ needs.build-metadata.outputs.display_version }}
       build_type: release
       use_sccache: true
-      package_artifacts: false
+      package_artifacts: ${{ github.event_name == 'push' }}
     secrets: inherit
 
   build-macos:
@@ -85,7 +85,7 @@ jobs:
       display_version: ${{ needs.build-metadata.outputs.display_version }}
       build_type: release
       use_sccache: true
-      package_artifacts: false
+      package_artifacts: ${{ github.event_name == 'push' }}
     secrets: inherit
 
   build-windows:
@@ -95,5 +95,5 @@ jobs:
       display_version: ${{ needs.build-metadata.outputs.display_version }}
       build_type: release
       use_sccache: true
-      package_artifacts: false
+      package_artifacts: ${{ github.event_name == 'push' }}
     secrets: inherit
