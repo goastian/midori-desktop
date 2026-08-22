@@ -5,8 +5,8 @@
   "binaryName": "midori",
   "version": {
     "product": "firefox",
-    "version": "153.0.4",
-    "candidate": "153.0.4"
+    "version": "154.0",
+    "candidate": "154.0"
   },
   "buildOptions": {
     "generateBranding": true
@@ -22,16 +22,16 @@
     "midori-newtab": {
       "id": "midori-newtab",
       "repo": "goastian/midori-tab",
-      "version": "v1.0.44",
+      "version": "v1.0.45",
       "platform": "github",
-      "fileGlob": "midori-tab-1.0.44-firefox.zip"
+      "fileGlob": "midori-tab-1.0.45-firefox.zip"
     },
     "midorivpn-extension": {
       "id": "midorivpn@astian.org",
       "repo": "goastian/midorivpn-extension",
-      "version": "v1.0.19",
+      "version": "v1.0.20",
       "platform": "github",
-      "fileGlob": "midorivpn-extension-1.0.19.zip"
+      "fileGlob": "midorivpn-extension-1.0.20.zip"
     }
   },
   "brands": {

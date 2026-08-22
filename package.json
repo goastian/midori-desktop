@@ -48,6 +48,8 @@
     "package:mac-arm64": "python3 scripts/prepare_l10n.py && bash scripts/with-mach-python.sh cross-env AMELIA_PLATFORM=darwin AMELIA_COMPAT=aarch64 SURFER_COMPAT=aarch64 amelia package",
     "package:linux-x64": "python3 scripts/prepare_l10n.py && bash scripts/with-mach-python.sh cross-env AMELIA_PLATFORM=linux AMELIA_COMPAT=x86_64 SURFER_COMPAT=x86_64 amelia package",
     "package:linux-arm64": "python3 scripts/prepare_l10n.py && bash scripts/with-mach-python.sh cross-env AMELIA_PLATFORM=linux AMELIA_COMPAT=aarch64 SURFER_COMPAT=aarch64 amelia package",
+    "package:linux-x64-formats": "bash scripts/package-linux.sh x86_64",
+    "package:linux-arm64-formats": "bash scripts/package-linux.sh aarch64",
     "setup:windows": "bash scripts/setup-winsysroot.sh windows",
     "setup:linux-arm64": "bash scripts/setup-winsysroot.sh linux-arm64",
     "setup:all": "bash scripts/setup-winsysroot.sh all",

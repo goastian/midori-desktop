@@ -1,0 +1,88 @@
+diff --git a/browser/components/asrouter/modules/PreonboardingSplash.sys.mjs b/browser/components/asrouter/modules/PreonboardingSplash.sys.mjs
+index dea88db4e0ec2ab810dcfc4f70773348f6d727b9..86b2a86390a8772a5aee0773bf1606bf0a3216da 100644
+--- a/browser/components/asrouter/modules/PreonboardingSplash.sys.mjs
++++ b/browser/components/asrouter/modules/PreonboardingSplash.sys.mjs
+@@ -18,21 +18,17 @@
+ const lazy = {};
+ 
+ ChromeUtils.defineESModuleGetters(lazy, {
+-  ASRouterTargeting: "resource:///modules/asrouter/ASRouterTargeting.sys.mjs",
+   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
+   ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
+   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
+   OnboardingMessageProvider:
+     "resource:///modules/asrouter/OnboardingMessageProvider.sys.mjs",
+-  SpecialMessageActions:
+-    "resource://messaging-system/lib/SpecialMessageActions.sys.mjs",
++  Spotlight: "resource:///modules/asrouter/Spotlight.sys.mjs",
+   TelemetryReportingPolicy:
+     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
+ });
+ 
+ const EXPERIMENTS_GATE_PREF = "browser.aboutwelcome.experimentsGate.enabled";
+-const SKIP_SPLASH_IF_LOADED_PREF =
+-  "browser.aboutwelcome.experimentsGate.skipSplashIfLoaded";
+ const DID_SEE_ABOUT_WELCOME_PREF = "trailhead.firstrun.didSeeAboutWelcome";
+ const SPLASH_SHOWN_PREF = "browser.preonboarding.splashShown";
+ 
+@@ -47,7 +43,7 @@ export const PreonboardingSplash = {
+         allowFromInactiveWorkspace: true,
+       }),
+     showSpotlight: (config, browser) =>
+-      lazy.SpecialMessageActions.handleAction(config, browser),
++      lazy.Spotlight.showSpotlightDialog(browser, config.data),
+   },
+ 
+   /**
+@@ -56,17 +52,18 @@ export const PreonboardingSplash = {
+    */
+   maybeShowStartupSplash() {
+     if (!this._shouldShow()) {
+-      return;
++      return Promise.resolve(false);
+     }
+ 
+     const screens = this._getSplashScreens();
+     if (!screens.length) {
+-      return;
++      return Promise.resolve(false);
+     }
+ 
+-    this._show(screens).catch(e =>
+-      console.error(`PreonboardingSplash: failed to show splash: ${e}`)
+-    );
++    return this._show(screens).catch(e => {
++      console.error(`PreonboardingSplash: failed to show splash: ${e}`);
++      return false;
++    });
+   },
+ 
+   /**
+@@ -88,17 +85,6 @@ export const PreonboardingSplash = {
+       return false;
+     }
+ 
+-    // Likewise if experiments have already loaded there is nothing to wait
+-    // for. This mirrors the loading screen's own render-time targeting; the
+-    // decision must be made here because a spotlight whose only screen is
+-    // filtered out at render time shows an empty modal.
+-    if (
+-      Services.prefs.getBoolPref(SKIP_SPLASH_IF_LOADED_PREF, true) &&
+-      lazy.ASRouterTargeting.Environment.experimentsLoaded
+-    ) {
+-      return false;
+-    }
+-
+     // When the full TOU modal will show, it already includes its own splash as its
+     // first screen, so this standalone splash doesn't need to fire.
+     if (lazy.TelemetryReportingPolicy.willShowTOUModal()) {
+@@ -181,8 +167,8 @@ export const PreonboardingSplash = {
+       },
+     };
+ 
+-    this.Policy.showSpotlight(config, win.gBrowser.selectedBrowser);
+     Services.prefs.setBoolPref(SPLASH_SHOWN_PREF, true);
++    await this.Policy.showSpotlight(config, win.gBrowser.selectedBrowser);
+ 
+     return true;
+   },

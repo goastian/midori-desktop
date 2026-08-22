@@ -1,0 +1,15 @@
+diff --git a/browser/actors/ContextMenuChild.sys.mjs b/browser/actors/ContextMenuChild.sys.mjs
+index 16985f2c4a..7e35b4e34f 100644
+--- a/browser/actors/ContextMenuChild.sys.mjs
++++ b/browser/actors/ContextMenuChild.sys.mjs
+@@ -46,6 +46,10 @@ export class ContextMenuChild extends JSWindowActorChild {
+ 
+   receiveMessage(message) {
+     switch (message.name) {
++      case "ContextMenu:GetSelection": {
++        return lazy.SelectionUtils.getSelectionDetails(this.contentWindow);
++      }
++
+       case "ContextMenu:GetFrameTitle": {
+         let target = lazy.ContentDOMReference.resolve(
+           message.data.targetIdentifier

@@ -65,7 +65,7 @@ jobs:
       all_platforms: ${{ steps.check.outputs.all_platforms }}
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts/
         continue-on-error: true
@@ -119,15 +119,15 @@ jobs:
     needs: validate
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts/
 
@@ -182,7 +182,7 @@ jobs:
           ls -la update-output/
 
       - name: Upload update manifests
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: update-manifests
           path: update-output/
@@ -199,10 +199,10 @@ jobs:
     environment: production
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: deploy-artifacts/
 
@@ -300,7 +300,7 @@ jobs:
 
       - name: Upload deployment bundle (fallback)
         if: ${{ vars.UPDATE_SERVER_ENABLED != 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deployment-bundle-${{ inputs.display_version }}
           path: deploy-staging/
@@ -316,7 +316,7 @@ jobs:
     if: inputs.dry_run == false
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check update server availability
         if: ${{ vars.UPDATE_SERVER_ENABLED == 'true' }}

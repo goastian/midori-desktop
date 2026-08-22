@@ -1,0 +1,76 @@
+diff --git a/browser/components/asrouter/tests/xpcshell/test_PreonboardingSplash.js b/browser/components/asrouter/tests/xpcshell/test_PreonboardingSplash.js
+index a60e4e06039c54b7ed0a5caae18d3f8fedc45958..7232ab0327d3dac09a7774acf9d5683c6288d571 100644
+--- a/browser/components/asrouter/tests/xpcshell/test_PreonboardingSplash.js
++++ b/browser/components/asrouter/tests/xpcshell/test_PreonboardingSplash.js
+@@ -25,8 +25,6 @@ const { OnboardingMessageProvider } = ChromeUtils.importESModule(
+ NimbusTestUtils.init(this);
+ 
+ const EXPERIMENTS_GATE_PREF = "browser.aboutwelcome.experimentsGate.enabled";
+-const SKIP_SPLASH_IF_LOADED_PREF =
+-  "browser.aboutwelcome.experimentsGate.skipSplashIfLoaded";
+ const DID_SEE_ABOUT_WELCOME_PREF = "trailhead.firstrun.didSeeAboutWelcome";
+ const PREONBOARDING_ENABLED_PREF = "browser.preonboarding.enabled";
+ const SPLASH_SHOWN_PREF = "browser.preonboarding.splashShown";
+@@ -61,10 +59,6 @@ function stubSplashWillShow() {
+     .stub(TelemetryReportingPolicy, "hasUserResolvedTermsOfUse")
+     .returns(false);
+   Services.prefs.setBoolPref(EXPERIMENTS_GATE_PREF, true);
+-  // Whether experiments have already loaded depends on the test harness, so
+-  // deterministically disable the skip-if-loaded suppression except where a
+-  // test exercises it.
+-  Services.prefs.setBoolPref(SKIP_SPLASH_IF_LOADED_PREF, false);
+   Services.prefs.setBoolPref(PREONBOARDING_ENABLED_PREF, true);
+   Services.prefs.clearUserPref(DID_SEE_ABOUT_WELCOME_PREF);
+   Services.prefs.clearUserPref(SPLASH_SHOWN_PREF);
+@@ -73,7 +67,6 @@ function stubSplashWillShow() {
+ function restoreState() {
+   sinon.restore();
+   Services.prefs.clearUserPref(EXPERIMENTS_GATE_PREF);
+-  Services.prefs.clearUserPref(SKIP_SPLASH_IF_LOADED_PREF);
+   Services.prefs.clearUserPref(PREONBOARDING_ENABLED_PREF);
+   Services.prefs.clearUserPref(DID_SEE_ABOUT_WELCOME_PREF);
+   Services.prefs.clearUserPref(SPLASH_SHOWN_PREF);
+@@ -121,10 +114,6 @@ add_task(async function test_no_splash_when_experiments_disabled() {
+     .stub(TelemetryReportingPolicy, "hasUserResolvedTermsOfUse")
+     .returns(false);
+   Services.prefs.setBoolPref(EXPERIMENTS_GATE_PREF, true);
+-  // Disable the skip-if-loaded suppression: with Nimbus off, experiments
+-  // count as loaded, and it would otherwise suppress the splash before the
+-  // ExperimentAPI check under test gets exercised.
+-  Services.prefs.setBoolPref(SKIP_SPLASH_IF_LOADED_PREF, false);
+   Services.prefs.setBoolPref(PREONBOARDING_ENABLED_PREF, true);
+   Services.prefs.clearUserPref(DID_SEE_ABOUT_WELCOME_PREF);
+   Services.prefs.clearUserPref(SPLASH_SHOWN_PREF);
+@@ -370,30 +359,19 @@ add_task(async function test_targeting_stripped_from_standalone_screen() {
+   restoreState();
+ });
+ 
+-add_task(async function test_splash_skipped_when_experiments_already_loaded() {
++add_task(async function test_splash_shown_when_experiments_already_loaded() {
+   const { showSpotlight } = stubShow();
+   stubSplashWillShow();
+   sinon
+     .stub(ASRouterTargeting.Environment, "experimentsLoaded")
+     .get(() => true);
+-  Services.prefs.setBoolPref(SKIP_SPLASH_IF_LOADED_PREF, true);
+-
+-  PreonboardingSplash.maybeShowStartupSplash();
+-
+-  Assert.equal(
+-    showSpotlight.callCount,
+-    0,
+-    "splash is skipped when experiments have already loaded and skipping is enabled"
+-  );
+-
+-  Services.prefs.setBoolPref(SKIP_SPLASH_IF_LOADED_PREF, false);
+ 
+   PreonboardingSplash.maybeShowStartupSplash();
+ 
+   Assert.equal(
+     showSpotlight.callCount,
+     1,
+-    "splash still shows with experiments loaded when skipping is disabled"
++    "splash is shown even when experiments have already loaded"
+   );
+ 
+   restoreState();

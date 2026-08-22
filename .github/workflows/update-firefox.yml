@@ -47,7 +47,7 @@ jobs:
       patches_clean: ${{ steps.check-patches.outcome == 'success' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check if upstream branch already exists
         id: check-upstream-branch
@@ -61,14 +61,14 @@ jobs:
 
       - name: Setup Node.js
         if: steps.check-upstream-branch.outputs.branch_exists == 'false'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Setup Python
         if: steps.check-upstream-branch.outputs.branch_exists == 'false'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
@@ -232,14 +232,54 @@ jobs:
   # ---------------------------------------------------------------------------
   # Auto-build on upstream change (when explicitly enabled)
   # ---------------------------------------------------------------------------
-  trigger-build:
-    name: Trigger Builds
+  prepare-source:
+    name: Prepare Build Source
     needs: check-update
     if: >-
       needs.check-update.outputs.changed == 'true' && github.event_name ==
       'workflow_dispatch' && inputs.auto_build == true
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/prepare-source.yml
     with:
       display_version: ${{ needs.check-update.outputs.new_version }}
       build_type: release
+      package_artifacts: true
+    secrets: inherit
+
+  build-linux:
+    needs: [check-update, prepare-source]
+    if: >-
+      needs.check-update.outputs.changed == 'true' && github.event_name ==
+      'workflow_dispatch' && inputs.auto_build == true
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      display_version: ${{ needs.check-update.outputs.new_version }}
+      build_type: release
+      use_sccache: true
+      package_artifacts: true
+    secrets: inherit
+
+  build-macos:
+    needs: [check-update, prepare-source]
+    if: >-
+      needs.check-update.outputs.changed == 'true' && github.event_name ==
+      'workflow_dispatch' && inputs.auto_build == true
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      display_version: ${{ needs.check-update.outputs.new_version }}
+      build_type: release
+      use_sccache: true
+      package_artifacts: true
+    secrets: inherit
+
+  build-windows:
+    needs: [check-update, prepare-source]
+    if: >-
+      needs.check-update.outputs.changed == 'true' && github.event_name ==
+      'workflow_dispatch' && inputs.auto_build == true
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      display_version: ${{ needs.check-update.outputs.new_version }}
+      build_type: release
+      use_sccache: true
+      package_artifacts: true
     secrets: inherit

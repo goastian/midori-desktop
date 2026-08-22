@@ -26,10 +26,47 @@ on:
         required: false
         type: boolean
         default: true
+      source_is_prepared:
+        required: false
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: true
+        type: choice
+        options: [release, dawn]
+        default: release
+      package_artifacts:
+        required: true
+        type: boolean
+        default: true
+      use_sccache:
+        required: true
+        type: boolean
+        default: true
+      source_is_prepared:
+        required: true
+        type: boolean
+        default: false
 
 jobs:
+  prepare-source:
+    if: ${{ !inputs.source_is_prepared }}
+    uses: ./.github/workflows/prepare-source.yml
+    with:
+      display_version: ${{ inputs.display_version }}
+      build_type: ${{ inputs.build_type }}
+      package_artifacts: ${{ inputs.package_artifacts }}
+    secrets: inherit
+
   linux-build:
     name: Linux ${{ matrix.arch }}
+    needs: prepare-source
+    if: ${{ always() && (inputs.source_is_prepared || needs.prepare-source.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -40,7 +77,7 @@ jobs:
       MIDORI_RELEASE: 'true'
       MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
       SURFER_COMPAT: ${{ matrix.arch }}
-      SCCACHE_DIR: ~/.cache/sccache
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       RUSTC_WRAPPER: ${{ inputs.use_sccache && 'sccache' || '' }}
       CARGO_INCREMENTAL: 0
 
@@ -56,32 +93,39 @@ jobs:
           df -h
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
       - name: Setup sccache
         if: ${{ inputs.use_sccache }}
         run: |
-          SCCACHE_VERSION="v0.8.1"
-          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
-          sudo mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/
+          SCCACHE_VERSION="v0.17.0"
+          SCCACHE_ARCH="x86_64-unknown-linux-musl"
+          SCCACHE_ARCHIVE="sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}.tar.gz"
+          SCCACHE_URL="https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_ARCHIVE}"
+          curl --fail --location --retry 5 --retry-all-errors --output "$SCCACHE_ARCHIVE" "$SCCACHE_URL"
+          curl --fail --location --retry 5 --retry-all-errors --output "$SCCACHE_ARCHIVE.sha256" "$SCCACHE_URL.sha256"
+          echo "$(cat "$SCCACHE_ARCHIVE.sha256")  $SCCACHE_ARCHIVE" | sha256sum --check -
+          tar -xzf "$SCCACHE_ARCHIVE"
+          sudo install -m 0755 "sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}/sccache" /usr/local/bin/sccache
+          mkdir -p "$SCCACHE_DIR"
           sccache --version
 
       - name: Restore sccache cache
         if: ${{ inputs.use_sccache }}
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
-          path: ~/.cache/sccache
+          path: ${{ env.SCCACHE_DIR }}
           key: sccache-linux-${{ matrix.arch }}-${{ github.sha }}
           restore-keys: |
             sccache-linux-${{ matrix.arch }}-
@@ -119,6 +163,7 @@ jobs:
             clang \
             lld \
             llvm \
+            rpm \
             xvfb
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
@@ -134,7 +179,7 @@ jobs:
         run: npm run ci -- --display-version ${{ inputs.display_version }}
 
       - name: Download prepared source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: midori.source.tar.zst
 
@@ -166,6 +211,10 @@ jobs:
             npm run build:linux-x64 -- --skip-patch-check
           fi
 
+      - name: Report sccache statistics
+        if: ${{ always() && inputs.use_sccache }}
+        run: sccache --show-stats || true
+
       - name: Verify compiled output
         run: bash scripts/verify-build-output.sh linux "${{ matrix.arch }}"
 
@@ -181,13 +230,24 @@ jobs:
             npm run package:linux-x64 -- --verbose
           fi
 
+      - name: Build Debian and RPM packages
+        if: ${{ inputs.package_artifacts }}
+        run: |
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            bash scripts/package-linux.sh aarch64 "${{ inputs.display_version }}"
+          else
+            bash scripts/package-linux.sh x86_64 "${{ inputs.display_version }}"
+          fi
+
       - name: Upload artifacts
         if: ${{ inputs.package_artifacts }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
           path: |
             dist/*.tar.xz
+            dist/*.deb
+            dist/*.rpm
             dist/*.mar
             dist/update/
           retention-days: 5

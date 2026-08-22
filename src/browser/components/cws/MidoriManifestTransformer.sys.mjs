@@ -127,7 +127,7 @@ function collectHardBlockers(manifest, blockers) {
       MidoriCWSConstants.HARD_BLOCKED_PERMISSIONS.has(p)
     ) {
       blockers.push(
-        `Requires unsupported Chrome API permission \"${p}\"`
+        `Requires unsupported Chrome API permission "${p}"`
       );
     }
   }
@@ -135,7 +135,7 @@ function collectHardBlockers(manifest, blockers) {
   for (const key of MidoriCWSConstants.HARD_BLOCKED_MANIFEST_KEYS) {
     if (key in manifest) {
       blockers.push(
-        `Uses Chrome-only manifest key \"${key}\"`
+        `Uses Chrome-only manifest key "${key}"`
       );
     }
   }

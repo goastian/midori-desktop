@@ -26,10 +26,47 @@ on:
         required: false
         type: boolean
         default: true
+      source_is_prepared:
+        required: false
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      display_version:
+        required: true
+        type: string
+      build_type:
+        required: true
+        type: choice
+        options: [release, dawn]
+        default: release
+      package_artifacts:
+        required: true
+        type: boolean
+        default: true
+      use_sccache:
+        required: true
+        type: boolean
+        default: true
+      source_is_prepared:
+        required: true
+        type: boolean
+        default: false
 
 jobs:
+  prepare-source:
+    if: ${{ !inputs.source_is_prepared }}
+    uses: ./.github/workflows/prepare-source.yml
+    with:
+      display_version: ${{ inputs.display_version }}
+      build_type: ${{ inputs.build_type }}
+      package_artifacts: ${{ inputs.package_artifacts }}
+    secrets: inherit
+
   macos-build:
     name: macOS ${{ matrix.arch }}
+    needs: prepare-source
+    if: ${{ always() && (inputs.source_is_prepared || needs.prepare-source.result == 'success') }}
     runs-on: ${{ matrix.arch == 'x86_64' && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: 360
     strategy:
@@ -40,43 +77,49 @@ jobs:
       MIDORI_RELEASE: "true"
       MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
       SURFER_COMPAT: ${{ matrix.arch }}
-      SCCACHE_DIR: ~/Library/Caches/Mozilla.sccache
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       RUSTC_WRAPPER: ${{ inputs.use_sccache && 'sccache' || '' }}
       CARGO_INCREMENTAL: 0
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
       - name: Setup sccache
         if: ${{ inputs.use_sccache }}
         run: |
-          SCCACHE_VERSION="v0.8.1"
+          SCCACHE_VERSION="v0.17.0"
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             SCCACHE_ARCH="aarch64-apple-darwin"
           else
             SCCACHE_ARCH="x86_64-apple-darwin"
           fi
-          curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}.tar.gz" | tar xz
-          sudo mv sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}/sccache /usr/local/bin/
+          SCCACHE_ARCHIVE="sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}.tar.gz"
+          SCCACHE_URL="https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_ARCHIVE}"
+          curl --fail --location --retry 5 --retry-all-errors --output "$SCCACHE_ARCHIVE" "$SCCACHE_URL"
+          curl --fail --location --retry 5 --retry-all-errors --output "$SCCACHE_ARCHIVE.sha256" "$SCCACHE_URL.sha256"
+          echo "$(cat "$SCCACHE_ARCHIVE.sha256")  $SCCACHE_ARCHIVE" | shasum -a 256 --check -
+          tar -xzf "$SCCACHE_ARCHIVE"
+          sudo install -m 0755 "sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}/sccache" /usr/local/bin/sccache
+          mkdir -p "$SCCACHE_DIR"
           sccache --version
 
       - name: Restore sccache cache
         if: ${{ inputs.use_sccache }}
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
-          path: ~/Library/Caches/Mozilla.sccache
+          path: ${{ env.SCCACHE_DIR }}
           key: sccache-macos-${{ matrix.arch }}-${{ github.sha }}
           restore-keys: |
             sccache-macos-${{ matrix.arch }}-
@@ -112,7 +155,7 @@ jobs:
         run: npm run ci -- --display-version ${{ inputs.display_version }}
 
       - name: Download prepared source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: midori.source.tar.zst
 
@@ -145,8 +188,49 @@ jobs:
             npm run build:mac-x64 -- --skip-patch-check
           fi
 
+      - name: Report sccache statistics
+        if: ${{ always() && inputs.use_sccache }}
+        run: sccache --show-stats || true
+
       - name: Verify compiled output
         run: bash scripts/verify-build-output.sh macos "${{ matrix.arch }}"
+
+      - name: Import signing certificate
+        if: ${{ inputs.package_artifacts }}
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$CERTIFICATE" ]; then
+            echo "No macOS signing certificate configured; producing an unsigned disk image."
+            exit 0
+          fi
+          KEYCHAIN_PATH="$RUNNER_TEMP/midori-signing.keychain-db"
+          CERTIFICATE_PATH="$RUNNER_TEMP/midori-signing.p12"
+          echo "$CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Sign application bundle
+        if: ${{ inputs.package_artifacts }}
+        env:
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "No macOS signing identity configured; skipping code signing."
+            exit 0
+          fi
+          APP_BUNDLE="$(find engine/obj-* -type d -path '*/dist/Midori.app' -print -quit)"
+          test -n "$APP_BUNDLE"
+          codesign --force --deep --options runtime --timestamp \
+            --sign "$SIGNING_IDENTITY" \
+            "$APP_BUNDLE"
+          codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 
       - name: Package
         if: ${{ inputs.package_artifacts }}
@@ -160,9 +244,30 @@ jobs:
             npm run package:mac-x64 -- --verbose
           fi
 
+      - name: Notarize disk image
+        if: ${{ inputs.package_artifacts }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "Apple notarization credentials are not configured; skipping notarization."
+            exit 0
+          fi
+          for dmg in dist/*.dmg; do
+            test -f "$dmg"
+            xcrun notarytool submit "$dmg" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$dmg"
+          done
+
       - name: Upload artifacts
         if: ${{ inputs.package_artifacts }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-${{ matrix.arch }}
           path: |

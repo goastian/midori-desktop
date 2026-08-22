@@ -5,9 +5,6 @@
 name: Flatpak Packaging
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       version:
@@ -33,7 +30,7 @@ on:
         type: boolean
         default: true
       build_flatpak:
-        description: "Run flatpak-builder after updating the packaging repo"
+        description: "Build and publish Flatpak bundles after updating the packaging repo"
         required: false
         type: boolean
         default: false
@@ -42,21 +39,24 @@ on:
       - published
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   sync-packaging-repo:
     name: Sync org.astian.midori_browser
     runs-on: ubuntu-latest
     if: github.event_name != 'release' || github.event.release.prerelease == false
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      source_sha: ${{ steps.meta.outputs.source_sha }}
     steps:
       - name: Checkout midori-desktop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
@@ -96,6 +96,11 @@ jobs:
             fi
           fi
 
+          if [ "$GITHUB_EVENT_NAME" = "release" ] && [ -z "$SOURCE_SHA" ]; then
+            echo "The published release does not contain a SHA256 for its Flatpak source bundle." >&2
+            exit 1
+          fi
+
           SOURCE_COMMIT="$INPUT_SOURCE_COMMIT"
           if [ -z "$SOURCE_COMMIT" ]; then
             SOURCE_COMMIT="$(git rev-list -n 1 "v$VERSION" 2>/dev/null || git rev-parse HEAD)"
@@ -106,7 +111,7 @@ jobs:
           echo "source_commit=$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Flatpak packaging repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: goastian/org.astian.midori_browser
           token: ${{ secrets.PACKAGING_TOKEN }}
@@ -131,7 +136,7 @@ jobs:
 
       - name: Setup Node.js
         if: github.event_name != 'workflow_dispatch' || inputs.update_node_sources
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -144,7 +149,7 @@ jobs:
           bash scripts/refresh-node-sources.sh package-lock.json flatpak-repo/generated-sources.json
 
       - name: Install Flatpak lint tools
-        if: github.event_name != 'workflow_dispatch' || inputs.lint || inputs.build_flatpak
+        if: github.event_name != 'workflow_dispatch' || inputs.lint
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
@@ -173,16 +178,6 @@ jobs:
             fi
           fi
 
-      - name: Build Flatpak package
-        if: (github.event_name == 'push' || inputs.build_flatpak) && steps.meta.outputs.source_sha != ''
-        run: |
-          flatpak-builder \
-            --user \
-            --force-clean \
-            --install-deps-from=flathub \
-            build-dir \
-            flatpak-repo/org.astian.midori_browser.yml
-
       - name: Commit and push packaging update
         run: |
           cd flatpak-repo
@@ -194,3 +189,80 @@ jobs:
 
           git commit -m "Update Flatpak packaging for Midori Browser ${{ steps.meta.outputs.version }}"
           git push origin main
+
+  build-flatpak:
+    name: Build Flatpak ${{ matrix.arch }}
+    needs: sync-packaging-repo
+    if: >-
+      (github.event_name == 'release' || inputs.build_flatpak) &&
+      needs.sync-packaging-repo.outputs.source_sha != ''
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Resolve release version
+        id: version
+        run: |
+          VERSION="${{ needs.sync-packaging-repo.outputs.version }}"
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Flatpak packaging repo
+        uses: actions/checkout@v7
+        with:
+          repository: goastian/org.astian.midori_browser
+          token: ${{ secrets.PACKAGING_TOKEN }}
+          path: flatpak-repo
+          ref: main
+
+      - name: Install Flatpak builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.flatpak.Builder
+
+      - name: Build Flatpak bundle
+        run: |
+          flatpak-builder \
+            --user \
+            --force-clean \
+            --repo=flatpak-repository \
+            --arch=${{ matrix.arch }} \
+            --install-deps-from=flathub \
+            build-dir \
+            flatpak-repo/org.astian.midori_browser.yml
+          flatpak build-bundle \
+            flatpak-repository \
+            "midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak" \
+            org.astian.midori_browser \
+            --arch=${{ matrix.arch }}
+          sha256sum "midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak" \
+            > "midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak.sha256"
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: flatpak-${{ matrix.arch }}
+          path: |
+            midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak
+            midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach Flatpak bundle to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak" \
+            "midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

@@ -21,7 +21,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENGINE_DIR="$REPO_ROOT/engine"
 MOZBUILD="$HOME/.mozbuild"
 WINSYSROOT="$MOZBUILD/vs"
-VS_YAML="build/vs/vs2022.yaml"
+VS_YAML="build/vs/vs2026.yaml"
+REQUIRED_WINDOWS_SDK_VERSION="10.0.26100.0"
 
 # ── Parse arguments ──
 TARGET="${1:-windows}"
@@ -61,16 +62,15 @@ ensure_engine() {
 
 check_system_deps() {
   local missing=()
-  for dep in "$@"; do
-    if ! command -v "$dep" &>/dev/null; then
-      # Check via package manager
-      if command -v rpm &>/dev/null; then
-        rpm -q "$dep" &>/dev/null 2>&1 || missing+=("$dep")
-      elif command -v dpkg &>/dev/null; then
-        dpkg -s "$dep" &>/dev/null 2>&1 || missing+=("$dep")
-      else
-        missing+=("$dep")
-      fi
+  local spec command_name package_name
+  for spec in "$@"; do
+    command_name="${spec%%:*}"
+    package_name="${spec#*:}"
+    if [[ "$package_name" == "$spec" ]]; then
+      package_name="$command_name"
+    fi
+    if ! command -v "$command_name" &>/dev/null; then
+      missing+=("$package_name")
     fi
   done
   if [[ ${#missing[@]} -gt 0 ]]; then
@@ -105,13 +105,16 @@ setup_windows() {
   echo ""
 
   echo "→ Dependencias del sistema:"
-  check_system_deps msitools dos2unix wine || true
+  check_system_deps msibuild:msitools dos2unix:dos2unix wine:wine64
   echo ""
 
   ensure_engine
 
   # ── 3. Windows sysroot (MSVC + Windows SDK) ──
-  if [[ -d "$WINSYSROOT/VC" && -d "$WINSYSROOT/Windows Kits" && "$FORCE" -eq 0 ]]; then
+  if [[ -d "$WINSYSROOT/VC" &&
+        -d "$WINSYSROOT/Windows Kits" &&
+        -d "$WINSYSROOT/Windows Kits/10/Include/$REQUIRED_WINDOWS_SDK_VERSION" &&
+        "$FORCE" -eq 0 ]]; then
     echo "✔ Windows sysroot ya existe en $WINSYSROOT"
   else
     if [[ ! -f "$ENGINE_DIR/$VS_YAML" ]]; then
@@ -123,8 +126,8 @@ setup_windows() {
     echo "  Esto puede tardar varios minutos (~2-3 GB)."
     echo ""
 
-    if [[ "$FORCE" -eq 1 && -d "$WINSYSROOT" ]]; then
-      echo "→ Eliminando sysroot anterior..."
+    if [[ -d "$WINSYSROOT" ]]; then
+      echo "→ Eliminando sysroot anterior o incompatible..."
       rm -rf "$WINSYSROOT"
     fi
 
@@ -136,7 +139,8 @@ setup_windows() {
       "$VS_YAML" \
       "$WINSYSROOT"
 
-    if [[ -d "$WINSYSROOT/VC" && -d "$WINSYSROOT/Windows Kits" ]]; then
+    if [[ -d "$WINSYSROOT/VC" &&
+          -d "$WINSYSROOT/Windows Kits/10/Include/$REQUIRED_WINDOWS_SDK_VERSION" ]]; then
       echo ""
       echo "✔ Windows sysroot instalado en $WINSYSROOT"
     else
@@ -260,7 +264,7 @@ setup_windows() {
 
   # ── 9. Mozilla wine (build custom para cross-compilación) ──
   local WINE_DIR="$MOZBUILD/wine"
-  if [[ -d "$WINE_DIR/bin/wine" && "$FORCE" -eq 0 ]]; then
+  if [[ -x "$WINE_DIR/bin/wine" && "$FORCE" -eq 0 ]]; then
     echo "✔ Mozilla wine ya existe en $WINE_DIR"
   else
     echo "→ Descargando Mozilla wine (build custom para cross-compilación)..."
@@ -272,7 +276,7 @@ setup_windows() {
     if [[ -d "$ENGINE_DIR/wine" && ! -d "$WINE_DIR" ]]; then
       mv "$ENGINE_DIR/wine" "$WINE_DIR"
     fi
-    if [[ -d "$WINE_DIR/bin/wine" ]]; then
+    if [[ -x "$WINE_DIR/bin/wine" ]]; then
       echo "✔ Mozilla wine instalado"
     else
       echo "  ⚠ Mozilla wine no disponible. Se usará wine del sistema."
@@ -317,7 +321,7 @@ setup_windows() {
   echo " Setup Windows cross-compilation completo"
   echo "══════════════════════════════════════════"
   echo "  WINSYSROOT:    $WINSYSROOT"
-  echo "  Windows SDK:   $(ls "$WINSYSROOT/Windows Kits/10/bin/" 2>/dev/null | head -1)"
+  echo "  Windows SDK:   $REQUIRED_WINDOWS_SDK_VERSION"
   echo "  App SDK:       $MOZBUILD/winappsdk-x86_64-pc-windows-msvc"
   echo "  DXC:           $MOZBUILD/dxc-x86_64-pc-windows-msvc"
   echo "  windows-rs:    $MOZBUILD/windows-rs"

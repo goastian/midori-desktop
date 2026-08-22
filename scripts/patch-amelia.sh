@@ -13,17 +13,6 @@ AMELIA_ADDON="node_modules/@goastian/amelia/dist/commands/download/addon.js"
 AMELIA_BRANDING="node_modules/@goastian/amelia/dist/commands/patches/branding-patch.js"
 
 if [ -f "$AMELIA_PKG" ]; then
-  if grep -q "split('\\\\n').filter(Boolean)" "$AMELIA_PKG"; then
-    echo "[patch-amelia] package.js locale fix already applied."
-  else
-    sed -i "s|return localesText.split('\\\\n');|return localesText.split('\\\\n').filter(Boolean);|" "$AMELIA_PKG"
-    if grep -q "split('\\\\n').filter(Boolean)" "$AMELIA_PKG"; then
-      echo "[patch-amelia] Patched package.js locale parsing."
-    else
-      echo "[patch-amelia] WARNING: Could not patch package.js locale parsing."
-    fi
-  fi
-
   node <<'NODE'
 const fs = require('node:fs');
 
@@ -33,6 +22,12 @@ if (!fs.existsSync(file)) {
 }
 
 let content = fs.readFileSync(file, 'utf8');
+
+const localeCall = "return localesText.split('\\n');";
+const localeReplacement = "return localesText.split('\\n').filter(Boolean);";
+if (content.includes(localeCall)) {
+  content = content.replace(localeCall, localeReplacement);
+}
 
 if (!content.includes('mach package` failed. Aborting to avoid shipping stale artifacts.')) {
   const packageCall = "        await (0, utils_1.dispatch)(machPath, arguments_, constants_1.ENGINE_DIR, true);";
@@ -52,6 +47,12 @@ if (!content.includes('mach package-multi-locale` failed. Multi-language packagi
 
 fs.writeFileSync(file, content, 'utf8');
 NODE
+
+  if grep -q "split('\\\\n').filter(Boolean)" "$AMELIA_PKG"; then
+    echo "[patch-amelia] package.js locale fix applied."
+  else
+    echo "[patch-amelia] WARNING: Could not patch package.js locale parsing."
+  fi
 
   if grep -Fq '`mach package` failed. Aborting to avoid shipping stale artifacts.' "$AMELIA_PKG" &&
     grep -Fq '`mach package-multi-locale` failed. Multi-language packaging was not applied.' "$AMELIA_PKG"; then

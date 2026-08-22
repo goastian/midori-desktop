@@ -28,11 +28,19 @@ fi
 DIST_DIR="$OBJ_DIR/dist"
 INSTGEN_DIR="$OBJ_DIR/browser/installer/windows/instgen"
 MACH="$ENGINE_DIR/mach"
+BRANDING_ICON="$ENGINE_DIR/../configs/branding/release/installer.ico"
+BRANDED_SFX="$OBJ_DIR/midori-sfx/$(basename "$SFX_STUB")"
 
 # Ensure wine/NSIS env is set
 export PATH="$MOZBUILD/nsis/bin:$MOZBUILD/wine/bin:$PATH"
 export WINEPREFIX="$MOZBUILD/wineprefix"
 export WINEDEBUG=-all
+
+python3 "$ENGINE_DIR/../scripts/rebrand_windows_sfx.py" \
+  --input "$SFX_STUB" \
+  --output "$BRANDED_SFX" \
+  --icon "$BRANDING_ICON"
+SFX_STUB="$BRANDED_SFX"
 
 # ── 1. Find the package zip ──
 ZIP_FILE=$(find "$DIST_DIR" -maxdepth 1 -name "*.${PKG_SUFFIX}.zip" ! -name "*xpt*" | head -1)

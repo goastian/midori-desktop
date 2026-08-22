@@ -9,7 +9,6 @@
 
 <!-- Badges Row 2: CI/Build Status -->
 [![CI](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml)
-[![Build](https://github.com/goastian/midori-desktop/actions/workflows/build.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/build.yml)
 [![Release](https://github.com/goastian/midori-desktop/actions/workflows/release.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/release.yml)
 [![build result](https://build.opensuse.org/projects/home:astian-inc/packages/midori-browser/badge.svg?type=default)](https://build.opensuse.org/package/show/home:astian-inc/midori-browser)
 
@@ -382,7 +381,7 @@ Midori is open-source and maintained by volunteers. Love Midori? Support us:
 | Component | Status | Last Updated |
 |-----------|--------|--------------|
 | CI/CD Pipeline | [![CI](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml) | Daily |
-| Build Status | [![Build](https://github.com/goastian/midori-desktop/actions/workflows/build.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/build.yml) | Weekly |
+| Build Status | [![CI](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml) | On push and pull request |
 | Latest Release | [![Release](https://github.com/goastian/midori-desktop/actions/workflows/release.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/release.yml) | On tag |
 | openSUSE Build | [![build result](https://build.opensuse.org/projects/home:astian-inc/packages/midori-browser/badge.svg?type=default)](https://build.opensuse.org/package/show/home:astian-inc/midori-browser) | Continuous |
 
