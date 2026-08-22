@@ -11,6 +11,9 @@ import subprocess
 from check_rc_response import get_rc_response, rc_should_be_updated
 
 
+L10N_REPO = "https://github.com/mozilla-l10n/firefox-l10n"
+
+
 def update_rc(last_version: str):
   rc_version = get_rc_response()
   if rc_should_be_updated(rc_version, last_version):
@@ -24,7 +27,7 @@ def update_rc(last_version: str):
       data["version"]["candidate"] = rc_version
       json.dump(data, f, indent=2)
     print("Download the new engine by running 'npm run download'.")
-    os.system("npm run download")
+    subprocess.run(["npm", "run", "download"], check=True)
   else:
     print("No new Firefox RC version available.")
 
@@ -33,9 +36,10 @@ def update_ff(is_rc: bool = False, last_version: str = ""):
   """Runs the npm command to update the 'ff' component."""
   if is_rc:
     return update_rc(last_version)
-  result = os.system("npm run update-ff:raw")
-  if result != 0:
-    raise RuntimeError("Failed to update 'ff' component.")
+  try:
+    subprocess.run(["npm", "run", "update-ff:raw"], check=True)
+  except subprocess.CalledProcessError as e:
+    raise RuntimeError("Failed to update 'ff' component.") from e
 
 
 def get_version_from_file(filename, is_rc):
@@ -63,7 +67,6 @@ def update_readme(last_version, new_version, is_rc=False):
 
 
 def update_l10n_last_commit_hash():
-  L10N_REPO = "https://github.com/mozilla-l10n/firefox-l10n"
   try:
     subprocess.run(["git", "clone", L10N_REPO, "l10n-temp", "--depth", "1"], check=True)
     if not os.path.exists("build/firefox-cache"):
