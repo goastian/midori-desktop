@@ -48,14 +48,9 @@ on:
         required: true
         type: boolean
         default: true
-      source_is_prepared:
-        required: true
-        type: boolean
-        default: false
-
 jobs:
   prepare-source:
-    if: ${{ !inputs.source_is_prepared }}
+    if: ${{ github.event_name == 'workflow_dispatch' || !inputs.source_is_prepared }}
     uses: ./.github/workflows/prepare-source.yml
     with:
       display_version: ${{ inputs.display_version }}
@@ -66,7 +61,7 @@ jobs:
   linux-build:
     name: Linux ${{ matrix.arch }}
     needs: prepare-source
-    if: ${{ always() && (inputs.source_is_prepared || needs.prepare-source.result == 'success') }}
+    if: ${{ always() && (needs.prepare-source.result == 'success' || (github.event_name != 'workflow_dispatch' && inputs.source_is_prepared)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -164,6 +159,7 @@ jobs:
             lld \
             llvm \
             rpm \
+            xauth \
             xvfb
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
@@ -208,7 +204,8 @@ jobs:
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             npm run build:linux-arm64 -- --skip-patch-check
           else
-            npm run build:linux-x64 -- --skip-patch-check
+            xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+              npm run build:linux-x64 -- --skip-patch-check
           fi
 
       - name: Report sccache statistics

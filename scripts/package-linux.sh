@@ -3,7 +3,10 @@
 set -euo pipefail
 
 arch="${1:?usage: package-linux.sh <x86_64|aarch64> [version]}"
-version="${2:-$(node -p \"require('./amelia.json').brands.release.release.displayVersion\")}"
+version="${2:-}"
+if [[ -z "$version" ]]; then
+  version="$(node -p "require('./amelia.json').brands.release.release.displayVersion")"
+fi
 dist_dir="${DIST_DIR:-$PWD/dist}"
 app_name="midori"
 app_id="org.astian.midori_browser"
