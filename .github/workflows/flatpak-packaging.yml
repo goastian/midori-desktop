@@ -246,7 +246,23 @@ jobs:
           sha256sum "midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak" \
             > "midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak.sha256"
 
+      - name: Summarize Flatpak package
+        run: |
+          file="midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak"
+          size="$(du -h "$file" | cut -f1)"
+          digest="$(sha256sum "$file" | cut -d' ' -f1)"
+          {
+            echo "### Flatpak ${{ matrix.arch }} package"
+            echo
+            echo "Artifact: \`flatpak-${{ matrix.arch }}\`"
+            echo
+            echo '| File | Format | Size | SHA-256 |'
+            echo '| --- | --- | ---: | --- |'
+            echo "| \`$file\` | \`flatpak\` | $size | \`$digest\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Flatpak artifact
+        id: upload-flatpak-artifact
         uses: actions/upload-artifact@v7
         with:
           name: flatpak-${{ matrix.arch }}
@@ -255,6 +271,18 @@ jobs:
             midori-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}.flatpak.sha256
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish Flatpak artifact link
+        env:
+          ARTIFACT_URL: ${{ steps.upload-flatpak-artifact.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.upload-flatpak-artifact.outputs.artifact-digest }}
+        run: |
+          {
+            echo
+            echo "[Download Flatpak ${{ matrix.arch }} artifact]($ARTIFACT_URL)"
+            echo
+            echo "Artifact archive SHA-256: \`$ARTIFACT_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Attach Flatpak bundle to release
         if: github.event_name == 'release'

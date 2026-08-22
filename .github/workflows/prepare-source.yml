@@ -132,14 +132,51 @@ jobs:
             -C "$stage_dir" .
 
       - uses: actions/upload-artifact@v7
+        id: upload-build-source
         with:
           name: midori.source.tar.zst
           path: midori.source.tar.zst
           retention-days: 2
 
+      - name: Publish prepared source link
+        env:
+          ARTIFACT_URL: ${{ steps.upload-build-source.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.upload-build-source.outputs.artifact-digest }}
+        run: |
+          size="$(du -h midori.source.tar.zst | cut -f1)"
+          {
+            echo '### Prepared build source'
+            echo
+            echo '| File | Format | Size | Artifact SHA-256 |'
+            echo '| --- | --- | ---: | --- |'
+            echo "| \`midori.source.tar.zst\` | \`tar.zst\` | $size | \`$ARTIFACT_DIGEST\` |"
+            echo
+            echo "[Download prepared build source]($ARTIFACT_URL)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v7
         if: ${{ inputs.package_artifacts }}
+        id: upload-flatpak-source
         with:
           name: midori-src.tar.xz
           path: midori-${{ inputs.display_version }}-src.tar.xz
           retention-days: 5
+
+      - name: Publish Flatpak source link
+        if: ${{ inputs.package_artifacts }}
+        env:
+          ARTIFACT_URL: ${{ steps.upload-flatpak-source.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.upload-flatpak-source.outputs.artifact-digest }}
+        run: |
+          file="midori-${{ inputs.display_version }}-src.tar.xz"
+          size="$(du -h "$file" | cut -f1)"
+          {
+            echo
+            echo '### Flatpak source bundle'
+            echo
+            echo '| File | Format | Size | Artifact SHA-256 |'
+            echo '| --- | --- | ---: | --- |'
+            echo "| \`$file\` | \`tar.xz\` | $size | \`$ARTIFACT_DIGEST\` |"
+            echo
+            echo "[Download Flatpak source bundle]($ARTIFACT_URL)"
+          } >> "$GITHUB_STEP_SUMMARY"

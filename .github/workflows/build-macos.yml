@@ -260,8 +260,33 @@ jobs:
             xcrun stapler staple "$dmg"
           done
 
+      - name: Summarize macOS packages
+        if: ${{ inputs.package_artifacts }}
+        run: |
+          files="$(find dist -type f \( -name '*.dmg' -o -name '*.mar' -o -path '*/update/*' \) -print | sort)"
+          test -n "$files"
+          {
+            echo "### macOS ${{ matrix.arch }} packages"
+            echo
+            echo "Artifact: \`macos-${{ matrix.arch }}\`"
+            echo
+            echo '| File | Format | Size | SHA-256 |'
+            echo '| --- | --- | ---: | --- |'
+            while IFS= read -r file; do
+              name="${file#dist/}"
+              case "$name" in
+                *.*) format="${name##*.}" ;;
+                *) format='file' ;;
+              esac
+              size="$(du -h "$file" | cut -f1)"
+              digest="$(shasum -a 256 "$file" | cut -d' ' -f1)"
+              printf '| `%s` | `%s` | %s | `%s` |\n' "$name" "$format" "$size" "$digest"
+            done <<< "$files"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload artifacts
         if: ${{ inputs.package_artifacts }}
+        id: upload-macos-artifact
         uses: actions/upload-artifact@v7
         with:
           name: macos-${{ matrix.arch }}
@@ -271,3 +296,16 @@ jobs:
             dist/update/
           retention-days: 5
           if-no-files-found: error
+
+      - name: Publish macOS artifact link
+        if: ${{ inputs.package_artifacts }}
+        env:
+          ARTIFACT_URL: ${{ steps.upload-macos-artifact.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.upload-macos-artifact.outputs.artifact-digest }}
+        run: |
+          {
+            echo
+            echo "[Download macOS ${{ matrix.arch }} artifact]($ARTIFACT_URL)"
+            echo
+            echo "Artifact archive SHA-256: \`$ARTIFACT_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"

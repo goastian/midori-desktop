@@ -239,8 +239,33 @@ jobs:
             npm run package:win-x64 -- --verbose
           fi
 
+      - name: Summarize Windows packages
+        if: ${{ inputs.package_artifacts }}
+        run: |
+          files="$(find dist -type f \( -name '*.exe' -o -name '*.mar' -o -path '*/update/*' \) -print | sort)"
+          test -n "$files"
+          {
+            echo "### Windows ${{ matrix.arch }} packages"
+            echo
+            echo "Artifact: \`windows-${{ matrix.arch }}\`"
+            echo
+            echo '| File | Format | Size | SHA-256 |'
+            echo '| --- | --- | ---: | --- |'
+            while IFS= read -r file; do
+              name="${file#dist/}"
+              case "$name" in
+                *.*) format="${name##*.}" ;;
+                *) format='file' ;;
+              esac
+              size="$(du -h "$file" | cut -f1)"
+              digest="$(sha256sum "$file" | cut -d' ' -f1)"
+              printf '| `%s` | `%s` | %s | `%s` |\n' "$name" "$format" "$size" "$digest"
+            done <<< "$files"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload artifacts
         if: ${{ inputs.package_artifacts }}
+        id: upload-windows-artifact
         uses: actions/upload-artifact@v7
         with:
           name: windows-${{ matrix.arch }}
@@ -250,3 +275,16 @@ jobs:
             dist/update/
           retention-days: 5
           if-no-files-found: error
+
+      - name: Publish Windows artifact link
+        if: ${{ inputs.package_artifacts }}
+        env:
+          ARTIFACT_URL: ${{ steps.upload-windows-artifact.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.upload-windows-artifact.outputs.artifact-digest }}
+        run: |
+          {
+            echo
+            echo "[Download Windows ${{ matrix.arch }} artifact]($ARTIFACT_URL)"
+            echo
+            echo "Artifact archive SHA-256: \`$ARTIFACT_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
