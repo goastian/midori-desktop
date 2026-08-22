@@ -92,9 +92,29 @@ jobs:
 
       - name: Setup sccache
         if: ${{ inputs.use_sccache }}
-        uses: mozilla-actions/sccache-action@v0.0.11
+        run: |
+          SCCACHE_VERSION="v0.17.0"
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            SCCACHE_ARCH="aarch64-apple-darwin"
+          else
+            SCCACHE_ARCH="x86_64-apple-darwin"
+          fi
+          SCCACHE_ARCHIVE="sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}.tar.gz"
+          SCCACHE_URL="https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_ARCHIVE}"
+          curl --fail --location --retry 5 --retry-all-errors --output "$SCCACHE_ARCHIVE" "$SCCACHE_URL"
+          curl --fail --location --retry 5 --retry-all-errors --output "$SCCACHE_ARCHIVE.sha256" "$SCCACHE_URL.sha256"
+          echo "$(cat "$SCCACHE_ARCHIVE.sha256")  $SCCACHE_ARCHIVE" | shasum -a 256 --check -
+          tar -xzf "$SCCACHE_ARCHIVE"
+          sudo install -m 0755 "sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}/sccache" /usr/local/bin/sccache
+          sccache --version
+
+      - name: Configure sccache GitHub credentials
+        if: ${{ inputs.use_sccache }}
+        uses: actions/github-script@v8
         with:
-          version: v0.17.0
+          script: |
+            core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL || '')
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '')
 
       - name: Enable incremental sccache backend
         if: ${{ inputs.use_sccache }}
