@@ -431,4 +431,10 @@ See [Development](https://gitlab.com/midori-web/midori-desktop/-/wikis/home)
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=goastian/midori-desktop&type=Date)](https://www.star-history.com/#goastian/midori-desktop&Date)
+<a href="https://star-history.dera.page/#goastian/midori-desktop&logscale">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=goastian/midori-desktop&theme=dark&logscale" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=goastian/midori-desktop&logscale" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=goastian/midori-desktop&logscale" />
+ </picture>
+</a>
