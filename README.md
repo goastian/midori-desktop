@@ -430,4 +430,5 @@ See [Development](https://gitlab.com/midori-web/midori-desktop/-/wikis/home)
 - If you find a bug, please report it to the [Issues](https://gitlab.com/midori-web/midori-desktop/-/issues) page or using [Official Support Site](https://astian.org/community/midori-browser).
 
 ## Star History
-[![Star History Chart](https://api.star-history.com/svg?repos=goastian/midori-desktop&type=Date)](https://www.star-history.com/#goastian/midori-desktop&Date)
+
+[![Star History Chart](https://star-history.dera.page/svg?repos=goastian/midori-desktop&type=Date)](https://star-history.dera.page/#goastian/midori-desktop&Date)
