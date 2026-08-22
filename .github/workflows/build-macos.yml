@@ -72,7 +72,6 @@ jobs:
       MIDORI_RELEASE: "true"
       MIDORI_RELEASE_BRANCH: ${{ inputs.build_type }}
       SURFER_COMPAT: ${{ matrix.arch }}
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       RUSTC_WRAPPER: ${{ inputs.use_sccache && 'sccache' || '' }}
       CARGO_INCREMENTAL: 0
 
@@ -93,31 +92,15 @@ jobs:
 
       - name: Setup sccache
         if: ${{ inputs.use_sccache }}
-        run: |
-          SCCACHE_VERSION="v0.17.0"
-          if [ "${{ matrix.arch }}" = "aarch64" ]; then
-            SCCACHE_ARCH="aarch64-apple-darwin"
-          else
-            SCCACHE_ARCH="x86_64-apple-darwin"
-          fi
-          SCCACHE_ARCHIVE="sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}.tar.gz"
-          SCCACHE_URL="https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_ARCHIVE}"
-          curl --fail --location --retry 5 --retry-all-errors --output "$SCCACHE_ARCHIVE" "$SCCACHE_URL"
-          curl --fail --location --retry 5 --retry-all-errors --output "$SCCACHE_ARCHIVE.sha256" "$SCCACHE_URL.sha256"
-          echo "$(cat "$SCCACHE_ARCHIVE.sha256")  $SCCACHE_ARCHIVE" | shasum -a 256 --check -
-          tar -xzf "$SCCACHE_ARCHIVE"
-          sudo install -m 0755 "sccache-${SCCACHE_VERSION}-${SCCACHE_ARCH}/sccache" /usr/local/bin/sccache
-          mkdir -p "$SCCACHE_DIR"
-          sccache --version
-
-      - name: Restore sccache cache
-        if: ${{ inputs.use_sccache }}
-        uses: actions/cache@v6
+        uses: mozilla-actions/sccache-action@v0.0.11
         with:
-          path: ${{ env.SCCACHE_DIR }}
-          key: sccache-macos-${{ matrix.arch }}-${{ github.sha }}
-          restore-keys: |
-            sccache-macos-${{ matrix.arch }}-
+          version: v0.17.0
+
+      - name: Enable incremental sccache backend
+        if: ${{ inputs.use_sccache }}
+        run: |
+          echo "SCCACHE_GHA_ENABLED=on" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_VERSION=midori-macos-${{ matrix.arch }}" >> "$GITHUB_ENV"
 
       - name: Install system dependencies
         run: |

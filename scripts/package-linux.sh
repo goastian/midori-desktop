@@ -87,6 +87,12 @@ Description: Midori Browser
 EOF
 dpkg-deb --root-owner-group --build "$deb_root" \
   "$dist_dir/${app_name}-${version}-linux-${arch}.deb"
+deb_file="$dist_dir/${app_name}-${version}-linux-${arch}.deb"
+actual_deb_arch="$(dpkg-deb --field "$deb_file" Architecture)"
+if [[ "$actual_deb_arch" != "$deb_arch" ]]; then
+  echo "Unexpected Debian architecture: $actual_deb_arch (expected $deb_arch)" >&2
+  exit 1
+fi
 
 rpm_topdir="$work_dir/rpmbuild"
 mkdir -p "$rpm_topdir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
@@ -118,9 +124,27 @@ cp -a . %{buildroot}
 %files
 /usr
 EOF
-rpmbuild --define "_topdir $rpm_topdir" --target "$rpm_arch" -bb \
-  "$rpm_topdir/SPECS/$app_name.spec"
-find "$rpm_topdir/RPMS" -type f -name '*.rpm' -exec cp {} "$dist_dir/${app_name}-${version}-linux-${arch}.rpm" \;
+rpm_args=(--define "_topdir $rpm_topdir" --target "$rpm_arch")
+if [[ "$arch" == "aarch64" ]]; then
+  rpm_config_dir="$(rpm --eval '%{_rpmconfigdir}')"
+  rpmrc="$work_dir/cross-build.rpmrc"
+  printf 'buildarch_compat: %s: %s aarch64 noarch\n' \
+    "$(uname -m)" "$(uname -m)" > "$rpmrc"
+  rpm_args=(--rcfile "$rpm_config_dir/rpmrc:$rpmrc" "${rpm_args[@]}")
+fi
+rpmbuild "${rpm_args[@]}" -bb "$rpm_topdir/SPECS/$app_name.spec"
+
+built_rpm="$(find "$rpm_topdir/RPMS" -type f -name '*.rpm' -print -quit)"
+if [[ -z "$built_rpm" ]]; then
+  echo "RPM package was not generated for $arch" >&2
+  exit 1
+fi
+actual_rpm_arch="$(rpm -qp --queryformat '%{ARCH}' "$built_rpm")"
+if [[ "$actual_rpm_arch" != "$rpm_arch" ]]; then
+  echo "Unexpected RPM architecture: $actual_rpm_arch (expected $rpm_arch)" >&2
+  exit 1
+fi
+cp "$built_rpm" "$dist_dir/${app_name}-${version}-linux-${arch}.rpm"
 
 echo "Created $dist_dir/${app_name}-${version}-linux-${arch}.deb"
 echo "Created $dist_dir/${app_name}-${version}-linux-${arch}.rpm"
