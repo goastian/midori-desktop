@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 
 APP_ID = "org.astian.midori_browser"
 RUNTIME_VERSION = "25.08"
+NODE_SDK_EXTENSION = "org.freedesktop.Sdk.Extension.node22"
+NODE_SDK_PATH = "/usr/lib/sdk/node22"
 
 
 def indent(elem: ET.Element, level: int = 0) -> None:
@@ -33,6 +35,34 @@ def replace_or_fail(pattern: str, replacement: str, text: str, description: str)
     return updated
 
 
+def ensure_node_sdk(text: str) -> str:
+    if NODE_SDK_EXTENSION not in text:
+        if re.search(r"^sdk-extensions:\s*$", text, flags=re.MULTILINE):
+            text = replace_or_fail(
+                r"^(sdk-extensions:\s*\n)",
+                rf"\g<1>  - {NODE_SDK_EXTENSION}\n",
+                text,
+                "Node SDK extension",
+            )
+        else:
+            text = replace_or_fail(
+                r"^(sdk:\s+org\.freedesktop\.Sdk\s*\n)",
+                rf"\g<1>sdk-extensions:\n  - {NODE_SDK_EXTENSION}\n",
+                text,
+                "Node SDK extension",
+            )
+
+    if f"{NODE_SDK_PATH}/bin" not in text:
+        text = replace_or_fail(
+            r"^(sdk-extensions:\s*\n(?:[ \t]+-\s+[^\n]+\n)+)",
+            rf"\g<1>build-options:\n  append-path: {NODE_SDK_PATH}/bin\n  env:\n    npm_config_nodedir: {NODE_SDK_PATH}\n",
+            text,
+            "Node SDK build path",
+        )
+
+    return text
+
+
 def update_manifest(
     path: Path,
     version: str,
@@ -53,6 +83,7 @@ def update_manifest(
         text,
         "runtime-version",
     )
+    text = ensure_node_sdk(text)
     text = replace_or_fail(
         r"(tag:\s*)v[0-9A-Za-z.\-]+",
         rf"\g<1>{tag}",

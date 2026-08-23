@@ -44,6 +44,11 @@ export npm_config_fund=false
 export npm_config_offline=true
 export npm_config_cache="$PWD/flatpak-node/npm-cache"
 
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is unavailable in the Flatpak SDK. Add the Node SDK extension to the manifest." >&2
+  exit 1
+fi
+
 arch_pattern_primary="linux-${SURFER_COMPAT}"
 arch_pattern_alt="linux-${SURFER_COMPAT/x86_64/x64}"
 arch_pattern_alt="${arch_pattern_alt/aarch64/arm64}"
