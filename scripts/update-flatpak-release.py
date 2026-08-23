@@ -12,6 +12,8 @@ APP_ID = "org.astian.midori_browser"
 RUNTIME_VERSION = "25.08"
 NODE_SDK_EXTENSION = "org.freedesktop.Sdk.Extension.node22"
 NODE_SDK_PATH = "/usr/lib/sdk/node22"
+RUST_SDK_EXTENSION = "org.freedesktop.Sdk.Extension.rust-stable"
+RUST_SDK_PATH = "/usr/lib/sdk/rust-stable"
 
 
 def indent(elem: ET.Element, level: int = 0) -> None:
@@ -63,6 +65,39 @@ def ensure_node_sdk(text: str) -> str:
     return text
 
 
+def ensure_rust_sdk(text: str) -> str:
+    if RUST_SDK_EXTENSION not in text:
+        text = replace_or_fail(
+            r"^(sdk-extensions:\s*\n)",
+            rf"\g<1>  - {RUST_SDK_EXTENSION}\n",
+            text,
+            "Rust SDK extension",
+        )
+
+    if f"{RUST_SDK_PATH}/bin" not in text:
+        text = replace_or_fail(
+            r"^(\s*append-path:\s+[^\n]+)",
+            rf"\g<1>:{RUST_SDK_PATH}/bin",
+            text,
+            "Rust SDK build path",
+        )
+
+    return text
+
+
+def ensure_build_output_directory(text: str) -> str:
+    command = "mkdir -p dist && bash scripts/flatpak-build-package.sh"
+    if command in text:
+        return text
+
+    return replace_or_fail(
+        r"(\s+-\s+)bash scripts/flatpak-build-package\.sh",
+        rf"\g<1>{command}",
+        text,
+        "Flatpak build command",
+    )
+
+
 def update_manifest(
     path: Path,
     version: str,
@@ -84,6 +119,8 @@ def update_manifest(
         "runtime-version",
     )
     text = ensure_node_sdk(text)
+    text = ensure_rust_sdk(text)
+    text = ensure_build_output_directory(text)
     text = replace_or_fail(
         r"(tag:\s*)v[0-9A-Za-z.\-]+",
         rf"\g<1>{tag}",

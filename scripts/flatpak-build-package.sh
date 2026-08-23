@@ -52,7 +52,10 @@ fi
 arch_pattern_primary="linux-${SURFER_COMPAT}"
 arch_pattern_alt="linux-${SURFER_COMPAT/x86_64/x64}"
 arch_pattern_alt="${arch_pattern_alt/aarch64/arm64}"
-package_archive="$(find dist -maxdepth 1 -type f \( -name "*${arch_pattern_primary}*.tar.xz" -o -name "*${arch_pattern_alt}*.tar.xz" \) | sort | tail -n 1)"
+package_archive=""
+if [ -d dist ]; then
+  package_archive="$(find dist -maxdepth 1 -type f \( -name "*${arch_pattern_primary}*.tar.xz" -o -name "*${arch_pattern_alt}*.tar.xz" \) | sort | tail -n 1)"
+fi
 
 if [ -n "$package_archive" ] && [ "${MIDORI_FLATPAK_REUSE_DIST:-1}" = "1" ]; then
   echo "Reusing existing Linux package archive: $package_archive"
@@ -87,7 +90,9 @@ EOF
   fi
 
   amelia package
-  package_archive="$(find dist -maxdepth 1 -type f \( -name "*${arch_pattern_primary}*.tar.xz" -o -name "*${arch_pattern_alt}*.tar.xz" \) | sort | tail -n 1)"
+  if [ -d dist ]; then
+    package_archive="$(find dist -maxdepth 1 -type f \( -name "*${arch_pattern_primary}*.tar.xz" -o -name "*${arch_pattern_alt}*.tar.xz" \) | sort | tail -n 1)"
+  fi
 fi
 
 if [ -z "$package_archive" ]; then
