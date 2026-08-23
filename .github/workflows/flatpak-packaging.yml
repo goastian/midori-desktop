@@ -80,20 +80,41 @@ jobs:
           set -euo pipefail
 
           VERSION="$INPUT_VERSION"
+          SOURCE_COMMIT="$INPUT_SOURCE_COMMIT"
+          if [ -n "$INPUT_SOURCE_RUN_ID" ] && [ -z "$SOURCE_COMMIT" ]; then
+            SOURCE_COMMIT="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_SOURCE_RUN_ID" \
+                --jq '.head_sha'
+            )"
+          fi
           if [ -z "$VERSION" ] && [ -n "$RELEASE_TAG" ]; then
             VERSION="${RELEASE_TAG#v}"
           fi
           if [ -z "$VERSION" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
             VERSION="${REF_NAME#v}"
           fi
+          if [ -z "$VERSION" ] && [ -n "$INPUT_SOURCE_RUN_ID" ]; then
+            if git cat-file -e "$SOURCE_COMMIT:amelia.json" 2>/dev/null; then
+              VERSION="$(
+                git show "$SOURCE_COMMIT:amelia.json" | \
+                  jq -er '.brands.release.release.displayVersion'
+              )"
+            else
+              VERSION="$(
+                gh api \
+                  -H 'Accept: application/vnd.github.raw+json' \
+                  "repos/$GITHUB_REPOSITORY/contents/amelia.json?ref=$SOURCE_COMMIT" | \
+                  jq -er '.brands.release.release.displayVersion'
+              )"
+            fi
+          fi
           if [ -z "$VERSION" ]; then
-            VERSION="$(node -p "require('./package.json').version")"
+            VERSION="$(jq -er '.brands.release.release.displayVersion' amelia.json)"
           fi
 
           SOURCE_BUNDLE="midori-$VERSION-src.tar.xz"
           SOURCE_MODE="published-release"
           SOURCE_SHA="$INPUT_SOURCE_SHA"
-          SOURCE_COMMIT="$INPUT_SOURCE_COMMIT"
           mkdir -p /tmp/flatpak-release
 
           if [ -n "$INPUT_SOURCE_RUN_ID" ]; then
@@ -118,9 +139,6 @@ jobs:
                 exit 1
               fi
             done
-            if [ -z "$SOURCE_COMMIT" ]; then
-              SOURCE_COMMIT="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_SOURCE_RUN_ID" --jq '.head_sha')"
-            fi
           else
             if [ -z "$SOURCE_SHA" ]; then
               if gh release download "v$VERSION" \
