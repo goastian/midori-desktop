@@ -12,7 +12,7 @@ on:
         required: false
         type: string
       source_sha:
-        description: "Optional SHA256 for midori-<version>-src.tar.xz"
+        description: "Optional SHA256 for the published midori-<version>-src.tar.xz"
         required: false
         type: string
       source_commit:
@@ -83,6 +83,7 @@ jobs:
             VERSION="$(node -p "require('./package.json').version")"
           fi
 
+          SOURCE_BUNDLE="midori-$VERSION-src.tar.xz"
           SOURCE_SHA="$INPUT_SOURCE_SHA"
           if [ -z "$SOURCE_SHA" ]; then
             mkdir -p /tmp/flatpak-release
@@ -90,14 +91,25 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --pattern SHA256SUMS.txt \
               --dir /tmp/flatpak-release; then
-              SOURCE_SHA="$(awk -v file="midori-$VERSION-src.tar.xz" '$2 == file {print $1}' /tmp/flatpak-release/SHA256SUMS.txt)"
+              SOURCE_SHA="$(awk -v file="$SOURCE_BUNDLE" '$2 == file {print $1}' /tmp/flatpak-release/SHA256SUMS.txt)"
             else
-              echo "SHA256SUMS.txt not available for v$VERSION; preserving manifest sha256"
+              echo "SHA256SUMS.txt is not available for v$VERSION." >&2
             fi
           fi
 
-          if [ "$GITHUB_EVENT_NAME" = "release" ] && [ -z "$SOURCE_SHA" ]; then
-            echo "The published release does not contain a SHA256 for its Flatpak source bundle." >&2
+          if ! [[ "$SOURCE_SHA" =~ ^[[:xdigit:]]{64}$ ]] || [[ "$SOURCE_SHA" =~ ^0{64}$ ]]; then
+            echo "Flatpak requires a valid SHA-256 for $SOURCE_BUNDLE in release v$VERSION." >&2
+            echo "Publish $SOURCE_BUNDLE and SHA256SUMS.txt before synchronizing Flatpak packaging." >&2
+            exit 1
+          fi
+
+          gh release view "v$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json assets \
+            --jq '.assets[].name' > /tmp/flatpak-release/assets.txt
+          if ! grep -Fxq "$SOURCE_BUNDLE" /tmp/flatpak-release/assets.txt; then
+            echo "Release v$VERSION does not contain $SOURCE_BUNDLE." >&2
+            echo "Flatpak packaging is not updated without its immutable source bundle." >&2
             exit 1
           fi
 
@@ -116,7 +128,7 @@ jobs:
           repository: goastian/org.astian.midori_browser
           token: ${{ secrets.PACKAGING_TOKEN }}
           path: flatpak-repo
-          ref: main
+          ref: master
 
       - name: Update Flatpak release files
         run: |
@@ -188,7 +200,7 @@ jobs:
           git diff --cached --quiet && exit 0
 
           git commit -m "Update Flatpak packaging for Midori Browser ${{ steps.meta.outputs.version }}"
-          git push origin main
+          git push origin master
 
   build-flatpak:
     name: Build Flatpak ${{ matrix.arch }}
@@ -219,7 +231,7 @@ jobs:
           repository: goastian/org.astian.midori_browser
           token: ${{ secrets.PACKAGING_TOKEN }}
           path: flatpak-repo
-          ref: main
+          ref: master
 
       - name: Install Flatpak builder
         run: |
