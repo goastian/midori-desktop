@@ -189,6 +189,20 @@ jobs:
           fi
 
           python3 scripts/update-flatpak-release.py "${args[@]}"
+          install -Dm0755 scripts/flatpak-build-package.sh \
+            flatpak-repo/flatpak-build-package.sh
+          install -Dm0644 build/flatpak/distribution/policies.json \
+            flatpak-repo/policies.json
+
+          for support_file in \
+            flatpak-build-package.sh \
+            org.astian.midori_browser.desktop \
+            org.astian.midori_browser.metainfo.xml \
+            policies.json; do
+            test -s "flatpak-repo/$support_file"
+            grep -Fq "path: $support_file" \
+              flatpak-repo/org.astian.midori_browser.yml
+          done
 
       - name: Setup Node.js
         if: github.event_name != 'workflow_dispatch' || inputs.update_node_sources
@@ -318,6 +332,19 @@ jobs:
           name: flatpak-packaging-worktree
           path: flatpak-repo
 
+      - name: Verify Flatpak packaging contract
+        run: |
+          set -euo pipefail
+          for support_file in \
+            flatpak-build-package.sh \
+            org.astian.midori_browser.desktop \
+            org.astian.midori_browser.metainfo.xml \
+            policies.json; do
+            test -s "flatpak-repo/$support_file"
+            grep -Fq "path: $support_file" \
+              flatpak-repo/org.astian.midori_browser.yml
+          done
+
       - name: Download Flatpak source artifact
         if: needs.sync-packaging-repo.outputs.source_mode == 'ci-artifact'
         uses: actions/download-artifact@v8
@@ -341,9 +368,43 @@ jobs:
       - name: Stage native Linux package
         if: needs.sync-packaging-repo.outputs.source_mode == 'ci-artifact'
         run: |
-          package_file="$(find linux-artifact -type f -name '*.tar.xz' -print -quit)"
-          test -n "$package_file"
+          set -euo pipefail
+          mapfile -t package_files < <(
+            find linux-artifact -type f \
+              -name '*linux-${{ matrix.arch }}*.tar.xz' -print
+          )
+          if [ "${#package_files[@]}" -ne 1 ]; then
+            echo "Expected exactly one Linux ${{ matrix.arch }} package; found ${#package_files[@]}." >&2
+            printf '%s\n' "${package_files[@]}" >&2
+            exit 1
+          fi
+          package_file="${package_files[0]}"
           tar -tJf "$package_file" >/dev/null
+
+          arch_check_dir="$(mktemp -d)"
+          trap 'rm -rf "$arch_check_dir"' EXIT
+          tar -xJf "$package_file" -C "$arch_check_dir"
+          package_binary="$(
+            find "$arch_check_dir" -type f -name midori-bin -print -quit
+          )"
+          if [ -z "$package_binary" ]; then
+            package_binary="$(
+              find "$arch_check_dir" -type f -name midori -print -quit
+            )"
+          fi
+          if [ -z "$package_binary" ]; then
+            echo "The Linux package does not contain a Midori executable." >&2
+            exit 1
+          fi
+          binary_type="$(file -Lb "$package_binary")"
+          case "${{ matrix.arch }}:$binary_type" in
+            x86_64:*x86-64* | aarch64:*ARM\ aarch64*) ;;
+            *)
+              echo "Linux package architecture mismatch: $binary_type" >&2
+              exit 1
+              ;;
+          esac
+
           cp "$package_file" flatpak-repo/midori-linux-package.tar.xz
           package_sha="$(sha256sum flatpak-repo/midori-linux-package.tar.xz | cut -d' ' -f1)"
           {

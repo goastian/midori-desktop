@@ -14,6 +14,12 @@ NODE_SDK_EXTENSION = "org.freedesktop.Sdk.Extension.node22"
 NODE_SDK_PATH = "/usr/lib/sdk/node22"
 RUST_SDK_EXTENSION = "org.freedesktop.Sdk.Extension.rust-stable"
 RUST_SDK_PATH = "/usr/lib/sdk/rust-stable"
+PACKAGING_SUPPORT_SOURCES = (
+    ("flatpak-build-package.sh", "scripts"),
+    (f"{APP_ID}.desktop", "flatpak-packaging"),
+    (f"{APP_ID}.metainfo.xml", "flatpak-packaging"),
+    ("policies.json", "build/flatpak/distribution"),
+)
 
 
 def indent(elem: ET.Element, level: int = 0) -> None:
@@ -99,14 +105,72 @@ def ensure_build_output_directory(text: str) -> str:
 
 
 def ensure_native_package_source(text: str, package_path: str | None) -> str:
-    if not package_path or f"path: {package_path}" in text:
+    if not package_path:
         return text
+
+    block = (
+        "      - type: file\n"
+        f"        path: {package_path}\n"
+        "        dest: dist\n"
+        "        dest-filename: midori-linux-package.tar.xz\n"
+    )
+    pattern = (
+        rf"^      - type: file\n"
+        rf"        path: {re.escape(package_path)}\n"
+        rf"(?:        [^\n]+\n)*"
+    )
+    updated, count = re.subn(
+        pattern,
+        lambda _: block,
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if count == 1:
+        return updated
 
     return replace_or_fail(
         r"^(      - type: archive\n        path: [^\n]+\n)",
-        rf"\g<1>      - type: file\n        path: {package_path}\n        dest: dist\n        dest-filename: midori-linux-x86_64-linux-aarch64.tar.xz\n",
+        rf"\g<1>{block}",
         text,
         "native Linux package source",
+    )
+
+
+def ensure_packaging_support_sources(text: str) -> str:
+    blocks = []
+    for source_path, destination in PACKAGING_SUPPORT_SOURCES:
+        block = (
+            "      - type: file\n"
+            f"        path: {source_path}\n"
+            f"        dest: {destination}\n"
+        )
+        pattern = (
+            rf"^      - type: file\n"
+            rf"        path: {re.escape(source_path)}\n"
+            rf"(?:        [^\n]+\n)*"
+        )
+        updated, count = re.subn(
+            pattern,
+            lambda _: block,
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if count == 1:
+            text = updated
+            continue
+
+        blocks.append(block)
+
+    if not blocks:
+        return text
+
+    return replace_or_fail(
+        r"^(      - type: archive\n(?:        [^\n]+\n)+)",
+        rf"\g<1>{''.join(blocks)}",
+        text,
+        "Flatpak packaging support sources",
     )
 
 
@@ -169,6 +233,7 @@ def update_manifest(
             "source tarball sha256",
         )
     text = ensure_native_package_source(text, package_path)
+    text = ensure_packaging_support_sources(text)
 
     path.write_text(text, encoding="utf-8")
 

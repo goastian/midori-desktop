@@ -44,22 +44,24 @@ export npm_config_fund=false
 export npm_config_offline=true
 export npm_config_cache="$PWD/flatpak-node/npm-cache"
 
-if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js is unavailable in the Flatpak SDK. Add the Node SDK extension to the manifest." >&2
-  exit 1
-fi
-
 arch_pattern_primary="linux-${SURFER_COMPAT}"
 arch_pattern_alt="linux-${SURFER_COMPAT/x86_64/x64}"
 arch_pattern_alt="${arch_pattern_alt/aarch64/arm64}"
 package_archive=""
-if [ -d dist ]; then
+if [ -s dist/midori-linux-package.tar.xz ]; then
+  package_archive="dist/midori-linux-package.tar.xz"
+elif [ -d dist ]; then
   package_archive="$(find dist -maxdepth 1 -type f \( -name "*${arch_pattern_primary}*.tar.xz" -o -name "*${arch_pattern_alt}*.tar.xz" \) | sort | tail -n 1)"
 fi
 
 if [ -n "$package_archive" ] && [ "${MIDORI_FLATPAK_REUSE_DIST:-1}" = "1" ]; then
   echo "Reusing existing Linux package archive: $package_archive"
 else
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js is unavailable in the Flatpak SDK. Add the Node SDK extension to the manifest." >&2
+    exit 1
+  fi
+
   if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
     git init -q
     git config user.name "Flatpak Builder"
@@ -120,9 +122,20 @@ EOF
 chmod 0755 "$PREFIX/bin/midori"
 
 metadata_dir="flatpak-packaging"
-if [ ! -f "$metadata_dir/org.astian.midori_browser.desktop" ]; then
+if [ ! -s "$metadata_dir/org.astian.midori_browser.desktop" ] || \
+  [ ! -s "$metadata_dir/org.astian.midori_browser.metainfo.xml" ]; then
   metadata_dir="build/flatpak"
 fi
+
+for metadata_file in \
+  "$metadata_dir/org.astian.midori_browser.desktop" \
+  "$metadata_dir/org.astian.midori_browser.metainfo.xml" \
+  "build/flatpak/distribution/policies.json"; do
+  if [ ! -s "$metadata_file" ]; then
+    echo "Required Flatpak packaging file is missing: $metadata_file" >&2
+    exit 1
+  fi
+done
 
 install -Dm0644 "$metadata_dir/org.astian.midori_browser.desktop" \
   "$PREFIX/share/applications/$APP_ID.desktop"

@@ -122,6 +122,12 @@ jobs:
             --exclude='./.npm' \
             --exclude='./*.log' \
             -cf - . | tar -xf - -C "$stage_dir"
+          install -Dm0644 build/flatpak/org.astian.midori_browser.desktop \
+            "$stage_dir/build/flatpak/org.astian.midori_browser.desktop"
+          install -Dm0644 build/flatpak/org.astian.midori_browser.metainfo.xml \
+            "$stage_dir/build/flatpak/org.astian.midori_browser.metainfo.xml"
+          install -Dm0644 build/flatpak/distribution/policies.json \
+            "$stage_dir/build/flatpak/distribution/policies.json"
           tar \
             --sort=name \
             --mtime='UTC 2020-01-01' \

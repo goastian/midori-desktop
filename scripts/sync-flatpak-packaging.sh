@@ -49,6 +49,10 @@ fi
 
 echo "Updating Flatpak release metadata for $VERSION"
 python3 "$REPO_ROOT/scripts/update-flatpak-release.py" "${release_args[@]}"
+install -Dm0755 "$REPO_ROOT/scripts/flatpak-build-package.sh" \
+  "$PKG_REPO_DIR/flatpak-build-package.sh"
+install -Dm0644 "$REPO_ROOT/build/flatpak/distribution/policies.json" \
+  "$PKG_REPO_DIR/policies.json"
 
 echo "Regenerating Flatpak npm sources"
 bash "$REPO_ROOT/scripts/refresh-node-sources.sh" \
