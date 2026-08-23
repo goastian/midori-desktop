@@ -38,6 +38,7 @@ def update_manifest(
     version: str,
     source_sha: str | None,
     source_commit: str | None,
+    source_path: str | None,
 ) -> None:
     text = path.read_text(encoding="utf-8")
     tag = f"v{version}"
@@ -65,12 +66,20 @@ def update_manifest(
             text,
             "source git commit",
         )
-    text = replace_or_fail(
-        r"url:\s+https://github\.com/goastian/midori-desktop/releases/download/v[^/]+/midori-[^/\s]+(?:\.source|-src)\.tar\.xz",
-        f"url: {source_url}",
-        text,
-        "source tarball URL",
-    )
+    if source_path:
+        text = replace_or_fail(
+            r"(?P<indent>^[ \t]+)(?:url:\s+https://github\.com/goastian/midori-desktop/releases/download/v[^/]+/midori-[^/\s]+(?:\.source|-src)\.tar\.xz\n(?P=indent)sha256:\s+[\"']?[a-f0-9]{64}[\"']?|path:\s+[^\n]+)",
+            rf"\g<indent>path: {source_path}",
+            text,
+            "local source tarball path",
+        )
+    else:
+        text = replace_or_fail(
+            r"url:\s+https://github\.com/goastian/midori-desktop/releases/download/v[^/]+/midori-[^/\s]+(?:\.source|-src)\.tar\.xz",
+            f"url: {source_url}",
+            text,
+            "source tarball URL",
+        )
     if source_sha:
         text = replace_or_fail(
             r"(url:\s+https://github\.com/goastian/midori-desktop/releases/download/v[^/]+/midori-[^/\s]+(?:\.source|-src)\.tar\.xz\n\s+sha256:\s+)[\"']?[a-f0-9]{64}[\"']?",
@@ -160,6 +169,10 @@ def main() -> None:
         "--source-sha",
         help="SHA256 for the source tarball; omitted values preserve the current manifest sha256",
     )
+    parser.add_argument(
+        "--source-path",
+        help="Local source tarball path for a non-published Flatpak validation build",
+    )
     parser.add_argument("--source-commit", help="Git commit for the release tag")
     args = parser.parse_args()
 
@@ -174,13 +187,24 @@ def main() -> None:
     if not metainfo.exists():
         raise FileNotFoundError(f"Metainfo not found: {metainfo}")
 
-    update_manifest(manifest, args.version, args.source_sha, args.source_commit)
+    if args.source_sha and args.source_path:
+        parser.error("--source-sha and --source-path cannot be used together")
+
+    update_manifest(
+        manifest,
+        args.version,
+        args.source_sha,
+        args.source_commit,
+        args.source_path,
+    )
     update_metainfo(metainfo, args.version)
     update_readme(readme, args.version)
 
     print(f"Updated packaging repo at: {repo}")
     print(f"Version: {args.version}")
-    if args.source_sha:
+    if args.source_path:
+        print(f"Source path: {args.source_path}")
+    elif args.source_sha:
         print(f"Source sha256: {args.source_sha}")
     else:
         print("Source sha256: preserved from existing manifest")

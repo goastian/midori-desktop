@@ -12,7 +12,11 @@ on:
         required: false
         type: string
       source_sha:
-        description: "Optional SHA256 for the published midori-<version>-src.tar.xz"
+        description: "SHA256 of the published source tarball, not the Actions artifact digest"
+        required: false
+        type: string
+      source_run_id:
+        description: "Successful build run ID whose midori-src.tar.xz artifact is used only for a validation build"
         required: false
         type: string
       source_commit:
@@ -30,7 +34,7 @@ on:
         type: boolean
         default: true
       build_flatpak:
-        description: "Build and publish Flatpak bundles after updating the packaging repo"
+        description: "Build Flatpak bundles after syncing published sources or from source_run_id"
         required: false
         type: boolean
         default: false
@@ -39,6 +43,7 @@ on:
       - published
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -49,6 +54,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       source_sha: ${{ steps.meta.outputs.source_sha }}
+      source_mode: ${{ steps.meta.outputs.source_mode }}
     steps:
       - name: Checkout midori-desktop
         uses: actions/checkout@v7
@@ -66,6 +72,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          INPUT_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           REF_NAME: ${{ github.ref_name }}
@@ -84,43 +91,63 @@ jobs:
           fi
 
           SOURCE_BUNDLE="midori-$VERSION-src.tar.xz"
+          SOURCE_MODE="published-release"
           SOURCE_SHA="$INPUT_SOURCE_SHA"
-          if [ -z "$SOURCE_SHA" ]; then
-            mkdir -p /tmp/flatpak-release
-            if gh release download "v$VERSION" \
-              --repo "$GITHUB_REPOSITORY" \
-              --pattern SHA256SUMS.txt \
-              --dir /tmp/flatpak-release; then
-              SOURCE_SHA="$(awk -v file="$SOURCE_BUNDLE" '$2 == file {print $1}' /tmp/flatpak-release/SHA256SUMS.txt)"
-            else
-              echo "SHA256SUMS.txt is not available for v$VERSION." >&2
-            fi
-          fi
-
-          if ! [[ "$SOURCE_SHA" =~ ^[[:xdigit:]]{64}$ ]] || [[ "$SOURCE_SHA" =~ ^0{64}$ ]]; then
-            echo "Flatpak requires a valid SHA-256 for $SOURCE_BUNDLE in release v$VERSION." >&2
-            echo "Publish $SOURCE_BUNDLE and SHA256SUMS.txt before synchronizing Flatpak packaging." >&2
-            exit 1
-          fi
-
-          gh release view "v$VERSION" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json assets \
-            --jq '.assets[].name' > /tmp/flatpak-release/assets.txt
-          if ! grep -Fxq "$SOURCE_BUNDLE" /tmp/flatpak-release/assets.txt; then
-            echo "Release v$VERSION does not contain $SOURCE_BUNDLE." >&2
-            echo "Flatpak packaging is not updated without its immutable source bundle." >&2
-            exit 1
-          fi
-
           SOURCE_COMMIT="$INPUT_SOURCE_COMMIT"
-          if [ -z "$SOURCE_COMMIT" ]; then
-            SOURCE_COMMIT="$(git rev-list -n 1 "v$VERSION" 2>/dev/null || git rev-parse HEAD)"
+          mkdir -p /tmp/flatpak-release
+
+          if [ -n "$INPUT_SOURCE_RUN_ID" ]; then
+            if [ -n "$SOURCE_SHA" ]; then
+              echo "source_sha cannot be used with source_run_id." >&2
+              echo "The Actions artifact digest is not the SHA-256 of $SOURCE_BUNDLE." >&2
+              exit 1
+            fi
+            SOURCE_MODE="ci-artifact"
+            SOURCE_RUN_CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_SOURCE_RUN_ID" --jq '.conclusion')"
+            if [ "$SOURCE_RUN_CONCLUSION" != "success" ]; then
+              echo "Source run $INPUT_SOURCE_RUN_ID is not successful: $SOURCE_RUN_CONCLUSION" >&2
+              exit 1
+            fi
+            if [ -z "$SOURCE_COMMIT" ]; then
+              SOURCE_COMMIT="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_SOURCE_RUN_ID" --jq '.head_sha')"
+            fi
+          else
+            if [ -z "$SOURCE_SHA" ]; then
+              if gh release download "v$VERSION" \
+                --repo "$GITHUB_REPOSITORY" \
+                --pattern SHA256SUMS.txt \
+                --dir /tmp/flatpak-release; then
+                SOURCE_SHA="$(awk -v file="$SOURCE_BUNDLE" '$2 == file {print $1}' /tmp/flatpak-release/SHA256SUMS.txt)"
+              else
+                echo "SHA256SUMS.txt is not available for v$VERSION." >&2
+              fi
+            fi
+
+            if ! [[ "$SOURCE_SHA" =~ ^[[:xdigit:]]{64}$ ]] || [[ "$SOURCE_SHA" =~ ^0{64}$ ]]; then
+              echo "Flatpak requires a valid SHA-256 for $SOURCE_BUNDLE in release v$VERSION." >&2
+              echo "Publish $SOURCE_BUNDLE and SHA256SUMS.txt before synchronizing Flatpak packaging." >&2
+              exit 1
+            fi
+
+            gh release view "v$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json assets \
+              --jq '.assets[].name' > /tmp/flatpak-release/assets.txt
+            if ! grep -Fxq "$SOURCE_BUNDLE" /tmp/flatpak-release/assets.txt; then
+              echo "Release v$VERSION does not contain $SOURCE_BUNDLE." >&2
+              echo "Flatpak packaging is not updated without its immutable source bundle." >&2
+              exit 1
+            fi
+
+            if [ -z "$SOURCE_COMMIT" ]; then
+              SOURCE_COMMIT="$(git rev-list -n 1 "v$VERSION" 2>/dev/null || git rev-parse HEAD)"
+            fi
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           echo "source_commit=$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "source_mode=$SOURCE_MODE" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Flatpak packaging repo
         uses: actions/checkout@v7
@@ -142,6 +169,8 @@ jobs:
 
           if [ -n "${{ steps.meta.outputs.source_sha }}" ]; then
             args+=(--source-sha "${{ steps.meta.outputs.source_sha }}")
+          else
+            args+=(--source-path "midori-${{ steps.meta.outputs.version }}-src.tar.xz")
           fi
 
           python3 scripts/update-flatpak-release.py "${args[@]}"
@@ -191,6 +220,7 @@ jobs:
           fi
 
       - name: Commit and push packaging update
+        if: steps.meta.outputs.source_mode == 'published-release'
         run: |
           cd flatpak-repo
           git config user.name "github-actions[bot]"
@@ -202,13 +232,23 @@ jobs:
           git commit -m "Update Flatpak packaging for Midori Browser ${{ steps.meta.outputs.version }}"
           git push origin master
 
+      - name: Upload transient Flatpak packaging
+        if: steps.meta.outputs.source_mode == 'ci-artifact'
+        uses: actions/upload-artifact@v7
+        with:
+          name: flatpak-packaging-worktree
+          path: flatpak-repo
+          retention-days: 1
+          if-no-files-found: error
+
   build-flatpak:
     name: Build Flatpak ${{ matrix.arch }}
     needs: sync-packaging-repo
     if: >-
       (github.event_name == 'release' || inputs.build_flatpak) &&
-      needs.sync-packaging-repo.outputs.source_sha != ''
+      needs.sync-packaging-repo.outputs.source_mode != ''
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -225,13 +265,57 @@ jobs:
           test -n "$VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell \
+            /usr/share/swift /usr/local/.ghcup || true
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get autoremove -y 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          df -h
+
       - name: Checkout Flatpak packaging repo
+        if: needs.sync-packaging-repo.outputs.source_mode == 'published-release'
         uses: actions/checkout@v7
         with:
           repository: goastian/org.astian.midori_browser
           token: ${{ secrets.PACKAGING_TOKEN }}
           path: flatpak-repo
           ref: master
+
+      - name: Download transient Flatpak packaging
+        if: needs.sync-packaging-repo.outputs.source_mode == 'ci-artifact'
+        uses: actions/download-artifact@v8
+        with:
+          name: flatpak-packaging-worktree
+          path: flatpak-repo
+
+      - name: Download Flatpak source artifact
+        if: needs.sync-packaging-repo.outputs.source_mode == 'ci-artifact'
+        uses: actions/download-artifact@v8
+        with:
+          name: midori-src.tar.xz
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: flatpak-repo
+
+      - name: Verify local Flatpak source
+        if: needs.sync-packaging-repo.outputs.source_mode == 'ci-artifact'
+        run: |
+          source_file="flatpak-repo/midori-${{ steps.version.outputs.version }}-src.tar.xz"
+          test -s "$source_file"
+          source_sha="$(sha256sum "$source_file" | cut -d' ' -f1)"
+          {
+            echo "### Flatpak validation source"
+            echo
+            echo "Using source artifact from run \`${{ inputs.source_run_id }}\`."
+            echo
+            echo "| File | SHA-256 |"
+            echo "| --- | --- |"
+            echo "| \`$(basename "$source_file")\` | \`$source_sha\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install Flatpak builder
         run: |
