@@ -1,13 +1,13 @@
 diff --git a/browser/components/moz.build b/browser/components/moz.build
-index 799e5246e6d11a3725129975154f524b8fe00a16..ef851ef46ad2446bfe31a15568aa8a9574194abc 100644
+index 4a4b96b779f33b17082cf79563821ae1164c1dd1..4387fc12cb9e2e34bc23a0af5306911bbd8d5873 100644
 --- a/browser/components/moz.build
 +++ b/browser/components/moz.build
-@@ -81,6 +81,9 @@ DIRS += [
+@@ -82,6 +82,9 @@ DIRS += [
      "webrtc",
  ]
  
 +# Midori custom components
-+DIRS += ["autohide", "center", "cws", "gradient", "lifecycle", "memory", "msidebar", "profilemigration", "setup", "shortcuts", "tabsleep", "verticaltabs", "webapps", "workspace"]
++DIRS += ["autohide", "center", "cws", "gradient", "lifecycle", "memory", "msidebar", "profilemigration", "setup", "shortcuts", "tabprotect", "tabsleep", "verticaltabs", "webapps", "workspace"]
 +
  DIRS += ["build"]
  

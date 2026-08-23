@@ -1,0 +1,195 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@-moz-document url("chrome://browser/content/browser.xhtml") {
+.browserStack.midori-tabprotect-stack {
+  position: relative;
+}
+
+browser[midori-tabprotect-content-hidden] {
+  visibility: hidden !important;
+}
+
+.midori-tabprotect-overlay {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: var(--space-xxlarge);
+  overflow: auto;
+  color: var(--text-color);
+  background: var(--background-color-canvas);
+  font: menu;
+}
+
+.midori-tabprotect-overlay[hidden] {
+  display: none;
+}
+
+.midori-tabprotect-card {
+  width: var(--size-layout-large);
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-xxlarge);
+  border: var(--card-border);
+  border-radius: var(--card-border-radius);
+  background: var(--card-background-color);
+  box-shadow: var(--card-box-shadow);
+  text-align: center;
+}
+
+.midori-tabprotect-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-image-large);
+  height: var(--size-image-large);
+  margin-bottom: var(--space-xlarge);
+  border-radius: var(--border-radius-large);
+  color: var(--icon-color-success);
+  background: var(--background-color-success);
+}
+
+.midori-tabprotect-icon svg {
+  width: var(--icon-size-xlarge);
+  height: var(--icon-size-xlarge);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.midori-tabprotect-eyebrow {
+  margin: 0 0 var(--space-small);
+  color: var(--text-color-deemphasized);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.midori-tabprotect-title {
+  margin: 0;
+  font-size: var(--font-size-heading-xlarge);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.025em;
+}
+
+.midori-tabprotect-description {
+  max-width: var(--size-layout-medium);
+  margin: var(--space-medium) auto var(--space-xlarge);
+  color: var(--text-color-deemphasized);
+  font-size: var(--font-size-small);
+  line-height: 1.55;
+}
+
+.midori-tabprotect-form {
+  display: grid;
+  gap: var(--space-medium);
+}
+
+.midori-tabprotect-password {
+  width: 100%;
+  min-height: var(--size-item-xlarge);
+  box-sizing: border-box;
+  padding: 0 var(--space-large);
+  border: var(--input-text-border);
+  border-radius: var(--input-text-border-radius);
+  color: var(--input-text-color);
+  background: var(--input-text-background-color);
+  font: inherit;
+  text-align: start;
+}
+
+.midori-tabprotect-password:focus {
+  border-color: var(--focus-outline-color);
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
+}
+
+.midori-tabprotect-submit {
+  min-height: var(--button-min-height);
+  border: 0;
+  border-radius: var(--button-border-radius);
+  color: var(--button-text-color-primary);
+  background: var(--button-background-color-primary);
+  font: inherit;
+  font-weight: var(--button-font-weight);
+  cursor: pointer;
+}
+
+.midori-tabprotect-submit:hover {
+  background: var(--button-background-color-primary-hover);
+}
+
+.midori-tabprotect-submit:disabled {
+  opacity: var(--button-opacity-disabled);
+  cursor: wait;
+}
+
+.midori-tabprotect-status {
+  min-height: var(--size-item-small);
+  margin: var(--space-xxsmall) 0 0;
+  color: var(--text-color-deemphasized);
+  font-size: var(--font-size-small);
+}
+
+.midori-tabprotect-status[data-error="true"] {
+  color: var(--text-color-error);
+}
+
+.midori-tabprotect-reset {
+  margin-top: var(--space-xsmall);
+  border: 0;
+  color: var(--link-color);
+  background: var(--button-background-color-ghost);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.midori-tabprotect-reset:hover {
+  text-decoration: underline;
+}
+
+.midori-tabprotect-assurance {
+  margin: var(--space-xlarge) 0 0;
+  padding-top: var(--space-large);
+  border-top: var(--border-width) solid var(--border-color-deemphasized);
+  color: var(--text-color-deemphasized);
+  font-size: var(--font-size-small);
+}
+
+.tabbrowser-tab[midori-tabprotect-locked] .tab-icon-image {
+  visibility: hidden;
+}
+
+:root[midori-tabprotect-active] #urlbar-input {
+  caret-color: transparent !important;
+  pointer-events: none;
+  user-select: none;
+}
+
+#tab-preview-panel[midori-tabprotect-locked] .tab-preview-thumbnail-container > *,
+#tab-preview-panel[midori-tabprotect-locked] .tab-preview-uri {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .midori-tabprotect-card {
+    animation: midori-tabprotect-enter 160ms ease-out;
+  }
+
+  @keyframes midori-tabprotect-enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+}
+}

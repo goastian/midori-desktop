@@ -619,6 +619,33 @@ html, body {
   line-height: 1.4;
 }
 
+#pref-tabprotect-mode {
+  min-inline-size: 0;
+  border: 0;
+  margin: 0;
+}
+
+#pref-tabprotect-mode legend {
+  padding: 0;
+}
+
+#pref-tabprotect-mode label {
+  color: var(--mc-text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+#tabprotect-status {
+  min-height: 1.4em;
+  margin: 12px 0 0;
+  color: var(--mc-green-700);
+  font-size: 13px;
+}
+
+#tabprotect-status.form-status-error {
+  color: var(--mc-danger, #c72c41);
+}
+
 /* ---- Visual Mods ---- */
 .mod-page-header {
   display: flex;

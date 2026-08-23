@@ -16,6 +16,7 @@ const SEARCH_UI_UTILS_MODULE_URL = 'resource:///modules/SearchUIUtils.sys.mjs';
 
 export const PREF_SHORTCUT_OPEN_CENTER = 'midori.shortcuts.general.openCenter';
 export const PREF_SHORTCUT_TOGGLE_VERTICAL_TABS = 'midori.shortcuts.tabs.toggleVertical';
+export const PREF_SHORTCUT_PROTECT_TAB = 'midori.shortcuts.tabs.protectTab';
 export const PREF_SHORTCUT_WORKSPACE_PREVIOUS = 'midori.workspaces.shortcut.previous';
 export const PREF_SHORTCUT_WORKSPACE_NEXT = 'midori.workspaces.shortcut.next';
 
@@ -37,6 +38,15 @@ const SHORTCUT_DEFINITIONS = [
     pref: PREF_SHORTCUT_TOGGLE_VERTICAL_TABS,
     defaultValue: 'Ctrl+Alt+V',
     action: 'toggle-vertical-tabs',
+  },
+  {
+    id: 'protect-tab',
+    category: 'Tabs',
+    title: 'Protect Tab',
+    description: 'Protect or relock the selected tab.',
+    pref: PREF_SHORTCUT_PROTECT_TAB,
+    defaultValue: 'Ctrl+Alt+L',
+    action: 'protect-tab',
   },
   {
     id: 'toggle-sidebar',
@@ -471,6 +481,13 @@ export const MidoriShortcuts = {
           !Services.prefs.getBoolPref('midori.verticaltabs.enabled', false)
         );
         return;
+      case 'protect-tab': {
+        const { MidoriTabProtection } = ChromeUtils.importESModule(
+          'resource:///modules/MidoriTabProtection.sys.mjs'
+        );
+        await MidoriTabProtection.toggleTabProtection(win);
+        return;
+      }
       case 'toggle-sidebar':
         Services.prefs.setBoolPref(
           SidebarPrefs.PREF_ENABLED,

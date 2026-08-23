@@ -10,6 +10,7 @@
 const WORKSPACE_CHANGE_TOPIC = "midori-workspaces-updated";
 const WORKSPACES_MODULE_URL = "resource:///modules/MidoriWorkspaces.sys.mjs";
 const SHORTCUTS_MODULE_URL = "resource:///modules/MidoriShortcuts.sys.mjs";
+const TAB_PROTECTION_MODULE_URL = "resource:///modules/MidoriTabProtection.sys.mjs";
 const WEBAPPS_MODULE_URL = "resource:///modules/MidoriWebApps.sys.mjs";
 const WEBAPPS_CHANGE_TOPIC = "midori-webapps-changed";
 const WEBAPP_FALLBACK_ICON =
@@ -28,6 +29,7 @@ const PREF_MAP = {
   "pref-autohide-toolbar":  { pref: "midori.autohide.toolbar",        type: "bool" },
   "pref-tabsleep-enabled":  { pref: "midori.tabsleep.enabled",        type: "bool" },
   "pref-tabsleep-timeout":  { pref: "midori.tabsleep.timeoutMinutes", type: "int" },
+  "pref-tabprotect-mode": { pref: "midori.tabprotect.mode", type: "string" },
   "pref-msidebar-enabled":  { pref: "midori.msidebar.enabled",        type: "bool" },
   "pref-msidebar-position": { pref: "midori.msidebar.position",       type: "string" },
   "pref-msidebar-width":    { pref: "midori.msidebar.width",          type: "int" },
@@ -152,6 +154,7 @@ const webAppsUI = {
 let workspaceApi = null;
 let workspaceObserver = null;
 let shortcutsApi = null;
+let tabProtectionApi = null;
 let shortcutObserver = null;
 let shortcutObservedPrefs = [];
 let shortcutFlashPref = "";
@@ -270,6 +273,22 @@ function getShortcutsApi() {
   }
 
   return shortcutsApi;
+}
+
+function getTabProtectionApi() {
+  if (tabProtectionApi) {
+    return tabProtectionApi;
+  }
+
+  try {
+    tabProtectionApi = ChromeUtils.importESModule(
+      TAB_PROTECTION_MODULE_URL
+    ).MidoriTabProtection;
+  } catch {
+    tabProtectionApi = null;
+  }
+
+  return tabProtectionApi;
 }
 
 function getAddonManagerApi() {
@@ -1988,6 +2007,102 @@ function initTabLayout() {
   }
 }
 
+function setTabProtectionStatus(message, error = false) {
+  const status = document.getElementById("tabprotect-status");
+  if (!status) {
+    return;
+  }
+  status.textContent = message;
+  status.classList.toggle("form-status-error", error);
+}
+
+function updateTabProtectionControls() {
+  const api = getTabProtectionApi();
+  const configured = api?.hasGlobalPassword?.() || false;
+  const globalStatus = document.getElementById("tabprotect-global-password-status");
+  const button = document.getElementById("tabprotect-set-global-password");
+  if (globalStatus) {
+    globalStatus.textContent = configured
+      ? "A global password is configured. Changing it updates every tab that uses it."
+      : "No global password is configured.";
+  }
+  if (button) {
+    button.textContent = configured ? "Change password" : "Set password";
+  }
+}
+
+function initTabProtectionControls() {
+  const api = getTabProtectionApi();
+  const setPasswordButton = document.getElementById("tabprotect-set-global-password");
+  const resetButton = document.getElementById("tabprotect-reset");
+  if (!api || (!setPasswordButton && !resetButton)) {
+    return;
+  }
+
+  setPasswordButton?.addEventListener("click", async () => {
+    const first = { value: "" };
+    if (!Services.prompt.promptPassword(window, "Set global tab password", "Enter a password with at least 8 characters.", first, null, {})) {
+      return;
+    }
+    const confirmation = { value: "" };
+    if (!Services.prompt.promptPassword(window, "Confirm global tab password", "Enter the password again to confirm it.", confirmation, null, {})) {
+      return;
+    }
+    if (first.value !== confirmation.value) {
+      setTabProtectionStatus("The passwords do not match.", true);
+      return;
+    }
+    setPasswordButton.disabled = true;
+    setTabProtectionStatus("Securing the global password…");
+    let saved = false;
+    try {
+      saved = await api.setGlobalPassword(first.value);
+    } catch {
+      setTabProtectionStatus("Could not save the global password.", true);
+      return;
+    } finally {
+      setPasswordButton.disabled = false;
+    }
+    if (!saved) {
+      setTabProtectionStatus("Choose a password with at least 8 characters.", true);
+      return;
+    }
+    updateTabProtectionControls();
+    setTabProtectionStatus("Global tab password saved.");
+  });
+
+  resetButton?.addEventListener("click", () => {
+    const confirmed = Services.prompt.confirm(
+      window,
+      "Reset tab protection",
+      "This permanently closes every protected tab, removes protected recently closed entries, and deletes all tab passwords. Continue?"
+    );
+    if (!confirmed) {
+      return;
+    }
+    const closedTabs = api.resetAllProtection();
+    updateTabProtectionControls();
+    setTabProtectionStatus(
+      closedTabs
+        ? `${closedTabs} protected tab${closedTabs === 1 ? " was" : "s were"} closed and protection was reset.`
+        : "Tab protection was reset."
+    );
+  });
+
+  const observer = {
+    observe() {
+      updateTabProtectionControls();
+    },
+  };
+  Services.prefs.addObserver("midori.tabprotect.globalPasswordHash", observer);
+  window.addEventListener("unload", () => {
+    try {
+      Services.prefs.removeObserver("midori.tabprotect.globalPasswordHash", observer);
+    } catch {}
+  }, { once: true });
+  updateTabProtectionControls();
+}
+
 // ---- Navigation ----
 function initNavigation() {
   const navItems = document.querySelectorAll(".nav-item");
@@ -2062,6 +2177,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initModBlurCatalog();
   initAddonControls();
   initTabLayout();
+  initTabProtectionControls();
   initVersionInfo();
   initWorkspaceManager();
   initShortcutManager();

@@ -1,0 +1,9 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
+
+EXTRA_JS_MODULES += [
+    "MidoriTabProtection.sys.mjs",
+    "TabProtectionState.sys.mjs",
+]
+
+FINAL_TARGET_FILES.modules += ["tabprotect.css"]

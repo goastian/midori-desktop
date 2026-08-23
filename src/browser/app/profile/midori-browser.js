@@ -380,6 +380,7 @@ pref('midori.shortcuts.general.openCenter', 'Ctrl+Alt+M');
 pref('midori.shortcuts.tabs.toggleVertical', 'Ctrl+Alt+V');
 pref('midori.shortcuts.quickActions.searchSelectedText', 'Ctrl+Alt+F');
 pref('midori.shortcuts.quickActions.duplicateTab', 'Ctrl+Alt+D');
+pref('midori.shortcuts.tabs.protectTab', 'Ctrl+Alt+L');
 pref('midori.workspaces.shortcut.previous', 'Ctrl+Alt+Q');
 pref('midori.workspaces.shortcut.next', 'Ctrl+Alt+E');
 pref('midori.workspaces.shortcut.switch1', '');
@@ -406,6 +407,9 @@ pref('midori.autohide.toolbar', false);
 // readable, then auto-hide again (Zen-style compact flash).
 pref('midori.autohide.flashOnLocationChange', true);
 pref('midori.autohide.flashDurationMs', 1200);
+
+pref('midori.tabprotect.mode', 'global');
+pref('midori.tabprotect.globalPasswordHash', '');
 
 // ============================================================================
 // MIDORI PRIVACY (replaces Firefox Enhanced Tracking Protection)

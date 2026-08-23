@@ -12,6 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MidoriGradient: 'resource:///modules/MidoriGradient.sys.mjs',
   MidoriSidebar: 'resource:///modules/MidoriSidebar.sys.mjs',
   MidoriShortcuts: 'resource:///modules/MidoriShortcuts.sys.mjs',
+  MidoriTabProtection: 'resource:///modules/MidoriTabProtection.sys.mjs',
   MidoriTabSleep: 'resource:///modules/MidoriTabSleep.sys.mjs',
   MidoriVerticalTabs: 'resource:///modules/MidoriVerticalTabs.sys.mjs',
   MidoriWorkspaces: 'resource:///modules/MidoriWorkspaces.sys.mjs',
@@ -25,6 +26,7 @@ const services = [
   { name: 'MidoriWorkspaces', getService: () => lazy.MidoriWorkspaces },
   { name: 'MidoriSidebar', getService: () => lazy.MidoriSidebar },
   { name: 'MidoriShortcuts', getService: () => lazy.MidoriShortcuts },
+  { name: 'MidoriTabProtection', getService: () => lazy.MidoriTabProtection },
   { name: 'MidoriTabSleep', getService: () => lazy.MidoriTabSleep },
 ];
 

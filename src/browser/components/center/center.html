@@ -331,6 +331,34 @@
           </div>
         </div>
 
+        <div class="setting-group" id="tab-protection-settings">
+          <h2 class="group-title">Protect Tabs</h2>
+          <p class="group-desc">Require a password before a protected tab can be opened.</p>
+          <fieldset class="setting-row" id="pref-tabprotect-mode">
+            <legend class="setting-info">
+              <strong>Password scope</strong>
+              <p>Use one password for all protected tabs, or choose one while protecting each tab.</p>
+            </legend>
+            <label><input type="radio" name="tabprotect-mode" value="global"> Global password</label>
+            <label><input type="radio" name="tabprotect-mode" value="individual"> Individual password per tab</label>
+          </fieldset>
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Global password</strong>
+              <p id="tabprotect-global-password-status">No global password is configured.</p>
+            </div>
+            <button id="tabprotect-set-global-password" class="secondary-button" type="button">Set password</button>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Forgot your password?</strong>
+              <p>Resetting permanently closes protected tabs, clears protected recovery entries, and removes all tab passwords.</p>
+            </div>
+            <button id="tabprotect-reset" class="secondary-button" type="button">Reset protection</button>
+          </div>
+          <p id="tabprotect-status" class="form-status" role="status" aria-live="polite"></p>
+        </div>
+
       </section>
 
       <!-- VISUAL MODS PAGE -->
