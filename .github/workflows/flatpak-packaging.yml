@@ -16,7 +16,7 @@ on:
         required: false
         type: string
       source_run_id:
-        description: "Successful build run ID whose midori-src.tar.xz artifact is used only for a validation build"
+        description: "Build run ID containing current source and Linux package artifacts for a validation bundle"
         required: false
         type: string
       source_commit:
@@ -103,11 +103,21 @@ jobs:
               exit 1
             fi
             SOURCE_MODE="ci-artifact"
-            SOURCE_RUN_CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_SOURCE_RUN_ID" --jq '.conclusion')"
-            if [ "$SOURCE_RUN_CONCLUSION" != "success" ]; then
-              echo "Source run $INPUT_SOURCE_RUN_ID is not successful: $SOURCE_RUN_CONCLUSION" >&2
+            SOURCE_RUN_STATUS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_SOURCE_RUN_ID" --jq '.status')"
+            if [ "$SOURCE_RUN_STATUS" != "completed" ] && [ "$SOURCE_RUN_STATUS" != "in_progress" ]; then
+              echo "Source run $INPUT_SOURCE_RUN_ID is not available: $SOURCE_RUN_STATUS" >&2
               exit 1
             fi
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_SOURCE_RUN_ID/artifacts" \
+              --paginate \
+              --jq '.artifacts[] | select(.expired == false) | .name' \
+              > /tmp/flatpak-release/artifacts.txt
+            for artifact in midori-src.tar.xz linux-x86_64 linux-aarch64; do
+              if ! grep -Fxq "$artifact" /tmp/flatpak-release/artifacts.txt; then
+                echo "Source run $INPUT_SOURCE_RUN_ID does not contain the required artifact: $artifact" >&2
+                exit 1
+              fi
+            done
             if [ -z "$SOURCE_COMMIT" ]; then
               SOURCE_COMMIT="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_SOURCE_RUN_ID" --jq '.head_sha')"
             fi
@@ -167,7 +177,12 @@ jobs:
             --source-commit "${{ steps.meta.outputs.source_commit }}"
           )
 
-          if [ -n "${{ steps.meta.outputs.source_sha }}" ]; then
+          if [ "${{ steps.meta.outputs.source_mode }}" = "ci-artifact" ]; then
+            args+=(
+              --source-path "midori-${{ steps.meta.outputs.version }}-src.tar.xz"
+              --package-path "midori-linux-package.tar.xz"
+            )
+          elif [ -n "${{ steps.meta.outputs.source_sha }}" ]; then
             args+=(--source-sha "${{ steps.meta.outputs.source_sha }}")
           else
             args+=(--source-path "midori-${{ steps.meta.outputs.version }}-src.tar.xz")
@@ -312,6 +327,32 @@ jobs:
           run-id: ${{ inputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: flatpak-repo
+
+      - name: Download Linux package artifact
+        if: needs.sync-packaging-repo.outputs.source_mode == 'ci-artifact'
+        uses: actions/download-artifact@v8
+        with:
+          name: linux-${{ matrix.arch }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: linux-artifact
+
+      - name: Stage native Linux package
+        if: needs.sync-packaging-repo.outputs.source_mode == 'ci-artifact'
+        run: |
+          package_file="$(find linux-artifact -type f -name '*.tar.xz' -print -quit)"
+          test -n "$package_file"
+          tar -tJf "$package_file" >/dev/null
+          cp "$package_file" flatpak-repo/midori-linux-package.tar.xz
+          package_sha="$(sha256sum flatpak-repo/midori-linux-package.tar.xz | cut -d' ' -f1)"
+          {
+            echo "### Native Linux package reused by Flatpak"
+            echo
+            echo "| Architecture | File | SHA-256 |"
+            echo "| --- | --- | --- |"
+            echo "| \`${{ matrix.arch }}\` | \`$(basename "$package_file")\` | \`$package_sha\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify local Flatpak source
         if: needs.sync-packaging-repo.outputs.source_mode == 'ci-artifact'

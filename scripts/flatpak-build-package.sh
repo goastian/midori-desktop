@@ -60,6 +60,13 @@ fi
 if [ -n "$package_archive" ] && [ "${MIDORI_FLATPAK_REUSE_DIST:-1}" = "1" ]; then
   echo "Reusing existing Linux package archive: $package_archive"
 else
+  if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+    git init -q
+    git config user.name "Flatpak Builder"
+    git config user.email "flatpak-builder@localhost"
+    git commit --allow-empty -qm "Flatpak source snapshot"
+  fi
+
   node scripts/flatpak-patch-npm-git-deps.mjs
   if ! npm ci --offline --ignore-scripts --cache "$npm_config_cache"; then
     echo "npm ci --offline failed, retrying with npm install fallback"

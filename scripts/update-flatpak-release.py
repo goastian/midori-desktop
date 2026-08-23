@@ -98,12 +98,25 @@ def ensure_build_output_directory(text: str) -> str:
     )
 
 
+def ensure_native_package_source(text: str, package_path: str | None) -> str:
+    if not package_path or f"path: {package_path}" in text:
+        return text
+
+    return replace_or_fail(
+        r"^(      - type: archive\n        path: [^\n]+\n)",
+        rf"\g<1>      - type: file\n        path: {package_path}\n        dest: dist\n        dest-filename: midori-linux-x86_64-linux-aarch64.tar.xz\n",
+        text,
+        "native Linux package source",
+    )
+
+
 def update_manifest(
     path: Path,
     version: str,
     source_sha: str | None,
     source_commit: str | None,
     source_path: str | None,
+    package_path: str | None,
 ) -> None:
     text = path.read_text(encoding="utf-8")
     tag = f"v{version}"
@@ -155,6 +168,7 @@ def update_manifest(
             text,
             "source tarball sha256",
         )
+    text = ensure_native_package_source(text, package_path)
 
     path.write_text(text, encoding="utf-8")
 
@@ -241,6 +255,10 @@ def main() -> None:
         "--source-path",
         help="Local source tarball path for a non-published Flatpak validation build",
     )
+    parser.add_argument(
+        "--package-path",
+        help="Local Linux package archive for a non-published Flatpak validation build",
+    )
     parser.add_argument("--source-commit", help="Git commit for the release tag")
     args = parser.parse_args()
 
@@ -255,8 +273,10 @@ def main() -> None:
     if not metainfo.exists():
         raise FileNotFoundError(f"Metainfo not found: {metainfo}")
 
-    if args.source_sha and args.source_path:
-        parser.error("--source-sha and --source-path cannot be used together")
+    if args.source_sha and (args.source_path or args.package_path):
+        parser.error("--source-sha cannot be used with local Flatpak validation sources")
+    if args.package_path and not args.source_path:
+        parser.error("--package-path requires --source-path")
 
     update_manifest(
         manifest,
@@ -264,6 +284,7 @@ def main() -> None:
         args.source_sha,
         args.source_commit,
         args.source_path,
+        args.package_path,
     )
     update_metainfo(metainfo, args.version)
     update_readme(readme, args.version)
