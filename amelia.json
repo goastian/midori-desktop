@@ -22,9 +22,9 @@
     "midori-newtab": {
       "id": "midori-newtab",
       "repo": "goastian/midori-tab",
-      "version": "v1.0.45",
+      "version": "v1.0.46",
       "platform": "github",
-      "fileGlob": "midori-tab-1.0.45-firefox.zip"
+      "fileGlob": "midori-tab-1.0.46-firefox.zip"
     },
     "midorivpn-extension": {
       "id": "midorivpn@astian.org",
