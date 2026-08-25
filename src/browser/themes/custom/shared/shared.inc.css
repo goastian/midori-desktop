@@ -667,6 +667,15 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   box-shadow: var(--pf-shadow-md), inset 0 0 0 1px var(--pf-border-color) !important;
 }
 
+@media -moz-pref("midori.verticaltabs.collapse") {
+  :root:has(#tabbrowser-tabs[orient="vertical"]) #sidebar-box {
+    width: var(--pf-sidebar-collapsed-width, 58px) !important;
+    min-width: var(--pf-sidebar-collapsed-width, 58px) !important;
+    max-width: var(--pf-sidebar-collapsed-width, 58px) !important;
+    transition: none !important;
+  }
+}
+
 :root[midori-vertical-tabs] #midori-workspace-rail {
   display: flex !important;
   flex-direction: column;
