@@ -211,7 +211,7 @@ export const MidoriSidebar = {
     for (const d of defaults) {
       const p = createPanel({ url: d.url, title: d.title });
       if (!p) continue;
-      p.loadOnStartup = true;
+      p.loadOnStartup = false;
       seeded.panels.push(p);
     }
 

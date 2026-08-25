@@ -2,12 +2,13 @@ diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/Browser
 index 02d694adaba7da45ed7f7afa30457221759533ec..e2df20f1ae7f56fe672599156477364e3021ed79 100644
 --- a/browser/components/BrowserGlue.sys.mjs
 +++ b/browser/components/BrowserGlue.sys.mjs
-@@ -79,6 +79,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
+@@ -79,6 +79,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
      "resource:///modules/WebProtocolHandlerRegistrar.sys.mjs",
    WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
    setTimeout: "resource://gre/modules/Timer.sys.mjs",
 +  MidoriBrowserServices: "resource:///modules/MidoriBrowserServices.sys.mjs",
 +  MidoriProfileMigration: "resource:///modules/MidoriProfileMigration.sys.mjs",
++  MidoriVerticalTabs: "resource:///modules/MidoriVerticalTabs.sys.mjs",
  });
  
  XPCOMUtils.defineLazyServiceGetters(lazy, {
@@ -78,10 +79,16 @@ index 02d694adaba7da45ed7f7afa30457221759533ec..e2df20f1ae7f56fe672599156477364e
      // AboutHomeStartupCache might write to the cache during
      // quit-application-granted, so we defer uninitialization
      // until here.
-@@ -389,6 +421,13 @@ BrowserGlue.prototype = {
+@@ -389,6 +421,19 @@ BrowserGlue.prototype = {
    _beforeUIStartup: function BG__beforeUIStartup() {
      lazy.SessionStartup.init();
- 
+
++    try {
++      lazy.MidoriVerticalTabs.bootstrap();
++    } catch (e) {
++      console.error("Midori: Failed to bootstrap vertical tabs", e);
++    }
++
 +    // Preserve themes and toolbar customizations when upgrading from 11.8.x.
 +    try {
 +      lazy.MidoriProfileMigration.migrate();

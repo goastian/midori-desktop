@@ -72,6 +72,13 @@ export const MidoriVerticalTabs = {
   _initialized: false,
   _windowState: new WeakMap(),
 
+  bootstrap() {
+    if (!this.isEnabled()) {
+      return;
+    }
+    this._syncFirefoxPrefs();
+  },
+
   init() {
     if (this._initialized) return;
     this._initialized = true;
