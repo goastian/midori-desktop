@@ -501,7 +501,7 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
 
 :root[midori-horizontal-tabs] #urlbar-container {
   flex: 1 1 auto !important;
-  min-width: 240px !important;
+  min-width: var(--urlbar-container-min-width) !important;
   max-width: none !important;
 }
 

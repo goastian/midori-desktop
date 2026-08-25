@@ -7,7 +7,6 @@
 
 /* Windows 10/11 snap layout and titlebar hit-testing */
 :root[tabsintitlebar] .titlebar-buttonbox-container {
-  margin-inline-end: env(titlebar-area-x, 0px);
   position: relative !important;
   z-index: 4 !important;
   pointer-events: auto !important;
