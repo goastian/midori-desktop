@@ -6,6 +6,10 @@
  * Kept separate from shared.inc.css so the base chrome stays readable.
  */
 
+#urlbar #urlbar-input {
+  text-align: center !important;
+}
+
 @media -moz-pref("midori.modblur.windowControls.style", "mac-left") or -moz-pref("midori.modblur.windowControls.style", "mac-right") {
   :root:not([customizing]) .titlebar-buttonbox-container {
     align-items: center !important;
