@@ -198,12 +198,7 @@ index 02d694adaba7da45ed7f7afa30457221759533ec..e2df20f1ae7f56fe672599156477364e
 +    const welcomeEnabled = Services.prefs.getBoolPref(welcomeEnabledPref, true);
 +    const welcomeSeen = Services.prefs.getBoolPref(welcomeSeenPref, false);
 +
-+    const showedFirstRunSetup =
-+      welcomeEnabled && !welcomeSeen && this._openSetupTab(false, true);
-+    const profileRecoveryRequired =
-+      await lazy.MidoriProfileMigration.needsRecovery();
-+
-+    if (profileRecoveryRequired && !showedFirstRunSetup) {
++    if (welcomeEnabled && !welcomeSeen) {
 +      this._openSetupTab(true);
 +    }
 +
@@ -246,19 +241,16 @@ index 02d694adaba7da45ed7f7afa30457221759533ec..e2df20f1ae7f56fe672599156477364e
      "nsISupportsWeakReference",
    ]),
 +
-+  _openSetupTab(profileRecoveryOnly = false, firstTab = false) {
++  _openSetupTab(firstTab = false) {
 +    const win = lazy.BrowserWindowTracker.getTopWindow();
 +    if (!win) {
 +      return false;
 +    }
 +
-+    const setupURL = profileRecoveryOnly
-+      ? "about:setup?profile-recovery=1"
-+      : "about:setup";
 +    const triggeringPrincipal =
 +      Services.scriptSecurityManager.getSystemPrincipal();
 +
-+    win.gBrowser.selectedTab = win.gBrowser.addTab(setupURL, {
++    win.gBrowser.selectedTab = win.gBrowser.addTab("about:setup", {
 +      index: firstTab ? 0 : undefined,
 +      triggeringPrincipal,
 +    });
