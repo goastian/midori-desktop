@@ -1622,7 +1622,7 @@ export const MidoriWorkspaces = {
     return ws.id;
   },
 
-  async deleteWorkspace(win, workspaceId) {
+  async deleteWorkspace(win, workspaceId, { closeTabs = false } = {}) {
     const state = await this._ensureWindowState(win);
     if (!state) return false;
 
@@ -1633,14 +1633,29 @@ export const MidoriWorkspaces = {
     if (ws.isDefault) return false; // Cannot delete default workspace
     if (state.data.workspaces.length <= 1) return false;
 
-    // Move tabs from deleted workspace to default
     const defaultWs = state.data.workspaces.find((w) => w.isDefault);
     const targetId = defaultWs ? defaultWs.id : state.data.workspaces[0].id;
 
     const gBrowser = win.gBrowser;
+    const tabsInWorkspace = [];
     for (const tab of gBrowser.tabs) {
       if (this._resolveTabWorkspace(state, tab, state.data.selectedId) === workspaceId) {
-        this._rememberTabWorkspace(state, tab, targetId);
+        tabsInWorkspace.push(tab);
+        if (!closeTabs) {
+          this._rememberTabWorkspace(state, tab, targetId);
+        }
+      }
+    }
+
+    if (closeTabs && state.data.selectedId === workspaceId) {
+      this._applyWorkspace(win, state, targetId);
+    }
+
+    if (closeTabs) {
+      for (const tab of tabsInWorkspace) {
+        if (!tab.closing) {
+          gBrowser.removeTab(tab, { animate: false });
+        }
       }
     }
 
@@ -1877,7 +1892,28 @@ export const MidoriWorkspaces = {
             this.renameWorkspace(win, ws.id, newName.value.trim());
           }
         } else if (action === DELETE) {
-          this.deleteWorkspace(win, ws.id);
+          const tabCount = this._countTabsInWorkspace(win, ws.id);
+          const MOVE_TABS = 0;
+          const DELETE_TABS = 1;
+          const tabAction = Services.prompt.confirmEx(
+            win,
+            `Delete workspace: ${ws.name}`,
+            'What should happen to this workspace\'s tabs?',
+            Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING +
+              Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING +
+              Services.prompt.BUTTON_POS_2 * Services.prompt.BUTTON_TITLE_CANCEL +
+              Services.prompt.BUTTON_POS_2_DEFAULT,
+            tabCount === 1 ? 'Move the tab to Default' : 'Move all tabs to Default',
+            tabCount === 1 ? 'Close the tab' : 'Close all tabs',
+            null,
+            null,
+            {}
+          );
+          if (tabAction === MOVE_TABS || tabAction === DELETE_TABS) {
+            this.deleteWorkspace(win, ws.id, {
+              closeTabs: tabAction === DELETE_TABS,
+            });
+          }
         }
       }
     }

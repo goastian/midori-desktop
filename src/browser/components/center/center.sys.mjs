@@ -1191,13 +1191,28 @@ async function refreshWorkspaceManager() {
     defaultBtn.disabled = ws.isDefault;
 
     const deleteBtn = makeButton("Delete", "mc-btn-danger", async () => {
-      const ok = window.confirm(
-        `Delete workspace "${ws.name}"?\n\nTabs from this workspace will be moved to the default workspace.`
+      const MOVE_TABS = 0;
+      const DELETE_TABS = 1;
+      const action = Services.prompt.confirmEx(
+        win,
+        `Delete workspace: ${ws.name}`,
+        "What should happen to this workspace's tabs?",
+        Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING +
+          Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING +
+          Services.prompt.BUTTON_POS_2 * Services.prompt.BUTTON_TITLE_CANCEL +
+          Services.prompt.BUTTON_POS_2_DEFAULT,
+        ws.tabCount === 1 ? "Move the tab to Default" : "Move all tabs to Default",
+        ws.tabCount === 1 ? "Close the tab" : "Close all tabs",
+        null,
+        null,
+        {}
       );
-      if (!ok) {
+      if (action !== MOVE_TABS && action !== DELETE_TABS) {
         return;
       }
-      const deleted = await api.deleteWorkspace(win, ws.id);
+      const deleted = await api.deleteWorkspace(win, ws.id, {
+        closeTabs: action === DELETE_TABS,
+      });
       if (!deleted) {
         setWorkspaceStatus("Could not delete workspace.", true);
         return;
