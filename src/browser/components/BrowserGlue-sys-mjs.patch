@@ -179,7 +179,7 @@ index 02d694adaba7da45ed7f7afa30457221759533ec..e2df20f1ae7f56fe672599156477364e
      lazy.BrowserUsageTelemetry.init();
      lazy.SearchSERPTelemetry.init();
  
-@@ -1715,6 +1816,61 @@ BrowserGlue.prototype = {
+@@ -1715,6 +1816,56 @@ BrowserGlue.prototype = {
    },
  
    async _maybeShowDefaultBrowserPrompt() {
@@ -236,7 +236,7 @@ index 02d694adaba7da45ed7f7afa30457221759533ec..e2df20f1ae7f56fe672599156477364e
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1833,4 +1989,24 @@ BrowserGlue.prototype = {
+@@ -1833,4 +1989,21 @@ BrowserGlue.prototype = {
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
