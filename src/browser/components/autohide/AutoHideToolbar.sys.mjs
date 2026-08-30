@@ -19,6 +19,7 @@ import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sy
  */
 
 const PREF_AUTOHIDE = 'midori.autohide.toolbar';
+const PREF_COMPACT_MODE = 'midori.compact.enabled';
 const PREF_FLASH_ON_NAV = 'midori.autohide.flashOnLocationChange';
 const PREF_FLASH_DURATION = 'midori.autohide.flashDurationMs';
 const TOOLBOX_HIDDEN_ATTR = 'midori-autohide-hidden';
@@ -34,6 +35,8 @@ const FLASH_DURATION_MAX_MS = 5000;
 // Delay before re-measuring toolbox height to avoid getBoundingClientRect()
 // while a CSS transition is still running (avoids compositor sync stall).
 const HEIGHT_REMEASURE_DELAY_MS = 250;
+const COMPACT_INITIAL_HIDE_DELAY_MS = 700;
+const POINTER_LEAVE_HIDE_DELAY_MS = 450;
 
 export const AutoHideToolbar = {
   _initialized: false,
@@ -46,14 +49,15 @@ export const AutoHideToolbar = {
     }
     this._initialized = true;
 
-    this._enabled = Services.prefs.getBoolPref(PREF_AUTOHIDE, false);
+    this._enabled = this._isEnabled();
     Services.prefs.addObserver(PREF_AUTOHIDE, this);
+    Services.prefs.addObserver(PREF_COMPACT_MODE, this);
 
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
 
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
-      if (win.document.readyState === 'complete') {
+      if (this._enabled && win.document.readyState === 'complete') {
         this._attachToWindow(win);
       }
     }
@@ -64,11 +68,12 @@ export const AutoHideToolbar = {
   observe(subject, topic, data) {
     switch (topic) {
       case 'nsPref:changed':
-        if (data === PREF_AUTOHIDE) {
-          this._enabled = Services.prefs.getBoolPref(PREF_AUTOHIDE, false);
+        if (data === PREF_AUTOHIDE || data === PREF_COMPACT_MODE) {
+          this._enabled = this._isEnabled();
           for (const win of Services.wm.getEnumerator('navigator:browser')) {
             if (this._enabled) {
               this._attachToWindow(win);
+              this._windowListeners.get(win)?.onAutoHideModeChanged?.();
             } else {
               this._detachFromWindow(win);
             }
@@ -88,8 +93,19 @@ export const AutoHideToolbar = {
     }
   },
 
+  _isEnabled() {
+    return (
+      Services.prefs.getBoolPref(PREF_AUTOHIDE, false) ||
+      Services.prefs.getBoolPref(PREF_COMPACT_MODE, false)
+    );
+  },
+
   _attachToWindow(win) {
-    if (!isRegularBrowserWindow(win) || this._windowListeners.has(win)) {
+    if (
+      !this._enabled ||
+      !isRegularBrowserWindow(win) ||
+      this._windowListeners.has(win)
+    ) {
       return;
     }
 
@@ -120,6 +136,7 @@ export const AutoHideToolbar = {
     let initialMeasureTimer = null;
     let heightRemeasureTimer = null;
     let flashTimer = null;
+    let compactHideTimer = null;
     let toolboxResizeObserver = null;
     // Thin fixed strip at the top edge that reveals the toolbar on hover.
     // Replaces a global `mousemove` listener (which fired on every pointer
@@ -145,9 +162,9 @@ export const AutoHideToolbar = {
 
     const state = {
       isHidden: false,
-      mouseNearTop: false,
+      pointerInToolbar: false,
       urlbarFocused: false,
-      popupOpen: false,
+      popupCount: 0,
       accumulatedDelta: 0,
       resetTimer: null,
       rafPending: false,
@@ -168,6 +185,7 @@ export const AutoHideToolbar = {
 
     const show = () => {
       if (!state.isHidden) return;
+      cancelCompactHide();
       state.isHidden = false;
       state.accumulatedDelta = 0;
       toolbox.removeAttribute(TOOLBOX_HIDDEN_ATTR);
@@ -177,7 +195,7 @@ export const AutoHideToolbar = {
 
     const hide = () => {
       if (state.isHidden) return;
-      if (state.mouseNearTop || state.urlbarFocused || state.popupOpen) return;
+      if (state.pointerInToolbar || state.urlbarFocused || state.popupCount > 0) return;
       if (win.fullScreen) return;
       const urlbar = doc.getElementById('urlbar');
       if (urlbar?.hasAttribute('focused')) return;
@@ -197,6 +215,38 @@ export const AutoHideToolbar = {
       if (edgeSensor) {
         edgeSensor.style.pointerEvents = state.isHidden ? 'auto' : 'none';
       }
+    };
+
+    const isCompactMode = () =>
+      Services.prefs.getBoolPref(PREF_COMPACT_MODE, false);
+
+    const schedulePointerLeaveHide = (delay = POINTER_LEAVE_HIDE_DELAY_MS) => {
+      if (compactHideTimer !== null) {
+        return;
+      }
+      compactHideTimer = win.setTimeout(() => {
+        compactHideTimer = null;
+        hide();
+      }, delay);
+    };
+
+    const cancelCompactHide = () => {
+      if (compactHideTimer !== null) {
+        win.clearTimeout(compactHideTimer);
+        compactHideTimer = null;
+      }
+    };
+
+    const onAutoHideModeChanged = () => {
+      if (!this._enabled) {
+        cancelCompactHide();
+        show();
+        return;
+      }
+
+      cancelCompactHide();
+      show();
+      schedulePointerLeaveHide(COMPACT_INITIAL_HIDE_DELAY_MS);
     };
 
     // --- Wheel event on the browser panel detects scroll direction ---
@@ -252,25 +302,38 @@ export const AutoHideToolbar = {
 
     const onSensorEnter = () => {
       if (!this._enabled) return;
-      state.mouseNearTop = true;
+      state.pointerInToolbar = true;
+      cancelCompactHide();
       show();
     };
     edgeSensor.addEventListener('mouseenter', onSensorEnter, { passive: true });
 
-    // Once the pointer leaves the revealed toolbar, clear the near-top guard
-    // so a subsequent wheel-scroll or flash-timeout can hide it again.
     const onToolboxLeave = () => {
-      state.mouseNearTop = false;
+      state.pointerInToolbar = false;
+      schedulePointerLeaveHide();
+    };
+    const onToolboxEnter = () => {
+      state.pointerInToolbar = true;
+      cancelCompactHide();
     };
     toolbox.addEventListener('mouseleave', onToolboxLeave, { passive: true });
+    toolbox.addEventListener('mouseenter', onToolboxEnter, { passive: true });
+
+    const onBrowserEnter = () => {
+      state.pointerInToolbar = false;
+      schedulePointerLeaveHide();
+    };
+    browserPanel?.addEventListener('mouseenter', onBrowserEnter, { passive: true });
 
     // --- Urlbar focus prevents hiding ---
     const onUrlbarFocus = () => {
       state.urlbarFocused = true;
+      cancelCompactHide();
       show();
     };
     const onUrlbarBlur = () => {
       state.urlbarFocused = false;
+      schedulePointerLeaveHide();
     };
     const urlbar = doc.getElementById('urlbar');
     if (urlbar) {
@@ -280,18 +343,22 @@ export const AutoHideToolbar = {
 
     // --- Popup open prevents hiding ---
     const onPopupShown = () => {
-      state.popupOpen = true;
+      state.popupCount++;
+      cancelCompactHide();
       show();
     };
     const onPopupHidden = () => {
-      state.popupOpen = false;
+      state.popupCount = Math.max(0, state.popupCount - 1);
+      schedulePointerLeaveHide();
     };
     doc.addEventListener('popupshown', onPopupShown, true);
     doc.addEventListener('popuphidden', onPopupHidden, true);
 
     // --- Tab switch: always show toolbar ---
     const onTabSelect = () => {
-      show();
+      if (!isCompactMode()) {
+        show();
+      }
       scheduleHeightUpdate();
     };
     win.gBrowser?.tabContainer?.addEventListener('TabSelect', onTabSelect);
@@ -340,6 +407,10 @@ export const AutoHideToolbar = {
     };
     win.addEventListener('resize', onResize, { passive: true });
 
+    if (this._enabled) {
+      schedulePointerLeaveHide(COMPACT_INITIAL_HIDE_DELAY_MS);
+    }
+
     // --- Keyboard shortcut: Shift+F11 toggles ---
     const onKeyDown = (e) => {
       if (!this._enabled) return;
@@ -358,6 +429,8 @@ export const AutoHideToolbar = {
       onWheel,
       onSensorEnter,
       onToolboxLeave,
+      onToolboxEnter,
+      onBrowserEnter,
       edgeSensor,
       onUrlbarFocus,
       onUrlbarBlur,
@@ -366,6 +439,7 @@ export const AutoHideToolbar = {
       onTabSelect,
       onKeyDown,
       onResize,
+      onAutoHideModeChanged,
       show,
       browserPanel,
       progressListener,
@@ -393,6 +467,7 @@ export const AutoHideToolbar = {
           win.clearTimeout(flashTimer);
           flashTimer = null;
         }
+        cancelCompactHide();
         toolboxResizeObserver?.disconnect();
         toolboxResizeObserver = null;
       },
@@ -420,6 +495,9 @@ export const AutoHideToolbar = {
         passive: true,
         capture: true,
       });
+      listeners.browserPanel.removeEventListener('mouseenter', listeners.onBrowserEnter, {
+        passive: true,
+      });
     }
 
     if (doc) {
@@ -430,6 +508,9 @@ export const AutoHideToolbar = {
 
     if (toolbox && listeners.onToolboxLeave) {
       toolbox.removeEventListener('mouseleave', listeners.onToolboxLeave, { passive: true });
+    }
+    if (toolbox && listeners.onToolboxEnter) {
+      toolbox.removeEventListener('mouseenter', listeners.onToolboxEnter, { passive: true });
     }
 
     if (listeners.edgeSensor) {
@@ -467,6 +548,7 @@ export const AutoHideToolbar = {
     this._enabled = false;
     try {
       Services.prefs.removeObserver(PREF_AUTOHIDE, this);
+      Services.prefs.removeObserver(PREF_COMPACT_MODE, this);
     } catch {}
     try {
       Services.obs.removeObserver(this, 'browser-delayed-startup-finished');

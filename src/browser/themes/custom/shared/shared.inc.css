@@ -1598,9 +1598,26 @@ toolbarbutton[data-extensionid="midori-protection@astian.org"] .toolbarbutton-te
 
 /* CSS-only autohide shell. JS autohide is off by default; if enabled by the
    user, keep it transform-based so it does not fight Parfait layout. */
+:root[midori-compact-mode] {
+  --pf-tab-height: 30px;
+  --pf-navbar-height: 34px;
+}
+
+:root[midori-compact-mode] #TabsToolbar {
+  min-height: 32px !important;
+}
+
+:root[midori-compact-mode] #nav-bar {
+  min-height: 34px !important;
+}
+
+:root[midori-compact-mode] #urlbar:not([breakout-extend]) {
+  min-height: 30px !important;
+}
+
 #navigator-toolbox[midori-autohide] {
   transition: transform var(--pf-ts-25) !important;
-  will-change: transform;
+  will-change: auto;
   opacity: 1 !important;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--pf-accent-color), transparent 90%), transparent 48%),
@@ -1613,6 +1630,7 @@ toolbarbutton[data-extensionid="midori-protection@astian.org"] .toolbarbutton-te
 
 #navigator-toolbox[midori-autohide-hidden="true"] {
   transform: translateY(calc(-1 * var(--midori-toolbox-height, var(--pf-navbar-height)))) !important;
+  will-change: transform;
   opacity: 1 !important;
   pointer-events: none !important;
 }

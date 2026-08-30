@@ -28,6 +28,7 @@ const PREF_VERTICAL_WIDTH = 'midori.verticaltabs.width';
 const PREF_VERTICAL_DENSITY = 'midori.verticaltabs.density';
 const PREF_VERTICAL_COMPACT = 'midori.verticaltabs.compact';
 const PREF_VERTICAL_COLLAPSE = 'midori.verticaltabs.collapse';
+const PREF_COMPACT_MODE = 'midori.compact.enabled';
 const PREF_VERTICAL_FLOATING_URLBAR = 'midori.verticaltabs.floatingUrlbar';
 const PREF_VERTICAL_SHOW_RAIL = 'midori.verticaltabs.showRail';
 const PREF_VERTICAL_SHOW_PINNED_SECTION = 'midori.verticaltabs.showPinnedSection';
@@ -55,6 +56,7 @@ const OBSERVED_PREFS = new Set([
   PREF_VERTICAL_DENSITY,
   PREF_VERTICAL_COMPACT,
   PREF_VERTICAL_COLLAPSE,
+  PREF_COMPACT_MODE,
   PREF_VERTICAL_FLOATING_URLBAR,
   PREF_VERTICAL_SHOW_RAIL,
   PREF_VERTICAL_SHOW_PINNED_SECTION,
@@ -89,6 +91,7 @@ export const MidoriVerticalTabs = {
     Services.prefs.addObserver(PREF_VERTICAL_DENSITY, this);
     Services.prefs.addObserver(PREF_VERTICAL_COMPACT, this);
     Services.prefs.addObserver(PREF_VERTICAL_COLLAPSE, this);
+    Services.prefs.addObserver(PREF_COMPACT_MODE, this);
     Services.prefs.addObserver(PREF_VERTICAL_FLOATING_URLBAR, this);
     Services.prefs.addObserver(PREF_VERTICAL_SHOW_RAIL, this);
     Services.prefs.addObserver(PREF_VERTICAL_SHOW_PINNED_SECTION, this);
@@ -154,7 +157,10 @@ export const MidoriVerticalTabs = {
   },
 
   _isVerticalCollapse() {
-    return Services.prefs.getBoolPref(PREF_VERTICAL_COLLAPSE, false);
+    return (
+      Services.prefs.getBoolPref(PREF_COMPACT_MODE, false) ||
+      Services.prefs.getBoolPref(PREF_VERTICAL_COLLAPSE, false)
+    );
   },
 
   _isFloatingUrlbarEnabled() {
@@ -247,6 +253,13 @@ export const MidoriVerticalTabs = {
 
   _applyCollapse(root) {
     root.setAttribute('midori-vt-collapse', this._isVerticalCollapse() ? 'true' : 'false');
+  },
+
+  _applyCompactMode(root) {
+    root.toggleAttribute(
+      'midori-compact-mode',
+      Services.prefs.getBoolPref(PREF_COMPACT_MODE, false)
+    );
   },
 
   _applyFloatingUrlbar(root) {
@@ -385,6 +398,8 @@ export const MidoriVerticalTabs = {
       this._removeEssentialsPromo(win);
       this._updateEssentialsContextMenu(win);
     }
+
+    this._applyCompactMode(doc.documentElement);
 
     // --- Move TabsToolbar for bottom horizontal tabs ---
     this._applyBottomTabs(doc);

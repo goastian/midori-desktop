@@ -67,7 +67,7 @@ function ensureStyle(doc) {
 #midori-msidebar-main{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:8px 5px;background:var(--midori-msidebar-surface);color:var(--midori-msidebar-surface-text);width:var(--midori-msidebar-main-width);min-width:var(--midori-msidebar-main-width);max-width:var(--midori-msidebar-main-width);box-sizing:border-box;overflow:hidden;transition:width var(--midori-msidebar-rail-close) cubic-bezier(.4,0,1,1),min-width var(--midori-msidebar-rail-close) cubic-bezier(.4,0,1,1),max-width var(--midori-msidebar-rail-close) cubic-bezier(.4,0,1,1),opacity var(--midori-msidebar-rail-close) ease;}
 #midori-msidebar-main[expanded='true']{width:var(--midori-msidebar-rail-expanded-width);min-width:var(--midori-msidebar-rail-expanded-width);max-width:var(--midori-msidebar-rail-expanded-width);transition-duration:var(--midori-msidebar-rail-open);transition-timing-function:cubic-bezier(0,0,.2,1);}
 #midori-msidebar-buttons{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:100%;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;}
-#midori-msidebar-main[collapsed='true']{pointer-events:none;opacity:0;min-width:0;padding:0;margin:0;}
+#midori-msidebar-main[collapsed='true']{pointer-events:none;opacity:0;width:0;min-width:0;max-width:0;padding:0;margin:0;}
 #midori-msidebar-main[animated='false'],#midori-msidebar-box-area[animated='false']{transition:none!important;}
 #midori-msidebar-main .toolbarbutton-1{padding:0 !important;display:flex;align-items:center;justify-content:center;}
 .midori-msidebar-icon{width:100%;min-width:34px;height:36px;min-height:36px;padding:0 8px!important;margin:0;justify-content:flex-start!important;gap:8px;}
@@ -945,6 +945,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       setPosition() {},
       setAutohide() {},
       setAutohideMode() {},
+      setCompactMode() {},
       setAnimated() {},
       setCssWidth() {},
       openCommandPalette() {},
@@ -954,6 +955,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   const wrapper = createXul(doc, 'hbox');
   wrapper.id = 'midori-msidebar-wrapper';
+
+  const compactEdgeSensor = createXul(doc, 'box');
+  compactEdgeSensor.id = 'midori-compact-sidebar-edge-sensor';
+  compactEdgeSensor.style.cssText =
+    'position:absolute;inset-block:0;width:6px;z-index:2147483000;' +
+    'display:none;pointer-events:none;background:transparent;';
+  browser.appendChild(compactEdgeSensor);
 
   const main = createXul(doc, 'vbox');
   main.id = 'midori-msidebar-main';
@@ -1141,6 +1149,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   let position = 'left';
   let autohideEnabled = false;
   let autohideMode = 'overlay';
+  let compactMode = false;
   let animated = true;
   let visible = false;
   let sizing = false;
@@ -1685,8 +1694,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       return;
     }
     _ahOpen = !!open;
-    setBoolAttr(main, 'collapsed', !visible);
+    setBoolAttr(main, 'collapsed', compactMode ? !open : !visible);
     setBoolAttr(boxArea, 'collapsed', panelAreaHiddenByUser || !activePanelId || !_ahOpen);
+    syncCompactEdgeSensor();
     syncSplitterVisibility();
   }
 
@@ -2675,6 +2685,13 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
             return;
           }
           if (activePanelId === panel.id && !panelAreaHiddenByUser) {
+            if (compactMode && autohideEnabled) {
+              _ahCancelHide();
+              applyAutohideCollapsedState(false);
+              renderButtons();
+              onStoreChanged?.(store);
+              return;
+            }
             panelAreaHiddenByUser = true;
             _ahOpen = false;
             if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
@@ -2989,6 +3006,24 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     boxArea.setAttribute('overlay', autohideEnabled && autohideMode === 'overlay' ? 'true' : 'false');
     applyDockWidth();
     syncSplitterVisibility();
+  }
+
+  function syncCompactEdgeSensor() {
+    const enabled = compactMode && visible && !currentPanelFloating;
+    compactEdgeSensor.style.display = enabled ? '' : 'none';
+    compactEdgeSensor.style.pointerEvents = enabled && !_ahOpen ? 'auto' : 'none';
+    compactEdgeSensor.style.insetInlineStart = position === 'left' ? '0' : 'auto';
+    compactEdgeSensor.style.insetInlineEnd = position === 'right' ? '0' : 'auto';
+  }
+
+  function setCompactMode(enabled) {
+    compactMode = !!enabled;
+    if (compactMode && autohideEnabled && visible) {
+      applyAutohideCollapsedState(false);
+    } else {
+      setBoolAttr(main, 'collapsed', !visible);
+    }
+    syncCompactEdgeSensor();
   }
 
   function onFloatingHeaderMouseDown(e) {
@@ -3857,15 +3892,15 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (sizing || floatingResize || floatingDrag) return;
     if (_ahPopupOpen) return;
     const panel = store.panels.find((item) => item.id === activePanelId);
-    if (panelSemantics(panel).keepOpen) return;
-    if (main.matches?.(':focus-within') || boxArea.matches?.(':focus-within')) return;
+    if (panelSemantics(panel).keepOpen && !compactMode) return;
+    if (!compactMode && (main.matches?.(':focus-within') || boxArea.matches?.(':focus-within'))) return;
     if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} }
     _ahTimer = win.setTimeout(() => {
       _ahTimer = null;
       if (!_ahGuard()) return;
       if (sizing || floatingResize || floatingDrag) return;
       if (_ahPopupOpen) return;
-      if (main.matches?.(':focus-within') || boxArea.matches?.(':focus-within')) return;
+      if (!compactMode && (main.matches?.(':focus-within') || boxArea.matches?.(':focus-within'))) return;
       applyAutohideCollapsedState(false);
     }, SIDEBAR_MOTION.autohideGrace);
   }
@@ -3881,6 +3916,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       _ahTimer = null;
       _ahShow();
     }, SIDEBAR_MOTION.autohideIntent);
+  }
+  function onCompactEdgeEnter() {
+    _ahCancelHide();
+    _ahShow();
   }
   function onMainLeave(e) {
     if (!_ahGuard()) return;
@@ -3918,6 +3957,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   boxArea.addEventListener('focusin', _ahCancelHide);
   main.addEventListener('focusout', _ahScheduleHide);
   boxArea.addEventListener('focusout', _ahScheduleHide);
+  compactEdgeSensor.addEventListener('mouseenter', onCompactEdgeEnter);
 
   btnToggle.addEventListener(
     'command',
@@ -4879,6 +4919,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       boxArea.removeEventListener('focusin', _ahCancelHide);
       main.removeEventListener('focusout', _ahScheduleHide);
       boxArea.removeEventListener('focusout', _ahScheduleHide);
+      compactEdgeSensor.removeEventListener('mouseenter', onCompactEdgeEnter);
+      compactEdgeSensor.remove();
     } catch {}
     if (_ahTimer) {
       try { win.clearTimeout(_ahTimer); } catch {}
@@ -4926,6 +4968,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     setPosition,
     setAutohide,
     setAutohideMode,
+    setCompactMode,
     setAnimated,
     setCssWidth,
     refresh,

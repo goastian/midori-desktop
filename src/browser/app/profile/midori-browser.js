@@ -348,6 +348,7 @@ pref('midori.verticaltabs.compact', false);
 // Collapse the vertical sidebar to a narrow icon rail that expands on hover
 // (pure-CSS edge sensor, no global mousemove). Off by default.
 pref('midori.verticaltabs.collapse', false);
+pref('midori.compact.enabled', false);
 pref('midori.verticaltabs.floatingUrlbar', true);
 pref('midori.verticaltabs.showRail', true);
 pref('midori.verticaltabs.showPinnedSection', true);

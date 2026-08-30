@@ -14,6 +14,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 const PREF_VERTICAL_TABS = 'midori.verticaltabs.enabled';
 const PREF_VERTICAL_POSITION = 'midori.verticaltabs.position';
 const PREF_ARC_MODE = 'midori.arcmode.enabled';
+const PREF_COMPACT_MODE = 'midori.compact.enabled';
 const PREF_SEEDED_DEFAULT_PANELS = 'midori.msidebar.seededDefaultPanels';
 const COMMAND_PALETTE_TOPIC = 'midori-msidebar-open-command-palette';
 const CONTENT_CTX_SEPARATOR_ID = 'midori-msidebar-content-context-separator';
@@ -48,6 +49,7 @@ const OBSERVED_PREFS = [
   PREF_VERTICAL_TABS,
   PREF_VERTICAL_POSITION,
   PREF_ARC_MODE,
+  PREF_COMPACT_MODE,
 ];
 
 export const MidoriSidebar = {
@@ -177,15 +179,17 @@ export const MidoriSidebar = {
     const width = Prefs.getWidth();
     const autohideEnabled = Prefs.getAutohideEnabled();
     const autohideMode = Prefs.getAutohideMode();
+    const compactMode = Services.prefs.getBoolPref(PREF_COMPACT_MODE, false);
     const animationsEnabled = Prefs.getAnimationsEnabled();
 
     if (enabled) this._ensureSeededDefaultPanels(win);
     ui.setPosition(position);
     ui.setCssWidth(width);
     ui.setAnimated?.(animationsEnabled);
-    ui.setAutohideMode?.(autohideMode);
-    ui.setAutohide(autohideEnabled);
+    ui.setAutohideMode?.(compactMode ? Prefs.AUTOHIDE_MODE_OVERLAY : autohideMode);
+    ui.setAutohide(autohideEnabled || compactMode);
     ui.setVisible(enabled, { openPanel: false });
+    ui.setCompactMode?.(compactMode);
     ui.refresh?.();
   },
 

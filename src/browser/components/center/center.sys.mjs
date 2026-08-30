@@ -31,6 +31,7 @@ const ADDON_IDS = {
 
 // ---- Pref mapping: element ID → { pref, type } ----
 const PREF_MAP = {
+  "pref-compact-mode":       { pref: "midori.compact.enabled",          type: "bool" },
   "pref-autohide-toolbar":  { pref: "midori.autohide.toolbar",        type: "bool" },
   "pref-tabsleep-enabled":  { pref: "midori.tabsleep.enabled",        type: "bool" },
   "pref-tabsleep-timeout":  { pref: "midori.tabsleep.timeoutMinutes", type: "int" },
@@ -1727,8 +1728,9 @@ function updateSidebarControlAvailability() {
 
   const collapse = document.getElementById("pref-verticaltabs-collapse");
   if (collapse) {
-    collapse.disabled = !vertical;
-    collapse.closest(".setting-row")?.classList.toggle("setting-row-disabled", !vertical);
+    const compact = document.getElementById("pref-compact-mode")?.checked ?? false;
+    collapse.disabled = !vertical || compact;
+    collapse.closest(".setting-row")?.classList.toggle("setting-row-disabled", !vertical || compact);
   }
 }
 
@@ -1740,6 +1742,7 @@ function initSidebarControls() {
     "midori.msidebar.autohide.enabled",
     "midori.msidebar.autohide.mode",
     "midori.verticaltabs.collapse",
+    "midori.compact.enabled",
     "midori.verticaltabs.enabled",
     "midori.arcmode.enabled",
   ]);
@@ -1751,7 +1754,7 @@ function initSidebarControls() {
     controlsByPref.set(config.pref, controls);
   }
 
-  for (const id of ["pref-msidebar-enabled", "pref-msidebar-autohide"]) {
+  for (const id of ["pref-msidebar-enabled", "pref-msidebar-autohide", "pref-compact-mode"]) {
     document.getElementById(id)?.addEventListener("change", updateSidebarControlAvailability);
   }
 
