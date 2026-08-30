@@ -141,21 +141,21 @@ apply_source_overlays() {
     local addon_key="$2"
     local overlay_dir="$PROJECT_DIR/src/browser/extensions/addon-overlays/$addon_key"
 
-    if [[ ! -d "$overlay_dir" ]]; then
-        return 0
+    if [[ -d "$overlay_dir" ]]; then
+        echo "INFO: Applying Midori source overlays for $addon_key"
+        while IFS= read -r -d '' overlay_file; do
+            local relative_path="${overlay_file#"$overlay_dir/"}"
+            mkdir -p "$(dirname "$addon_dir/$relative_path")"
+            cp "$overlay_file" "$addon_dir/$relative_path"
+        done < <(find "$overlay_dir" -type f -print0 | sort -z)
     fi
 
-    echo "INFO: Applying Midori source overlays for $addon_key"
-    while IFS= read -r -d '' overlay_file; do
-        local relative_path="${overlay_file#"$overlay_dir/"}"
-        mkdir -p "$(dirname "$addon_dir/$relative_path")"
-        cp "$overlay_file" "$addon_dir/$relative_path"
-    done < <(find "$overlay_dir" -type f -print0 | sort -z)
-
-    if [[ "$addon_key" == "midori-newtab" && -f "$addon_dir/midori-modblur.css" && -f "$addon_dir/index.html" ]]; then
-        if ! grep -q 'href="/midori-modblur.css"' "$addon_dir/index.html"; then
-            sed -i 's#</head>#    <link rel="stylesheet" href="/midori-modblur.css">\n  </head>#' "$addon_dir/index.html"
+    if [[ "$addon_key" == "midori-newtab" && -f "$addon_dir/index.html" ]]; then
+        if ! grep -q 'data-midori-modblur-newtab' "$addon_dir/index.html"; then
+            sed -i '0,/<html/s//<html data-midori-modblur-newtab/' "$addon_dir/index.html"
         fi
+        sed -i '\#href="/midori-modblur.css"#d' "$addon_dir/index.html"
+        rm -f "$addon_dir/midori-modblur.css"
     fi
 }
 
