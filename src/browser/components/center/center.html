@@ -372,21 +372,50 @@
           <a class="source-link" href="https://github.com/datguypiko/Firefox-Mod-Blur" target="_blank" rel="noopener">View upstream project</a>
         </header>
 
+        <figure id="modblur-preview" class="mod-preview" aria-labelledby="modblur-preview-title" aria-describedby="modblur-preview-description" data-density="balanced" data-texture="off" data-motion="calm" data-blur="balanced" data-layout="urlbar-top" data-frame="none" data-controls="system" data-card="off" data-spill="off" data-newtab-center="off" data-shortcut-titles="visible" data-shortcut-shape="rounded" data-wallpaper-blur="0">
+          <div class="mod-preview-stage" aria-hidden="true">
+            <div class="mod-preview-window">
+              <div class="mod-preview-tabs"><span class="mod-preview-controls"><i></i><i></i><i></i></span><span class="is-selected"></span><span></span><b>+</b></div>
+              <div class="mod-preview-toolbar"><span class="mod-preview-nav">‹</span><span class="mod-preview-nav">›</span><div class="mod-preview-url"><i></i><span>midori-browser.org</span><b>⋯</b></div><span class="mod-preview-nav">☰</span></div>
+              <div class="mod-preview-bookmarks"><span>Docs</span><span>Projects</span><span>Reading</span></div>
+              <div class="mod-preview-content">
+                <div class="mod-preview-newtab">
+                  <span class="mod-preview-newtab-search"></span>
+                  <div class="mod-preview-shortcuts"><span><i></i><small>Docs</small></span><span><i></i><small>Projects</small></span><span><i></i><small>Reading</small></span></div>
+                  <span class="mod-preview-widget"></span>
+                </div>
+              </div>
+            </div>
+            <div class="mod-preview-menu"><span></span><span></span><span></span><i></i><span></span></div>
+          </div>
+          <figcaption class="mod-preview-caption"><span id="modblur-preview-title">Live surface preview</span><small id="modblur-preview-description" aria-live="polite">Balanced blur · calm motion · no texture</small></figcaption>
+        </figure>
+
         <div class="mod-catalog-toolbar" aria-label="Visual modification tools">
           <label class="mod-search-wrap" for="modblur-search">
+            <span id="modblur-search-label" class="visually-hidden">Search visual modifications</span>
             <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="9" r="5.5"/><path d="m13 13 4 4"/></svg>
-            <input id="modblur-search" type="search" placeholder="Find a modification" autocomplete="off">
+            <input id="modblur-search" type="search" placeholder="Find a modification" autocomplete="off" aria-labelledby="modblur-search-label">
           </label>
           <span id="modblur-enabled-count" class="mod-count" aria-live="polite"></span>
           <button id="modblur-reset" class="secondary-button" type="button">Restore defaults</button>
         </div>
+        <div id="modblur-filters" class="mod-filter-bar" role="group" aria-label="Filter visual modifications">
+          <button type="button" class="mod-filter is-selected" data-mod-filter="all" aria-pressed="true">All</button>
+          <button type="button" class="mod-filter" data-mod-filter="chrome" aria-pressed="false">Chrome</button>
+          <button type="button" class="mod-filter" data-mod-filter="menus" aria-pressed="false">Menus</button>
+          <button type="button" class="mod-filter" data-mod-filter="navigation" aria-pressed="false">Navigation</button>
+          <button type="button" class="mod-filter" data-mod-filter="surfaces" aria-pressed="false">Surfaces</button>
+          <button type="button" class="mod-filter" data-mod-filter="newtab" aria-pressed="false">New Tab</button>
+        </div>
         <p id="modblur-search-results" class="mod-search-results" aria-live="polite"></p>
+        <div id="modblur-empty" class="mod-empty-state" hidden><strong>No modifications found</strong><span>Try another term or choose a different category.</span></div>
         <div class="mod-status-row">
           <p id="modblur-status" class="mod-status" aria-live="polite" hidden></p>
           <button id="modblur-undo" class="text-button" type="button" hidden>Undo</button>
         </div>
 
-        <section class="setting-group visual-mods-group" aria-labelledby="mod-window-title">
+        <section class="setting-group visual-mods-group" data-mod-group="chrome" aria-labelledby="mod-window-title">
           <div class="mod-group-heading">
             <div><p class="group-kicker">Browser chrome</p><h2 id="mod-window-title" class="group-title">Window, toolbar, and bookmarks</h2></div>
             <p class="group-desc">Controls that affect the browser frame. Platform-specific options say so explicitly.</p>
@@ -418,6 +447,10 @@
               <div class="mod-copy"><span id="label-modblur-bookmarks-transparent" class="mod-title">Transparent bookmarks bar</span><p>Let the current Midori chrome surface continue behind the bookmarks bar.</p></div>
               <label class="mod-toggle"><input type="checkbox" id="pref-modblur-bookmarks-transparent" data-mod-control aria-labelledby="label-modblur-bookmarks-transparent"><span aria-hidden="true"></span></label>
             </div>
+            <div class="mod-row" data-search="bookmarks transparent centered bar align">
+              <div class="mod-copy"><span id="label-modblur-bookmarks-centered" class="mod-title">Center transparent bookmarks</span><p>Fit the bookmark items to their contents and center the group in the toolbar.</p><span class="mod-scope">Transparent bookmarks bar</span></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-bookmarks-centered" data-mod-control aria-labelledby="label-modblur-bookmarks-centered"><span aria-hidden="true"></span></label>
+            </div>
             <div class="mod-row" data-search="restore icons main application menu">
               <div class="mod-copy"><span id="label-modblur-icons-menu" class="mod-title">Restore icons in the main menu</span><p>Add familiar icons to New tab, History, Downloads, Settings, and other commands.</p></div>
               <label class="mod-toggle"><input type="checkbox" id="pref-modblur-icons-menu" data-mod-control aria-labelledby="label-modblur-icons-menu"><span aria-hidden="true"></span></label>
@@ -441,9 +474,21 @@
           </div>
         </section>
 
-        <section class="setting-group visual-mods-group" aria-labelledby="mod-extension-title">
-          <div class="mod-group-heading"><div><p class="group-kicker">Menus and privacy</p><h2 id="mod-extension-title" class="group-title">Extensions and identity</h2></div><p class="group-desc">Extension layout controls remain visible and reversible.</p></div>
+        <section class="setting-group visual-mods-group" data-mod-group="menus" aria-labelledby="mod-extension-title">
+          <div class="mod-group-heading"><div><p class="group-kicker">Menus and privacy</p><h2 id="mod-extension-title" class="group-title">Menus, extensions, and identity</h2></div><p class="group-desc">Tune density without hiding security states or losing reversible controls.</p></div>
           <div class="mod-list">
+            <div class="mod-row" data-search="menu context panel density compact comfortable spacing">
+              <div class="mod-copy"><label id="label-modblur-menu-density" class="mod-title" for="pref-modblur-menu-density">Menu density</label><p>Choose Mod Blur’s compact rhythm, Midori’s balanced default, or roomier touch-friendly rows.</p></div>
+              <select id="pref-modblur-menu-density" class="mod-select" data-mod-control aria-labelledby="label-modblur-menu-density"><option value="compact">Compact</option><option value="balanced">Balanced</option><option value="comfortable">Comfortable</option></select>
+            </div>
+            <div class="mod-row" data-search="url identity security icons compact tracking permission">
+              <div class="mod-copy"><span id="label-modblur-compact-identity" class="mod-title">Compact address security icons</span><p>Reveal routine identity icons on interaction while keeping warnings and active permissions visible.</p></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-compact-identity" data-mod-control aria-labelledby="label-modblur-compact-identity"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="mod-row" data-search="hide extension page url icon address">
+              <div class="mod-copy"><span id="label-modblur-hide-extension-icon" class="mod-title">Hide extension-page glyph</span><p>Remove the extension indicator from pages opened by installed add-ons.</p><span class="mod-scope mod-scope-warning">Can reduce origin visibility</span></div>
+              <label class="mod-toggle"><input type="checkbox" id="pref-modblur-hide-extension-icon" data-mod-control aria-labelledby="label-modblur-hide-extension-icon"><span aria-hidden="true"></span></label>
+            </div>
             <div class="mod-row" data-search="extension menu changes compact grid style">
               <div class="mod-copy"><label id="label-modblur-extension-style" class="mod-title" for="pref-modblur-extension-style">Extension menu layout</label><p>Choose a compact list or an icon grid. Grid size is configured below.</p></div>
               <select id="pref-modblur-extension-style" class="mod-select" data-mod-control aria-labelledby="label-modblur-extension-style"><option value="off">Midori default</option><option value="compact">Compact list</option><option value="grid">Icon grid</option></select>
@@ -479,7 +524,7 @@
           </div>
         </section>
 
-        <section class="setting-group visual-mods-group" aria-labelledby="mod-tabs-title">
+        <section class="setting-group visual-mods-group" data-mod-group="navigation" aria-labelledby="mod-tabs-title">
           <div class="mod-group-heading"><div><p class="group-kicker">Navigation</p><h2 id="mod-tabs-title" class="group-title">Tabs and address bar</h2></div><p class="group-desc">A scope label tells you when an option is visible.</p></div>
           <div class="mod-list">
             <div class="mod-row" data-search="compact vertical tabs"><div class="mod-copy"><span id="label-modblur-compact-vertical" class="mod-title">More compact vertical tabs</span><p>Reduce tab height and spacing without shrinking the close target.</p><span class="mod-scope">Vertical tabs</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-compact-vertical" data-mod-control aria-labelledby="label-modblur-compact-vertical"><span aria-hidden="true"></span></label></div>
@@ -492,31 +537,34 @@
             <div class="mod-row" data-search="active selected tab static fixed width"><div class="mod-copy"><span id="label-modblur-active-tab-static" class="mod-title">Static active-tab width</span><p>Keep the selected tab at a stable width while switching.</p><span class="mod-scope">Horizontal tabs</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-active-tab-static" data-mod-control aria-labelledby="label-modblur-active-tab-static"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="colored sound playing audio tab mute"><div class="mod-copy"><span id="label-modblur-sound-tab" class="mod-title">Highlight sound-playing tabs</span><p>Use the Midori accent for tabs that play or mute audio.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-sound-tab" data-mod-control aria-labelledby="label-modblur-sound-tab"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="hide list all tabs overflow button"><div class="mod-copy"><span id="label-modblur-hide-all-tabs" class="mod-title">Hide “List all tabs”</span><p>Remove the overflow menu button from the tab strip.</p><span class="mod-scope mod-scope-warning">Reduces an alternate navigation path</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-hide-all-tabs" data-mod-control aria-labelledby="label-modblur-hide-all-tabs"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="url address text alignment center left start smart focused open"><div class="mod-copy"><label id="label-modblur-url-alignment" class="mod-title" for="pref-modblur-url-alignment">Address text alignment</label><p>Smart centers the resting URL and aligns it to the reading edge while editing or viewing results.</p></div><select id="pref-modblur-url-alignment" class="mod-select" data-mod-control aria-labelledby="label-modblur-url-alignment"><option value="smart">Smart · recommended</option><option value="center">Always centered</option><option value="start">Always at start</option></select></div>
             <div class="mod-row" data-search="search address url bar focus outline"><div class="mod-copy"><span id="label-modblur-search-outline" class="mod-title">Address-bar focus outline</span><p>Show a clear, high-contrast focus ring for keyboard and pointer use.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-search-outline" data-mod-control aria-labelledby="label-modblur-search-outline"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="always show search address bar buttons reader translate bookmark favorite page actions"><div class="mod-copy"><span id="label-modblur-search-buttons" class="mod-title">Always show address-bar buttons</span><p>Keep Bookmark, Reader, and Translate visible; unavailable actions remain dimmed.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-search-buttons" data-mod-control aria-labelledby="label-modblur-search-buttons"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="experimental popout searchbar blur native firefox no animation hdr"><div class="mod-copy"><label id="label-modblur-popout-searchbar" class="mod-title" for="pref-modblur-popout-searchbar">Popout address bar with blur</label><p>Off keeps Firefox’s current in-toolbar behavior; choose an animated or still popout to opt in.</p><span class="mod-scope mod-scope-experimental">Experimental · HDR may pause while open</span></div><select id="pref-modblur-popout-searchbar" class="mod-select" data-mod-control aria-labelledby="label-modblur-popout-searchbar"><option value="off">Midori default</option><option value="animated">Animated popout</option><option value="still">Still popout</option></select></div>
           </div>
         </section>
 
-        <section class="setting-group visual-mods-group" aria-labelledby="mod-effects-title">
+        <section class="setting-group visual-mods-group" data-mod-group="surfaces" aria-labelledby="mod-effects-title">
           <div class="mod-group-heading"><div><p class="group-kicker">Surfaces</p><h2 id="mod-effects-title" class="group-title">Blur and themes</h2></div><p class="group-desc">Transparent effects may vary with graphics drivers and operating-system composition.</p></div>
           <div class="mod-list">
-            <div class="mod-row" data-search="panel context menu blur mod blur"><div class="mod-copy"><span id="label-modblur-panel-blur" class="mod-title">Panel and menu blur</span><p>Apply the Mod Blur translucent surface to arrow panels and native context menus.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-panel-blur" data-mod-control aria-labelledby="label-modblur-panel-blur"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="motion animation calm expressive off reduced menus tabs url"><div class="mod-copy"><label id="label-modblur-motion" class="mod-title" for="pref-modblur-motion">Motion style</label><p>Choose restrained feedback, a slightly springier response, or disable optional motion.</p></div><select id="pref-modblur-motion" class="mod-select" data-mod-control aria-labelledby="label-modblur-motion"><option value="calm">Calm · recommended</option><option value="expressive">Expressive</option><option value="off">Off</option></select></div>
+            <div class="mod-row" data-search="blur strength soft balanced deep intensity transparency"><div class="mod-copy"><label id="label-modblur-strength" class="mod-title" for="pref-modblur-strength">Blur strength</label><p>Set a shared blur and translucency level for enabled Mod Blur surfaces.</p><span class="mod-scope">Enabled blur modules</span></div><select id="pref-modblur-strength" class="mod-select" data-mod-control aria-labelledby="label-modblur-strength"><option value="soft">Soft</option><option value="balanced">Balanced</option><option value="deep">Deep</option></select></div>
+            <div class="mod-row" data-search="panel menu blur mod blur"><div class="mod-copy"><span id="label-modblur-panel-blur" class="mod-title">Panel and menu blur</span><p>Apply Mod Blur’s native translucent treatment to supported browser panels and the bookmarks menu.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-panel-blur" data-mod-control aria-labelledby="label-modblur-panel-blur"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="searchbar urlbar blur experimental"><div class="mod-copy"><span id="label-modblur-search-blur" class="mod-title">Address-bar blur</span><p>Apply blur only to the expanded address bar.</p><span class="mod-scope mod-scope-experimental">Experimental</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-search-blur" data-mod-control aria-labelledby="label-modblur-search-blur"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="vertical tabs expand blur experimental"><div class="mod-copy"><span id="label-modblur-vertical-expand-blur" class="mod-title">Vertical-tabs expansion blur</span><p>Blur the floating vertical-tabs surface when it expands.</p><span class="mod-scope mod-scope-experimental">Vertical tabs</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-vertical-expand-blur" data-mod-control aria-labelledby="label-modblur-vertical-expand-blur"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="combined extra blur panels search vertical hdr"><div class="mod-copy"><span id="label-modblur-extra-blur" class="mod-title">Combined extra blur</span><p>Enable panel, address-bar, and vertical expansion blur together.</p><span class="mod-scope mod-scope-experimental">Experimental · HDR may pause on blurred surfaces</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-extra-blur" data-mod-control aria-labelledby="label-modblur-extra-blur"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="spill style theme new tab"><div class="mod-copy"><span id="label-modblur-spill-theme" class="mod-title">Spill theme</span><p>Add restrained organic color to browser chrome and New Tab.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-spill-theme" data-mod-control aria-labelledby="label-modblur-spill-theme"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="card style theme 1 2 new tab panels"><div class="mod-copy"><label id="label-modblur-card-theme" class="mod-title" for="pref-modblur-card-theme">Card theme</label><p>Choose subtle borders or a stronger elevated treatment.</p></div><select id="pref-modblur-card-theme" class="mod-select" data-mod-control aria-labelledby="label-modblur-card-theme"><option value="off">Off</option><option value="subtle">Style 1 · subtle</option><option value="elevated">Style 2 · elevated</option></select></div>
-            <div class="mod-row" data-search="soft texture grain surfaces"><div class="mod-copy"><span id="label-modblur-soft-texture" class="mod-title">Soft surface texture</span><p>Add light grain without relying on heavy transparency.</p></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-soft-texture" data-mod-control aria-labelledby="label-modblur-soft-texture"><span aria-hidden="true"></span></label></div>
+            <div class="mod-row" data-search="texture grain frosted surfaces midori addition"><div class="mod-copy"><label id="label-modblur-texture" class="mod-title" for="pref-modblur-texture">Surface texture</label><p>Add restrained grain or a frosted highlight without texturing the address field.</p><span class="mod-scope mod-scope-experimental">Midori addition</span></div><select id="pref-modblur-texture" class="mod-select" data-mod-control aria-labelledby="label-modblur-texture"><option value="off">Off</option><option value="grain">Fine grain</option><option value="frosted">Frosted grain</option></select></div>
             <div class="mod-row" data-search="acrylic mica windows experimental"><div class="mod-copy"><span id="label-modblur-acrylic" class="mod-title">Acrylic surface</span><p>Midori’s built-in acrylic approximation; no external MicaForEveryone install is required.</p><span class="mod-scope mod-scope-experimental">Experimental</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-acrylic" data-mod-control aria-labelledby="label-modblur-acrylic"><span aria-hidden="true"></span></label></div>
           </div>
         </section>
 
-        <section class="setting-group visual-mods-group" aria-labelledby="mod-newtab-title">
-          <div class="mod-group-heading"><div><p class="group-kicker">Midori New Tab</p><h2 id="mod-newtab-title" class="group-title">Shortcuts, widgets, and wallpaper</h2></div><p class="group-desc">These styles are bundled into the Midori New Tab add-on during import.</p></div>
+        <section class="setting-group visual-mods-group" data-mod-group="newtab" aria-labelledby="mod-newtab-title">
+          <div class="mod-group-heading"><div><p class="group-kicker">Midori New Tab</p><h2 id="mod-newtab-title" class="group-title">Shortcuts, widgets, and wallpaper</h2></div><p class="group-desc">These styles are loaded by Midori’s privileged theme bridge and update directly from browser preferences.</p></div>
           <div class="mod-list">
             <div class="mod-row" data-search="remove hide title text homepage new tab shortcuts"><div class="mod-copy"><span id="label-modblur-newtab-hide-titles" class="mod-title">Hide shortcut titles</span><p>Show shortcut icons without the text label underneath.</p><span class="mod-scope">New Tab</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-newtab-hide-titles" data-mod-control aria-labelledby="label-modblur-newtab-hide-titles"><span aria-hidden="true"></span></label></div>
-            <div class="mod-row" data-search="center widgets new tab keep title text"><div class="mod-copy"><label id="label-modblur-newtab-center-widgets" class="mod-title" for="pref-modblur-newtab-center-widgets">Center New Tab widgets</label><p>Center the dashboard and choose whether shortcut titles remain visible.</p><span class="mod-scope">New Tab</span></div><select id="pref-modblur-newtab-center-widgets" class="mod-select" data-mod-control aria-labelledby="label-modblur-newtab-center-widgets"><option value="off">Off</option><option value="hide-titles">Center · hide titles</option><option value="keep-titles">Center · keep titles</option></select></div>
+            <div class="mod-row" data-search="center align widgets dashboard new tab"><div class="mod-copy"><label id="label-modblur-newtab-center-widgets" class="mod-title" for="pref-modblur-newtab-center-widgets">New Tab widget alignment</label><p>Keep the dashboard in its default position or center it independently of shortcut titles.</p><span class="mod-scope">New Tab</span></div><select id="pref-modblur-newtab-center-widgets" class="mod-select" data-mod-control aria-labelledby="label-modblur-newtab-center-widgets"><option value="off">Default alignment</option><option value="center">Centered</option></select></div>
             <div class="mod-row" data-search="circular homepage new tab shortcuts icons"><div class="mod-copy"><span id="label-modblur-newtab-circular" class="mod-title">Circular shortcut icons</span><p>Use circular icon containers for New Tab shortcuts.</p><span class="mod-scope">New Tab</span></div><label class="mod-toggle"><input type="checkbox" id="pref-modblur-newtab-circular" data-mod-control aria-labelledby="label-modblur-newtab-circular"><span aria-hidden="true"></span></label></div>
             <div class="mod-row" data-search="wallpaper blur background new tab intensity 1 10"><div class="mod-copy"><label id="label-modblur-newtab-wallpaper-blur" class="mod-title" for="pref-modblur-newtab-wallpaper-blur">Wallpaper blur</label><p>Set New Tab wallpaper blur from 0 (off) to 10.</p><span class="mod-scope">New Tab</span></div><div class="mod-unit-control"><input id="pref-modblur-newtab-wallpaper-blur" class="mod-number" type="number" min="0" max="10" step="1" data-mod-control aria-labelledby="label-modblur-newtab-wallpaper-blur"><span>/ 10</span></div></div>
           </div>

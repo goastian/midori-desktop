@@ -10,6 +10,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AutoHideToolbar: 'resource:///modules/AutoHideToolbar.sys.mjs',
   MemoryProfileManager: 'resource:///modules/MemoryProfileManager.sys.mjs',
   MidoriGradient: 'resource:///modules/MidoriGradient.sys.mjs',
+  MidoriModBlur: 'resource:///modules/MidoriModBlur.sys.mjs',
   MidoriSidebar: 'resource:///modules/MidoriSidebar.sys.mjs',
   MidoriShortcuts: 'resource:///modules/MidoriShortcuts.sys.mjs',
   MidoriTabProtection: 'resource:///modules/MidoriTabProtection.sys.mjs',
@@ -19,6 +20,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const services = [
+  { name: 'MidoriModBlur', getService: () => lazy.MidoriModBlur },
   { name: 'MemoryProfileManager', getService: () => lazy.MemoryProfileManager },
   { name: 'AutoHideToolbar', getService: () => lazy.AutoHideToolbar },
   { name: 'MidoriGradient', getService: () => lazy.MidoriGradient },

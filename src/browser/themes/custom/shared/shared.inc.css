@@ -14,27 +14,27 @@
   --pf-accent-color: #0eae5b;
   --pf-accent-color-2: #0e9dae;
   --pf-accent-text-color: color-mix(in srgb, var(--pf-accent-color), var(--pf-text-color) 28%);
-  --pf-browser-bgcolor: #eff8f3;
-  --pf-browser-bgcolor-2: #dff4e9;
-  --pf-sidebar-bgcolor: #f7fbf8;
-  --pf-panel-bgcolor: #ffffff;
-  --pf-text-color: #142a24;
-  --pf-url-text-color: #008c86;
+  --pf-browser-bgcolor: hsl(200, 5%, 93%);
+  --pf-browser-bgcolor-2: hsl(200, 5%, 88%);
+  --pf-sidebar-bgcolor: hsl(200, 5%, 98%);
+  --pf-panel-bgcolor: hsl(200, 5%, 96%);
+  --pf-text-color: hsl(210, 8%, 16%);
+  --pf-url-text-color: color-mix(in srgb, var(--pf-accent-color), var(--pf-text-color) 34%);
   --pf-text-color-inactive: color-mix(in srgb, var(--pf-text-color), transparent 36%);
   --pf-icon-color: color-mix(in srgb, var(--pf-text-color), transparent 12%);
   --pf-icon-color-active: color-mix(in srgb, var(--pf-accent-color), var(--pf-text-color) 28%);
-  --pf-toolbar-bgcolor: rgba(10, 65, 50, 0.07);
-  --pf-toolbar-bgcolor-hover: rgba(10, 65, 50, 0.11);
-  --pf-toolbar-bgcolor-active: rgba(14, 157, 174, 0.18);
-  --pf-toolbar-bgcolor-inactive: rgba(10, 65, 50, 0.045);
-  --pf-tabbar-bgcolor: rgba(14, 174, 91, 0.06);
-  --pf-navbar-bgcolor: rgba(14, 174, 91, 0.09);
+  --pf-toolbar-bgcolor: hsl(200, 5%, 86%, 0.44);
+  --pf-toolbar-bgcolor-hover: hsl(200, 5%, 80%, 0.58);
+  --pf-toolbar-bgcolor-active: color-mix(in srgb, var(--pf-accent-color) 18%, transparent);
+  --pf-toolbar-bgcolor-inactive: hsl(200, 5%, 88%, 0.34);
+  --pf-tabbar-bgcolor: hsl(200, 5%, 96%, 0.7);
+  --pf-navbar-bgcolor: hsl(200, 5%, 96%, 0.82);
   --pf-urlbar-bgcolor: #ffffff;
   --pf-border-color: color-mix(in srgb, var(--pf-text-color), transparent 86%);
   --pf-border-color-light: color-mix(in srgb, var(--pf-text-color), transparent 92%);
-  --pf-input-bgcolor: rgba(255, 255, 255, 0.72);
-  --pf-tab-selected-bgcolor: rgba(255, 255, 255, 0.86);
-  --pf-favicon-bgcolor: rgba(255, 255, 255, 0.86);
+  --pf-input-bgcolor: hsl(200, 5%, 100%, 0.76);
+  --pf-tab-selected-bgcolor: hsl(200, 5%, 100%, 0.86);
+  --pf-favicon-bgcolor: hsl(200, 5%, 100%, 0.86);
   --pf-favicon-border-color: color-mix(in srgb, var(--pf-text-color), transparent 82%);
   --pf-separation: 8px;
   --pf-browser-separation: 10px;
@@ -68,12 +68,21 @@
     0 16px 48px rgba(0, 0, 0, 0.18);
   --pf-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.1);
 
-  --pf-ts-15: 0.15s;
-  --pf-ts-25: 0.25s;
-  --pf-ts-50: 0.5s;
-  --pf-fx-bounce: cubic-bezier(0.47, 1.84, 0.41, 0.8);
+  --pf-motion-fast: 120ms;
+  --pf-motion-normal: 180ms;
+  --pf-motion-slow: 260ms;
+  --pf-motion-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --pf-motion-press: cubic-bezier(0.2, 0, 0, 1);
+  --pf-ts-15: var(--pf-motion-fast);
+  --pf-ts-25: var(--pf-motion-normal);
+  --pf-ts-50: var(--pf-motion-slow);
+  --pf-fx-bounce: var(--pf-motion-enter);
   --pf-fx-sidebar: cubic-bezier(0.125, 1.125, 0.25, 1.0125);
-
+  --pf-panel-padding: 4px;
+  --pf-panel-radius: 10px;
+  --pf-menuitem-radius: 6px;
+  --pf-menuitem-padding: 5px 9px;
+  --pf-menuitem-margin: 1px 2px;
 }
 
 :root:not([lwtheme]) {
@@ -153,23 +162,23 @@
     :root:not([lwtheme]) {
       --pf-accent-color: #29c58b;
       --pf-accent-color-2: #0eae5b;
-      --pf-browser-bgcolor: #07150d;
-      --pf-browser-bgcolor-2: #101924;
-      --pf-sidebar-bgcolor: #0e1714;
-      --pf-panel-bgcolor: #151d1a;
-      --pf-text-color: #eaf3f2;
+      --pf-browser-bgcolor: hsl(240, 2%, 13%);
+      --pf-browser-bgcolor-2: hsl(240, 2%, 10%);
+      --pf-sidebar-bgcolor: hsl(240, 2%, 16%);
+      --pf-panel-bgcolor: hsl(240, 2%, 20%);
+      --pf-text-color: hsl(200, 5%, 94%);
       --pf-url-text-color: #48d4a1;
-      --pf-toolbar-bgcolor: rgba(248, 248, 248, 0.08);
-      --pf-toolbar-bgcolor-hover: rgba(248, 248, 248, 0.12);
+      --pf-toolbar-bgcolor: hsl(240, 2%, 26%, 0.48);
+      --pf-toolbar-bgcolor-hover: hsl(240, 2%, 32%, 0.62);
       --pf-toolbar-bgcolor-active: rgba(41, 197, 139, 0.2);
-      --pf-toolbar-bgcolor-inactive: rgba(248, 248, 248, 0.055);
-      --pf-tabbar-bgcolor: rgba(41, 197, 139, 0.055);
-      --pf-navbar-bgcolor: rgba(255, 255, 255, 0.07);
-      --pf-urlbar-bgcolor: #16211d;
-      --pf-input-bgcolor: rgba(255, 255, 255, 0.045);
-      --pf-tab-selected-bgcolor: rgba(238, 239, 243, 0.15);
-      --pf-favicon-bgcolor: rgba(234, 243, 242, 0.22);
-      --pf-favicon-border-color: rgba(234, 243, 242, 0.18);
+      --pf-toolbar-bgcolor-inactive: hsl(240, 2%, 26%, 0.3);
+      --pf-tabbar-bgcolor: hsl(240, 2%, 16%, 0.8);
+      --pf-navbar-bgcolor: hsl(240, 2%, 18%, 0.82);
+      --pf-urlbar-bgcolor: hsl(240, 2%, 13%);
+      --pf-input-bgcolor: hsl(240, 2%, 26%, 0.42);
+      --pf-tab-selected-bgcolor: hsl(240, 2%, 32%, 0.58);
+      --pf-favicon-bgcolor: hsl(240, 2%, 32%, 0.55);
+      --pf-favicon-border-color: hsl(200, 5%, 94%, 0.14);
       color-scheme: dark;
     }
   }
@@ -294,6 +303,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root {
+    --pf-motion-fast: 0s;
+    --pf-motion-normal: 0s;
+    --pf-motion-slow: 0s;
     --pf-ts-15: 0s;
     --pf-ts-25: 0s;
     --pf-ts-50: 0s;
@@ -304,14 +316,8 @@
    Base chrome
    ------------------------------------------------------------------ */
 
-#tracking-protection-icon-container {
-  display: none !important;
-}
-
 :root:not([inDOMFullscreen], [chromehidden~="toolbar"], [taskbartab]) #browser {
-  background:
-    radial-gradient(circle at 15% 0, color-mix(in srgb, var(--pf-accent-color-2), transparent 86%), transparent 36%),
-    linear-gradient(180deg, var(--pf-browser-bgcolor), var(--pf-browser-bgcolor-2)) !important;
+  background: var(--pf-browser-bgcolor) !important;
 }
 
 :root:not([inDOMFullscreen], [chromehidden~="toolbar"], [taskbartab]) #tabbrowser-tabbox {
@@ -335,9 +341,7 @@
 
 #navigator-toolbox {
   border-bottom: 0 !important;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--pf-accent-color), transparent 90%), transparent 48%),
-    var(--pf-sidebar-bgcolor) !important;
+  background: var(--pf-sidebar-bgcolor) !important;
 }
 
 #nav-bar {
@@ -364,6 +368,10 @@ findbar toolbarbutton {
   border-radius: var(--pf-border-radius-sm) !important;
   --toolbarbutton-background-color-hover: var(--pf-toolbar-bgcolor-hover);
   --toolbarbutton-background-color-active: var(--pf-toolbar-bgcolor-active);
+  transition:
+    background-color var(--pf-motion-fast) ease,
+    color var(--pf-motion-fast) ease,
+    transform var(--pf-motion-fast) var(--pf-motion-press) !important;
 }
 
 toolbar .toolbarbutton-1:not([disabled]):hover {
@@ -380,8 +388,8 @@ toolbar .toolbarbutton-1 > .toolbarbutton-badge-stack {
   transition: transform var(--pf-ts-25) var(--pf-fx-bounce) !important;
 }
 
-toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):active > .toolbarbutton-icon {
-  transform: scale(0.95);
+toolbar .toolbarbutton-1:not([disabled]):active {
+  transform: scale(0.96);
 }
 
 :root[midori-horizontal-tabs] #tabs-newtab-button,
@@ -411,7 +419,6 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   transform: translateY(1px);
 }
 
-.private-browsing-indicator-with-label,
 #fxa-avatar-label {
   display: none !important;
 }
@@ -1019,11 +1026,10 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
 }
 
 .tab-background {
-  outline: none !important;
   border-radius: var(--tab-border-radius, var(--pf-border-radius-hl)) !important;
   --tab-background-color-selected: var(--pf-tab-selected-bgcolor);
   --tab-selected-shadow: var(--pf-tab-selected-shadow);
-  --focus-outline-color: transparent;
+  --focus-outline-color: color-mix(in srgb, var(--pf-accent-color), transparent 28%);
   --dragover-tab-group-color: transparent;
 }
 
@@ -1053,8 +1059,14 @@ toolbar .toolbarbutton-1:not(#back-button, #forward-button, #reload-button):acti
   transform: scale(0.92);
 }
 
-.tabbrowser-tab:not(:hover) .tab-close-button {
+.tabbrowser-tab:not(:hover, [visuallyselected], :focus-within) .tab-close-button {
   display: none !important;
+}
+
+.tabbrowser-tab:focus-visible .tab-background,
+.tabbrowser-tab:focus-within .tab-background {
+  outline: 2px solid var(--focus-outline-color) !important;
+  outline-offset: -2px !important;
 }
 
 #pinned-tabs-container[orient="vertical"] {
@@ -1116,9 +1128,7 @@ tab-group .tab-group-label {
 }
 
 #urlbar {
-  --urlbarView-highlight-background: var(--pf-toolbar-bgcolor-active) !important;
-  --urlbarView-highlight-color: var(--pf-text-color) !important;
-  --urlbarView-separator-color: var(--pf-border-color-light) !important;
+  --urlbarview-separator-color: var(--pf-border-color-light) !important;
   color: var(--pf-text-color) !important;
 }
 
@@ -1309,6 +1319,19 @@ toolbarbutton[disabled="true"] {
   background-color: var(--pf-toolbar-bgcolor-hover) !important;
 }
 
+.subviewbutton,
+.panel-banner-item,
+.toolbaritem-combined-buttons > toolbarbutton {
+  transition:
+    background-color var(--pf-motion-fast) ease,
+    color var(--pf-motion-fast) ease,
+    transform var(--pf-motion-fast) var(--pf-motion-press) !important;
+}
+
+:is(.subviewbutton, .panel-banner-item, .toolbaritem-combined-buttons > toolbarbutton):not([disabled]):active {
+  transform: scale(0.985);
+}
+
 #unified-extensions-view {
   --menu-panel-width-wide: var(--pf-extensions-width) !important;
 }
@@ -1336,16 +1359,16 @@ menupopup {
   --menu-color: var(--pf-text-color) !important;
   --menuitem-hover-background-color: var(--pf-toolbar-bgcolor-hover) !important;
   --menuitem-hover-color: var(--pf-text-color) !important;
-  --panel-padding: 4px !important;
-  --panel-border-radius: 10px !important;
-  --menuitem-border-radius: 6px !important;
-  --menuitem-padding: 5px 9px !important;
-  --menuitem-margin: 1px 2px !important;
+  --panel-padding: var(--pf-panel-padding) !important;
+  --panel-border-radius: var(--pf-panel-radius) !important;
+  --menuitem-border-radius: var(--pf-menuitem-radius) !important;
+  --menuitem-padding: var(--pf-menuitem-padding) !important;
+  --menuitem-margin: var(--pf-menuitem-margin) !important;
   color: var(--pf-text-color) !important;
   background: var(--pf-panel-bgcolor) !important;
   background-color: var(--pf-panel-bgcolor) !important;
   border: 1px solid var(--pf-border-color) !important;
-  border-radius: 10px !important;
+  border-radius: var(--pf-panel-radius) !important;
   box-shadow: var(--pf-shadow-md) !important;
 }
 
@@ -1358,10 +1381,18 @@ menucaption {
   --panel-text-color: var(--pf-text-color) !important;
   background-color: transparent !important;
   color: var(--pf-text-color) !important;
-  --menuitem-border-radius: 6px !important;
-  --menuitem-padding: 5px 9px !important;
-  --menuitem-margin: 1px 2px !important;
+  --menuitem-border-radius: var(--pf-menuitem-radius) !important;
+  --menuitem-padding: var(--pf-menuitem-padding) !important;
+  --menuitem-margin: var(--pf-menuitem-margin) !important;
   fill: currentColor !important;
+  transition:
+    background-color var(--pf-motion-fast) ease,
+    color var(--pf-motion-fast) ease,
+    transform var(--pf-motion-fast) var(--pf-motion-press) !important;
+}
+
+:is(menu, menuitem):where([_moz-menuactive]:not([disabled="true"])) {
+  transform: translateX(1px);
 }
 
 menu :is(.menu-text, .menu-iconic-text, .menu-accel),
@@ -1381,6 +1412,26 @@ menuitem[disabled="true"],
 menu[disabled="true"] {
   --menu-color: var(--panel-disabled-color) !important;
   color: var(--panel-disabled-color) !important;
+}
+
+@media (forced-colors: active), (prefers-reduced-transparency: reduce) {
+  menupopup,
+  .panel-arrowcontent,
+  .browserContainer > findbar {
+    color: CanvasText !important;
+    background: Canvas !important;
+    border-color: CanvasText !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  menu,
+  menuitem,
+  menucaption,
+  panelview,
+  .subviewbutton {
+    color: CanvasText !important;
+  }
 }
 
 menuitem:where([_moz-menuactive]:not([disabled="true"])),

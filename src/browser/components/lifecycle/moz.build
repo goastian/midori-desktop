@@ -6,8 +6,11 @@
 
 EXTRA_JS_MODULES += [
     "MidoriBrowserServices.sys.mjs",
+    "MidoriModBlur.sys.mjs",
     "MidoriServiceLifecycle.sys.mjs",
 ]
+
+FINAL_TARGET_FILES.modules += ["midori-newtab-modblur.css"]
 
 EXTRA_COMPONENTS += [
     "midori-lifecycle.manifest",

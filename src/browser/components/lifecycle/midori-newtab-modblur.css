@@ -1,0 +1,329 @@
+/* Midori's Firefox-Mod-Blur adaptations for the bundled New Tab extension.
+ * This privileged user sheet is scoped to Midori New Tab's marked document.
+ * Keep selectors resilient to Vite hashes by targeting stable component classes.
+ */
+
+@-moz-document url-prefix("moz-extension://") {
+
+html[data-midori-modblur-newtab] {
+  --midori-modblur-wallpaper-backdrop-filter: none;
+  --midori-modblur-surface-filter: blur(18px) saturate(1.15);
+  --midori-modblur-motion-fast: 140ms;
+  --midori-modblur-motion-normal: 200ms;
+  --midori-modblur-motion-enter: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media -moz-pref("midori.modblur.blur.strength", "soft") {
+  html[data-midori-modblur-newtab] { --midori-modblur-surface-filter: blur(12px) saturate(1.08); }
+}
+
+@media -moz-pref("midori.modblur.blur.strength", "deep") {
+  html[data-midori-modblur-newtab] { --midori-modblur-surface-filter: blur(28px) saturate(1.28); }
+}
+
+@media -moz-pref("midori.modblur.motion.style", "expressive") {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-motion-fast: 160ms;
+    --midori-modblur-motion-normal: 240ms;
+    --midori-modblur-motion-enter: cubic-bezier(0.16, 1.18, 0.3, 1);
+  }
+}
+
+@media -moz-pref("midori.modblur.motion.style", "off") {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-motion-fast: 0s;
+    --midori-modblur-motion-normal: 0s;
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.hideShortcutTitles") {
+  html[data-midori-modblur-newtab] .speed-dial-title {
+    display: none !important;
+  }
+
+  html[data-midori-modblur-newtab] .speed-dial-link {
+    gap: 0 !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.centerWidgetsStyle", "center") {
+  html[data-midori-modblur-newtab] .dash-header,
+  html[data-midori-modblur-newtab] .dash-search,
+  html[data-midori-modblur-newtab] .bookmark-grid,
+  html[data-midori-modblur-newtab] .widget-board,
+  html[data-midori-modblur-newtab] .dash-widgets {
+    margin-inline: auto !important;
+  }
+
+  html[data-midori-modblur-newtab] .bookmark-grid > .tabs-bar {
+    align-self: center !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.circularShortcuts") {
+  html[data-midori-modblur-newtab] .speed-dial-icon,
+  html[data-midori-modblur-newtab] .speed-dial-icon img,
+  html[data-midori-modblur-newtab] .speed-dial-initial {
+    border-radius: 50% !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 0) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: none;
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 1) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(4px);
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 2) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(8px);
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 3) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(12px);
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 4) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(16px);
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 5) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(20px);
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 6) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(24px);
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 7) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(32px);
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 8) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(50px);
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 9) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(80px);
+  }
+}
+
+@media -moz-pref("midori.modblur.newtab.wallpaperBlur", 10) {
+  html[data-midori-modblur-newtab] {
+    --midori-modblur-wallpaper-backdrop-filter: blur(140px);
+  }
+}
+
+html[data-midori-modblur-newtab] .viewport::after {
+  backdrop-filter: var(--midori-modblur-wallpaper-backdrop-filter) !important;
+}
+
+@media -moz-pref("midori.modblur.theme.spill") {
+  html[data-midori-modblur-newtab] .viewport::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--surface-base, #080d14) url("chrome://browser/skin/modblur-assets/spill-main.svg") center / cover no-repeat;
+    animation: midori-modblur-spill-in var(--midori-modblur-motion-normal) var(--midori-modblur-motion-enter) both;
+  }
+
+  html[data-midori-modblur-newtab][data-theme="light"] .viewport::before {
+    background-image: url("chrome://browser/skin/modblur-assets/spill-main-light.svg");
+  }
+}
+
+@keyframes midori-modblur-spill-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media -moz-pref("midori.modblur.theme.card") or -moz-pref("midori.modblur.theme.cardStyle", "subtle") or -moz-pref("midori.modblur.theme.cardStyle", "elevated") {
+  html[data-midori-modblur-newtab] .speed-dial-link,
+  html[data-midori-modblur-newtab] .top-actions,
+  html[data-midori-modblur-newtab] .bottom-actions,
+  html[data-midori-modblur-newtab] .space-switcher-bar,
+  html[data-midori-modblur-newtab] .tabs-bar,
+  html[data-midori-modblur-newtab] .async-placeholder,
+  html[data-midori-modblur-newtab] .widget-card__surface,
+  html[data-midori-modblur-newtab] .transparency-panel,
+  html[data-midori-modblur-newtab] .dial-editor,
+  html[data-midori-modblur-newtab] .credits {
+    background-color: color-mix(in srgb, var(--surface-island, #0f1520) 86%, transparent) !important;
+    border-color: color-mix(in srgb, var(--color-text, #c4f0e0) 14%, transparent) !important;
+    box-shadow:
+      0 1px 1px rgba(0, 0, 0, 0.08),
+      0 6px 20px rgba(0, 0, 0, 0.12),
+      inset 0 1px color-mix(in srgb, var(--color-text, white) 8%, transparent) !important;
+    backdrop-filter: var(--midori-modblur-surface-filter) !important;
+    transition:
+      background-color var(--midori-modblur-motion-fast) ease,
+      border-color var(--midori-modblur-motion-fast) ease,
+      box-shadow var(--midori-modblur-motion-normal) ease,
+      transform var(--midori-modblur-motion-normal) var(--midori-modblur-motion-enter) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.theme.card") or -moz-pref("midori.modblur.theme.cardStyle", "elevated") {
+  html[data-midori-modblur-newtab] .speed-dial-link,
+  html[data-midori-modblur-newtab] .top-actions,
+  html[data-midori-modblur-newtab] .bottom-actions,
+  html[data-midori-modblur-newtab] .space-switcher-bar,
+  html[data-midori-modblur-newtab] .tabs-bar,
+  html[data-midori-modblur-newtab] .async-placeholder,
+  html[data-midori-modblur-newtab] .widget-card__surface,
+  html[data-midori-modblur-newtab] .transparency-panel,
+  html[data-midori-modblur-newtab] .dial-editor,
+  html[data-midori-modblur-newtab] .credits {
+    background-color: color-mix(in srgb, var(--surface-island, #0f1520) 94%, transparent) !important;
+    border-color: color-mix(in srgb, var(--color-text, #c4f0e0) 20%, transparent) !important;
+    box-shadow:
+      0 2px 3px rgba(0, 0, 0, 0.1),
+      0 14px 34px rgba(0, 0, 0, 0.2),
+      inset 0 1px color-mix(in srgb, var(--color-text, white) 12%, transparent) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.blur.acrylic") {
+  html[data-midori-modblur-newtab] .speed-dial-link,
+  html[data-midori-modblur-newtab] .top-actions,
+  html[data-midori-modblur-newtab] .bottom-actions,
+  html[data-midori-modblur-newtab] .space-switcher-bar,
+  html[data-midori-modblur-newtab] .tabs-bar,
+  html[data-midori-modblur-newtab] .async-placeholder,
+  html[data-midori-modblur-newtab] .widget-card__surface,
+  html[data-midori-modblur-newtab] .transparency-panel,
+  html[data-midori-modblur-newtab] .dial-editor,
+  html[data-midori-modblur-newtab] .credits,
+  html[data-midori-modblur-newtab] .update-toast {
+    background-color: color-mix(in srgb, var(--surface-island, #0f1520) 76%, transparent) !important;
+    background-image:
+      url("chrome://browser/skin/modblur-assets/noise-512x512.png"),
+      linear-gradient(180deg, color-mix(in srgb, white 6%, transparent), transparent 58%) !important;
+    background-size: 160px 160px, auto !important;
+    background-blend-mode: soft-light, normal !important;
+    border-color: color-mix(in srgb, var(--color-text, #c4f0e0) 16%, transparent) !important;
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.16),
+      inset 0 1px color-mix(in srgb, var(--color-text, white) 12%, transparent) !important;
+    backdrop-filter: var(--midori-modblur-surface-filter) !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.theme.textureStyle", "grain") {
+  html[data-midori-modblur-newtab] .speed-dial-link,
+  html[data-midori-modblur-newtab] .top-actions,
+  html[data-midori-modblur-newtab] .bottom-actions,
+  html[data-midori-modblur-newtab] .space-switcher-bar,
+  html[data-midori-modblur-newtab] .tabs-bar,
+  html[data-midori-modblur-newtab] .async-placeholder,
+  html[data-midori-modblur-newtab] .widget-card__surface,
+  html[data-midori-modblur-newtab] .transparency-panel,
+  html[data-midori-modblur-newtab] .dial-editor,
+  html[data-midori-modblur-newtab] .credits,
+  html[data-midori-modblur-newtab] .update-toast {
+    background-image: url("chrome://browser/skin/modblur-assets/noise-512x512.png") !important;
+    background-size: 192px 192px !important;
+    background-blend-mode: soft-light !important;
+  }
+}
+
+@media -moz-pref("midori.modblur.theme.textureStyle", "frosted") {
+  html[data-midori-modblur-newtab] .speed-dial-link,
+  html[data-midori-modblur-newtab] .top-actions,
+  html[data-midori-modblur-newtab] .bottom-actions,
+  html[data-midori-modblur-newtab] .space-switcher-bar,
+  html[data-midori-modblur-newtab] .tabs-bar,
+  html[data-midori-modblur-newtab] .async-placeholder,
+  html[data-midori-modblur-newtab] .widget-card__surface,
+  html[data-midori-modblur-newtab] .transparency-panel,
+  html[data-midori-modblur-newtab] .dial-editor,
+  html[data-midori-modblur-newtab] .credits,
+  html[data-midori-modblur-newtab] .update-toast {
+    background-image:
+      url("chrome://browser/skin/modblur-assets/noise-512x512.png"),
+      linear-gradient(180deg, color-mix(in srgb, white 7%, transparent), transparent 52%) !important;
+    background-size: 160px 160px, auto !important;
+    background-blend-mode: soft-light, normal !important;
+    box-shadow: inset 0 1px color-mix(in srgb, white 10%, transparent) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-midori-modblur-newtab] .background,
+  html[data-midori-modblur-newtab] .background-skeleton,
+  html[data-midori-modblur-newtab] .viewport::before,
+  html[data-midori-modblur-newtab] .speed-dial-link,
+  html[data-midori-modblur-newtab] .speed-dial-title,
+  html[data-midori-modblur-newtab] .card-actions,
+  html[data-midori-modblur-newtab] .top-actions,
+  html[data-midori-modblur-newtab] .bottom-actions,
+  html[data-midori-modblur-newtab] .space-switcher-bar,
+  html[data-midori-modblur-newtab] .tabs-bar,
+  html[data-midori-modblur-newtab] .async-placeholder,
+  html[data-midori-modblur-newtab] .async-placeholder::after,
+  html[data-midori-modblur-newtab] .widget-card__surface,
+  html[data-midori-modblur-newtab] .transparency-panel,
+  html[data-midori-modblur-newtab] .dial-editor,
+  html[data-midori-modblur-newtab] .credits,
+  html[data-midori-modblur-newtab] .update-toast {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html[data-midori-modblur-newtab] .speed-dial-link,
+  html[data-midori-modblur-newtab] .top-actions,
+  html[data-midori-modblur-newtab] .bottom-actions,
+  html[data-midori-modblur-newtab] .space-switcher-bar,
+  html[data-midori-modblur-newtab] .tabs-bar,
+  html[data-midori-modblur-newtab] .async-placeholder,
+  html[data-midori-modblur-newtab] .widget-card__surface,
+  html[data-midori-modblur-newtab] .transparency-panel,
+  html[data-midori-modblur-newtab] .dial-editor,
+  html[data-midori-modblur-newtab] .credits,
+  html[data-midori-modblur-newtab] .update-toast {
+    background-color: var(--surface-island, #0f1520) !important;
+    backdrop-filter: none !important;
+  }
+
+  html[data-midori-modblur-newtab] .viewport::before {
+    display: none !important;
+  }
+
+  html[data-midori-modblur-newtab] .viewport::after {
+    backdrop-filter: none !important;
+  }
+}
+
+}

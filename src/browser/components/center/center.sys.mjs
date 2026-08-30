@@ -18,6 +18,11 @@ const WEBAPP_FALLBACK_ICON =
 const BROWSER_WINDOW_TRACKER_MODULE_URL =
   "resource:///modules/BrowserWindowTracker.sys.mjs";
 const ADDON_MANAGER_MODULE_URL = "resource://gre/modules/AddonManager.sys.mjs";
+const MODBLUR_MODULE_URL = "resource:///modules/MidoriModBlur.sys.mjs";
+const {
+  LEGACY_MODBLUR_PREFS,
+  migrateLegacyModBlurPrefs,
+} = ChromeUtils.importESModule(MODBLUR_MODULE_URL);
 
 const ADDON_IDS = {
   privacy: "midori-protection@astian.org",
@@ -46,6 +51,7 @@ const PREF_MAP = {
   "pref-modblur-bookmarks-clean": { pref: "midori.modblur.bookmarks.clean", type: "bool" },
   "pref-modblur-bookmarks-folders": { pref: "midori.modblur.bookmarks.hideFolderIcons", type: "bool" },
   "pref-modblur-bookmarks-transparent": { pref: "midori.modblur.bookmarks.transparent", type: "bool" },
+  "pref-modblur-bookmarks-centered": { pref: "midori.modblur.bookmarks.centered", type: "bool" },
   "pref-modblur-privacy-blur": { pref: "midori.modblur.privacy.blurIdentity", type: "bool" },
   "pref-modblur-privacy-tabs": { pref: "midori.modblur.privacy.blurTabs", type: "bool" },
   "pref-modblur-extension-style": { pref: "midori.modblur.extensions.style", type: "string" },
@@ -54,6 +60,9 @@ const PREF_MAP = {
   "pref-modblur-extension-hide-manage": { pref: "midori.modblur.extensions.hideManageButton", type: "bool" },
   "pref-modblur-extension-hide-separator": { pref: "midori.modblur.extensions.hideSeparator", type: "bool" },
   "pref-modblur-extension-hide-faded": { pref: "midori.modblur.extensions.hideFaded", type: "bool" },
+  "pref-modblur-menu-density": { pref: "midori.modblur.menus.density", type: "string" },
+  "pref-modblur-compact-identity": { pref: "midori.modblur.search.compactIdentity", type: "bool" },
+  "pref-modblur-hide-extension-icon": { pref: "midori.modblur.search.hideExtensionIcon", type: "bool" },
   "pref-modblur-icons-menu": { pref: "midori.modblur.icons.mainMenu", type: "bool" },
   "pref-modblur-icons-tabs-overview": { pref: "midori.modblur.icons.tabsOverview", type: "bool" },
   "pref-modblur-icons-midori-menu": { pref: "midori.modblur.icons.midoriMenu", type: "bool" },
@@ -66,6 +75,7 @@ const PREF_MAP = {
   "pref-modblur-hide-tab-preview": { pref: "midori.modblur.tabs.hidePreviewPanel", type: "bool" },
   "pref-modblur-hide-vertical-scrollbar": { pref: "midori.modblur.verticalTabs.hideScrollbar", type: "bool" },
   "pref-modblur-search-outline": { pref: "midori.modblur.search.focusOutline", type: "bool" },
+  "pref-modblur-url-alignment": { pref: "midori.modblur.search.textAlignment", type: "string" },
   "pref-modblur-tabs-layout": { pref: "midori.modblur.tabs.layout", type: "string" },
   "pref-modblur-window-frame": { pref: "midori.modblur.window.frameStyle", type: "string" },
   "pref-modblur-search-buttons": { pref: "midori.modblur.search.buttonsAlways", type: "bool" },
@@ -77,9 +87,11 @@ const PREF_MAP = {
   "pref-modblur-search-blur": { pref: "midori.modblur.blur.searchbar", type: "bool" },
   "pref-modblur-vertical-expand-blur": { pref: "midori.modblur.blur.verticalExpand", type: "bool" },
   "pref-modblur-extra-blur": { pref: "midori.modblur.blur.extra", type: "bool" },
+  "pref-modblur-strength": { pref: "midori.modblur.blur.strength", type: "string" },
+  "pref-modblur-motion": { pref: "midori.modblur.motion.style", type: "string" },
   "pref-modblur-spill-theme": { pref: "midori.modblur.theme.spill", type: "bool" },
   "pref-modblur-card-theme": { pref: "midori.modblur.theme.cardStyle", type: "string" },
-  "pref-modblur-soft-texture": { pref: "midori.modblur.theme.softTexture", type: "bool" },
+  "pref-modblur-texture": { pref: "midori.modblur.theme.textureStyle", type: "string" },
   "pref-modblur-acrylic": { pref: "midori.modblur.blur.acrylic", type: "bool" },
   "pref-modblur-newtab-hide-titles": { pref: "midori.modblur.newtab.hideShortcutTitles", type: "bool" },
   "pref-modblur-newtab-center-widgets": { pref: "midori.modblur.newtab.centerWidgetsStyle", type: "string" },
@@ -94,9 +106,7 @@ const MODBLUR_PREFS = [...new Set(
 )];
 
 let modBlurUndoSnapshot = null;
-
-const TAB_LAYOUT_PREF = "midori.modblur.tabs.layout";
-const LEGACY_TABS_ON_TOP_PREF = "midori.modblur.tabs.onTop";
+let activeModBlurFilter = "all";
 
 const FALLBACK_WORKSPACE_ICONS = [
   { id: "default", emoji: "🏠", label: "Home" },
@@ -214,20 +224,6 @@ function syncPrefElement(id, pref, type) {
   if (el.type === "range" && el.dataset.valueTarget) {
     const valueTarget = document.getElementById(el.dataset.valueTarget);
     if (valueTarget) valueTarget.textContent = `${el.value} px`;
-  }
-}
-
-function migrateLegacyTabLayoutPref() {
-  const hasLayoutChoice = Services.prefs.prefHasUserValue(TAB_LAYOUT_PREF);
-  const hasLegacyChoice = Services.prefs.prefHasUserValue(LEGACY_TABS_ON_TOP_PREF);
-
-  if (!hasLayoutChoice && hasLegacyChoice) {
-    const tabsOnTop = Services.prefs.getBoolPref(LEGACY_TABS_ON_TOP_PREF, false);
-    Services.prefs.setStringPref(TAB_LAYOUT_PREF, tabsOnTop ? "tabs-top" : "urlbar-top");
-  }
-
-  if (hasLegacyChoice) {
-    Services.prefs.clearUserPref(LEGACY_TABS_ON_TOP_PREF);
   }
 }
 
@@ -1681,9 +1677,20 @@ function initPrefs() {
       }
     } else if (el.type === "number") {
       el.addEventListener("change", () => {
-        const min = Number.isFinite(el.minAsNumber) ? el.minAsNumber : Number.MIN_SAFE_INTEGER;
-        const max = Number.isFinite(el.maxAsNumber) ? el.maxAsNumber : Number.MAX_SAFE_INTEGER;
-        const next = Math.min(max, Math.max(min, parseInt(el.value, 10)));
+        const parsedMin = el.min === "" ? Number.MIN_SAFE_INTEGER : Number(el.min);
+        const parsedMax = el.max === "" ? Number.MAX_SAFE_INTEGER : Number(el.max);
+        const parsedStep = el.step === "" || el.step === "any" ? 1 : Number(el.step);
+        const min = Number.isFinite(parsedMin) ? Math.ceil(parsedMin) : Number.MIN_SAFE_INTEGER;
+        const max = Number.isFinite(parsedMax) ? Math.floor(parsedMax) : Number.MAX_SAFE_INTEGER;
+        const step = Number.isFinite(parsedStep) && parsedStep > 0
+          ? Math.max(1, Math.round(parsedStep))
+          : 1;
+        const requested = el.valueAsNumber;
+        const fallback = readPref(pref, type) ?? min;
+        const bounded = Math.min(max, Math.max(min, Number.isFinite(requested) ? requested : fallback));
+        const stepBase = Number.isFinite(parsedMin) ? min : 0;
+        const snapped = stepBase + Math.round((bounded - stepBase) / step) * step;
+        const next = Math.trunc(Math.min(max, Math.max(min, snapped)));
         el.value = String(next);
         writePref(pref, type, next);
       });
@@ -1770,19 +1777,6 @@ function initSidebarControls() {
   updateSidebarControlAvailability();
 }
 
-function isModControlEnabled(control) {
-  if (!control || control.disabled) {
-    return false;
-  }
-  if (control.type === "checkbox") {
-    return control.checked;
-  }
-  if (control.type === "number") {
-    return Number(control.value) > 0;
-  }
-  return !["", "off", "none", "system"].includes(String(control.value));
-}
-
 function setModControlAvailability(control, available, reason = "") {
   if (!control) {
     return;
@@ -1790,10 +1784,28 @@ function setModControlAvailability(control, available, reason = "") {
   control.disabled = !available;
   const row = control.closest(".mod-row");
   row?.classList.toggle("is-unavailable", !available);
+  let reasonElement = row?.querySelector(".mod-unavailable-reason");
+  if (row && !reasonElement) {
+    reasonElement = document.createElement("span");
+    reasonElement.className = "mod-unavailable-reason";
+    reasonElement.id = `${control.id}-availability`;
+    row.querySelector(".mod-copy")?.append(reasonElement);
+  }
   if (!available && reason) {
     row?.setAttribute("data-unavailable-reason", reason);
+    if (reasonElement) {
+      reasonElement.textContent = reason;
+      reasonElement.hidden = false;
+      control.setAttribute("aria-describedby", reasonElement.id);
+    }
   } else {
     row?.removeAttribute("data-unavailable-reason");
+    if (reasonElement) {
+      reasonElement.hidden = true;
+      if (control.getAttribute("aria-describedby") === reasonElement.id) {
+        control.removeAttribute("aria-describedby");
+      }
+    }
   }
 }
 
@@ -1811,27 +1823,215 @@ function updateModBlurDependencies() {
   );
 
   const combinedBlur = document.getElementById("pref-modblur-extra-blur")?.checked;
-  for (const id of ["pref-modblur-panel-blur", "pref-modblur-search-blur", "pref-modblur-vertical-expand-blur"]) {
+  setModControlAvailability(
+    document.getElementById("pref-modblur-panel-blur"),
+    !combinedBlur,
+    "Combined extra blur already includes this effect."
+  );
+
+  const popoutEnabled = (document.getElementById("pref-modblur-popout-searchbar")?.value || "off") !== "off";
+  setModControlAvailability(
+    document.getElementById("pref-modblur-search-blur"),
+    !combinedBlur && !popoutEnabled,
+    combinedBlur
+      ? "Combined extra blur already includes this effect."
+      : "The selected popout address bar already includes blur."
+  );
+
+  const vertical = Boolean(
+    readPref("midori.verticaltabs.enabled", "bool") ||
+    readPref("midori.arcmode.enabled", "bool")
+  );
+  for (const id of ["pref-modblur-compact-vertical", "pref-modblur-hide-vertical-scrollbar"]) {
     setModControlAvailability(
       document.getElementById(id),
-      !combinedBlur,
-      "Combined extra blur already includes this effect."
+      vertical,
+      "Switch to vertical tabs to see this modification."
     );
+  }
+  setModControlAvailability(
+    document.getElementById("pref-modblur-vertical-expand-blur"),
+    vertical && !combinedBlur,
+    combinedBlur
+      ? "Combined extra blur already includes this effect."
+      : "Switch to vertical tabs to see this modification."
+  );
+
+  for (const id of [
+    "pref-modblur-autohide-tabs",
+    "pref-modblur-centered-tabs",
+    "pref-modblur-tabs-layout",
+    "pref-modblur-active-tab-static",
+  ]) {
+    setModControlAvailability(
+      document.getElementById(id),
+      !vertical,
+      "Switch to horizontal tabs to see this modification."
+    );
+  }
+  setModControlAvailability(
+    document.getElementById("pref-modblur-show-inactive-tabs"),
+    !vertical && Boolean(document.getElementById("pref-modblur-autohide-tabs")?.checked),
+    vertical
+      ? "Switch to horizontal tabs to see this modification."
+      : "Enable Tabs on hover first."
+  );
+
+  setModControlAvailability(
+    document.getElementById("pref-modblur-bookmarks-centered"),
+    Boolean(document.getElementById("pref-modblur-bookmarks-transparent")?.checked),
+    "Enable Transparent bookmarks bar first."
+  );
+
+  const anyBlur = Boolean(
+    combinedBlur ||
+    popoutEnabled ||
+    document.getElementById("pref-modblur-panel-blur")?.checked ||
+    document.getElementById("pref-modblur-search-blur")?.checked ||
+    document.getElementById("pref-modblur-vertical-expand-blur")?.checked ||
+    document.getElementById("pref-modblur-acrylic")?.checked ||
+    document.getElementById("pref-modblur-card-theme")?.value !== "off"
+  );
+  setModControlAvailability(
+    document.getElementById("pref-modblur-strength"),
+    anyBlur,
+    "Enable a blur surface or Acrylic to tune its strength."
+  );
+}
+
+function updateModBlurPreview() {
+  const preview = document.getElementById("modblur-preview");
+  if (!preview) {
+    return;
+  }
+
+  const value = (id, fallback) => document.getElementById(id)?.value || fallback;
+  const checked = id => Boolean(document.getElementById(id)?.checked);
+  preview.dataset.density = value("pref-modblur-menu-density", "balanced");
+  preview.dataset.texture = value("pref-modblur-texture", "off");
+  preview.dataset.motion = value("pref-modblur-motion", "calm");
+  preview.dataset.blur = value("pref-modblur-strength", "balanced");
+  preview.dataset.alignment = value("pref-modblur-url-alignment", "smart");
+  preview.dataset.popout = value("pref-modblur-popout-searchbar", "off");
+  preview.dataset.bookmarks = checked("pref-modblur-bookmarks-transparent") && checked("pref-modblur-bookmarks-centered") ? "centered" : "start";
+  preview.dataset.identity = checked("pref-modblur-compact-identity") ? "compact" : "visible";
+  preview.dataset.panels = checked("pref-modblur-panel-blur") || checked("pref-modblur-extra-blur") ? "blurred" : "solid";
+  preview.dataset.layout = value("pref-modblur-tabs-layout", "urlbar-top");
+  preview.dataset.frame = value("pref-modblur-window-frame", "none");
+  preview.dataset.controls = value("pref-modblur-window-controls", "system");
+  preview.dataset.card = value("pref-modblur-card-theme", "off");
+  preview.dataset.spill = checked("pref-modblur-spill-theme") ? "on" : "off";
+  preview.dataset.newtabCenter = value("pref-modblur-newtab-center-widgets", "off") === "center" ? "center" : "off";
+  preview.dataset.shortcutTitles = checked("pref-modblur-newtab-hide-titles") ? "hidden" : "visible";
+  preview.dataset.shortcutShape = checked("pref-modblur-newtab-circular") ? "circular" : "rounded";
+  preview.dataset.wallpaperBlur = value("pref-modblur-newtab-wallpaper-blur", "0");
+  preview.style.setProperty(
+    "--mod-preview-wallpaper-blur",
+    `${Math.max(0, Math.min(10, Number(preview.dataset.wallpaperBlur) || 0)) * 1.2}px`
+  );
+
+  const labels = {
+    soft: "Soft blur",
+    balanced: "Balanced blur",
+    deep: "Deep blur",
+    calm: "calm motion",
+    expressive: "expressive motion",
+    off: "no optional motion",
+    grain: "fine grain",
+    frosted: "frosted grain",
+    "urlbar-top": "address bar above tabs",
+    "tabs-top": "tabs above address bar",
+    none: "no added frame",
+    compact: "compact frame",
+    padded: "padded frame",
+    system: "system window controls",
+    "system-left": "system controls on the left",
+    "mac-left": "Mac-style controls on the left",
+    "mac-right": "Mac-style controls on the right",
+    subtle: "subtle cards",
+    elevated: "elevated cards",
+  };
+  const texture = preview.dataset.texture === "off" ? "no texture" : labels[preview.dataset.texture];
+  const cards = preview.dataset.card === "off" ? "cards off" : labels[preview.dataset.card];
+  const newTab = preview.dataset.newtabCenter === "center" ? "centered New Tab widgets" : "default New Tab alignment";
+  const titles = preview.dataset.shortcutTitles === "hidden" ? "shortcut titles hidden" : "shortcut titles visible";
+  const description = document.getElementById("modblur-preview-description");
+  if (description) {
+    description.textContent = `${labels[preview.dataset.layout]} · ${labels[preview.dataset.frame]} · ${labels[preview.dataset.controls]} · ${labels[preview.dataset.blur]} · ${labels[preview.dataset.motion]} · ${texture} · ${cards} · ${preview.dataset.spill === "on" ? "spill on" : "spill off"} · ${newTab} · ${titles}`;
+  }
+}
+
+function updateModBlurVisibility() {
+  const query = (document.getElementById("modblur-search")?.value || "").trim().toLocaleLowerCase();
+  let visible = 0;
+
+  for (const group of document.querySelectorAll(".visual-mods-group")) {
+    const groupMatches = activeModBlurFilter === "all" || group.dataset.modGroup === activeModBlurFilter;
+    let groupVisible = 0;
+    for (const row of group.querySelectorAll(".mod-row")) {
+      const haystack = `${row.dataset.search || ""} ${row.textContent || ""}`.toLocaleLowerCase();
+      const matches = groupMatches && (!query || haystack.includes(query));
+      row.hidden = !matches;
+      if (matches) {
+        groupVisible++;
+      }
+    }
+    group.hidden = groupVisible === 0;
+    visible += groupVisible;
+  }
+
+  const results = document.getElementById("modblur-search-results");
+  if (results) {
+    results.textContent = query || activeModBlurFilter !== "all"
+      ? `${visible} matching modifications`
+      : "";
+  }
+  const empty = document.getElementById("modblur-empty");
+  if (empty) {
+    empty.hidden = visible !== 0;
   }
 }
 
 function updateModBlurSummary() {
   updateModBlurDependencies();
   const controls = [...document.querySelectorAll("[data-mod-control]")];
-  const enabled = controls.filter(isModControlEnabled).length;
+  const customizedPrefs = new Set();
+  for (const control of controls) {
+    const mapping = PREF_MAP[control.id];
+    const customized = Boolean(mapping && isPrefCustomized(mapping.pref, mapping.type));
+    control.closest(".mod-row")?.classList.toggle("is-customized", customized);
+    if (customized) {
+      customizedPrefs.add(mapping.pref);
+    }
+  }
+  const customized = customizedPrefs.size;
   const count = document.getElementById("modblur-enabled-count");
   if (count) {
-    count.textContent = `${enabled} of ${controls.length} active`;
+    count.textContent = customized === 1 ? "1 customized" : `${customized} customized`;
   }
+  updateModBlurPreview();
+}
 
-  for (const control of controls) {
-    control.closest(".mod-row")?.classList.toggle("is-active", isModControlEnabled(control));
+function isPrefCustomized(pref, type) {
+  const effective = readPref(pref, type);
+  const defaults = Services.prefs.getDefaultBranch("");
+  let defaultValue;
+  try {
+    switch (type) {
+      case "bool":
+        defaultValue = defaults.getBoolPref(pref);
+        break;
+      case "int":
+        defaultValue = defaults.getIntPref(pref);
+        break;
+      case "string":
+        defaultValue = defaults.getStringPref(pref);
+        break;
+    }
+  } catch {
+    return Services.prefs.prefHasUserValue(pref);
   }
+  return effective !== defaultValue;
 }
 
 function setModBlurStatus(message, kind = "success") {
@@ -1890,9 +2090,15 @@ function syncModBlurControl(pref) {
 
 function initModBlurCatalog() {
   const controls = [...document.querySelectorAll("[data-mod-control]")];
+  const observedPrefs = new Set([
+    ...MODBLUR_PREFS,
+    "midori.verticaltabs.enabled",
+    "midori.arcmode.enabled",
+  ]);
   const search = document.getElementById("modblur-search");
   const resetButton = document.getElementById("modblur-reset");
   const undoButton = document.getElementById("modblur-undo");
+  const resetPrefs = [...new Set([...MODBLUR_PREFS, ...LEGACY_MODBLUR_PREFS])];
 
   for (const control of controls) {
     control.addEventListener("change", () => {
@@ -1902,30 +2108,27 @@ function initModBlurCatalog() {
     });
   }
 
-  search?.addEventListener("input", () => {
-    const query = search.value.trim().toLocaleLowerCase();
-    for (const row of document.querySelectorAll(".mod-row")) {
-      const haystack = `${row.dataset.search || ""} ${row.textContent || ""}`.toLocaleLowerCase();
-      row.hidden = !!query && !haystack.includes(query);
-    }
-    for (const group of document.querySelectorAll(".visual-mods-group")) {
-      group.hidden = !group.querySelector(".mod-row:not([hidden])");
-    }
-    const visible = document.querySelectorAll(".mod-row:not([hidden])").length;
-    const results = document.getElementById("modblur-search-results");
-    if (results) {
-      results.textContent = query ? `${visible} matching modifications` : "";
-    }
-  });
+  search?.addEventListener("input", updateModBlurVisibility);
+  for (const filter of document.querySelectorAll("[data-mod-filter]")) {
+    filter.addEventListener("click", () => {
+      activeModBlurFilter = filter.dataset.modFilter || "all";
+      for (const candidate of document.querySelectorAll("[data-mod-filter]")) {
+        const selected = candidate === filter;
+        candidate.classList.toggle("is-selected", selected);
+        candidate.setAttribute("aria-pressed", String(selected));
+      }
+      updateModBlurVisibility();
+    });
+  }
 
   resetButton?.addEventListener("click", () => {
-    modBlurUndoSnapshot = MODBLUR_PREFS
+    modBlurUndoSnapshot = resetPrefs
       .filter(pref => Services.prefs.prefHasUserValue(pref))
       .map(pref => {
         const type = Services.prefs.getPrefType(pref);
         return { pref, type, value: readTypedPref(pref, type) };
       });
-    for (const pref of MODBLUR_PREFS) {
+    for (const pref of resetPrefs) {
       if (Services.prefs.prefHasUserValue(pref)) {
         Services.prefs.clearUserPref(pref);
       }
@@ -1939,6 +2142,11 @@ function initModBlurCatalog() {
   });
 
   undoButton?.addEventListener("click", () => {
+    for (const pref of resetPrefs) {
+      if (Services.prefs.prefHasUserValue(pref)) {
+        Services.prefs.clearUserPref(pref);
+      }
+    }
     for (const { pref, type, value } of modBlurUndoSnapshot || []) {
       restoreTypedPref(pref, type, value);
       syncModBlurControl(pref);
@@ -1955,11 +2163,11 @@ function initModBlurCatalog() {
       updateModBlurSummary();
     },
   };
-  for (const pref of MODBLUR_PREFS) {
+  for (const pref of observedPrefs) {
     Services.prefs.addObserver(pref, observer);
   }
   window.addEventListener("unload", () => {
-    for (const pref of MODBLUR_PREFS) {
+    for (const pref of observedPrefs) {
       try {
         Services.prefs.removeObserver(pref, observer);
       } catch {}
@@ -1967,6 +2175,7 @@ function initModBlurCatalog() {
   }, { once: true });
 
   updateModBlurSummary();
+  updateModBlurVisibility();
 }
 
 // ---- Tab layout ----
@@ -2148,6 +2357,13 @@ function initNavigation() {
       ensureWebAppsInitialized();
     }
     document.getElementById("center-content")?.scrollTo({ top: 0 });
+    if (updateHistory) {
+      const heading = document.querySelector(`#page-${targetPage} .page-title`);
+      if (heading) {
+        heading.tabIndex = -1;
+        heading.focus({ preventScroll: true });
+      }
+    }
   }
 
   navItems.forEach(btn => {
@@ -2186,7 +2402,7 @@ function initVersionInfo() {
 // ---- Boot ----
 document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
-  migrateLegacyTabLayoutPref();
+  migrateLegacyModBlurPrefs();
   initPrefs();
   initSidebarControls();
   initModBlurCatalog();
