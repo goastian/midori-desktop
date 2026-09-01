@@ -998,6 +998,12 @@
     color: var(--pf-text-color) !important;
   }
 
+  menupopup:not(#ContentSelectDropdownPopup) {
+    appearance: none !important;
+    --panel-box-shadow-margin: 0 !important;
+    background: var(--pf-modblur-surface) !important;
+  }
+
   :is(
     panel#appMenu-popup,
     panel#unified-extensions-panel,

@@ -2470,3 +2470,411 @@ html, body {
   scrollbar-width: thin;
   scrollbar-color: var(--mc-border) transparent;
 }
+
+/* ---- Mod Blur shell ---- */
+:root {
+  --mc-spill-image: url("chrome://browser/skin/modblur-assets/spill-main-light.svg");
+  --mc-spill-opacity: 0.05;
+  --mc-glass: color-mix(in srgb, var(--mc-surface) 66%, transparent);
+  --mc-glass-strong: color-mix(in srgb, var(--mc-surface) 84%, transparent);
+  --mc-glass-border: color-mix(in srgb, var(--mc-text) 14%, transparent);
+  --mc-glass-highlight: color-mix(in srgb, white 42%, transparent);
+  --mc-control-surface: color-mix(in srgb, var(--mc-surface) 90%, var(--mc-bg-subtle));
+  --mc-glass-shadow:
+    0 16px 38px color-mix(in srgb, var(--mc-text) 11%, transparent),
+    inset 0 1px 0 var(--mc-glass-highlight);
+}
+
+@media (-moz-system-dark-theme) {
+  @media -moz-pref("midori.colorway", "system") {
+    :root {
+      --mc-spill-image: url("chrome://browser/skin/modblur-assets/spill-main.svg");
+      --mc-spill-opacity: 0.1;
+    }
+  }
+}
+
+@media -moz-pref("midori.colorway", "forest"), -moz-pref("midori.colorway", "midnight"), -moz-pref("midori.colorway", "ember") {
+  :root {
+    --mc-spill-image: url("chrome://browser/skin/modblur-assets/spill-main.svg");
+    --mc-spill-opacity: 0.1;
+  }
+}
+
+body {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 78% 6%, color-mix(in srgb, var(--mc-green-500) 7%, transparent), transparent 31rem),
+    linear-gradient(120deg, color-mix(in srgb, var(--mc-bg-subtle) 32%, transparent), transparent 56%),
+    var(--mc-bg);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.08;
+  background: url("chrome://browser/skin/modblur-assets/noise-512x512.png") 0 0 / 192px 192px;
+  mix-blend-mode: soft-light;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--mc-spill-opacity);
+  background-image: var(--mc-spill-image);
+  background-repeat: no-repeat;
+  background-position: right -10rem top 5rem;
+  background-size: 56rem auto;
+}
+
+#center-root {
+  isolation: isolate;
+}
+
+#center-sidebar {
+  width: 236px;
+  min-width: 236px;
+  background: color-mix(in srgb, var(--mc-sidebar-bg) 76%, transparent);
+  border-right-color: var(--mc-glass-border);
+  box-shadow: 18px 0 42px color-mix(in srgb, var(--mc-text) 7%, transparent);
+  backdrop-filter: blur(24px) saturate(1.14);
+}
+
+#sidebar-header,
+#sidebar-footer {
+  border-color: var(--mc-glass-border);
+}
+
+.nav-item {
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.nav-item:hover {
+  background: color-mix(in srgb, var(--mc-surface) 58%, transparent);
+  border-color: color-mix(in srgb, var(--mc-text) 9%, transparent);
+}
+
+.nav-item.active {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mc-sidebar-active-bg) 76%, var(--mc-surface) 24%), transparent);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+#center-content {
+  padding: 56px clamp(32px, 5vw, 72px) 80px;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--mc-bg) 22%, transparent), transparent 70%);
+}
+
+.page-header {
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid color-mix(in srgb, var(--mc-text) 12%, transparent);
+}
+
+.page-title {
+  font-size: clamp(1.65rem, 2.2vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.page-subtitle,
+.group-desc {
+  text-wrap: pretty;
+}
+
+.page.active {
+  animation: mc-page-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes mc-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:is(.setting-group, .overview-card, .home-info-banner, .layout-card, .mod-preview) {
+  border-color: var(--mc-glass-border);
+  background: var(--mc-glass);
+  box-shadow: var(--mc-glass-shadow);
+  backdrop-filter: blur(20px) saturate(1.1);
+}
+
+.setting-group {
+  border-radius: 14px;
+  padding: 28px;
+  margin-bottom: 28px;
+}
+
+.visual-mods-group {
+  padding: 0;
+  background: color-mix(in srgb, var(--mc-surface) 72%, transparent);
+}
+
+.group-title,
+.setting-subtitle {
+  letter-spacing: -0.018em;
+}
+
+.group-desc {
+  max-width: 58ch;
+  margin-bottom: 24px;
+}
+
+.overview-card:hover,
+.layout-card:hover {
+  border-color: color-mix(in srgb, var(--mc-green-500) 42%, var(--mc-glass-border));
+  background: var(--mc-glass-strong);
+  box-shadow:
+    0 18px 38px color-mix(in srgb, var(--mc-green-700) 13%, transparent),
+    inset 0 1px 0 var(--mc-glass-highlight);
+  transform: translateY(-2px);
+}
+
+.setting-row,
+.mod-row {
+  border-color: color-mix(in srgb, var(--mc-text) 11%, transparent);
+}
+
+.setting-row:hover,
+.mod-row:hover {
+  background: color-mix(in srgb, var(--mc-surface) 38%, transparent);
+}
+
+.mod-group-heading {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mc-surface) 24%, transparent), transparent);
+}
+
+.mod-group-heading .group-desc {
+  margin-bottom: 0;
+}
+
+.layout-grid {
+  gap: 12px;
+}
+
+.layout-card {
+  position: relative;
+  min-height: 132px;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--mc-glass-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--mc-surface) 58%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 32%, transparent);
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.layout-card:hover {
+  transform: translateY(-3px);
+}
+
+.layout-card.selected {
+  border-color: var(--mc-green-500);
+  background: color-mix(in srgb, var(--mc-sidebar-active-bg) 64%, var(--mc-surface) 36%);
+  box-shadow:
+    0 10px 26px color-mix(in srgb, var(--mc-green-700) 16%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--mc-green-400) 34%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 44%, transparent);
+}
+
+.layout-card.selected::after {
+  content: "";
+  position: absolute;
+  inset: 10px 10px auto auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mc-green-500);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--mc-green-500) 15%, transparent);
+}
+
+.layout-preview {
+  height: 76px;
+  border-color: color-mix(in srgb, var(--mc-text) 12%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mc-bg) 64%, transparent);
+}
+
+.layout-label {
+  padding-inline: 2px;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: start;
+}
+
+.toggle-slider {
+  border: 1px solid color-mix(in srgb, var(--mc-text) 18%, transparent);
+  background: color-mix(in srgb, var(--mc-text) 11%, var(--mc-surface));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 36%, transparent);
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.toggle-slider::before {
+  box-shadow:
+    0 2px 5px color-mix(in srgb, var(--mc-text) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toggle-switch:hover .toggle-slider {
+  border-color: color-mix(in srgb, var(--mc-green-500) 52%, var(--mc-glass-border));
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  border-color: color-mix(in srgb, var(--mc-green-600) 80%, transparent);
+  background: color-mix(in srgb, var(--mc-green-600) 84%, var(--mc-surface) 16%);
+  box-shadow:
+    0 5px 12px color-mix(in srgb, var(--mc-green-700) 22%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 34%, transparent);
+}
+
+:is(.select-input, .number-input, .text-input, .secondary-button, .mc-btn) {
+  border-color: var(--mc-glass-border);
+  background: var(--mc-control-surface);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 34%, transparent);
+}
+
+:is(.select-input, .number-input, .text-input):focus {
+  border-color: var(--mc-green-500);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mc-green-500) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 38%, transparent);
+}
+
+.mc-btn-primary {
+  box-shadow:
+    0 8px 18px color-mix(in srgb, var(--mc-green-700) 22%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+}
+
+.mc-btn-primary:hover:not(:disabled) {
+  box-shadow:
+    0 12px 24px color-mix(in srgb, var(--mc-green-700) 28%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 32%, transparent);
+}
+
+@media (max-width: 700px) {
+  #center-sidebar {
+    width: 56px;
+    min-width: 56px;
+  }
+
+  #center-content {
+    padding: 32px 20px 48px;
+  }
+
+  .page-header {
+    margin-bottom: 28px;
+  }
+
+  .setting-group {
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .visual-mods-group {
+    padding: 0;
+  }
+
+  .layout-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+:is(.mod-catalog-toolbar, .mod-search-wrap, .mod-filter, .mod-select, .mod-number) {
+  border-color: var(--mc-glass-border);
+  background: var(--mc-control-surface);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+  backdrop-filter: blur(16px) saturate(1.08);
+}
+
+.mod-filter:hover,
+.mod-filter.is-selected {
+  background: color-mix(in srgb, var(--mc-sidebar-active-bg) 70%, var(--mc-surface) 30%);
+  border-color: color-mix(in srgb, var(--mc-green-500) 42%, var(--mc-glass-border));
+}
+
+.mod-select:focus-visible,
+.mod-number:focus-visible,
+.mod-toggle input:focus-visible + span,
+.nav-item:focus-visible,
+.overview-card:focus-visible,
+.layout-card:focus-visible,
+.mc-btn:focus-visible {
+  outline: 2px solid var(--mc-green-400);
+  outline-offset: 3px;
+}
+
+.mod-toggle span {
+  border-color: color-mix(in srgb, var(--mc-text) 18%, transparent);
+  background: color-mix(in srgb, var(--mc-text) 11%, var(--mc-surface));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
+}
+
+.mod-toggle input:checked + span {
+  background: color-mix(in srgb, var(--mc-green-600) 86%, var(--mc-surface) 14%);
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--mc-green-700) 26%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 34%, transparent);
+}
+
+.mod-preview {
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--mc-surface) 70%, transparent);
+}
+
+.mod-preview-stage {
+  background-image:
+    linear-gradient(120deg, color-mix(in srgb, var(--mc-bg) 28%, transparent), color-mix(in srgb, var(--mc-bg) 64%, transparent)),
+    var(--mc-spill-image);
+  background-position: center;
+  background-size: cover;
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  body {
+    background: var(--mc-bg);
+  }
+
+  body::before {
+    display: none;
+  }
+
+  body::after {
+    display: none;
+  }
+
+  #center-sidebar,
+  :is(.setting-group, .overview-card, .home-info-banner, .layout-card, .mod-preview),
+  :is(.mod-catalog-toolbar, .mod-search-wrap, .mod-filter, .mod-select, .mod-number) {
+    background: var(--mc-surface);
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .mod-preview-stage {
+    background: var(--mc-bg-subtle);
+  }
+}
