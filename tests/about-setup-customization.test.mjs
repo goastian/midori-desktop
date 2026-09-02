@@ -241,7 +241,7 @@ test('sidebar and tab-layout choices never write each other preferences', () => 
   );
 });
 
-test('Multi-Sidebar AutoHide is driven only by its visible rail', () => {
+test('Multi-Sidebar AutoHide preserves the visible rail outside compact mode', () => {
   const collapseStart = sidebarUi.indexOf(
     'function applyAutohideCollapsedState(open) {'
   );
@@ -251,7 +251,10 @@ test('Multi-Sidebar AutoHide is driven only by its visible rail', () => {
   );
   const collapseBlock = sidebarUi.slice(collapseStart, collapseEnd);
 
-  assert.match(collapseBlock, /setBoolAttr\(main, ['"]collapsed['"], !visible\)/);
+  assert.match(
+    collapseBlock,
+    /setBoolAttr\(main, ['"]collapsed['"], compactMode \? !open : !visible\)/
+  );
   assert.doesNotMatch(collapseBlock, /setBoolAttr\(main, ['"]collapsed['"], !_ahOpen\)/);
   assert.match(sidebarUi, /main\.addEventListener\(['"]mouseenter['"], onMainEnter\)/);
   assert.match(sidebarUi, /#midori-msidebar-wrapper\{position:relative/);
@@ -361,8 +364,9 @@ test('global toolbar AutoHide remains opt-in when its default is unavailable', (
   assert.equal(
     [...autoHideToolbar.matchAll(/getBoolPref\(PREF_AUTOHIDE, false\)/g)]
       .length,
-    2
+    1
   );
+  assert.match(autoHideToolbar, /getBoolPref\(PREF_COMPACT_MODE, false\)/);
 });
 
 test('Arc affects Firefox sidebar defaults without overriding Multi-Sidebar position', () => {

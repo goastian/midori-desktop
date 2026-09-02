@@ -22,7 +22,11 @@ test('blurred panels inherit the selected Midori theme instead of forcing dark m
   assert.doesNotMatch(adaptivePanels, /color-scheme:\s*dark/);
   assert.doesNotMatch(adaptivePanels, /rgba\(29,\s*29,\s*32/);
   assert.doesNotMatch(adaptivePanels, /rgba\(255,\s*255,\s*255/);
-  assert.match(adaptivePanels, /--panel-background:\s*color-mix\([^;]*var\(--pf-panel-bgcolor\)/);
+  assert.match(
+    source,
+    /--pf-modblur-surface:\s*color-mix\([^;]*var\(--pf-panel-bgcolor\)/,
+  );
+  assert.match(adaptivePanels, /--panel-background:\s*var\(--pf-modblur-surface\)/);
   assert.match(adaptivePanels, /--panel-color:\s*var\(--pf-text-color\)/);
   assert.match(adaptivePanels, /--menuitem-hover-background-color:\s*var\(--pf-toolbar-bgcolor-hover\)/);
 });
