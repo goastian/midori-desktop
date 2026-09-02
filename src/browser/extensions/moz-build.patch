@@ -7,5 +7,5 @@ index abe42759fa72ed47d374f131df193489d1ecd5b7..a887cbb8b1c2973744c7d155babc03a4
  
  JAR_MANIFESTS += ["jar.mn"]
 +
-+DIRS += ["midori-newtab","midori-privacy","midorivpn-extension"]
++DIRS += ["midori-newtab","midori-privacy"]
 \ No newline at end of file
