@@ -1,30 +1,25 @@
 diff --git a/toolkit/components/pictureinpicture/content/player.js b/toolkit/components/pictureinpicture/content/player.js
-index 34d92dcfba54de4752036d0e251243729b6c9626..e39f957bae2ad2cd15be2f6109ca5c1a66269f0a 100644
+index 978c6be7dbd2b12c7aa785d9d8becfdd696c023a..a2a210c3eeb924f75b55ad85a373ad8bb6efd97b 100644
 --- a/toolkit/components/pictureinpicture/content/player.js
 +++ b/toolkit/components/pictureinpicture/content/player.js
-@@ -29,6 +29,9 @@ const IMPROVED_CONTROLS_ENABLED_PREF =
-   "media.videocontrols.picture-in-picture.improved-video-controls.enabled";
+@@ -31,6 +31,8 @@ const PLAYBACK_SPEED_ENABLED_PREF =
+   "media.videocontrols.picture-in-picture.playback-speed.enabled";
  const SEETHROUGH_MODE_ENABLED_PREF =
    "media.videocontrols.picture-in-picture.seethrough-mode.enabled";
-+const MIDORI_PIP_SKIN_PREF =
-+  "midori.pip.skin";
++const MIDORI_PIP_SKIN_PREF = "midori.pip.skin";
 +const MIDORI_PIP_SKINS = new Set(["compact", "island", "mini"]);
  
- /**
-  * The "showing" attribute means that we intentionally want to show controls
-@@ -396,9 +399,15 @@ let Player = {
-     // In see-through mode the PiP window is made semi-transparent on hover.
-     if (Services.prefs.getBoolPref(SEETHROUGH_MODE_ENABLED_PREF, false)) {
+ // Tolerance used when comparing playback rates, which are floats.
+ const RATE_EPSILON = 0.001;
+@@ -422,6 +424,11 @@ let Player = {
        document.documentElement.classList.add("seethrough-mode");
      }
  
-+    // Keep Midori PiP skin fully opt-in via pref.
-+    // Values: "off" (stock Firefox), "compact", "island", "mini".
 +    const pipSkin = Services.prefs.getStringPref(MIDORI_PIP_SKIN_PREF, "off");
 +    if (MIDORI_PIP_SKINS.has(pipSkin)) {
 +      document.documentElement.setAttribute("midori-pip-skin", pipSkin);
 +    }
++
      this._isInitialized = true;
  
      return { actor: this.actor, setupPromise };
-   },

@@ -1,5 +1,5 @@
 diff --git a/browser/components/asrouter/tests/xpcshell/test_PreonboardingSplash.js b/browser/components/asrouter/tests/xpcshell/test_PreonboardingSplash.js
-index a60e4e06039c54b7ed0a5caae18d3f8fedc45958..7232ab0327d3dac09a7774acf9d5683c6288d571 100644
+index fb45bfda07e81c221823cadd3d0bd056d743b836..4bdb6e4937c64a43d7b334470e498d17c5b56324 100644
 --- a/browser/components/asrouter/tests/xpcshell/test_PreonboardingSplash.js
 +++ b/browser/components/asrouter/tests/xpcshell/test_PreonboardingSplash.js
 @@ -25,8 +25,6 @@ const { OnboardingMessageProvider } = ChromeUtils.importESModule(
@@ -11,9 +11,9 @@ index a60e4e06039c54b7ed0a5caae18d3f8fedc45958..7232ab0327d3dac09a7774acf9d5683c
  const DID_SEE_ABOUT_WELCOME_PREF = "trailhead.firstrun.didSeeAboutWelcome";
  const PREONBOARDING_ENABLED_PREF = "browser.preonboarding.enabled";
  const SPLASH_SHOWN_PREF = "browser.preonboarding.splashShown";
-@@ -61,10 +59,6 @@ function stubSplashWillShow() {
-     .stub(TelemetryReportingPolicy, "hasUserResolvedTermsOfUse")
-     .returns(false);
+@@ -66,10 +64,6 @@ function stubSplashWillShow() {
+   sinon.stub(PreonboardingSplash.Policy, "isFirstRunProfile").returns(true);
+   Services.prefs.setCharPref(WELCOME_URL_PREF, "about:welcome");
    Services.prefs.setBoolPref(EXPERIMENTS_GATE_PREF, true);
 -  // Whether experiments have already loaded depends on the test harness, so
 -  // deterministically disable the skip-if-loaded suppression except where a
@@ -22,15 +22,15 @@ index a60e4e06039c54b7ed0a5caae18d3f8fedc45958..7232ab0327d3dac09a7774acf9d5683c
    Services.prefs.setBoolPref(PREONBOARDING_ENABLED_PREF, true);
    Services.prefs.clearUserPref(DID_SEE_ABOUT_WELCOME_PREF);
    Services.prefs.clearUserPref(SPLASH_SHOWN_PREF);
-@@ -73,7 +67,6 @@ function stubSplashWillShow() {
- function restoreState() {
-   sinon.restore();
+@@ -80,7 +74,6 @@ function restoreState() {
+   Services.prefs.clearUserPref(WELCOME_URL_PREF);
+   Services.prefs.clearUserPref(ABOUT_WELCOME_ENABLED_PREF);
    Services.prefs.clearUserPref(EXPERIMENTS_GATE_PREF);
 -  Services.prefs.clearUserPref(SKIP_SPLASH_IF_LOADED_PREF);
    Services.prefs.clearUserPref(PREONBOARDING_ENABLED_PREF);
    Services.prefs.clearUserPref(DID_SEE_ABOUT_WELCOME_PREF);
    Services.prefs.clearUserPref(SPLASH_SHOWN_PREF);
-@@ -121,10 +114,6 @@ add_task(async function test_no_splash_when_experiments_disabled() {
+@@ -128,10 +121,6 @@ add_task(async function test_no_splash_when_experiments_disabled() {
      .stub(TelemetryReportingPolicy, "hasUserResolvedTermsOfUse")
      .returns(false);
    Services.prefs.setBoolPref(EXPERIMENTS_GATE_PREF, true);
@@ -41,7 +41,7 @@ index a60e4e06039c54b7ed0a5caae18d3f8fedc45958..7232ab0327d3dac09a7774acf9d5683c
    Services.prefs.setBoolPref(PREONBOARDING_ENABLED_PREF, true);
    Services.prefs.clearUserPref(DID_SEE_ABOUT_WELCOME_PREF);
    Services.prefs.clearUserPref(SPLASH_SHOWN_PREF);
-@@ -370,30 +359,19 @@ add_task(async function test_targeting_stripped_from_standalone_screen() {
+@@ -454,30 +443,18 @@ add_task(async function test_targeting_stripped_from_standalone_screen() {
    restoreState();
  });
  
@@ -63,7 +63,7 @@ index a60e4e06039c54b7ed0a5caae18d3f8fedc45958..7232ab0327d3dac09a7774acf9d5683c
 -  );
 -
 -  Services.prefs.setBoolPref(SKIP_SPLASH_IF_LOADED_PREF, false);
- 
+-
    PreonboardingSplash.maybeShowStartupSplash();
  
    Assert.equal(

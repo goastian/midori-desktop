@@ -1,5 +1,5 @@
 diff --git a/browser/components/about/components.conf b/browser/components/about/components.conf
-index 669c6912f636ee29703bec015ce54fbd5fed90ad..35215ec4022c9f529236a168dbeb2d942c8f04ce 100644
+index d5b79f6dfa98820b2e6f22102fa63cb362ca6c8c..5f1bd39e53ba3de9113a34b3518f393073299a54 100644
 --- a/browser/components/about/components.conf
 +++ b/browser/components/about/components.conf
 @@ -6,6 +6,7 @@ pages = [
@@ -10,11 +10,11 @@ index 669c6912f636ee29703bec015ce54fbd5fed90ad..35215ec4022c9f529236a168dbeb2d94
      'certerror',
      'downloads',
      'framecrashed',
-@@ -26,6 +27,7 @@ pages = [
+@@ -27,6 +28,7 @@ pages = [
      'robots',
      'sessionrestore',
      'settings',
 +    'setup',
+     'smartwindowtasks',
      'tabcrashed',
      'unloads',
-     'welcome',

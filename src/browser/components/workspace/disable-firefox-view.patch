@@ -1,5 +1,5 @@
 diff --git a/browser/base/content/navigator-toolbox.js b/browser/base/content/navigator-toolbox.js
-index 1982ebadbd2df5ea309db487a4f30288f1af43e5..ca4569bd33bf1bf9ab086fd1dddd615a63370614 100644
+index be588fafee0202d0bc17f5a600e7d147830ea3d1..c93999aff58cb6f85a5545c9cdb1648796865354 100644
 --- a/browser/base/content/navigator-toolbox.js
 +++ b/browser/base/content/navigator-toolbox.js
 @@ -44,7 +44,6 @@ document.addEventListener(
@@ -8,9 +8,9 @@ index 1982ebadbd2df5ea309db487a4f30288f1af43e5..ca4569bd33bf1bf9ab086fd1dddd615a
        let element = event.target.closest(`
 -        #firefox-view-button,
          .content-analysis-indicator,
+         .private-browsing-indicator-button,
          #bookmarks-toolbar-button,
-         #PlacesToolbar,
-@@ -59,10 +58,6 @@ document.addEventListener(
+@@ -60,10 +59,6 @@ document.addEventListener(
        }
  
        switch (element.id) {
@@ -21,7 +21,7 @@ index 1982ebadbd2df5ea309db487a4f30288f1af43e5..ca4569bd33bf1bf9ab086fd1dddd615a
          case "bookmarks-toolbar-button":
            PlacesToolbarHelper.onPlaceholderCommand();
            break;
-@@ -107,7 +102,6 @@ document.addEventListener(
+@@ -129,7 +124,6 @@ document.addEventListener(
  
      function onMouseDown(event) {
        let element = event.target.closest(`
@@ -29,7 +29,7 @@ index 1982ebadbd2df5ea309db487a4f30288f1af43e5..ca4569bd33bf1bf9ab086fd1dddd615a
          #alltabs-button,
          #pageActionButton,
          #downloads-button,
-@@ -120,10 +114,6 @@ document.addEventListener(
+@@ -142,10 +136,6 @@ document.addEventListener(
        }
  
        switch (element.id) {

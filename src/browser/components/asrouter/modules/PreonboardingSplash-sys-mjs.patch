@@ -1,9 +1,9 @@
 diff --git a/browser/components/asrouter/modules/PreonboardingSplash.sys.mjs b/browser/components/asrouter/modules/PreonboardingSplash.sys.mjs
-index dea88db4e0ec2ab810dcfc4f70773348f6d727b9..86b2a86390a8772a5aee0773bf1606bf0a3216da 100644
+index ed0afa1ca7822c5ccacb0429d78450e8597b62b2..d62e8b94d02385d8e61c90ee5f2895c7d75f426f 100644
 --- a/browser/components/asrouter/modules/PreonboardingSplash.sys.mjs
 +++ b/browser/components/asrouter/modules/PreonboardingSplash.sys.mjs
-@@ -18,21 +18,17 @@
- const lazy = {};
+@@ -26,14 +26,12 @@ XPCOMUtils.defineLazyServiceGetters(lazy, {
+ });
  
  ChromeUtils.defineESModuleGetters(lazy, {
 -  ASRouterTargeting: "resource:///modules/asrouter/ASRouterTargeting.sys.mjs",
@@ -18,23 +18,25 @@ index dea88db4e0ec2ab810dcfc4f70773348f6d727b9..86b2a86390a8772a5aee0773bf1606bf
    TelemetryReportingPolicy:
      "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
  });
- 
+@@ -41,8 +39,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
+ const ABOUT_WELCOME_ENABLED_PREF = "browser.aboutwelcome.enabled";
+ const WELCOME_URL_PREF = "startup.homepage_welcome_url";
  const EXPERIMENTS_GATE_PREF = "browser.aboutwelcome.experimentsGate.enabled";
 -const SKIP_SPLASH_IF_LOADED_PREF =
 -  "browser.aboutwelcome.experimentsGate.skipSplashIfLoaded";
  const DID_SEE_ABOUT_WELCOME_PREF = "trailhead.firstrun.didSeeAboutWelcome";
  const SPLASH_SHOWN_PREF = "browser.preonboarding.splashShown";
  
-@@ -47,7 +43,7 @@ export const PreonboardingSplash = {
+@@ -57,7 +53,7 @@ export const PreonboardingSplash = {
          allowFromInactiveWorkspace: true,
        }),
      showSpotlight: (config, browser) =>
 -      lazy.SpecialMessageActions.handleAction(config, browser),
 +      lazy.Spotlight.showSpotlightDialog(browser, config.data),
+     isFirstRunProfile: () => lazy.BrowserHandler.firstRunProfile,
    },
  
-   /**
-@@ -56,17 +52,18 @@ export const PreonboardingSplash = {
+@@ -67,17 +63,18 @@ export const PreonboardingSplash = {
     */
    maybeShowStartupSplash() {
      if (!this._shouldShow()) {
@@ -58,7 +60,7 @@ index dea88db4e0ec2ab810dcfc4f70773348f6d727b9..86b2a86390a8772a5aee0773bf1606bf
    },
  
    /**
-@@ -88,17 +85,6 @@ export const PreonboardingSplash = {
+@@ -106,17 +103,6 @@ export const PreonboardingSplash = {
        return false;
      }
  
@@ -76,7 +78,7 @@ index dea88db4e0ec2ab810dcfc4f70773348f6d727b9..86b2a86390a8772a5aee0773bf1606bf
      // When the full TOU modal will show, it already includes its own splash as its
      // first screen, so this standalone splash doesn't need to fire.
      if (lazy.TelemetryReportingPolicy.willShowTOUModal()) {
-@@ -181,8 +167,8 @@ export const PreonboardingSplash = {
+@@ -217,8 +203,8 @@ export const PreonboardingSplash = {
        },
      };
  

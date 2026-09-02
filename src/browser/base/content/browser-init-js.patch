@@ -1,11 +1,10 @@
 diff --git a/browser/base/content/browser-init.js b/browser/base/content/browser-init.js
-index 0aa4baea8e5e6d742fc6cd3333068e7eb64b5bbc..3fe44d531439ca365900647f86e43cd74980c284 100644
+index 7694c598c35dc464fbdd8290d8a4d2c00c84acd4..250212821d582fbe2ea78960b58701428d3d6950 100644
 --- a/browser/base/content/browser-init.js
 +++ b/browser/base/content/browser-init.js
-@@ -549,7 +549,51 @@ var gBrowserInit = {
-     if (Services.prefs.getBoolPref("browser.search.widget.new", false)) {
-       document.getElementById("searchbar-new")?.delayedStartupInit();
-     }
+@@ -502,6 +502,50 @@ var gBrowserInit = {
+ 
+     UpdateUrlbarSearchSplitterState();
  
 +    // Midori: materialize Firefox's built-in bookmark action after page-action
 +    // initialization so the star is never lost from the URL bar.
