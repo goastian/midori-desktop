@@ -482,10 +482,10 @@ export const MidoriShortcuts = {
         );
         return;
       case 'protect-tab': {
-        const { MidoriTabProtection } = ChromeUtils.importESModule(
-          'resource:///modules/MidoriTabProtection.sys.mjs'
+        const { MidoriTabProtectionEntry } = ChromeUtils.importESModule(
+          'resource:///modules/MidoriTabProtectionEntry.sys.mjs'
         );
-        await MidoriTabProtection.toggleTabProtection(win);
+        await MidoriTabProtectionEntry.toggleTabProtection(win);
         return;
       }
       case 'toggle-sidebar':

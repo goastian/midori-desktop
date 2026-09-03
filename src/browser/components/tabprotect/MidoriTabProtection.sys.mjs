@@ -17,6 +17,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 export const PREF_TAB_PROTECTION_MODE = "midori.tabprotect.mode";
 export const PREF_TAB_PROTECTION_GLOBAL_HASH = "midori.tabprotect.globalPasswordHash";
+export const TAB_PROTECTION_STATE_TOPIC =
+  "midori-tab-protection-state-changed";
 
 const TAB_PROTECTED_ATTR = "midori-protected";
 const TAB_PASSWORD_ATTR = "midori-protected-password";
@@ -365,6 +367,7 @@ export const MidoriTabProtection = {
   },
 
   async protectTab(win, tab = win?.gBrowser?.selectedTab) {
+    this.init();
     if (!tab || this.isProtected(tab)) {
       return false;
     }
@@ -396,6 +399,7 @@ export const MidoriTabProtection = {
     setTabPasswordHash(tab, passwordHash);
     setTabScope(tab, scope);
     this._lockTab(win, tab, { focus: true });
+    this._notifyStateChanged();
     return true;
   },
 
@@ -409,6 +413,7 @@ export const MidoriTabProtection = {
     tab.removeAttribute(TAB_PROTECTED_ATTR);
     clearTabPasswordHash(tab);
     this._removeOverlay(win, tab);
+    this._notifyStateChanged();
     return true;
   },
 
@@ -446,7 +451,20 @@ export const MidoriTabProtection = {
       }
       closedTabs += protectedTabs.length;
     }
+    this._notifyStateChanged();
     return closedTabs;
+  },
+
+  hasProtectedTabs() {
+    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+      if (
+        isRegularBrowserWindow(win) &&
+        [...win.gBrowser.tabs].some(tab => this.isProtected(tab))
+      ) {
+        return true;
+      }
+    }
+    return false;
   },
 
   _purgeClosedProtectionData() {
@@ -523,25 +541,37 @@ export const MidoriTabProtection = {
       return;
     }
 
-    const menuitem = win.document.createXULElement("menuitem");
-    menuitem.id = "midori-protect-tab";
-    menuitem.setAttribute("label", "Protect Tab");
-    menuitem.addEventListener("command", () => {
-      const tab = getContextTab(win, menu);
-      void (this.isProtected(tab)
-        ? this.unprotectTab(win, tab)
-        : this.protectTab(win, tab));
-    });
-
-    const separator = win.document.createXULElement("menuseparator");
-    separator.id = "midori-protect-tab-separator";
-    menu.append(separator, menuitem);
+    let menuitem = win.document.getElementById("midori-protect-tab");
+    let separator = win.document.getElementById(
+      "midori-protect-tab-separator"
+    );
+    const ownsMenu = !menuitem || !separator;
+    let onMenuCommand = null;
+    if (ownsMenu) {
+      menuitem?.remove();
+      separator?.remove();
+      menuitem = win.document.createXULElement("menuitem");
+      menuitem.id = "midori-protect-tab";
+      menuitem.setAttribute("label", "Protect Tab");
+      separator = win.document.createXULElement("menuseparator");
+      separator.id = "midori-protect-tab-separator";
+      onMenuCommand = () => {
+        const tab = getContextTab(win, menu);
+        void (this.isProtected(tab)
+          ? this.unprotectTab(win, tab)
+          : this.protectTab(win, tab));
+      };
+      menuitem.addEventListener("command", onMenuCommand);
+      menu.append(separator, menuitem);
+    }
 
     const previewPanel = win.document.getElementById("tab-preview-panel");
     const state = {
       menu,
       menuitem,
       separator,
+      ownsMenu,
+      onMenuCommand,
       previewPanel,
       unlockedTabs: new WeakSet(),
       overlays: new Map(),
@@ -671,8 +701,11 @@ export const MidoriTabProtection = {
       record.overlay.remove();
     }
     this._restoreChromePrivacy(win, state);
-    state.separator.remove();
-    state.menuitem.remove();
+    if (state.ownsMenu) {
+      state.menuitem.removeEventListener("command", state.onMenuCommand);
+      state.separator.remove();
+      state.menuitem.remove();
+    }
     this._windowState.delete(win);
   },
 
@@ -716,6 +749,7 @@ export const MidoriTabProtection = {
     }
     if (event.type === "TabClose") {
       this._removeOverlay(win, event.target);
+      this._notifyStateChanged();
       return;
     }
     if (event.type === "TabOpen") {
@@ -1250,5 +1284,9 @@ export const MidoriTabProtection = {
       this._recordFailedAttempt(attemptState)
     );
     return false;
+  },
+
+  _notifyStateChanged() {
+    Services.obs.notifyObservers(null, TAB_PROTECTION_STATE_TOPIC);
   },
 };

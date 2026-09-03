@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { MidoriServiceLifecycle } from '../src/browser/components/lifecycle/MidoriServiceLifecycle.sys.mjs';
+import {
+  MIDORI_SERVICE_STATES,
+  MidoriServiceLifecycle,
+} from '../src/browser/components/lifecycle/MidoriServiceLifecycle.sys.mjs';
 
 const readSource = path =>
   readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -109,6 +112,105 @@ test('shutdown failures do not prevent the remaining services from cleaning up',
   );
 });
 
+test('inactive services stay unloaded and transition through all three levels', () => {
+  const calls = [];
+  const getterCalls = [];
+  const states = {
+    dormant: MIDORI_SERVICE_STATES.UNUSED,
+    waiting: MIDORI_SERVICE_STATES.CONFIGURED,
+    visible: MIDORI_SERVICE_STATES.ACTIVE,
+  };
+  let observer = null;
+  const preferenceCalls = [];
+  const preferenceSource = {
+    addObserver(domain, value) {
+      preferenceCalls.push(`add:${domain}`);
+      observer = value;
+    },
+    removeObserver(domain, value) {
+      assert.equal(value, observer);
+      preferenceCalls.push(`remove:${domain}`);
+      observer = null;
+    },
+    notify() {
+      observer?.observe(null, 'nsPref:changed', 'midori.feature.enabled');
+    },
+  };
+  const descriptors = Object.keys(states).map(name => ({
+    name,
+    getState: () => states[name],
+    getService() {
+      getterCalls.push(name);
+      return createService(name, calls);
+    },
+  }));
+  const lifecycle = new MidoriServiceLifecycle(descriptors, {
+    preferenceSource,
+  });
+
+  lifecycle.init();
+
+  assert.deepEqual(getterCalls, ['visible']);
+  assert.deepEqual(calls, ['init:visible']);
+  assert.deepEqual(lifecycle.getSnapshot(), [
+    { name: 'dormant', state: 'unused', loaded: false, started: false },
+    { name: 'waiting', state: 'configured', loaded: false, started: false },
+    { name: 'visible', state: 'active', loaded: true, started: true },
+  ]);
+
+  states.waiting = MIDORI_SERVICE_STATES.ACTIVE;
+  states.visible = MIDORI_SERVICE_STATES.CONFIGURED;
+  preferenceSource.notify();
+  assert.deepEqual(getterCalls, ['visible', 'waiting']);
+  assert.deepEqual(calls, [
+    'init:visible',
+    'init:waiting',
+    'uninit:visible',
+  ]);
+
+  lifecycle.uninit();
+  assert.deepEqual(calls.at(-1), 'uninit:waiting');
+  assert.deepEqual(preferenceCalls, ['add:midori.', 'remove:midori.']);
+});
+
+test('preference bursts schedule one deferred reconciliation', () => {
+  const scheduled = [];
+  let observer = null;
+  let active = false;
+  const calls = [];
+  const lifecycle = new MidoriServiceLifecycle(
+    [
+      {
+        name: 'feature',
+        getState: () =>
+          active
+            ? MIDORI_SERVICE_STATES.ACTIVE
+            : MIDORI_SERVICE_STATES.UNUSED,
+        getService: () => createService('feature', calls),
+      },
+    ],
+    {
+      preferenceSource: {
+        addObserver(_domain, value) {
+          observer = value;
+        },
+        removeObserver() {},
+      },
+      scheduleRefresh: callback => scheduled.push(callback),
+    }
+  );
+
+  lifecycle.init();
+  active = true;
+  observer.observe(null, 'nsPref:changed', 'midori.feature.enabled');
+  observer.observe(null, 'nsPref:changed', 'midori.feature.mode');
+
+  assert.equal(scheduled.length, 1);
+  assert.deepEqual(calls, []);
+  scheduled[0]();
+  assert.deepEqual(calls, ['init:feature']);
+});
+
 test('BrowserGlue startup and profile shutdown share the lifecycle facade', () => {
   const browserGluePatch = readSource(
     '../src/browser/components/BrowserGlue-sys-mjs.patch'
@@ -134,7 +236,7 @@ test('service shutdown preserves the registered sidebar widget placement', () =>
   assert.doesNotMatch(uninit, /CustomizableUI\.destroyWidget/);
 });
 
-test('the lifecycle facade owns the eight BrowserGlue services', () => {
+test('the lifecycle facade owns the ten BrowserGlue services', () => {
   const facade = readSource(
     '../src/browser/components/lifecycle/MidoriBrowserServices.sys.mjs'
   );
@@ -150,6 +252,7 @@ test('the lifecycle facade owns the eight BrowserGlue services', () => {
   ];
 
   for (const name of [
+    'MidoriModBlur',
     'MemoryProfileManager',
     'AutoHideToolbar',
     'MidoriGradient',
@@ -157,10 +260,35 @@ test('the lifecycle facade owns the eight BrowserGlue services', () => {
     'MidoriWorkspaces',
     'MidoriSidebar',
     'MidoriShortcuts',
+    'MidoriTabProtection',
     'MidoriTabSleep',
   ]) {
     assert.match(facade, new RegExp(`name: '${name}'`));
   }
+
+  assert.match(facade, /preferenceSource: Services\.prefs/);
+  assert.match(facade, /getFeatureState\(/);
+  assert.match(
+    facade,
+    /MidoriTabProtectionEntry: 'resource:\/\/\/modules\/MidoriTabProtectionEntry\.sys\.mjs'/
+  );
+  assert.doesNotMatch(
+    facade,
+    /MidoriTabProtection: 'resource:\/\/\/modules\/MidoriTabProtection\.sys\.mjs'/
+  );
+
+  const browserGluePatch = readSource(
+    '../src/browser/components/BrowserGlue-sys-mjs.patch'
+  );
+  assert.match(browserGluePatch, /lazy\.MidoriBrowserServices\.bootstrap\(\)/);
+  assert.doesNotMatch(browserGluePatch, /lazy\.MidoriVerticalTabs\.bootstrap\(\)/);
+
+  const protectionEntry = readSource(
+    '../src/browser/components/tabprotect/MidoriTabProtectionEntry.sys.mjs'
+  );
+  assert.match(protectionEntry, /SSTabRestored/);
+  assert.match(protectionEntry, /this\._service\.hasProtectedTabs\(\)/);
+  assert.match(protectionEntry, /this\._service\.uninit\(\)/);
 
   for (const sourcePath of serviceSources) {
     assert.match(readSource(sourcePath), /\buninit\(\)\s*\{/);
