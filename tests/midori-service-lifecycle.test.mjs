@@ -236,7 +236,7 @@ test('service shutdown preserves the registered sidebar widget placement', () =>
   assert.doesNotMatch(uninit, /CustomizableUI\.destroyWidget/);
 });
 
-test('the lifecycle facade owns the ten BrowserGlue services', () => {
+test('the lifecycle facade owns the eleven BrowserGlue services', () => {
   const facade = readSource(
     '../src/browser/components/lifecycle/MidoriBrowserServices.sys.mjs'
   );
@@ -249,10 +249,12 @@ test('the lifecycle facade owns the ten BrowserGlue services', () => {
     '../src/browser/components/msidebar/MidoriSidebar.sys.mjs',
     '../src/browser/components/shortcuts/MidoriShortcuts.sys.mjs',
     '../src/browser/components/tabsleep/MidoriTabSleep.sys.mjs',
+    '../src/browser/components/lifecycle/MidoriSmoothScroll.sys.mjs',
   ];
 
   for (const name of [
     'MidoriModBlur',
+    'MidoriSmoothScroll',
     'MemoryProfileManager',
     'AutoHideToolbar',
     'MidoriGradient',

@@ -14,6 +14,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MemoryProfileManager: 'resource:///modules/MemoryProfileManager.sys.mjs',
   MidoriGradient: 'resource:///modules/MidoriGradient.sys.mjs',
   MidoriModBlur: 'resource:///modules/MidoriModBlur.sys.mjs',
+  MidoriSmoothScroll: 'resource:///modules/MidoriSmoothScroll.sys.mjs',
   MidoriSidebar: 'resource:///modules/MidoriSidebar.sys.mjs',
   MidoriShortcuts: 'resource:///modules/MidoriShortcuts.sys.mjs',
   MidoriTabProtectionEntry: 'resource:///modules/MidoriTabProtectionEntry.sys.mjs',
@@ -61,6 +62,7 @@ function isAnyShortcutEnabled() {
 
 const services = [
   { name: 'MidoriModBlur', getService: () => lazy.MidoriModBlur },
+  { name: 'MidoriSmoothScroll', getService: () => lazy.MidoriSmoothScroll },
   {
     name: 'MemoryProfileManager',
     getService: () => lazy.MemoryProfileManager,
