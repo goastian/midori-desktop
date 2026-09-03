@@ -9,7 +9,7 @@
 
 <div align="center">
   <a href="https://astian.org/midori-browser">
-    <img src="https://astian.org/wp-content/uploads/2024/12/midori-compuesto.png" alt="Midori Browser Logo" width="320" height="105">
+    <img src="https://astian.org/wp-content/uploads/2024/12/midori-compuesto.png](https://astian.org/wp-content/uploads/2026/08/logomidori.webp" alt="Midori Browser Logo" width="320" height="105">
   </a>
 </div>
 
