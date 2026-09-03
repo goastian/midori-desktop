@@ -1006,6 +1006,19 @@ toolbar .toolbarbutton-1:not([disabled]):active {
   --tab-inline-padding: var(--tab-icon-end-margin) !important;
 }
 
+:root[midori-horizontal-tabs] #tabbrowser-tabs[orient="horizontal"] tab-split-view-wrapper {
+  min-width: max(116px, calc(var(--tab-min-width-pref, var(--tab-min-width)) + 32px));
+}
+
+:root[midori-horizontal-tabs] #tabbrowser-tabs[orient="horizontal"] tab-split-view-wrapper .tabbrowser-tab[fadein] {
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+:root[midori-horizontal-tabs] #tabbrowser-tabs[orient="horizontal"] tab-split-view-wrapper .tab-content {
+  padding-inline: var(--space-small) !important;
+}
+
 #tabbrowser-tabs[orient="vertical"] {
   width: 100%;
   grid-gap: var(--tab-block-margin) !important;
