@@ -47,6 +47,8 @@ const PREF_CHROME_TINT = 'midori.workspaces.chromeTint';
 const WORKSPACE_ATTR = 'midori-workspace-id';
 const WORKSPACE_LAST_SHOWN_ATTR = 'midori-workspace-last-shown-id';
 const WORKSPACE_SESSION_KEY = 'midoriWorkspaceId';
+const WINDOW_SESSION_KEY = 'midoriWorkspaceWindowId';
+const WINDOW_ID_PREFIX = 'mw-v2-';
 const STYLE_ID = 'midori-workspaces-style';
 const SELECTOR_ID = 'midori-workspace-selector';
 const POPUP_ID = 'midori-workspace-popup';
@@ -78,6 +80,9 @@ function getStoreFilePath() {
 const WorkspaceModel = ChromeUtils.importESModule(
   'resource:///modules/MidoriWorkspaceModel.sys.mjs'
 );
+const { WorkspaceTabIndex } = ChromeUtils.importESModule(
+  'resource:///modules/WorkspaceTabIndex.sys.mjs'
+);
 
 // Lazy import for setTimeout — MUST be before any usage
 const lazy = {};
@@ -99,9 +104,12 @@ function validateStore(data) {
 export const MidoriWorkspaces = {
   _initialized: false,
   _windowStates: new WeakMap(),
+  _pendingWindows: new WeakSet(),
+  _initializedWindowIds: new Set(),
   _saveTimer: null,
   _storeCache: null,
   _storeDirty: false,
+  _isShuttingDown: false,
 
   // =========================================================================
   // Initialization
@@ -110,6 +118,7 @@ export const MidoriWorkspaces = {
   init() {
     if (this._initialized) return;
     this._initialized = true;
+    this._isShuttingDown = false;
 
     Services.prefs.addObserver(PREF_ENABLED, this);
     Services.prefs.addObserver(PREF_SHOW_BUTTON, this);
@@ -121,6 +130,7 @@ export const MidoriWorkspaces = {
 
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
+    Services.obs.addObserver(this, 'quit-application-granted');
 
     // Apply to already-open windows
     for (const win of Services.wm.getEnumerator('navigator:browser')) {
@@ -196,22 +206,11 @@ export const MidoriWorkspaces = {
    * Get or create workspace data for a given windowId.
    * Returns { workspaces: [...], selectedId: string }
    */
-  async _getWindowData(windowId) {
+  async _getWindowData(win, windowId) {
     const store = await this._loadStore();
     if (!store.windows[windowId]) {
-      const defaultId = generateId();
-      store.windows[windowId] = {
-        workspaces: [
-          {
-            id: defaultId,
-            name: 'Default',
-            icon: 'default',
-            isDefault: true,
-          },
-        ],
-        selectedId: defaultId,
-        tabs: {},
-      };
+      store.windows[windowId] = this._takeLegacyWindowData(win, windowId) ||
+        this._createDefaultWindowData();
       this._scheduleSave();
     } else if (!store.windows[windowId].tabs || typeof store.windows[windowId].tabs !== 'object') {
       store.windows[windowId].tabs = {};
@@ -220,9 +219,114 @@ export const MidoriWorkspaces = {
     return store.windows[windowId];
   },
 
+  _createDefaultWindowData() {
+    const defaultId = generateId();
+    return {
+      workspaces: [
+        {
+          id: defaultId,
+          name: 'Default',
+          icon: 'default',
+          isDefault: true,
+        },
+      ],
+      selectedId: defaultId,
+      tabs: {},
+    };
+  },
+
+  _takeLegacyWindowData(win, windowId) {
+    const windows = this._storeCache?.windows;
+    if (!windows) return null;
+
+    const restoredWorkspaceIds = new Set();
+    for (const tab of win.gBrowser?.tabs || []) {
+      const workspaceId =
+        tab.getAttribute(WORKSPACE_ATTR) || this._getStoredWorkspaceForTab(tab);
+      if (workspaceId) {
+        restoredWorkspaceIds.add(workspaceId);
+      }
+    }
+
+    let bestId = null;
+    let bestScore = 0;
+    const legacyIds = [];
+    for (const [candidateId, data] of Object.entries(windows)) {
+      if (candidateId === windowId || candidateId.startsWith(WINDOW_ID_PREFIX)) {
+        continue;
+      }
+      legacyIds.push(candidateId);
+      const score = data.workspaces.reduce(
+        (total, workspace) => total + restoredWorkspaceIds.has(workspace.id),
+        0
+      );
+      if (score > bestScore) {
+        bestId = candidateId;
+        bestScore = score;
+      }
+    }
+
+    if (!bestId && legacyIds.length === 1 && restoredWorkspaceIds.size === 0) {
+      let windowCount = 0;
+      for (const browserWindow of Services.wm.getEnumerator('navigator:browser')) {
+        if (!browserWindow.closed) {
+          windowCount++;
+        }
+      }
+      if (windowCount === 1) {
+        bestId = legacyIds[0];
+      }
+    }
+    if (!bestId) return null;
+
+    const data = windows[bestId];
+    delete windows[bestId];
+    return data;
+  },
+
   _removeWindowData(windowId) {
     if (this._storeCache?.windows?.[windowId]) {
       delete this._storeCache.windows[windowId];
+      this._scheduleSave();
+    }
+  },
+
+  _pruneInactiveWindowData() {
+    const windows = this._storeCache?.windows;
+    if (!windows) return;
+
+    const activeWindowIds = new Set();
+    const activeWorkspaceIds = new Set();
+    let windowCount = 0;
+    for (const win of Services.wm.getEnumerator('navigator:browser')) {
+      if (!win.closed) {
+        windowCount++;
+        activeWindowIds.add(this._getWindowId(win));
+        for (const tab of win.gBrowser?.tabs || []) {
+          const workspaceId =
+            tab.getAttribute(WORKSPACE_ATTR) || this._getStoredWorkspaceForTab(tab);
+          if (workspaceId) {
+            activeWorkspaceIds.add(workspaceId);
+          }
+        }
+      }
+    }
+
+    const canPruneLegacy = this._initializedWindowIds.size === windowCount;
+    let changed = false;
+    for (const [windowId, data] of Object.entries(windows)) {
+      const isInactivePersistentWindow =
+        windowId.startsWith(WINDOW_ID_PREFIX) && !activeWindowIds.has(windowId);
+      const isUnclaimedLegacyWindow =
+        canPruneLegacy &&
+        !windowId.startsWith(WINDOW_ID_PREFIX) &&
+        !data.workspaces.some(workspace => activeWorkspaceIds.has(workspace.id));
+      if (isInactivePersistentWindow || isUnclaimedLegacyWindow) {
+        delete windows[windowId];
+        changed = true;
+      }
+    }
+    if (changed) {
       this._scheduleSave();
     }
   },
@@ -234,10 +338,21 @@ export const MidoriWorkspaces = {
   _getWindowId(win) {
     if (!win.__midoriWorkspaceWindowId) {
       try {
-        const outerWindowID = win.windowUtils.outerWindowID;
-        win.__midoriWorkspaceWindowId = `mw-${outerWindowID}`;
-      } catch {
-        win.__midoriWorkspaceWindowId = `mw-${Date.now()}`;
+        win.__midoriWorkspaceWindowId = lazy.SessionStore.getCustomWindowValue(
+          win,
+          WINDOW_SESSION_KEY
+        );
+      } catch {}
+
+      if (!win.__midoriWorkspaceWindowId?.startsWith(WINDOW_ID_PREFIX)) {
+        win.__midoriWorkspaceWindowId = `${WINDOW_ID_PREFIX}${generateId()}`;
+        try {
+          lazy.SessionStore.setCustomWindowValue(
+            win,
+            WINDOW_SESSION_KEY,
+            win.__midoriWorkspaceWindowId
+          );
+        } catch {}
       }
     }
     return win.__midoriWorkspaceWindowId;
@@ -250,18 +365,33 @@ export const MidoriWorkspaces = {
   async _initWindow(win) {
     if (!this._initialized || !this.isEnabled()) return;
     if (!isRegularBrowserWindow(win)) return;
-    if (this._windowStates.has(win)) return;
+    if (this._windowStates.has(win) || this._pendingWindows.has(win)) return;
+
+    this._pendingWindows.add(win);
 
     const windowId = this._getWindowId(win);
-    const data = await this._getWindowData(windowId);
-    if (!this._initialized || !this.isEnabled() || win.closed) return;
+    let data;
+    try {
+      data = await this._getWindowData(win, windowId);
+    } finally {
+      this._pendingWindows.delete(win);
+    }
+    if (!this._initialized || !this.isEnabled() || win.closed) {
+      if (win.closed && !this._isShuttingDown) {
+        this._removeWindowData(windowId);
+      }
+      return;
+    }
 
     const state = {
       windowId,
       data,
       win,
+      tabIndex: new WorkspaceTabIndex(data.workspaces.map(workspace => workspace.id)),
     };
     this._windowStates.set(win, state);
+    this._initializedWindowIds.add(windowId);
+    this._pruneInactiveWindowData();
 
     // In vertical mode, wait for sidebar to be fully initialized
     if (this._isVerticalMode()) {
@@ -285,7 +415,7 @@ export const MidoriWorkspaces = {
     this._attachTabListeners(win, state);
   },
 
-  _destroyWindow(win) {
+  _destroyWindow(win, { removeData = false } = {}) {
     const state = this._windowStates.get(win);
     if (!state) return;
 
@@ -298,14 +428,16 @@ export const MidoriWorkspaces = {
       lazy.clearTimeout(timer);
     }
     state._tabCloseTimers?.clear();
-    if (win.__midoriWsAnimTimeout) {
-      win.clearTimeout(win.__midoriWsAnimTimeout);
-      win.__midoriWsAnimTimeout = null;
-    }
+    state._workspaceAnimation?.cancel();
+    state._workspaceAnimation = null;
     this._detachTabListeners(win, state);
     this._removeTabContextMenu(win);
     this._removeUI(win);
     this._windowStates.delete(win);
+    this._initializedWindowIds.delete(state.windowId);
+    if (removeData) {
+      this._removeWindowData(state.windowId);
+    }
   },
 
   // =========================================================================
@@ -741,7 +873,7 @@ export const MidoriWorkspaces = {
       }
 
       // Count tabs in this workspace
-      const tabCount = this._countTabsInWorkspace(win, ws.id);
+      const tabCount = this._countTabsInWorkspace(state, ws.id);
       item.setAttribute('acceltext', `${tabCount} tab${tabCount !== 1 ? 's' : ''}`);
 
       item.addEventListener('command', () => {
@@ -798,22 +930,25 @@ export const MidoriWorkspaces = {
 
     // Trigger slide animation if switching between different workspaces
     if (oldId !== workspaceId && oldIndex !== -1 && newIndex !== -1) {
-      this._animateWorkspaceSwitch(win, newIndex < oldIndex);
+      this._animateWorkspaceSwitch(win, state, newIndex < oldIndex);
     }
 
-    const tabs = Array.from(gBrowser.tabs);
     const fallbackTabWorkspaceId = oldId || workspaceId;
     let targetTab = null;
     let fallbackTargetTab = null;
     const lastShownTab = this._getLastShownTab(win, state, workspaceId);
+    const tabsToHide = [];
+    const unloadEnabled = Services.prefs.getBoolPref(PREF_UNLOAD_INACTIVE, false);
+    let hasUnloadCandidate = false;
 
-    for (const tab of tabs) {
+    for (const tab of gBrowser.tabs) {
       const tabWorkspaceId = this._resolveTabWorkspace(state, tab, fallbackTabWorkspaceId);
       if (tabWorkspaceId) {
         this._rememberTabWorkspace(state, tab, tabWorkspaceId);
       }
 
-      if (!tab.pinned && !tab.closing && tabWorkspaceId === workspaceId) {
+      const belongs = tabWorkspaceId === workspaceId;
+      if (!tab.pinned && !tab.closing && belongs) {
         if (tab === gBrowser.selectedTab) {
           targetTab = tab;
         } else if (tab === lastShownTab) {
@@ -821,6 +956,22 @@ export const MidoriWorkspaces = {
         } else {
           fallbackTargetTab ||= tab;
         }
+      }
+
+      if (tab.pinned || belongs) {
+        if (tab.hidden) {
+          gBrowser.showTab(tab);
+        }
+      } else if (!tab.hidden) {
+        tabsToHide.push(tab);
+      }
+
+      if (
+        unloadEnabled &&
+        !hasUnloadCandidate &&
+        this._isUnloadCandidate(state, tab, tabWorkspaceId, false)
+      ) {
+        hasUnloadCandidate = true;
       }
     }
 
@@ -831,7 +982,6 @@ export const MidoriWorkspaces = {
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       });
       this._rememberTabWorkspace(state, targetTab, workspaceId);
-      tabs.push(targetTab);
     }
 
     if (targetTab.hidden) {
@@ -840,18 +990,9 @@ export const MidoriWorkspaces = {
     gBrowser.selectedTab = targetTab;
     this._markLastShownTab(state, targetTab, workspaceId);
 
-    for (const tab of tabs) {
-      const tabWorkspaceId = this._resolveTabWorkspace(state, tab, fallbackTabWorkspaceId);
-      const belongs = tabWorkspaceId === workspaceId;
-
-      if (tab.pinned || belongs) {
-        if (tab.hidden) {
-          gBrowser.showTab(tab);
-        }
-      } else {
-        if (!tab.hidden) {
-          gBrowser.hideTab(tab);
-        }
+    for (const tab of tabsToHide) {
+      if (!tab.closing) {
+        gBrowser.hideTab(tab);
       }
     }
 
@@ -862,7 +1003,7 @@ export const MidoriWorkspaces = {
     // Memory-aware unloading: schedule discard of now-hidden tabs that belong
     // to inactive workspaces so they stop consuming memory while keeping the
     // tab entry for instant on-demand reload.
-    this._scheduleInactiveUnload(win, state);
+    this._scheduleInactiveUnload(win, state, hasUnloadCandidate);
 
     // Dispatch custom event (Natsumi-style)
     try {
@@ -886,7 +1027,7 @@ export const MidoriWorkspaces = {
    * workspace is re-evaluated when the timer fires, so quickly switching back
    * cancels the unload for that workspace's tabs.
    */
-  _scheduleInactiveUnload(win, state) {
+  _scheduleInactiveUnload(win, state, hasCandidate = null) {
     this._cancelInactiveUnload(win, state);
 
     if (!Services.prefs.getBoolPref(PREF_UNLOAD_INACTIVE, false)) {
@@ -897,7 +1038,7 @@ export const MidoriWorkspaces = {
     if (!gBrowser) return;
 
     // Skip scheduling when nothing is currently unloadable.
-    const hasCandidate = Array.from(gBrowser.tabs).some((tab) =>
+    hasCandidate ??= Array.from(gBrowser.tabs).some(tab =>
       this._isUnloadCandidate(state, tab)
     );
     if (!hasCandidate) {
@@ -927,13 +1068,13 @@ export const MidoriWorkspaces = {
    * Build the pure decision state for a tab and ask WorkspaceTabUnloader
    * whether it is safe to discard given the active workspace.
    */
-  _isUnloadCandidate(state, tab) {
+  _isUnloadCandidate(state, tab, tabWorkspaceId = null, selected = !!tab?.selected) {
     if (!tab || tab.pinned || tab.closing) {
       return false;
     }
 
     const activeId = state.data.selectedId;
-    const tabWorkspaceId = this._resolveTabWorkspace(state, tab, activeId);
+    tabWorkspaceId ||= this._resolveTabWorkspace(state, tab, activeId);
 
     let uriSpec = '';
     try {
@@ -942,7 +1083,7 @@ export const MidoriWorkspaces = {
 
     return lazy.WorkspaceTabUnloader.shouldUnloadTab({
       belongsToActiveWorkspace: tabWorkspaceId === activeId,
-      selected: !!tab.selected,
+      selected,
       multiselected: !!tab.multiselected,
       pinned: !!tab.pinned,
       closing: !!tab.closing,
@@ -978,45 +1119,34 @@ export const MidoriWorkspaces = {
    * Natsumi-inspired workspace switch animation.
    * Applies a slide-in from left or right on the tabs list.
    */
-  _animateWorkspaceSwitch(win, slideLeft) {
+  _animateWorkspaceSwitch(win, state, slideLeft) {
     const doc = win.document;
     const tabsList = doc.getElementById('tabbrowser-tabs');
-    if (!tabsList) return;
+    if (!tabsList || win.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    // Remove any existing animation attributes
-    tabsList.removeAttribute('midori-workspace-anim');
-    tabsList.removeAttribute('midori-workspace-anim-left');
-
-    // Force reflow to restart animation
-    void tabsList.offsetWidth;
-
-    if (slideLeft) {
-      tabsList.setAttribute('midori-workspace-anim-left', '');
-    }
-    tabsList.setAttribute('midori-workspace-anim', '');
-
-    // Clear animation after it completes
-    if (win.__midoriWsAnimTimeout) {
-      win.clearTimeout(win.__midoriWsAnimTimeout);
-    }
-    win.__midoriWsAnimTimeout = win.setTimeout(() => {
-      tabsList.removeAttribute('midori-workspace-anim');
-      tabsList.removeAttribute('midori-workspace-anim-left');
-    }, 300);
+    state._workspaceAnimation?.cancel();
+    const animation = tabsList.animate(
+      [
+        {
+          opacity: 0.72,
+          transform: `translateX(${slideLeft ? '-' : ''}10px)`,
+        },
+        { opacity: 1, transform: 'translateX(0)' },
+      ],
+      { duration: 180, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
+    );
+    state._workspaceAnimation = animation;
+    animation.finished
+      .catch(() => {})
+      .then(() => {
+        if (state._workspaceAnimation === animation) {
+          state._workspaceAnimation = null;
+        }
+      });
   },
 
-  _countTabsInWorkspace(win, workspaceId) {
-    const gBrowser = win.gBrowser;
-    if (!gBrowser) return 0;
-
-    let count = 0;
-    for (const tab of gBrowser.tabs) {
-      const wsId = tab.getAttribute(WORKSPACE_ATTR);
-      if (wsId === workspaceId || this._getStoredWorkspaceForTab(tab) === workspaceId) {
-        count++;
-      }
-    }
-    return count;
+  _countTabsInWorkspace(state, workspaceId) {
+    return state?.tabIndex?.count(workspaceId) || 0;
   },
 
   _attachTabListeners(win, state) {
@@ -1198,18 +1328,17 @@ export const MidoriWorkspaces = {
   _invalidateWorkspaceIdCache(state) {
     if (!state) return;
     state._workspaceIdsCache = null;
-    state._workspaceIdsCacheKey = null;
+    state.tabIndex?.setWorkspaceIds(state.data.workspaces.map(workspace => workspace.id));
   },
 
   _getKnownWorkspaceIds(state) {
     if (!state) {
       return new Set();
     }
-    const workspaces = state?.data?.workspaces || [];
-    const cacheKey = workspaces.map((ws) => ws.id).join('\n');
-    if (!state._workspaceIdsCache || state._workspaceIdsCacheKey !== cacheKey) {
-      state._workspaceIdsCache = new Set(workspaces.map((ws) => ws.id));
-      state._workspaceIdsCacheKey = cacheKey;
+    if (!state._workspaceIdsCache) {
+      state._workspaceIdsCache = new Set(
+        (state.data?.workspaces || []).map(workspace => workspace.id)
+      );
     }
     return state._workspaceIdsCache;
   },
@@ -1249,13 +1378,21 @@ export const MidoriWorkspaces = {
 
   _setStoredWorkspaceForTab(tab, workspaceId) {
     if (!tab || typeof workspaceId !== 'string' || !workspaceId) {
-      return;
+      return false;
     }
 
-    tab.setAttribute(WORKSPACE_ATTR, workspaceId);
+    let changed = false;
+    if (tab.getAttribute(WORKSPACE_ATTR) !== workspaceId) {
+      tab.setAttribute(WORKSPACE_ATTR, workspaceId);
+      changed = true;
+    }
     try {
-      lazy.SessionStore.setCustomTabValue(tab, WORKSPACE_SESSION_KEY, workspaceId);
+      if (lazy.SessionStore.getCustomTabValue(tab, WORKSPACE_SESSION_KEY) !== workspaceId) {
+        lazy.SessionStore.setCustomTabValue(tab, WORKSPACE_SESSION_KEY, workspaceId);
+        changed = true;
+      }
     } catch (_) {}
+    return changed;
   },
 
   _clearStoredWorkspaceForTab(tab) {
@@ -1267,26 +1404,39 @@ export const MidoriWorkspaces = {
     } catch (_) {}
   },
 
-  _rememberTabWorkspace(state, tab, workspaceId) {
+  _rememberTabWorkspace(state, tab, workspaceId, { deferSave = false } = {}) {
     if (!this._isKnownWorkspaceId(state, workspaceId)) {
       return false;
     }
 
-    this._setStoredWorkspaceForTab(tab, workspaceId);
-
     const tabKey = this._getTabStableKey(tab);
+    if (
+      state.tabIndex.get(tab) === workspaceId &&
+      tab.getAttribute(WORKSPACE_ATTR) === workspaceId &&
+      (!tabKey || state.data.tabs?.[tabKey] === workspaceId)
+    ) {
+      return false;
+    }
+
+    this._setStoredWorkspaceForTab(tab, workspaceId);
+    const membershipChanged = state.tabIndex.assign(tab, workspaceId);
+    let dataChanged = false;
     if (tabKey) {
       state.data.tabs ||= {};
       if (state.data.tabs[tabKey] !== workspaceId) {
         state.data.tabs[tabKey] = workspaceId;
-        this._scheduleSave();
+        dataChanged = true;
+        if (!deferSave) {
+          this._scheduleSave();
+        }
       }
     }
 
-    return true;
+    return membershipChanged || dataChanged;
   },
 
   _forgetTabWorkspace(state, tab) {
+    state?.tabIndex?.forget(tab);
     const tabKey = this._getTabStableKey(tab);
     if (tabKey && state?.data?.tabs?.[tabKey]) {
       delete state.data.tabs[tabKey];
@@ -1296,6 +1446,11 @@ export const MidoriWorkspaces = {
   },
 
   _resolveTabWorkspace(state, tab, fallbackWorkspaceId) {
+    const indexedWorkspaceId = state.tabIndex?.get(tab);
+    if (indexedWorkspaceId) {
+      return indexedWorkspaceId;
+    }
+
     const attrWorkspaceId = tab.getAttribute(WORKSPACE_ATTR);
     if (this._isKnownWorkspaceId(state, attrWorkspaceId)) {
       return attrWorkspaceId;
@@ -1321,7 +1476,9 @@ export const MidoriWorkspaces = {
     const gBrowser = win.gBrowser;
     if (!gBrowser) return;
 
+    state.tabIndex.reset(state.data.workspaces.map(workspace => workspace.id));
     const liveTabKeys = new Set();
+    let changed = false;
     for (const tab of gBrowser.tabs) {
       const tabKey = this._getTabStableKey(tab);
       if (tabKey) {
@@ -1330,7 +1487,12 @@ export const MidoriWorkspaces = {
 
       const workspaceId = this._resolveTabWorkspace(state, tab, state.data.selectedId);
       if (workspaceId) {
-        this._rememberTabWorkspace(state, tab, workspaceId);
+        changed =
+          this._rememberTabWorkspace(state, tab, workspaceId, { deferSave: true }) || changed;
+        if (tab.getAttribute(WORKSPACE_LAST_SHOWN_ATTR) === workspaceId) {
+          const previousTab = state.tabIndex.setLastShown(workspaceId, tab);
+          previousTab?.removeAttribute(WORKSPACE_LAST_SHOWN_ATTR);
+        }
       }
     }
 
@@ -1342,9 +1504,10 @@ export const MidoriWorkspaces = {
           removed = true;
         }
       }
-      if (removed) {
-        this._scheduleSave();
-      }
+      changed ||= removed;
+    }
+    if (changed) {
+      this._scheduleSave();
     }
   },
 
@@ -1365,36 +1528,28 @@ export const MidoriWorkspaces = {
       return;
     }
 
-    const ownerDocument = targetTab.ownerDocument;
-    const gBrowser = ownerDocument?.defaultView?.gBrowser;
-    if (gBrowser) {
-      for (const tab of gBrowser.tabs) {
-        if (tab !== targetTab && tab.getAttribute(WORKSPACE_LAST_SHOWN_ATTR) === workspaceId) {
-          tab.removeAttribute(WORKSPACE_LAST_SHOWN_ATTR);
-        }
-      }
+    const previousTab = state.tabIndex.setLastShown(workspaceId, targetTab);
+    if (previousTab && previousTab !== targetTab) {
+      previousTab.removeAttribute(WORKSPACE_LAST_SHOWN_ATTR);
     }
 
     targetTab.setAttribute(WORKSPACE_LAST_SHOWN_ATTR, workspaceId);
   },
 
   _getLastShownTab(win, state, workspaceId) {
-    const gBrowser = win?.gBrowser;
-    if (!gBrowser || !this._isKnownWorkspaceId(state, workspaceId)) {
+    if (!win?.gBrowser || !this._isKnownWorkspaceId(state, workspaceId)) {
       return null;
     }
 
-    for (const tab of gBrowser.tabs) {
-      if (
-        !tab.closing &&
-        !tab.pinned &&
-        tab.getAttribute(WORKSPACE_LAST_SHOWN_ATTR) === workspaceId &&
-        this._resolveTabWorkspace(state, tab, workspaceId) === workspaceId
-      ) {
-        return tab;
-      }
+    const tab = state.tabIndex.getLastShown(workspaceId);
+    if (
+      tab &&
+      !tab.closing &&
+      !tab.pinned &&
+      this._resolveTabWorkspace(state, tab, workspaceId) === workspaceId
+    ) {
+      return tab;
     }
-
     return null;
   },
 
@@ -1548,7 +1703,7 @@ export const MidoriWorkspaces = {
       isSelected: ws.id === state.data.selectedId,
       canDelete: !ws.isDefault && state.data.workspaces.length > 1,
       position: index,
-      tabCount: this._countTabsInWorkspace(win, ws.id),
+      tabCount: this._countTabsInWorkspace(state, ws.id),
     }));
 
     return {
@@ -1829,7 +1984,7 @@ export const MidoriWorkspaces = {
     const { workspaces } = state.data;
     const items = workspaces.map((ws) => {
       const emoji = WorkspaceModel.getEmojiForIcon(ws.icon);
-      const tabCount = this._countTabsInWorkspace(win, ws.id);
+      const tabCount = this._countTabsInWorkspace(state, ws.id);
       return `${emoji} ${ws.name} (${tabCount} tabs)${ws.isDefault ? ' [Default]' : ''}`;
     });
 
@@ -1892,7 +2047,7 @@ export const MidoriWorkspaces = {
             this.renameWorkspace(win, ws.id, newName.value.trim());
           }
         } else if (action === DELETE) {
-          const tabCount = this._countTabsInWorkspace(win, ws.id);
+          const tabCount = this._countTabsInWorkspace(state, ws.id);
           const MOVE_TABS = 0;
           const DELETE_TABS = 1;
           const tabAction = Services.prompt.confirmEx(
@@ -1971,7 +2126,16 @@ export const MidoriWorkspaces = {
         break;
 
       case 'domwindowclosed':
-        this._destroyWindow(subject);
+        this._destroyWindow(subject, { removeData: !this._isShuttingDown });
+        break;
+
+      case 'quit-application-granted':
+        this._isShuttingDown = true;
+        if (this._saveTimer) {
+          lazy.clearTimeout(this._saveTimer);
+          this._saveTimer = null;
+        }
+        void this._flushSave();
         break;
     }
   },
@@ -2013,6 +2177,7 @@ export const MidoriWorkspaces = {
     try {
       Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
       Services.obs.removeObserver(this, 'domwindowclosed');
+      Services.obs.removeObserver(this, 'quit-application-granted');
     } catch {}
 
     for (const win of Services.wm.getEnumerator('navigator:browser')) {

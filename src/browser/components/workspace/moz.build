@@ -7,5 +7,6 @@
 EXTRA_JS_MODULES += [
     "MidoriWorkspaceModel.sys.mjs",
     "MidoriWorkspaces.sys.mjs",
+    "WorkspaceTabIndex.sys.mjs",
     "WorkspaceTabUnloader.sys.mjs",
 ]

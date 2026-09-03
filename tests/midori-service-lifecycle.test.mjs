@@ -166,3 +166,33 @@ test('the lifecycle facade owns the eight BrowserGlue services', () => {
     assert.match(readSource(sourcePath), /\buninit\(\)\s*\{/);
   }
 });
+
+test('workspace windows use persistent ids and only remove closed-window data', () => {
+  const workspaces = readSource(
+    '../src/browser/components/workspace/MidoriWorkspaces.sys.mjs'
+  );
+
+  assert.match(workspaces, /getCustomWindowValue\(\s*win,\s*WINDOW_SESSION_KEY/);
+  assert.match(workspaces, /setCustomWindowValue\(\s*win,\s*WINDOW_SESSION_KEY/);
+  assert.match(
+    workspaces,
+    /case 'domwindowclosed':[\s\S]*?_destroyWindow\(subject, \{ removeData: !this\._isShuttingDown \}\)/
+  );
+  assert.match(workspaces, /case 'quit-application-granted':[\s\S]*?_isShuttingDown = true/);
+  assert.doesNotMatch(workspaces, /outerWindowID/);
+});
+
+test('workspace switching avoids forced reflow and nested tab counts', () => {
+  const workspaces = readSource(
+    '../src/browser/components/workspace/MidoriWorkspaces.sys.mjs'
+  );
+
+  assert.doesNotMatch(workspaces, /offsetWidth/);
+  assert.match(workspaces, /state\?\.tabIndex\?\.count\(workspaceId\)/);
+  assert.match(workspaces, /tabsList\.animate\(/);
+  const countMethod = workspaces.slice(
+    workspaces.indexOf('  _countTabsInWorkspace('),
+    workspaces.indexOf('  _attachTabListeners(')
+  );
+  assert.doesNotMatch(countMethod, /for \(const tab/);
+});
