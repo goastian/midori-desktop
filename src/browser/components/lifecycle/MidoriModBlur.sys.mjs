@@ -125,9 +125,18 @@ export function migrateLegacyModBlurPrefs() {
 export const MidoriModBlur = {
   _stylesheetService: null,
   _stylesheetURI: null,
+  _observingTabsLayout: false,
 
   init() {
     migrateLegacyModBlurPrefs();
+
+    if (!this._observingTabsLayout) {
+      Services.prefs.addObserver(TAB_LAYOUT_PREF, this);
+      Services.obs.addObserver(this, "browser-delayed-startup-finished");
+      this._observingTabsLayout = true;
+      this._applyTabsLayoutToAllWindows();
+    }
+
     if (this._stylesheetService) {
       return;
     }
@@ -143,7 +152,43 @@ export const MidoriModBlur = {
     this._stylesheetURI = uri;
   },
 
+  observe(subject, topic, data) {
+    if (topic === "nsPref:changed" && data === TAB_LAYOUT_PREF) {
+      this._applyTabsLayoutToAllWindows();
+    } else if (topic === "browser-delayed-startup-finished") {
+      this._applyTabsLayout(subject);
+    }
+  },
+
+  _getTabsLayout() {
+    const layout = Services.prefs.getStringPref(TAB_LAYOUT_PREF, "urlbar-top");
+    return layout === "tabs-top" ? "tabs-top" : "urlbar-top";
+  },
+
+  _applyTabsLayout(win) {
+    const root = win?.document?.documentElement;
+    if (root?.getAttribute("windowtype") !== "navigator:browser") {
+      return;
+    }
+    root.setAttribute("midori-tabs-layout", this._getTabsLayout());
+  },
+
+  _applyTabsLayoutToAllWindows() {
+    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+      this._applyTabsLayout(win);
+    }
+  },
+
   uninit() {
+    if (this._observingTabsLayout) {
+      Services.prefs.removeObserver(TAB_LAYOUT_PREF, this);
+      Services.obs.removeObserver(this, "browser-delayed-startup-finished");
+      this._observingTabsLayout = false;
+      for (const win of Services.wm.getEnumerator("navigator:browser")) {
+        win.document.documentElement.removeAttribute("midori-tabs-layout");
+      }
+    }
+
     if (
       this._stylesheetService &&
       this._stylesheetURI &&

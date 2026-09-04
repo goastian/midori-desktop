@@ -440,7 +440,7 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 }
 
 :root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #TabsToolbar {
-  order: 0 !important;
+  order: 2 !important;
   min-height: calc(var(--pf-tab-height) + 8px) !important;
   padding-inline: var(--pf-separation) !important;
   background:
@@ -503,8 +503,16 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 }
 
 :root[midori-horizontal-tabs]:not([chromehidden~="toolbar"], [taskbartab]) #PersonalToolbar {
-  order: 2 !important;
+  order: 3 !important;
   width: 100% !important;
+}
+
+:root[midori-horizontal-tabs][midori-tabs-layout="tabs-top"]:not([chromehidden~="toolbar"], [taskbartab]) #TabsToolbar {
+  order: 1 !important;
+}
+
+:root[midori-horizontal-tabs][midori-tabs-layout="tabs-top"]:not([chromehidden~="toolbar"], [taskbartab]) #nav-bar {
+  order: 2 !important;
 }
 
 :root[midori-horizontal-tabs] #nav-bar-customization-target {
@@ -585,6 +593,7 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 
 :root[midori-horizontal-tabs] #PanelUI-button {
   margin-inline-start: var(--pf-separation) !important;
+  margin-inline-end: 0 !important;
 }
 
 @media (max-width: 768px) {

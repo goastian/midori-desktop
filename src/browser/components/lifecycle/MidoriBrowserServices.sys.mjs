@@ -94,26 +94,7 @@ const services = [
         ['midori.gradient.']
       ),
   },
-  {
-    name: 'MidoriVerticalTabs',
-    getService: () => lazy.MidoriVerticalTabs,
-    getState: () =>
-      getFeatureState(
-        Services.prefs.getBoolPref('midori.verticaltabs.enabled', false) ||
-          Services.prefs.getBoolPref('midori.arcmode.enabled', false) ||
-          Services.prefs.getBoolPref('midori.compact.enabled', false) ||
-          Services.prefs.getStringPref(
-            'midori.horizontaltabs.position',
-            'top'
-          ) === 'bottom',
-        [
-          'midori.verticaltabs.',
-          'midori.arcmode.enabled',
-          'midori.compact.enabled',
-          'midori.horizontaltabs.position',
-        ]
-      ),
-  },
+  { name: 'MidoriVerticalTabs', getService: () => lazy.MidoriVerticalTabs },
   {
     name: 'MidoriWorkspaces',
     getService: () => lazy.MidoriWorkspaces,

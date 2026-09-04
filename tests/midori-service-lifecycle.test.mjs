@@ -268,6 +268,11 @@ test('the lifecycle facade owns the eleven BrowserGlue services', () => {
     assert.match(facade, new RegExp(`name: '${name}'`));
   }
 
+  assert.match(
+    facade,
+    /\{ name: 'MidoriVerticalTabs', getService: \(\) => lazy\.MidoriVerticalTabs \}/
+  );
+
   assert.match(facade, /preferenceSource: Services\.prefs/);
   assert.match(facade, /getFeatureState\(/);
   assert.match(

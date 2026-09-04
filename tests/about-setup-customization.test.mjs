@@ -31,6 +31,9 @@ const defaults = readSource('../src/browser/app/profile/midori-browser.js');
 const modBlurCss = readSource(
   '../src/browser/themes/custom/shared/modblur.inc.css'
 );
+const modBlurService = readSource(
+  '../src/browser/components/lifecycle/MidoriModBlur.sys.mjs'
+);
 const setupJar = readSource('../src/browser/components/setup/jar.mn');
 const setupL10n = readSource(
   '../src/browser/locales/en-US/browser/welcome.ftl'
@@ -314,6 +317,13 @@ test('about:setup reflects preference changes made by another surface', () => {
   assert.match(setup, /const MSIDEBAR_SETUP_PREFS = \[/);
   assert.match(setup, /Services\.prefs\.addObserver\(pref, this\._prefObserver\)/);
   assert.match(setup, /Services\.prefs\.removeObserver\(pref, this\._prefObserver\)/);
+});
+
+test('horizontal toolbar order updates immediately when its preference changes', () => {
+  assert.match(modBlurService, /TAB_LAYOUT_PREF\s*=\s*['"]midori\.modblur\.tabs\.layout['"]/);
+  assert.match(modBlurService, /Services\.prefs\.addObserver\(TAB_LAYOUT_PREF, this\)/);
+  assert.match(modBlurService, /setAttribute\(['"]midori-tabs-layout['"], this\._getTabsLayout\(\)\)/);
+  assert.match(sharedCss, /\[midori-tabs-layout=["']tabs-top["']\]/);
 });
 
 test('every localization id used by about:setup is defined', () => {
