@@ -416,7 +416,13 @@ toolbar .toolbarbutton-1:not([disabled]):active {
   max-height: var(--pf-newtab-icon-size) !important;
   margin: 0 !important;
   padding: 0 !important;
-  transform: translateY(1px);
+  transform: none !important;
+}
+
+:root:not([midori-vertical-tabs])
+  #tabbrowser-arrowscrollbox[orient="horizontal"]
+  > #tabbrowser-arrowscrollbox-periphery {
+  align-items: center !important;
 }
 
 #fxa-avatar-label {
