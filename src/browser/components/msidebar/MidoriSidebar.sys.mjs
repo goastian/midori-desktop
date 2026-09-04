@@ -58,6 +58,7 @@ export const MidoriSidebar = {
   _stores: new WeakMap(),
   _saveTimers: new WeakMap(),
   _retryTimers: new WeakMap(),
+  _pendingWindows: new WeakMap(),
 
   init() {
     if (this._initialized) return;
@@ -113,11 +114,12 @@ export const MidoriSidebar = {
       const win = subject?.document
         ? subject
         : Services.wm.getMostRecentWindow('navigator:browser');
-      const ui = this._uis.get(win);
-      if (!ui) return;
+      if (!win) return;
       Services.prefs.setBoolPref(Prefs.PREF_ENABLED, true);
-      this._syncWindowUI(win);
-      ui.openCommandPalette?.();
+      this._applyToWindow(win).then(() => {
+        this._syncWindowUI(win);
+        this._uis.get(win)?.openCommandPalette?.();
+      });
     }
   },
 
@@ -127,7 +129,11 @@ export const MidoriSidebar = {
         win.document.readyState === 'complete' &&
         isRegularBrowserWindow(win)
       ) {
-        this._syncWindowUI(win);
+        if (this._uis.has(win)) {
+          this._syncWindowUI(win);
+        } else if (Prefs.getEnabled()) {
+          this._applyToWindow(win);
+        }
       }
     }
   },
@@ -138,10 +144,25 @@ export const MidoriSidebar = {
       this._syncWindowUI(win);
       return;
     }
+    if (!Prefs.getEnabled()) return;
+    const pending = this._pendingWindows.get(win);
+    if (pending) return pending;
 
+    const creation = this._createWindowUI(win);
+    this._pendingWindows.set(win, creation);
     try {
-      const store = await loadStore();
-      if (!this._initialized || win.closed) {
+      return await creation;
+    } finally {
+      if (this._pendingWindows.get(win) === creation) {
+        this._pendingWindows.delete(win);
+      }
+    }
+  },
+
+  async _createWindowUI(win) {
+    try {
+      const store = this._stores.get(win) || await loadStore();
+      if (!this._initialized || win.closed || !Prefs.getEnabled()) {
         return;
       }
       const ui = createSidebarUI(win, {
@@ -170,11 +191,16 @@ export const MidoriSidebar = {
   _syncWindowUI(win) {
     const ui = this._uis.get(win);
     if (!ui || !ui.root) {
-      this._scheduleRetry(win);
+      if (Prefs.getEnabled()) this._scheduleRetry(win);
       return;
     }
 
     const enabled = Prefs.getEnabled();
+    if (!enabled) {
+      ui.setVisible(false, { openPanel: false });
+      this._destroyWindowUI(win);
+      return;
+    }
     const position = Prefs.getPosition();
     const width = Prefs.getWidth();
     const autohideEnabled = Prefs.getAutohideEnabled();
@@ -262,13 +288,8 @@ export const MidoriSidebar = {
       this._stores.set(win, cleaned);
       saveStore(cleaned).catch(() => {});
     }
-    if (ui) {
-      try {
-        ui.destroy();
-      } catch {}
-    }
-    this._cleanupContextMenus(win);
-    this._uis.delete(win);
+    if (ui) this._destroyWindowUI(win);
+    else this._cleanupContextMenus(win);
     this._stores.delete(win);
     const t = this._saveTimers.get(win);
     if (t) {
@@ -288,6 +309,24 @@ export const MidoriSidebar = {
       const ks = win.document.getElementById('midori-msidebar-keyset');
       ks?.remove?.();
     } catch {}
+  },
+
+  _destroyWindowUI(win) {
+    const ui = this._uis.get(win);
+    if (ui) {
+      try {
+        ui.destroy();
+      } catch {}
+    }
+    this._cleanupContextMenus(win);
+    this._uis.delete(win);
+    const retry = this._retryTimers.get(win);
+    if (retry) {
+      try {
+        lazy.clearTimeout(retry);
+      } catch {}
+    }
+    this._retryTimers.delete(win);
   },
 
   _initContextMenus(win) {
@@ -486,7 +525,7 @@ export const MidoriSidebar = {
   },
 
   _scheduleRetry(win) {
-    if (!this._initialized || !win || !win.document) return;
+    if (!this._initialized || !win || !win.document || !Prefs.getEnabled()) return;
     const existing = this._retryTimers.get(win);
     if (existing) return;
     const timer = lazy.setTimeout(() => {

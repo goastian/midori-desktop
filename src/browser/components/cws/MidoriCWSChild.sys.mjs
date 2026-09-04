@@ -10,14 +10,15 @@
  *   • Injects a Midori-branded install button.
  *   • Sends MidoriCWS:Install to the parent when clicked.
  *
- * Implemented as a plain MutationObserver + lightweight polling — Google's
- * Web Store is a SPA that re-renders entire panels on navigation.
+ * Implemented as an event-driven MutationObserver — Google's Web Store is a
+ * SPA that re-renders entire panels on navigation.
  */
 
 const BTN_ID = "midori-cws-install-btn";
 const STATUS_ATTR = "data-midori-cws-status";
 
 const EXT_ID_RE = /\/detail\/[^/]+\/([a-p]{32})/;
+const EXTENSION_ID_RE = /^[a-p]{32}$/;
 
 const INSTALL_TEXT = "Add to Midori";
 const INSTALLED_TEXT = "Added to Midori";
@@ -26,8 +27,10 @@ const INSTALLING_TEXT = "Installing...";
 export class MidoriCWSChild extends JSWindowActorChild {
   /** @type {MutationObserver|null} */
   #observer = null;
-  /** @type {number} */
-  #pollTimer = 0;
+  /** @type {Document|null} */
+  #document = null;
+  /** @type {Window|null} */
+  #window = null;
   /** @type {number} */
   #refreshTimer = 0;
   /** @type {boolean} */
@@ -46,7 +49,24 @@ export class MidoriCWSChild extends JSWindowActorChild {
   }
 
   handleEvent(event) {
-    if (event.type === "pageshow" || event.type === "popstate") {
+    const doc = this.#document;
+    if (event.type === "visibilitychange") {
+      if (doc?.hidden) {
+        this.#observer?.disconnect();
+        if (this.#refreshTimer) {
+          this.#window?.clearTimeout(this.#refreshTimer);
+          this.#refreshTimer = 0;
+        }
+        return;
+      }
+      this.#observeDocument();
+    }
+    if (
+      event.type === "pageshow" ||
+      event.type === "popstate" ||
+      event.type === "hashchange" ||
+      event.type === "visibilitychange"
+    ) {
       this.#scheduleRefresh(0);
     }
   }
@@ -55,55 +75,64 @@ export class MidoriCWSChild extends JSWindowActorChild {
 
   #start() {
     const doc = this.document;
-    if (!doc) return;
+    const win = doc?.defaultView;
+    if (!doc || !win) return;
+    this.#document = doc;
+    this.#window = win;
     doc.addEventListener("pageshow", this, true);
-    doc.defaultView?.addEventListener("popstate", this, true);
+    doc.addEventListener("visibilitychange", this, true);
+    win.addEventListener("popstate", this, true);
+    win.addEventListener("hashchange", this, true);
 
-    this.#observer = new doc.defaultView.MutationObserver(() => {
-      this.#scheduleRefresh(120);
+    this.#observer = new win.MutationObserver(() => {
+      if (!doc.hidden) {
+        this.#scheduleRefresh(150);
+      }
     });
-    this.#observer.observe(doc.documentElement, {
-      childList: true,
-      subtree: true,
-    });
+    this.#observeDocument();
 
-    // Slow safety-net poll for the cases where mutations don't fire
-    // (e.g. shadow-root replacements).
-    const win = doc.defaultView;
-    const tick = () => {
-      this.#scheduleRefresh(0);
-      this.#pollTimer = win.setTimeout(tick, 750);
-    };
-    this.#pollTimer = win.setTimeout(tick, 200);
     this.#scheduleRefresh(0);
   }
 
   #stop() {
+    const doc = this.#document;
+    const win = this.#window;
     try {
       this.#observer?.disconnect();
-    } catch (_) {}
+    } catch {}
     this.#observer = null;
-    if (this.#pollTimer) {
-      try {
-        this.document?.defaultView?.clearTimeout(this.#pollTimer);
-      } catch (_) {}
-      this.#pollTimer = 0;
-    }
+    doc?.removeEventListener("pageshow", this, true);
+    doc?.removeEventListener("visibilitychange", this, true);
+    win?.removeEventListener("popstate", this, true);
+    win?.removeEventListener("hashchange", this, true);
     if (this.#refreshTimer) {
       try {
-        this.document?.defaultView?.clearTimeout(this.#refreshTimer);
-      } catch (_) {}
+        win?.clearTimeout(this.#refreshTimer);
+      } catch {}
       this.#refreshTimer = 0;
     }
     this.#refreshing = false;
     this.#refreshQueued = false;
+    this.#document = null;
+    this.#window = null;
   }
 
   // ----------------------------------------------------------------------
 
+  #observeDocument() {
+    const root = this.#document?.documentElement;
+    if (!root || this.#document?.hidden) {
+      return;
+    }
+    this.#observer?.observe(root, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
   #scheduleRefresh(delayMs = 80) {
-    const win = this.document?.defaultView;
-    if (!win) {
+    const win = this.#window;
+    if (!win || this.#document?.hidden) {
       return;
     }
     if (this.#refreshTimer) {
@@ -134,7 +163,7 @@ export class MidoriCWSChild extends JSWindowActorChild {
   }
 
   #refresh() {
-    const url = this.document?.location?.href || "";
+    const url = this.#document?.location?.href || "";
     const match = url.match(EXT_ID_RE);
     if (!match) {
       this.#removeButton();
@@ -158,20 +187,13 @@ export class MidoriCWSChild extends JSWindowActorChild {
   }
 
   #findNativeButtons() {
-    const doc = this.document;
+    const doc = this.#document;
     if (!doc) return [];
 
     const root = doc;
     const out = [];
     const seen = new Set();
-    const selector =
-      'button[jsaction*="install" i], ' +
-      'button[aria-label*="hrome" i], ' +
-      'button[aria-label*="agregar" i], ' +
-      'button[aria-label*="añadir" i], ' +
-      'button[aria-label*="instal" i], ' +
-      'button[disabled], ' +
-      'button[aria-disabled="true"]';
+    const selector = "button";
 
     for (const btn of root.querySelectorAll(selector)) {
       if (!(btn instanceof doc.defaultView.HTMLButtonElement)) {
@@ -190,14 +212,16 @@ export class MidoriCWSChild extends JSWindowActorChild {
         btn.textContent || ""
       } ${btn.getAttribute("jsaction") || ""}`.toLowerCase();
 
-      const looksLikeInstall =
-        label.includes("chrome") ||
-        label.includes("webstore") ||
+      const hasInstallVerb =
+        label.includes("add") ||
         label.includes("install") ||
         label.includes("instal") ||
-        label.includes("add") ||
         label.includes("agregar") ||
         label.includes("añadir");
+      const isBrowserPromo =
+        label.includes("switch to chrome") || label.trim() === "install chrome";
+      const looksLikeInstall =
+        label.includes("chrome") && hasInstallVerb && !isBrowserPromo;
 
       if (!looksLikeInstall) {
         continue;
@@ -210,12 +234,6 @@ export class MidoriCWSChild extends JSWindowActorChild {
         continue;
       }
 
-      // Prefer right-side main CTA over small utility buttons.
-      const likelyPrimaryCta = rect.width >= 130;
-      if (!likelyPrimaryCta) {
-        continue;
-      }
-
       seen.add(key);
       out.push(btn);
     }
@@ -225,6 +243,7 @@ export class MidoriCWSChild extends JSWindowActorChild {
 
   #prepareNativeButton(btn, extensionId) {
     // Force-enable CWS CTA in non-Chrome browsers and rewire click to Midori.
+    btn.dataset.midoriCwsExtensionId = extensionId;
     btn.removeAttribute("disabled");
     btn.setAttribute("aria-disabled", "false");
     if (btn.style.pointerEvents !== "auto") {
@@ -258,7 +277,10 @@ export class MidoriCWSChild extends JSWindowActorChild {
           event.preventDefault();
           event.stopPropagation();
           event.stopImmediatePropagation();
-          void this.#onClick(btn, extensionId);
+          const currentExtensionId = btn.dataset.midoriCwsExtensionId;
+          if (EXTENSION_ID_RE.test(currentExtensionId || "")) {
+            void this.#onClick(btn, currentExtensionId);
+          }
         },
         true
       );
@@ -271,7 +293,7 @@ export class MidoriCWSChild extends JSWindowActorChild {
   }
 
   #removeButton() {
-    const existing = this.document?.getElementById(BTN_ID);
+    const existing = this.#document?.getElementById(BTN_ID);
     if (existing) existing.remove();
   }
 
@@ -301,7 +323,7 @@ export class MidoriCWSChild extends JSWindowActorChild {
       btn.textContent = `Failed: ${result?.error || "unknown"}`;
       btn.style.background = "#c5221f";
       // Re-enable after a few seconds so the user can retry.
-      this.contentWindow?.setTimeout(() => {
+      this.#window?.setTimeout(() => {
         btn.disabled = false;
         btn.setAttribute(STATUS_ATTR, "idle");
         btn.textContent = INSTALL_TEXT;
@@ -316,7 +338,7 @@ export class MidoriCWSChild extends JSWindowActorChild {
       status = await this.sendQuery("MidoriCWS:IsInstalled", {
         extensionId,
       });
-    } catch (_) {
+    } catch {
       return;
     }
 
@@ -340,7 +362,8 @@ export class MidoriCWSChild extends JSWindowActorChild {
   }
 
   #extractMetadata() {
-    const doc = this.document;
+    const doc = this.#document;
+    if (!doc) return { name: "", icon: "" };
     const name = doc.querySelector("h1")?.textContent?.trim() || "";
     const icon =
       doc.querySelector('img[src*="googleusercontent.com"]')?.src || "";

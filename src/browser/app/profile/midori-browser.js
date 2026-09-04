@@ -272,7 +272,7 @@ pref('midori.modblur.search.hideExtensionIcon', false);
 pref('midori.modblur.search.popoutBlur', false);
 pref('midori.modblur.search.popoutStyle', 'off');
 pref('midori.modblur.blur.extra', false);
-pref('midori.modblur.blur.panels', true);
+pref('midori.modblur.blur.panels', false);
 pref('midori.modblur.blur.searchbar', false);
 pref('midori.modblur.blur.verticalExpand', false);
 pref('midori.modblur.blur.acrylic', false);
@@ -360,7 +360,7 @@ pref('midori.verticaltabs.accent.mode', 'workspace');
 pref('midori.verticaltabs.accent.custom', '#2d8659');
 pref('midori.horizontaltabs.position', 'top');
 
-pref('midori.msidebar.enabled', true);
+pref('midori.msidebar.enabled', false);
 pref('midori.msidebar.position', 'left');
 pref('midori.msidebar.width', 400);
 pref('midori.msidebar.autohide.enabled', false);

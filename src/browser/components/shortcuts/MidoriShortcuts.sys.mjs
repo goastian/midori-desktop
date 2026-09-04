@@ -495,7 +495,10 @@ export const MidoriShortcuts = {
         );
         return;
       case 'sidebar-command-palette':
-        Services.obs.notifyObservers(win, 'midori-msidebar-open-command-palette');
+        Services.prefs.setBoolPref(SidebarPrefs.PREF_ENABLED, true);
+        Services.tm.dispatchToMainThread(() => {
+          Services.obs.notifyObservers(win, 'midori-msidebar-open-command-palette');
+        });
         return;
       case 'search-selected-text':
         await searchSelectedText(win);

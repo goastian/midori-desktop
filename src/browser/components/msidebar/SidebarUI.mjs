@@ -1767,12 +1767,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function faviconCandidatesForHost(host) {
     const h = (host || '').trim().toLowerCase();
     if (!h) return [];
-    return [
-      `https://www.google.com/s2/favicons?domain=${encodeURIComponent(h)}&sz=32`,
-      `https://icons.duckduckgo.com/ip3/${encodeURIComponent(h)}.ico`,
-      `https://favicon.yandex.net/favicon/${encodeURIComponent(h)}/`,
-      `https://${h}/favicon.ico`,
-    ];
+    return [`https://${h}/favicon.ico`];
   }
 
   function loadImageUrl(url, timeoutMs = 3500) {
@@ -1870,6 +1865,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const panel = faviconQueue.shift();
     if (!panel?.id) return;
     faviconQueued.delete(panel.id);
+    if (!visible || activePanelId !== panel.id) return;
 
     const now = Date.now();
     const wait = Math.max(0, FAVICON_FETCH_GAP_MS - (now - lastFaviconFetchAt));
@@ -1907,7 +1903,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     });
   }
 
-  function ensureFavicon(panel) {
+  function ensureFavicon(panel, { allowNetwork = false } = {}) {
     const pid = panel?.id;
     if (!pid) return;
     if (panel?.favicon?.mode === 'static' && panel?.favicon?.value) {
@@ -1928,6 +1924,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       if (btn) setPanelButtonIcon(btn, persisted);
       return;
     }
+    if (!allowNetwork || !visible || activePanelId !== pid) return;
     if (faviconPending.has(pid)) return;
     if (faviconQueued.has(pid)) return;
     faviconQueued.add(pid);
@@ -2222,7 +2219,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       updateActivePanelTitle(panel);
       applyPanelSelector(panel, browserEl);
       faviconCache.delete(panel.id);
-      ensureFavicon(panel);
+      ensureFavicon(panel, { allowNetwork: true });
     }, true);
     activeBrowser.addEventListener(
       'pageshow',
@@ -2237,7 +2234,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     );
     activeBrowser.addEventListener('TabAttrModified', () => rememberPanelUrl(panel, activeBrowser), true);
     activeBrowser.addEventListener('DOMTitleChanged', () => updateActivePanelTitle(panel), true);
-    activeBrowser.addEventListener('DOMLinkAdded', () => ensureFavicon(panel), true);
+    activeBrowser.addEventListener('DOMLinkAdded', () => ensureFavicon(panel, { allowNetwork: true }), true);
     try {
       applyMuteToBrowser(activeBrowser, panel.muted);
     } catch {}
@@ -2284,7 +2281,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     renderButtons();
     syncToolbarPrefs();
     syncNavButtons();
-    ensureFavicon(panel);
+    ensureFavicon(panel, { allowNetwork: true });
     startPeriodicReload(panel);
     onStoreChanged?.(store);
   }
@@ -2607,228 +2604,297 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     }
   }
 
+  function createPanelButton(panelId) {
+    const btn = createXul(doc, 'toolbarbutton');
+    btn.classList.add('toolbarbutton-1', 'midori-msidebar-icon', 'midori-msidebar-panel-btn');
+    btn.setAttribute('draggable', 'true');
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('midori-msidebar-panel-id', panelId);
+    btn.addEventListener(
+      'contextmenu',
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openPanelMenu(panelId, e);
+      },
+      true
+    );
+    btn.addEventListener(
+      'command',
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activePanelId === panelId && panelAreaHiddenByUser) {
+          panelAreaHiddenByUser = false;
+          if (_ahTimer) {
+            try {
+              win.clearTimeout(_ahTimer);
+            } catch {}
+            _ahTimer = null;
+          }
+          if (currentPanelFloating) {
+            boxArea.style.display = '';
+            setBoolAttr(boxArea, 'collapsed', !visible);
+          } else if (autohideEnabled) {
+            applyAutohideCollapsedState(true);
+          } else {
+            setBoolAttr(boxArea, 'collapsed', false);
+          }
+          syncSplitterVisibility();
+          renderButtons();
+          onStoreChanged?.(store);
+          return;
+        }
+        if (activePanelId === panelId && !panelAreaHiddenByUser) {
+          if (compactMode && autohideEnabled) {
+            _ahCancelHide();
+            applyAutohideCollapsedState(false);
+            renderButtons();
+            onStoreChanged?.(store);
+            return;
+          }
+          panelAreaHiddenByUser = true;
+          _ahOpen = false;
+          if (_ahTimer) {
+            try {
+              win.clearTimeout(_ahTimer);
+            } catch {}
+            _ahTimer = null;
+          }
+          setSelectedPanelId(panelId);
+          setBoolAttr(boxArea, 'collapsed', true);
+          boxArea.style.display = '';
+          syncSplitterVisibility();
+          renderButtons();
+          onStoreChanged?.(store);
+          return;
+        }
+        panelAreaHiddenByUser = false;
+        if (_ahTimer) {
+          try {
+            win.clearTimeout(_ahTimer);
+          } catch {}
+          _ahTimer = null;
+        }
+        setActivePanel(panelId);
+      },
+      true
+    );
+    btn.addEventListener(
+      'focus',
+      () => {
+        lastFocusedRailPanelId = panelId;
+        for (const item of buttonsBox.querySelectorAll('.midori-msidebar-panel-btn')) {
+          item.setAttribute('tabindex', item === btn ? '0' : '-1');
+        }
+      },
+      true
+    );
+    btn.addEventListener(
+      'keydown',
+      (event) => {
+        const items = [...buttonsBox.querySelectorAll('.midori-msidebar-panel-btn')];
+        const currentIndex = items.indexOf(btn);
+        if (
+          ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
+        ) {
+          event.preventDefault();
+          const nextIndex = nextRovingIndex(items.length, currentIndex, event.key);
+          items[nextIndex]?.focus?.();
+          return;
+        }
+        if (event.key === 'Delete') {
+          event.preventDefault();
+          closePanel(panelId, { allowUndo: true });
+        } else if (event.key === 'F2') {
+          event.preventDefault();
+          openEditPanelDialog(panelId, btn);
+        }
+      },
+      true
+    );
+    btn.addEventListener(
+      'auxclick',
+      (e) => {
+        const panel = store.panels.find((item) => item.id === panelId);
+        if (e.button !== 1 || !panel?.temporary) return;
+        e.preventDefault();
+        e.stopPropagation();
+        closePanel(panelId);
+      },
+      true
+    );
+    btn.addEventListener(
+      'dragstart',
+      (e) => {
+        const panel = store.panels.find((item) => item.id === panelId);
+        railDragPanelId = panelId;
+        try {
+          e.dataTransfer?.setData('application/x-midori-msidebar-panel-id', panelId);
+          e.dataTransfer?.setData('text/plain', panel?.url || '');
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+        } catch {}
+      },
+      true
+    );
+    btn.addEventListener(
+      'dragend',
+      () => {
+        clearRailDropTarget();
+        railDragPanelId = null;
+      },
+      true
+    );
+    btn.addEventListener(
+      'dragover',
+      (e) => {
+        const dragged = (() => {
+          try {
+            return (
+              e.dataTransfer?.getData('application/x-midori-msidebar-panel-id') || railDragPanelId
+            );
+          } catch {
+            return railDragPanelId;
+          }
+        })();
+        if (dragged && dragged === panelId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        clearRailDropTarget();
+        btn.setAttribute('data-drop-target', 'true');
+        btn.setAttribute(
+          'data-drop-position',
+          dropPositionForPoint(btn.getBoundingClientRect(), e.clientY)
+        );
+        try {
+          if (e.dataTransfer) e.dataTransfer.dropEffect = dragged ? 'move' : 'copy';
+        } catch {}
+      },
+      true
+    );
+    btn.addEventListener(
+      'drop',
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const dragged = (() => {
+          try {
+            return (
+              e.dataTransfer?.getData('application/x-midori-msidebar-panel-id') || railDragPanelId
+            );
+          } catch {
+            return railDragPanelId;
+          }
+        })();
+
+        if (dragged && dragged !== panelId) {
+          const position = btn.getAttribute('data-drop-position') || 'before';
+          const reordered = reorderPanelsById(store.panels, dragged, panelId, position);
+          store.panels = reordered;
+          syncPanelShortcuts();
+          onStoreChanged?.(store);
+          renderButtons();
+        } else if (!dragged) {
+          createPanelFromDrop(e, panelId);
+        }
+
+        clearRailDropTarget();
+        railDragPanelId = null;
+      },
+      true
+    );
+    return btn;
+  }
+
+  function updatePanelButton(btn, panel, selected, indicator, defaultFocusId) {
+    const displayTitle = panelDisplayTitle(panel);
+    const semantics = panelSemantics(panel);
+    btn.setAttribute('label', displayTitle);
+    btn.setAttribute(
+      'aria-label',
+      `${displayTitle}${semantics.temporary ? ', temporal' : ''}${semantics.keepOpen ? ', mantener abierto' : ''}`
+    );
+    btn.setAttribute(
+      'tabindex',
+      panel.id === (lastFocusedRailPanelId || selected || defaultFocusId) ? '0' : '-1'
+    );
+    const tooltip = tooltipTextForPanel(panel);
+    if (tooltip) btn.setAttribute('tooltiptext', tooltip);
+    else btn.removeAttribute('tooltiptext');
+    btn.setAttribute('container-indicator', indicator);
+    setBoolAttr(btn, 'temporary', panel.temporary);
+    setBoolAttr(btn, 'unloaded', panel.id !== selected || panelAreaHiddenByUser);
+    const panelStatus = panelStatuses.get(panel.id)?.status;
+    if (panelStatus) btn.setAttribute('status', panelStatus);
+    else btn.removeAttribute('status');
+    setBoolAttr(btn, 'loading', panelStatus === 'loading');
+    const containerColor = containerColorForUserContext(panel.userContextId);
+    if (containerColor) {
+      btn.style.setProperty('--midori-msidebar-container-color', containerColor);
+    } else {
+      btn.style.removeProperty('--midori-msidebar-container-color');
+    }
+    setPanelButtonIcon(btn, panelIconSpec(panel));
+    applyPanelButtonDecorations(btn, panel);
+    setBoolAttr(btn, 'checked', panel.id === selected);
+  }
+
+  function reconcileButtonChildren(nodes) {
+    const desired = new Set(nodes);
+    for (let index = 0; index < nodes.length; index++) {
+      const node = nodes[index];
+      if (buttonsBox.children[index] !== node) {
+        buttonsBox.insertBefore(node, buttonsBox.children[index] || null);
+      }
+    }
+    for (const child of [...buttonsBox.children]) {
+      if (!desired.has(child)) child.remove();
+    }
+  }
+
   function renderButtons() {
-    while (buttonsBox.firstChild) buttonsBox.firstChild.remove();
     const selected = activePanelId;
     const indicator = Prefs.getContainerIndicator();
     const sections = panelsBySection(store.panels, railFilterQuery);
     const showFilter = store.panels.length >= 7;
+    const panelButtons = new Map();
+    const sectionLabels = new Map();
+    let emptyLabel = null;
+    for (const child of buttonsBox.children) {
+      const panelId = child.getAttribute('midori-msidebar-panel-id');
+      const sectionId = child.getAttribute('data-midori-msidebar-section-id');
+      if (panelId) panelButtons.set(panelId, child);
+      else if (sectionId) sectionLabels.set(sectionId, child);
+      else if (child.classList.contains('midori-msidebar-empty')) emptyLabel = child;
+    }
+
     setBoolAttr(filterInput, 'available', showFilter);
     if (!sections.length) {
-      const empty = createXul(doc, 'label');
-      empty.classList.add('midori-msidebar-empty');
-      empty.setAttribute('value', railFilterQuery ? 'No hay paneles que coincidan' : 'Aún no hay paneles');
-      buttonsBox.appendChild(empty);
+      emptyLabel ||= createXul(doc, 'label');
+      emptyLabel.classList.add('midori-msidebar-empty');
+      emptyLabel.setAttribute('value', railFilterQuery ? 'No hay paneles que coincidan' : 'Aún no hay paneles');
+      reconcileButtonChildren([emptyLabel]);
       return;
     }
+
+    const nodes = [];
     for (const section of sections) {
-      const sectionLabel = createXul(doc, 'label');
-      sectionLabel.classList.add('midori-msidebar-section-label');
-      sectionLabel.setAttribute('value', section.label);
-      buttonsBox.appendChild(sectionLabel);
-      for (const panel of section.panels) {
-      const btn = createXul(doc, 'toolbarbutton');
-      btn.classList.add('toolbarbutton-1', 'midori-msidebar-icon', 'midori-msidebar-panel-btn');
-      btn.setAttribute('draggable', 'true');
-      const displayTitle = panelDisplayTitle(panel);
-      const semantics = panelSemantics(panel);
-      btn.setAttribute('label', displayTitle);
-      btn.setAttribute(
-        'aria-label',
-        `${displayTitle}${semantics.temporary ? ', temporal' : ''}${semantics.keepOpen ? ', mantener abierto' : ''}`
-      );
-      btn.setAttribute('role', 'button');
-      btn.setAttribute('tabindex', panel.id === (lastFocusedRailPanelId || selected || section.panels[0]?.id) ? '0' : '-1');
-      const tt = tooltipTextForPanel(panel);
-      if (tt) btn.setAttribute('tooltiptext', tt);
-      btn.setAttribute('midori-msidebar-panel-id', panel.id);
-      btn.setAttribute('container-indicator', indicator);
-      if (panel.temporary) btn.setAttribute('temporary', 'true');
-      if (panel.id !== selected || panelAreaHiddenByUser) btn.setAttribute('unloaded', 'true');
-      const panelStatus = panelStatuses.get(panel.id)?.status;
-      if (panelStatus) {
-        btn.setAttribute('status', panelStatus);
-        if (panelStatus === 'loading') btn.setAttribute('loading', 'true');
+      let sectionLabel = sectionLabels.get(section.id);
+      if (!sectionLabel) {
+        sectionLabel = createXul(doc, 'label');
+        sectionLabel.classList.add('midori-msidebar-section-label');
+        sectionLabel.setAttribute('data-midori-msidebar-section-id', section.id);
       }
-      const cc = containerColorForUserContext(panel.userContextId);
-      if (cc) btn.style.setProperty('--midori-msidebar-container-color', cc);
-      setPanelButtonIcon(btn, panelIconSpec(panel));
-      applyPanelButtonDecorations(btn, panel);
-      btn.addEventListener(
-        'contextmenu',
-        (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openPanelMenu(panel.id, e);
-        },
-        true
-      );
-      btn.addEventListener(
-        'command',
-        (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (activePanelId === panel.id && panelAreaHiddenByUser) {
-            panelAreaHiddenByUser = false;
-            if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
-            if (currentPanelFloating) {
-              boxArea.style.display = '';
-              setBoolAttr(boxArea, 'collapsed', !visible);
-            } else if (autohideEnabled) {
-              applyAutohideCollapsedState(true);
-            } else {
-              setBoolAttr(boxArea, 'collapsed', false);
-            }
-            syncSplitterVisibility();
-            renderButtons();
-            onStoreChanged?.(store);
-            return;
-          }
-          if (activePanelId === panel.id && !panelAreaHiddenByUser) {
-            if (compactMode && autohideEnabled) {
-              _ahCancelHide();
-              applyAutohideCollapsedState(false);
-              renderButtons();
-              onStoreChanged?.(store);
-              return;
-            }
-            panelAreaHiddenByUser = true;
-            _ahOpen = false;
-            if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
-            setSelectedPanelId(panel.id);
-            setBoolAttr(boxArea, 'collapsed', true);
-            boxArea.style.display = '';
-            syncSplitterVisibility();
-            renderButtons();
-            onStoreChanged?.(store);
-            return;
-          }
-          panelAreaHiddenByUser = false;
-          if (_ahTimer) { try { win.clearTimeout(_ahTimer); } catch {} _ahTimer = null; }
-          setActivePanel(panel.id);
-        },
-        true
-      );
-      btn.addEventListener(
-        'focus',
-        () => {
-          lastFocusedRailPanelId = panel.id;
-          for (const item of buttonsBox.querySelectorAll('.midori-msidebar-panel-btn')) {
-            item.setAttribute('tabindex', item === btn ? '0' : '-1');
-          }
-        },
-        true
-      );
-      btn.addEventListener(
-        'keydown',
-        (event) => {
-          const items = [...buttonsBox.querySelectorAll('.midori-msidebar-panel-btn')];
-          const currentIndex = items.indexOf(btn);
-          if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-            event.preventDefault();
-            const nextIndex = nextRovingIndex(items.length, currentIndex, event.key);
-            items[nextIndex]?.focus?.();
-            return;
-          }
-          if (event.key === 'Delete') {
-            event.preventDefault();
-            closePanel(panel.id, { allowUndo: true });
-          } else if (event.key === 'F2') {
-            event.preventDefault();
-            openEditPanelDialog(panel.id, btn);
-          }
-        },
-        true
-      );
-      btn.addEventListener(
-        'auxclick',
-        (e) => {
-          if (e.button !== 1 || !panel.temporary) return;
-          e.preventDefault();
-          e.stopPropagation();
-          closePanel(panel.id);
-        },
-        true
-      );
-      btn.addEventListener(
-        'dragstart',
-        (e) => {
-          railDragPanelId = panel.id;
-          try {
-            e.dataTransfer?.setData('application/x-midori-msidebar-panel-id', panel.id);
-            e.dataTransfer?.setData('text/plain', panel.url || '');
-            if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-          } catch {}
-        },
-        true
-      );
-      btn.addEventListener(
-        'dragend',
-        () => {
-          clearRailDropTarget();
-          railDragPanelId = null;
-        },
-        true
-      );
-      btn.addEventListener(
-        'dragover',
-        (e) => {
-          const dragged = (() => {
-            try {
-              return e.dataTransfer?.getData('application/x-midori-msidebar-panel-id') || railDragPanelId;
-            } catch {
-              return railDragPanelId;
-            }
-          })();
-          if (dragged && dragged === panel.id) return;
-          e.preventDefault();
-          e.stopPropagation();
-          clearRailDropTarget();
-          btn.setAttribute('data-drop-target', 'true');
-          btn.setAttribute(
-            'data-drop-position',
-            dropPositionForPoint(btn.getBoundingClientRect(), e.clientY)
-          );
-          try {
-            if (e.dataTransfer) e.dataTransfer.dropEffect = dragged ? 'move' : 'copy';
-          } catch {}
-        },
-        true
-      );
-      btn.addEventListener(
-        'drop',
-        (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const dragged = (() => {
-            try {
-              return e.dataTransfer?.getData('application/x-midori-msidebar-panel-id') || railDragPanelId;
-            } catch {
-              return railDragPanelId;
-            }
-          })();
-
-          if (dragged && dragged !== panel.id) {
-            const position = btn.getAttribute('data-drop-position') || 'before';
-            const reordered = reorderPanelsById(store.panels, dragged, panel.id, position);
-            store.panels = reordered;
-            syncPanelShortcuts();
-            onStoreChanged?.(store);
-            renderButtons();
-          } else if (!dragged) {
-            createPanelFromDrop(e, panel.id);
-          }
-
-          clearRailDropTarget();
-          railDragPanelId = null;
-        },
-        true
-      );
-      if (panel.id === selected) btn.setAttribute('checked', 'true');
-      buttonsBox.appendChild(btn);
-      ensureFavicon(panel);
+      sectionLabel.setAttribute('value', section.label);
+      nodes.push(sectionLabel);
+      const defaultFocusId = section.panels[0]?.id;
+      for (const panel of section.panels) {
+        const btn = panelButtons.get(panel.id) || createPanelButton(panel.id);
+        updatePanelButton(btn, panel, selected, indicator, defaultFocusId);
+        nodes.push(btn);
       }
     }
+    reconcileButtonChildren(nodes);
   }
 
   buttonsBox.addEventListener(

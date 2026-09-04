@@ -128,7 +128,7 @@ const services = [
     getService: () => lazy.MidoriSidebar,
     getState: () =>
       getFeatureState(
-        Services.prefs.getBoolPref('midori.msidebar.enabled', true),
+        Services.prefs.getBoolPref('midori.msidebar.enabled', false),
         ['midori.msidebar.']
       ),
   },
