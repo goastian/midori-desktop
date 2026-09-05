@@ -78,7 +78,7 @@
   },
   "homepage": "https://github.com/goastian/midori-desktop#readme",
   "dependencies": {
-    "@goastian/amelia": "^1.11.31"
+    "@goastian/amelia": "2.0.0"
   },
   "devDependencies": {
     "@babel/preset-typescript": "^7.27.0",
