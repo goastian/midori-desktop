@@ -1,12 +1,8 @@
 # Midori Browser
 
-[![GitHub Stars](https://img.shields.io/github/stars/goastian/midori-desktop?style=flat-square&logo=github&label=Stars)](https://github.com/goastian/midori-desktop/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/goastian/midori-desktop?style=flat-square&logo=github&label=Forks)](https://github.com/goastian/midori-desktop/network/members)
-[![GitHub Issues](https://img.shields.io/github/issues/goastian/midori-desktop?style=flat-square&logo=github)](https://github.com/goastian/midori-desktop/issues)
-[![CI](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml)
-[![Release](https://github.com/goastian/midori-desktop/actions/workflows/release.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/release.yml)
-[![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/goastian/midori-desktop/total?label=downloads&logo=github&color=2e7d32)](https://github.com/goastian/midori-desktop/releases)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/T5V5269OIA)
+[![Telegram](https://img.shields.io/badge/Telegram-Join%20the%20community-26A5E4?style=flat-square&logo=telegram&logoColor=white)]([https://t.me/TU_GRUPO](https://t.me/midoriweb))
 
 <div align="center">
   <a href="https://astian.org/midori-browser">
