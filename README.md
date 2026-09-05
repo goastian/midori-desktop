@@ -10,7 +10,7 @@
   </a>
 </div>
 
-Midori is a privacy-focused web browser based on Mozilla Firefox and the Gecko engine. It adds Midori branding, preferences, extensions, and distribution tooling to the Firefox source tree.
+Midori Browser is a lightweight, fast, and secure browser that promotes user privacy; it has evolved and is now based on the Gecko engine instead of WebKit.
 
 ## Contents
 
