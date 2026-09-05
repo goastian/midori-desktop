@@ -33,7 +33,7 @@ def update_ff(is_rc: bool = False, last_version: str = "", last_build: int = 0):
   """Runs the npm command to sync Firefox."""
   if is_rc:
     return update_rc(last_version, last_build)
-  result = os.system("npm run sync:raw")
+  result = os.system("npm run update-ff:raw")
   if result != 0:
     raise RuntimeError("Failed to sync Firefox.")
 
@@ -43,9 +43,10 @@ def get_version_from_file(filename, is_rc):
   try:
     with open(filename, "r") as f:
       data = json.load(f)
-      return (data["version"]["version"] if not is_rc else data["version"]["candidate"],
-              data["version"]["candidateBuild"])
-  except (FileNotFoundError, json.JSONDecodeError) as e:
+      version = data["version"]
+      return (version["candidate"] if is_rc else version["version"],
+              version.get("candidateBuild", 0) if is_rc else 0)
+  except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
     raise RuntimeError(f"Error reading version from {filename}: {e}")
 
 
