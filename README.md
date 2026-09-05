@@ -6,7 +6,7 @@
 [![CI](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml)
 [![Release](https://github.com/goastian/midori-desktop/actions/workflows/release.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](LICENSE)
-
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/T5V5269OIA)
 
 <div align="center">
   <a href="https://astian.org/midori-browser">
