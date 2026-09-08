@@ -12,13 +12,6 @@
     "generateBranding": true
   },
   "addons": {
-    "midori-privacy": {
-      "id": "midori-protection@astian.org",
-      "repo": "goastian/midori-privacy",
-      "version": "v2.3.11",
-      "platform": "github",
-      "fileGlob": "midori-privacy-2.3.11-firefox.zip"
-    },
     "midori-newtab": {
       "id": "midori-newtab",
       "repo": "goastian/midori-tab",
