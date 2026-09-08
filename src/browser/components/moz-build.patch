@@ -7,7 +7,7 @@ index 4a4b96b779f33b17082cf79563821ae1164c1dd1..4387fc12cb9e2e34bc23a0af5306911b
  ]
  
 +# Midori custom components
-+DIRS += ["autohide", "center", "cws", "gradient", "lifecycle", "memory", "msidebar", "profilemigration", "setup", "shortcuts", "tabprotect", "tabsleep", "verticaltabs", "webapps", "workspace"]
++DIRS += ["autohide", "blocker", "center", "cws", "gradient", "lifecycle", "memory", "msidebar", "profilemigration", "setup", "shortcuts", "tabprotect", "tabsleep", "verticaltabs", "webapps", "workspace"]
 +
  DIRS += ["build"]
  
