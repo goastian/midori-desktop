@@ -419,10 +419,19 @@ pref('midori.tabprotect.mode', 'global');
 pref('midori.tabprotect.globalPasswordHash', '');
 
 // ============================================================================
-// MIDORI PRIVACY (replaces Firefox Enhanced Tracking Protection)
+// MIDORI PRIVACY
 // ============================================================================
-// Disable Firefox's built-in tracking protection UI - midori-privacy extension
-// handles all content blocking and ad filtering.
+// Midori's native blocker handles content blocking without a WebExtension.
+pref('midori.blocker.enabled', true);
+pref('midori.blocker.ui.enabled', true);
+pref('midori.blocker.showBadge', true);
+pref('midori.blocker.allowSearchPartnerAds', false);
+pref('midori.blocker.filterListUrls', '[]');
+pref('midori.blocker.enabledLists', '{}');
+pref('midori.blocker.extensionDetectionDismissed', false);
+pref('midori.blocker.dismissedExtensionInstallWarnings', '[]');
+pref('midori.blocker.coexist', false);
+pref('midori.blocker.remoteResourcesEnabled', false);
 pref('privacy.trackingprotection.enabled', false);
 pref('privacy.trackingprotection.pbmode.enabled', false);
 pref('browser.contentblocking.category', 'custom');
