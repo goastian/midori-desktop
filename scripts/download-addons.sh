@@ -8,7 +8,7 @@
 #
 # Usage: bash scripts/download-addons.sh [--force] [addon-key ...]
 #   --force: Re-download and overwrite even if addon files already exist
-#   addon-key: Optional amelia.json addon key(s) to process, e.g. midori-privacy
+#   addon-key: Optional amelia.json addon key(s) to process, e.g. midori-newtab
 
 set -euo pipefail
 
