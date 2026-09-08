@@ -419,13 +419,13 @@ pref('midori.tabprotect.mode', 'global');
 pref('midori.tabprotect.globalPasswordHash', '');
 
 // ============================================================================
-// MIDORI PRIVACY
+// MIDORI NATIVE BLOCKER
 // ============================================================================
 // Midori's native blocker handles content blocking without a WebExtension.
 pref('midori.blocker.enabled', true);
 pref('midori.blocker.ui.enabled', true);
 pref('midori.blocker.showBadge', true);
-pref('midori.blocker.allowSearchPartnerAds', false);
+pref('midori.blocker.customFiltersEnabled', true);
 pref('midori.blocker.filterListUrls', '[]');
 pref('midori.blocker.enabledLists', '{}');
 pref('midori.blocker.extensionDetectionDismissed', false);
