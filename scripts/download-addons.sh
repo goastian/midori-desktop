@@ -18,6 +18,7 @@ AMELIA_JSON="$PROJECT_DIR/amelia.json"
 ENGINE_DIR="$PROJECT_DIR/engine"
 EXTENSIONS_DIR="$ENGINE_DIR/browser/extensions"
 TMP_DIR="$PROJECT_DIR/.tmp-addons"
+RETIRED_ADDONS=("midori-privacy")
 
 create_stub_manifest() {
         local addon_dir="$1"
@@ -159,6 +160,19 @@ apply_source_overlays() {
     fi
 }
 
+remove_retired_addon_references() {
+    local addon_dir="$1"
+    local addon_key="$2"
+
+    if [[ "$addon_key" != "midori-newtab" ]]; then
+        return 0
+    fi
+
+    while IFS= read -r -d '' widget_file; do
+        sed -i 's/midori-protection@astian\.org//g' "$widget_file"
+    done < <(find "$addon_dir/assets" -maxdepth 1 -type f -name 'PrivacyWidget-*.js' -print0 2>/dev/null)
+}
+
 resolve_effective_addon_id() {
     local addon_dir="$1"
     local fallback_id="$2"
@@ -207,6 +221,14 @@ if [[ ! -d "$ENGINE_DIR" ]]; then
     echo "ERROR: engine/ directory not found. Run 'amelia download' first."
     exit 1
 fi
+
+for RETIRED_ADDON in "${RETIRED_ADDONS[@]}"; do
+    RETIRED_ADDON_DIR="$EXTENSIONS_DIR/$RETIRED_ADDON"
+    if [[ -d "$RETIRED_ADDON_DIR" ]]; then
+        rm -rf "$RETIRED_ADDON_DIR"
+        echo "INFO: Removed retired addon directory: $RETIRED_ADDON"
+    fi
+done
 
 # Read addons from amelia.json
 if [[ ${#REQUESTED_ADDONS[@]} -gt 0 ]]; then
@@ -356,6 +378,7 @@ for ADDON_KEY in $ADDON_KEYS; do
     normalize_manifest_locale "$ADDON_DIR" "$ADDON_KEY"
     normalize_manifest_wasm_policy "$ADDON_DIR" "$ADDON_KEY"
     apply_source_overlays "$ADDON_DIR" "$ADDON_KEY"
+    remove_retired_addon_references "$ADDON_DIR" "$ADDON_KEY"
     ADDON_ID=$(resolve_effective_addon_id "$ADDON_DIR" "$CONFIGURED_ADDON_ID")
 
     if [[ "$ADDON_ID" != "$CONFIGURED_ADDON_ID" ]]; then
