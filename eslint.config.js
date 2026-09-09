@@ -4,6 +4,7 @@
 
 import js from '@eslint/js';
 import eslintConfigPrettier from 'eslint-config-prettier';
+import noUnsanitized from 'eslint-plugin-no-unsanitized';
 import globals from 'globals';
 
 export default [
@@ -25,6 +26,12 @@ export default [
 
   // Base recommended rules for all JS/MJS files
   js.configs.recommended,
+
+  {
+    plugins: {
+      'no-unsanitized': noUnsanitized,
+    },
+  },
 
   // Mozilla system module globals (.sys.mjs and .mjs files in src/)
   {
