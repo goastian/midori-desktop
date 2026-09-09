@@ -7,7 +7,7 @@ index e81a1e037e03b4967b53c30c1e5bd663708b1ed6..6588d1f2e28e04cfb0c769feb6c39d2b
  }
  
 -/* Content Blocking */
-+/* Content Blocking - Hidden: replaced by midori-privacy extension */
++/* Content Blocking - Hidden: replaced by Midori's native blocker */
 +#trackingGroup {
 +  display: none;
 +}

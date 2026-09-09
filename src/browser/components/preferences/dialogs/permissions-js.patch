@@ -1,0 +1,15 @@
+diff --git a/browser/components/preferences/dialogs/permissions.js b/browser/components/preferences/dialogs/permissions.js
+index 4b513ad3ce4734613ef35d0f716f6f7e0b328059..854b82689103628b7348c3c4ba903bff4e07f0f8 100644
+--- a/browser/components/preferences/dialogs/permissions.js
++++ b/browser/components/preferences/dialogs/permissions.js
+@@ -26,6 +26,10 @@ XPCOMUtils.defineLazyServiceGetter(
+ const DEFAULT_FAVICON = "chrome://global/skin/icons/defaultFavicon.svg";
+ 
+ const permissionExceptionsL10n = {
++  "midori-blocker": {
++    window: "permissions-exceptions-midori-blocker-window2",
++    description: "permissions-exceptions-manage-midori-blocker-desc",
++  },
+   trackingprotection: {
+     window: "permissions-exceptions-etp-window2",
+     description: "permissions-exceptions-manage-etp-desc",

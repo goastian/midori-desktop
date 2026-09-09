@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-init.js b/browser/base/content/browser-init.js
-index 7694c598c35dc464fbdd8290d8a4d2c00c84acd4..250212821d582fbe2ea78960b58701428d3d6950 100644
+index 7694c598c35dc464fbdd8290d8a4d2c00c84acd4..0aba588724d3e620ebeef4945cb8282d6d3c54a7 100644
 --- a/browser/base/content/browser-init.js
 +++ b/browser/base/content/browser-init.js
-@@ -502,6 +502,50 @@ var gBrowserInit = {
+@@ -502,6 +502,16 @@ var gBrowserInit = {
  
      UpdateUrlbarSearchSplitterState();
  
@@ -14,40 +14,6 @@ index 7694c598c35dc464fbdd8290d8a4d2c00c84acd4..250212821d582fbe2ea78960b5870142
 +        BrowserPageActions.placeActionInUrlbar(bookmarkAction);
 +      }
 +      BookmarkingUI.updateStarState();
-+    }
-+
-+    // Midori: keep the built-in Midori Privacy browser action at the start of
-+    // the URL bar. The Rust/WASM rewrite can register its browser-action later
-+    // than the old extension, so use an observer instead of a short retry loop.
-+    {
-+      const widgetId = "midori-protection_astian_org-browser-action";
-+      const moveWidget = () => {
-+        const widget = document.getElementById(widgetId);
-+        const urlbarContainer = document.querySelector(".urlbar-input-container");
-+        if (!widget || !urlbarContainer) {
-+          return false;
-+        }
-+
-+        widget.querySelector(".toolbarbutton-text")?.setAttribute("hidden", "true");
-+        widget.setAttribute("cui-areatype", "toolbar");
-+        widget.setAttribute("midori-urlbar-action", "privacy");
-+        if (widget.parentElement !== urlbarContainer || widget.previousElementSibling) {
-+          urlbarContainer.prepend(widget);
-+        }
-+        return true;
-+      };
-+
-+      if (!moveWidget()) {
-+        const navTarget = document.getElementById("nav-bar-customization-target");
-+        const observerRoot = navTarget || document.getElementById("navigator-toolbox") || document;
-+        const observer = new MutationObserver(() => {
-+          if (moveWidget()) {
-+            observer.disconnect();
-+          }
-+        });
-+        observer.observe(observerRoot, { childList: true, subtree: true });
-+        setTimeout(() => observer.disconnect(), 30000);
-+      }
 +    }
 +
      let safeMode = document.getElementById("helpSafeMode");

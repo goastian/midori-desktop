@@ -1,0 +1,16 @@
+diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
+index 94612d8e28af58fcb04914440348b899a0a1e08f..986898b13671ff7fe1ce7b30da77b91dabd933d6 100644
+--- a/browser/components/preferences/preferences.js
++++ b/browser/components/preferences/preferences.js
+@@ -637,6 +637,11 @@ function init_all() {
+ 
+   let categories = document.getElementById("categories");
+   categories.addEventListener("change-view", event => {
++    if (event.target.view === "paneMidoriCenter") {
++      let mainWindow = window.browsingContext.topChromeWindow;
++      mainWindow.openTrustedLinkIn("about:center", "tab");
++      return;
++    }
+     gotoPref(event.target.view);
+   });
+ 

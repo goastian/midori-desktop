@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<?csp default-src chrome:; style-src chrome:; ?>
+
+<window
+  id="MidoriBlockerCustomFiltersDialog"
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  data-l10n-id="midori-blocker-custom-filters-window"
+  data-l10n-attrs="title"
+  persist="width height"
+>
+  <dialog
+    id="customFiltersDialog"
+    buttons="accept,cancel"
+    data-l10n-id="midori-blocker-custom-filters-dialog"
+    data-l10n-attrs="buttonlabelaccept, buttonaccesskeyaccept"
+  >
+    <linkset>
+      <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
+      <html:link
+        rel="stylesheet"
+        href="chrome://browser/skin/preferences/preferences.css"
+      />
+      <html:link
+        rel="stylesheet"
+        href="chrome://browser/content/preferences/dialogs/midoriBlockerCustomFilters.css"
+      />
+
+      <html:link rel="localization" href="browser/midori/blocker.ftl" />
+    </linkset>
+
+    <script src="chrome://browser/content/preferences/dialogs/midoriBlockerCustomFilters.js" />
+
+    <vbox class="contentPane" flex="1">
+      <description
+        id="midoriBlockerCustomFiltersDescription"
+        data-l10n-id="midori-blocker-custom-filters-description"
+      />
+
+      <separator class="thin" />
+
+      <checkbox
+        id="midoriBlockerCustomFiltersEnabled"
+        data-l10n-id="midori-blocker-custom-filters-enabled"
+      />
+
+      <html:textarea
+        id="midoriBlockerCustomFiltersText"
+        aria-labelledby="midoriBlockerCustomFiltersDescription"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        wrap="off"
+      />
+
+      <hbox id="midoriBlockerCustomFiltersStatusRow" align="center">
+        <label
+          id="midoriBlockerCustomFiltersStatus"
+          class="text-deemphasized"
+          flex="1"
+          data-l10n-id="midori-blocker-custom-filters-empty"
+        />
+      </hbox>
+    </vbox>
+
+    <hbox class="actionButtons" pack="end">
+      <button
+        id="midoriBlockerCustomFiltersImport"
+        data-l10n-id="midori-blocker-custom-filters-import"
+      />
+      <button
+        id="midoriBlockerCustomFiltersExport"
+        data-l10n-id="midori-blocker-custom-filters-export"
+      />
+    </hbox>
+  </dialog>
+</window>

@@ -1,0 +1,50 @@
+diff --git a/toolkit/components/extensions/Extension.sys.mjs b/toolkit/components/extensions/Extension.sys.mjs
+index d67edb4ec1fe9ce29c8879098c4a66f1e7309835..27c946f5b4426abfc78147bd47010664f939a45f 100644
+--- a/toolkit/components/extensions/Extension.sys.mjs
++++ b/toolkit/components/extensions/Extension.sys.mjs
+@@ -355,6 +355,10 @@ const LOGGER_ID_BASE = "addons.webextension.";
+ const UUID_MAP_PREF = "extensions.webextensions.uuids";
+ const LEAVE_STORAGE_PREF = "extensions.webextensions.keepStorageOnUninstall";
+ const LEAVE_UUID_PREF = "extensions.webextensions.keepUuidOnUninstall";
++const MIDORI_BLOCKER_WIDGET_ID =
++  "midori-protection_astian_org-browser-action";
++const MIDORI_BLOCKER_MIGRATION_PREF =
++  "midori.blocker.legacyMigrationVersion";
+ const WEBCOMPAT_ADDON_ID = "webcompat@mozilla.org";
+ const WEBCOMPAT_UUID = "9a310967-e580-48bf-b3e8-4eafebbc122d";
+ 
+@@ -515,6 +519,10 @@ var ExtensionAddonObserver = {
+    */
+   clearOnUninstall(addonId) {
+     const tasks = [];
++    const preserveForMidoriBlockerMigration =
++      Services.prefs.getIntPref(MIDORI_BLOCKER_MIGRATION_PREF, 0) < 1 &&
++      `${ExtensionCommon.makeWidgetId(addonId)}-browser-action` ===
++        MIDORI_BLOCKER_WIDGET_ID;
+     function addShutdownBlocker(name, promise) {
+       lazy.AsyncShutdown.profileChangeTeardown.addBlocker(name, promise);
+       tasks.push({ name, promise });
+@@ -597,7 +605,10 @@ var ExtensionAddonObserver = {
+       lazy.ExtensionDNRStore.clearOnUninstall(uuid)
+     );
+ 
+-    if (!Services.prefs.getBoolPref(LEAVE_STORAGE_PREF, false)) {
++    if (
++      !Services.prefs.getBoolPref(LEAVE_STORAGE_PREF, false) &&
++      !preserveForMidoriBlockerMigration
++    ) {
+       // Clear browser.storage.local backends.
+       addShutdownBlocker(
+         `Clear Extension Storage ${addonId} (File Backend)`,
+@@ -660,7 +671,10 @@ var ExtensionAddonObserver = {
+       }
+     }
+ 
+-    if (!Services.prefs.getBoolPref(LEAVE_UUID_PREF, false)) {
++    if (
++      !Services.prefs.getBoolPref(LEAVE_UUID_PREF, false) &&
++      !preserveForMidoriBlockerMigration
++    ) {
+       // Clear the entry in the UUID map
+       UUIDMap.remove(addonId);
+     }

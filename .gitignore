@@ -22,6 +22,15 @@ target/
 .vscode/
 locales/
 locales/firefox-l10n/
+!/src/browser/locales/
+/src/browser/locales/*
+!/src/browser/locales/en-US/
+/src/browser/locales/en-US/*
+!/src/browser/locales/en-US/browser/
+/src/browser/locales/en-US/browser/*
+!/src/browser/locales/en-US/browser/midori/
+/src/browser/locales/en-US/browser/midori/*
+!/src/browser/locales/en-US/browser/midori/blocker.ftl
 
 update.astian.org/
 update.astian.org/browser/

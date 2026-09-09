@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-siteIdentity.js b/browser/base/content/browser-siteIdentity.js
-index c6d060853cd3dab9d5c02bdc8de707b8fbde4b6d..794bebd2314a15dd00e8eae5b1fec38ec2039eff 100644
+index 16b222280f856e697f11fee76798cc2afe0bc239..5b3ee911fa57f17b0872909e63bb4c7356de6ada 100644
 --- a/browser/base/content/browser-siteIdentity.js
 +++ b/browser/base/content/browser-siteIdentity.js
-@@ -981,10 +981,13 @@ var gIdentityHandler = {
+@@ -986,10 +986,13 @@ var gIdentityHandler = {
      }
  
      // Hide the shield icon if it is a chrome page.
@@ -10,7 +10,7 @@ index c6d060853cd3dab9d5c02bdc8de707b8fbde4b6d..794bebd2314a15dd00e8eae5b1fec38e
 -      "chromeUI",
 -      this._isSecureInternalUI
 -    );
-+    // Midori: Safe access — container may be hidden by Midori Privacy extension
++    // Midori: The customized protection UI may omit this container.
 +    if (gProtectionsHandler._trackingProtectionIconContainer) {
 +      gProtectionsHandler._trackingProtectionIconContainer.classList.toggle(
 +        "chromeUI",

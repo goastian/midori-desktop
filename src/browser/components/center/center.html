@@ -218,17 +218,40 @@
 
         <div class="setting-group">
           <h2 class="group-title">Privacy &amp; VPN</h2>
-          <p class="group-desc">Enable or disable Midori Privacy (ad blocker) and Midori VPN at any time.</p>
+          <p class="group-desc">Control Midori's native ad blocker and the bundled VPN.</p>
 
           <div class="setting-row">
             <div class="setting-info">
-              <strong>Midori Privacy (Ad Blocker)</strong>
-              <p>Completely enable or disable the bundled ad blocker extension.</p>
+              <strong>Midori Ad Blocker</strong>
+              <p>Block ads, trackers, nuisance pop-ups, and unwanted network requests directly in Midori.</p>
             </div>
             <label class="toggle-switch">
-              <input type="checkbox" id="pref-midori-privacy-enabled">
+              <input type="checkbox" id="pref-midori-blocker-enabled">
               <span class="toggle-slider"></span>
             </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Blocked request counter</strong>
+              <p>Show the blocked request count on the toolbar shield.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pref-midori-blocker-show-badge">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <strong>Filter lists</strong>
+              <p>Choose bundled lists, add custom sources, or maintain your own rules.</p>
+            </div>
+            <div class="setting-actions">
+              <button type="button" class="mc-btn" id="midori-blocker-manage-lists">Manage lists</button>
+              <button type="button" class="mc-btn" id="midori-blocker-custom-lists">Custom lists</button>
+              <button type="button" class="mc-btn" id="midori-blocker-my-filters">My filters</button>
+            </div>
           </div>
 
           <div class="setting-row">

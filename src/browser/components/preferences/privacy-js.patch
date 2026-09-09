@@ -1,0 +1,97 @@
+diff --git a/browser/components/preferences/privacy.js b/browser/components/preferences/privacy.js
+index a78085493646618df792de5e78d15a5c4df45fa0..e3acd49b0bc48adb1f6c5c257da08a753f35626a 100644
+--- a/browser/components/preferences/privacy.js
++++ b/browser/components/preferences/privacy.js
+@@ -684,6 +684,28 @@ var gPrivacyPane = {
+       gPrivacyPane.showTrackingProtectionExceptions
+     );
+ 
++    setEventListener(
++      "midoriBlockerManageLists",
++      "command",
++      gPrivacyPane.showMidoriBlockerFilterLists
++    );
++    setEventListener(
++      "midoriBlockerCustomLists",
++      "command",
++      gPrivacyPane.showMidoriBlockerCustomLists
++    );
++    setEventListener(
++      "midoriBlockerMyFilters",
++      "command",
++      gPrivacyPane.showMidoriBlockerCustomFilters
++    );
++    setEventListener(
++      "midoriBlockerExceptions",
++      "command",
++      gPrivacyPane.showMidoriBlockerExceptions
++    );
++    this.updateMidoriBlockerMigrationNotice();
++
+     setEventListener(
+       "dohExceptionsButton",
+       "command",
+@@ -1448,6 +1470,63 @@ var gPrivacyPane = {
+     );
+   },
+ 
++  showMidoriBlockerFilterLists() {
++    gSubDialog.open(
++      "chrome://browser/content/preferences/dialogs/midoriBlockerFilterLists.xhtml"
++    );
++  },
++
++  showMidoriBlockerCustomLists() {
++    gSubDialog.open(
++      "chrome://browser/content/preferences/dialogs/midoriBlockerCustomFilterLists.xhtml"
++    );
++  },
++
++  showMidoriBlockerCustomFilters() {
++    gSubDialog.open(
++      "chrome://browser/content/preferences/dialogs/midoriBlockerCustomFilters.xhtml"
++    );
++  },
++
++  showMidoriBlockerExceptions() {
++    gSubDialog.open(
++      "chrome://browser/content/preferences/dialogs/permissions.xhtml",
++      undefined,
++      {
++        permissionType: "midori-blocker",
++        prefilledHost: "",
++        allowVisible: true,
++        hideStatusColumn: true,
++      }
++    );
++  },
++
++  updateMidoriBlockerMigrationNotice() {
++    const notice = document.getElementById("midoriBlockerMigrationNotice");
++    if (!notice) {
++      return;
++    }
++
++    let state = null;
++    try {
++      state = JSON.parse(
++        Services.prefs.getStringPref("midori.blocker.legacyMigrationNotice", "")
++      );
++    } catch (_) {}
++
++    const unsupportedCount = Number(state?.unsupportedCount || 0);
++    if (!state?.migrated || unsupportedCount < 1) {
++      notice.hidden = true;
++      return;
++    }
++
++    document.l10n.setAttributes(notice, "midori-blocker-migration-warning", {
++      count: unsupportedCount,
++      path: String(state.backupPath || ""),
++    });
++    notice.hidden = false;
++  },
++
+   // COOKIES AND SITE DATA
+ 
+   /*

@@ -1,0 +1,382 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* stylelint-disable stylelint-plugin-mozilla/use-design-tokens */
+
+#midori-protection_astian_org-browser-action {
+  list-style-image: url("chrome://browser/content/blocker/midoriShield.svg");
+}
+
+#midori-protection_astian_org-browser-action[page-not-protectable] > .toolbarbutton-icon,
+#midori-protection_astian_org-browser-action[page-not-protectable] > .toolbarbutton-badge-stack > .toolbarbutton-icon {
+  opacity: var(--opacity-deemphasized-strong);
+}
+
+#midori-protection_astian_org-browser-action[midori-paused] > .toolbarbutton-badge-stack > .toolbarbutton-icon {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+#midori-protection_astian_org-browser-action > .toolbarbutton-badge-stack > .toolbarbutton-badge {
+  background-color: var(--color-accent-primary);
+  color: var(--button-text-color-primary);
+  border-radius: var(--border-radius-circle);
+  box-shadow: none;
+  font-weight: var(--font-weight-semibold);
+}
+
+#midori-protection_astian_org-browser-action[midori-paused] > .toolbarbutton-badge-stack > .toolbarbutton-badge {
+  background-color: var(--button-background-color);
+  color: var(--text-color);
+}
+
+#midori-blocker-panel {
+  --arrowpanel-background: var(--background-color-box);
+  --arrowpanel-border-color: var(--card-border-color);
+  --arrowpanel-border-radius: var(--border-radius-large);
+  --arrowpanel-padding: 0;
+  --midori-blocker-hairline: 1px solid var(--border-color-deemphasized);
+  --midori-blocker-gutter: 1.2em;
+  --midori-blocker-accent-tint: light-dark(
+    color-mix(in srgb, var(--color-accent-primary) 12%, transparent),
+    color-mix(in srgb, var(--color-accent-primary) 20%, transparent)
+  );
+  --midori-blocker-hover-wash: light-dark(
+    color-mix(in srgb, var(--color-violet-desaturated-50) 8%, transparent),
+    color-mix(in srgb, var(--color-violet-desaturated-30) 20%, transparent)
+  );
+  fill: currentColor;
+  font: menu;
+}
+
+.midori-blocker-view {
+  min-width: 27.5em;
+  max-width: 27.5em;
+}
+
+.midori-blocker-view > .panel-subview-body {
+  padding: 0;
+}
+
+.midori-blocker-hero {
+  display: flex;
+  align-items: center;
+  gap: 1.05em;
+  padding: 1.5em var(--midori-blocker-gutter) var(--midori-blocker-gutter);
+  /* Only Nova defines the gradient; other themes keep the flat colour. */
+  background-color: var(--background-color-box-info);
+  background-image: var(--toolbox-background-gradient);
+}
+
+.midori-blocker-hero:not([state="active"]) {
+  background-image: none;
+}
+
+.midori-blocker-hero-shield {
+  width: 3.5em;
+  height: 3.5em;
+  flex: none;
+}
+
+.midori-blocker-hero[state="paused"] .midori-blocker-hero-shield,
+.midori-blocker-hero[state="disabled"] .midori-blocker-hero-shield {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+.midori-blocker-hero-title {
+  margin: 0;
+  font-size: 2.3em;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.1;
+}
+
+.midori-blocker-hero[state="disabled"] .midori-blocker-hero-title,
+.midori-blocker-hero[state="unavailable"] .midori-blocker-hero-title {
+  font-size: 1.3em;
+  line-height: 1.2;
+}
+
+.midori-blocker-hero-subtitle {
+  font-size: 1em;
+  color: var(--text-color-deemphasized);
+  margin-block-start: 0.3em;
+}
+
+.midori-blocker-categories {
+  padding: 1.05em var(--midori-blocker-gutter) 0.45em;
+  display: grid;
+  gap: 0.75em;
+}
+
+.midori-blocker-categories[hidden],
+.midori-blocker-category-row[hidden] {
+  display: none;
+}
+
+.midori-blocker-category-row {
+  display: grid;
+  grid-template-columns: 5.8em 1fr 1.85em;
+  align-items: center;
+  gap: 0.75em;
+  font-size: 1em;
+}
+
+.midori-blocker-category-track {
+  display: block;
+  height: 0.45em;
+  border-radius: var(--border-radius-circle);
+  background: var(--midori-blocker-accent-tint);
+  overflow: hidden;
+}
+
+.midori-blocker-category-fill {
+  display: block;
+  height: 100%;
+  width: var(--midori-blocker-bar-fill, 0%);
+  border-radius: var(--border-radius-circle);
+  background: var(--color-accent-primary);
+}
+
+.midori-blocker-category-count {
+  font-weight: var(--font-weight-semibold);
+  text-align: end;
+}
+
+.midori-blocker-categories-footer {
+  font-size: 0.96em;
+  color: var(--text-color-deemphasized);
+}
+
+.midori-blocker-paused-card {
+  margin: 1.05em var(--midori-blocker-gutter) 0;
+  padding: 0.9em 1.05em;
+  background: var(--background-color-warning);
+  border-radius: 0.9em;
+  font-size: 1em;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.midori-blocker-toggle-row {
+  padding: 0.9em var(--midori-blocker-gutter);
+  border-block-start: var(--midori-blocker-hairline);
+}
+
+.midori-blocker-paused-card:not([hidden]) ~ .midori-blocker-toggle-row {
+  border-block-start: none;
+  padding-block-start: 1.05em;
+}
+
+#midori-blocker-panel-site-toggle {
+  font-size: 1.15em;
+  font-weight: var(--font-weight-bold);
+}
+
+.midori-blocker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  width: 100%;
+  padding: 1em var(--midori-blocker-gutter);
+  margin: 0;
+  border: none;
+  border-block-start: var(--midori-blocker-hairline);
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 1.15em;
+  text-align: start;
+  cursor: pointer;
+}
+
+.midori-blocker-row:hover {
+  background: var(--midori-blocker-hover-wash);
+}
+
+.midori-blocker-row-label {
+  flex: 1;
+}
+
+.midori-blocker-row-detail {
+  font-size: 0.87em;
+  color: var(--text-color-deemphasized);
+}
+
+.midori-blocker-chevron {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  background-image: url("chrome://global/skin/icons/arrow-right-12.svg");
+  background-size: 12px;
+  background-repeat: no-repeat;
+  -moz-context-properties: fill;
+  fill: var(--text-color-deemphasized);
+}
+
+.midori-blocker-chevron:dir(rtl) {
+  transform: scaleX(-1);
+}
+
+.midori-blocker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75em;
+  padding: 0.9em var(--midori-blocker-gutter);
+  background: var(--background-color-box-info);
+  font-size: 0.96em;
+  color: var(--text-color-deemphasized);
+}
+
+.midori-blocker-footer-stats > b {
+  color: var(--text-color);
+}
+
+.midori-blocker-link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.96em;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-primary);
+  cursor: pointer;
+}
+
+.midori-blocker-footer > .midori-blocker-link-button,
+.midori-blocker-categories-footer > .midori-blocker-link-button {
+  font-size: 1em;
+}
+
+.midori-blocker-link-button:hover {
+  color: var(--color-accent-primary-hover);
+  text-decoration: underline;
+}
+
+#midori-blocker-detail-back {
+  list-style-image: url("chrome://global/skin/icons/arrow-left.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
+}
+
+#midori-blocker-detail-back:dir(rtl) {
+  list-style-image: url("chrome://global/skin/icons/arrow-right.svg");
+}
+
+.midori-blocker-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  padding: 0.9em var(--midori-blocker-gutter);
+  border-block-end: var(--midori-blocker-hairline);
+}
+
+.midori-blocker-detail-title-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.midori-blocker-detail-title {
+  margin: 0;
+  font-size: 1.15em;
+  font-weight: var(--font-weight-bold);
+}
+
+.midori-blocker-detail-subtitle {
+  font-size: 0.96em;
+  color: var(--text-color-deemphasized);
+}
+
+.midori-blocker-count-pill {
+  padding: 0.15em 0.6em;
+  border-radius: var(--border-radius-circle);
+  background: var(--midori-blocker-accent-tint);
+  color: var(--color-accent-primary);
+  font-size: 0.92em;
+  font-weight: var(--font-weight-semibold);
+}
+
+.midori-blocker-detail-section {
+  padding-block-end: 0.25em;
+}
+
+.midori-blocker-detail-section:not(:last-child) {
+  border-block-end: var(--midori-blocker-hairline);
+}
+
+.midori-blocker-detail-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin: 0;
+  padding: 0.9em var(--midori-blocker-gutter) 0.3em;
+  font-size: 0.88em;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-color-deemphasized);
+}
+
+.midori-blocker-detail-section-heading > .midori-blocker-count-pill {
+  letter-spacing: normal;
+}
+
+.midori-blocker-domain-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  padding: 0.7em var(--midori-blocker-gutter);
+  font-size: 1em;
+}
+
+.midori-blocker-domain-row:hover {
+  background: var(--midori-blocker-hover-wash);
+}
+
+.midori-blocker-domain-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  font-size: 0.96em;
+}
+
+.midori-blocker-domain-count {
+  padding: 0.15em 0.6em;
+  border-radius: var(--border-radius-circle);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 0.85em;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-color-deemphasized);
+}
+
+.midori-blocker-allow-button {
+  padding: 0.3em 0.9em;
+  border: 1px solid var(--border-color-interactive);
+  border-radius: var(--border-radius-circle);
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.92em;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.midori-blocker-domain-row:hover .midori-blocker-allow-button,
+.midori-blocker-allow-button:focus-visible {
+  opacity: 1;
+}
+
+.midori-blocker-allow-button:hover {
+  background: var(--midori-blocker-hover-wash);
+}
+
+.midori-blocker-detail-note {
+  padding: 0 var(--midori-blocker-gutter) 1.05em;
+  font-size: 1em;
+  color: var(--text-color-deemphasized);
+}

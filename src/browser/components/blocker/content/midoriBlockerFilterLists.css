@@ -1,0 +1,85 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#MidoriBlockerFilterListsWindow {
+  width: 52em;
+  min-height: 40em;
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-scroll-container {
+  overflow-y: auto;
+  max-height: 25em;
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-category {
+  margin-bottom: var(--space-small);
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-category-header {
+  border-radius: var(--border-radius-small);
+  padding: var(--space-xsmall);
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-category-header:hover {
+  background-color: var(--button-background-color-hover);
+  cursor: pointer;
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-category-title {
+  font-weight: var(--font-weight-semibold);
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-category-counter {
+  margin-inline-start: var(--space-small);
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-category-lists {
+  padding-inline-start: calc(var(--size-item-xsmall) + var(--space-small));
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-list-row {
+  margin-block: var(--space-xxsmall);
+  padding-inline-end: var(--space-xsmall);
+}
+
+#MidoriBlockerFilterListsWindow .twisty {
+  width: var(--size-item-xsmall);
+  height: var(--size-item-xsmall);
+  margin-inline-end: var(--space-small);
+  -moz-context-properties: fill;
+  fill: currentColor;
+  list-style-image: url("chrome://global/skin/icons/arrow-right-12.svg");
+}
+
+#MidoriBlockerFilterListsWindow .twisty.open {
+  list-style-image: url("chrome://global/skin/icons/arrow-down-12.svg");
+}
+
+#MidoriBlockerFilterListsWindow #midoriBlockerFilterListsSearch {
+  width: 100%;
+}
+
+#MidoriBlockerFilterListsWindow #midoriBlockerFilterListsToolbar {
+  padding: var(--space-xsmall);
+  gap: var(--space-small);
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-list-link-icon {
+  width: var(--size-item-xsmall);
+  height: var(--size-item-xsmall);
+  margin-inline-start: var(--space-xsmall);
+  -moz-context-properties: fill;
+  fill: currentColor;
+  opacity: var(--opacity-deemphasized-strong);
+  cursor: pointer;
+  list-style-image: url("chrome://global/skin/icons/open-in-new.svg");
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-list-link-icon:hover {
+  opacity: 1;
+}
+
+#MidoriBlockerFilterListsWindow .midori-blocker-list-updated {
+  font-size: var(--font-size-small);
+}

@@ -1619,8 +1619,7 @@ menuseparator {
 #nav-bar #midori-protection_astian_org-browser-action .unified-extensions-item-contents,
 #nav-bar #midori-protection_astian_org-browser-action .unified-extensions-item-menu-button,
 #nav-bar #midori-protection_astian_org-browser-action .unified-extensions-item-message,
-#nav-bar #midori-protection_astian_org-browser-action .unified-extensions-item-name,
-toolbarbutton[data-extensionid="midori-protection@astian.org"] .toolbarbutton-text {
+#nav-bar #midori-protection_astian_org-browser-action .unified-extensions-item-name {
   display: none !important;
 }
 

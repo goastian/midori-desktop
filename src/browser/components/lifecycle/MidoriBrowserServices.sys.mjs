@@ -13,6 +13,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AutoHideToolbar: 'resource:///modules/AutoHideToolbar.sys.mjs',
   MemoryProfileManager: 'resource:///modules/MemoryProfileManager.sys.mjs',
   MidoriGradient: 'resource:///modules/MidoriGradient.sys.mjs',
+  MidoriBlocker: 'resource:///modules/MidoriBlocker.sys.mjs',
   MidoriModBlur: 'resource:///modules/MidoriModBlur.sys.mjs',
   MidoriSmoothScroll: 'resource:///modules/MidoriSmoothScroll.sys.mjs',
   MidoriSidebar: 'resource:///modules/MidoriSidebar.sys.mjs',
@@ -61,6 +62,16 @@ function isAnyShortcutEnabled() {
 }
 
 const services = [
+  {
+    name: 'MidoriBlocker',
+    getService: () => lazy.MidoriBlocker,
+    getState: () =>
+      getFeatureState(
+        Services.prefs.getBoolPref('midori.blocker.enabled', true) ||
+          Services.prefs.getBoolPref('midori.blocker.ui.enabled', true),
+        ['midori.blocker.']
+      ),
+  },
   { name: 'MidoriModBlur', getService: () => lazy.MidoriModBlur },
   { name: 'MidoriSmoothScroll', getService: () => lazy.MidoriSmoothScroll },
   {
@@ -165,6 +176,7 @@ function findRegularBrowserWindow() {
 
 export const MidoriBrowserServices = {
   bootstrap() {
+    lazy.MidoriBlocker.bootstrap();
     if (
       Services.prefs.getBoolPref('midori.verticaltabs.enabled', false) ||
       Services.prefs.getBoolPref('midori.arcmode.enabled', false)

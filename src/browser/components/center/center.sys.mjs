@@ -25,12 +25,13 @@ const {
 } = ChromeUtils.importESModule(MODBLUR_MODULE_URL);
 
 const ADDON_IDS = {
-  privacy: "midori-protection@astian.org",
   vpn: "midorivpn@astian.org",
 };
 
 // ---- Pref mapping: element ID → { pref, type } ----
 const PREF_MAP = {
+  "pref-midori-blocker-enabled": { pref: "midori.blocker.enabled", type: "bool" },
+  "pref-midori-blocker-show-badge": { pref: "midori.blocker.showBadge", type: "bool" },
   "pref-compact-mode":       { pref: "midori.compact.enabled",          type: "bool" },
   "pref-autohide-toolbar":  { pref: "midori.autohide.toolbar",        type: "bool" },
   "pref-tabsleep-enabled":  { pref: "midori.tabsleep.enabled",        type: "bool" },
@@ -148,7 +149,6 @@ const shortcutUI = {
 };
 
 const addonUI = {
-  privacy: null,
   vpn: null,
   status: null,
 };
@@ -410,25 +410,40 @@ async function setAddonEnabled(kind, enabled) {
 }
 
 async function initAddonControls() {
-  addonUI.privacy = document.getElementById("pref-midori-privacy-enabled");
   addonUI.vpn = document.getElementById("pref-midori-vpn-enabled");
   addonUI.status = document.getElementById("addon-controls-status");
 
-  if (!addonUI.privacy || !addonUI.vpn) {
+  if (!addonUI.vpn) {
     return;
   }
 
   clearAddonStatus();
-  await refreshAddonToggle("privacy");
   await refreshAddonToggle("vpn");
-
-  addonUI.privacy.addEventListener("change", async () => {
-    await setAddonEnabled("privacy", addonUI.privacy.checked);
-  });
 
   addonUI.vpn.addEventListener("change", async () => {
     await setAddonEnabled("vpn", addonUI.vpn.checked);
   });
+}
+
+function initBlockerControls() {
+  const dialogs = {
+    "midori-blocker-manage-lists":
+      "chrome://browser/content/preferences/dialogs/midoriBlockerFilterLists.xhtml",
+    "midori-blocker-custom-lists":
+      "chrome://browser/content/preferences/dialogs/midoriBlockerCustomFilterLists.xhtml",
+    "midori-blocker-my-filters":
+      "chrome://browser/content/preferences/dialogs/midoriBlockerCustomFilters.xhtml",
+  };
+
+  for (const [id, url] of Object.entries(dialogs)) {
+    document.getElementById(id)?.addEventListener("click", () => {
+      getBrowserWindow()?.openDialog(
+        url,
+        "_blank",
+        "chrome,dialog=no,resizable,centerscreen"
+      );
+    });
+  }
 }
 
 function setWebAppsStatus(message, isError = false) {
@@ -2410,6 +2425,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSidebarControls();
   initModBlurCatalog();
   initAddonControls();
+  initBlockerControls();
   initTabLayout();
   initTabProtectionControls();
   initVersionInfo();

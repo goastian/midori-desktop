@@ -1,0 +1,38 @@
+diff --git a/browser/components/preferences/privacy.inc.xhtml b/browser/components/preferences/privacy.inc.xhtml
+index 78e2e934cf33cc98a4d04e4510b695d6e4e10ce1..327e685af5338df63d22dc7a386b7f4a33da448b 100644
+--- a/browser/components/preferences/privacy.inc.xhtml
++++ b/browser/components/preferences/privacy.inc.xhtml
+@@ -21,6 +21,33 @@
+ <!-- Enhanced Tracking Protection Status Section -->
+ <html:setting-group groupid="etpStatus" id="etpStatusCard" data-category="panePrivacy" data-subcategory="etpStatus" hidden="true" data-srd-migrated=""></html:setting-group>
+ 
++<groupbox id="midoriBlockerGroup" data-category="panePrivacy" data-subcategory="midori-blocker">
++  <label><html:h2 data-l10n-id="midori-blocker-header"/></label>
++  <description data-l10n-id="midori-blocker-intro-description"/>
++  <description id="midoriBlockerMigrationNotice" hidden="true"/>
++  <vbox class="indent">
++    <checkbox id="midoriBlockerEnabled"
++              preference="midori.blocker.enabled"
++              data-l10n-id="midori-blocker-enabled-toggle"/>
++    <checkbox id="midoriBlockerShowButton"
++              preference="midori.blocker.ui.enabled"
++              data-l10n-id="midori-blocker-show-button-pref"/>
++    <checkbox id="midoriBlockerShowBadge"
++              preference="midori.blocker.showBadge"
++              data-l10n-id="midori-blocker-show-badge-pref"/>
++    <hbox>
++      <button id="midoriBlockerManageLists"
++              data-l10n-id="midori-blocker-manage-lists-button"/>
++      <button id="midoriBlockerCustomLists"
++              data-l10n-id="midori-blocker-custom-lists-button"/>
++      <button id="midoriBlockerMyFilters"
++              data-l10n-id="midori-blocker-my-filters-button"/>
++      <button id="midoriBlockerExceptions"
++              data-l10n-id="midori-blocker-exceptions-button"/>
++    </hbox>
++  </vbox>
++</groupbox>
++
+ <!-- Tracking / Content Blocking -->
+ <groupbox id="trackingGroup" data-category="panePrivacy" data-srd-groupid="etpStatus" hidden="true" aria-describedby="contentBlockingDescription" class="highlighting-group">
+   <label id="contentBlockingHeader"><html:h2 data-l10n-id="content-blocking-enhanced-tracking-protection"/></label>

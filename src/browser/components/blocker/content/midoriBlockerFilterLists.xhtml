@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<?csp default-src chrome:; style-src chrome:; ?>
+
+<window
+  id="MidoriBlockerFilterListsWindow"
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  data-l10n-id="midori-blocker-filter-lists-window"
+  data-l10n-attrs="title"
+  persist="width height"
+>
+  <dialog
+    id="midoriBlockerFilterListsDialog"
+    buttons="accept,cancel"
+    data-l10n-id="midori-blocker-filter-lists-dialog"
+    data-l10n-attrs="buttonlabelaccept, buttonaccesskeyaccept"
+  >
+    <linkset>
+      <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
+      <html:link
+        rel="stylesheet"
+        href="chrome://browser/skin/preferences/preferences.css"
+      />
+      <html:link
+        rel="stylesheet"
+        href="chrome://browser/content/preferences/dialogs/midoriBlockerFilterLists.css"
+      />
+
+      <html:link rel="localization" href="browser/midori/blocker.ftl" />
+    </linkset>
+
+    <script src="chrome://browser/content/preferences/dialogs/midoriBlockerFilterLists.js" />
+
+    <vbox class="contentPane" flex="1">
+      <label
+        id="midoriBlockerFilterListsDescription"
+        data-l10n-id="midori-blocker-filter-lists-description"
+      />
+      <separator class="thin" />
+      <hbox id="midoriBlockerFilterListsToolbar" align="center">
+        <button
+          id="midoriBlockerRefreshNow"
+          data-l10n-id="midori-blocker-filter-lists-refresh-now"
+        />
+        <button
+          id="midoriBlockerRestoreDefaults"
+          data-l10n-id="midori-blocker-filter-lists-restore-defaults"
+        />
+      </hbox>
+      <label
+        id="midoriBlockerNextRefresh"
+        class="text-deemphasized midori-blocker-list-updated"
+      />
+      <separator class="thin" />
+      <html:input
+        id="midoriBlockerFilterListsSearch"
+        type="search"
+        data-l10n-id="midori-blocker-filter-lists-search"
+        data-l10n-attrs="placeholder"
+      />
+      <separator class="thin" />
+      <vbox
+        id="midoriBlockerFilterListsScrollContainer"
+        class="info-box-container midori-blocker-scroll-container"
+        flex="1"
+      >
+        <vbox id="midoriBlockerFilterListsCategories" flex="1" />
+      </vbox>
+    </vbox>
+  </dialog>
+</window>

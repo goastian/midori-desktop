@@ -1,0 +1,24 @@
+diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
+index 40e422bba4a86a1e07696389b43b616df18888a8..22fc20a5d104300ebe4195b66b7e1cfa2b5c553a 100644
+--- a/browser/components/preferences/preferences.xhtml
++++ b/browser/components/preferences/preferences.xhtml
+@@ -45,6 +45,7 @@
+   <link rel="localization" href="browser/preferences/fonts.ftl"/>
+   <link rel="localization" href="browser/preferences/moreFromMozilla.ftl"/>
+   <link rel="localization" href="browser/preferences/preferences.ftl"/>
++  <link rel="localization" href="browser/midori/blocker.ftl"/>
+   <link rel="localization" href="toolkit/branding/brandings.ftl"/>
+   <link rel="localization" href="toolkit/firefoxlabs/features.ftl"/>
+   <link rel="localization" href="toolkit/global/mozPageHeader.ftl"/>
+@@ -199,6 +200,11 @@
+         iconsrc="chrome://browser/skin/preferences/mozilla-16.svg"
+         data-l10n-id="more-from-moz-title2">
+       </html:moz-page-nav-button>
++  <html:moz-page-nav-button id="category-midori-center"
++    view="paneMidoriCenter"
++    iconsrc="chrome://browser/skin/preferences/category-general.svg"
++    data-l10n-id="pane-midori-center-title">
++  </html:moz-page-nav-button>
+ 
+       <!-- Hidden sub-page entries (CSS display:none via .hidden-category).
+            These keep gotoPref() routing working for sub-pages that are

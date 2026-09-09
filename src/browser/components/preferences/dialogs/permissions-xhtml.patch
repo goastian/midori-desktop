@@ -1,0 +1,12 @@
+diff --git a/browser/components/preferences/dialogs/permissions.xhtml b/browser/components/preferences/dialogs/permissions.xhtml
+index 6d9fc7bf543e404192b61f3332c6e1b73d81f10d..1258f1218a03c42a5bde474331e75ea7121ddc50 100644
+--- a/browser/components/preferences/dialogs/permissions.xhtml
++++ b/browser/components/preferences/dialogs/permissions.xhtml
+@@ -37,6 +37,7 @@
+         href="browser/preferences/permissions.ftl"
+       />
+       <html:link rel="localization" href="browser/ipProtection.ftl" />
++      <html:link rel="localization" href="browser/midori/blocker.ftl" />
+     </linkset>
+ 
+     <script src="chrome://browser/content/preferences/dialogs/permissions.js" />
