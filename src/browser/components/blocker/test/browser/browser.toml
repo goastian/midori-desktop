@@ -6,6 +6,9 @@ support-files = ["file_early_scriptlet_injection.html"]
 
 ["browser_early_scriptlet_injection.js"]
 
+["browser_filter_lists_dialog_size.js"]
+prefs = ["midori.blocker.enabled=false"]
+
 ["browser_toolbar_panel.js"]
 prefs = [
   "midori.blocker.enabled=false",

@@ -4,6 +4,7 @@
 
 #MidoriBlockerFilterListsWindow {
   width: 52em;
+  min-width: 52em;
   min-height: 40em;
 }
 
