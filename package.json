@@ -93,5 +93,9 @@
   "directories": {
     "doc": "docs",
     "test": "tests"
+  },
+  "allowScripts": {
+    "core-js-pure": false,
+    "sharp@0.32.6": true
   }
 }
