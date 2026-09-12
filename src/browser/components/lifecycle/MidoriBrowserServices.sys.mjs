@@ -27,7 +27,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 const MEMORY_PROFILE_PREF = 'midori.memory.profile';
 const MEMORY_PROFILE_APPLIED_PREF = 'midori.memory.profile.lastApplied';
 const MEMORY_PROFILE_SCHEMA_PREF = 'midori.memory.profile.schemaVersion';
-const MEMORY_PROFILE_SCHEMA_VERSION = 1;
+const MEMORY_PROFILE_SAVED_PREFS = 'midori.memory.profile.savedPrefs';
+const MEMORY_PROFILE_SCHEMA_VERSION = 2;
 
 function hasUserValueInBranches(branches) {
   return branches.some(branch =>
@@ -81,9 +82,15 @@ const services = [
       getFeatureState(
         Services.prefs.getIntPref(MEMORY_PROFILE_PREF, 0) !== 0 ||
           Services.prefs.getIntPref(MEMORY_PROFILE_APPLIED_PREF, -1) > 0 ||
+          Services.prefs.prefHasUserValue(MEMORY_PROFILE_SAVED_PREFS) ||
           Services.prefs.getIntPref(MEMORY_PROFILE_SCHEMA_PREF, 0) <
             MEMORY_PROFILE_SCHEMA_VERSION,
-        [MEMORY_PROFILE_PREF, MEMORY_PROFILE_APPLIED_PREF, MEMORY_PROFILE_SCHEMA_PREF]
+        [
+          MEMORY_PROFILE_PREF,
+          MEMORY_PROFILE_APPLIED_PREF,
+          MEMORY_PROFILE_SAVED_PREFS,
+          MEMORY_PROFILE_SCHEMA_PREF,
+        ]
       ),
   },
   {

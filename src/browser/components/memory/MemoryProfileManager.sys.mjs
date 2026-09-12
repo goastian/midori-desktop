@@ -9,6 +9,7 @@
  * - 0: Performance (default Firefox settings, higher RAM usage)
  * - 1: Balanced (moderate RAM savings, good for most users)
  * - 2: Low Memory (aggressive RAM savings for systems with limited RAM)
+ * - 3: Gaming/AI (specialized graphics and throughput settings)
  */
 
 const lazy = {};
@@ -18,226 +19,63 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MemoryProfilePolicy: 'resource:///modules/MemoryProfilePolicy.sys.mjs',
 });
 
-// Memory profile configurations
-const MEMORY_PROFILES = {
-  // Performance: Default Firefox settings, maximum performance
-  0: {
-    name: 'performance',
-    // Profile 0 deliberately owns no Firefox prefs. Clearing values left by a
-    // previous Midori profile restores the platform-tested upstream defaults.
-    settings: {},
-  },
-  // Balanced: Moderate RAM savings while maintaining good performance
-  1: {
-    name: 'balanced',
-    settings: {
-      'dom.ipc.processCount': 4,
-      'dom.ipc.processCount.webIsolated': 2,
-      'dom.ipc.processPrelaunch.enabled': true,
-      'dom.ipc.processPrelaunch.fission.number': 1,
-      'browser.cache.memory.capacity': 131072, // 128 MB
-      'browser.sessionhistory.max_total_viewers': 4,
-      'browser.sessionstore.max_tabs_undo': 10,
-      'browser.sessionstore.max_windows_undo': 2,
-      'media.memory_cache_max_size': 65536, // 64 MB
-      'media.memory_caches_combined_limit_kb': 262144, // 256 MB
-      'javascript.options.mem.gc_high_frequency_heap_growth_max': 200,
-      'javascript.options.mem.gc_high_frequency_heap_growth_min': 120,
-      'javascript.options.mem.gc_heap_growth_factor': 120,
-      'browser.tabs.unloadOnLowMemory': true,
-    },
-  },
-  // Low Memory: Aggressive RAM savings for limited systems
-  2: {
-    name: 'lowMemory',
-    settings: {
-      'dom.ipc.processCount': 1,
-      'dom.ipc.processCount.webIsolated': 1,
-      'dom.ipc.processPrelaunch.enabled': false,
-      'dom.ipc.processPrelaunch.fission.number': 0,
-      'browser.cache.memory.capacity': 32768, // 32 MB
-      'browser.cache.memory.max_entry_size': 4096,
-      'browser.sessionhistory.max_total_viewers': 1,
-      'browser.sessionstore.max_tabs_undo': 3,
-      'browser.sessionstore.max_windows_undo': 1,
-      'media.memory_cache_max_size': 16384, // 16 MB
-      'media.memory_caches_combined_limit_kb': 65536, // 64 MB
-      'javascript.options.mem.gc_high_frequency_heap_growth_max': 120,
-      'javascript.options.mem.gc_high_frequency_heap_growth_min': 80,
-      'javascript.options.mem.gc_heap_growth_factor': 90,
-      'browser.tabs.unloadOnLowMemory': true,
-    },
-  },
-  // Gaming/AI: Maximum performance for WebGPU, gaming, and AI workloads
-  3: {
-    name: 'gaming',
-    settings: {
-      // Maximum processes for parallelization
-      'dom.ipc.processCount': 12,
-      'dom.ipc.processCount.webIsolated': 6,
-      'dom.ipc.processPrelaunch.enabled': true,
-      'dom.ipc.processPrelaunch.fission.number': 4,
+const PROFILE_INDEXES = [0, 1, 2, 3];
 
-      // WebGPU and graphics acceleration
-      'dom.webgpu.enabled': true,
-      'gfx.webrender.all': true,
-      'gfx.webrender.enabled': true,
-      'layers.acceleration.force-enabled': true,
-      'layers.gpu-process.enabled': true,
-      'layers.mlgpu.enabled': true,
-
-      // WebGL optimizations
-      'webgl.force-enabled': true,
-      'webgl.msaa-force': true,
-      'webgl.enable-draft-extensions': true,
-      'webgl.enable-privileged-extensions': true,
-
-      // Canvas and 2D acceleration
-      'gfx.canvas.accelerated': true,
-      'gfx.canvas.accelerated.cache-items': 32768,
-      'gfx.canvas.accelerated.cache-size': 4096,
-
-      // Memory - prioritize performance over savings
-      'browser.cache.memory.capacity': -1, // Auto (unlimited)
-      'browser.cache.memory.max_entry_size': 51200, // 50 MB
-      'browser.sessionhistory.max_total_viewers': -1, // Auto
-      'media.memory_cache_max_size': 16384, // 16 MB
-      'media.memory_caches_combined_limit_kb': 1048576, // 1 GB
-
-      // JavaScript performance
-      'javascript.options.mem.gc_high_frequency_heap_growth_max': 400,
-      'javascript.options.mem.gc_high_frequency_heap_growth_min': 200,
-      'javascript.options.mem.gc_heap_growth_factor': 200,
-      'javascript.options.baselinejit': true,
-      'javascript.options.ion': true,
-      'javascript.options.wasm_baselinejit': true,
-      'javascript.options.wasm_optimizingjit': true,
-
-      // Network optimizations for gaming
-      'network.http.max-connections': 1800,
-      'network.http.max-persistent-connections-per-server': 10,
-      'network.http.pacing.requests.enabled': false,
-
-      // Disable memory-saving features
-      'browser.tabs.unloadOnLowMemory': false,
-      'browser.sessionstore.interval': 60000, // Save less frequently
-
-      // Image decoding
-      'image.mem.decode_bytes_at_a_time': 65536,
-      'image.mem.shared.unmap.min_expiration_ms': 120000,
-
-      // Media playback
-      'media.hardware-video-decoding.enabled': true,
-      'media.hardware-video-decoding.force-enabled': true,
-      'media.ffmpeg.vaapi.enabled': true,
-
-      // Compositor
-      'layers.omtp.enabled': true,
-      'layers.acceleration.draw-fps': true,
-    },
-  },
+const PROFILE_NAMES = {
+  0: 'performance',
+  1: 'balanced',
+  2: 'lowMemory',
+  3: 'gaming',
 };
 
-// Shared resource-saving settings for opt-in profiles only. Profile 0 must
-// remain a Firefox-compatible baseline and does not receive these overrides.
-const COMMON_OPTIMIZATIONS = {
-  // Memory efficiency
-  'browser.cache.disk.smart_size.enabled': true, // Auto-adjust disk cache
-  'browser.cache.disk.smart_size.first_run': false,
-  'browser.cache.memory.enable': true,
+// Union of every preference any opt-in profile may write. The snapshot captures
+// the user's value for all of them before Midori takes ownership, so returning
+// to Performance restores exactly what the user had.
+let ownedPrefsCache = null;
 
-  // Tab efficiency
-  'browser.tabs.remote.warmup.enabled': true, // Faster tab switching
-  'browser.tabs.remote.warmup.maxTabs': 3,
-  'browser.tabs.remote.warmup.unloadDelayMs': 2000,
+function getOwnedPrefs() {
+  if (ownedPrefsCache) {
+    return ownedPrefsCache;
+  }
+  ownedPrefsCache = new Set();
+  for (const profileIndex of PROFILE_INDEXES) {
+    const platformPreferences =
+      lazy.MemoryProfilePolicy.getProfilePreferences(
+        profileIndex,
+        lazy.AppConstants.platform
+      );
+    for (const pref of Object.keys(platformPreferences)) {
+      ownedPrefsCache.add(pref);
+    }
+  }
+  return ownedPrefsCache;
+}
 
-  // Network efficiency
-  'network.predictor.enabled': true, // Prefetch DNS/connections
-  'network.predictor.enable-prefetch': true,
-  'network.dns.disablePrefetch': false,
-  'network.prefetch-next': true,
+function getProfileSettings(profileIndex) {
+  return lazy.MemoryProfilePolicy.getProfilePreferences(
+    profileIndex,
+    lazy.AppConstants.platform
+  );
+}
 
-  // Image optimization
-  'image.cache.size': 5242880, // 5 MB image cache
-  'image.mem.decode_bytes_at_a_time': 16384, // Decode in chunks
-  'image.mem.discardable': true, // Free decoded images when not visible
-
-  // JavaScript efficiency
-  'javascript.options.compact_on_user_inactive': true, // GC when idle
-  'javascript.options.compact_on_user_inactive_delay': 15000, // 15s delay
-
-  // Session restore optimization
-  'browser.sessionstore.restore_on_demand': true, // Lazy load tabs
-  'browser.sessionstore.restore_pinned_tabs_on_demand': false, // But restore pinned
-  'browser.sessionstore.restore_tabs_lazily': true,
-
-  // Content process efficiency
-  'dom.ipc.keepProcessesAlive.web': 1, // Keep 1 process warm
-  'dom.ipc.processPrelaunch.lowmem_mb': 0, // Disable on low memory
-
-  // Media efficiency
-  'media.cache_readahead_limit': 60, // Seconds to buffer
-  'media.cache_resume_threshold': 30,
-  'media.suspend-bkgnd-video.enabled': true, // Suspend background video
-  'media.suspend-bkgnd-video.delay-ms': 5000,
-
-};
-
-// Linux-only settings for the opt-in memory profiles.
-const LINUX_SETTINGS = {
-  'dom.ipc.forkserver.enable': true,
-  'widget.wayland.opaque-region.enabled': true, // Wayland optimization
-};
-
-const WINDOWS_LOW_MEMORY_SETTINGS = {
-  'browser.tabs.remote.warmup.enabled': false,
-  'browser.tabs.remote.warmup.maxTabs': 0,
-  'browser.tabs.remote.warmup.unloadDelayMs': 0,
-  'browser.cache.memory.capacity': 32768,
-  'browser.cache.memory.max_entry_size': 4096,
-  'browser.sessionhistory.max_total_viewers': 0,
-  'dom.ipc.keepProcessesAlive.web': 0,
-  'network.predictor.enabled': false,
-  'network.predictor.enable-prefetch': false,
-  'network.dns.disablePrefetch': true,
-  'network.prefetch-next': false,
-  'media.cache_readahead_limit': 15,
-  'media.cache_resume_threshold': 5,
-};
-
-// Preferences written by older versions of MemoryProfileManager but no longer
-// managed. Include them in cleanup so switching to Performance really returns
-// to Firefox defaults instead of retaining forced compositor/privacy values.
-const LEGACY_MANAGED_PREFS = [
-  'apz.allow_zooming',
-  'apz.frame_delay.enabled',
-  'apz.overscroll.enabled',
-  'gfx.font_rendering.graphite.enabled',
-  'gfx.font_rendering.opentype_svg.enabled',
-  'gfx.webrender.compositor',
-  'gfx.webrender.compositor.force-enabled',
-  'layout.css.grid-template-masonry-value.enabled',
-  'privacy.resistFingerprinting.block_mozAddonManager',
-  'privacy.trackingprotection.enabled',
-  'privacy.trackingprotection.socialtracking.enabled',
-  'widget.dmabuf.force-enabled',
-];
-
-const MANAGED_PREFS = new Set([
-  ...LEGACY_MANAGED_PREFS,
-  ...Object.keys(COMMON_OPTIMIZATIONS),
-  ...Object.keys(LINUX_SETTINGS),
-  ...Object.keys(WINDOWS_LOW_MEMORY_SETTINGS),
-  ...Object.values(MEMORY_PROFILES).flatMap((profile) =>
-    Object.keys(profile.settings)
-  ),
-]);
+function getAllProfileSettings() {
+  const profiles = {};
+  for (const profileIndex of PROFILE_INDEXES) {
+    const definition = lazy.MemoryProfilePolicy.getProfileDefinition(profileIndex);
+    profiles[profileIndex] = {
+      name: definition?.name ?? PROFILE_NAMES[profileIndex],
+      settings: getProfileSettings(profileIndex),
+    };
+  }
+  return profiles;
+}
 
 export const MemoryProfileManager = {
   _initialized: false,
   PREF_MEMORY_PROFILE: 'midori.memory.profile',
   PREF_MEMORY_PROFILE_APPLIED: 'midori.memory.profile.lastApplied',
   PREF_MEMORY_PROFILE_SCHEMA: 'midori.memory.profile.schemaVersion',
+  PREF_SAVED_PREFS: 'midori.memory.profile.savedPrefs',
 
   /**
    * Get the current memory profile (0, 1, 2, or 3)
@@ -258,7 +96,14 @@ export const MemoryProfileManager = {
    * @returns {object|null} The profile configuration or null if invalid
    */
   getProfile(profileIndex) {
-    return MEMORY_PROFILES[profileIndex] || null;
+    const definition = lazy.MemoryProfilePolicy.getProfileDefinition(profileIndex);
+    if (!definition) {
+      return null;
+    }
+    return {
+      name: definition.name,
+      settings: getProfileSettings(profileIndex),
+    };
   },
 
   /**
@@ -266,7 +111,7 @@ export const MemoryProfileManager = {
    * @returns {object} All profile configurations
    */
   getAllProfiles() {
-    return MEMORY_PROFILES;
+    return getAllProfileSettings();
   },
 
   /**
@@ -283,37 +128,27 @@ export const MemoryProfileManager = {
 
     console.log(`MemoryProfileManager: Applying profile "${profile.name}" (${profileIndex})`);
 
-    // Clear settings from the previously active profile. Without this step,
-    // selecting Performance kept the old process/cache/GC limits indefinitely.
-    // Once Performance is active, preserve subsequent about:config changes.
     const lastAppliedProfile = Services.prefs.getIntPref(
       this.PREF_MEMORY_PROFILE_APPLIED,
       -1
     );
-    if (
-      profileIndex !== lazy.MemoryProfilePolicy.DEFAULT_MEMORY_PROFILE ||
-      lastAppliedProfile !== profileIndex
-    ) {
-      this._clearManagedPrefs();
-    }
+    const hasSavedPrefs = Services.prefs.prefHasUserValue(
+      this.PREF_SAVED_PREFS
+    );
 
-    if (profileIndex !== lazy.MemoryProfilePolicy.DEFAULT_MEMORY_PROFILE) {
-      this._applySettings(COMMON_OPTIMIZATIONS, 'shared');
-    }
-
-    // Apply profile-specific settings
-    this._applySettings(profile.settings, profile.name);
-
-    // Apply platform-specific settings only to explicit resource-saving modes.
-    if (
-      profileIndex !== lazy.MemoryProfilePolicy.DEFAULT_MEMORY_PROFILE &&
-      lazy.AppConstants.platform === 'linux'
-    ) {
-      this._applySettings(LINUX_SETTINGS, 'Linux');
-    }
-
-    if (profileIndex === 2 && lazy.AppConstants.platform === 'win') {
-      this._applySettings(WINDOWS_LOW_MEMORY_SETTINGS, 'Windows low-memory');
+    if (profileIndex === lazy.MemoryProfilePolicy.DEFAULT_MEMORY_PROFILE) {
+      // The snapshot is the ownership record. If it is present, the user just
+      // left an opt-in profile and their original values are restored. If it is
+      // absent there is nothing Midori owns, so about:config edits are kept.
+      if (hasSavedPrefs) {
+        this._restoreSavedPrefs();
+      }
+      this._clearLegacyManagedPrefs();
+    } else {
+      this._discardUntrackedPrefs(lastAppliedProfile, hasSavedPrefs);
+      this._captureSavedPrefs(profile.settings);
+      this._restoreUnusedPrefs(lastAppliedProfile, profile.settings);
+      this._applySettings(profile.settings, profile.name);
     }
 
     Services.prefs.setIntPref(
@@ -338,8 +173,165 @@ export const MemoryProfileManager = {
     }
   },
 
-  _clearManagedPrefs() {
-    for (const pref of MANAGED_PREFS) {
+  /**
+   * Record the user's original value for every preference a profile may own.
+   * Prefs already recorded are left untouched so a previous profile's value is
+   * never mistaken for the user's own.
+   */
+  _captureSavedPrefs(settings) {
+    const saved = this._readSavedPrefs();
+    const { snapshot, changed } = lazy.MemoryProfilePolicy.capturePreferenceSnapshot({
+      preferences: { ...settings, ...this._ownedPrefs() },
+      saved,
+      readPreference: pref => this._readPrefState(pref),
+    });
+
+    if (changed) {
+      this._writeSavedPrefs(snapshot);
+    }
+  },
+
+  /**
+   * Restore every recorded preference to the user's original value and forget
+   * ownership. Without a snapshot there is nothing Midori owns to restore.
+   */
+  _restoreSavedPrefs() {
+    const saved = this._readSavedPrefs();
+    for (const { pref, entry } of lazy.MemoryProfilePolicy.planPreferenceRestore(
+      saved
+    )) {
+      try {
+        this._restorePrefState(pref, entry);
+      } catch (e) {
+        console.error(`MemoryProfileManager: Failed to restore pref ${pref}:`, e);
+      }
+    }
+    Services.prefs.clearUserPref(this.PREF_SAVED_PREFS);
+  },
+
+  /**
+   * Switching between two opt-in profiles must return preferences owned only by
+   * the previous profile to the user's original value before the new profile's
+   * values are written.
+   */
+  _restoreUnusedPrefs(lastAppliedProfile, nextSettings) {
+    if (lastAppliedProfile === -1) {
+      return;
+    }
+    const previousSettings = getProfileSettings(lastAppliedProfile);
+    const saved = this._readSavedPrefs();
+    for (const pref of Object.keys(previousSettings)) {
+      if (Object.prototype.hasOwnProperty.call(nextSettings, pref)) {
+        continue;
+      }
+      try {
+        this._restorePrefState(
+          pref,
+          Object.prototype.hasOwnProperty.call(saved, pref)
+            ? saved[pref]
+            : { hasValue: false }
+        );
+      } catch (e) {
+        console.error(
+          `MemoryProfileManager: Failed to restore unused pref ${pref}:`,
+          e
+        );
+      }
+    }
+  },
+
+  _ownedPrefs() {
+    const owned = {};
+    for (const pref of getOwnedPrefs()) {
+      owned[pref] = true;
+    }
+    return owned;
+  },
+
+  /**
+   * Upgrading from a manager that never recorded preference ownership leaves
+   * profile-written values indistinguishable from user values. Clear any owned
+   * preference that has no recorded origin before the snapshot is taken.
+   */
+  _discardUntrackedPrefs(lastAppliedProfile, hasSavedPrefs) {
+    if (hasSavedPrefs || lastAppliedProfile <= 0) {
+      return;
+    }
+    for (const pref of getOwnedPrefs()) {
+      try {
+        if (Services.prefs.prefHasUserValue(pref)) {
+          Services.prefs.clearUserPref(pref);
+        }
+      } catch (e) {
+        console.error(
+          `MemoryProfileManager: Failed to clear untracked pref ${pref}:`,
+          e
+        );
+      }
+    }
+  },
+
+  _readPrefState(pref) {
+    if (!Services.prefs.prefHasUserValue(pref)) {
+      return { hasValue: false };
+    }
+    const type = Services.prefs.getPrefType(pref);
+    switch (type) {
+      case Services.prefs.PREF_BOOL:
+        return { hasValue: true, type: 'boolean', value: Services.prefs.getBoolPref(pref) };
+      case Services.prefs.PREF_INT:
+        return { hasValue: true, type: 'int', value: Services.prefs.getIntPref(pref) };
+      case Services.prefs.PREF_STRING:
+        return { hasValue: true, type: 'string', value: Services.prefs.getStringPref(pref) };
+      default:
+        return { hasValue: false };
+    }
+  },
+
+  _restorePrefState(pref, entry) {
+    if (!entry || !entry.hasValue) {
+      if (Services.prefs.prefHasUserValue(pref)) {
+        Services.prefs.clearUserPref(pref);
+      }
+      return;
+    }
+    if (entry.type === 'boolean') {
+      Services.prefs.setBoolPref(pref, entry.value);
+    } else if (entry.type === 'int') {
+      Services.prefs.setIntPref(pref, entry.value);
+    } else if (entry.type === 'string') {
+      Services.prefs.setStringPref(pref, entry.value);
+    }
+  },
+
+  _readSavedPrefs() {
+    try {
+      const raw = Services.prefs.getStringPref(this.PREF_SAVED_PREFS, '');
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      console.error('MemoryProfileManager: Failed to read saved prefs:', e);
+      return {};
+    }
+  },
+
+  _writeSavedPrefs(snapshot) {
+    if (!snapshot || Object.keys(snapshot).length === 0) {
+      Services.prefs.clearUserPref(this.PREF_SAVED_PREFS);
+      return;
+    }
+    Services.prefs.setStringPref(this.PREF_SAVED_PREFS, JSON.stringify(snapshot));
+  },
+
+  /**
+   * Preferences written by older versions have no recorded origin, so they can
+   * only be cleared when a profile transition validates the cleanup.
+   */
+  _clearLegacyManagedPrefs() {
+    for (const pref of lazy.MemoryProfilePolicy.LEGACY_MANAGED_PREFS) {
       try {
         if (Services.prefs.prefHasUserValue(pref)) {
           Services.prefs.clearUserPref(pref);
@@ -351,20 +343,28 @@ export const MemoryProfileManager = {
   },
 
   _migrateLegacyAutomaticProfile() {
+    const schemaVersion = Services.prefs.getIntPref(
+      this.PREF_MEMORY_PROFILE_SCHEMA,
+      0
+    );
     const migration = lazy.MemoryProfilePolicy.getMemoryProfileMigration({
       configuredProfile: Services.prefs.getIntPref(
         this.PREF_MEMORY_PROFILE,
         lazy.MemoryProfilePolicy.DEFAULT_MEMORY_PROFILE
       ),
       hasUserValue: Services.prefs.prefHasUserValue(this.PREF_MEMORY_PROFILE),
-      schemaVersion: Services.prefs.getIntPref(
-        this.PREF_MEMORY_PROFILE_SCHEMA,
-        0
-      ),
+      schemaVersion,
     });
 
     if (migration.clearUserProfile) {
       Services.prefs.clearUserPref(this.PREF_MEMORY_PROFILE);
+    }
+    // One-time sweep for prefs abandoned by the punto 4.1 review (GC/render
+    // and experimental graphics/network forces). Users upgrading from schema
+    // 1 may carry them as user values that no profile owns anymore, so no
+    // profile transition would clear them otherwise.
+    if (schemaVersion < 2) {
+      this._clearLegacyManagedPrefs();
     }
     if (migration.needsSchemaUpgrade) {
       Services.prefs.setIntPref(
@@ -391,16 +391,18 @@ export const MemoryProfileManager = {
   },
 
   /**
-   * Get estimated RAM usage description for a profile
-   * @param {number} profileIndex - The profile index
-   * @returns {string} Description of estimated RAM usage
+   * Qualitative profile summary for the UI. Deliberately free of fixed GB
+   * ranges: RAM use depends on content, platform and session, and no
+   * measurement scenario backs a per-profile figure (punto 4.1.5). Several
+   * options apply to new processes or documents, so a restart is recommended
+   * after switching.
    */
   getProfileDescription(profileIndex) {
     const descriptions = {
-      0: '~1.5-4 GB with multiple tabs',
-      1: '~1-2.5 GB with multiple tabs',
-      2: '~350 MB-1.1 GB with multiple tabs',
-      3: '~2-5 GB with multiple tabs (WebGPU enabled)',
+      0: 'Firefox defaults. Recommended after leaving another profile; restart to reapply to existing processes.',
+      1: 'Fewer content processes and smaller caches; keeps speculative loading. Restart recommended.',
+      2: 'Minimal processes and caches; disables prefetch and tab warmup to save RAM. Navigation and restore may be slower. Restart recommended.',
+      3: 'More content processes and larger caches for heavy pages; no experimental graphics overrides. Restart recommended.',
     };
     return descriptions[profileIndex] || 'Unknown';
   },
@@ -434,7 +436,9 @@ export const MemoryProfileManager = {
   },
 
   /**
-   * Cleanup on shutdown
+   * Cleanup on shutdown. Profile values and the ownership snapshot persist so
+   * the next startup can reapply the selected profile without losing the
+   * user's original values.
    */
   uninit() {
     if (!this._initialized) {
@@ -446,4 +450,6 @@ export const MemoryProfileManager = {
 };
 
 // Export for use in preferences UI
-export const MIDORI_MEMORY_PROFILES = MEMORY_PROFILES;
+export function getMidoriMemoryProfiles() {
+  return getAllProfileSettings();
+}

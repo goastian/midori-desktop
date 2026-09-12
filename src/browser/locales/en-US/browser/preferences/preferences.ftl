@@ -1128,6 +1128,18 @@ performance-limit-content-process-blocked-desc = Modifying the number of content
 performance-default-content-process-count =
     .label = { $num } (default)
 
+performance-memory-profile-control =
+    .label = Memory profile
+    .description = Some options apply to new processes or pages. Restart { -brand-short-name } after switching.
+performance-memory-profile-performance =
+    .label = Performance (Firefox defaults)
+performance-memory-profile-balanced =
+    .label = Balanced (fewer processes, keeps preloading)
+performance-memory-profile-low-memory =
+    .label = Low Memory (minimal processes, no preloading; navigation may be slower)
+performance-memory-profile-gaming-ai =
+    .label = Gaming/AI (more processes and caches; no experimental graphics)
+
 ## General Section - Browsing
 
 browsing-group =
@@ -2973,10 +2985,10 @@ category-midori-center =
 performance-memory-profile-title = Memory profile
 performance-memory-profile-label =
     .value = Profile
-performance-memory-profile-desc = Choose how { -brand-short-name } balances browsing speed and memory use. Changes apply immediately.
+performance-memory-profile-desc = Choose how { -brand-short-name } balances browsing speed and memory use. Process, graphics and cache settings take full effect after a restart.
 performance-memory-profile-control =
     .label = Memory profile
-    .description = Choose how { -brand-short-name } balances browsing speed and memory use. Changes apply immediately.
+    .description = Choose how { -brand-short-name } balances browsing speed and memory use. Process, graphics and cache settings take full effect after a restart.
 performance-memory-profile-performance =
     .label = Performance (recommended, Firefox baseline)
 performance-memory-profile-balanced =
