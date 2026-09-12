@@ -7,6 +7,9 @@ set -e
 # 2) addon download flow issues in CI:
 #    - git identity requirement during addon initialization
 #    - hard failure when browser/extensions/moz.build is not present
+# 3) obsolete Tor preflight: Tor browsing was removed from Midori, no embedded
+#    tor runtime is shipped and scripts/download-tor.sh no longer exists, so the
+#    upstream check must not abort packaging when dist/bin/tor is absent.
 
 AMELIA_PKG="node_modules/@goastian/amelia/dist/commands/package.js"
 AMELIA_ADDON="node_modules/@goastian/amelia/dist/commands/download/addon.js"
@@ -45,6 +48,14 @@ if (!content.includes('mach package-multi-locale` failed. Multi-language packagi
   }
 }
 
+// Tor browsing is not part of this product, so a missing dist/bin/tor must
+// warn instead of aborting packaging. log.error throws; log.warning continues.
+const torMissingCall = "        log_1.log.error(`Tor runtime files are missing in ${torDir}. Run scripts/download-tor.sh for the target platform before packaging.`);";
+const torMissingReplacement = "        log_1.log.warning(`Tor runtime files are missing in ${torDir}. Tor browsing is not included in this product; continuing without an embedded Tor runtime.`);";
+if (content.includes(torMissingCall)) {
+  content = content.replace(torMissingCall, torMissingReplacement);
+}
+
 fs.writeFileSync(file, content, 'utf8');
 NODE
 
@@ -59,6 +70,14 @@ NODE
     echo "[patch-amelia] Added hard-fail checks for package and package-multi-locale."
   else
     echo "[patch-amelia] WARNING: Could not verify package.js hard-fail checks."
+  fi
+
+  if grep -Fq 'continuing without an embedded Tor runtime.' "$AMELIA_PKG"; then
+    echo "[patch-amelia] Demoted obsolete Tor preflight to a warning."
+  elif grep -Fq 'Tor runtime files are missing' "$AMELIA_PKG"; then
+    echo "[patch-amelia] WARNING: Could not demote Tor preflight check."
+  else
+    echo "[patch-amelia] No upstream Tor preflight found; nothing to demote."
   fi
 fi
 
