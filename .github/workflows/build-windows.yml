@@ -30,6 +30,10 @@ on:
         required: false
         type: boolean
         default: true
+      runner_label:
+        required: false
+        type: string
+        default: ubuntu-latest
   workflow_dispatch:
     inputs:
       display_version:
@@ -48,6 +52,10 @@ on:
         required: true
         type: boolean
         default: true
+      runner_label:
+        required: false
+        type: string
+        default: ubuntu-latest
 jobs:
   prepare-source:
     if: ${{ github.event_name == 'workflow_dispatch' || !inputs.source_is_prepared }}
@@ -62,7 +70,7 @@ jobs:
     name: Windows ${{ matrix.arch }}
     needs: prepare-source
     if: ${{ always() && (needs.prepare-source.result == 'success' || (github.event_name != 'workflow_dispatch' && inputs.source_is_prepared)) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner_label }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -78,6 +86,22 @@ jobs:
       CARGO_INCREMENTAL: 0
 
     steps:
+      - name: Report runner capacity
+        run: |
+          {
+            echo "### Windows build runner"
+            echo
+            echo "Requested runner: \`${{ inputs.runner_label }}\`"
+            echo "Runner OS: \`$RUNNER_OS\`"
+            echo "Runner architecture: \`$RUNNER_ARCH\`"
+            echo "CPU cores: \`$(nproc)\`"
+            echo
+            echo '```text'
+            free -h
+            df -h
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \

@@ -30,6 +30,14 @@ on:
         required: false
         type: boolean
         default: true
+      runner_x86_64_label:
+        required: false
+        type: string
+        default: ''
+      runner_aarch64_label:
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       display_version:
@@ -48,6 +56,14 @@ on:
         required: true
         type: boolean
         default: true
+      runner_x86_64_label:
+        required: false
+        type: string
+        default: ''
+      runner_aarch64_label:
+        required: false
+        type: string
+        default: ''
 jobs:
   prepare-source:
     if: ${{ github.event_name == 'workflow_dispatch' || !inputs.source_is_prepared }}
@@ -62,7 +78,7 @@ jobs:
     name: macOS ${{ matrix.arch }}
     needs: prepare-source
     if: ${{ always() && (needs.prepare-source.result == 'success' || (github.event_name != 'workflow_dispatch' && inputs.source_is_prepared)) }}
-    runs-on: ${{ matrix.arch == 'x86_64' && 'macos-15-intel' || 'macos-15' }}
+    runs-on: ${{ matrix.arch == 'x86_64' && (inputs.runner_x86_64_label || 'macos-15-intel') || (inputs.runner_aarch64_label || 'macos-15') }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -76,6 +92,30 @@ jobs:
       CARGO_INCREMENTAL: 0
 
     steps:
+      - name: Report runner capacity
+        run: |
+          cpu_cores="$(sysctl -n hw.ncpu)"
+          memory_bytes="$(sysctl -n hw.memsize)"
+          memory_gib="$((memory_bytes / 1024 / 1024 / 1024))"
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            requested_runner="${{ inputs.runner_x86_64_label || 'macos-15-intel' }}"
+          else
+            requested_runner="${{ inputs.runner_aarch64_label || 'macos-15' }}"
+          fi
+          {
+            echo "### macOS build runner"
+            echo
+            echo "Requested runner: \`$requested_runner\`"
+            echo "Runner OS: \`$RUNNER_OS\`"
+            echo "Runner architecture: \`$RUNNER_ARCH\`"
+            echo "CPU cores: \`$cpu_cores\`"
+            echo "Memory: \`${memory_gib} GiB\`"
+            echo
+            echo '```text'
+            df -h
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Checkout
         uses: actions/checkout@v7
 
