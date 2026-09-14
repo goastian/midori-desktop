@@ -191,3 +191,16 @@ jobs:
             echo
             echo "[Download Flatpak source bundle]($ARTIFACT_URL)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect failure diagnostics
+        if: ${{ failure() }}
+        run: bash scripts/collect-ci-diagnostics.sh
+
+      - name: Upload failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics-prepare-source
+          path: ci-diagnostics/
+          retention-days: 7
+          if-no-files-found: error
