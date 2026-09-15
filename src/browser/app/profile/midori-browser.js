@@ -256,7 +256,7 @@ pref('midori.modblur.tabs.autohide', false);
 pref('midori.modblur.tabs.showWhileInactive', false);
 pref('midori.modblur.tabs.centered', false);
 pref('midori.modblur.tabs.hidePreviewPanel', false);
-pref('midori.modblur.tabs.layout', 'urlbar-top');
+pref('midori.modblur.tabs.layout', 'tabs-top');
 // Legacy compatibility. Midori migrates user values during browser startup.
 pref('midori.modblur.tabs.onTop', false);
 pref('midori.modblur.tabs.activeStaticWidth', true);
