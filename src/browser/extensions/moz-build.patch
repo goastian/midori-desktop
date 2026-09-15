@@ -1,8 +1,8 @@
 diff --git a/browser/extensions/moz.build b/browser/extensions/moz.build
-index abe42759fa72ed47d374f131df193489d1ecd5b7..a887cbb8b1c2973744c7d155babc03a4660ae34a 100644
+index 780cf23b9c50fdde933a8825c495b3cf9a1e9b53..0b0d087f120280a6ebdec334e9b67ad6ce47628d 100644
 --- a/browser/extensions/moz.build
 +++ b/browser/extensions/moz.build
-@@ -13,3 +13,5 @@ DIRS += [
+@@ -12,3 +12,5 @@ DIRS += [
  ]
  
  JAR_MANIFESTS += ["jar.mn"]

@@ -2,8 +2,14 @@ diff --git a/toolkit/components/pdfjs/jar.mn b/toolkit/components/pdfjs/jar.mn
 index 2b5a220dbe4fcc5218da8583332ad4d9f5df26c7..f3056a58b5021788716d4cd0bf50a55cf497631a 100644
 --- a/toolkit/components/pdfjs/jar.mn
 +++ b/toolkit/components/pdfjs/jar.mn
-@@ -30,6 +30,7 @@ pdfjs.jar:
-  content/PdfjsContextMenu.sys.mjs (content/PdfjsContextMenu.sys.mjs)
+@@ -29,12 +29,13 @@ pdfjs.jar:
+  content/PdfJsAIFeature.sys.mjs (content/PdfJsAIFeature.sys.mjs)
+  content/PdfJsParent.sys.mjs (content/PdfJsParent.sys.mjs)
+  content/PdfJsChild.sys.mjs (content/PdfJsChild.sys.mjs)
+  content/PdfJsContextMenu.sys.mjs (content/PdfJsContextMenu.sys.mjs)
+  content/PdfEmbedFallbackParent.sys.mjs (content/PdfEmbedFallbackParent.sys.mjs)
+  content/embedFallback.html (content/embedFallback.html)
+  content/embedFallback.css (content/embedFallback.css)
   content/web/viewer.html (content/web/viewer.html)
   content/web/viewer.css (content/web/viewer.css)
 + content/web/midori-pdfjs.css (content/web/midori-pdfjs.css)

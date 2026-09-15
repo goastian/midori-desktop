@@ -1,5 +1,5 @@
 diff --git a/browser/actors/ContextMenuChild.sys.mjs b/browser/actors/ContextMenuChild.sys.mjs
-index 16985f2c4a..7e35b4e34f 100644
+index bdb925257894ad76f7eaab179f41847e3f1d7d33..f16d9b20d4a09f81215b4328e4b7688e545f191f 100644
 --- a/browser/actors/ContextMenuChild.sys.mjs
 +++ b/browser/actors/ContextMenuChild.sys.mjs
 @@ -46,6 +46,10 @@ export class ContextMenuChild extends JSWindowActorChild {

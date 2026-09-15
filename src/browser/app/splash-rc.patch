@@ -1,5 +1,5 @@
 diff --git a/browser/app/splash.rc b/browser/app/splash.rc
-index 04c1d3e1db7d067d579512999a08de85a0aa212c..4e04eb5008ca1701c731c3109ba184ccf465b51b 100644
+index ee499e2f0edfc422e979791ab4b06e606f842ff1..55bea39ea3014a198f2e08936cae7942899fe460 100644
 --- a/browser/app/splash.rc
 +++ b/browser/app/splash.rc
 @@ -5,6 +5,9 @@

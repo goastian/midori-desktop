@@ -2,7 +2,7 @@ diff --git a/browser/themes/BuiltInThemeConfig.sys.mjs b/browser/themes/BuiltInT
 index c4ff66417c43c8c56948b7de4c48cf93828a66bf..016bf798c3c6b6d7429a142f3c9cb6a4cfd3075d 100644
 --- a/browser/themes/BuiltInThemeConfig.sys.mjs
 +++ b/browser/themes/BuiltInThemeConfig.sys.mjs
-@@ -20,30 +20,4 @@
+@@ -20,28 +20,4 @@
   *   non-native appearance. See Document.forceNonNativeTheme and the
   *   (-moz-native-theme) media query.
   */
@@ -13,7 +13,6 @@ index c4ff66417c43c8c56948b7de4c48cf93828a66bf..016bf798c3c6b6d7429a142f3c9cb6a4
 -      version: "1.3.4",
 -      path: "resource://builtin-themes/light/",
 -      inApp: true,
--      nonNative: true,
 -    },
 -  ],
 -  [
@@ -22,7 +21,6 @@ index c4ff66417c43c8c56948b7de4c48cf93828a66bf..016bf798c3c6b6d7429a142f3c9cb6a4
 -      version: "1.3.4",
 -      path: "resource://builtin-themes/dark/",
 -      inApp: true,
--      nonNative: true,
 -    },
 -  ],
 -  [

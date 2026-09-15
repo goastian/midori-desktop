@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/browser-init.js b/browser/base/content/browser-init.js
-index 7694c598c35dc464fbdd8290d8a4d2c00c84acd4..0aba588724d3e620ebeef4945cb8282d6d3c54a7 100644
+index 2f3f46d8d82dc90ebca8d64ace9d6bf1ee127937..89061cbea2556beebef868a46236476e68907ed7 100644
 --- a/browser/base/content/browser-init.js
 +++ b/browser/base/content/browser-init.js
-@@ -502,6 +502,16 @@ var gBrowserInit = {
+@@ -513,6 +513,16 @@ var gBrowserInit = {
  
      UpdateUrlbarSearchSplitterState();
  

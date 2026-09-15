@@ -249,7 +249,7 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
          }),
        };
      }
-@@ -103,22 +262,44 @@ export const TaskbarTabs = new (class {
+@@ -103,17 +262,25 @@ export const TaskbarTabs = new (class {
        aDetails
      );
 
@@ -277,9 +277,11 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +    return response;
    }
 
-   // Used internally; can expose non-public members in its result.
-   async #findOrCreateTaskbarTab(aUrl, aUserContextId, aDetails = {}) {
-     await this.#ready;
+  // Used internally; can expose non-public members in its result.
+@@ -127,6 +294,21 @@ export const TaskbarTabs = new (class {
+      };
+    }
+
 +    for (const property of ["start_url", "scope"]) {
 +      if (!aDetails.manifest?.[property]) {
 +        continue;
@@ -294,9 +296,10 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +        );
 +      }
 +    }
-     let result = this.#registry.findOrCreateTaskbarTab(
-       aUrl,
-       aUserContextId,
++
+    let result = this.#registry.findOrCreateTaskbarTab(
+      aUrl,
+      aUserContextId,
 @@ -130,6 +311,13 @@ export const TaskbarTabs = new (class {
 
        let icon = await fetchIconForTaskbarTab(result.taskbarTab, aDetails);
@@ -972,7 +975,7 @@ index 1a26c718091d532d6a7e3697619910d6daae9a74..543ea599bdec381730b2457ce5c95c0b
        return false;
      }
 
--    return ["http", "https"].includes(aLocation.scheme);
+-    return ["http", "https", "moz-extension"].includes(aLocation.scheme);
 +    return lazy.TaskbarTabs.isInstallableURL(aLocation);
    };
 
@@ -2303,7 +2306,7 @@ diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pag
 index 168e859c5389de35e18b8f067e3ddfca46ecae98..a7e42193439ffb64d44ab629f660ef39c917cd62 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pageAction.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pageAction.js
-@@ -22,8 +22,14 @@ ChromeUtils.defineESModuleGetters(this, {
+@@ -23,8 +23,14 @@ ChromeUtils.defineESModuleGetters(this, {
    TaskbarTabsUtils: "resource:///modules/taskbartabs/TaskbarTabsUtils.sys.mjs",
  });
 
@@ -2318,9 +2321,9 @@ index 168e859c5389de35e18b8f067e3ddfca46ecae98..a7e42193439ffb64d44ab629f660ef39
 +  shortcutRelativePath: null,
 +});
 
- registerCleanupFunction(async () => {
-   sinon.restore();
-@@ -246,10 +252,10 @@ add_task(async function revertToMostRecent() {
+ const kFakeAddonId = "taskbartabs-test-addon@tests.mozilla.org";
+ const kFakeAddonName = "browser_taskbarTabs_addons.js test addon";
+@@ -270,12 +276,12 @@ add_task(async function revertToMostRecent() {
  add_task(async function testVariousVisibilityChanges() {
    const argsList = [
      [BASE_URL, HIDDEN_URI, true, false],
@@ -2333,6 +2336,8 @@ index 168e859c5389de35e18b8f067e3ddfca46ecae98..a7e42193439ffb64d44ab629f660ef39
 +    [HIDDEN_URI, BASE_URL_HTTP, false, false],
      [FILE_URI, BASE_URL, false, true],
      [BASE_URL, FILE_URI, true, false],
+     [MOZ_EXTENSION_URI, BASE_URL, true, true],
+     [HIDDEN_URI, MOZ_EXTENSION_URI, false, true],
    ];
 @@ -335,6 +341,70 @@ add_task(async function testPrefIsMonitored() {
    });

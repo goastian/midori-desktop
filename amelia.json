@@ -5,8 +5,8 @@
   "binaryName": "midori",
   "version": {
     "product": "firefox",
-    "version": "155.0.1",
-    "candidate": "155.0.1"
+    "version": "156.0",
+    "candidate": "156.0"
   },
   "buildOptions": {
     "generateBranding": true
