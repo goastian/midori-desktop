@@ -349,9 +349,9 @@ dependencies = [
 
 [[package]]
 name = "audio_thread_priority"
-version = "0.35.1"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b1b4a0adbf971420cca66a75361a1190f34a6762d66361e5cde03dda35d1ed3"
+checksum = "e58c7a923538aa84eef9947d81924fb9f34d7db6004e179218ab57a7bb7700b6"
 dependencies = [
  "cfg-if",
  "dbus",
@@ -364,7 +364,7 @@ dependencies = [
 [[package]]
 name = "audioipc2"
 version = "0.6.0"
-source = "git+https://github.com/mozilla/audioipc?rev=88fe860#88fe8606638c072da22e01159a2168a4c2d9fc5d"
+source = "git+https://github.com/mozilla/audioipc?rev=d3c9825#d3c9825a876a5fc7b54101bd40d685acfc542917"
 dependencies = [
  "arrayvec",
  "ashmem",
@@ -390,7 +390,7 @@ dependencies = [
 [[package]]
 name = "audioipc2-client"
 version = "0.6.0"
-source = "git+https://github.com/mozilla/audioipc?rev=88fe860#88fe8606638c072da22e01159a2168a4c2d9fc5d"
+source = "git+https://github.com/mozilla/audioipc?rev=d3c9825#d3c9825a876a5fc7b54101bd40d685acfc542917"
 dependencies = [
  "audio_thread_priority",
  "audioipc2",
@@ -401,7 +401,7 @@ dependencies = [
 [[package]]
 name = "audioipc2-server"
 version = "0.6.0"
-source = "git+https://github.com/mozilla/audioipc?rev=88fe860#88fe8606638c072da22e01159a2168a4c2d9fc5d"
+source = "git+https://github.com/mozilla/audioipc?rev=d3c9825#d3c9825a876a5fc7b54101bd40d685acfc542917"
 dependencies = [
  "audio_thread_priority",
  "audioipc2",
@@ -484,6 +484,20 @@ dependencies = [
  "types",
  "uniffi",
  "url",
+]
+
+[[package]]
+name = "backgroundtaskregistrar"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "mozbuild",
+ "mozilla-central-workspace-hack",
+ "nserror",
+ "nsstring",
+ "windows",
+ "windows-collections",
+ "xpcom",
 ]
 
 [[package]]
@@ -1533,8 +1547,8 @@ dependencies = [
 
 [[package]]
 name = "cssparser"
-version = "0.37.0"
-source = "git+https://github.com/servo/rust-cssparser?rev=eff8704e994dc54e5df2a936b78b51828ee21464#eff8704e994dc54e5df2a936b78b51828ee21464"
+version = "0.38.0"
+source = "git+https://github.com/servo/rust-cssparser?rev=84af7967fc0093c81f44c2d03029fe6db546485e#84af7967fc0093c81f44c2d03029fe6db546485e"
 dependencies = [
  "cssparser-macros",
  "dtoa-short",
@@ -1546,7 +1560,7 @@ dependencies = [
 [[package]]
 name = "cssparser-macros"
 version = "0.7.0"
-source = "git+https://github.com/servo/rust-cssparser?rev=eff8704e994dc54e5df2a936b78b51828ee21464#eff8704e994dc54e5df2a936b78b51828ee21464"
+source = "git+https://github.com/servo/rust-cssparser?rev=84af7967fc0093c81f44c2d03029fe6db546485e#84af7967fc0093c81f44c2d03029fe6db546485e"
 dependencies = [
  "quote",
  "syn",
@@ -1722,12 +1736,13 @@ dependencies = [
 
 [[package]]
 name = "dbus"
-version = "0.6.5"
+version = "0.9.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48b5f0f36f1eebe901b0e6bee369a77ed3396334bf3f09abd46454a576f71819"
+checksum = "3ab69f03cc8c4340c9c8e315114e1658e6775a9b16a04357973aa21cec22b32e"
 dependencies = [
  "libc",
  "libdbus-sys",
+ "windows-sys",
 ]
 
 [[package]]
@@ -2530,6 +2545,7 @@ version = "0.1.0"
 dependencies = [
  "nsstring",
  "skrifa",
+ "style",
  "thin-vec",
 ]
 
@@ -2925,6 +2941,7 @@ dependencies = [
  "audioipc2-client",
  "audioipc2-server",
  "authrs_bridge",
+ "backgroundtaskregistrar",
  "binary_http",
  "bitsdownload",
  "bookmark_sync",
@@ -3012,7 +3029,6 @@ dependencies = [
  "shell_windows",
  "signature_cache",
  "sitecategories",
- "ssl_tokens_cache",
  "static_prefs",
  "storage",
  "trust-anchors",
@@ -3032,6 +3048,7 @@ dependencies = [
  "wgpu_bindings",
  "widget_windows",
  "wpf-gpu-raster",
+ "xdg_alerts",
  "xpcom",
  "zlib-rs",
 ]
@@ -3236,9 +3253,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.13"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f44da3a8150a6703ed5d34e164b875fd14c2cdab9af1252a9a1020bde2bdc54"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -3943,7 +3960,6 @@ dependencies = [
 name = "ipcclientcerts"
 version = "0.1.0"
 dependencies = [
- "byteorder",
  "env_logger",
  "log",
  "pkcs11-bindings",
@@ -4080,9 +4096,9 @@ dependencies = [
 
 [[package]]
 name = "jxl"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ad19139224d7643adda1d4b9792caea2346ce7a079ef00ae653b1d7a938dce7"
+checksum = "7b36e70efc347a34540f61ae91b7dc304ab0bb69bd6ac62fae182389c2788016"
 dependencies = [
  "array-init",
  "byteorder",
@@ -4104,9 +4120,9 @@ dependencies = [
 
 [[package]]
 name = "jxl_macros"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "341267f3e48d02b0fc44aa3102e0ac46204e726bc63a1caa161431f309e9de42"
+checksum = "96f637cf167445cc64f12f59869e2d2dd4225f1db7e37ec33d1738c2c334d448"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4115,16 +4131,16 @@ dependencies = [
 
 [[package]]
 name = "jxl_simd"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "rustversion",
 ]
 
 [[package]]
 name = "jxl_transforms"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2dae97098351cbffdbca17907de1055bf60be86e692f9d657f5b565e336b43b"
+checksum = "77097b14a98fa6f8bde99bd16dcd19e15a8ecceaba42a8d539138090e92dcf27"
 dependencies = [
  "jxl_simd",
 ]
@@ -4304,9 +4320,7 @@ dependencies = [
 
 [[package]]
 name = "libdbus-sys"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c185b5b7ad900923ef3a8ff594083d4d9b5aea80bb4f32b8342363138c0d456b"
+version = "0.2.7"
 dependencies = [
  "pkg-config",
 ]
@@ -5324,7 +5338,7 @@ dependencies = [
 [[package]]
 name = "mp4parse"
 version = "0.17.0"
-source = "git+https://github.com/mozilla/mp4parse-rust?rev=8a49a0769764152022bf14a8253bcde1971a75df#8a49a0769764152022bf14a8253bcde1971a75df"
+source = "git+https://github.com/mozilla/mp4parse-rust?rev=215e238e633fa0df42cc25bfcf43a0f902692691#215e238e633fa0df42cc25bfcf43a0f902692691"
 dependencies = [
  "bitreader",
  "byteorder",
@@ -5341,13 +5355,25 @@ version = "0.1.0"
 [[package]]
 name = "mp4parse_capi"
 version = "0.17.0"
-source = "git+https://github.com/mozilla/mp4parse-rust?rev=8a49a0769764152022bf14a8253bcde1971a75df#8a49a0769764152022bf14a8253bcde1971a75df"
+source = "git+https://github.com/mozilla/mp4parse-rust?rev=215e238e633fa0df42cc25bfcf43a0f902692691#215e238e633fa0df42cc25bfcf43a0f902692691"
 dependencies = [
  "byteorder",
  "fallible_collections",
  "log",
  "mp4parse",
  "num-traits",
+]
+
+[[package]]
+name = "msixcomserver_s"
+version = "0.1.0"
+dependencies = [
+ "futures-executor",
+ "mozbuild",
+ "mozilla-central-workspace-hack",
+ "windows",
+ "windows-core",
+ "windows-future",
 ]
 
 [[package]]
@@ -5567,7 +5593,7 @@ dependencies = [
  "glob",
  "heck",
  "icu_segmenter",
- "itertools 0.14.999",
+ "itertools 0.15.0",
  "lazy_static",
  "mozilla-central-workspace-hack",
  "regex",
@@ -6003,7 +6029,6 @@ name = "osclientcerts"
 version = "0.1.4"
 dependencies = [
  "android_logger",
- "byteorder",
  "core-foundation 0.9.999",
  "cstr",
  "env_logger",
@@ -6127,9 +6152,9 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "phf"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1562dc717473dbaa4c1f85a36410e03c047b2e7df7f45ee938fbef64ae7fadf"
+checksum = "010378780309880b08997fae13be7834dba947d36393bd372f2b1556deb2a2f6"
 dependencies = [
  "phf_macros",
  "phf_shared",
@@ -6138,9 +6163,9 @@ dependencies = [
 
 [[package]]
 name = "phf_codegen"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49aa7f9d80421bca176ca8dbfebe668cc7a2684708594ec9f3c0db0805d5d6e1"
+checksum = "41b585a510fb76fdebead6897982ef2a03a21d8e6cbcca904999742a4afc6ffe"
 dependencies = [
  "phf_generator",
  "phf_shared",
@@ -6148,9 +6173,9 @@ dependencies = [
 
 [[package]]
 name = "phf_generator"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "135ace3a761e564ec88c03a77317a7c6b80bb7f7135ef2544dbe054243b89737"
+checksum = "aeb62e0959d5a1bebc965f4d15d9e2b7cea002b6b0f5ba8cde6cc26738467100"
 dependencies = [
  "fastrand",
  "phf_shared",
@@ -6158,9 +6183,9 @@ dependencies = [
 
 [[package]]
 name = "phf_macros"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "812f032b54b1e759ccd5f8b6677695d5268c588701effba24601f6932f8269ef"
+checksum = "5fa8d0ca26d424d27630da600c6624696e7dec8bf7b3b492b383c5dc49e5e085"
 dependencies = [
  "phf_generator",
  "phf_shared",
@@ -6171,9 +6196,9 @@ dependencies = [
 
 [[package]]
 name = "phf_shared"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e57fef6bc5981e38c2ce2d63bfa546861309f875b8a75f092d1d54ae2d64f266"
+checksum = "c6fd9027e2d9319be6349febd1db4e8d02aa544921200c9b777720ac34a3aa89"
 dependencies = [
  "siphasher",
 ]
@@ -6218,9 +6243,9 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pkcs11-bindings"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77f2b11de4fec7f1e085891d4a4bf16a8b1beb49978837a80d4e9e705b99295c"
+checksum = "f81e0ffd4db150990a30013e47ebeeab2a71cfb27d1cbd83d1ec43d7b297e0c1"
 dependencies = [
  "bindgen 0.72.0",
 ]
@@ -6970,7 +6995,6 @@ dependencies = [
 name = "rsclientcerts"
 version = "0.1.0"
 dependencies = [
- "byteorder",
  "digest",
  "env_logger",
  "pkcs11-bindings",
@@ -7201,8 +7225,6 @@ dependencies = [
  "derive_more",
  "log",
  "new_debug_unreachable",
- "phf",
- "phf_codegen",
  "precomputed-hash",
  "rustc-hash 2.1.1",
  "servo_arc",
@@ -7596,20 +7618,6 @@ dependencies = [
  "tempfile",
  "text-table",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "ssl_tokens_cache"
-version = "0.1.0"
-dependencies = [
- "adler2",
- "bincode",
- "log",
- "nsstring",
- "serde",
- "static_assertions",
- "tempfile",
- "thin-vec",
 ]
 
 [[package]]
@@ -9118,9 +9126,9 @@ dependencies = [
 
 [[package]]
 name = "webrtc-sdp"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a87d58624aae43577604ea137de9dcaf92793eccc4d816efad482001c2e055ca"
+checksum = "6c7eaa5d898cfa76ceef23aa94f954457fdc6acf5c3602d413e8873ff50dff32"
 dependencies = [
  "log",
  "url",
@@ -9566,6 +9574,18 @@ name = "writeable"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9edde0db4769d2dc68579893f2306b26c6ecfbe0ef499b013d731b7b9247e0b9"
+
+[[package]]
+name = "xdg_alerts"
+version = "0.1.0"
+dependencies = [
+ "dbus",
+ "log",
+ "nserror",
+ "nsstring",
+ "thin-vec",
+ "xpcom",
+]
 
 [[package]]
 name = "xml-rs"
