@@ -319,10 +319,12 @@ for ADDON_KEY in $ADDON_KEYS; do
                     echo "WARNING: Could not find asset matching '$FILE_GLOB' in $REPO @ $VERSION"
                     echo "WARNING: Available assets:"
                     echo "$RELEASE_JSON" | jq -r '.assets[].name' 2>/dev/null || echo "  (none)"
-                    echo "WARNING: Creating stub addon for $ADDON_KEY so build can continue"
-
-                    rm -rf "$ADDON_DIR"
-                    create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$CONFIGURED_ADDON_ID"
+                    if [[ ! -d "$ADDON_DIR" ]]; then
+                        echo "WARNING: Creating stub addon for $ADDON_KEY so build can continue"
+                        create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$CONFIGURED_ADDON_ID"
+                    else
+                        echo "WARNING: Keeping existing $ADDON_KEY files so build can continue"
+                    fi
                 fi
                 ;;
             amo)
@@ -339,33 +341,46 @@ for ADDON_KEY in $ADDON_KEYS; do
 
         if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" == "null" ]]; then
             echo "ERROR: Could not resolve download URL for $ADDON_KEY"
-            continue
+            if [[ -d "$ADDON_DIR" && -f "$ADDON_DIR/manifest.json" && ( ! -f "$ADDON_DIR/moz.build" || ! -f "$ADDON_DIR/jar.mn" ) ]]; then
+                echo "WARNING: $ADDON_DIR is missing build descriptors. Regenerating from existing files so configure does not break."
+                DOWNLOAD_URL="STUB-KEEP-EXISTING"
+            else
+                continue
+            fi
         fi
 
-        if [[ -n "$DOWNLOAD_URL" ]]; then
+        if [[ "$DOWNLOAD_URL" == "STUB-KEEP-EXISTING" ]]; then
+            DOWNLOAD_URL=""
+        elif [[ -n "$DOWNLOAD_URL" ]]; then
             echo "INFO: Downloading from $DOWNLOAD_URL"
             TEMP_FILE="$TMP_DIR/$ADDON_KEY.zip"
-            curl -sL -o "$TEMP_FILE" "$DOWNLOAD_URL"
-
-            if [[ ! -f "$TEMP_FILE" ]] || [[ ! -s "$TEMP_FILE" ]]; then
-                echo "ERROR: Download failed for $ADDON_KEY"
+            if ! curl -sL -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
+                echo "ERROR: Download failed for $ADDON_KEY. Keeping existing files."
+                DOWNLOAD_URL=""
+            elif [[ ! -f "$TEMP_FILE" ]] || [[ ! -s "$TEMP_FILE" ]]; then
+                echo "ERROR: Download failed for $ADDON_KEY. Keeping existing files."
                 DOWNLOAD_URL=""
             fi
         fi
 
-        # Clean existing addon directory (moz.build and jar.mn will be regenerated)
-        if [[ -d "$ADDON_DIR" ]]; then
-            rm -rf "$ADDON_DIR"
-        fi
-
+        # Only replace the existing addon directory once a valid download is
+        # available. Never delete a working tree to create a stub.
         if [[ -n "$DOWNLOAD_URL" ]]; then
+            if [[ -d "$ADDON_DIR" ]]; then
+                rm -rf "$ADDON_DIR"
+            fi
             mkdir -p "$ADDON_DIR"
             echo "INFO: Unpacking $ADDON_KEY..."
             unzip -q -o "$TEMP_FILE" -d "$ADDON_DIR"
             flatten_single_root_if_needed "$ADDON_DIR"
-        else
+        elif [[ ! -d "$ADDON_DIR" ]]; then
             echo "WARNING: Creating stub addon for $ADDON_KEY because download was not available"
             create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$CONFIGURED_ADDON_ID"
+        elif [[ ! -f "$ADDON_DIR/manifest.json" ]]; then
+            echo "WARNING: $ADDON_KEY has no manifest.json and no download is available. Creating stub manifest."
+            create_stub_manifest "$ADDON_DIR" "$ADDON_KEY" "$CONFIGURED_ADDON_ID"
+        else
+            echo "WARNING: Keeping existing $ADDON_KEY files because download was not available"
         fi
     fi
 
