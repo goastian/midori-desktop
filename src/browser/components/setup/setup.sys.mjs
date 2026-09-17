@@ -30,7 +30,50 @@ const PREF_VERTICAL_COLLAPSE = 'midori.verticaltabs.collapse';
 const PREF_HORIZONTAL_POSITION = 'midori.horizontaltabs.position';
 const PREF_MSIDEBAR_ENABLED = 'midori.msidebar.enabled';
 const PREF_MSIDEBAR_POSITION = 'midori.msidebar.position';
-const PREF_MSIDEBAR_AUTOHIDE = 'midori.msidebar.autohide.enabled';
+const PREF_MSIDEBAR_SITES = 'midori.msidebar.sites.selected';
+const VALID_SIDEBAR_SITE_IDS = [
+  'astian-cloud',
+  'astian-calendar',
+  'astian-contacts',
+  'midorivpn',
+  'github',
+  'discord',
+  'youtube',
+  'twitch',
+  'reddit',
+  'amazon',
+  'whatsapp',
+  'telegram',
+  'spotify',
+  'wikipedia',
+];
+const DEFAULT_SELECTED_SIDEBAR_SITE_IDS = [
+  'astian-cloud',
+  'astian-calendar',
+  'astian-contacts',
+  'midorivpn',
+];
+
+function parseSelectedSidebarSiteIds(value) {
+  if (typeof value !== 'string' || !value) {
+    return [...DEFAULT_SELECTED_SIDEBAR_SITE_IDS];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [...DEFAULT_SELECTED_SIDEBAR_SITE_IDS];
+    const seen = new Set();
+    const out = [];
+    for (const id of parsed) {
+      if (VALID_SIDEBAR_SITE_IDS.includes(id) && !seen.has(id)) {
+        seen.add(id);
+        out.push(id);
+      }
+    }
+    return out;
+  } catch {
+    return [...DEFAULT_SELECTED_SIDEBAR_SITE_IDS];
+  }
+}const PREF_MSIDEBAR_AUTOHIDE = 'midori.msidebar.autohide.enabled';
 const PREF_MSIDEBAR_AUTOHIDE_MODE = 'midori.msidebar.autohide.mode';
 const PREF_HORIZONTAL_AUTOHIDE = 'midori.modblur.tabs.autohide';
 const PREF_SHOW_INACTIVE_TABS = 'midori.modblur.tabs.showWhileInactive';
@@ -43,6 +86,7 @@ const MSIDEBAR_SETUP_PREFS = [
   PREF_HORIZONTAL_POSITION,
   PREF_MSIDEBAR_ENABLED,
   PREF_MSIDEBAR_POSITION,
+  PREF_MSIDEBAR_SITES,
   PREF_MSIDEBAR_AUTOHIDE,
   PREF_MSIDEBAR_AUTOHIDE_MODE,
   PREF_HORIZONTAL_AUTOHIDE,
@@ -292,6 +336,12 @@ class MSidebar extends Page {
     this._bottomTabsAutohideNotice = document.getElementById(
       'bottomTabsAutohideNotice'
     );
+    this._sitesDisabledHint = document.getElementById(
+      'msidebarSitesDisabledHint'
+    );
+    this._siteInputs = Array.from(
+      document.querySelectorAll('input[data-site-id]')
+    );
 
     this._enableCard.addEventListener('click', () => this._selectEnabled(true));
     this._disableCard.addEventListener('click', () => this._selectEnabled(false));
@@ -306,6 +356,11 @@ class MSidebar extends Page {
         if (input.checked) {
           this._selectPosition(input.value);
         }
+      });
+    }
+    for (const input of this._siteInputs) {
+      input.addEventListener('change', () => {
+        this._toggleSite(input.dataset.siteId, input.checked);
       });
     }
     this._sidebarAutohide.addEventListener('change', () => {
@@ -424,6 +479,44 @@ class MSidebar extends Page {
     this._updateLayoutUI();
   }
 
+  _readSelectedSiteIds() {
+    try {
+      return parseSelectedSidebarSiteIds(
+        Services.prefs.getCharPref(PREF_MSIDEBAR_SITES, '')
+      );
+    } catch {
+      return [...DEFAULT_SELECTED_SIDEBAR_SITE_IDS];
+    }
+  }
+
+  _toggleSite(siteId, enabled) {
+    if (!VALID_SIDEBAR_SITE_IDS.includes(siteId)) return;
+    const sidebarEnabled = Services.prefs.getBoolPref(
+      PREF_MSIDEBAR_ENABLED,
+      false
+    );
+    if (enabled && !sidebarEnabled) {
+      Services.prefs.setBoolPref(PREF_MSIDEBAR_ENABLED, true);
+      this._renderEnabled(true);
+    }
+    const current = new Set(this._readSelectedSiteIds());
+    if (enabled) current.add(siteId);
+    else current.delete(siteId);
+    const next = VALID_SIDEBAR_SITE_IDS.filter(id => current.has(id));
+    Services.prefs.setCharPref(PREF_MSIDEBAR_SITES, JSON.stringify(next));
+    for (const input of this._siteInputs) {
+      input.checked = next.includes(input.dataset.siteId);
+    }
+    this._updateAvailability();
+  }
+
+  _syncSitesFromPrefs() {
+    const selected = new Set(this._readSelectedSiteIds());
+    for (const input of this._siteInputs) {
+      input.checked = selected.has(input.dataset.siteId);
+    }
+  }
+
   _updateLayoutUI() {
     const layout = this._getTabLayout();
     const vertical = isVerticalTabLayout(layout);
@@ -456,6 +549,9 @@ class MSidebar extends Page {
     this._verticalTabsAutohideRow.hidden = !availability.verticalTabs;
     this._verticalTabsAutohide.disabled = !availability.verticalTabs;
     this._bottomTabsAutohideNotice.hidden = layout !== 'horizontal-bottom';
+    if (this._sitesDisabledHint) {
+      this._sitesDisabledHint.hidden = sidebarEnabled;
+    }
   }
 
   _syncFromPrefs() {
@@ -492,6 +588,7 @@ class MSidebar extends Page {
       PREF_VERTICAL_COLLAPSE,
       false
     );
+    this._syncSitesFromPrefs();
     this._updateLayoutUI();
     this._updateAvailability();
   }

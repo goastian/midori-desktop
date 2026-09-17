@@ -876,6 +876,117 @@ input[type='checkbox'] {
   transform: none;
 }
 
+.sidebar-sites-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.sidebar-site-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 2px solid var(--setup-border);
+  border-radius: 12px;
+  background: var(--setup-surface);
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.sidebar-site-card:hover {
+  border-color: color-mix(in srgb, var(--setup-accent) 55%, var(--setup-border));
+  transform: translateY(-1px);
+}
+
+.sidebar-site-card:has(input:checked) {
+  border-color: var(--setup-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--setup-accent) 20%, transparent);
+}
+
+.sidebar-site-card:has(input:focus-visible) {
+  outline: 2px solid var(--setup-accent);
+  outline-offset: 2px;
+}
+
+.sidebar-site-card > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.sidebar-site-card::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--setup-border);
+  border-radius: 6px;
+  background: transparent;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.sidebar-site-card:has(input:checked)::after {
+  content: '\2713';
+  display: grid;
+  place-items: center;
+  border-color: var(--setup-accent);
+  background: var(--setup-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sidebar-site-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 9px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(145deg, var(--setup-accent), color-mix(in srgb, var(--setup-accent) 68%, #29c58b));
+}
+
+.sidebar-site-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--setup-surface);
+}
+
+.sidebar-site-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sidebar-site-copy strong {
+  font-size: 12px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-site-copy small {
+  font-size: 11px;
+  line-height: 1.3;
+  opacity: 0.65;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-position-card > input {
   position: absolute;
   width: 1px;
@@ -1258,6 +1369,10 @@ input[type='checkbox'] {
   .tablayout-options {
     grid-template-columns: 1fr;
     max-width: 260px;
+  }
+
+  .sidebar-sites-options {
+    grid-template-columns: 1fr;
   }
 
   .urlbar-order-options {

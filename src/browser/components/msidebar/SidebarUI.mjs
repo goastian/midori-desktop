@@ -36,7 +36,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const PANEL_KEYSET_ID = 'midori-msidebar-panel-shortcuts';
-const FAVICON_FETCH_GAP_MS = 350;
+const FAVICON_FETCH_GAP_MS = 150;
 const SIDEBAR_EDGE_ORDER = 1_000_000;
 
 export function computeSidebarEdgeOrder(position, isRTL = false) {
@@ -1162,6 +1162,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   let panelAreaHiddenByUser = false;
   let preferredDockWidth = 320;
   const faviconCache = new Map();
+  const faviconHostByPanel = new Map();
   const faviconPending = new Set();
   const faviconRetryAt = new Map();
   const faviconQueue = [];
@@ -1600,6 +1601,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     panelNotificationCount.delete(panelId);
     panelStatuses.delete(panelId);
     faviconCache.delete(panelId);
+    faviconHostByPanel.delete(panelId);
     faviconPending.delete(panelId);
     faviconQueued.delete(panelId);
     faviconRetryAt.delete(panelId);
@@ -1732,6 +1734,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     try {
       if (prev.url !== next.url) {
         faviconCache.delete(panelId);
+        faviconHostByPanel.delete(panelId);
         faviconRetryAt.delete(panelId);
       }
     } catch {}
@@ -1767,10 +1770,29 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   function faviconCandidatesForHost(host) {
     const h = (host || '').trim().toLowerCase();
     if (!h) return [];
-    return [`https://${h}/favicon.ico`];
+    return [`https://${h}/favicon.ico`, `https://${h}/apple-touch-icon.png`];
   }
 
-  function loadImageUrl(url, timeoutMs = 3500) {
+  function raceFirstSuccess(tasks) {
+    return new Promise(resolve => {
+      if (!tasks.length) {
+        resolve(null);
+        return;
+      }
+      let pending = tasks.length;
+      for (const task of tasks) {
+        Promise.resolve(task).then(
+          value => resolve(value),
+          () => {
+            pending -= 1;
+            if (pending === 0) resolve(null);
+          }
+        );
+      }
+    });
+  }
+
+  function loadImageUrl(url, timeoutMs = 2000) {
     return new Promise((resolve, reject) => {
       const ImageCtor = win.Image || doc.defaultView?.Image;
       if (!ImageCtor || typeof url !== 'string' || !url) {
@@ -1816,6 +1838,26 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   async function resolveFaviconSpecForPanel(panel) {
     try {
+      const spec = await placesFaviconSpecForPanel(panel);
+      if (spec) return spec;
+    } catch {}
+    let host = '';
+    try {
+      host = new URL(panel?.url || '').hostname || '';
+    } catch {
+      host = safeHostname(panel?.url || '');
+    }
+    const candidates = faviconCandidatesForHost(host);
+    const winner = await raceFirstSuccess([
+      retryPlacesFaviconSpec(panel, host),
+      raceFirstSuccess(candidates.map(u => loadImageUrl(u))),
+    ]);
+    if (winner) return winner;
+    return faviconFallbackForPanel(panel);
+  }
+
+  async function placesFaviconSpecForPanel(panel) {
+    try {
       const pageUri = Services.io.newURI(panel.url);
       const uri = await lazy.PlacesUtils?.favicons?.getFaviconURLForPage?.(pageUri);
       const iconUri = uri?.spec ? uri : null;
@@ -1825,20 +1867,59 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
         if (spec && spec !== defaultFaviconSpec()) return spec;
       }
     } catch {}
-    let host = '';
-    try {
-      host = new URL(panel?.url || '').hostname || '';
-    } catch {
-      host = safeHostname(panel?.url || '');
-    }
-    const candidates = faviconCandidatesForHost(host);
-    for (const u of candidates) {
+    return null;
+  }
+
+  function sleepMs(ms) {
+    return new Promise(resolve => {
       try {
-        await loadImageUrl(u);
-        return u;
+        win.setTimeout(resolve, ms);
+      } catch {
+        resolve();
+      }
+    });
+  }
+
+  async function retryPlacesFaviconSpec(panel, host, attempts = 2, delayMs = 1500) {
+    for (let i = 0; i < attempts; i++) {
+      await sleepMs(delayMs);
+      try {
+        if (!host || hostForFaviconTracking(panel?.url) !== host) return null;
+        const spec = await placesFaviconSpecForPanel(panel);
+        if (spec) return spec;
       } catch {}
     }
-    return faviconFallbackForPanel(panel);
+    return null;
+  }
+
+  function hostForFaviconTracking(url) {
+    try {
+      return new URL(url || '').hostname.toLowerCase();
+    } catch {
+      return safeHostname(url || '');
+    }
+  }
+
+  function refreshPanelFaviconAfterLoad(panel) {
+    const pid = panel?.id;
+    if (!pid) return;
+    const currentHost = hostForFaviconTracking(
+      currentUrlForBrowser(activeBrowser) || panel.url
+    );
+    const knownIcon = faviconCache.get(pid);
+    if (
+      currentHost &&
+      faviconHostByPanel.get(pid) === currentHost &&
+      knownIcon &&
+      knownIcon !== defaultFaviconSpec()
+    ) {
+      const btn = buttonsBox.querySelector(`[midori-msidebar-panel-id="${pid}"]`);
+      if (btn) setPanelButtonIcon(btn, knownIcon);
+      return;
+    }
+    faviconCache.delete(pid);
+    faviconHostByPanel.delete(pid);
+    ensureFavicon(panel, { allowNetwork: true });
   }
 
   function setPanelButtonIcon(btn, spec) {
@@ -1881,8 +1962,18 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     faviconPending.add(pid);
     resolveFaviconSpecForPanel(panel).then((spec) => {
       faviconPending.delete(pid);
+      const live = store.panels.find(item => item?.id === pid);
+      if (!live || hostForFaviconTracking(live.url) !== hostForFaviconTracking(panel.url)) {
+        if (faviconQueue.length && !faviconPumpTimer) {
+          faviconPumpTimer = win.setTimeout(pumpFaviconQueue, FAVICON_FETCH_GAP_MS);
+        }
+        return;
+      }
       const resolved = spec || defaultFaviconSpec();
       faviconCache.set(pid, resolved);
+      if (resolved !== defaultFaviconSpec()) {
+        faviconHostByPanel.set(pid, hostForFaviconTracking(panel.url));
+      }
       persistPanelFavicon(panel, resolved);
       const btn = buttonsBox.querySelector(`[midori-msidebar-panel-id="${pid}"]`);
       if (btn) setPanelButtonIcon(btn, resolved);
@@ -1908,6 +1999,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     if (!pid) return;
     if (panel?.favicon?.mode === 'static' && panel?.favicon?.value) {
       faviconCache.set(pid, panel.favicon.value);
+      faviconHostByPanel.set(pid, hostForFaviconTracking(panel.url));
       const btn = buttonsBox.querySelector(`[midori-msidebar-panel-id="${pid}"]`);
       if (btn) setPanelButtonIcon(btn, panel.favicon.value);
       return;
@@ -1920,6 +2012,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     const persisted = sanitizeUrl(store?.last?.favicons?.[pid]);
     if (persisted) {
       faviconCache.set(pid, persisted);
+      faviconHostByPanel.set(pid, hostForFaviconTracking(panel.url));
       const btn = buttonsBox.querySelector(`[midori-msidebar-panel-id="${pid}"]`);
       if (btn) setPanelButtonIcon(btn, persisted);
       return;
@@ -2218,8 +2311,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       rememberPanelUrl(panel, browserEl);
       updateActivePanelTitle(panel);
       applyPanelSelector(panel, browserEl);
-      faviconCache.delete(panel.id);
-      ensureFavicon(panel, { allowNetwork: true });
+      refreshPanelFaviconAfterLoad(panel);
     }, true);
     activeBrowser.addEventListener(
       'pageshow',

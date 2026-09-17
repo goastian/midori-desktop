@@ -16,6 +16,7 @@ EXTRA_JS_MODULES.msidebar += [
     "SidebarModel.mjs",
     "SidebarPanelHost.mjs",
     "SidebarPrefs.mjs",
+    "SidebarSites.mjs",
     "SidebarStore.mjs",
     "SidebarUI.mjs",
 ]

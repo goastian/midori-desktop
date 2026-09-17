@@ -9,4 +9,5 @@ browser.jar:
     builtin-addons/midori-newtab/omni-static-actions.json (omni-static-actions.json)
     builtin-addons/midori-newtab/omni-ui.shared.json (omni-ui.shared.json)
     builtin-addons/midori-newtab/assets/ (assets/*)
+    builtin-addons/midori-newtab/experiment-apis/ (experiment-apis/*)
     builtin-addons/midori-newtab/icons/ (icons/*)

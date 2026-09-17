@@ -20,6 +20,7 @@ export const PREF_SHORTCUT_COMMAND_PALETTE = 'midori.msidebar.shortcut.commandPa
 export const PREF_RAIL_EXPANDED = 'midori.msidebar.rail.expanded';
 export const PREF_PRESET = 'midori.msidebar.preset';
 export const PREF_PRESET_RESTORE_SNAPSHOT = 'midori.msidebar.preset.restoreSnapshot';
+export const PREF_SELECTED_SITES = 'midori.msidebar.sites.selected';
 
 export const POSITION_LEFT = 'left';
 export const POSITION_RIGHT = 'right';

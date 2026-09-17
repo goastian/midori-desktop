@@ -298,6 +298,140 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
           </div>
         </fieldset>
 
+        <fieldset class="setup-control-group" id="msidebarSitesGroup">
+          <legend data-l10n-id="welcome-dialog-msidebar-sites"></legend>
+          <p class="setup-group-description" data-l10n-id="welcome-dialog-msidebar-sites-desc"></p>
+          <p class="setup-group-description" id="msidebarSitesDisabledHint" data-l10n-id="welcome-dialog-msidebar-sites-disabled-hint" hidden></p>
+
+          <div class="sidebar-sites-options" id="msidebarSitesOptions">
+            <label class="sidebar-site-card" for="msidebarSiteAstianCloud">
+              <input type="checkbox" id="msidebarSiteAstianCloud" data-site-id="astian-cloud" />
+              <span class="sidebar-site-avatar" aria-hidden="true">A<img src="chrome://browser/content/setup/icons/astian-cloud.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Astian Cloud</strong>
+                <small>cloud.astian.org</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteAstianCalendar">
+              <input type="checkbox" id="msidebarSiteAstianCalendar" data-site-id="astian-calendar" />
+              <span class="sidebar-site-avatar" aria-hidden="true">C<img src="chrome://browser/content/setup/icons/astian-calendar.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Astian Calendar</strong>
+                <small>calendar.astian.org</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteAstianContacts">
+              <input type="checkbox" id="msidebarSiteAstianContacts" data-site-id="astian-contacts" />
+              <span class="sidebar-site-avatar" aria-hidden="true">C<img src="chrome://browser/content/setup/icons/astian-contacts.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Astian Contacts</strong>
+                <small>contacts.astian.org</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteMidoriVPN">
+              <input type="checkbox" id="msidebarSiteMidoriVPN" data-site-id="midorivpn" />
+              <span class="sidebar-site-avatar" aria-hidden="true">V<img src="chrome://browser/content/setup/icons/midorivpn.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>MidoriVPN</strong>
+                <small>vpn.astian.org</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteGithub">
+              <input type="checkbox" id="msidebarSiteGithub" data-site-id="github" />
+              <span class="sidebar-site-avatar" aria-hidden="true">G<img src="chrome://browser/content/setup/icons/github.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>GitHub</strong>
+                <small>github.com</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteDiscord">
+              <input type="checkbox" id="msidebarSiteDiscord" data-site-id="discord" />
+              <span class="sidebar-site-avatar" aria-hidden="true">D<img src="chrome://browser/content/setup/icons/discord.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Discord</strong>
+                <small>discord.com</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteYoutube">
+              <input type="checkbox" id="msidebarSiteYoutube" data-site-id="youtube" />
+              <span class="sidebar-site-avatar" aria-hidden="true">Y<img src="chrome://browser/content/setup/icons/youtube.png" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>YouTube</strong>
+                <small>youtube.com</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteTwitch">
+              <input type="checkbox" id="msidebarSiteTwitch" data-site-id="twitch" />
+              <span class="sidebar-site-avatar" aria-hidden="true">T<img src="chrome://browser/content/setup/icons/twitch.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Twitch</strong>
+                <small>twitch.tv</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteReddit">
+              <input type="checkbox" id="msidebarSiteReddit" data-site-id="reddit" />
+              <span class="sidebar-site-avatar" aria-hidden="true">R<img src="chrome://browser/content/setup/icons/reddit.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Reddit</strong>
+                <small>reddit.com</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteAmazon">
+              <input type="checkbox" id="msidebarSiteAmazon" data-site-id="amazon" />
+              <span class="sidebar-site-avatar" aria-hidden="true">A<img src="chrome://browser/content/setup/icons/amazon.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Amazon</strong>
+                <small>amazon.com</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteWhatsapp">
+              <input type="checkbox" id="msidebarSiteWhatsapp" data-site-id="whatsapp" />
+              <span class="sidebar-site-avatar" aria-hidden="true">W<img src="chrome://browser/content/setup/icons/whatsapp.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>WhatsApp</strong>
+                <small>web.whatsapp.com</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteTelegram">
+              <input type="checkbox" id="msidebarSiteTelegram" data-site-id="telegram" />
+              <span class="sidebar-site-avatar" aria-hidden="true">T<img src="chrome://browser/content/setup/icons/telegram.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Telegram</strong>
+                <small>web.telegram.org</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteSpotify">
+              <input type="checkbox" id="msidebarSiteSpotify" data-site-id="spotify" />
+              <span class="sidebar-site-avatar" aria-hidden="true">S<img src="chrome://browser/content/setup/icons/spotify.svg" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Spotify</strong>
+                <small>open.spotify.com</small>
+              </span>
+            </label>
+
+            <label class="sidebar-site-card" for="msidebarSiteWikipedia">
+              <input type="checkbox" id="msidebarSiteWikipedia" data-site-id="wikipedia" />
+              <span class="sidebar-site-avatar" aria-hidden="true">W<img src="chrome://browser/content/setup/icons/wikipedia.png" alt="" loading="lazy" /></span>
+              <span class="sidebar-site-copy">
+                <strong>Wikipedia</strong>
+                <small>wikipedia.org</small>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
         <fieldset class="setup-control-group" id="autohideGroup">
           <legend data-l10n-id="welcome-dialog-autohide"></legend>
           <p class="setup-group-description" data-l10n-id="welcome-dialog-autohide-desc"></p>

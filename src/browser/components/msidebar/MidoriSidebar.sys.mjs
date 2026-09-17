@@ -1,6 +1,12 @@
 import * as Prefs from 'resource:///modules/msidebar/SidebarPrefs.mjs';
 import { loadStore, saveStore } from 'resource:///modules/msidebar/SidebarStore.mjs';
 import { createPanel, validateStore } from 'resource:///modules/msidebar/SidebarModel.mjs';
+import {
+  findSiteForPanelUrl,
+  getDanglingPanelIds,
+  getMissingSitesForPanels,
+  parseSelectedSiteIds,
+} from 'resource:///modules/msidebar/SidebarSites.mjs';
 import { createSidebarUI } from 'resource:///modules/msidebar/SidebarUI.mjs';
 import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
 
@@ -45,6 +51,7 @@ const OBSERVED_PREFS = [
   Prefs.PREF_RAIL_EXPANDED,
   Prefs.PREF_PRESET,
   Prefs.PREF_PRESET_RESTORE_SNAPSHOT,
+  Prefs.PREF_SELECTED_SITES,
   Prefs.PREF_DEBUG,
   PREF_VERTICAL_TABS,
   PREF_VERTICAL_POSITION,
@@ -209,6 +216,7 @@ export const MidoriSidebar = {
     const animationsEnabled = Prefs.getAnimationsEnabled();
 
     if (enabled) this._ensureSeededDefaultPanels(win);
+    if (enabled) this._syncCatalogSites(win);
     ui.setPosition(position);
     ui.setCssWidth(width);
     ui.setAnimated?.(animationsEnabled);
@@ -231,15 +239,12 @@ export const MidoriSidebar = {
     // Early exit if store already has panels (schema may vary v1/v2, be defensive)
     if (store.panels?.length > 0) return;
 
-    const defaults = [
-      { url: 'https://cloud.astian.org', title: 'Astian Cloud' },
-      { url: 'https://calendar.astian.org', title: 'Astian Calendar' },
-      { url: 'https://contacts.astian.org', title: 'Astian Contacts' },
-    ];
+    const selected = this._getSelectedSiteIds();
+    const missing = getMissingSitesForPanels([], selected);
 
     const seeded = { ...store, panels: Array.isArray(store.panels) ? [...store.panels] : [], last: { ...(store.last || {}) } };
-    for (const d of defaults) {
-      const p = createPanel({ url: d.url, title: d.title });
+    for (const site of missing) {
+      const p = createPanel({ url: site.url, title: site.title });
       if (!p) continue;
       p.loadOnStartup = false;
       seeded.panels.push(p);
@@ -254,6 +259,66 @@ export const MidoriSidebar = {
     try {
       Services.prefs.setBoolPref(PREF_SEEDED_DEFAULT_PANELS, true);
     } catch {}
+  },
+
+  _getSelectedSiteIds() {
+    try {
+      return parseSelectedSiteIds(
+        Services.prefs.getCharPref(Prefs.PREF_SELECTED_SITES, '')
+      );
+    } catch {
+      return parseSelectedSiteIds('');
+    }
+  },
+
+  _applyCatalogIcon(panel) {
+    const site = findSiteForPanelUrl(panel?.url);
+    if (!site?.icon || panel?.favicon?.mode === 'static') return false;
+    panel.favicon = { mode: 'static', value: site.icon };
+    return true;
+  },
+
+  _syncCatalogSites(win) {
+    const store = this._stores.get(win);
+    const ui = this._uis.get(win);
+    if (!store || !ui) return;
+
+    const selected = this._getSelectedSiteIds();
+    const missing = getMissingSitesForPanels(store.panels, selected);
+    const dangling = getDanglingPanelIds(store.panels, selected);
+    const persistedFavicons = store.last?.favicons || {};
+    let upgraded = false;
+    for (const panel of store.panels) {
+      if (dangling.includes(panel?.id)) continue;
+      if (persistedFavicons[panel?.id]) continue;
+      if (this._applyCatalogIcon(panel)) upgraded = true;
+    }
+    if (missing.length === 0 && dangling.length === 0 && !upgraded) return;
+
+    const next = {
+      ...store,
+      panels: Array.isArray(store.panels) ? [...store.panels] : [],
+      last: { ...(store.last || {}) },
+    };
+    if (dangling.length > 0) {
+      const doomed = new Set(dangling);
+      next.panels = next.panels.filter(panel => !doomed.has(panel?.id));
+      if (next.last?.selectedPanelId && doomed.has(next.last.selectedPanelId)) {
+        next.last = { ...next.last, selectedPanelId: next.panels[0]?.id || null };
+      }
+    }
+    for (const site of missing) {
+      const p = createPanel({ url: site.url, title: site.title });
+      if (!p) continue;
+      p.loadOnStartup = false;
+      this._applyCatalogIcon(p);
+      if (!next.panels.some(panel => panel?.url === p.url)) next.panels.push(p);
+    }
+
+    const validated = validateStore(next, { includeTemporary: true });
+    this._stores.set(win, validated);
+    ui.setStore(validated);
+    this._scheduleSave(win, validated);
   },
 
   _scheduleSave(win, nextStore) {

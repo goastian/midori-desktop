@@ -6,5 +6,6 @@ browser.jar:
   content/browser/setup/SetupCustomizationPolicy.sys.mjs (SetupCustomizationPolicy.sys.mjs)
   content/browser/setup/migrate.light.svg   (migrate.light.svg)
   content/browser/setup/migrate.dark.svg    (migrate.dark.svg)
+  content/browser/setup/icons/               (icons/*)
   content/browser/setup/sidebar.vis.svg     (sidebar.vis.svg)
   content/browser/setup/vertical.vis.svg    (vertical.vis.svg)
