@@ -1425,6 +1425,77 @@ input[type='checkbox'] {
 }
 
 /* ====================================================================
+   ASTIAN ACCOUNT PAGE
+   ==================================================================== */
+
+.account-benefits {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 520px);
+  margin: 8px 0 20px;
+  animation: fadeIn 0.5s ease-out 0.25s backwards;
+}
+
+.account-benefit {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--setup-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--setup-surface) 92%, transparent);
+  text-align: start;
+  animation: fadeInUp 0.5s ease-out backwards;
+}
+
+.account-benefit:nth-child(1) {
+  animation-delay: 0.3s;
+}
+.account-benefit:nth-child(2) {
+  animation-delay: 0.38s;
+}
+.account-benefit:nth-child(3) {
+  animation-delay: 0.46s;
+}
+
+.account-benefit-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(145deg, var(--setup-accent), color-mix(in srgb, var(--setup-accent) 68%, #29c58b));
+  flex-shrink: 0;
+}
+
+.account-benefit-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-benefit-copy h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: start;
+  animation: none;
+}
+
+.account-benefit-copy p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: start;
+  opacity: 0.72;
+  animation: none;
+}
+
+/* ====================================================================
    FINAL WELCOME PAGE
    ==================================================================== */
 

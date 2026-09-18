@@ -78,6 +78,9 @@ const PREF_MSIDEBAR_AUTOHIDE_MODE = 'midori.msidebar.autohide.mode';
 const PREF_HORIZONTAL_AUTOHIDE = 'midori.modblur.tabs.autohide';
 const PREF_SHOW_INACTIVE_TABS = 'midori.modblur.tabs.showWhileInactive';
 const MIDORI_NEWTAB_EXTENSION_ID = 'midoritabs@astian.org';
+const ASTIAN_ACCOUNT_BASE_URL = 'https://accounts.astian.org/';
+const ASTIAN_ACCOUNT_LOGIN_URL = 'https://accounts.astian.org/';
+const ASTIAN_ACCOUNT_REGISTER_URL = 'https://accounts.astian.org/';
 const MSIDEBAR_SETUP_PREFS = [
   PREF_ARC_MODE,
   PREF_VERTICAL_TABS,
@@ -134,6 +137,28 @@ class Page {
 
   show() {
     this.element.classList.add('visible');
+  }
+}
+
+/** Controls optional Astian Account sign-in. */
+class Account extends Page {
+  constructor(id) {
+    super(id);
+
+    document.getElementById('accountLogin').addEventListener('click', () => {
+      this._openAccountUrl(ASTIAN_ACCOUNT_LOGIN_URL);
+    });
+    document.getElementById('accountRegister').addEventListener('click', () => {
+      this._openAccountUrl(ASTIAN_ACCOUNT_REGISTER_URL);
+    });
+  }
+
+  _openAccountUrl(url) {
+    try {
+      window.open(url, '_blank', 'noopener');
+    } catch (error) {
+      console.error('Failed to open Astian Account from setup:', error);
+    }
   }
 }
 
@@ -676,6 +701,7 @@ class Pages {
 void (async () => {
   new Pages([
     new Page('welcome'),
+    new Account('account'),
     new Import('import'),
     new ColorTheme('color'),
     new TabLayout('tablayout'),

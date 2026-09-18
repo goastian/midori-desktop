@@ -6,6 +6,18 @@ welcome-dialog-welcome = Welcome to { -brand-short-name }
 welcome-dialog-welcome-subtext = Let's get you setup
 welcome-dialog-get-started = Get started
 
+welcome-dialog-account = Connect your Astian Account
+welcome-dialog-account-subtext = Optional. Sign in or create a free account to use Astian and Midori services with a single login.
+welcome-dialog-account-benefit-sync = One login for everything
+welcome-dialog-account-benefit-sync-desc = Use the same account across Midori and Astian services as new integrations arrive.
+welcome-dialog-account-benefit-services = Access Astian services
+welcome-dialog-account-benefit-services-desc = Connect to Astian Cloud, MidoriVPN, Calendar, Contacts, and more.
+welcome-dialog-account-benefit-privacy = Private by default
+welcome-dialog-account-benefit-privacy-desc = No account is required to browse. Signing in is always your choice.
+welcome-dialog-account-login = Log in
+welcome-dialog-account-register = Create account
+welcome-dialog-account-skip = Continue without an account
+
 welcome-dialog-skip = Not Now
 welcome-dialog-back = Back
 

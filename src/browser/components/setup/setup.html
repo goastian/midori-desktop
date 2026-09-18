@@ -36,6 +36,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
       <div class="step-dot"></div>
       <div class="step-dot"></div>
       <div class="step-dot"></div>
+      <div class="step-dot"></div>
     </div>
 
     <div class="page" id="welcome">
@@ -49,6 +50,57 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
         class="primary"
         data-l10n-id="welcome-dialog-get-started"
       ></button>
+    </div>
+
+    <div class="page" id="account">
+      <img class="icon" src="chrome://branding/content/about-logo.png" />
+      <h2 data-l10n-id="welcome-dialog-account"></h2>
+      <p data-l10n-id="welcome-dialog-account-subtext"></p>
+
+      <div class="account-benefits">
+        <div class="account-benefit">
+          <span class="account-benefit-icon" aria-hidden="true">⇄</span>
+          <div class="account-benefit-copy">
+            <h3 data-l10n-id="welcome-dialog-account-benefit-sync"></h3>
+            <p data-l10n-id="welcome-dialog-account-benefit-sync-desc"></p>
+          </div>
+        </div>
+        <div class="account-benefit">
+          <span class="account-benefit-icon" aria-hidden="true">◈</span>
+          <div class="account-benefit-copy">
+            <h3 data-l10n-id="welcome-dialog-account-benefit-services"></h3>
+            <p data-l10n-id="welcome-dialog-account-benefit-services-desc"></p>
+          </div>
+        </div>
+        <div class="account-benefit">
+          <span class="account-benefit-icon" aria-hidden="true">✓</span>
+          <div class="account-benefit-copy">
+            <h3 data-l10n-id="welcome-dialog-account-benefit-privacy"></h3>
+            <p data-l10n-id="welcome-dialog-account-benefit-privacy-desc"></p>
+          </div>
+        </div>
+      </div>
+
+      <hbox>
+        <button
+          id="accountBack"
+          data-l10n-id="welcome-dialog-back"
+        ></button>
+        <button
+          id="accountLogin"
+          class="primary"
+          data-l10n-id="welcome-dialog-account-login"
+        ></button>
+        <button
+          id="accountRegister"
+          data-l10n-id="welcome-dialog-account-register"
+        ></button>
+        <button
+          class="text-link"
+          id="accountNext"
+          data-l10n-id="welcome-dialog-account-skip"
+        ></button>
+      </hbox>
     </div>
 
     <div class="page" id="import">
