@@ -106,7 +106,7 @@ Version:        $version
 Release:        1%{?dist}
 Summary:        Midori Browser
 License:        MPL-2.0
-URL:            https://astian.org/midori-en
+URL:            https://astian.org/category/midori-browser/
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      $rpm_arch
 Requires:       gtk3, nss, pulseaudio-libs
