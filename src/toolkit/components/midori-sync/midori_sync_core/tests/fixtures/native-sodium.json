@@ -1,0 +1,355 @@
+{
+    "generator": "PHP sodium; fixed nonces and all keys are public test fixtures",
+    "master_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+    "scope": [
+        "https://sync.example.invalid/",
+        "https://accounts.example.invalid/",
+        "fixture-usuario-ñ"
+    ],
+    "plaintext": "{\"title\":\"Prueba ñ\",\"url\":\"https://example.invalid/\"}",
+    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+    "salt": "EBESExQVFhcYGRobHB0eHw==",
+    "passphrase": "Synthetic compatibility fixture, not a user secret",
+    "records": {
+        "bookmarks": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAACWJvb2ttYXJrcwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "bookmarks",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "cFBUGfd4/edy0VDeX3AO/VXvsAjqAO/5707C0e75zYOGJhnEQcIWt0UaVdbDubvCBnXp847dlR4vSsez+i2nM9AojnSReQ=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAJYm9va21hcmtzAAAAC3JlZ2lzdHJvLcOxAAAAJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMQAAABA5MDA3MTk5MjU0NzQwOTkz",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "bookmarks",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "45y9boBx9A4wAzqvOg/VksKWPk6ZHSFX4J+r2k+AIV3LfCHkNItWRExKPxxf+8kXm33t9gfO22C8odJi4k4qJgDj8hkFHg=="
+                }
+            }
+        },
+        "history": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAAB2hpc3RvcnkAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "history",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "wOjsIQPyfVaym+EXVmF0Pwx7JfghaXxbmeiCSMnZM7GxPYRom4o3dAsFOPSL1C2B5Qvqt78DZYnGSiYk0KjNj1V8iqtF/Q=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAHaGlzdG9yeQAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "history",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "KzNcKVIIDGcd40HZe0QBX1CedQFrKgiHQmxp7qypeqMUUIcyT4jByHX/67xMeLBrLQJBwTbJ4F21k77/h+DOkevn8T6U8g=="
+                }
+            }
+        },
+        "tabs": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAABHRhYnMAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "tabs",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "A3sEHzieqzojFAmlydrSpVtSYkC7tBN67Nb7bPT+IFNdlAHAnEfqOdFFL0k2g4V5PfYPr7btmi6fD07b4Yz+yXmoouoGAw=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAEdGFicwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "tabs",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "H2sNkPrLUpxnRkei7pkOPcdi470aY9yQbpKFkJJ5mAYwqFqpGt2otlzx88AEh8CanJERqC13yYVnURrZ+F2naa2xPpfVIQ=="
+                }
+            }
+        },
+        "browser-settings": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAAEGJyb3dzZXItc2V0dGluZ3MAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "browser-settings",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "rREwvycOPKTDvhFF+vHYtw+qkEXiN7zlf0OURMT4yarwZBZQaHSQCyAsvXWHA2z7yA8SUqGeRKn+ALwfsBotrfnOJd/IZw=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAQYnJvd3Nlci1zZXR0aW5ncwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "browser-settings",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "Vx3nG+sVj6Ojnj/CSt4BdVS0E7L1eAtsMSq9bcfLfbwn8MOGfCs6kdRQhZRLRY3NsJcLtUbQQjz4o4WGvXbA15qQAqOb5Q=="
+                }
+            }
+        },
+        "midori-tab": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAACm1pZG9yaS10YWIAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "midori-tab",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "S5h4UYRE3gvH/g34wMI972W3JLCOMzDTkvd8f4Q0IbgfF3WqK5VamPT6YMVrtW2Fk7lcDU/vbqDV2jrruTMdszcIUcZ1zA=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAKbWlkb3JpLXRhYgAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "midori-tab",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "rB7yyMjtZcMs8E201vnXC950OgOGq6pFaBFd/m8F2ZYOlsKE5C6D4SeyAifuKNPvwCNByFrZIvyndY5XuWl/VZMltg779Q=="
+                }
+            }
+        },
+        "midori-privacy": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAADm1pZG9yaS1wcml2YWN5AAAAC3JlZ2lzdHJvLcOxAAAAJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMQAAABA5MDA3MTk5MjU0NzQwOTkz",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "midori-privacy",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "LQEnaDYEa9y89te9y6pASXdt5nZR/Bd3eJLZfXAa0VrPVHxLyya/mGN3c6VfEtlhqTfqgx49jYYeOUHy4YAbEeRmmV5NhA=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAObWlkb3JpLXByaXZhY3kAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "midori-privacy",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "cyqCQmaR50PI4gGqpX5hc5did6l6z01PX2pK5tLqn6lyBtL296AOLRwuz6Bo6FPbNrk9lxulqGKwbY0O9NYCMwXjSIXsvw=="
+                }
+            }
+        },
+        "devices": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAAB2RldmljZXMAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "devices",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "XBc23jQks0umik5jlPU5la60EusQbFpzm3y+z7+4MakqJ1UPunBlKtBAE0s9QG+wzhVFaEOI7dLwVWbDIBbuFhhe8MdAlA=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAHZGV2aWNlcwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "devices",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "wy8tvxQhbAECNRYxy+I77r/IxrS7C0N0N98vH28LHTJnleBBAtMHdJDN7v4RV5wRFAnzJwSGiXlDshZGQtA11MulJpoVmw=="
+                }
+            }
+        },
+        "passwords": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAACXBhc3N3b3JkcwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "passwords",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "ZmNM19AkN7GveEC+Gdh7ITGgT8d4hrScgqWLYrtJecwkQ+Hte3xzKIr7axz2zS8XN5N9TSx+SRwugdiKaN80GNwk7RxrJA=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAJcGFzc3dvcmRzAAAAC3JlZ2lzdHJvLcOxAAAAJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMQAAABA5MDA3MTk5MjU0NzQwOTkz",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "passwords",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "XIAbTR391D3L1/PofmK4ANfahFK2dvv8WJWEUNehTjknpHp/tlxJy82YkfL5LJK8VuI3k4n1b8fhhVHDENxNJmec+VS+zQ=="
+                }
+            }
+        },
+        "link": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAABGxpbmsAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "link",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "P1DNkFJs27B0lmyL7ZJHSlDa+W39+NqjHKDLUL4f7eAy590hxoHesairnslYdAqH+NoSSEqTFGoawfZJAPr41KbfBRrm/w=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAEbGluawAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "link",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "Jsi5AklOZ5kDyMdVJxzZSbYicQEFhf3+lSaqCPhl+wrc8t/oSZ6qG/JQikm7xdsZwbA7+qRMFcxodqQUU/IDpzrDJbVIqw=="
+                }
+            }
+        }
+    },
+    "bundle_aad": "TWlkb3JpU3luYwBidW5kbGUAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAAKYXJnb24yaWQxMwABAAAAAAADAAAAAQAAABAQERITFBUWFxgZGhscHR4f",
+    "bundle": {
+        "bundle_version": 2,
+        "crypto_version": 2,
+        "key_id": "ICEiIyQlJicoKSorLC0uLw",
+        "kdf": {
+            "algorithm": "argon2id13",
+            "memory_kib": 65536,
+            "iterations": 3,
+            "parallelism": 1
+        },
+        "salt": "EBESExQVFhcYGRobHB0eHw==",
+        "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+        "ciphertext": "XtRVTyjTJk6rbvi0Ns5zlIBW9wYxsgpVAEW0AsY/tWtFLFIvahPpSu424bjtHpL+"
+    }
+}

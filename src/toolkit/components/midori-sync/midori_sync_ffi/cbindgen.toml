@@ -1,0 +1,12 @@
+language = "C++"
+include_guard = "MidoriSyncFFI_h"
+usize_is_size_t = true
+documentation = false
+no_includes = true
+sys_includes = ["stddef.h", "stdint.h"]
+autogen_warning = "/* Generated from midori_sync_ffi/src/lib.rs with cbindgen. */"
+header = """
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+"""

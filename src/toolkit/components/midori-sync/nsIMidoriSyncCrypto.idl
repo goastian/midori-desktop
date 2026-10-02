@@ -1,0 +1,49 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+[scriptable, uuid(4c6f7564-aa52-43a0-be30-d55baf46c535)]
+interface nsIMidoriSyncCrypto : nsISupports
+{
+  [implicit_jscontext, must_use]
+  Promise generateNativeKey(in AUTF8String accountScope);
+
+  [implicit_jscontext, must_use]
+  Promise recoverNativeKey(in AUTF8String accountScope,
+                           in Array<uint8_t> passphrase, in AUTF8String bundle);
+
+  [implicit_jscontext, must_use]
+  Promise nativeKeyId(in unsigned long keyId);
+
+  const unsigned long PURPOSE_RECORD = 0;
+  const unsigned long PURPOSE_LOCAL = 1;
+
+  [implicit_jscontext, must_use]
+  Promise sealNative(in unsigned long keyId, in unsigned long purpose,
+                     in AUTF8String context, in Array<uint8_t> plaintext);
+
+  [implicit_jscontext, must_use]
+  Promise openNative(in unsigned long keyId, in unsigned long purpose,
+                     in AUTF8String expected, in AUTF8String envelope);
+
+  [implicit_jscontext, must_use]
+  Promise wrapNativeKey(in unsigned long keyId, in Array<uint8_t> passphrase);
+
+  [implicit_jscontext, must_use]
+  Promise forgetKey(in unsigned long keyId);
+
+  [implicit_jscontext, must_use]
+  Promise processBookmark(in Array<uint8_t> request);
+
+  [implicit_jscontext, must_use]
+  Promise processHistory(in Array<uint8_t> request);
+
+  void setHistoryTitle(in AUTF8String url, in AString title);
+
+  [implicit_jscontext, must_use]
+  Promise processPassword(in Array<uint8_t> request);
+
+  void close();
+};
