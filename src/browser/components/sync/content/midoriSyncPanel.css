@@ -1,0 +1,149 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#midori-sync-button {
+  list-style-image: url("chrome://browser/content/sync/sync.svg");
+}
+
+#midori-sync-panel .midori-sync-body {
+  box-sizing: border-box;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--panel-color);
+}
+
+#midori-sync-panel h2,
+#midori-sync-panel p {
+  margin: 0;
+}
+
+#midori-sync-panel h2 {
+  font-size: 1.2em;
+}
+
+#midori-sync-panel .midori-sync-server {
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+#midori-sync-panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#midori-sync-panel .midori-sync-account {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#midori-sync-panel .midori-link-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#midori-sync-panel [hidden] {
+  display: none !important;
+}
+
+#midori-sync-panel input,
+#midori-sync-panel textarea,
+#midori-sync-panel select,
+#midori-sync-panel button {
+  box-sizing: border-box;
+  min-height: 32px;
+  margin: 0;
+  font: inherit;
+}
+
+#midori-sync-panel input,
+#midori-sync-panel textarea,
+#midori-sync-panel select {
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--input-color, inherit);
+  background: var(--input-bgcolor, Field);
+  border: 1px solid var(--input-border-color, ButtonBorder);
+  border-radius: 4px;
+}
+
+#midori-sync-panel input[type="checkbox"] {
+  width: auto;
+  min-height: auto;
+  align-self: start;
+}
+
+#midori-sync-generated-code {
+  resize: none;
+  font-family: monospace;
+}
+
+#midori-sync-panel .midori-sync-actions {
+  display: flex;
+  justify-content: end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#midori-sync-remote-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#midori-sync-remote-tabs ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+#midori-sync-remote-tabs li button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#midori-sync-panel .midori-link-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+
+#midori-sync-panel .midori-link-library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+#midori-sync-panel .midori-link-library-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+#midori-sync-panel [role="status"] {
+  line-height: 1.4;
+}

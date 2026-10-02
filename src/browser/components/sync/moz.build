@@ -1,0 +1,57 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+DIRS += ["/toolkit/components/midori-sync"]
+
+EXTRA_JS_MODULES += [
+    "MidoriLinkAssociations.sys.mjs",
+    "MidoriLinkClient.sys.mjs",
+    "MidoriLinkLibrary.sys.mjs",
+    "MidoriLinkLibraryPanel.sys.mjs",
+    "MidoriLinkLocalStore.sys.mjs",
+    "MidoriLinkPanel.sys.mjs",
+    "MidoriLinkPendingPanel.sys.mjs",
+    "MidoriLinkQueue.sys.mjs",
+    "MidoriLinkScheduler.sys.mjs",
+    "MidoriSyncAccount.sys.mjs",
+    "MidoriSyncBookmarks.sys.mjs",
+    "MidoriSyncBookmarkTracker.sys.mjs",
+    "MidoriSyncCollection.sys.mjs",
+    "MidoriSyncConnection.sys.mjs",
+    "MidoriSyncDataPanel.sys.mjs",
+    "MidoriSyncDisconnect.sys.mjs",
+    "MidoriSyncHints.sys.mjs",
+    "MidoriSyncHistory.sys.mjs",
+    "MidoriSyncHistoryTracker.sys.mjs",
+    "MidoriSyncIndex.sys.mjs",
+    "MidoriSyncKeys.sys.mjs",
+    "MidoriSyncKeysPanel.sys.mjs",
+    "MidoriSyncLocalCodec.sys.mjs",
+    "MidoriSyncNativeKeys.sys.mjs",
+    "MidoriSyncNotifications.sys.mjs",
+    "MidoriSyncOidc.sys.mjs",
+    "MidoriSyncPanel.sys.mjs",
+    "MidoriSyncPasswords.sys.mjs",
+    "MidoriSyncPasswordTracker.sys.mjs",
+    "MidoriSyncPowerPolicy.sys.mjs",
+    "MidoriSyncPreferences.sys.mjs",
+    "MidoriSyncProtocol.sys.mjs",
+    "MidoriSyncScheduler.sys.mjs",
+    "MidoriSyncSecretStore.sys.mjs",
+    "MidoriSyncServerConfig.sys.mjs",
+    "MidoriSyncService.sys.mjs",
+    "MidoriSyncStore.sys.mjs",
+    "MidoriSyncTabs.sys.mjs",
+    "MidoriSyncTransport.sys.mjs",
+    "MidoriSyncVault.sys.mjs",
+]
+
+JAR_MANIFESTS += ["jar.mn"]
+
+XPCSHELL_TESTS_MANIFESTS += [
+    "test/integration/xpcshell.toml",
+    "test/unit/xpcshell.toml",
+]
+
+BROWSER_CHROME_MANIFESTS += ["test/browser/browser.toml"]
