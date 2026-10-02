@@ -1,0 +1,280 @@
+--- a/toolkit/components/places/Bookmarks.sys.mjs
++++ b/toolkit/components/places/Bookmarks.sys.mjs
+@@ -129,6 +129,8 @@
+   // be removed.  Do not rely on this, rather use the tagging service API.
+   tagsGuid: "tags________",
+ 
++  midoriConditionalVersion: 1,
++
+   /**
+    * The GUIDs of the user content root folders that we support, for easy access
+    * as a set.
+@@ -271,7 +273,8 @@
+    *   bookmark.
+    * @throws If the arguments are invalid.
+    */
+-  insert(info) {
++  insert(info, options = {}) {
++    const midoriCondition = captureMidoriCondition(info?.guid, options, "insert");
+     let now = new Date();
+     let addedTime = (info && info.dateAdded) || now;
+     let modTime = addedTime;
+@@ -323,7 +326,7 @@
+         insertInfo.index = parent._childCount;
+       }
+ 
+-      let item = await insertBookmark(insertInfo, parent);
++      let item = await insertBookmark(insertInfo, parent, midoriCondition);
+       let itemDetailMap = await getBookmarkDetailMap([item.guid]);
+       let itemDetail = itemDetailMap.get(item.guid);
+ 
+@@ -728,7 +731,8 @@
+    * update the given bookmark.
+    * @throws If the arguments are invalid.
+    */
+-  update(info) {
++  update(info, options = {}) {
++    const midoriCondition = captureMidoriCondition(info?.guid, options, "update");
+     // The info object is first validated here to ensure it's consistent, then
+     // it's compared to the existing item to remove any properties that don't
+     // need to be updated.
+@@ -761,6 +765,14 @@
+       removeSameValueProperties(updateInfo, item);
+       // Check if anything should still be updated.
+       if (Object.keys(updateInfo).length < 3) {
++        if (midoriCondition) {
++          await lazy.PlacesUtils.withConnectionWrapper(
++            "Bookmarks.sys.mjs: conditional no-op",
++            db => db.executeTransaction(async () => {
++              await checkMidoriCondition(db, midoriCondition, item, null, item.parentGuid, item.index);
++            })
++          );
++        }
+         // Remove non-enumerable properties.
+         return Object.assign({}, item);
+       }
+@@ -863,6 +875,8 @@
+             );
+ 
+           let updatedItem = await db.executeTransaction(async function () {
++            await checkMidoriCondition(db, midoriCondition, item, parent,
++              updateInfo.parentGuid ?? item.parentGuid, updateInfo.index ?? item.index);
+             let innerUpdatedItem = await updateBookmark(
+               db,
+               updateInfo,
+@@ -879,6 +893,7 @@
+                 syncChangeDelta
+               );
+             }
++            ensureMidoriConditionActive(midoriCondition);
+             return innerUpdatedItem;
+           });
+ 
+@@ -1348,6 +1363,12 @@
+       removeInfos.push(removeInfo);
+     }
+ 
++    const midoriCondition = captureMidoriCondition(removeInfos[0]?.guid, options, "remove");
++    if (midoriCondition && removeInfos.length !== 1) {
++      throw new TypeError("A conditional removal requires one bookmark");
++    }
++    options = { ...options, midoriCondition };
++
+     return (async function () {
+       let removeItems = [];
+       for (let info of removeInfos) {
+@@ -2165,7 +2186,7 @@
+ 
+ // Insert implementation.
+ 
+-function insertBookmark(item, parent) {
++function insertBookmark(item, parent, midoriCondition = null) {
+   return lazy.PlacesUtils.withConnectionWrapper(
+     "Bookmarks.sys.mjs: insertBookmark",
+     async function (db) {
+@@ -2179,6 +2200,7 @@
+       let isTagging = parent._parentId == lazy.PlacesUtils.tagsFolderId;
+ 
+       await db.executeTransaction(async function transaction() {
++        await checkMidoriCondition(db, midoriCondition, null, parent, item.parentGuid, item.index);
+         if (item.type == Bookmarks.TYPE_BOOKMARK) {
+           // Ensure a page exists in moz_places for this URL.
+           // The IGNORE conflict can trigger on `guid`.
+@@ -2256,6 +2278,7 @@
+           item.dateAdded,
+           syncChangeDelta
+         );
++        ensureMidoriConditionActive(midoriCondition);
+       });
+ 
+       return item;
+@@ -2510,6 +2533,9 @@
+   if (options.concurrent) {
+     let db = await lazy.PlacesUtils.promiseDBConnection();
+     return query(db);
++  }
++  if (options.db) {
++    return query(options.db);
+   }
+   return lazy.PlacesUtils.withConnectionWrapper(
+     "Bookmarks.sys.mjs: fetchBookmarkByPosition",
+@@ -2787,6 +2813,9 @@
+       let urls = [];
+ 
+       await db.executeTransaction(async function transaction() {
++        if (options.midoriCondition) {
++          await checkMidoriCondition(db, options.midoriCondition, items[0], null, null, null);
++        }
+         // We use a map for its de-duplication properties.
+         let parents = new Map();
+         let syncChangeDelta =
+@@ -2875,6 +2904,7 @@
+ 
+         // Write tombstones for the removed items.
+         await insertTombstones(db, items, syncChangeDelta);
++        ensureMidoriConditionActive(options.midoriCondition);
+       });
+ 
+       urls = urls.concat(items.map(item => item.url).filter(item => item));
+@@ -2883,6 +2913,141 @@
+       }
+     }
+   );
++}
++
++const MIDORI_BOOKMARK_FIELDS = ["version", "kind", "parentGuid", "index", "title", "url", "dateAdded"];
++
++function midoriBookmarkError(code) {
++  const error = new Error(code);
++  error.code = code;
++  return error;
++}
++
++function ensureMidoriConditionActive(condition) {
++  if (condition?.signal?.aborted) {
++    throw midoriBookmarkError("bookmark_cancelled");
++  }
++}
++
++function midoriBookmarkValue(item) {
++  return {
++    version: 1,
++    kind: item.type === Bookmarks.TYPE_BOOKMARK ? "bookmark" : item.type === Bookmarks.TYPE_FOLDER ? "folder" : "separator",
++    parentGuid: item.parentGuid, index: item.index, title: item.title ?? "",
++    url: item.url?.href ?? null, dateAdded: item.dateAdded.getTime(),
++  };
++}
++
++function captureMidoriCondition(guid, options, operation) {
++  if (options.midoriCondition === undefined && options.midoriSignal === undefined) {
++    return null;
++  }
++  const input = options.midoriCondition;
++  const validGuid = value => typeof value === "string" && lazy.PlacesUtils.isValidGuid(value);
++  const validIndex = value => Number.isInteger(value) && value >= 0 && value <= 1000000;
++  if (!validGuid(guid) || lazy.PlacesUtils.isRootItem(guid) || Bookmarks.isVirtualRootItem(guid) ||
++      guid === Bookmarks.unsavedGuid || input?.version !== 1 || input.guid !== guid ||
++      Object.keys(input).length !== 4 || (options.midoriSignal !== undefined && typeof options.midoriSignal?.aborted !== "boolean")) {
++    throw new TypeError("Invalid Midori bookmark condition");
++  }
++  let expected = null;
++  if (operation !== "insert") {
++    const value = input.expected;
++    if (!value || Object.keys(value).length !== MIDORI_BOOKMARK_FIELDS.length || value.version !== 1 ||
++        !["bookmark", "folder", "separator"].includes(value.kind) || !validGuid(value.parentGuid) ||
++        !validIndex(value.index) || typeof value.title !== "string" || value.title.length > 4096 ||
++        (value.kind === "bookmark" ? typeof value.url !== "string" || value.url.length > 65536 : value.url !== null) ||
++        !Number.isSafeInteger(value.dateAdded) || value.dateAdded < 0 || value.dateAdded > 253402300799999) {
++      throw new TypeError("Invalid Midori bookmark snapshot");
++    }
++    expected = Object.fromEntries(MIDORI_BOOKMARK_FIELDS.map(field => [field, value[field]]));
++  } else if (input.expected !== null) {
++    throw new TypeError("A conditional insertion requires an absent bookmark");
++  }
++  let position = null;
++  if (operation !== "remove") {
++    const value = input.position;
++    if (!value || Object.keys(value).length !== 4 || !validGuid(value.parentGuid) || !validIndex(value.index) ||
++        ![value.before, value.after].every(id => id === null || (validGuid(id) && id !== guid)) ||
++        (value.before !== null && value.before === value.after)) {
++      throw new TypeError("Invalid Midori bookmark position");
++    }
++    position = { parentGuid: value.parentGuid, index: value.index, before: value.before, after: value.after };
++  } else if (input.position !== null) {
++    throw new TypeError("A conditional removal has no destination");
++  }
++  return { guid, expected, position, operation, signal: options.midoriSignal };
++}
++
++async function checkMidoriAncestors(db, parentGuid, guid) {
++  const roots = [Bookmarks.menuGuid, Bookmarks.toolbarGuid, Bookmarks.unfiledGuid, Bookmarks.mobileGuid];
++  const seen = new Set([guid]);
++  for (let depth = 0; depth < 256; depth++) {
++    if (roots.includes(parentGuid)) {
++      return;
++    }
++    if (seen.has(parentGuid) || [Bookmarks.rootGuid, Bookmarks.tagsGuid].includes(parentGuid)) {
++      throw midoriBookmarkError("bookmark_outside_roots");
++    }
++    seen.add(parentGuid);
++    const parent = await fetchBookmark({ guid: parentGuid }, { db });
++    if (!parent || parent.type !== Bookmarks.TYPE_FOLDER) {
++      throw midoriBookmarkError("bookmark_parent_changed");
++    }
++    parentGuid = parent.parentGuid;
++  }
++  throw midoriBookmarkError("bookmark_tree_too_deep");
++}
++
++async function checkMidoriCondition(db, condition, original, originalParent, parentGuid, index) {
++  if (!condition) {
++    return;
++  }
++  ensureMidoriConditionActive(condition);
++  const current = await fetchBookmark({ guid: condition.guid }, { db });
++  const actual = current ? midoriBookmarkValue(current) : null;
++  if (condition.expected === null ? current !== null : !current ||
++      !MIDORI_BOOKMARK_FIELDS.every(field => condition.expected[field] === actual[field])) {
++    throw midoriBookmarkError("bookmark_changed");
++  }
++  if (original && (!current || original._id !== current._id || original._parentId !== current._parentId ||
++      original.lastModified.getTime() !== current.lastModified.getTime())) {
++    throw midoriBookmarkError("bookmark_changed");
++  }
++  if (current) {
++    await checkMidoriAncestors(db, current.parentGuid, current.guid);
++  }
++  if (condition.operation === "remove") {
++    if (current.type === Bookmarks.TYPE_FOLDER && current._childCount !== 0) {
++      throw midoriBookmarkError("bookmark_folder_not_empty");
++    }
++  } else {
++    const position = condition.position;
++    if (position.parentGuid !== parentGuid || position.index !== index) {
++      throw midoriBookmarkError("bookmark_position_changed");
++    }
++    const parent = await fetchBookmark({ guid: parentGuid }, { db });
++    if (!parent || parent.type !== Bookmarks.TYPE_FOLDER || (originalParent && originalParent._id !== parent._id)) {
++      throw midoriBookmarkError("bookmark_parent_changed");
++    }
++    await checkMidoriAncestors(db, parentGuid, condition.guid);
++    const sameParent = current?.parentGuid === parentGuid;
++    const count = parent._childCount - (sameParent ? 1 : 0);
++    if (index > count) {
++      throw midoriBookmarkError("bookmark_position_changed");
++    }
++    const at = async offset => {
++      if (offset < 0 || offset >= count) {
++        return null;
++      }
++      const itemIndex = offset + (sameParent && current.index <= offset ? 1 : 0);
++      return (await fetchBookmarkByPosition({ parentGuid, index: itemIndex }, { db }))?.guid ?? null;
++    };
++    if (await at(index - 1) !== position.before || await at(index) !== position.after) {
++      throw midoriBookmarkError("bookmark_position_changed");
++    }
++  }
++  ensureMidoriConditionActive(condition);
+ }
+ 
+ // Reorder implementation.

@@ -1,0 +1,7 @@
+[DEFAULT]
+head = ""
+support-files = [
+  "../midori_sync_core/tests/fixtures/native-sodium.json",
+]
+
+["test_crypto_native.js"]

@@ -1,0 +1,11 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+XPIDL_SOURCES += ["nsIMidoriSyncCrypto.idl"]
+XPIDL_MODULE = "midori_sync"
+UNIFIED_SOURCES += ["MidoriSyncCrypto.cpp"]
+LOCAL_INCLUDES += ["/docshell/base"]
+XPCOM_MANIFESTS += ["components.conf"]
+XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell.toml"]
+FINAL_LIBRARY = "xul"

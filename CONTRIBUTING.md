@@ -478,7 +478,7 @@ Every contribution:
 - 🔒 [Security Policy](SECURITY.md)
 - ⚖️ [Code of Conduct](CODE_OF_CONDUCT.md)
 - 📊 [Performance Guidelines](docs/performance.md)
-- 🔗 [Extension Development](docs/extension-dev.md)
+- [Native Sync and Link integration](docs/plan-integracion-sync-link-nativo.md)
 
 ---
 
