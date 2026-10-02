@@ -1,0 +1,13 @@
+diff --git a/services/sync/Weave.sys.mjs b/services/sync/Weave.sys.mjs
+--- a/services/sync/Weave.sys.mjs
++++ b/services/sync/Weave.sys.mjs
+@@ -100,6 +100,9 @@
+   },
+ 
+   init() {
+     // Force Weave service to load if it hasn't triggered from overlays
++    if (!this.enabled) {
++      return;
++    }
+     this.timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+     this.timer.initWithCallback(

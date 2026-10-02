@@ -1,0 +1,12 @@
+diff --git a/services/sync/modules/engines.sys.mjs b/services/sync/modules/engines.sys.mjs
+--- a/services/sync/modules/engines.sys.mjs
++++ b/services/sync/modules/engines.sys.mjs
+@@ -968,7 +968,7 @@
+       throw new Error("engine does not implement _sync method");
+     }
+ 
+-    return this._notify("sync", this.name, this._sync)();
++    return false;
+   },
+ 
+   // Override this method to return a new changeset type.

@@ -1,0 +1,24 @@
+diff --git a/services/fxaccounts/FxAccounts.sys.mjs b/services/fxaccounts/FxAccounts.sys.mjs
+--- a/services/fxaccounts/FxAccounts.sys.mjs
++++ b/services/fxaccounts/FxAccounts.sys.mjs
+@@ -580,6 +580,9 @@
+    *        in pathological cases (eg, file-system errors, etc)
+    */
+   getSignedInUser(addnFields = []) {
++    if (!lazy.FXA_ENABLED) {
++      return Promise.resolve(null);
++    }
+     // Note we don't return the session token, but use it to see if we
+     // should fetch the profile. Ditto scopedKeys re verified.
+     const ACCT_DATA_FIELDS = [
+@@ -598,10 +601,6 @@
+       if (!data) {
+         return null;
+       }
+-      if (!lazy.FXA_ENABLED) {
+-        await this.signOut();
+-        return null;
+-      }
+       delete data.scopedKeys;
+ 
+       let profileData = null;

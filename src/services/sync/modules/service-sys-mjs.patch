@@ -1,0 +1,148 @@
+diff --git a/services/sync/modules/service.sys.mjs b/services/sync/modules/service.sys.mjs
+--- a/services/sync/modules/service.sys.mjs
++++ b/services/sync/modules/service.sys.mjs
+@@ -353,52 +353,9 @@
+    */
+   async onStartup() {
+     this.status = Status;
+-    this.identity = Status._authManager;
+-    this.collectionKeys = new CollectionKeyManager();
+-
+-    this.scheduler = new SyncScheduler(this);
+-    this.errorHandler = new ErrorHandler(this);
+-
++    this.enabled = false;
++    this.status.service = STATUS_DISABLED;
+     this._log = Log.repository.getLogger("Sync.Service");
+-    this._log.manageLevelFromPref("services.sync.log.logger.service.main");
+-
+-    this._log.info("Loading Weave " + WEAVE_VERSION);
+-
+-    this.recordManager = new RecordManager(this);
+-
+-    this.enabled = true;
+-
+-    await this._registerEngines();
+-
+-    let ua = Cc["@mozilla.org/network/protocol;1?name=http"].getService(
+-      Ci.nsIHttpProtocolHandler
+-    ).userAgent;
+-    this._log.info(ua);
+-
+-    if (!this._checkCrypto()) {
+-      this.enabled = false;
+-      this._log.info(
+-        "Could not load the Weave crypto component. Disabling " +
+-          "Weave, since it will not work correctly."
+-      );
+-    }
+-
+-    Svc.Obs.add("weave:service:setup-complete", this);
+-    Svc.Obs.add("weave:service:sync:finish", this);
+-    Svc.Obs.add("sync:collection_changed", this); // Pulled from FxAccountsCommon
+-    Svc.Obs.add("fxaccounts:device_disconnected", this);
+-    Services.prefs.addObserver(PREFS_BRANCH + "engine.", this);
+-
+-    if (!this.enabled) {
+-      this._log.info("Firefox Sync disabled.");
+-    }
+-
+-    this._updateCachedURLs();
+-
+-    let status = this._checkSetup();
+-    if (status != STATUS_DISABLED && status != CLIENT_NOT_CONFIGURED) {
+-      this._startTracking();
+-    }
+ 
+     // Send an event now that Weave service is ready.  We don't do this
+     // synchronously so that observers can import this module before
+@@ -509,6 +466,9 @@
+    * (but we're nice and we check before doing anything!).
+    */
+   async updateLocalEnginesState() {
++    if (!this.enabled) {
++      return false;
++    }
+     await this.promiseInitialized;
+ 
+     // Sanity check, this method is not meant to be run if Sync is enabled!
+@@ -975,6 +935,9 @@
+ 
+   // configures/enabled/turns-on sync. There must be an FxA user signed in.
+   async configure() {
++    if (!this.enabled) {
++      return false;
++    }
+     // We don't, and must not, throw if sync is already configured, because we
+     // might end up being called as part of a "reconnect" flow. We also want to
+     // avoid checking the FxA user is the same as the pref because the email
+@@ -996,6 +959,9 @@
+ 
+   // resets/turns-off sync.
+   async startOver() {
++    if (!this.enabled) {
++      return false;
++    }
+     this._log.trace("Invoking Service.startOver.");
+     await this._stopTracking();
+     this.status.resetSync();
+@@ -1053,6 +1019,9 @@
+   },
+ 
+   async login() {
++    if (!this.enabled) {
++      return false;
++    }
+     async function onNotify() {
+       this._loggedIn = false;
+       if (this.scheduler.offline) {
+@@ -1296,6 +1265,9 @@
+    * any necessary login took place.
+    */
+   _shouldLogin: function _shouldLogin() {
++    if (!this.enabled) {
++      return false;
++    }
+     return (
+       this.enabled &&
+       !this.scheduler.offline &&
+@@ -1313,6 +1285,9 @@
+    * @return Reason for not syncing; not-truthy if sync should run
+    */
+   _checkSync: function _checkSync(ignore) {
++    if (!this.enabled) {
++      return kSyncWeaveDisabled;
++    }
+     let reason = "";
+     // Ideally we'd call _checkSetup() here but that has too many side-effects.
+     if (Status.service == CLIENT_NOT_CONFIGURED) {
+@@ -1351,6 +1326,9 @@
+    * @returns {Promise<void>}
+    */
+   async sync({ engines, why } = {}) {
++    if (!this.enabled) {
++      return;
++    }
+     let dateStr = Utils.formatTimestamp(new Date());
+     this._log.debug("User-Agent: " + Utils.userAgent);
+     await this.promiseInitialized;
+@@ -1376,6 +1354,9 @@
+    * Sync up engines with the server.
+    */
+   async _lockedSync(engineNamesToSync, why) {
++    if (!this.enabled) {
++      return;
++    }
+     return this._lock(
+       "service.js: sync",
+       this._notify("sync", JSON.stringify({ why }), async function onNotify() {
+@@ -1403,6 +1384,9 @@
+    * @param {string} why — reason for calling the sync
+    */
+   queueSync(why) {
++    if (!this.enabled) {
++      return;
++    }
+     if (this._locked) {
+       // A sync is already in flight; queue a follow-up.
+       this._queuedSyncReason = why;

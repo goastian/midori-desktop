@@ -2997,3 +2997,17 @@ performance-memory-profile-low-memory =
     .label = Low memory (lowest memory use, slower)
 performance-memory-profile-gaming-ai =
     .label = Gaming and AI (WebGPU, maximum performance)
+windows-launch-on-login-open-new-tab =
+    .label = Also open a new tab
+    .accesskey = n
+
+preferences-colors-manage-button2 =
+    .label = Manage colors
+    .accesskey = C
+
+settings-keyboard-shortcuts-customkeys-link =
+    .label = Customize keyboard shortcuts
+
+passports-delete-passport-prompt-title = Delete this passport?
+passports-delete-passport-prompt-confirm-button = Delete
+passports-delete-passport-prompt-cancel-button = Cancel
