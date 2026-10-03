@@ -96,7 +96,6 @@ pref("devtools.selfxss.count", 5);
 pref('identity.fxaccounts.enabled', false, locked); // Firefox Accounts and Sync are replaced by Midori Sync.
 pref('midori.sync.enabled', true);
 pref('midori.sync.background.enabled', true);
-pref('midori.sync.link.background.enabled', true);
 pref('midori.sync.history.retentionDays', 90);
 
 // Enable importers for other browsers

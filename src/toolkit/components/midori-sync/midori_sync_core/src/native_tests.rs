@@ -170,26 +170,6 @@ fn authenticated_record_headers_cannot_be_relocated_or_rewritten() {
 }
 
 #[test]
-fn link_associations_use_a_separate_authenticated_collection() {
-    let key = fixture_key();
-    let mut association = context("bookmarks");
-    association.collection = "link-associations".into();
-    association.id = "bookmarkGuid".into();
-    let encrypted = key.seal(Purpose::Record, &association, b"link-id").unwrap();
-    assert_eq!(
-        key.open(Purpose::Record, &locator(&association), &encrypted)
-            .unwrap()
-            .as_slice(),
-        b"link-id"
-    );
-    let mut bookmark = association.clone();
-    bookmark.collection = "bookmarks".into();
-    assert!(key
-        .open(Purpose::Record, &locator(&bookmark), &encrypted)
-        .is_err());
-}
-
-#[test]
 fn modified_nonce_ciphertext_or_tag_never_returns_plaintext() {
     let v = vectors();
     let key = fixture_key();
