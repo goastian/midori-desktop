@@ -1,0 +1,29 @@
+[DEFAULT]
+firefox-appdir = "browser"
+head = "head.js"
+prefs = ["network.trr.mode=5"]
+
+["test_account.js"]
+
+["test_bookmarks.js"]
+
+["test_credit_cards.js"]
+
+["test_firefox_sync_disabled.js"]
+
+["test_history_model.js"]
+
+["test_oidc_callback.js"]
+
+["test_passwords.js"]
+
+["test_preferences.js"]
+
+["test_sync_now.js"]
+
+["test_store.js"]
+
+["test_transport.js"]
+
+["test_vault.js"]
+support-files = ["unlock_test_keyring.py"]
