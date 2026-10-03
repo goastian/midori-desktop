@@ -252,6 +252,23 @@ fn generated_keys_nonces_and_bundle_salts_are_fresh() {
 }
 
 #[test]
+fn payment_cards_have_their_own_encryption_domain() {
+    let key = NativeKey::generate(scope()).unwrap();
+    let mut card = context("passwords");
+    card.collection = "credit-cards".into();
+    let sealed = key.seal(Purpose::Record, &card, b"card fixture").unwrap();
+    assert_eq!(
+        key.open(Purpose::Record, &locator(&card), &sealed)
+            .unwrap()
+            .as_slice(),
+        b"card fixture"
+    );
+    assert!(key
+        .open(Purpose::Record, &locator(&context("passwords")), &sealed)
+        .is_err());
+}
+
+#[test]
 fn kdf_cost_and_versions_are_rejected_before_derivation() {
     let original = vectors()["bundle"].clone();
     for field in ["memory_kib", "iterations", "parallelism"] {

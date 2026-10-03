@@ -447,6 +447,7 @@ fn collection_index(collection: &str) -> Result<u64, CryptoError> {
         "passwords" => Ok(8),
         "link" => Ok(9),
         "link-associations" => Ok(10),
+        "credit-cards" => Ok(11),
         _ => Err(CryptoError::UnsupportedCollection),
     }
 }
