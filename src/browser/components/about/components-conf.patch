@@ -10,7 +10,15 @@ index d5b79f6dfa98820b2e6f22102fa63cb362ca6c8c..5f1bd39e53ba3de9113a34b3518f3930
      'certerror',
      'downloads',
      'framecrashed',
-@@ -27,6 +28,7 @@ pages = [
+@@ -13,6 +14,7 @@ pages = [
+     'logins',
+     'loginsimportreport',
+     'firefoxview',
++    'midorilink',
+     'messagepreview',
+     'opentabs',
+     'policies',
+@@ -27,6 +29,7 @@ pages = [
      'robots',
      'sessionrestore',
      'settings',
