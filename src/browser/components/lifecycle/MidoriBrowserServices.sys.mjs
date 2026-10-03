@@ -16,6 +16,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MidoriBlocker: 'resource:///modules/MidoriBlocker.sys.mjs',
   MidoriModBlur: 'resource:///modules/MidoriModBlur.sys.mjs',
   MidoriSmoothScroll: 'resource:///modules/MidoriSmoothScroll.sys.mjs',
+  MidoriSyncPanel: 'resource:///modules/MidoriSyncPanel.sys.mjs',
+  MidoriSyncService: 'resource:///modules/MidoriSyncService.sys.mjs',
   MidoriSidebar: 'resource:///modules/MidoriSidebar.sys.mjs',
   MidoriShortcuts: 'resource:///modules/MidoriShortcuts.sys.mjs',
   MidoriTabProtectionEntry: 'resource:///modules/MidoriTabProtectionEntry.sys.mjs',
@@ -29,7 +31,6 @@ const MEMORY_PROFILE_APPLIED_PREF = 'midori.memory.profile.lastApplied';
 const MEMORY_PROFILE_SCHEMA_PREF = 'midori.memory.profile.schemaVersion';
 const MEMORY_PROFILE_SAVED_PREFS = 'midori.memory.profile.savedPrefs';
 const MEMORY_PROFILE_SCHEMA_VERSION = 2;
-
 function hasUserValueInBranches(branches) {
   return branches.some(branch =>
     Services.prefs
@@ -63,6 +64,22 @@ function isAnyShortcutEnabled() {
 }
 
 const services = [
+  {
+    name: 'MidoriSyncService',
+    getService: () => lazy.MidoriSyncService,
+    getState: () => getFeatureState(
+      Services.prefs.getBoolPref('midori.sync.enabled', false),
+      ['midori.sync.']
+    ),
+  },
+  {
+    name: 'MidoriSyncPanel',
+    getService: () => lazy.MidoriSyncPanel,
+    getState: () => getFeatureState(
+      Services.prefs.getBoolPref('midori.sync.enabled', false),
+      ['midori.sync.']
+    ),
+  },
   {
     name: 'MidoriBlocker',
     getService: () => lazy.MidoriBlocker,

@@ -383,6 +383,7 @@ export function getMemoryProfileMigration({
 
 export const MemoryProfilePolicy = Object.freeze({
   DEFAULT_MEMORY_PROFILE,
+  LEGACY_MANAGED_PREFS,
   MEMORY_PROFILE_SCHEMA_VERSION,
   PROFILE_DEFINITIONS,
   PREF_METADATA,
@@ -391,6 +392,7 @@ export const MemoryProfilePolicy = Object.freeze({
   getPreferenceInventory,
   getPreferencesByPolicy,
   getPrefsNeedingRestart,
+  getProfileDefinition,
   getProfilePreferences,
   normalizeMemoryProfile,
   planPreferenceRestore,
