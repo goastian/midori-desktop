@@ -1,8 +1,7 @@
 diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/BrowserGlue.sys.mjs
-index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f88e0c019 100644
 --- a/browser/components/BrowserGlue.sys.mjs
 +++ b/browser/components/BrowserGlue.sys.mjs
-@@ -82,6 +82,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
+@@ -82,6 +82,8 @@
      "resource:///modules/WebProtocolHandlerRegistrar.sys.mjs",
    WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
    setTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -11,7 +10,7 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
  });
  
  XPCOMUtils.defineLazyServiceGetters(lazy, {
-@@ -202,6 +204,9 @@ BrowserGlue.prototype = {
+@@ -202,6 +204,9 @@
        case "notifications-open-settings":
          this._openPreferences("privacy-permissions");
          break;
@@ -21,7 +20,7 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
        case "final-ui-startup":
          this._beforeUIStartup();
          break;
-@@ -211,6 +216,7 @@ BrowserGlue.prototype = {
+@@ -211,6 +216,7 @@
          break;
        case "sessionstore-windows-restored":
          this._onWindowsRestored();
@@ -29,10 +28,11 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
          break;
        case "browser:purge-session-history":
          // reset the console service's error buffer
-@@ -226,6 +232,24 @@ BrowserGlue.prototype = {
+@@ -225,6 +231,24 @@
+         break;
        case "quit-application-granted":
          this._onQuitApplicationGranted();
-         break;
++        break;
 +      case "domwindowclosed":
 +        if (
 +          AppConstants.platform == "win" &&
@@ -50,11 +50,10 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
 +            }
 +          });
 +        }
-+        break;
+         break;
        case "browser-lastwindow-close-requested":
          if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
-           // The application is not actually quitting, but the last full browser
-@@ -345,8 +369,10 @@ BrowserGlue.prototype = {
+@@ -345,8 +369,10 @@
      let os = Services.obs;
      [
        "notifications-open-settings",
@@ -65,7 +64,7 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
        "sessionstore-windows-restored",
        "browser:purge-session-history",
        "quit-application-requested",
-@@ -370,6 +396,12 @@ BrowserGlue.prototype = {
+@@ -370,6 +396,12 @@
  
    // cleanup (called on application shutdown)
    _dispose: function BG__dispose() {
@@ -78,10 +77,11 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
      // AboutHomeStartupCache might write to the cache during
      // quit-application-granted, so we defer uninitialization
      // until here.
-@@ -395,6 +427,19 @@ BrowserGlue.prototype = {
+@@ -394,6 +426,19 @@
+   // (i.e. before the first window is opened)
    _beforeUIStartup: function BG__beforeUIStartup() {
      lazy.SessionStartup.init();
- 
++
 +    try {
 +      lazy.MidoriBrowserServices.bootstrap();
 +    } catch (e) {
@@ -94,11 +94,10 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
 +    } catch (e) {
 +      console.error("Midori: Failed to migrate the legacy profile", e);
 +    }
-+
+ 
      // check if we're in safe mode
      if (Services.appinfo.inSafeMode) {
-       Services.ww.openWindow(
-@@ -776,8 +821,69 @@ BrowserGlue.prototype = {
+@@ -776,8 +821,69 @@
      Glean.gfxDisplay.scaling.accumulateSingleSample(scaling);
    },
  
@@ -168,17 +167,35 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
      // A channel for "remote troubleshooting" code...
      let channel = new lazy.WebChannel(
        "remote-troubleshooting",
-@@ -944,7 +1050,8 @@ BrowserGlue.prototype = {
+@@ -804,7 +910,10 @@
+     this._checkForOldBuildUpdates();
+ 
+     // Check if Sync is configured
+-    if (Services.prefs.prefHasUserValue("services.sync.username")) {
++    if (
++      Services.prefs.getBoolPref("identity.fxaccounts.enabled", false) &&
++      Services.prefs.prefHasUserValue("services.sync.username")
++    ) {
+       lazy.WeaveService.init();
+     }
+ 
+@@ -944,7 +1053,14 @@
      }
      this._windowsWereRestored = true;
  
 -    lazy.PreonboardingSplash.maybeShowStartupSplash();
 +    this._startupSplashPromise =
 +      lazy.PreonboardingSplash.maybeShowStartupSplash();
++    try {
++      lazy.MidoriBrowserServices.init();
++    } catch (e) {
++      console.error("Midori: Failed to initialize browser services", e);
++    }
++
      lazy.BrowserUsageTelemetry.init();
      lazy.SearchSERPTelemetry.init();
  
-@@ -1723,6 +1830,57 @@ BrowserGlue.prototype = {
+@@ -1723,6 +1839,48 @@
    },
  
    async _maybeShowDefaultBrowserPrompt() {
@@ -200,15 +217,6 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
 +    if (welcomeEnabled && !welcomeSeen) {
 +      this._openSetupTab(true);
 +    }
-+
-+    // =========================================================================
-+    // Midori global browser services
-+    try {
-+      lazy.MidoriBrowserServices.init();
-+    } catch (e) {
-+      console.error("Midori: Failed to initialize browser services", e);
-+    }
-+    // =========================================================================
 +
 +    // =========================================================================
 +    // Midori Chrome Web Store - register install actor on chromewebstore.google.com
@@ -236,7 +244,7 @@ index ed155f192c37ef1b247234aebd3d314c58af7af5..dbc5371f81fc02fd3a57ea9d4d36431f
      // Ensuring the user is notified arranges the following ordering.  Highest
      // priority is datareporting policy modal, if present.  Second highest
      // priority is the upgrade dialog, which can include a "primary browser"
-@@ -1841,4 +1999,21 @@ BrowserGlue.prototype = {
+@@ -1841,4 +2002,21 @@
      "nsIObserver",
      "nsISupportsWeakReference",
    ]),
