@@ -1,0 +1,11 @@
+[DEFAULT]
+firefox-appdir = "browser"
+head = "../unit/head.js"
+prefs = ["network.trr.mode=5"]
+
+["test_live_backend.js"]
+requesttimeoutfactor = 4
+
+["test_native_profiles.js"]
+head = "head_profiles.js ../unit/head.js"
+requesttimeoutfactor = 4

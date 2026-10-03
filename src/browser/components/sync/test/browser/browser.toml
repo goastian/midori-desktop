@@ -1,0 +1,22 @@
+[DEFAULT]
+firefox-appdir = "browser"
+prefs = [
+  "midori.sync.enabled=true",
+  "services.sync.username=existing@example.invalid",
+  "dom.battery.enabled=true",
+  "dom.battery.test.default=true",
+  "midori.blocker.enabled=false",
+  "browser.backup.enabled=false",
+  "timer.ignore_sleep_wake_notifications=true",
+  "ui.prefersReducedMotion=1",
+]
+
+["browser_sync_oidc_popup.js"]
+
+["browser_firefox_sync_preferences.js"]
+
+["browser_sync_data.js"]
+
+["browser_sync_hints.js"]
+
+["browser_sync_popup.js"]
