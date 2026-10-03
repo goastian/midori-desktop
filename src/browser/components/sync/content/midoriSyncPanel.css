@@ -45,6 +45,19 @@
   gap: 12px;
 }
 
+#midori-sync-panel .midori-sync-link-details {
+  border-top: 1px solid var(--panel-separator-color);
+  padding-top: 12px;
+}
+
+#midori-sync-panel .midori-sync-link-details > summary {
+  cursor: pointer;
+}
+
+#midori-sync-panel .midori-sync-link-details > .midori-sync-account {
+  margin-top: 12px;
+}
+
 #midori-sync-panel .midori-link-details {
   display: flex;
   flex-direction: column;
@@ -92,6 +105,32 @@
   justify-content: end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+#midori-sync-panel .midori-sync-collection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#midori-sync-panel .midori-sync-collection-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: baseline;
+}
+
+#midori-sync-panel .midori-sync-collection-list li > :nth-child(2),
+#midori-sync-panel .midori-sync-collection-list li > small {
+  text-align: end;
+}
+
+#midori-sync-panel .midori-sync-collection-list li > small {
+  grid-column: 1 / -1;
+  color: var(--text-color-deemphasized);
 }
 
 #midori-sync-remote-tabs {
