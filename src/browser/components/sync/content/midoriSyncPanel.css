@@ -45,25 +45,6 @@
   gap: 12px;
 }
 
-#midori-sync-panel .midori-sync-link-details {
-  border-top: 1px solid var(--panel-separator-color);
-  padding-top: 12px;
-}
-
-#midori-sync-panel .midori-sync-link-details > summary {
-  cursor: pointer;
-}
-
-#midori-sync-panel .midori-sync-link-details > .midori-sync-account {
-  margin-top: 12px;
-}
-
-#midori-sync-panel .midori-link-details {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 #midori-sync-panel [hidden] {
   display: none !important;
 }
@@ -153,34 +134,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-#midori-sync-panel .midori-link-pending-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-wrap: anywhere;
-}
-
-#midori-sync-panel .midori-link-library-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-#midori-sync-panel .midori-link-library-list li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow-wrap: anywhere;
 }
 
 #midori-sync-panel [role="status"] {

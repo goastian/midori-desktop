@@ -299,42 +299,6 @@
                     "ciphertext": "XIAbTR391D3L1/PofmK4ANfahFK2dvv8WJWEUNehTjknpHp/tlxJy82YkfL5LJK8VuI3k4n1b8fhhVHDENxNJmec+VS+zQ=="
                 }
             }
-        },
-        "link": {
-            "record": {
-                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAABGxpbmsAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
-                "envelope": {
-                    "crypto_version": 2,
-                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
-                    "purpose": "record",
-                    "context": {
-                        "collection": "link",
-                        "id": "registro-ñ",
-                        "generation": "00000000-0000-4000-8000-000000000001",
-                        "schema_version": 1,
-                        "base_revision": "9007199254740993"
-                    },
-                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
-                    "ciphertext": "P1DNkFJs27B0lmyL7ZJHSlDa+W39+NqjHKDLUL4f7eAy590hxoHesairnslYdAqH+NoSSEqTFGoawfZJAPr41KbfBRrm/w=="
-                }
-            },
-            "local": {
-                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAEbGluawAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
-                "envelope": {
-                    "crypto_version": 2,
-                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
-                    "purpose": "local",
-                    "context": {
-                        "collection": "link",
-                        "id": "registro-ñ",
-                        "generation": "00000000-0000-4000-8000-000000000001",
-                        "schema_version": 1,
-                        "base_revision": "9007199254740993"
-                    },
-                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
-                    "ciphertext": "Jsi5AklOZ5kDyMdVJxzZSbYicQEFhf3+lSaqCPhl+wrc8t/oSZ6qG/JQikm7xdsZwbA7+qRMFcxodqQUU/IDpzrDJbVIqw=="
-                }
-            }
         }
     },
     "bundle_aad": "TWlkb3JpU3luYwBidW5kbGUAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAAKYXJnb24yaWQxMwABAAAAAAADAAAAAQAAABAQERITFBUWFxgZGhscHR4f",

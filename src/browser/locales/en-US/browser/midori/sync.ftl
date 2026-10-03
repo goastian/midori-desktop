@@ -19,6 +19,7 @@ midori-sync-data-working = Synchronizing browser data…
 midori-sync-data-more = More changes remain. Run again to continue.
 midori-sync-data-up-to-date = This pass finished. Another device may have new changes later.
 midori-sync-data-partial = Some data could not finish. Your saved changes remain available to retry.
+midori-sync-data-server-error = The Sync server could not process browser data. Try again; if this continues, check the server logs.
 midori-sync-data-passwords-locked = Passwords are locked. Unlock them to finish synchronization.
 midori-sync-data-cards-locked = Payment cards could not be unlocked. Other browser data will continue synchronizing.
 midori-sync-data-paused = Connect and unlock Midori Sync to synchronize browser data.
