@@ -87,7 +87,7 @@ const { WorkspaceTabIndex } = ChromeUtils.importESModule(
 // Lazy import for setTimeout — MUST be before any usage
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
-  SessionStore: 'resource:///modules/sessionstore/SessionStore.sys.mjs',
+  SessionStore: 'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs',
   clearTimeout: 'resource://gre/modules/Timer.sys.mjs',
   setTimeout: 'resource://gre/modules/Timer.sys.mjs',
   WorkspaceTabUnloader: 'resource:///modules/WorkspaceTabUnloader.sys.mjs',

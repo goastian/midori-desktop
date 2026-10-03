@@ -12,7 +12,7 @@ import {
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
-  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
+  SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
 });
 
 export const PREF_TAB_PROTECTION_MODE = "midori.tabprotect.mode";
