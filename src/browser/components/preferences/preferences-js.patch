@@ -1,8 +1,24 @@
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index 94612d8e28af58fcb04914440348b899a0a1e08f..986898b13671ff7fe1ce7b30da77b91dabd933d6 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -637,6 +637,11 @@ function init_all() {
+@@ -585,14 +585,14 @@
+   if (redesignEnabled) {
+     categorySync.setAttribute("data-l10n-id", "pane-account-sync-title2");
+     categorySync.iconSrc = "chrome://browser/skin/fxa/avatar-empty.svg";
+-    categorySync.hidden = false;
++    categorySync.hidden = !accountsEnabled;
+   } else if (accountsEnabled) {
+     categorySync.hidden = false;
+     register_module("paneSync", gSyncPane);
+   }
+   register_module("paneSearchResults", gSearchResultsPane);
+   for (let [id, config] of Object.entries(CONFIG_PANES)) {
+-    if (!redesignEnabled && config.replaces) {
++    if ((id === "sync" && !accountsEnabled) || (!redesignEnabled && config.replaces)) {
+       continue;
+     }
+ 
+@@ -637,6 +637,11 @@
  
    let categories = document.getElementById("categories");
    categories.addEventListener("change-view", event => {
@@ -13,4 +29,20 @@ index 94612d8e28af58fcb04914440348b899a0a1e08f..986898b13671ff7fe1ce7b30da77b91d
 +    }
      gotoPref(event.target.view);
    });
+ 
+@@ -729,10 +734,13 @@
+ ) {
+   let redesignEnabled = srdSectionPrefs.all;
+   let categories = document.getElementById("categories");
++  const accountsEnabled = Services.prefs.getBoolPref("identity.fxaccounts.enabled");
+   const kDefaultCategoryInternalName = redesignEnabled
+-    ? "paneSync"
++    ? (accountsEnabled ? "paneSync" : "paneHome")
+     : "paneGeneral";
+-  const kDefaultCategory = redesignEnabled ? "sync" : "general";
++  const kDefaultCategory = redesignEnabled
++    ? (accountsEnabled ? "sync" : "home")
++    : "general";
+   let hash = document.location.hash;
+   let category = aCategory || hash.substring(1) || kDefaultCategoryInternalName;
  
