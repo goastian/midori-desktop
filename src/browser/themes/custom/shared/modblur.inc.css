@@ -228,24 +228,38 @@
 }
 
 @media -moz-pref("midori.modblur.bookmarks.popout") {
-  #PersonalToolbar {
-    --uc-bm-height: 24px;
+  :root {
     --uc-bm-padding: 5px;
-    padding: 1px 6px !important;
-    position: relative !important;
+    --uc-bm-show-delay: 80ms;
+    --uc-bm-hide-delay: 400ms;
   }
 
-  :root[uidensity="touch"] #PersonalToolbar {
+  :root[uidensity="touch"] {
     --uc-bm-padding: 6px;
   }
 
-  :root:not([customizing]) #PersonalToolbar {
-    max-height: 0 !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-    padding-block: 0 !important;
+  :root:not([inDOMFullscreen], [customizing]) #navigator-toolbox:has(> #PersonalToolbar:not([collapsed], [customizing])) {
+    position: relative !important;
+    --browser-area-z-index-toolbox: 4 !important;
+    overflow: visible !important;
+  }
+
+  :root:not([inDOMFullscreen], [customizing]) #navigator-toolbox > #PersonalToolbar:not([collapsed], [customizing]) {
+    position: absolute !important;
+    inset-block-start: 100% !important;
+    inset-inline: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 1px 6px !important;
+    box-sizing: border-box !important;
+    transform: rotateX(90deg);
+    transform-origin: top;
     opacity: 0;
-    transition: max-height var(--pf-ts-25), opacity var(--pf-ts-15), padding var(--pf-ts-25) !important;
+    pointer-events: none;
+    z-index: 1 !important;
+    transition:
+      transform var(--pf-motion-fast) linear var(--uc-bm-hide-delay),
+      opacity var(--pf-motion-fast) linear var(--uc-bm-hide-delay) !important;
   }
 
   #PlacesToolbarItems > .bookmark-item {
@@ -253,32 +267,12 @@
     padding-inline: 6px !important;
   }
 
-  #PlacesToolbarItems > .bookmark-item .toolbarbutton-icon {
-    opacity: 0 !important;
-    transition: opacity var(--pf-motion-normal) linear var(--pf-motion-normal) !important;
-  }
-
-  #PlacesToolbarItems > .bookmark-item .toolbarbutton-text {
-    opacity: 0 !important;
-    transition: opacity var(--pf-motion-fast) linear var(--pf-motion-normal) !important;
-  }
-
-  :root:not([customizing]) #navigator-toolbox:hover #PersonalToolbar,
-  :root:not([customizing]) #navigator-toolbox:focus-within #PersonalToolbar,
-  :root:not([customizing]) #navigator-toolbox[movingtab] #PersonalToolbar,
-  :root:not([customizing]):has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #PersonalToolbar,
-  :root:not([customizing]) #PersonalToolbar[customizing] {
-    max-height: calc(var(--uc-bm-height) + 2 * var(--uc-bm-padding) + 2px) !important;
-    padding-block: 1px !important;
+  :root:not([inDOMFullscreen], [customizing]) #navigator-toolbox:is(:hover, :focus-within, [movingtab]) > #PersonalToolbar:not([collapsed], [customizing]),
+  :root:not([inDOMFullscreen], [customizing]) #navigator-toolbox > #PersonalToolbar:not([collapsed], [customizing]):is(:focus-within, :has(.bookmark-item[open]), :has(.toolbar-menupopup[dragstart])) {
+    transform: rotateX(0);
     opacity: 1;
-  }
-
-  :root:not([customizing]) #navigator-toolbox:hover #PlacesToolbarItems > .bookmark-item :is(.toolbarbutton-icon, .toolbarbutton-text),
-  :root:not([customizing]) #navigator-toolbox:focus-within #PlacesToolbarItems > .bookmark-item :is(.toolbarbutton-icon, .toolbarbutton-text),
-  :root:not([customizing]) #navigator-toolbox[movingtab] #PlacesToolbarItems > .bookmark-item :is(.toolbarbutton-icon, .toolbarbutton-text),
-  :root:not([customizing]):has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #PlacesToolbarItems > .bookmark-item :is(.toolbarbutton-icon, .toolbarbutton-text) {
-    opacity: 1 !important;
-    transition-delay: var(--pf-motion-fast) !important;
+    pointer-events: auto;
+    transition-delay: var(--uc-bm-show-delay) !important;
   }
 }
 
@@ -622,7 +616,7 @@
   :root[midori-horizontal-tabs="top"]:not([customizing], [chromehidden~="menubar"]) #navigator-toolbox:is(:hover, :focus-within, [movingtab]),
   :root[midori-horizontal-tabs="top"]:not([customizing], [chromehidden~="menubar"]):has(:is(panel, menupopup, toolbarbutton)[open], [panelopen], :is(panel, menupopup):popover-open) #navigator-toolbox,
   :root[midori-horizontal-tabs="top"]:not([customizing], [chromehidden~="menubar"]) #mainPopupSet:has(> #tab-group-editor > [panelopen], > #tabgroup-preview-panel[panelopen]) ~ #navigator-toolbox {
-    margin-bottom: calc(0px - 2 * var(--tab-block-margin) - var(--tab-min-height));
+    margin-bottom: calc(0px - 2 * var(--pf-navbar-padding-block) - var(--tab-min-height));
   }
 
   :root[midori-horizontal-tabs="top"] #navigator-toolbox {
@@ -665,7 +659,7 @@
 
   @media -moz-pref("midori.modblur.tabs.showWhileInactive") {
     :root[midori-horizontal-tabs="top"] #navigator-toolbox:-moz-window-inactive {
-      margin-bottom: calc(0px - 2 * var(--tab-block-margin) - var(--tab-min-height));
+      margin-bottom: calc(0px - 2 * var(--pf-navbar-padding-block) - var(--tab-min-height));
     }
 
     :root[midori-horizontal-tabs="top"] #navigator-toolbox:-moz-window-inactive > #TabsToolbar {
@@ -861,10 +855,19 @@
 
   #urlbar:is(:hover, :focus-within, [focused], [open]) :is(#trust-icon-container, #tracking-protection-icon-container, #identity-icon-box, #identity-permission-box),
   #urlbar #trust-icon-container:is(.insecure, .warning, .breached),
-  #urlbar #identity-permission-box:is([hasPermissions], [hasSharingIcon]),
+  #urlbar #identity-permission-box:is([open="true"], [hasPermissions], [hasSharingIcon]),
   #urlbar #tracking-protection-icon-container:has(#tracking-protection-icon-box:is([active], [hasException])),
+  #urlbar #identity-box[pageproxystate="valid"]:is(.chromeUI, .extensionPage) > #identity-icon-box,
   #urlbar #identity-box:is(.weakCipher, .mixedDisplayContent, .mixedDisplayContentLoadedActiveBlocked, .certUserOverridden, .certErrorPage, .notSecureText, .notSecure, .mixedActiveContent, .httpsOnlyErrorPage) #identity-icon-box {
     max-width: 40px !important;
+    margin-inline: initial !important;
+    padding-inline: initial !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+  }
+
+  #urlbar #trust-icon-container.has-blocked-trackers {
+    max-width: none !important;
     margin-inline: initial !important;
     padding-inline: initial !important;
     opacity: 1 !important;
@@ -905,6 +908,11 @@
     backdrop-filter: var(--pf-modblur-backdrop) !important;
   }
 
+  #urlbar[popover-open] > .urlbar-background {
+    border-end-start-radius: 0 !important;
+    border-end-end-radius: 0 !important;
+  }
+
   #urlbar[open] > .urlbar-input-container {
     align-items: center;
     padding-inline: 11px !important;
@@ -940,6 +948,12 @@
   #urlbar[open] .urlbar-background,
   #urlbar[open] #urlbar-background {
     background-color: var(--pf-modblur-surface) !important;
+    backdrop-filter: var(--pf-modblur-backdrop) !important;
+  }
+
+  #urlbar[popover-open] > .urlbarView > .urlbarView-background {
+    background-color: var(--pf-modblur-surface) !important;
+    border-color: var(--pf-border-color) !important;
     backdrop-filter: var(--pf-modblur-backdrop) !important;
   }
 }
@@ -1143,6 +1157,7 @@
 
   #urlbar[open] .urlbar-background,
   #urlbar[open] #urlbar-background,
+  #urlbar[popover-open] > .urlbarView > .urlbarView-background,
   panel[type="arrow"] .panel-arrowcontent,
   menupopup:not(#ContentSelectDropdownPopup),
   .browserContainer > findbar,

@@ -1015,9 +1015,9 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 }
 
 #tabbrowser-tabs[orient="horizontal"] {
-  --tabstrip-min-height: calc(var(--pf-tab-height) + 2 * var(--tab-block-margin));
+  --tabstrip-min-height: calc(var(--pf-tab-height) + 2 * var(--tab-margin-block));
   --tab-border-radius: var(--pf-border-radius-hl);
-  --tab-block-margin: var(--pf-navbar-padding-block);
+  --tab-margin-block: var(--pf-navbar-padding-block);
   --tab-inline-padding: var(--tab-icon-end-margin) !important;
 }
 
@@ -1036,7 +1036,7 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 
 #tabbrowser-tabs[orient="vertical"] {
   width: 100%;
-  grid-gap: var(--tab-block-margin) !important;
+  grid-gap: var(--tab-margin-block) !important;
   --tab-collapsed-background-width: var(--pf-tab-height);
   --tab-inner-inline-margin: var(--pf-separation) !important;
   --tab-collapsed-width: calc(var(--tab-collapsed-background-width) + 2 * var(--tab-inner-inline-margin));
@@ -1098,7 +1098,7 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 }
 
 #pinned-tabs-container[orient="vertical"] {
-  --tab-pinned-margin-inline-expanded: calc(var(--tab-block-margin) * 2);
+  --tab-pinned-margin-inline-expanded: calc(var(--tab-margin-block) * 2);
   margin-block: var(--pf-separation) !important;
   padding-inline: var(--pf-separation) !important;
 }
