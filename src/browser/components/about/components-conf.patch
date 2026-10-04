@@ -1,16 +1,15 @@
 diff --git a/browser/components/about/components.conf b/browser/components/about/components.conf
-index d5b79f6dfa98820b2e6f22102fa63cb362ca6c8c..5f1bd39e53ba3de9113a34b3518f393073299a54 100644
 --- a/browser/components/about/components.conf
 +++ b/browser/components/about/components.conf
-@@ -6,6 +6,7 @@ pages = [
-     'aichatcontent',
+@@ -7,6 +7,7 @@
+     'aitab',
      'asrouter',
      'blocked',
 +    'center',
      'certerror',
      'downloads',
      'framecrashed',
-@@ -13,6 +14,7 @@ pages = [
+@@ -14,6 +15,7 @@
      'logins',
      'loginsimportreport',
      'firefoxview',
@@ -18,11 +17,11 @@ index d5b79f6dfa98820b2e6f22102fa63cb362ca6c8c..5f1bd39e53ba3de9113a34b3518f3930
      'messagepreview',
      'opentabs',
      'policies',
-@@ -27,6 +29,7 @@ pages = [
+@@ -28,6 +30,7 @@
      'robots',
      'sessionrestore',
      'settings',
 +    'setup',
+     'smartformfillreview',
      'smartwindowtasks',
      'tabcrashed',
-     'unloads',

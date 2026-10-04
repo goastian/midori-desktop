@@ -83,15 +83,6 @@ index 7dd5937b32..06e1a87be4 100644
              controlAttrs: {
                class: "setting-chooser-item",
                imagesrc:
-@@ -601,7 +611,7 @@ SettingGroupManager.registerGroups({
-       },
-       {
-         id: "browserLayoutShowSidebar",
--        l10nId: "browser-layout-show-sidebar2",
-+        l10nId: "browser-layout-show-sidebar",
-       },
-     ],
-   },
 @@ -761,6 +771,29 @@ SettingGroupManager.registerGroups({
          id: "allowHWAccel",
          l10nId: "performance-allow-hw-accel",
