@@ -259,3 +259,26 @@ export async function authorizeOidc(oidc, openURL, signal = null, requester = fe
     callback.cancel();
   }
 }
+
+export async function authorizeBrowserLogin(serverURL, openURL, signal = null) {
+  const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
+  const state = base64url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+  const callback = receiveOidcCallback(state);
+  const onAbort = () => callback.cancel();
+  signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    if (signal?.aborted) {
+      throw new SyncOidcError("cancelled");
+    }
+    const url = new URL("auth/desktop", serverURL);
+    url.search = new URLSearchParams({ state, code_challenge: challenge,
+      redirect_uri: callback.redirectURI }).toString();
+    openURL(url.href);
+    return { code: await callback.promise, verifier };
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    callback.promise.catch(() => {});
+    callback.cancel();
+  }
+}

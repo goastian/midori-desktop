@@ -345,9 +345,12 @@ export const MidoriSyncPanel = {
         getPairingCode.disabled = pair.disabled = code.disabled = deviceName.disabled = connectOidc.disabled =
           unlock.disabled = disconnect.disabled = disabled;
         change.disabled = disabled;
-        const oidcAvailable = Boolean(snapshot.capabilities?.authentication?.oidc);
-        pairForm.hidden = account.status !== "signed-out" || oidcAvailable;
-        connectOidc.hidden = account.status !== "signed-out" || !oidcAvailable;
+        const authentication = snapshot.capabilities?.authentication;
+        const oidcAvailable = Boolean(authentication?.browserLogin || authentication?.oidc);
+        const developmentPairing = authentication?.development === true && authentication.pairing === true;
+        pairForm.hidden = account.status !== "signed-out" || !developmentPairing;
+        connectOidc.hidden = account.status !== "signed-out" || developmentPairing;
+        connectOidc.disabled = disabled || !oidcAvailable;
         unlock.hidden = !["locked", "expired", "error", "local", "renewal-required"].includes(account.status);
         disconnect.hidden = ["signed-out", "unknown"].includes(account.status);
         userLabel.textContent = account.user?.email || account.user?.name || "";
@@ -359,8 +362,9 @@ export const MidoriSyncPanel = {
           showAccountError(account.error);
         } else {
           const accountId = account.revocationPending ? "revocation-pending" : account.status;
-          doc.l10n.setAttributes(accountStatus, accountId === "signed-out" && oidcAvailable ?
-            "midori-sync-account-connect-ready" : `midori-sync-account-${accountId}`);
+          const statusId = accountId === "signed-out" && !developmentPairing ?
+            (oidcAvailable ? "connect-ready" : snapshot.capabilities ? "connect-unavailable" : "server-unavailable") : accountId;
+          doc.l10n.setAttributes(accountStatus, `midori-sync-account-${statusId}`);
         }
       },
       onUnload: () => {

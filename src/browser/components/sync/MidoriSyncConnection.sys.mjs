@@ -38,6 +38,15 @@ export function validateSyncCapabilities(value) {
       throw new SyncConnectionError("incompatible_server");
     }
     authentication = { pairing: auth.pairing, development: auth.development, issuer: auth.issuer };
+    if (Object.hasOwn(auth, "browser_login")) {
+      if (auth.browser_login === null) {
+        authentication.browserLogin = null;
+      } else if (auth.development || auth.browser_login?.version !== 1 || !auth.issuer) {
+        throw new SyncConnectionError("incompatible_server");
+      } else {
+        authentication.browserLogin = Object.freeze({ version: 1 });
+      }
+    }
     if (Object.hasOwn(auth, "oidc")) {
       const oidc = auth.oidc;
       if (oidc === null) {

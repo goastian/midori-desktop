@@ -220,6 +220,12 @@ test('BrowserGlue startup and profile shutdown share the lifecycle facade', () =
     browserGluePatch,
     /\+ {4}try \{\s*\+ {6}lazy\.MidoriBrowserServices\.init\(\);\s*\+ {4}\} catch \(e\)/
   );
+  const restored = browserGluePatch.indexOf('this._windowsWereRestored = true;');
+  const started = browserGluePatch.indexOf('lazy.MidoriBrowserServices.init();');
+  const prompt = browserGluePatch.indexOf('async _maybeShowDefaultBrowserPrompt()');
+  assert.ok(restored >= 0 && restored < started && started < prompt,
+    'native background services start before the optional startup prompt');
+  assert.equal(browserGluePatch.match(/lazy\.MidoriBrowserServices\.init\(\);/g)?.length, 1);
   assert.match(
     browserGluePatch,
     /_dispose: function BG__dispose\(\) \{[\s\S]*?lazy\.MidoriBrowserServices\.uninit\(\)/

@@ -2,7 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { authorizeOidc, receiveOidcCallback } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncOidc.sys.mjs");
+const { authorizeBrowserLogin, authorizeOidc, receiveOidcCallback } =
+  ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncOidc.sys.mjs");
+
+add_task(async function existing_web_login_returns_a_pkce_bound_authorization() {
+  let authorization;
+  let browserResponse;
+  const result = await authorizeBrowserLogin("https://sync.example.invalid/", url => {
+    authorization = new URL(url);
+    Assert.equal(authorization.origin, "https://sync.example.invalid");
+    Assert.equal(authorization.pathname, "/auth/desktop");
+    Assert.ok(!authorization.searchParams.has("client_id"));
+    browserResponse = fetch(`${authorization.searchParams.get("redirect_uri")}?state=${
+      authorization.searchParams.get("state")}&code=${"a".repeat(64)}`);
+  });
+  Assert.equal((await browserResponse).status, 200);
+  Assert.equal(result.code, "a".repeat(64));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256",
+    new TextEncoder().encode(result.verifier)));
+  const challenge = btoa(String.fromCharCode(...digest)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
+  Assert.equal(challenge, authorization.searchParams.get("code_challenge"));
+});
 
 function jsonResponse(data) {
   const bytes = new TextEncoder().encode(JSON.stringify(data));

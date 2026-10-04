@@ -48,7 +48,12 @@ add_task(async function test_native_popup_server_configuration() {
   is(gBrowser.tabs.length, tabCount, "Opening Sync keeps the current page");
   const change = panel.querySelector('[data-l10n-id="midori-sync-server-change"]');
   await TestUtils.waitForCondition(() => !change.disabled, "Local account inspection finishes without unlocking the keyring");
-  ok(BrowserTestUtils.isVisible(document.getElementById("midori-sync-pair-form")), "Account pairing is available inside the popup");
+  ok(BrowserTestUtils.isHidden(document.getElementById("midori-sync-pair-form")),
+    "Production sign-in does not show a pairing code when OIDC is unavailable");
+  is(document.getElementById("midori-sync-account-status").getAttribute("data-l10n-id"),
+    MidoriSyncService.connection.snapshot.capabilities ?
+      "midori-sync-account-connect-unavailable" : "midori-sync-account-server-unavailable",
+    "The popup distinguishes missing OIDC configuration from a disconnected server");
   const clearHistory = document.getElementById("midori-sync-history-clear");
   ok(clearHistory, "The native popup contains the history clear action");
   ok(clearHistory.disabled, "History cannot be cleared before connecting and unlocking Sync");
@@ -90,4 +95,3 @@ add_task(async function private_windows_do_not_expose_account_controls() {
     await BrowserTestUtils.closeWindow(privateWindow);
   }
 });
-

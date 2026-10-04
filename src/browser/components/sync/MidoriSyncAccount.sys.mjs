@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { validateSyncCapabilities } from "./MidoriSyncConnection.sys.mjs";
-import { authorizeOidc } from "./MidoriSyncOidc.sys.mjs";
+import { authorizeBrowserLogin, authorizeOidc } from "./MidoriSyncOidc.sys.mjs";
 import { syncAccountScope } from "./MidoriSyncServerConfig.sys.mjs";
 
 const LOCAL_ISSUER = "urn:midori:sync:local";
@@ -101,6 +101,7 @@ export class MidoriSyncAccount {
   #vaultFactory;
   #transportFactory;
   #oidcAuthorization;
+  #browserAuthorization;
   #prepareDisconnect;
   #now;
   #createId;
@@ -120,12 +121,14 @@ export class MidoriSyncAccount {
   #generation = 0;
   #creditCardsSupported = false;
 
-  constructor({ connection, vaultFactory, transportFactory, prepareDisconnect, oidcAuthorization = authorizeOidc, now = Date.now,
+  constructor({ connection, vaultFactory, transportFactory, prepareDisconnect, oidcAuthorization = authorizeOidc,
+    browserAuthorization = authorizeBrowserLogin, now = Date.now,
     createId = () => Services.uuid.generateUUID().toString().slice(1, -1) }) {
     this.#connection = connection;
     this.#vaultFactory = vaultFactory;
     this.#transportFactory = transportFactory;
     this.#oidcAuthorization = oidcAuthorization;
+    this.#browserAuthorization = browserAuthorization;
     this.#prepareDisconnect = prepareDisconnect;
     this.#now = now;
     this.#createId = createId;
@@ -224,23 +227,27 @@ export class MidoriSyncAccount {
       throw new SyncAccountError("invalid_oidc_request");
     }
     return this.#connect(async (transport, authentication) => {
-      if (!authentication.oidc || !authentication.refresh) {
+      if ((!authentication.browserLogin && !authentication.oidc) || !authentication.refresh) {
         throw new SyncAccountError("oidc_unavailable");
       }
       const controller = new AbortController();
       this.#authorization = controller;
-      let tokens;
+      let result;
       try {
-        tokens = await this.#oidcAuthorization(authentication.oidc, openURL, controller.signal);
+        result = authentication.browserLogin ?
+          await this.#browserAuthorization(this.#connection.snapshot.server.baseURL, openURL, controller.signal) :
+          await this.#oidcAuthorization(authentication.oidc, openURL, controller.signal);
       } finally {
         if (this.#authorization === controller) {
           this.#authorization = null;
         }
       }
-      const { data } = await transport.request("api/v1/auth/native-token", {
+      const { data } = await transport.request(authentication.browserLogin ?
+        "api/v1/auth/browser-token" : "api/v1/auth/native-token", {
         method: "POST", maxBytes: 16384, timeout: 10000,
-        body: { id_token: tokens.idToken, access_token: tokens.accessToken,
-          nonce: tokens.nonce, device_name: deviceName },
+        body: authentication.browserLogin ? { code: result.code, code_verifier: result.verifier,
+          device_name: deviceName } : { id_token: result.idToken, access_token: result.accessToken,
+          nonce: result.nonce, device_name: deviceName },
       });
       return data;
     });

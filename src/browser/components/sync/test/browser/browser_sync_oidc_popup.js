@@ -19,16 +19,19 @@ add_task(async function public_oidc_server_offers_one_click_account_connection()
   MidoriSyncPanel.init();
   registerCleanupFunction(() => MidoriSyncPanel.uninit());
   registerCleanupFunction(() => new Promise(resolve => server.stop(resolve)));
-  const issuer = "https://accounts.astian.org/";
+  const issuer = "https://accounts.example.invalid/application/o/test-desktop/";
   let advertiseOidc = true;
+  let advertiseBrowserLogin = false;
+  let development = false;
   server.registerPathHandler("/api/v1/capabilities", (_request, response) => {
     response.setStatusLine("1.1", 200, "OK");
     response.setHeader("Content-Type", "application/json", false);
     response.write(JSON.stringify({
       protocol: "MSP", native_ready: false, account_version: 1, changes_version: 1, operations_version: 1,
-      authentication: { pairing: true, development: false, issuer,
-        ...(advertiseOidc ? { oidc: { version: 1, issuer, client_id: "midori-desktop-public",
-          discovery_url: "https://accounts.astian.org/application/o/midori-desktop/.well-known/openid-configuration" } } : {}),
+      authentication: { pairing: true, development, issuer: development ? "urn:midori:sync:local" : issuer,
+        ...(advertiseOidc ? { oidc: { version: 1, issuer, client_id: "test-public-client",
+          discovery_url: "https://accounts.example.invalid/application/o/test-desktop/.well-known/openid-configuration" } } : {}),
+        browser_login: advertiseBrowserLogin ? { version: 1 } : null,
         refresh: { version: 1, request_bytes: 4096, lifetime_seconds: 2592000,
           receipts_per_session: 1024, sessions_per_account: 32 } },
       features: ["opaque_cursors", "snapshot_fence", "tombstones", "device_acknowledgements",
@@ -92,6 +95,30 @@ add_task(async function public_oidc_server_offers_one_click_account_connection()
       account.connectOidc = originalConnectOidc;
       account.cancelAuthorization = originalCancelAuthorization;
     }
+    advertiseOidc = false;
+    advertiseBrowserLogin = true;
+    await MidoriSyncService.connection.checkAndUseServer(`http://localhost:${server.identity.primaryPort}/`, {
+      allowLocalHTTP: true,
+    });
+    ok(BrowserTestUtils.isVisible(connect) && !connect.disabled,
+      "Existing web login enables Connect account without a public OIDC client");
+    advertiseBrowserLogin = false;
+    await MidoriSyncService.connection.checkAndUseServer(`http://localhost:${server.identity.primaryPort}/`, {
+      allowLocalHTTP: true,
+    });
+    ok(BrowserTestUtils.isHidden(document.getElementById("midori-sync-pair-form")),
+      "A production server without OIDC does not fall back to a pairing code");
+    ok(BrowserTestUtils.isVisible(connect) && connect.disabled,
+      "Connect account stays visible but unavailable until OIDC is configured");
+    is(document.getElementById("midori-sync-account-status").getAttribute("data-l10n-id"),
+      "midori-sync-account-connect-unavailable", "The popup explains the server configuration problem");
+    development = true;
+    await MidoriSyncService.connection.checkAndUseServer(`http://localhost:${server.identity.primaryPort}/`, {
+      allowLocalHTTP: true,
+    });
+    ok(BrowserTestUtils.isVisible(document.getElementById("midori-sync-pair-form")),
+      "Development servers still offer pairing for local tests");
+    ok(BrowserTestUtils.isHidden(connect), "Development pairing hides the OIDC action");
   } finally {
     if (panel && panel.state !== "closed") {
       const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
@@ -100,6 +127,8 @@ add_task(async function public_oidc_server_offers_one_click_account_connection()
     }
     try {
       advertiseOidc = false;
+      advertiseBrowserLogin = false;
+      development = false;
       await MidoriSyncService.connection.checkAndUseServer(`http://localhost:${server.identity.primaryPort}/`, {
         allowLocalHTTP: true,
       });
