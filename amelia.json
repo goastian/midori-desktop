@@ -15,9 +15,9 @@
     "midori-newtab": {
       "id": "midori-newtab",
       "repo": "goastian/midori-tab",
-      "version": "1.0.47",
+      "version": "v1.0.51",
       "platform": "github",
-      "fileGlob": "midori-tab-1.0.47-firefox.zip"
+      "fileGlob": "midori-tab-1.0.51-firefox.zip"
     }
   },
   "brands": {
