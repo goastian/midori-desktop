@@ -26,6 +26,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
     <link rel="localization" href="branding/brand.ftl" />
     <link rel="localization" href="browser/welcome.ftl" />
+    <link rel="localization" href="browser/appExtensionFields.ftl" />
   </head>
   <body>
     <!-- Step indicator at the top -->
@@ -140,36 +141,53 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
       <h2 data-l10n-id="welcome-dialog-color"></h2>
       <p data-l10n-id="welcome-dialog-color-subtext"></p>
 
-      <div class="colorway-options">
-        <div class="colorway-card selected" id="colorwaySystem" data-colorway="system" data-tone="system">
-          <div class="colorway-preview system"></div>
-          <h3 data-l10n-id="welcome-dialog-color-system"></h3>
+      <section class="theme-section" aria-labelledby="midoriColorsTitle">
+        <h3 id="midoriColorsTitle" data-l10n-id="welcome-dialog-color-midori"></h3>
+        <div class="colorway-options" role="radiogroup" aria-labelledby="midoriColorsTitle">
+          <button type="button" class="colorway-card" data-colorway="system" data-tone="system" role="radio" aria-checked="false">
+            <span class="colorway-preview system" aria-hidden="true"></span>
+            <span data-l10n-id="welcome-dialog-color-system"></span>
+          </button>
+          <button type="button" class="colorway-card" data-colorway="jade" data-tone="light" role="radio" aria-checked="false">
+            <span class="colorway-preview jade" aria-hidden="true"></span>
+            <span data-l10n-id="welcome-dialog-color-jade"></span>
+          </button>
+          <button type="button" class="colorway-card" data-colorway="ocean" data-tone="light" role="radio" aria-checked="false">
+            <span class="colorway-preview ocean" aria-hidden="true"></span>
+            <span data-l10n-id="welcome-dialog-color-ocean"></span>
+          </button>
+          <button type="button" class="colorway-card" data-colorway="sunrise" data-tone="light" role="radio" aria-checked="false">
+            <span class="colorway-preview sunrise" aria-hidden="true"></span>
+            <span data-l10n-id="welcome-dialog-color-sunrise"></span>
+          </button>
+          <button type="button" class="colorway-card" data-colorway="forest" data-tone="dark" role="radio" aria-checked="false">
+            <span class="colorway-preview forest" aria-hidden="true"></span>
+            <span data-l10n-id="welcome-dialog-color-forest"></span>
+          </button>
+          <button type="button" class="colorway-card" data-colorway="midnight" data-tone="dark" role="radio" aria-checked="false">
+            <span class="colorway-preview midnight" aria-hidden="true"></span>
+            <span data-l10n-id="welcome-dialog-color-midnight"></span>
+          </button>
+          <button type="button" class="colorway-card" data-colorway="ember" data-tone="dark" role="radio" aria-checked="false">
+            <span class="colorway-preview ember" aria-hidden="true"></span>
+            <span data-l10n-id="welcome-dialog-color-ember"></span>
+          </button>
         </div>
-        <div class="colorway-card" id="colorwayJade" data-colorway="jade" data-tone="light">
-          <div class="colorway-preview jade"></div>
-          <h3 data-l10n-id="welcome-dialog-color-jade"></h3>
+      </section>
+      <section class="theme-section" aria-labelledby="novaThemesTitle">
+        <div class="theme-section-heading">
+          <h3 id="novaThemesTitle" data-l10n-id="welcome-dialog-color-nova"></h3>
+          <div class="theme-appearance" role="radiogroup" aria-label="Appearance" data-l10n-id="welcome-dialog-color-appearance">
+            <button type="button" data-appearance="light" role="radio" aria-checked="false" data-l10n-id="welcome-dialog-color-light"></button>
+            <button type="button" data-appearance="dark" role="radio" aria-checked="false" data-l10n-id="welcome-dialog-color-dark"></button>
+            <button type="button" data-appearance="system" role="radio" aria-checked="false" data-l10n-id="welcome-dialog-color-system"></button>
+          </div>
         </div>
-        <div class="colorway-card" id="colorwayOcean" data-colorway="ocean" data-tone="light">
-          <div class="colorway-preview ocean"></div>
-          <h3 data-l10n-id="welcome-dialog-color-ocean"></h3>
-        </div>
-        <div class="colorway-card" id="colorwaySunrise" data-colorway="sunrise" data-tone="light">
-          <div class="colorway-preview sunrise"></div>
-          <h3 data-l10n-id="welcome-dialog-color-sunrise"></h3>
-        </div>
-        <div class="colorway-card" id="colorwayForest" data-colorway="forest" data-tone="dark">
-          <div class="colorway-preview forest"></div>
-          <h3 data-l10n-id="welcome-dialog-color-forest"></h3>
-        </div>
-        <div class="colorway-card" id="colorwayMidnight" data-colorway="midnight" data-tone="dark">
-          <div class="colorway-preview midnight"></div>
-          <h3 data-l10n-id="welcome-dialog-color-midnight"></h3>
-        </div>
-        <div class="colorway-card" id="colorwayEmber" data-colorway="ember" data-tone="dark">
-          <div class="colorway-preview ember"></div>
-          <h3 data-l10n-id="welcome-dialog-color-ember"></h3>
-        </div>
-      </div>
+        <p class="theme-description" data-l10n-id="welcome-dialog-color-nova-description"></p>
+        <div id="novaThemes" class="theme-grid" role="radiogroup" aria-labelledby="novaThemesTitle"></div>
+      </section>
+      <p id="themeExternal" class="theme-description" data-l10n-id="welcome-dialog-color-external" hidden></p>
+      <p id="themeStatus" class="theme-status" role="status" aria-live="polite" hidden></p>
 
       <hbox>
         <button

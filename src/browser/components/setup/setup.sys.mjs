@@ -11,11 +11,22 @@ import {
   normalizeTabLayout,
 } from './SetupCustomizationPolicy.sys.mjs';
 
+import {
+  ACTIVE_THEME_PREF,
+  APPEARANCE_PREF,
+  COLORWAY_PREF,
+  DEFAULT_THEME_ID,
+  SetupThemeSelection,
+} from './SetupThemeSelection.sys.mjs';
+
 const { document, window } = globalThis;
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AboutNewTab: 'resource:///modules/AboutNewTab.sys.mjs',
+  AddonManager: 'resource://gre/modules/AddonManager.sys.mjs',
+  getThemesList: 'moz-src:///browser/themes/ThemesList.sys.mjs',
+  getL10nIdForThemeProp: 'resource://gre/modules/addons/ThemesBundledLocalization.sys.mjs',
   ExtensionParent: 'resource://gre/modules/ExtensionParent.sys.mjs',
   MigrationUtils: 'resource:///modules/MigrationUtils.sys.mjs',
   MidoriVerticalTabs: 'resource:///modules/MidoriVerticalTabs.sys.mjs',
@@ -187,22 +198,201 @@ class Import extends Page {
 class ColorTheme extends Page {
   constructor(id) {
     super(id);
-
-    this._cards = Array.from(document.querySelectorAll('.colorway-card'));
-    this._cards.forEach((card) => {
-      card.addEventListener('click', () => this._select(card.dataset.colorway));
+    this._status = document.getElementById('themeStatus');
+    this._themeGrid = document.getElementById('novaThemes');
+    this._cards = Array.from(this.element.querySelectorAll('[data-colorway]'));
+    this._modeButtons = Array.from(this.element.querySelectorAll('[data-appearance]'));
+    this._selection = new SetupThemeSelection({
+      prefs: Services.prefs,
+      addonManager: lazy.AddonManager,
     });
-
-    this._select(Services.prefs.getCharPref('midori.colorway', 'system'));
+    this._chromeWindow = window.browsingContext.topChromeWindow;
+    this._sync = () => this._syncFromPrefs();
+    this._prefs = [ACTIVE_THEME_PREF, COLORWAY_PREF, APPEARANCE_PREF];
+    for (const pref of this._prefs) {
+      Services.prefs.addObserver(pref, this._sync);
+    }
+    this._chromeWindow.addEventListener('windowlwthemeupdate', this._sync);
+    this._darkMode = this._chromeWindow.matchMedia('(-moz-system-dark-theme)');
+    this._darkMode.addEventListener('change', this._sync);
+    window.addEventListener('unload', () => {
+      this._closed = true;
+      for (const pref of this._prefs) {
+        Services.prefs.removeObserver(pref, this._sync);
+      }
+      this._chromeWindow.removeEventListener('windowlwthemeupdate', this._sync);
+      this._darkMode.removeEventListener('change', this._sync);
+    }, { once: true });
+    this.element.addEventListener('click', event => {
+      const card = event.target.closest('[data-colorway], [data-theme-id]');
+      if (card) {
+        void this._select(card);
+      }
+      const mode = event.target.closest('[data-appearance]');
+      if (mode && !this._busy) {
+        this._selection.selectAppearance(mode.dataset.appearance);
+      }
+    });
+    this.element.addEventListener('keydown', event => this._onKeydown(event));
+    this._syncFromPrefs();
+    void this._loadThemes();
   }
 
-  _select(colorway) {
-    const value = this._cards.some((card) => card.dataset.colorway === colorway) ? colorway : 'system';
-    this._cards.forEach((card) => {
-      card.classList.toggle('selected', card.dataset.colorway === value);
+  async _loadThemes() {
+    try {
+      const themes = await lazy.getThemesList({ installSource: 'about:setup' });
+      if (this._closed) return;
+      this._selection.themes = themes;
+      for (const { id, themePickerColors } of themes.getThemesInfo()) {
+        if (id === DEFAULT_THEME_ID) continue;
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'theme-card';
+        card.dataset.themeId = id;
+        card.setAttribute('role', 'radio');
+        const preview = document.createElement('span');
+        preview.className = 'theme-preview';
+        preview.setAttribute('aria-hidden', 'true');
+        for (const mode of ['light', 'dark']) {
+          preview.style.setProperty(`--preview-${mode}`, themePickerColors[mode].value);
+        }
+        const label = document.createElement('span');
+        label.className = 'theme-name';
+        document.l10n.setAttributes(label, lazy.getL10nIdForThemeProp(id, 'name'));
+        card.append(preview, label);
+        this._themeGrid.append(card);
+        this._cards.push(card);
+      }
+      this._syncFromPrefs();
+    } catch (error) {
+      console.error('Failed to load setup themes:', error);
+      this._setStatus('welcome-dialog-color-load-error');
+    }
+  }
+
+  _setStatus(id) {
+    this._status.hidden = !id;
+    if (id) document.l10n.setAttributes(this._status, id);
+  }
+
+  async _select(card) {
+    if (this._busy) return;
+    const restoreFocus = document.activeElement === card;
+    this._busy = true;
+    this.element.setAttribute('aria-busy', 'true');
+    this._setStatus('welcome-dialog-color-applying');
+    this._setDisabled(true);
+    try {
+      await this._selection.select(card.dataset);
+      this._setStatus('welcome-dialog-color-applied');
+    } catch (error) {
+      console.error('Failed to apply setup theme:', error);
+      this._setStatus('welcome-dialog-color-error');
+    } finally {
+      this._busy = false;
+      this.element.removeAttribute('aria-busy');
+      this._setDisabled(false);
+      this._syncFromPrefs();
+      if (restoreFocus && !this._closed) card.focus({ preventScroll: true });
+    }
+  }
+
+  _setDisabled(disabled) {
+    for (const button of this.element.querySelectorAll('button')) {
+      button.disabled = disabled;
+    }
+  }
+
+  _onKeydown(event) {
+    const group = event.target.closest('[role="radiogroup"]');
+    if (!group || this._busy) return;
+    const buttons = Array.from(group.querySelectorAll('[role="radio"]'));
+    let index = buttons.indexOf(event.target);
+    if (index < 0) return;
+    const rtl = getComputedStyle(group).direction === 'rtl';
+    switch (event.key) {
+      case 'ArrowRight':
+        index += rtl ? -1 : 1;
+        break;
+      case 'ArrowLeft':
+        index += rtl ? 1 : -1;
+        break;
+      case 'ArrowDown':
+        index++;
+        break;
+      case 'ArrowUp':
+        index--;
+        break;
+      case 'Home':
+        index = 0;
+        break;
+      case 'End':
+        index = buttons.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    const button = buttons[(index + buttons.length) % buttons.length];
+    button.focus();
+    button.click();
+  }
+
+  _syncFromPrefs() {
+    if (this._closed) return;
+    const { colorway, themeId } = this._selection.selection;
+    for (const card of this._cards) {
+      const selected = colorway
+        ? card.dataset.colorway === colorway
+        : card.dataset.themeId === themeId;
+      card.classList.toggle('selected', selected);
+      card.setAttribute('aria-checked', String(selected));
+      card.tabIndex = selected ? 0 : -1;
+      card.disabled = !!this._busy;
+    }
+    const modeValue = Services.prefs.getIntPref(APPEARANCE_PREF, -1);
+    const appearance = modeValue === 0 ? 'light' : modeValue === 1 ? 'dark' : 'system';
+    for (const button of this._modeButtons) {
+      const selected = button.dataset.appearance === appearance;
+      button.setAttribute('aria-checked', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
+    for (const group of this.element.querySelectorAll('[role="radiogroup"]')) {
+      if (!group.querySelector('[tabindex="0"]')) {
+        const first = group.querySelector('[role="radio"]');
+        if (first) first.tabIndex = 0;
+      }
+    }
+    document.getElementById('themeExternal').hidden =
+      !themeId ||
+      this._cards.some(card => card.dataset.themeId === themeId);
+    // Preference media queries settle on the browser window's next refresh.
+    this._chromeWindow.requestAnimationFrame(() => {
+      this._chromeWindow.requestAnimationFrame(() => this._syncSurface());
     });
-    Services.prefs.setCharPref('midori.colorway', value);
-    Services.prefs.setBoolPref('midori.gradient.enabled', false);
+  }
+
+  _syncSurface() {
+    if (this._closed) return;
+    const root = document.documentElement;
+    const style = this._chromeWindow.getComputedStyle(this._chromeWindow.document.documentElement);
+    for (const [target, source] of Object.entries({
+      'theme-accent': 'accent-color',
+      bg: 'browser-bgcolor',
+      surface: 'panel-bgcolor',
+      text: 'text-color',
+      border: 'border-color',
+    })) {
+      root.style.setProperty(`--setup-${target}`, style.getPropertyValue(`--pf-${source}`));
+    }
+    const chromeRoot = this._chromeWindow.document.documentElement;
+    const scheme = chromeRoot.hasAttribute('lwtheme')
+      ? style.getPropertyValue('--toolbar-color-scheme').trim()
+      : style.colorScheme;
+    const dark = scheme === 'dark' || (scheme !== 'light' && this._darkMode.matches);
+    root.style.colorScheme = dark ? 'dark' : 'light';
+    root.dataset.setupDark = String(dark);
+    this._themeGrid.dataset.dark = String(this._darkMode.matches);
   }
 }
 

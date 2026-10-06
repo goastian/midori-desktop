@@ -11,6 +11,7 @@
    ------------------------------------------------------------------ */
 
 :root {
+  --pf-toolbox-image: none;
   --pf-accent-color: #0eae5b;
   --pf-accent-color-2: #0e9dae;
   --pf-accent-text-color: color-mix(in srgb, var(--pf-accent-color), var(--pf-text-color) 28%);
@@ -86,6 +87,18 @@
 }
 
 :root:not([lwtheme]) {
+  --toolbox-background-color: var(--pf-sidebar-bgcolor) !important;
+  --toolbox-background-color-inactive: var(--pf-sidebar-bgcolor) !important;
+  --toolbox-text-color: var(--pf-text-color) !important;
+  --toolbox-text-color-inactive: var(--pf-text-color-inactive) !important;
+  --tab-text-color: var(--pf-text-color) !important;
+  --tab-text-color-hover: var(--pf-text-color) !important;
+  --tab-text-color-selected: var(--pf-text-color) !important;
+  --color-accent-primary: var(--pf-accent-text-color) !important;
+  --toolbar-background-color: var(--pf-sidebar-bgcolor) !important;
+  --toolbar-text-color: var(--pf-text-color) !important;
+  --panel-background-color: var(--pf-panel-bgcolor) !important;
+  --panel-border-color: var(--pf-border-color) !important;
   --toolbar-bgcolor: var(--pf-sidebar-bgcolor) !important;
   --toolbar-color: var(--pf-text-color) !important;
   --arrowpanel-background: var(--pf-panel-bgcolor) !important;
@@ -128,27 +141,30 @@
  * consumes those values for its custom surfaces instead of painting a jade
  * colorway over the user's selected theme. */
 :root[lwtheme] {
-  --pf-accent-color: var(--lwt-toolbarbutton-icon-fill-attention, AccentColor);
-  --pf-accent-color-2: var(--lwt-toolbarbutton-icon-fill, var(--lwt-text-color));
-  --pf-browser-bgcolor: var(--lwt-accent-color);
-  --pf-browser-bgcolor-2: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
-  --pf-sidebar-bgcolor: var(--toolbar-bgcolor, var(--lwt-accent-color));
-  --pf-panel-bgcolor: var(--arrowpanel-background, var(--toolbar-bgcolor));
-  --pf-text-color: var(--toolbar-color, var(--lwt-text-color));
-  --pf-url-text-color: var(--toolbar-field-color, var(--lwt-text-color));
-  --pf-icon-color: var(--lwt-toolbarbutton-icon-fill, var(--lwt-text-color));
-  --pf-icon-color-active: var(--lwt-toolbarbutton-icon-fill-attention, var(--pf-accent-color));
+  --pf-accent-color: var(--toolbarbutton-icon-fill-attention, AccentColor);
+  --pf-accent-color-2: var(--toolbarbutton-icon-fill, var(--lwt-text-color));
+  --pf-browser-bgcolor: var(--toolbox-background-color, var(--lwt-accent-color));
+  --pf-browser-bgcolor-2: var(--toolbox-background-color-inactive, var(--pf-browser-bgcolor));
+  --pf-sidebar-bgcolor: var(--toolbox-background-color, var(--lwt-accent-color));
+  --pf-panel-bgcolor: var(--panel-background-color, var(--toolbar-background-color));
+  --pf-text-color: var(--toolbar-text-color, var(--lwt-text-color));
+  --pf-url-text-color: var(--toolbar-field-text-color, var(--lwt-text-color));
+  --pf-icon-color: var(--toolbarbutton-icon-fill, var(--lwt-text-color));
+  --pf-icon-color-active: var(--toolbarbutton-icon-fill-attention, var(--pf-accent-color));
   --pf-toolbar-bgcolor: color-mix(in srgb, var(--pf-text-color), transparent 92%);
   --pf-toolbar-bgcolor-hover: color-mix(in srgb, var(--pf-text-color), transparent 86%);
   --pf-toolbar-bgcolor-active: color-mix(in srgb, var(--pf-accent-color), transparent 78%);
   --pf-toolbar-bgcolor-inactive: color-mix(in srgb, var(--pf-text-color), transparent 95%);
-  --pf-tabbar-bgcolor: color-mix(in srgb, var(--lwt-accent-color), transparent 8%);
-  --pf-navbar-bgcolor: var(--toolbar-bgcolor, var(--lwt-accent-color));
-  --pf-urlbar-bgcolor: var(--toolbar-field-background-color, var(--toolbar-bgcolor));
-  --pf-input-bgcolor: var(--toolbar-field-background-color, var(--toolbar-bgcolor));
-  --pf-tab-selected-bgcolor: var(--tab-selected-bgcolor, var(--toolbar-bgcolor));
-  --pf-border-color: var(--arrowpanel-border-color, color-mix(in srgb, var(--pf-text-color), transparent 82%));
+  --pf-tabbar-bgcolor: transparent;
+  --pf-navbar-bgcolor: var(--toolbar-background-color, var(--lwt-accent-color));
+  --pf-urlbar-bgcolor: var(--toolbar-field-background-color, var(--toolbar-background-color));
+  --pf-input-bgcolor: var(--pf-urlbar-bgcolor);
+  --pf-tab-selected-bgcolor: var(--tab-background-color-selected, var(--toolbar-background-color));
+  --pf-border-color: var(--panel-border-color, color-mix(in srgb, var(--pf-text-color), transparent 82%));
   --pf-border-color-light: color-mix(in srgb, var(--pf-text-color), transparent 90%);
+  --pf-favicon-bgcolor: var(--pf-tab-selected-bgcolor);
+  --pf-favicon-border-color: var(--pf-border-color);
+  --pf-toolbox-image: var(--toolbox-background-image, none);
 }
 
 #main-window:not([lwtheme]) {
@@ -181,6 +197,22 @@
       --pf-favicon-border-color: hsl(200, 5%, 94%, 0.14);
       color-scheme: dark;
     }
+  }
+}
+
+@media -moz-pref("midori.colorway", "jade") {
+  :root:not([lwtheme]) {
+    --pf-browser-bgcolor: #eff8f3;
+    --pf-browser-bgcolor-2: #d9efe3;
+    --pf-sidebar-bgcolor: #f7fcf9;
+    --pf-panel-bgcolor: #ffffff;
+    --pf-text-color: #142a24;
+    --pf-toolbar-bgcolor: rgba(14, 174, 91, 0.09);
+    --pf-toolbar-bgcolor-hover: rgba(14, 174, 91, 0.14);
+    --pf-toolbar-bgcolor-active: rgba(14, 174, 91, 0.22);
+    --pf-toolbar-bgcolor-inactive: rgba(14, 174, 91, 0.055);
+    --pf-tabbar-bgcolor: rgba(14, 174, 91, 0.07);
+    --pf-navbar-bgcolor: rgba(14, 174, 91, 0.1);
   }
 }
 
@@ -341,7 +373,11 @@
 
 #navigator-toolbox {
   border-bottom: 0 !important;
-  background: var(--pf-sidebar-bgcolor) !important;
+  background-color: var(--pf-sidebar-bgcolor) !important;
+  background-image: var(--pf-toolbox-image) !important;
+  background-position: var(--toolbox-background-position, right top) !important;
+  background-repeat: var(--toolbox-background-repeat, no-repeat) !important;
+  background-size: var(--toolbox-background-size, auto) !important;
 }
 
 #nav-bar {
@@ -462,18 +498,14 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 /* Bottom tabs live outside #navigator-toolbox, so they need an explicit
  * Midori theme context instead of Firefox's toolbar-local color variables. */
 :root[midori-horizontal-tabs="bottom"]:not([chromehidden~="toolbar"], [taskbartab]) #TabsToolbar {
-  --toolbar-bgcolor: var(--pf-sidebar-bgcolor) !important;
-  --toolbar-color: var(--pf-text-color) !important;
-  --lwt-accent-color: var(--pf-sidebar-bgcolor) !important;
-  --lwt-text-color: var(--pf-text-color) !important;
   --lwt-tab-text: var(--pf-text-color) !important;
   --tab-selected-textcolor: var(--pf-text-color) !important;
-  --toolbarbutton-icon-fill: var(--pf-icon-color) !important;
   --toolbarbutton-background-color-hover: var(--pf-toolbar-bgcolor-hover) !important;
   --toolbarbutton-background-color-active: var(--pf-toolbar-bgcolor-active) !important;
   border-top: 1px solid var(--pf-border-color-light) !important;
   border-bottom: 0 !important;
   background:
+    var(--pf-toolbox-image),
     linear-gradient(var(--pf-tabbar-bgcolor), var(--pf-tabbar-bgcolor)),
     var(--pf-sidebar-bgcolor) !important;
   color: var(--pf-text-color) !important;

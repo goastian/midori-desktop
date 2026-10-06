@@ -4,88 +4,41 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
-/* The setup surface follows the system only while the System colorway is active. */
 :root {
-  color-scheme: light;
-  --setup-accent: #0eae5b;
-  --setup-bg: #eff8f3;
-  --setup-surface: #ffffff;
-  --setup-text: #142a24;
-  --setup-border: #cbdcd4;
+  color-scheme: light dark;
+  --setup-theme-accent: #0eae5b;
+  --setup-bg: light-dark(#f4f7f5, #151d1a);
+  --setup-surface: light-dark(#ffffff, #202926);
+  --setup-text: light-dark(#142a24, #eaf3f2);
+  --setup-border: light-dark(#cbdcd4, #34443e);
+  --setup-accent: color-mix(in srgb, var(--setup-theme-accent) 60%, var(--setup-text));
+  --setup-on-accent: light-dark(#ffffff, #07150d);
+  --color-accent-primary: var(--setup-accent);
+  --background-color-canvas: var(--setup-bg);
+  --text-color: var(--setup-text);
+  --background-color-box: var(--setup-surface);
+  --border-color: var(--setup-border);
+  --button-background-color: transparent;
+  --button-text-color: var(--setup-text);
+  --button-border-color: var(--setup-border);
+  --button-background-color-hover: color-mix(in srgb, var(--setup-accent) 8%, var(--setup-surface));
+  --button-background-color-active: color-mix(in srgb, var(--setup-accent) 16%, var(--setup-surface));
+  --button-background-color-primary: var(--setup-accent);
+  --button-background-color-primary-hover: color-mix(in srgb, var(--setup-accent) 85%, var(--setup-text));
+  --button-background-color-primary-active: color-mix(in srgb, var(--setup-accent) 75%, var(--setup-text));
+  --button-text-color-primary: var(--setup-on-accent);
+  --button-text-color-primary-hover: var(--setup-on-accent);
+  --button-text-color-primary-active: var(--setup-on-accent);
+  --button-border-color-primary: transparent;
+  --focus-outline-color: var(--setup-accent);
+  --link-color: var(--setup-accent);
   --in-content-page-background: var(--setup-bg);
   --in-content-page-color: var(--setup-text);
   --in-content-box-background: var(--setup-surface);
   --in-content-box-border-color: var(--setup-border);
   --in-content-border-color: var(--setup-border);
   --in-content-primary-button-background: var(--setup-accent);
-  --in-content-primary-button-background-hover: color-mix(in srgb, var(--setup-accent), black 10%);
-  --in-content-primary-button-text-color: #ffffff;
-}
-
-@media (-moz-system-dark-theme) {
-  @media -moz-pref("midori.colorway", "system") {
-    :root {
-      color-scheme: dark;
-      --setup-accent: #29c58b;
-      --setup-bg: #07150d;
-      --setup-surface: #151d1a;
-      --setup-text: #eaf3f2;
-      --setup-border: #34443e;
-    }
-  }
-}
-
-@media -moz-pref("midori.colorway", "ocean") {
-  :root {
-    --setup-accent: #0e9dae;
-    --setup-bg: #eefafe;
-    --setup-surface: #ffffff;
-    --setup-text: #12303a;
-    --setup-border: #c5dce2;
-  }
-}
-
-@media -moz-pref("midori.colorway", "sunrise") {
-  :root {
-    --setup-accent: #c97818;
-    --setup-bg: #fff6e8;
-    --setup-surface: #fffefd;
-    --setup-text: #352617;
-    --setup-border: #e3d3b9;
-  }
-}
-
-@media -moz-pref("midori.colorway", "forest") {
-  :root {
-    color-scheme: dark;
-    --setup-accent: #29c58b;
-    --setup-bg: #07150d;
-    --setup-surface: #151d1a;
-    --setup-text: #eaf3f2;
-    --setup-border: #34443e;
-  }
-}
-
-@media -moz-pref("midori.colorway", "midnight") {
-  :root {
-    color-scheme: dark;
-    --setup-accent: #2f9de2;
-    --setup-bg: #0a1020;
-    --setup-surface: #151d27;
-    --setup-text: #eaf3f2;
-    --setup-border: #354356;
-  }
-}
-
-@media -moz-pref("midori.colorway", "ember") {
-  :root {
-    color-scheme: dark;
-    --setup-accent: #e15d42;
-    --setup-bg: #201111;
-    --setup-surface: #24191d;
-    --setup-text: #fff1ed;
-    --setup-border: #50363c;
-  }
+  --in-content-primary-button-text-color: var(--setup-on-accent);
 }
 
 /* ===== Keyframe animations ===== */
@@ -254,17 +207,17 @@ p {
 }
 
 .page button.primary {
-  box-shadow: 0 2px 8px rgba(0, 97, 224, 0.2);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--setup-accent) 20%, transparent);
 }
 
 .page button.primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(0, 97, 224, 0.3);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--setup-accent) 30%, transparent);
 }
 
 .page button.primary:active {
   transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(0, 97, 224, 0.2);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--setup-accent) 20%, transparent);
 }
 
 .page button.text-link {
@@ -430,7 +383,7 @@ p {
   display: none;
 }
 
-@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
+:root[data-setup-dark="true"] {
   .light-only {
     display: none;
   }
@@ -519,213 +472,226 @@ input[type='checkbox'] {
 }
 
 /* ===== Color Page ===== */
-
-/* Color page */
 #color.page {
-  justify-content: flex-start;
-  padding-top: 24px;
+  max-width: 800px;
+  padding-block: 24px;
+}
+
+.theme-section {
+  width: 100%;
+  margin-block: 16px;
+}
+
+.theme-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.theme-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.theme-section-heading h3 {
+  margin: 0;
+}
+
+#color .theme-description {
+  text-align: start;
+  font-size: 13px;
+  margin: 0 0 16px;
+  max-width: none;
 }
 
 .colorway-options {
   display: grid;
-  grid-template-columns: repeat(3, minmax(112px, 1fr));
-  gap: 12px;
-  margin: 16px 0;
-  max-width: 520px;
-  width: 100%;
-  animation: fadeIn 0.5s ease-out 0.25s backwards;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.colorway-card {
+#color .colorway-card,
+#color .theme-card,
+#color .theme-appearance button {
+  min-width: 0;
+  margin: 0;
+  animation: none;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: none;
+  transform: none;
+}
+
+#color .colorway-card,
+#color .theme-card {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
   align-items: center;
-  min-height: 112px;
-  padding: 12px 10px;
-  border-radius: 12px;
+  border: 1px solid var(--setup-border);
+  background: var(--setup-surface);
+  color: var(--setup-text);
+  border-radius: 8px;
+  padding: 12px 4px;
   cursor: pointer;
-  border: 2px solid color-mix(in srgb, currentColor 12%, transparent);
-  background: var(--in-content-box-background, #f9f9f9);
-  text-align: center;
-  user-select: none;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.15s ease;
-  animation: fadeInUp 0.5s ease-out backwards;
 }
 
-.colorway-card:nth-child(1) {
-  animation-delay: 0.15s;
-}
-.colorway-card:nth-child(2) {
-  animation-delay: 0.2s;
-}
-.colorway-card:nth-child(3) {
-  animation-delay: 0.25s;
-}
-.colorway-card:nth-child(4) {
-  animation-delay: 0.3s;
-}
-.colorway-card:nth-child(5) {
-  animation-delay: 0.35s;
-}
-.colorway-card:nth-child(6) {
-  animation-delay: 0.4s;
-}
-.colorway-card:nth-child(7) {
-  animation-delay: 0.45s;
-}
-
-.colorway-card[data-tone="system"] {
-  grid-column: 1 / -1;
-  min-height: 88px;
-  flex-direction: row;
-  justify-content: center;
-  background: light-dark(#f8fbf8, #202126);
-  color: light-dark(#142a24, #f3f8f7);
-}
-
-.colorway-card[data-tone="light"] {
-  background: #f8fbf8;
-  color: #142a24;
-}
-
-.colorway-card[data-tone="dark"] {
-  background: #202126;
-  color: #f3f8f7;
-}
-
-.colorway-card:hover {
-  border-color: color-mix(in srgb, var(--setup-accent) 40%, transparent);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
-}
-
-.colorway-card.selected {
+#color :is(.colorway-card, .theme-card):hover {
   border-color: var(--setup-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--setup-accent) 25%, transparent);
 }
 
-.colorway-card.selected::after {
-  content: '\2713';
+#color :is(.colorway-card, .theme-card).selected {
+  outline: 2px solid var(--setup-accent);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--setup-accent) 8%, var(--setup-surface));
+}
+
+#color :is(.colorway-card, .theme-card).selected::after {
+  content: '';
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 20px;
-  height: 20px;
-  background: var(--setup-accent);
-  color: #fff;
+  inset-block-start: 6px;
+  inset-inline-end: 6px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--setup-surface);
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 11px;
-  line-height: 1;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  animation: checkPop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  background: var(--setup-accent);
+}
+
+#color button:focus-visible {
+  outline: 2px solid var(--setup-accent);
+  outline-offset: 4px;
+}
+
+#color button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .colorway-preview {
-  width: 52px;
-  height: 52px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
-    0 8px 20px rgba(0, 0, 0, 0.14);
+  border: 1px solid color-mix(in srgb, var(--setup-text) 16%, transparent);
 }
 
 .colorway-preview.system {
-  background:
-    radial-gradient(circle at 50% 50%, #0eae5b 0 18%, transparent 19%),
-    linear-gradient(135deg, #eff8f3 0 49%, #07150d 51% 100%);
+  background: linear-gradient(135deg, #eff8f3 50%, #07150d 50%);
+}
+.colorway-preview.jade { background: #0eae5b; }
+.colorway-preview.ocean { background: #0e9dae; }
+.colorway-preview.sunrise { background: #d98b2b; }
+.colorway-preview.forest { background: #124b35; }
+.colorway-preview.midnight { background: #153554; }
+.colorway-preview.ember { background: #773429; }
+
+.theme-appearance {
+  display: flex;
+  padding: 4px;
+  gap: 4px;
+  background: var(--setup-surface);
+  border: 1px solid var(--setup-border);
+  border-radius: 8px;
 }
 
-.colorway-preview.jade {
-  background:
-    radial-gradient(circle at 72% 26%, rgba(255, 255, 255, 0.55) 0 8%, transparent 9%),
-    linear-gradient(145deg, #0eae5b, #0e9dae);
+#color .theme-appearance button {
+  padding: 6px 12px;
+  border: 0;
+  color: var(--setup-text);
 }
 
-.colorway-preview.ocean {
-  background: linear-gradient(145deg, #0e9dae, #7bd7e8);
+#color .theme-appearance [aria-checked="true"] {
+  background: var(--setup-accent);
+  color: var(--setup-on-accent);
 }
 
-.colorway-preview.sunrise {
-  background: linear-gradient(145deg, #f3b454, #0eae5b);
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  color-scheme: light;
 }
 
-.colorway-preview.forest {
-  background:
-    radial-gradient(circle at 28% 28%, rgba(41, 197, 139, 0.38), transparent 34%),
-    linear-gradient(145deg, #07150d, #0eae5b);
+.theme-grid[data-dark="true"] { color-scheme: dark; }
+
+#color .theme-card {
+  overflow: hidden;
+  align-items: stretch;
+  padding: 0 0 8px;
 }
 
-.colorway-preview.midnight {
-  background:
-    radial-gradient(circle at 65% 30%, rgba(47, 157, 226, 0.42), transparent 28%),
-    linear-gradient(145deg, #0a1020, #0e9dae);
+.theme-preview {
+  position: relative;
+  height: 48px;
+  background: var(--preview-light);
+  border-bottom: 1px solid var(--setup-border);
 }
 
-.colorway-preview.ember {
-  background:
-    radial-gradient(circle at 35% 32%, rgba(255, 199, 120, 0.34), transparent 30%),
-    linear-gradient(145deg, #2a1111, #e15d42);
+.theme-grid[data-dark="true"] .theme-preview { background: var(--preview-dark); }
+
+.theme-preview::before,
+.theme-preview::after {
+  content: '';
+  position: absolute;
+  background: light-dark(#fff, #1d1b1f);
+  border: 1px solid light-dark(#0002, #fff3);
+  border-radius: 4px;
 }
 
-.colorway-card h3 {
-  margin: 0;
+.theme-preview::before {
+  inset-inline-start: 8px;
+  inset-block-start: 8px;
+  width: 40%;
+  height: 12px;
+}
+
+.theme-preview::after {
+  inset-inline: 8px;
+  inset-block-end: 6px;
+  height: 10px;
+}
+
+.theme-name {
+  padding-inline: 8px;
+  overflow-wrap: anywhere;
+}
+
+#color .theme-status {
   font-size: 13px;
-  font-weight: 600;
+  margin: 0 0 8px;
 }
 
-@media (max-width: 520px) {
-  .colorway-options {
-    grid-template-columns: repeat(2, 1fr);
-    max-width: 300px;
-  }
+@media (max-width: 600px) {
+  .colorway-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .theme-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-@media (max-height: 480px) {
-  #color.page {
-    padding-top: 16px;
-  }
+@media (max-width: 400px) {
+  .colorway-options, .theme-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
-  #color.page h2 {
-    font-size: 1.3em;
-    margin: 4px 0;
-  }
-
-  #color.page p {
-    margin: 2px 0 10px 0;
-    font-size: 0.9em;
-  }
-
-  .colorway-options {
-    gap: 8px;
-    margin-bottom: 8px;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }
 
-@media -moz-pref("midori.colorway", "forest") or -moz-pref("midori.colorway", "midnight") or -moz-pref("midori.colorway", "ember") {
-  .colorway-card {
-    background: var(--in-content-box-background, rgba(255, 255, 255, 0.05));
+@media (forced-colors: active) {
+  :root {
+    --setup-bg: Canvas;
+    --setup-surface: Canvas;
+    --setup-text: CanvasText;
+    --setup-border: ButtonText;
+    --setup-accent: Highlight;
+    --setup-on-accent: HighlightText;
   }
-}
-
-@media (-moz-system-dark-theme) {
-  @media -moz-pref("midori.colorway", "system") {
-    .colorway-card {
-      background: var(--in-content-box-background, rgba(255, 255, 255, 0.05));
-    }
-
-    .colorway-card[data-tone="system"] {
-      background: #202126;
-    }
-  }
+  .colorway-preview, .theme-preview { forced-color-adjust: none; }
 }
 
 /* ====================================================================
