@@ -3,6 +3,8 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 .dotbuild/
+.midori-sync-dev/
+/artifacts/
 engine/
 firefox-*/
 node_modules/
@@ -31,6 +33,7 @@ locales/firefox-l10n/
 !/src/browser/locales/en-US/browser/midori/
 /src/browser/locales/en-US/browser/midori/*
 !/src/browser/locales/en-US/browser/midori/blocker.ftl
+!/src/browser/locales/en-US/browser/midori/sync.ftl
 
 update.astian.org/
 update.astian.org/browser/
