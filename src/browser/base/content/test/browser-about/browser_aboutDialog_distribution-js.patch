@@ -1,7 +1,7 @@
-diff --git a/browser/base/content/test/about/browser_aboutDialog_distribution.js b/browser/base/content/test/about/browser_aboutDialog_distribution.js
+diff --git a/browser/base/content/test/browser-about/browser_aboutDialog_distribution.js b/browser/base/content/test/browser-about/browser_aboutDialog_distribution.js
 index 65c8b00487d6d8823eab7f09e316b4c8317ba813..1b9e62df2d92bccfb599ec3952f2b8039e252771 100644
---- a/browser/base/content/test/about/browser_aboutDialog_distribution.js
-+++ b/browser/base/content/test/about/browser_aboutDialog_distribution.js
+--- a/browser/base/content/test/browser-about/browser_aboutDialog_distribution.js
++++ b/browser/base/content/test/browser-about/browser_aboutDialog_distribution.js
 @@ -64,6 +64,26 @@ add_task(async function verify_distribution_info_displays() {
    aboutDialog.close();
  });

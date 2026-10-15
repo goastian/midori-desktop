@@ -923,10 +923,9 @@ index e235f6b9f3da3aefdd3ed909ad20db365f006f9e..98abb03b90b23f31edc1885b9c1f97df
        aContext.url,
        aContext.userContextId
 diff --git a/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs b/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs
-index 1a26c718091d532d6a7e3697619910d6daae9a74..543ea599bdec381730b2457ce5c95c0b83a18ae1 100644
 --- a/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs
 +++ b/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs
-@@ -106,6 +106,25 @@ export const TaskbarTabsPageAction = {
+@@ -107,6 +107,25 @@
            await lazy.TaskbarTabs.removeTaskbarTab(id);
          }
        }
@@ -952,7 +951,7 @@ index 1a26c718091d532d6a7e3697619910d6daae9a74..543ea599bdec381730b2457ce5c95c0b
      } finally {
        lazy.logConsole.debug(`Unblocking Page Action input for tab.`);
        this._processingTabs.delete(currentTab);
-@@ -124,23 +143,18 @@ function initVisibilityChanges(aWindow, aElement) {
+@@ -125,6 +144,9 @@
    let isTaskbarTabsEnabled = false;
 
    const shouldShow = aLocation => {
@@ -960,6 +959,9 @@ index 1a26c718091d532d6a7e3697619910d6daae9a74..543ea599bdec381730b2457ce5c95c0b
 +      return true;
 +    }
      if (!isTaskbarTabsEnabled) {
+       return false;
+     }
+@@ -138,19 +160,11 @@
        return false;
      }
 
@@ -980,6 +982,7 @@ index 1a26c718091d532d6a7e3697619910d6daae9a74..543ea599bdec381730b2457ce5c95c0b
    };
 
    aWindow.gBrowser.addProgressListener({
+
 diff --git a/browser/components/taskbartabs/TaskbarTabsPin.sys.mjs b/browser/components/taskbartabs/TaskbarTabsPin.sys.mjs
 index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e7657f5ee 100644
 --- a/browser/components/taskbartabs/TaskbarTabsPin.sys.mjs
@@ -1315,10 +1318,9 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
   * Cleans up the filename so it can be saved safely. This means replacing invalid names
   * (e.g. DOS devices) with others, or replacing invalid characters (e.g. asterisks on
 diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs
-index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7db0084792 100644
 --- a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs
 +++ b/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs
-@@ -63,7 +63,7 @@ class TaskbarTab {
+@@ -65,7 +65,7 @@
      shortcutRelativePath,
    }) {
      this.#id = id;
@@ -1327,7 +1329,7 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
      this.#userContextId = userContextId;
      this.#startUrl = startUrl;
      this.#name = name;
-@@ -76,7 +76,7 @@ class TaskbarTab {
+@@ -78,7 +78,7 @@
    }
 
    get scopes() {
@@ -1336,7 +1338,7 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
    }
 
    get userContextId() {
-@@ -103,16 +103,21 @@ class TaskbarTab {
+@@ -105,16 +105,21 @@
     * @throws {Error} If `aId` is not a valid Taskbar Tabs ID.
     */
    isScopeNavigable(aUrl) {
@@ -1365,7 +1367,7 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
      }
 
      lazy.logConsole.info(
-@@ -146,9 +151,14 @@ class TaskbarTab {
+@@ -148,8 +153,13 @@
      if ("shortcutRelativePath" in aPatch) {
        this.#shortcutRelativePath = aPatch.shortcutRelativePath;
      }
@@ -1374,13 +1376,12 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +    }
    }
  }
-
-+export class TaskbarTabsRegistryVersionError extends Error {}
 +
++export class TaskbarTabsRegistryVersionError extends Error {}
+
  /**
   * Storage class for Taskbar Tabs feature's persistent storage.
-  */
-@@ -204,7 +214,34 @@ export class TaskbarTabsRegistry {
+@@ -206,7 +216,34 @@
     *   The matching or created Taskbar Tab, along with whether it was created.
     */
    findOrCreateTaskbarTab(aUrl, aUserContextId, { manifest = {} } = {}) {
@@ -1416,7 +1417,7 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
      if (existing) {
        return {
          created: false,
-@@ -212,7 +249,7 @@ export class TaskbarTabsRegistry {
+@@ -214,7 +251,7 @@
        };
      }
 
@@ -1425,7 +1426,7 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
      if ("scope" in manifest) {
        // Note: manifest.scope will not be set unless the start_url is
        // within scope. As such, this scope always contains the start_url.
-@@ -221,17 +258,24 @@ export class TaskbarTabsRegistry {
+@@ -223,31 +260,23 @@
        const scopeUri = Services.io.newURI(manifest.scope);
        scope = {
          hostname: scopeUri.host,
@@ -1434,40 +1435,52 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
        };
      }
 
+-    let startUrl;
+-    if (manifest.start_url) {
+-      startUrl = manifest.start_url;
+-    } else if (aUrl.schemeIs("moz-extension")) {
+-      // For extensions, the prePath will give an index of files in the
+-      // extension. Since this isn't useful, and it isn't easy to get to the
+-      // original page, remove the query/ref but preserve everything else.
+-      startUrl = aUrl.mutate().setQuery("").setRef("").finalize().spec;
+-    } else {
+-      // For non-extensions, it should be easy enough for the user to navigate
+-      // to the page they wanted. Without a manifest, we assume this is the
+-      // homepage of the web app.
+-      startUrl = aUrl.prePath;
+-    }
 +    const startUrl =
 +      manifest.start_url ??
 +      aUrl.mutate().setQuery("").setRef("").finalize().spec;
-+
+
      let id = Services.uuid.generateUUID().toString().slice(1, -1);
      let taskbarTab = new TaskbarTab({
        id,
        scopes: [scope],
        userContextId: aUserContextId,
 -      name: manifest.name ?? generateName(aUrl),
--      startUrl: manifest.start_url ?? aUrl.prePath,
 +      name:
 +        normalizeStoredName(manifest.name) ??
 +        normalizeStoredName(generateName(aUrl)),
-+      startUrl,
+       startUrl,
      });
      this.#taskbarTabs.push(taskbarTab);
+@@ -287,6 +316,14 @@
 
-@@ -272,6 +316,14 @@ export class TaskbarTabsRegistry {
+     lazy.logConsole.error(`Taskbar Tab ID ${aId} not found.`);
      return null;
-   }
-
++  }
++
 +  restoreTaskbarTab(aTaskbarTab) {
 +    if (this.#taskbarTabs.some(item => item.id === aTaskbarTab?.id)) {
 +      throw new Error("Cannot restore a duplicate Taskbar Tab.");
 +    }
 +    this.#taskbarTabs.push(aTaskbarTab);
 +    this.#storage.save(this);
-+  }
-+
+   }
+
    /**
-    * Searches for an existing Taskbar Tab matching the URL and Container.
-    *
-@@ -288,25 +340,22 @@ export class TaskbarTabsRegistry {
+@@ -305,25 +342,22 @@
          "Invalid argument, `aUrl` should be instance of `nsIURL`"
        );
      }
@@ -1475,10 +1488,13 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +    if (!Number.isInteger(aUserContextId) || aUserContextId < 0) {
        throw new TypeError(
 -        "Invalid argument, `aUserContextId` should be type of `number`"
+-      );
+-    }
+-
 +        "Invalid argument, `aUserContextId` should be a non-negative integer"
-       );
-     }
-
++      );
++    }
++
 +    let bestMatch = null;
 +    let bestPrefixLength = -1;
      for (const tt of this.#taskbarTabs) {
@@ -1499,7 +1515,7 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
              continue;
            }
          }
-@@ -316,14 +365,22 @@ export class TaskbarTabsRegistry {
+@@ -333,12 +367,20 @@
              `Matched TaskbarTab for URL ${aUrl.host} to ${scope.hostname}, but container ${aUserContextId} mismatched ${tt.userContextId}.`
            );
          } else {
@@ -1514,19 +1530,17 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +          }
          }
        }
-     }
-
++    }
++
 +    if (bestMatch) {
 +      lazy.logConsole.info(
 +        `Matched TaskbarTab for URL ${aUrl.host} with container ${aUserContextId}.`
 +      );
 +      return bestMatch;
-+    }
-+
+     }
+
      lazy.logConsole.info(
-       `No matching TaskbarTab found for URL ${aUrl.spec} and container ${aUserContextId}.`
-     );
-@@ -360,12 +417,36 @@ export class TaskbarTabsRegistry {
+@@ -377,10 +419,34 @@
     * @throws {Error} If any taskbar tab in aTaskbarTabs is unknown.
     */
    patchTaskbarTab(aTaskbarTab, aPatch) {
@@ -1545,8 +1559,8 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +    }
      aTaskbarTab._applyPatch(aPatch);
      this.#storage.save(this);
-   }
-
++  }
++
 +  /**
 +   * Gets immutable plain-object snapshots of all registered Taskbar Tabs.
 +   *
@@ -1560,12 +1574,10 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +      );
 +      return Object.freeze(snapshot);
 +    });
-+  }
-+
+   }
+
    /**
-    * Gets the number of taskbar tabs that are registered in this registry.
-    *
-@@ -395,8 +476,12 @@ export class TaskbarTabsRegistry {
+@@ -412,8 +478,12 @@
  export class TaskbarTabsRegistryStorage {
    // The file to save to and load from.
    #file;
@@ -1578,7 +1590,7 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 
    /**
     * @param {nsIFile} aFile - The file to load and save.
-@@ -411,40 +496,88 @@ export class TaskbarTabsRegistryStorage {
+@@ -428,40 +498,88 @@
     * @returns {TaskbarTabsRegistry} The loaded registry.
     */
    async load() {
@@ -1623,11 +1635,15 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 -        return null;
 -      }),
 -    ]);
-+      }
-+    }
-
+-
 -    if (!jsonObject) {
 -      return new TaskbarTabsRegistry(this, []);
+-    }
+-
+-    if (!schema.validate(jsonObject).valid) {
++      }
++    }
++
 +    if (!storedTaskbarTabs) {
 +      for (const candidate of [temporaryFile, backupFile]) {
 +        if (!candidate.exists()) {
@@ -1646,30 +1662,21 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +          );
 +        }
 +      }
-     }
-
--    if (!schema.validate(jsonObject).valid) {
--      throw new Error(
--        `JSON from file ${this.#file.path} is invalid for the Taskbar Tabs Schema.`
--      );
++    }
++
 +    if (!storedTaskbarTabs) {
 +      recovered =
 +        this.#file.exists() || backupFile.exists() || temporaryFile.exists();
 +      storedTaskbarTabs = [];
-     }
-
--    if (jsonObject.version > kStorageVersion) {
--      throw new Error(`File ${this.#file.path} has an unrecognized version.
--      Current Version: ${kStorageVersion}
--      File Version: ${jsonObject.version}`);
++    }
++
 +    this.#registry = new TaskbarTabsRegistry(this, storedTaskbarTabs);
 +    if (recovered) {
 +      await this.save(this.#registry, { backupExisting: false });
-     }
++    }
 +    return this.#registry;
 +  }
-
--    return new TaskbarTabsRegistry(this, jsonObject.taskbarTabs);
++
 +  async #read(aFile, aSchema) {
 +    lazy.logConsole.info(`Loading file ${aFile.path} for Taskbar Tabs.`);
 +    const jsonObject = await IOUtils.readJSON(aFile.path);
@@ -1683,7 +1690,18 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +          File Version: ${jsonObject.version}`);
 +    }
 +    if (!aSchema.validate(jsonObject).valid) {
-+      throw new Error(
+       throw new Error(
+-        `JSON from file ${this.#file.path} is invalid for the Taskbar Tabs Schema.`
+-      );
+-    }
+-
+-    if (jsonObject.version > kStorageVersion) {
+-      throw new Error(`File ${this.#file.path} has an unrecognized version.
+-      Current Version: ${kStorageVersion}
+-      File Version: ${jsonObject.version}`);
+-    }
+-
+-    return new TaskbarTabsRegistry(this, jsonObject.taskbarTabs);
 +        `JSON from file ${aFile.path} is invalid for the Taskbar Tabs Schema.`
 +      );
 +    }
@@ -1691,7 +1709,7 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
    }
 
    /**
-@@ -458,41 +591,77 @@ export class TaskbarTabsRegistryStorage {
+@@ -475,40 +593,76 @@
     * @param {TaskbarTabsRegistry} aRegistry - The registry to serialize.
     * @returns {Promise} Resolves once the current save operation completes.
     */
@@ -1713,6 +1731,13 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 -              JSON.stringify(result.errors)
 -          );
 -        }
+-
+-        await IOUtils.makeDirectory(this.#file.parent.path);
+-        await IOUtils.writeJSON(this.#file.path, json);
+-
+-        lazy.logConsole.info(`Tasbkar Tabs storage file updated.`);
+-      })
+-      .catch(e => {
 +  save(aRegistry = this.#registry, { backupExisting = true } = {}) {
 +    if (!aRegistry) {
 +      throw new TypeError("A Taskbar Tabs registry is required for saving.");
@@ -1736,37 +1761,33 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +            this.#saveScheduled = false;
 +          }
 +        });
-
--        await IOUtils.makeDirectory(this.#file.parent.path);
--        await IOUtils.writeJSON(this.#file.path, json);
++
 +      lazy.AsyncShutdown.profileBeforeChange.addBlocker(
 +        "Taskbar Tabs: finalizing registry serialization to disk.",
 +        this.#saveQueue
 +      );
-
--        lazy.logConsole.info(`Tasbkar Tabs storage file updated.`);
--      })
--      .catch(e => {
++
 +      this.#saveQueue.catch(e => {
          lazy.logConsole.error(`Error writing Taskbar Tabs file: ${e}`);
        });
-+    }
-
+-
 -    lazy.AsyncShutdown.profileBeforeChange.addBlocker(
 -      "Taskbar Tabs: finalizing registry serialization to disk.",
 -      this.#saveQueue
 -    );
-+    return this.#saveQueue;
-+  }
++    }
 
+     return this.#saveQueue;
++  }
++
 +  flush() {
 +    if (this.#saveRequested && !this.#saveScheduled) {
 +      return this.save(this.#registry, {
 +        backupExisting: this.#backupExisting,
 +      });
 +    }
-     return this.#saveQueue;
-   }
++    return this.#saveQueue;
++  }
 +
 +  async #write(backupExisting) {
 +    lazy.logConsole.info(`Updating Taskbar Tabs storage file.`);
@@ -1792,11 +1813,10 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +    await IOUtils.writeJSON(this.#file.path, json, options);
 +
 +    lazy.logConsole.info(`Taskbar Tabs storage file updated.`);
-+  }
+   }
  }
 
- /**
-@@ -504,7 +673,10 @@ export class TaskbarTabsRegistryStorage {
+@@ -521,7 +675,10 @@
   * @returns {object} aStored exactly.
   */
  function migrateStoredTaskbarTab(aStored) {
@@ -1808,7 +1828,7 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
      try {
        aStored.name = generateName(Services.io.newURI(aStored.startUrl));
      } catch (e) {
-@@ -512,9 +684,31 @@ function migrateStoredTaskbarTab(aStored) {
+@@ -529,7 +686,29 @@
      }
    }
 
@@ -1823,8 +1843,8 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +  }
 +
    return aStored;
- }
-
++}
++
 +function normalizeStoredName(aName) {
 +  if (typeof aName !== "string") {
 +    return null;
@@ -1835,12 +1855,10 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 +    .replace(/\s+/g, " ")
 +    .trim();
 +  return name ? name.slice(0, 80) : null;
-+}
-+
+ }
+
  /**
-  * Generates a name for the Taskbar Tab appropriate for user facing UI.
-  *
-@@ -532,9 +726,13 @@ function generateName(aUri) {
+@@ -549,9 +728,13 @@
      hostParts.shift();
    }
 
@@ -1857,13 +1875,14 @@ index 6df1d1ca6a9a77162ad85c16ef4fcce9250b2e8f..f9cbe68f9fbadf647bca31f665c53e7d
 
    // ["subdomain", "example"]
    hostParts.splice(-suffixDomainCount);
-@@ -547,5 +745,5 @@ function generateName(aUri) {
+@@ -564,5 +747,5 @@
      // "Example Subdomain"
      .join(" ");
 
 -  return name;
 +  return name || aUri.displayHost || aUri.host;
  }
+
 diff --git a/browser/components/taskbartabs/TaskbarTabsWindowManager.sys.mjs b/browser/components/taskbartabs/TaskbarTabsWindowManager.sys.mjs
 index d761047552af966f8fad70ea8feab9eb051ccb19..c7c79f6cdc1847b12c1020dd0179159911a0328d 100644
 --- a/browser/components/taskbartabs/TaskbarTabsWindowManager.sys.mjs

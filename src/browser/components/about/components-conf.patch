@@ -1,15 +1,15 @@
 diff --git a/browser/components/about/components.conf b/browser/components/about/components.conf
 --- a/browser/components/about/components.conf
 +++ b/browser/components/about/components.conf
-@@ -7,6 +7,7 @@
-     'aitab',
+@@ -6,6 +6,7 @@
+     'aichatcontent',
      'asrouter',
      'blocked',
 +    'center',
      'certerror',
      'downloads',
      'framecrashed',
-@@ -14,6 +15,7 @@
+@@ -13,6 +14,7 @@
      'logins',
      'loginsimportreport',
      'firefoxview',
@@ -17,11 +17,11 @@ diff --git a/browser/components/about/components.conf b/browser/components/about
      'messagepreview',
      'opentabs',
      'policies',
-@@ -28,6 +30,7 @@
+@@ -27,6 +29,7 @@
      'robots',
      'sessionrestore',
      'settings',
 +    'setup',
      'smartformfillreview',
+     'smartpage',
      'smartwindowtasks',
-     'tabcrashed',

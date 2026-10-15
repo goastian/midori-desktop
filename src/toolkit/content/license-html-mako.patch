@@ -1,0 +1,15 @@
+diff --git a/toolkit/content/license.html.mako b/toolkit/content/license.html.mako
+--- a/toolkit/content/license.html.mako
++++ b/toolkit/content/license.html.mako
+@@ -130,6 +130,11 @@
+           All rights reserved.</li>
+       <li>Google Play and the Google Play logo are trademarks of Google LLC.</li>
+       <li>App Store® and the App Store® logo are trademarks of Apple, Inc.</li>
++      <li>The Midori blocker includes Peter Lowe's Ad and Tracking Server
++          List in <code>browser/components/blocker/assets/filters/peter-lowe-adservers.txt</code>.
++          The list credits Peter Lowe (<a href="mailto:pgl@yoyo.org">pgl@yoyo.org</a>)
++          and links to <a href="https://pgl.yoyo.org/adservers/">https://pgl.yoyo.org/adservers/</a>
++          and <a href="https://pgl.yoyo.org/adservers/policy.php">https://pgl.yoyo.org/adservers/policy.php</a>.</li>
+     </ul>
+
+

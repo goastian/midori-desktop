@@ -1,11 +1,13 @@
 diff --git a/toolkit/library/rust/shared/lib.rs b/toolkit/library/rust/shared/lib.rs
 --- a/toolkit/library/rust/shared/lib.rs
 +++ b/toolkit/library/rust/shared/lib.rs
-@@ -162,6 +162,7 @@ extern crate urlpattern_glue;
- 
- extern crate adblock;
+@@ -164,7 +164,9 @@
+ extern crate urlpattern;
+ extern crate urlpattern_glue;
+
++extern crate adblock;
  extern crate content_classifier_engine;
 +extern crate midori_sync_ffi;
- 
+ extern crate etp_engine;
+
  #[cfg(feature = "libz-rs-sys")]
- extern crate libz_rs_sys;
