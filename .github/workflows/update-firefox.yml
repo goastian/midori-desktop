@@ -159,6 +159,10 @@ jobs:
           echo "Patch import failed, attempting patch recalculation..."
           npm run recalculate-patches
 
+      - name: Verify Rust dependency integrity
+        if: steps.changes.outputs.changed == 'true'
+        run: npm run check:rust
+
       - name: Run formatter
         if: steps.changes.outputs.changed == 'true'
         run: |

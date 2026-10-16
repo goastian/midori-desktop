@@ -34,6 +34,9 @@ jobs:
       - name: Source unit tests
         run: npm run test:unit
 
+      - name: Rust integrity checker tests
+        run: npm run test:rust-integrity
+
       - name: ESLint & Prettier
         run: npm run lint
 
