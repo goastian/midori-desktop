@@ -3,6 +3,24 @@
 
 const { MidoriSyncService } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncService.sys.mjs");
 
+add_setup(function use_a_settled_key_registry() {
+  const original = Object.getOwnPropertyDescriptor(MidoriSyncService, "keys");
+  Object.defineProperty(MidoriSyncService, "keys", {
+    configurable: true, value: { snapshot: { rotation: null } },
+  });
+  registerCleanupFunction(() => Object.defineProperty(MidoriSyncService, "keys", original));
+});
+
+add_task(async function an_active_rotation_blocks_manual_and_background_sync() {
+  MidoriSyncService.keys.snapshot.rotation = { phase: "rewriting" };
+  try {
+    await Assert.rejects(MidoriSyncService.syncNow(), /encryption_rotation_required/);
+    await Assert.rejects(MidoriSyncService.syncNow({ background: true }), /encryption_rotation_required/);
+  } finally {
+    MidoriSyncService.keys.snapshot.rotation = null;
+  }
+});
+
 add_task(async function one_explicit_action_runs_all_collections_without_losing_partial_results() {
   const order = [];
   const fake = {

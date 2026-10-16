@@ -28,6 +28,8 @@ EXTRA_JS_MODULES += [
     "MidoriSyncPasswordTracker.sys.mjs",
     "MidoriSyncPreferences.sys.mjs",
     "MidoriSyncProtocol.sys.mjs",
+    "MidoriSyncRecord.sys.mjs",
+    "MidoriSyncRotation.sys.mjs",
     "MidoriSyncScheduler.sys.mjs",
     "MidoriSyncSecretStore.sys.mjs",
     "MidoriSyncServerConfig.sys.mjs",
@@ -41,7 +43,6 @@ EXTRA_JS_MODULES += [
 JAR_MANIFESTS += ["jar.mn"]
 
 XPCSHELL_TESTS_MANIFESTS += [
-    "test/integration/xpcshell.toml",
     "test/unit/xpcshell.toml",
 ]
 

@@ -99,6 +99,108 @@ fn bundle_matches_sodium_and_recovers_same_key() {
 }
 
 #[test]
+fn opaque_record_ids_match_sodium_and_survive_key_rewrapping() {
+    let v = vectors();
+    let key = fixture_key();
+    for (collection, vector) in v["identities"].as_object().unwrap() {
+        assert_eq!(
+            key.record_id(collection, vector["input"].as_str().unwrap().as_bytes())
+                .unwrap(),
+            vector["digest"]
+        );
+    }
+    let input = v["identities"]["history"]["input"]
+        .as_str()
+        .unwrap()
+        .as_bytes();
+    let expected = key.record_id("history", input).unwrap();
+    let passphrase = b"new public fixture recovery secret";
+    let wrapped = key.wrap(passphrase).unwrap();
+    let mut recovered = NativeKey::unwrap(scope(), passphrase, &wrapped).unwrap();
+    assert_eq!(recovered.record_id("history", input).unwrap(), expected);
+    recovered.key_id = URL_SAFE_NO_PAD.encode([63; 16]);
+    assert_eq!(recovered.record_id("history", input).unwrap(), expected);
+}
+
+#[test]
+fn opaque_record_ids_bind_account_collection_input_and_independent_key() {
+    let key = fixture_key();
+    let input = b"public identity fixture";
+    let expected = key.record_id("history", input).unwrap();
+    assert_ne!(key.record_id("tabs", input).unwrap(), expected);
+    assert_ne!(
+        key.record_id("history", b"other identity").unwrap(),
+        expected
+    );
+    assert_ne!(
+        NativeKey::generate(scope())
+            .unwrap()
+            .record_id("history", input)
+            .unwrap(),
+        expected
+    );
+    for field in 0..3 {
+        let mut other = fixture_key();
+        other.scope.0[field].push('x');
+        assert_ne!(other.record_id("history", input).unwrap(), expected);
+    }
+    assert_eq!(
+        key.record_id("history", b""),
+        Err(CryptoError::InvalidInput)
+    );
+    assert_eq!(
+        key.record_id("history", &vec![0; MAX_NATIVE_IDENTITY_BYTES + 1]),
+        Err(CryptoError::InvalidInput)
+    );
+    assert_eq!(
+        key.record_id("unknown", input),
+        Err(CryptoError::UnsupportedCollection)
+    );
+    assert_eq!(
+        key.record_id("history", &vec![0; MAX_NATIVE_IDENTITY_BYTES])
+            .unwrap()
+            .len(),
+        64
+    );
+}
+
+#[test]
+fn authenticated_control_schema_is_distinct_from_legacy_records() {
+    let key = fixture_key();
+    let mut context = context("history");
+    let value = br#"{"version":2,"deleted":true,"ttl":null,"value":null}"#;
+    for purpose in [Purpose::Record, Purpose::Local] {
+        context.schema_version = 2;
+        let sealed = key.seal(purpose, &context, value).unwrap();
+        assert_eq!(
+            key.open(purpose, &locator(&context), &sealed)
+                .unwrap()
+                .as_slice(),
+            value
+        );
+        let mut changed: Value = serde_json::from_str(&sealed).unwrap();
+        changed["context"]["schema_version"] = json!(1);
+        assert_eq!(
+            key.open(purpose, &locator(&context), &changed.to_string()),
+            Err(CryptoError::AuthenticationFailed)
+        );
+        context.schema_version = 1;
+        let legacy = key.seal(purpose, &context, value).unwrap();
+        let mut changed: Value = serde_json::from_str(&legacy).unwrap();
+        changed["context"]["schema_version"] = json!(2);
+        assert_eq!(
+            key.open(purpose, &locator(&context), &changed.to_string()),
+            Err(CryptoError::AuthenticationFailed)
+        );
+        context.schema_version = 3;
+        assert_eq!(
+            key.seal(purpose, &context, value),
+            Err(CryptoError::UnsupportedVersion)
+        );
+    }
+}
+
+#[test]
 fn all_account_fields_are_authenticated_for_records_and_bundles() {
     let v = vectors();
     let envelope = v["records"]["bookmarks"]["record"]["envelope"].to_string();

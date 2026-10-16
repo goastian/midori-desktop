@@ -56,6 +56,15 @@ impl Keyring {
         Ok(self.native(id)?.key_id())
     }
 
+    pub fn native_record_id(
+        &self,
+        id: u32,
+        collection: &str,
+        input: &[u8],
+    ) -> Result<String, KeyringError> {
+        Ok(self.native(id)?.record_id(collection, input)?)
+    }
+
     pub fn seal_native(
         &self,
         id: u32,
@@ -125,6 +134,10 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(ring.forget(first), Err(KeyringError::UnknownKey));
         assert_eq!(ring.native_key_id(first), Err(KeyringError::UnknownKey));
+        assert_eq!(
+            ring.native_record_id(first, "history", b"fixture"),
+            Err(KeyringError::UnknownKey)
+        );
     }
 
     #[test]

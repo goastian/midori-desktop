@@ -12,6 +12,7 @@ const SYNC_COLLECTIONS = new Set(["bookmarks", "history", "passwords", "credit-c
 
 export async function assertSyncStoreSettled({
   identity, localKeys, scope, deviceId, directory, openStore, entryId = syncJournalEntryId,
+  allowPendingRotation = false,
   cryptoFactory = () => Cc["@astian.org/midori-sync-crypto;1"].createInstance(Ci.nsIMidoriSyncCrypto),
 }) {
   if (identity === null) {
@@ -24,7 +25,7 @@ export async function assertSyncStoreSettled({
   let keys;
   let store;
   try {
-    keys = await recoverLocalSyncKeys({ scope, value: localKeys, cryptoFactory });
+    keys = await recoverLocalSyncKeys({ scope, value: localKeys, cryptoFactory, allowPendingRotation });
     store = await openStore({ directory, storeId: identity.store_id, deviceId, keys, create: false });
     const collections = new Set();
     const states = new Set();

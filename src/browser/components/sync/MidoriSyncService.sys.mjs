@@ -37,6 +37,9 @@ let backgroundResumeAgain = false;
 let backgroundResumeTimer = null;
 let backgroundResumeFailures = 0;
 let manualSyncs = 0;
+let encryptionMigration = null;
+let encryptionMigrationPromise = null;
+let encryptionTransitionPending = false;
 const collections = new Map();
 const syncStatuses = new Map();
 const syncStatusListeners = new Set();
@@ -174,16 +177,6 @@ function resumeBackgroundAccount() {
         !["ready", "empty", "recovery-required", "migration-required"].includes(keyManager.snapshot.status)) {
       await keyManager.refresh();
     }
-    if (backgroundStarted && startup === backgroundStartup && owner.snapshot.status === "connected" &&
-        Services.prefs.getBoolPref(SYNC_BACKGROUND_PREF, false)) {
-      const { status, incompatibleSessions } = keyManager.snapshot;
-      if (status === "empty" && incompatibleSessions === 0) {
-        await keyManager.bootstrap();
-      } else if (status === "pending" && incompatibleSessions === 0) {
-        await keyManager.confirmCreation();
-        await keyManager.refresh();
-      }
-    }
     backgroundResumeFailures = 0;
     succeeded = true;
   })().catch(error => {
@@ -241,7 +234,7 @@ function updateSyncScheduling() {
     syncSchedulerGeneration = account.snapshot.generation;
   }
   const available = !sleeping && !memoryPressure && !Services.io.offline && manualSyncs === 0 &&
-    !keys.snapshot.busy;
+    !encryptionTransitionPending && !keys.snapshot.busy && keys.snapshot.rotation?.phase !== "rewriting";
   syncScheduler.setAvailable(Boolean(available));
   attachSyncHints();
 }
@@ -333,6 +326,8 @@ function shutdown() {
 }
 
 function closeJournal() {
+  encryptionMigration?.driver.close();
+  encryptionMigration?.abort.abort();
   for (const current of collections.values()) {
     closeCollection(current);
   }
@@ -354,6 +349,12 @@ function closeCollection(current) {
     } else {
       current.adapter?.close?.();
     }
+  }
+}
+
+function assertCurrentAccount(owner, generation) {
+  if (owner !== account || owner.snapshot.generation !== generation) {
+    throw new SyncStoreError("cancelled");
   }
 }
 
@@ -537,6 +538,110 @@ export const MidoriSyncService = {
       journal = current;
     }
     return journal.promise;
+  },
+
+  async prepareEncryptionRotation({ allowPendingRotation = false } = {}) {
+    if (manualSyncs) {
+      throw new SyncStoreError("busy");
+    }
+    const owner = this.account;
+    const generation = owner.snapshot.generation;
+    ++manualSyncs;
+    syncScheduler?.setAvailable(false);
+    try {
+      await backgroundSyncPromise?.catch(() => {});
+      assertCurrentAccount(owner, generation);
+      await closeJournal();
+      assertCurrentAccount(owner, generation);
+      const { assertSyncStoreSettled } = ChromeUtils.importESModule(new URL("./MidoriSyncDisconnect.sys.mjs", import.meta.url).href);
+      await withLocalSecretsWhenIdle(owner, generation, lease => assertSyncStoreSettled({
+        identity: lease.readJournalIdentity(), localKeys: lease.readLocalKeys(),
+        scope: lease.scope, deviceId: lease.deviceId, allowPendingRotation,
+        directory: PathUtils.join(PathUtils.profileDir, "midori-sync", "journals"), openStore: openSyncStore,
+      }));
+    } finally {
+      --manualSyncs;
+      updateSyncScheduling();
+    }
+  },
+
+  async confirmEncryptionRotation(options) {
+    if (encryptionTransitionPending || manualSyncs) {
+      throw new SyncStoreError("busy");
+    }
+    encryptionTransitionPending = true;
+    try {
+      await this.prepareEncryptionRotation({ allowPendingRotation: true });
+      return await this.keys.confirmRotation(options);
+    } finally {
+      encryptionTransitionPending = false;
+      updateSyncScheduling();
+    }
+  },
+
+  migrateEncryption(options = {}) {
+    if (!encryptionMigrationPromise) {
+      encryptionMigrationPromise = this.runEncryptionMigration(options).finally(() => {
+        encryptionMigrationPromise = null;
+      });
+    }
+    return encryptionMigrationPromise;
+  },
+
+  async runEncryptionMigration({ limit = 100 } = {}) {
+    if (manualSyncs || encryptionTransitionPending) {
+      throw new SyncStoreError("busy");
+    }
+    const owner = this.account;
+    const generation = owner.snapshot.generation;
+    const { MidoriSyncRotation } = ChromeUtils.importESModule(new URL("./MidoriSyncRotation.sys.mjs", import.meta.url).href);
+    const { MidoriSyncHistory } = ChromeUtils.importESModule(new URL("./MidoriSyncHistory.sys.mjs", import.meta.url).href);
+    ++manualSyncs;
+    syncScheduler?.setAvailable(false);
+    let current;
+    let store;
+    let ownedJournal;
+    try {
+      await backgroundSyncPromise?.catch(() => {});
+      assertCurrentAccount(owner, generation);
+      await closeJournal();
+      assertCurrentAccount(owner, generation);
+      const opening = this.journal;
+      ownedJournal = journal;
+      store = await opening;
+      assertCurrentAccount(owner, generation);
+      const abort = new AbortController();
+      const driver = new MidoriSyncRotation({
+        keys: this.keys, journal: store, entryId: syncJournalEntryId,
+        createId: () => Services.uuid.generateUUID().toString().slice(1, -1),
+        history: new MidoriSyncHistory({ deriveRecordId: (collection, input) => this.keys.deriveRecordId(collection, input), allowLegacy: true }),
+        request: (path, options) => withAccountSecretsWhenIdle(owner, generation,
+          lease => lease.request(path, { ...options, signal: abort.signal }), { signal: abort.signal }),
+      });
+      current = { driver, abort, promise: null };
+      encryptionMigration = current;
+      current.promise = driver.run({ limit });
+      const result = await current.promise;
+      if (!result.done) {
+        await this.keys.refresh();
+      }
+      return { ...result, remaining: this.keys.snapshot.rotation?.live_records ?? result.remaining };
+    } finally {
+      if (current && encryptionMigration === current) {
+        encryptionMigration = null;
+      }
+      current?.driver.close();
+      try {
+        if (ownedJournal && journal === ownedJournal) {
+          await closeJournal();
+        } else {
+          await store?.close();
+        }
+      } finally {
+        --manualSyncs;
+        updateSyncScheduling();
+      }
+    }
   },
 
 
@@ -811,6 +916,9 @@ export const MidoriSyncService = {
   },
 
   async syncNow({ limit = 100, inventory = false, promptPasswords = false, background = false } = {}) {
+    if (this === MidoriSyncService && (encryptionTransitionPending || this.keys.snapshot.rotation?.phase === "rewriting")) {
+      throw new SyncStoreError("encryption_rotation_required");
+    }
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 || typeof inventory !== "boolean" ||
         typeof promptPasswords !== "boolean" || typeof background !== "boolean" || (background && promptPasswords)) {
       throw new SyncStoreError("invalid_capture_query");
@@ -909,6 +1017,9 @@ export const MidoriSyncService = {
   },
 
   async collection(name, adapter) {
+    if (this === MidoriSyncService && (encryptionTransitionPending || this.keys.snapshot.rotation?.phase === "rewriting")) {
+      throw new SyncStoreError("encryption_rotation_required");
+    }
     const owner = this.account;
     const generation = owner.snapshot.generation;
     let current = collections.get(name);
@@ -928,7 +1039,10 @@ export const MidoriSyncService = {
         adapter = new MidoriSyncBookmarks();
       } else if (name === "history") {
         const { MidoriSyncHistory } = ChromeUtils.importESModule(new URL("./MidoriSyncHistory.sys.mjs", import.meta.url).href);
-        adapter = new MidoriSyncHistory();
+        adapter = new MidoriSyncHistory({
+          deriveRecordId: (collection, input) => this.keys.deriveRecordId(collection, input),
+          allowLegacy: this.keys.snapshot.custody === "transition",
+        });
       } else if (name === "tabs") {
         const { MidoriSyncTabs } = ChromeUtils.importESModule(new URL("./MidoriSyncTabs.sys.mjs", import.meta.url).href);
         adapter = new MidoriSyncTabs({ deviceId: owner.snapshot.device.id, deviceName: owner.snapshot.device.name });

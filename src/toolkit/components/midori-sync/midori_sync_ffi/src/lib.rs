@@ -293,7 +293,11 @@ pub unsafe extern "C" fn midori_sync_generate_native(
     scope_len: usize,
     out_id: *mut u32,
 ) -> MidoriSyncStatus {
-    let (Some(ring), Some(out_id)) = (unsafe { ring.as_mut() }, unsafe { out_id.as_mut() }) else {
+    let Some(out_id) = (unsafe { out_id.as_mut() }) else {
+        return MidoriSyncStatus::InvalidInput;
+    };
+    *out_id = 0;
+    let Some(ring) = (unsafe { ring.as_mut() }) else {
         return MidoriSyncStatus::InvalidInput;
     };
     return_id(
@@ -317,11 +321,11 @@ pub unsafe extern "C" fn midori_sync_recover_native(
     bundle_len: usize,
     out_id: *mut u32,
 ) -> MidoriSyncStatus {
-    let (Some(ring), Some(secret), Some(out_id)) = (
-        unsafe { ring.as_mut() },
-        unsafe { secret.as_ref() },
-        unsafe { out_id.as_mut() },
-    ) else {
+    let Some(out_id) = (unsafe { out_id.as_mut() }) else {
+        return MidoriSyncStatus::InvalidInput;
+    };
+    *out_id = 0;
+    let (Some(ring), Some(secret)) = (unsafe { ring.as_mut() }, unsafe { secret.as_ref() }) else {
         return MidoriSyncStatus::InvalidInput;
     };
     return_id(
@@ -343,13 +347,49 @@ pub unsafe extern "C" fn midori_sync_native_key_id(
     id: u32,
     output: *mut *mut MidoriSyncBuffer,
 ) -> MidoriSyncStatus {
-    let (Some(ring), Some(output)) = (unsafe { ring.as_ref() }, unsafe { output.as_mut() }) else {
+    let Some(output) = (unsafe { output.as_mut() }) else {
+        return MidoriSyncStatus::InvalidInput;
+    };
+    *output = ptr::null_mut();
+    let Some(ring) = (unsafe { ring.as_ref() }) else {
         return MidoriSyncStatus::InvalidInput;
     };
     return_buffer(
         ring.0
             .native_key_id(id)
             .map(|key_id| Zeroizing::new(key_id.as_bytes().to_vec())),
+        output,
+    )
+}
+
+/// # Safety
+/// The native_key_id contract applies; `collection` must be readable for its
+/// length and `input` must be a live buffer, both disjoint from `output`.
+#[no_mangle]
+pub unsafe extern "C" fn midori_sync_native_record_id(
+    ring: *const MidoriSyncKeyring,
+    id: u32,
+    collection: *const u8,
+    collection_len: usize,
+    input: *const MidoriSyncBuffer,
+    output: *mut *mut MidoriSyncBuffer,
+) -> MidoriSyncStatus {
+    let Some(output) = (unsafe { output.as_mut() }) else {
+        return MidoriSyncStatus::InvalidInput;
+    };
+    *output = ptr::null_mut();
+    let (Some(ring), Some(input)) = (unsafe { ring.as_ref() }, unsafe { input.as_ref() }) else {
+        return MidoriSyncStatus::InvalidInput;
+    };
+    return_buffer(
+        (|| {
+            let collection = unsafe { utf8(collection, collection_len, 64)? };
+            Ok(Zeroizing::new(
+                ring.0
+                    .native_record_id(id, collection, &input.0)?
+                    .into_bytes(),
+            ))
+        })(),
         output,
     )
 }
@@ -367,11 +407,12 @@ pub unsafe extern "C" fn midori_sync_seal_native(
     plaintext: *const MidoriSyncBuffer,
     output: *mut *mut MidoriSyncBuffer,
 ) -> MidoriSyncStatus {
-    let (Some(ring), Some(plaintext), Some(output)) = (
-        unsafe { ring.as_ref() },
-        unsafe { plaintext.as_ref() },
-        unsafe { output.as_mut() },
-    ) else {
+    let Some(output) = (unsafe { output.as_mut() }) else {
+        return MidoriSyncStatus::InvalidInput;
+    };
+    *output = ptr::null_mut();
+    let (Some(ring), Some(plaintext)) = (unsafe { ring.as_ref() }, unsafe { plaintext.as_ref() })
+    else {
         return MidoriSyncStatus::InvalidInput;
     };
     return_buffer(
@@ -402,7 +443,11 @@ pub unsafe extern "C" fn midori_sync_open_native(
     envelope_len: usize,
     output: *mut *mut MidoriSyncBuffer,
 ) -> MidoriSyncStatus {
-    let (Some(ring), Some(output)) = (unsafe { ring.as_ref() }, unsafe { output.as_mut() }) else {
+    let Some(output) = (unsafe { output.as_mut() }) else {
+        return MidoriSyncStatus::InvalidInput;
+    };
+    *output = ptr::null_mut();
+    let Some(ring) = (unsafe { ring.as_ref() }) else {
         return MidoriSyncStatus::InvalidInput;
     };
     return_buffer(
@@ -427,11 +472,11 @@ pub unsafe extern "C" fn midori_sync_wrap_native(
     secret: *const MidoriSyncBuffer,
     output: *mut *mut MidoriSyncBuffer,
 ) -> MidoriSyncStatus {
-    let (Some(ring), Some(secret), Some(output)) = (
-        unsafe { ring.as_ref() },
-        unsafe { secret.as_ref() },
-        unsafe { output.as_mut() },
-    ) else {
+    let Some(output) = (unsafe { output.as_mut() }) else {
+        return MidoriSyncStatus::InvalidInput;
+    };
+    *output = ptr::null_mut();
+    let (Some(ring), Some(secret)) = (unsafe { ring.as_ref() }, unsafe { secret.as_ref() }) else {
         return MidoriSyncStatus::InvalidInput;
     };
     return_buffer(
@@ -642,6 +687,142 @@ mod tests {
             );
             midori_sync_buffer_free(ptr::null_mut());
             midori_sync_keyring_free(ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn identity_inputs_are_copied_and_match_sodium() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../midori_sync_core/tests/fixtures/native-sodium.json"
+        ))
+        .unwrap();
+        let scope = serde_json::to_vec(&vectors["scope"]).unwrap();
+        let bundle = serde_json::to_vec(&vectors["bundle"]).unwrap();
+        let passphrase = vectors["passphrase"].as_str().unwrap().as_bytes();
+        let vector = &vectors["identities"]["history"];
+        let mut source = vector["input"].as_str().unwrap().as_bytes().to_vec();
+        unsafe {
+            let ring = midori_sync_keyring_new();
+            let secret = midori_sync_secret_copy(passphrase.as_ptr(), passphrase.len());
+            let mut id = 0;
+            assert_eq!(
+                midori_sync_recover_native(
+                    ring,
+                    secret,
+                    scope.as_ptr(),
+                    scope.len(),
+                    bundle.as_ptr(),
+                    bundle.len(),
+                    &mut id
+                ),
+                MidoriSyncStatus::Ok
+            );
+            midori_sync_buffer_free(secret);
+            let input = midori_sync_plaintext_copy(source.as_ptr(), source.len());
+            source.fill(0);
+            let mut output = ptr::null_mut();
+            assert_eq!(
+                midori_sync_native_record_id(ring, id, b"history".as_ptr(), 7, input, &mut output),
+                MidoriSyncStatus::Ok
+            );
+            assert_eq!(
+                take_output(output),
+                vector["digest"].as_str().unwrap().as_bytes()
+            );
+            assert_eq!(
+                midori_sync_native_record_id(ring, id, b"invalid".as_ptr(), 7, input, &mut output),
+                MidoriSyncStatus::InvalidInput
+            );
+            assert!(output.is_null());
+            assert_eq!(midori_sync_forget(ring, id), MidoriSyncStatus::Ok);
+            assert_eq!(
+                midori_sync_native_record_id(ring, id, b"history".as_ptr(), 7, input, &mut output),
+                MidoriSyncStatus::UnknownKey
+            );
+            assert!(output.is_null());
+            midori_sync_buffer_free(input);
+            midori_sync_keyring_free(ring);
+        }
+    }
+
+    #[test]
+    fn malformed_native_calls_clear_output_handles_and_buffers() {
+        unsafe {
+            let sentinel = std::ptr::NonNull::<MidoriSyncBuffer>::dangling().as_ptr();
+            let mut id = 99;
+            assert_eq!(
+                midori_sync_generate_native(ptr::null_mut(), ptr::null(), 0, &mut id),
+                MidoriSyncStatus::InvalidInput
+            );
+            assert_eq!(id, 0);
+            id = 99;
+            assert_eq!(
+                midori_sync_recover_native(
+                    ptr::null_mut(),
+                    ptr::null(),
+                    ptr::null(),
+                    0,
+                    ptr::null(),
+                    0,
+                    &mut id
+                ),
+                MidoriSyncStatus::InvalidInput
+            );
+            assert_eq!(id, 0);
+            let mut output = sentinel;
+            assert_eq!(
+                midori_sync_native_key_id(ptr::null(), 1, &mut output),
+                MidoriSyncStatus::InvalidInput
+            );
+            assert!(output.is_null());
+            output = sentinel;
+            assert_eq!(
+                midori_sync_native_record_id(
+                    ptr::null(),
+                    1,
+                    ptr::null(),
+                    0,
+                    ptr::null(),
+                    &mut output
+                ),
+                MidoriSyncStatus::InvalidInput
+            );
+            assert!(output.is_null());
+            output = sentinel;
+            assert_eq!(
+                midori_sync_seal_native(
+                    ptr::null(),
+                    1,
+                    0,
+                    ptr::null(),
+                    0,
+                    ptr::null(),
+                    &mut output
+                ),
+                MidoriSyncStatus::InvalidInput
+            );
+            assert!(output.is_null());
+            output = sentinel;
+            assert_eq!(
+                midori_sync_open_native(
+                    ptr::null(),
+                    1,
+                    0,
+                    ptr::null(),
+                    0,
+                    ptr::null(),
+                    0,
+                    &mut output
+                ),
+                MidoriSyncStatus::InvalidInput
+            );
+            assert!(output.is_null());
+            output = sentinel;
+            assert_eq!(
+                midori_sync_wrap_native(ptr::null(), 1, ptr::null(), &mut output),
+                MidoriSyncStatus::InvalidInput
+            );
+            assert!(output.is_null());
         }
     }
 

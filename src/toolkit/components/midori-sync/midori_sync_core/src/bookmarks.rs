@@ -51,8 +51,11 @@ where
 
 impl Drop for Bookmark {
     fn drop(&mut self) {
+        self.parent_guid.zeroize();
+        self.index.zeroize();
         self.title.zeroize();
         self.url.zeroize();
+        self.date_added.zeroize();
     }
 }
 

@@ -13,6 +13,7 @@ use zeroize::Zeroizing;
 
 pub const MAX_NATIVE_PLAINTEXT_BYTES: usize = 190_000;
 pub const MAX_NATIVE_ENVELOPE_BYTES: usize = 262_144;
+pub const MAX_NATIVE_IDENTITY_BYTES: usize = 16_384;
 const MAX_BUNDLE_BYTES: usize = 2048;
 
 #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -78,7 +79,7 @@ impl RecordContext {
         let index = collection_index(&self.collection)?;
         validate_text(&self.id, 255)?;
         validate_generation(&self.generation)?;
-        if self.schema_version != 1 {
+        if !matches!(self.schema_version, 1 | 2) {
             return Err(CryptoError::UnsupportedVersion);
         }
         validate_revision(&self.base_revision)?;
@@ -188,6 +189,27 @@ impl NativeKey {
 
     pub fn key_id(&self) -> &str {
         &self.key_id
+    }
+
+    pub fn record_id(&self, collection: &str, input: &[u8]) -> Result<String, CryptoError> {
+        let index = collection_index(collection)?;
+        if input.is_empty() || input.len() > MAX_NATIVE_IDENTITY_BYTES {
+            return Err(CryptoError::InvalidInput);
+        }
+        let key = self.secret.subkey(b"MSPv2ids", index);
+        let mut message = Zeroizing::new(b"MidoriSync\0identity\0".to_vec());
+        message.extend_from_slice(&1u32.to_be_bytes());
+        for field in &self.scope.0 {
+            append_field(&mut message, field.as_bytes());
+        }
+        append_field(&mut message, collection.as_bytes());
+        append_field(&mut message, input);
+        Ok(blake2b_simd::Params::new()
+            .hash_length(32)
+            .key(key.as_bytes())
+            .hash(&message)
+            .to_hex()
+            .to_string())
     }
 
     pub fn seal(

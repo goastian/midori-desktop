@@ -8,6 +8,7 @@ const { createSyncVaultFileStore, authorizeSyncSecretStore } = ChromeUtils.impor
 const { createNativeSyncKeys } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncNativeKeys.sys.mjs");
 const { openSyncStore } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncStore.sys.mjs");
 const { MidoriSyncCollection } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncCollection.sys.mjs");
+const { openSyncRecord, sealSyncRecord } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncRecord.sys.mjs");
 const { syncJournalEntryId } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncIndex.sys.mjs");
 const { SyncProtocolError } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncProtocol.sys.mjs");
 const { MidoriSyncBookmarks } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncBookmarks.sys.mjs");
@@ -23,12 +24,9 @@ function within(promise, duration) {
 
 add_task(async function native_devices_exchange_encrypted_records_through_laravel() {
   const fixturePath = Services.env.get("MIDORI_SYNC_TEST_FIXTURE");
-  if (!fixturePath) {
-    info("Use npm run test:sync -- --native for the live PostgreSQL/Laravel integration.");
-    return;
-  }
+  Assert.ok(fixturePath, "A live backend fixture is required; use the backend test wrapper");
   const fixture = await IOUtils.readJSON(fixturePath);
-  Assert.ok(/^http:\/\/localhost:[0-9]+\/$/.test(fixture.baseURL), "Only the isolated local backend is accepted");
+  Assert.ok(/^http:\/\/(localhost|127\.0\.0\.1):[0-9]+\/$/.test(fixture.baseURL), "Only the isolated local backend is accepted");
   const keyStore = Cc["@mozilla.org/security/oskeystore;1"].getService(Ci.nsIOSKeyStore);
   const tokenFactory = () => Cc["@mozilla.org/security/internalkeytoken;1"].createInstance(Ci.nsIPKCS11Token);
   let primaryToken;
@@ -51,18 +49,13 @@ add_task(async function native_devices_exchange_encrypted_records_through_larave
         store, keyStore, profileId, createId: uuid,
         authorize: () => authorizeSyncSecretStore(keyStore, tokenFactory),
       });
-      const device = { connection, store, createVault, vault: createVault(), clock: null, renewalOperations: [],
-        omitActivationRecovery: name === "A" };
+      const device = { connection, store, createVault, vault: createVault(), clock: null, renewalOperations: [] };
       device.createAccount = () => new MidoriSyncAccount({
         connection, vaultFactory: () => device.vault, now: () => device.clock ?? Date.now(),
         transportFactory: (url, options) => {
           const transport = new MidoriSyncTransport(url, options);
           return {
             async request(path, requestOptions) {
-              if (path === "api/v1/crypto/activate" && device.omitActivationRecovery) {
-                requestOptions = { ...requestOptions, body: { ...requestOptions.body } };
-                delete requestOptions.body.recovery_secret;
-              }
               const response = await transport.request(path, requestOptions);
               if (path === "api/v1/auth/refresh" && requestOptions.method === "POST") {
                 device.renewalOperations.push(requestOptions.body.operation_id);
@@ -90,15 +83,18 @@ add_task(async function native_devices_exchange_encrypted_records_through_larave
     await a.keys.refresh();
     Assert.equal(a.keys.snapshot.status, "empty");
     const recoveryCode = await a.keys.prepareCreation();
-    await a.keys.confirmCreation();
+    await Assert.rejects(a.keys.confirmCreation(), error => error.code === "recovery_backup_required");
+    await a.keys.confirmCreation({ recoveryCodeSaved: true });
     const beforeEscrow = await a.account.withSecrets(lease => lease.request("api/v1/crypto/state"));
-    Assert.equal(beforeEscrow.data.server_recovery, false, "The fixture starts with an older native account");
+    Assert.equal(beforeEscrow.data.server_recovery, false, "Activation keeps recovery material in client custody");
     await a.keys.refresh();
     Assert.equal(a.keys.snapshot.status, "ready");
     const afterEscrow = await a.account.withSecrets(lease => lease.request("api/v1/crypto/state"));
-    Assert.equal(afterEscrow.data.server_recovery, true, "The existing browser enables server recovery automatically");
+    Assert.equal(afterEscrow.data.server_recovery, false, "Refreshing never enables server recovery");
     await b.keys.refresh();
-    Assert.equal(b.keys.snapshot.status, "ready", "A second browser recovers the key from its authenticated session");
+    Assert.equal(b.keys.snapshot.status, "recovery-required", "A session alone cannot recover the key");
+    await b.keys.recover(recoveryCode);
+    Assert.equal(b.keys.snapshot.status, "ready", "A second browser recovers using the user's backup");
     for (const device of devices) {
       device.journalOptions = {
         directory: PathUtils.join(PathUtils.profileDir, "native-journals"), storeId: uuid(),
@@ -114,9 +110,9 @@ add_task(async function native_devices_exchange_encrypted_records_through_larave
     }
     const collection = "api/v1/sync/collections/bookmarks";
     const initial = await a.account.withSecrets(lease => lease.request(`${collection}/changes`));
-    const context = { collection: "bookmarks", id: "native-integration-bookmark", generation: initial.data.generation, schema_version: 1, base_revision: "0" };
-    const plaintext = new TextEncoder().encode(JSON.stringify({ title: "Marcador ñ", url: "https://example.invalid/native" }));
-    const sealed = await a.keys.sealRecord(context, plaintext);
+    const context = { collection: "bookmarks", id: "native-integration-bookmark", generation: initial.data.generation, schema_version: 2, base_revision: "0" };
+    const originalValue = { title: "Marcador ñ", url: "https://example.invalid/native" };
+    const sealed = await sealSyncRecord(a.keys, context, { deleted: false, value: originalValue });
     const operation = { operation_id: uuid(), id: context.id, base_revision: "0", payload: sealed.payload };
     const body = { crypto: sealed.crypto, generation: context.generation, operations: [operation] };
     const outgoing = { id: operation.operation_id, collection: "bookmarks", kind: "outbox", expectedRevision: 0, value: body };
@@ -146,10 +142,8 @@ add_task(async function native_devices_exchange_encrypted_records_through_larave
     const downloaded = savedPage.changes.find(change => change.record.id === context.id);
     Assert.ok(downloaded, "The second device receives the encrypted change");
     const expected = { collection: "bookmarks", id: context.id, generation: savedPage.generation };
-    const recovered = await b.keys.openRecord(expected, downloaded.record.payload);
-    Assert.deepEqual(recovered, plaintext, "The second native client decrypts the original Unicode bookmark");
-    recovered.fill(0);
-    plaintext.fill(0);
+    const recovered = await openSyncRecord(b.keys, expected, downloaded.record);
+    Assert.deepEqual(recovered, originalValue, "The second native client decrypts the authenticated Unicode bookmark");
     await Assert.rejects(b.keys.openRecord({ ...expected, id: "relocated" }, downloaded.record.payload), error => error.name === "OperationError");
     const checkpoint = { id: uuid(), collection: "bookmarks", kind: "metadata", expectedRevision: 0,
       value: { cursor: savedPage.next_cursor, sequence: savedPage.snapshot_sequence, generation: savedPage.generation } };
@@ -253,18 +247,12 @@ add_task(async function native_devices_exchange_encrypted_records_through_larave
       title: "Hijo antes del padre", url: "https://example.invalid/native-child" };
     const publish = async (id, value, baseRevision = "0") => {
       const deleted = value === null;
-      const bytes = new TextEncoder().encode(JSON.stringify(value));
-      let encrypted;
-      try {
-        encrypted = deleted ? null : await a.keys.sealRecord({ collection: "bookmarks", id,
-          generation: context.generation, schema_version: 1, base_revision: baseRevision }, bytes);
-      } finally {
-        bytes.fill(0);
-      }
+      const encrypted = await sealSyncRecord(a.keys, { collection: "bookmarks", id,
+        generation: context.generation, base_revision: baseRevision }, { deleted, value });
       const response = await a.account.withSecrets(lease => lease.request(`${collection}/operations`, {
         method: "POST", body: { generation: context.generation, crypto: a.keys.writeContext,
           operations: [{ operation_id: uuid(), id, base_revision: baseRevision, deleted,
-            ...(deleted ? {} : { payload: encrypted.payload }) }] },
+            payload: encrypted.payload }] },
       }));
       Assert.equal(response.data.results[0].status, "applied", "Laravel accepts the native Places record or tombstone");
     };

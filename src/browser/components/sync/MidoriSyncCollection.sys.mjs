@@ -7,11 +7,10 @@ import {
   SyncProtocolError, historyClearCutoff, validSyncCounter, validSyncCursor, validSyncRecordId, validateChangePage,
   validateRemoteRecord, validateOperationResults,
 } from "./MidoriSyncProtocol.sys.mjs";
+import { openSyncRecord, protectedSyncRecords, sealSyncRecord } from "./MidoriSyncRecord.sys.mjs";
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
 const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
-const MAX_PLAINTEXT_BYTES = 190000;
 
 export function validateSyncCollectionState(value) {
   const previous = value;
@@ -184,6 +183,9 @@ export class MidoriSyncCollection {
       return { status: mirror.value.blocked ? "conflict" : "pending" };
     }
     const remote = mirror?.value.remote;
+    if (remote && this.#adapter.isRetired?.(remote)) {
+      return { status: "unchanged" };
+    }
     const base = remote && !this.#effectiveIncoming(remote).deleted ? remote.value : null;
     const current = await this.#adapter.read(id, base);
     this.#ensureOpen();
@@ -216,23 +218,14 @@ export class MidoriSyncCollection {
       operation.ttl = new Date(Math.floor(expiry / 1000) * 1000).toISOString().replace(".000Z", "+00:00");
     }
     const crypto = this.#keys.writeContext;
-    if (!deleted) {
-      const bytes = encoder.encode(JSON.stringify(data));
-      try {
-        if (bytes.length > MAX_PLAINTEXT_BYTES) {
-          throw new SyncProtocolError("record_too_large");
-        }
-        const sealed = await this.#keys.sealRecord({
-          collection: this.#collection, id, generation: this.#state.value.generation,
-          schema_version: 1, base_revision: baseRevision,
-        }, bytes);
-        if (sealed.crypto.epoch !== crypto.epoch || sealed.crypto.revision !== crypto.revision) {
-          throw new SyncProtocolError("crypto_state_conflict");
-        }
-        operation.payload = sealed.payload;
-      } finally {
-        bytes.fill(0);
-      }
+    const sealed = await sealSyncRecord(this.#keys, {
+      collection: this.#collection, id, generation: this.#state.value.generation, base_revision: baseRevision,
+    }, { deleted, ttl: operation.ttl ?? null, value: data });
+    if (sealed.crypto.epoch !== crypto.epoch || sealed.crypto.revision !== crypto.revision) {
+      throw new SyncProtocolError("crypto_state_conflict");
+    }
+    if (sealed.payload) {
+      operation.payload = sealed.payload;
     }
     const queued = { version: 1, generation: this.#state.value.generation, epoch: crypto.epoch, operation, value: data,
       position: this.#positionOf(id, data) };
@@ -267,6 +260,9 @@ export class MidoriSyncCollection {
   }
 
   async clearHistory() {
+    if (protectedSyncRecords(this.#keys)) {
+      throw new SyncProtocolError("authenticated_control_required");
+    }
     if (this.#collection !== "history") {
       throw new SyncProtocolError("invalid_collection");
     }
@@ -399,6 +395,9 @@ export class MidoriSyncCollection {
   }
 
   async #recoverHistoryReset(expectedGeneration = null, expectedCutoff = null) {
+    if (protectedSyncRecords(this.#keys)) {
+      throw new SyncProtocolError("authenticated_control_required");
+    }
     const { data } = await this.#send("changes", { query: { limit: 1 }, maxBytes: 8 * 1024 * 1024 });
     const cutoff = historyClearCutoff(data?.reset);
     validateChangePage(data, { generation: null, sequence: "0", fence: null });
@@ -441,6 +440,9 @@ export class MidoriSyncCollection {
     let cutoff = null;
     if (this.#collection === "history") {
       cutoff = page.reset === undefined ? null : historyClearCutoff(page.reset);
+      if (cutoff !== null && protectedSyncRecords(this.#keys)) {
+        throw new SyncProtocolError("authenticated_control_required");
+      }
       if ((this.#state.value.generation && cutoff !== (this.#state.value.clearBeforeMs ?? null)) ||
           (!this.#state.value.generation && this.#state.value.clearBeforeMs != null &&
             cutoff !== this.#state.value.clearBeforeMs)) {
@@ -484,6 +486,7 @@ export class MidoriSyncCollection {
     let mirror = null;
     let incoming = null;
     let outcome = null;
+    let historical = null;
     try {
       validateRemoteRecord(raw);
       mirror = await this.#mirror(raw.id);
@@ -500,41 +503,32 @@ export class MidoriSyncCollection {
         await this.#save([], { ...this.#state.value, index: index + 1 });
         return;
       }
-      let value = null;
-      if (!raw.deleted) {
-        const bytes = await this.#keys.openRecord({ collection: this.#collection, id: raw.id, generation: this.#state.value.generation }, raw.payload);
-        try {
-          let parsed;
-          try {
-            parsed = JSON.parse(decoder.decode(bytes));
-          } catch {
-            throw new SyncProtocolError("invalid_record");
-          }
-          const envelope = JSON.parse(raw.payload);
-          if (!validSyncCounter(envelope.context?.base_revision) || BigInt(envelope.context.base_revision) + 1n !== BigInt(raw.revision)) {
-            throw new SyncProtocolError("record_revision_mismatch");
-          }
-          value = await this.#adapter.validate(raw.id, parsed);
-        } finally {
-          bytes.fill(0);
-        }
-      }
-      incoming = { ...raw, value };
+      const parsed = await openSyncRecord(this.#keys, {
+        collection: this.#collection, id: raw.id, generation: this.#state.value.generation,
+      }, raw);
+      const value = raw.deleted ? null : await this.#adapter.validate(raw.id, parsed);
+      incoming = { ...raw, value,
+        authenticatedSchema: raw.payload ? JSON.parse(raw.payload).context.schema_version : 1 };
+      historical = await this.#supersededHistoricalConflict(incoming);
       if (mirror?.value.pending || mirror?.value.blocked) {
         outcome = { status: "conflict", reason: "local_change_pending" };
       } else {
-        const application = await this.#stageApplication(change, incoming, mirror, index);
+        const application = await this.#stageApplication(change, incoming, mirror, index, historical);
         await this.#executeApplication(application);
         return;
       }
     } catch (error) {
+      if (error.code === "record_key_retired") {
+        await this.#quarantineRetiredKey(change, index);
+        return;
+      }
       const code = this.#recordError(error);
       if (!code) {
         throw error;
       }
       outcome = { status: "conflict", reason: code };
     }
-    const changes = [];
+    const changes = historical ? [this.#remove(historical)] : [];
     if (incoming) {
       changes.push(this.#change(mirror, "record", await this.#id("record", raw.id), {
         version: 1, id: raw.id, remote: incoming, pending: mirror?.value.pending ?? null,
@@ -545,7 +539,42 @@ export class MidoriSyncCollection {
       changes.push(this.#change(null, "conflict", this.#newId(), { version: 1, source: "download", change, outcome }));
     }
     await this.#save(changes, { ...this.#state.value, index: index + 1,
-      conflicts: this.#state.value.conflicts + (outcome.status === "conflict" ? 1 : 0) });
+      conflicts: this.#state.value.conflicts - (historical ? 1 : 0) + (outcome.status === "conflict" ? 1 : 0) });
+  }
+
+  async #historicalConflict(id) {
+    const entry = await this.#journal.read(await this.#id("conflict", `historical-key:${id}`));
+    this.#ensureOpen();
+    if (entry) {
+      const value = entry.value;
+      if (entry.kind !== "conflict" || entry.collection !== this.#collection || value?.version !== 1 ||
+          value.source !== "historical-key" || value.generation !== this.#state.value.generation ||
+          value.change?.record?.id !== id || value.outcome?.reason !== "record_key_retired") {
+        throw new SyncProtocolError("engine_state_corrupt");
+      }
+      validateRemoteRecord(value.change.record);
+    }
+    return entry;
+  }
+
+  async #quarantineRetiredKey(change, index) {
+    const previous = await this.#historicalConflict(change.record.id);
+    const changes = !previous || BigInt(change.record.revision) > BigInt(previous.value.change.record.revision) ? [
+      this.#change(previous, "conflict", await this.#id("conflict", `historical-key:${change.record.id}`), {
+        version: 1, source: "historical-key", generation: this.#state.value.generation, change,
+        outcome: { status: "conflict", reason: "record_key_retired" },
+      }),
+    ] : [];
+    await this.#save(changes, { ...this.#state.value, index: index + 1,
+      conflicts: this.#state.value.conflicts + (previous ? 0 : 1) });
+  }
+
+  async #supersededHistoricalConflict(incoming) {
+    if (!this.#state.value.conflicts || incoming.authenticatedSchema !== 2 || this.#keys.snapshot.custody !== "client") {
+      return null;
+    }
+    const previous = await this.#historicalConflict(incoming.id);
+    return previous && BigInt(incoming.revision) > BigInt(previous.value.change.record.revision) ? previous : null;
   }
 
   #checkRepeatedRecord(incoming, previous) {
@@ -637,7 +666,7 @@ export class MidoriSyncCollection {
     return entry;
   }
 
-  async #stageApplication(change, incoming, mirror, index) {
+  async #stageApplication(change, incoming, mirror, index, historical = null) {
     if (this.#state.value.activeApplication) {
       throw new SyncProtocolError("engine_state_corrupt");
     }
@@ -649,11 +678,13 @@ export class MidoriSyncCollection {
       base: mirror?.value.remote ?? null, phase: "applying", reason: null,
       source: { inbox: this.#state.value.inbox, index } };
     await this.#save([
+      ...(historical ? [this.#remove(historical)] : []),
       this.#change(previous, "application", id, value),
       this.#change(mirror, "record", await this.#id("record", incoming.id), {
         version: 1, id: incoming.id, remote: value.base, pending: null, blocked: false, applying: id, position,
       }),
-    ], { ...this.#state.value, activeApplication: id, deferred: this.#state.value.deferred + (previous ? 0 : 1) });
+    ], { ...this.#state.value, activeApplication: id, deferred: this.#state.value.deferred + (previous ? 0 : 1),
+      conflicts: this.#state.value.conflicts - (historical ? 1 : 0) });
     return { id, collection: this.#collection, kind: "application", revision: (previous?.revision ?? 0) + 1, value };
   }
 

@@ -30,6 +30,7 @@ add_task(async function local_pairing_persists_in_the_native_vault_and_revokes_o
     let cryptoState = {
       crypto_state_version: 1, epoch: "7e39942f-9532-4592-a1b9-d03cf202b7dc", revision: "0",
       mode: "legacy", active_key_id: null, incompatible_sessions: 0, migration_required: false, keys: [],
+      custody: "server", server_recovery: false, identity_key: null, registry_auth: null, rotation: null,
     };
     let activations = 0;
     const accountData = {
@@ -78,8 +79,11 @@ add_task(async function local_pairing_persists_in_the_native_vault_and_revokes_o
       stream.setInputStream(request.bodyInputStream);
       const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(stream.readByteArray(stream.available()))));
       Assert.deepEqual(data.crypto, { epoch: cryptoState.epoch, revision: "0" });
+      Assert.equal(data.custody, "client");
+      Assert.ok(!Object.hasOwn(data, "recovery_secret"));
       ++activations;
       cryptoState = { ...cryptoState, revision: "1", mode: "native", active_key_id: data.key_id,
+        custody: "client", identity_key: data.identity_key, registry_auth: data.registry_auth,
         keys: [{ key_id: data.key_id, encrypted_bundle: data.encrypted_bundle }] };
       respondJSON(response, { error: "simulated failure after commit" }, 500);
     });
@@ -142,7 +146,9 @@ add_task(async function local_pairing_persists_in_the_native_vault_and_revokes_o
       const recoveryCode = await keys.prepareCreation();
       Assert.ok(/^MS2-(?:[0-9A-F]{8}-){7}[0-9A-F]{8}$/.test(recoveryCode));
       Assert.equal(activations, 0, "Creation waits for backup confirmation");
-      await keys.confirmCreation();
+      await Assert.rejects(keys.confirmCreation(), /recovery_backup_required/);
+      Assert.equal(activations, 0, "Missing consent does not publish any key");
+      await keys.confirmCreation({ recoveryCodeSaved: true });
       Assert.equal(activations, 1, "A failed HTTP response after commit does not duplicate activation");
       await keys.refresh();
       Assert.equal(keys.snapshot.status, "ready");

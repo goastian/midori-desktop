@@ -7,6 +7,20 @@ const { PlacesUtils } = ChromeUtils.importESModule("resource://gre/modules/Place
 const { MidoriSyncHistory, historyRecordId } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncHistory.sys.mjs");
 const { MidoriSyncHistoryTracker } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncHistoryTracker.sys.mjs");
 
+async function createHistoryIdentity() {
+  const crypto = Cc["@astian.org/midori-sync-crypto;1"].createInstance(Ci.nsIMidoriSyncCrypto);
+  registerCleanupFunction(() => crypto.close());
+  const scope = JSON.stringify(["https://sync.example.invalid/", "https://accounts.example.invalid/", "history-fixture"]);
+  const handle = await crypto.generateNativeKey(scope);
+  return { crypto, handle, scope, deriveRecordId: (collection, bytes) =>
+    crypto.deriveNativeRecordId(handle, collection, bytes) };
+}
+
+async function createHistory() {
+  const identity = await createHistoryIdentity();
+  return new MidoriSyncHistory({ deriveRecordId: identity.deriveRecordId });
+}
+
 function page(visits = [{ atUsec: dayStartUsec + 101, transition: 1, count: 1 }]) {
   return { version: 1, url: "https://example.invalid/page", title: "Page", dayStartUsec, visits };
 }
@@ -81,10 +95,10 @@ add_task(async function places_preserves_history_visit_microseconds() {
 });
 
 add_task(async function native_history_adapter_adds_visits_without_replaying_them() {
-  const adapter = new MidoriSyncHistory();
+  const adapter = await createHistory();
   const url = "https://example.invalid/midori-sync-history-adapter";
   const day = Math.floor(Date.now() * 1000 / 86400000000) * 86400000000;
-  const id = historyRecordId(url, day);
+  const id = await adapter.rememberLocal(url, day);
   const value = { version: 1, url, title: "Synchronized page", dayStartUsec: day,
     visits: [{ atUsec: day + 1234567, transition: 1, count: 1 },
       { atUsec: day + 1234568, transition: 2, count: 1 }] };
@@ -100,6 +114,14 @@ add_task(async function native_history_adapter_adds_visits_without_replaying_the
     Assert.deepEqual(await adapter.apply({ id, deleted: true }, { deleted: false, value }),
       { status: "conflict", reason: "history_deletion_scope_required" });
     Assert.deepEqual(await adapter.read(id), value);
+    const retiredId = historyRecordId(url, day);
+    Assert.deepEqual(await adapter.apply({ id: retiredId, deleted: true }),
+      { status: "conflict", reason: "history_deletion_scope_required" });
+    Assert.deepEqual(await adapter.apply({ id: retiredId, deleted: true, authenticatedSchema: 2 }),
+      { status: "applied" }, "An authenticated migration retires the public locator");
+    Assert.deepEqual(await adapter.read(id), value, "Retiring a legacy locator preserves every native visit");
+    Assert.deepEqual(await adapter.apply({ id, deleted: true, authenticatedSchema: 2 }),
+      { status: "conflict", reason: "history_deletion_scope_required" });
   } finally {
     adapter.close();
     await PlacesUtils.history.remove(uri);
@@ -107,10 +129,10 @@ add_task(async function native_history_adapter_adds_visits_without_replaying_the
 });
 
 add_task(async function native_history_adapter_updates_title_without_adding_visits() {
-  const adapter = new MidoriSyncHistory();
+  const adapter = await createHistory();
   const url = "https://example.invalid/midori-sync-history-title";
   const day = Math.floor(Date.now() * 1000 / 86400000000) * 86400000000;
-  const id = historyRecordId(url, day);
+  const id = await adapter.rememberLocal(url, day);
   const original = { version: 1, url, title: "Original", dayStartUsec: day,
     visits: [{ atUsec: day + 3456789, transition: 1, count: 1 }] };
   const updated = { ...original, title: "Updated" };
@@ -135,14 +157,14 @@ add_task(async function native_history_adapter_updates_title_without_adding_visi
 });
 
 add_task(async function history_clear_keeps_only_visits_after_the_server_cutoff() {
-  const adapter = new MidoriSyncHistory();
+  const adapter = await createHistory();
   const url = "https://example.invalid/midori-sync-history-cutoff";
   const uri = Services.io.newURI(url);
   const day = Math.floor((Date.now() - 86400000) * 1000 / 86400000000) * 86400000000;
   const cutoffMs = day / 1000 + 3600000;
   const older = cutoffMs - 1000;
   const newer = cutoffMs + 1000;
-  const id = historyRecordId(url, day);
+  const id = await adapter.rememberLocal(url, day);
   try {
     await PlacesUtils.history.insert({ url, title: "Mixed visits", visits: [
       { date: new Date(older), transition: 1 }, { date: new Date(newer), transition: 1 },
@@ -191,7 +213,7 @@ add_task(async function history_tracker_discards_stale_hints_after_a_clear() {
 });
 
 add_task(async function history_tracker_inventories_real_places_visits() {
-  const adapter = new MidoriSyncHistory();
+  const adapter = await createHistory();
   const url = "https://example.invalid/midori-sync-history-inventory";
   const uri = Services.io.newURI(url);
   const date = new Date(Date.now() - 60000);
@@ -207,7 +229,8 @@ add_task(async function history_tracker_inventories_real_places_visits() {
   } });
   try {
     await tracker.run({ limit: 100 });
-    Assert.ok(captured.some(entry => entry.id === historyRecordId(url, day) &&
+    const id = await adapter.rememberLocal(url, day);
+    Assert.ok(captured.some(entry => entry.id === id &&
       entry.value.url === url && entry.value.visits.length === 1));
   } finally {
     tracker.close();
@@ -217,7 +240,7 @@ add_task(async function history_tracker_inventories_real_places_visits() {
 });
 
 add_task(async function history_changes_wake_background_sync() {
-  const adapter = new MidoriSyncHistory();
+  const adapter = await createHistory();
   const url = "https://example.invalid/midori-sync-history-hint";
   const uri = Services.io.newURI(url);
   let wake;
@@ -236,5 +259,115 @@ add_task(async function history_changes_wake_background_sync() {
   } finally {
     tracker.close();
     await PlacesUtils.history.remove(uri);
+  }
+});
+
+add_task(async function history_identity_is_private_stable_and_legacy_requires_an_explicit_reader() {
+  const identity = await createHistoryIdentity();
+  const adapter = new MidoriSyncHistory({ deriveRecordId: identity.deriveRecordId });
+  const reader = new MidoriSyncHistory({ allowLegacy: true, deriveRecordId: identity.deriveRecordId });
+  const unrelated = await createHistory();
+  const noIdentity = new MidoriSyncHistory();
+  const restoredCrypto = Cc["@astian.org/midori-sync-crypto;1"].createInstance(Ci.nsIMidoriSyncCrypto);
+  const value = page();
+  let restored;
+  try {
+    const id = await adapter.rememberLocal(value.url, value.dayStartUsec);
+    const legacy = historyRecordId(value.url, value.dayStartUsec);
+    Assert.ok(/^h2:[0-9a-f]{64}$/.test(id));
+    Assert.notEqual(id.slice(3), legacy.slice(3));
+    Assert.equal(await adapter.rememberLocal(value.url, value.dayStartUsec), id);
+    Assert.equal(await reader.migrationId(value), id);
+    Assert.deepEqual(await adapter.validate(id, value), value);
+    await Assert.rejects(adapter.validate(legacy, value), /invalid_record/);
+    await Assert.rejects(adapter.read(legacy, value), /invalid_record/);
+    Assert.deepEqual(await reader.validate(legacy, value), value);
+    Assert.notEqual(await unrelated.rememberLocal(value.url, value.dayStartUsec), id);
+    await Assert.rejects(unrelated.validate(id, value), /invalid_record/);
+    await Assert.rejects(noIdentity.rememberLocal(value.url, value.dayStartUsec), /history_identity_unavailable/);
+    const passphrase = encoder.encode("public fixture identity recovery");
+    try {
+      const bundle = await identity.crypto.wrapNativeKey(identity.handle, passphrase);
+      const handle = await restoredCrypto.recoverNativeKey(identity.scope, passphrase, bundle);
+      restored = new MidoriSyncHistory({ deriveRecordId: (collection, bytes) =>
+        restoredCrypto.deriveNativeRecordId(handle, collection, bytes) });
+    } finally {
+      passphrase.fill(0);
+    }
+    adapter.close();
+    identity.crypto.close();
+    Assert.equal(await restored.rememberLocal(value.url, value.dayStartUsec), id);
+    Assert.deepEqual(await restored.validate(id, value), value);
+  } finally {
+    for (const owner of [adapter, reader, unrelated, noIdentity, restored]) {
+      owner?.close();
+    }
+    restoredCrypto.close();
+  }
+});
+
+add_task(async function history_identity_inputs_are_cleared_and_late_results_are_cancelled() {
+  let finish;
+  let started;
+  let input;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const ready = new Promise(resolve => { started = resolve; });
+  const adapter = new MidoriSyncHistory({ deriveRecordId(collection, bytes) {
+    Assert.equal(collection, "history");
+    input = bytes;
+    Assert.equal(new TextDecoder().decode(input), JSON.stringify([page().url, dayStartUsec]));
+    started();
+    return pending;
+  } });
+  const result = adapter.rememberLocal(page().url, dayStartUsec);
+  await ready;
+  adapter.close();
+  finish("a".repeat(64));
+  await Assert.rejects(result, /cancelled/);
+  Assert.ok(input.every(byte => byte === 0));
+});
+
+add_task(async function history_observer_recovers_derivation_failure_and_ignores_unsubscribed_results() {
+  let callback;
+  let finish;
+  let started;
+  const ready = new Promise(resolve => { started = resolve; });
+  const signals = [];
+  const adapter = new MidoriSyncHistory({
+    observers: {
+      addListener(_types, listener) { callback = listener; },
+      removeListener() { callback = null; },
+    },
+    deriveRecordId() {
+      started();
+      return new Promise(resolve => { finish = resolve; });
+    },
+  });
+  try {
+    const unsubscribe = adapter.observe(signal => signals.push(signal));
+    callback([{ type: "page-visited", url: page().url, visitTime: dayStartUsec + 101, transitionType: 1 }]);
+    await ready;
+    unsubscribe();
+    finish("a".repeat(64));
+    await new Promise(resolve => executeSoon(resolve));
+    Assert.deepEqual(signals, []);
+  } finally {
+    adapter.close();
+  }
+  let notifyFailure;
+  const failed = new Promise(resolve => { notifyFailure = resolve; });
+  const failing = new MidoriSyncHistory({
+    observers: {
+      addListener(_types, listener) { callback = listener; },
+      removeListener() { callback = null; },
+    },
+    deriveRecordId() { throw new Error("identity unavailable"); },
+  });
+  try {
+    failing.observe(notifyFailure);
+    callback([{ type: "page-visited", url: page().url, visitTime: dayStartUsec + 101, transitionType: 1 }]);
+    Assert.deepEqual(await failed, { rescan: true });
+  } finally {
+    failing.close();
   }
 });

@@ -19,4 +19,6 @@ prefs = [
 
 ["browser_sync_hints.js"]
 
+["browser_sync_keys.js"]
+
 ["browser_sync_popup.js"]

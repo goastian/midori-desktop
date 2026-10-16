@@ -9,7 +9,7 @@ const { createNativeSyncKeys } = ChromeUtils.importESModule("resource://midori-s
 const { openSyncStore } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncStore.sys.mjs");
 const { MidoriSyncCollection } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncCollection.sys.mjs");
 const { syncJournalEntryId } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncIndex.sys.mjs");
-const { MidoriSyncHistory, historyRecordId } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncHistory.sys.mjs");
+const { MidoriSyncHistory } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncHistory.sys.mjs");
 const { MidoriSyncHistoryTracker } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncHistoryTracker.sys.mjs");
 const { MidoriSyncBookmarks } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncBookmarks.sys.mjs");
 const { MidoriSyncTabs } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncTabs.sys.mjs");
@@ -21,6 +21,22 @@ const { MidoriSyncPreferences } = ChromeUtils.importESModule("resource://midori-
 const { MidoriSyncPasswordTracker, MidoriSyncRecordTracker } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncPasswordTracker.sys.mjs");
 const { PlacesUtils } = ChromeUtils.importESModule("resource://gre/modules/PlacesUtils.sys.mjs");
 const { setTimeout, clearTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
+
+async function nativeHistoryId(keys, url, day) {
+  return `h2:${await keys.deriveRecordId("history", [url, day])}`;
+}
+
+async function recoverServiceKeys(code) {
+  const keys = MidoriSyncService.keys;
+  for (let attempt = 0; attempt < 100 && keys.snapshot.busy; ++attempt) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  Assert.ok(!keys.snapshot.busy, "The background key refresh settles before recovery");
+  await keys.refresh();
+  Assert.equal(keys.snapshot.status, "recovery-required", "Connecting a fresh profile requires its user's recovery code");
+  await keys.recover(code);
+  Assert.equal(keys.snapshot.status, "ready");
+}
 
 async function setHistoryTitle(url, title) {
   const model = Cc["@astian.org/midori-sync-crypto;1"].createInstance(Ci.nsIMidoriSyncCrypto);
@@ -48,13 +64,11 @@ async function setHistoryTitle(url, title) {
 add_task(async function native_history_and_passwords_cross_two_profiles() {
   const stage = Services.env.get("MIDORI_SYNC_PROFILE_STAGE");
   const fixturePath = Services.env.get("MIDORI_SYNC_TEST_FIXTURE");
-  if (!fixturePath || !["A", "B", "C", "D", "E", "F", "G", "H"].includes(stage)) {
-    info("Use npm run test:sync -- --native to run the isolated profile stages.");
-    return;
-  }
+  Assert.ok(fixturePath, "The explicit profile test requires a backend fixture");
+  Assert.ok(["A", "B", "C", "D", "E", "F", "G", "H"].includes(stage), "Use the profiles test wrapper to select a stage");
   const fixture = await IOUtils.readJSON(fixturePath);
   const updatedTitle = "Title updated in profile B";
-  Assert.ok(/^http:\/\/localhost:[0-9]+\/$/.test(fixture.baseURL));
+  Assert.ok(/^http:\/\/(localhost|127\.0\.0\.1):[0-9]+\/$/.test(fixture.baseURL));
   const statePath = Services.env.get("MIDORI_SYNC_PROFILE_STATE_FILE");
   const statusPath = Services.env.get("MIDORI_SYNC_PROFILE_STATUS_FILE");
   Assert.ok(statePath && statusPath);
@@ -69,10 +83,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
     MidoriSyncService.init();
     try {
       await MidoriSyncService.account.pair(fixture.profiles.G.pairing_token, "Fresh restored profile");
-      for (let attempt = 0; attempt < 20 && MidoriSyncService.keys.snapshot.status !== "ready"; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      Assert.equal(MidoriSyncService.keys.snapshot.status, "ready", "Login restores keys without a code");
+      await recoverServiceKeys(state.recoveryCode);
       const history = new MidoriSyncHistory();
       const passwords = new MidoriSyncPasswords();
       const cards = new MidoriSyncCreditCards();
@@ -134,7 +145,6 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
     await PlacesUtils.history.insert({ url: localURL, title: "Preexisting visit",
       visits: [{ date: localVisit, transition: 1 }] });
     const localDay = Math.floor(localVisit.getTime() * 1000 / 86400000000) * 86400000000;
-    const localHistoryId = historyRecordId(localURL, localDay);
     const localPasswordId = `{${uuid()}}`;
     const login = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(Ci.nsILoginInfo);
     login.init("https://preexisting.example.invalid", "https://preexisting.example.invalid", null,
@@ -154,10 +164,8 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
     MidoriSyncService.init();
     try {
       await MidoriSyncService.account.pair(fixture.profiles.H.pairing_token, "Populated restored profile");
-      for (let attempt = 0; attempt < 20 && MidoriSyncService.keys.snapshot.status !== "ready"; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      Assert.equal(MidoriSyncService.keys.snapshot.status, "ready", "Login restores keys into a populated profile");
+      await recoverServiceKeys(state.recoveryCode);
+      const localHistoryId = await nativeHistoryId(MidoriSyncService.keys, localURL, localDay);
       const history = new MidoriSyncHistory();
       const passwords = new MidoriSyncPasswords();
       const cards = new MidoriSyncCreditCards();
@@ -303,7 +311,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       });
       const collections = await Promise.all(["bookmarks", "history", "passwords", "credit-cards"].map(name =>
         MidoriSyncService.collection(name)));
-      const ids = [bookmark.guid, historyRecordId(visitURL, dayStartUsec), passwordId, cardId];
+      const ids = [bookmark.guid, await nativeHistoryId(MidoriSyncService.keys, visitURL, dayStartUsec), passwordId, cardId];
       let uploaded = false;
       for (let attempt = 0; attempt < 35; attempt++) {
         const records = [];
@@ -374,6 +382,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
   let journal;
   let primaryToken;
   let backgroundRecordIds;
+  let recoveryCode = state?.recoveryCode;
   try {
     if (!keyStore.isOSBacked) {
       primaryToken = tokenFactory();
@@ -387,12 +396,16 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
     await keys.refresh();
     if (stage === "A") {
       Assert.equal(keys.snapshot.status, "empty");
-      Assert.ok(await keys.bootstrap(), "A new profile activates E2EE without a popup step");
-      Assert.ok(!keys.snapshot.backupPending, "Server recovery requires no backup step");
+      recoveryCode = await keys.prepareCreation();
+      await Assert.rejects(keys.confirmCreation(), error => error.code === "recovery_backup_required");
+      await keys.confirmCreation({ recoveryCodeSaved: true });
+      await keys.refresh();
+      Assert.equal(keys.snapshot.serverRecovery, false, "Recovery remains under client custody");
       const vaultText = await IOUtils.readUTF8(PathUtils.join(PathUtils.profileDir, "native-profile-vault", "account.json"));
       Assert.ok(!vaultText.includes('"recovery_secret"'), "The vault envelope stays encrypted");
     } else if (stage === "B") {
-      Assert.equal(keys.snapshot.status, "ready", "Another profile restores keys after account connection");
+      Assert.equal(keys.snapshot.status, "recovery-required");
+      await keys.recover(recoveryCode);
     }
     Assert.equal(keys.snapshot.status, "ready");
     journal = await openSyncStore({
@@ -407,7 +420,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       engines.push(engine);
       return engine;
     };
-    const historyAdapter = new MidoriSyncHistory();
+    const historyAdapter = new MidoriSyncHistory({ deriveRecordId: (collection, input) => keys.deriveRecordId(collection, input) });
     const passwordAdapter = new MidoriSyncPasswords();
     const cardAdapter = new MidoriSyncCreditCards();
     const tabAdapter = new MidoriSyncTabs({ deviceId: account.snapshot.device.id, deviceName: `Native profile ${stage}`,
@@ -452,7 +465,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       await PlacesUtils.history.insert({ url, title, visits: [{ date, transition: 1 }] });
       const visitTimeUsec = date.getTime() * 1000;
       const dayStartUsec = Math.floor(date.getTime() * 1000 / 86400000000) * 86400000000;
-      const historyId = historyRecordId(url, dayStartUsec);
+      const historyId = await historyAdapter.rememberLocal(url, dayStartUsec);
       const paginatedHistoryURLs = Array.from({ length: 110 }, (_, index) =>
         `https://example.invalid/native-history-page-${index}`);
       for (const pageURL of paginatedHistoryURLs) {
@@ -504,7 +517,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       await preferences.run();
       Assert.equal((await preferences.record("midori.verticaltabs.width")).remote.value.value, 320);
       Assert.ok((await tabs.record(account.snapshot.device.id)).remote.ttl,
-        "The device snapshot has a server expiry");
+        "The device snapshot has an authenticated expiry");
       Assert.notEqual((await history.record(historyId)).remote.revision, "0");
       Assert.notEqual((await passwords.record(passwordId)).remote.revision, "0");
       Assert.notEqual((await passwords.record(conflictPasswordId)).remote.revision, "0");
@@ -515,9 +528,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
         MidoriSyncService.init();
         await MidoriSyncService.account.pair(fixture.profiles.BG.pairing_token, "Background profile A");
         const backgroundDeviceId = MidoriSyncService.account.snapshot.device.id;
-        const backgroundKeys = MidoriSyncService.keys;
-        await backgroundKeys.refresh();
-        Assert.equal(backgroundKeys.snapshot.status, "ready");
+        await recoverServiceKeys(recoveryCode);
         await MidoriSyncService.collection("tabs", new MidoriSyncTabs({
           deviceId: backgroundDeviceId, deviceName: "Background profile A",
           windows: () => [{ private: false, gBrowser: { tabs: [{ label: "Automatic background tab",
@@ -538,7 +549,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
         await PlacesUtils.history.insert({ url: backgroundHistoryURL, title: "Background visit",
           visits: [{ date: backgroundVisit, transition: 1 }] });
         const backgroundHistoryDay = Math.floor(backgroundVisit.getTime() * 1000 / 86400000000) * 86400000000;
-        const backgroundHistoryId = historyRecordId(backgroundHistoryURL, backgroundHistoryDay);
+        const backgroundHistoryId = await nativeHistoryId(MidoriSyncService.keys, backgroundHistoryURL, backgroundHistoryDay);
         const backgroundPasswordId = `{${uuid()}}`;
         const backgroundLogin = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(Ci.nsILoginInfo);
         backgroundLogin.init("https://background.example.invalid", "https://background.example.invalid", null,
@@ -616,11 +627,12 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       }
       await IOUtils.writeJSON(statePath, { profilePath: PathUtils.profileDir, profileId, journalStoreId,
         deviceId: account.snapshot.device.id, url, title, dayStartUsec, visitTimeUsec, paginatedHistoryURLs,
-        historyId, passwordId, conflictPasswordId, cardId,
+        historyId, passwordId, conflictPasswordId, cardId, recoveryCode,
         ...backgroundRecordIds });
+      await IOUtils.setPermissions(statePath, 0o600);
     } else if (stage === "B") {
       Assert.notEqual(PathUtils.profileDir, state.profilePath, "The target has a distinct Gecko profile");
-      Assert.equal(state.historyId, historyRecordId(state.url, state.dayStartUsec));
+      Assert.equal(state.historyId, await historyAdapter.rememberLocal(state.url, state.dayStartUsec));
       const page = await historyAdapter.readDay(state.url, state.dayStartUsec);
       Assert.equal(page.url, state.url);
       Assert.equal(page.title, state.title);
@@ -642,7 +654,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       Assert.deepEqual(remoteTabs.value.tabs,
         [{ url: "https://example.invalid/native-open-tab", title: "Open web page" }],
         "Only the regular browser tab reached the second device");
-      Assert.ok(remoteTabs.ttl, "The encrypted tab snapshot expires on the server");
+      Assert.ok(remoteTabs.ttl, "The encrypted tab snapshot carries its expiry");
       const backgroundTabs = (await tabs.record(state.backgroundDeviceId)).remote;
       Assert.deepEqual(backgroundTabs.value.tabs,
         [{ url: "https://example.invalid/native-background-tab", title: "Automatic background tab" }],
@@ -701,6 +713,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       Assert.equal((await cards.record(state.cardId)).remote.revision, "2");
       await IOUtils.writeJSON(statePath, { ...state, profileBId: profileId, journalStoreBId: journalStoreId,
         deviceBId: account.snapshot.device.id });
+      await IOUtils.setPermissions(statePath, 0o600);
     } else if (stage === "C") {
       Assert.equal(Services.prefs.getIntPref("midori.verticaltabs.width"), 400,
         "The restored first profile receives the second profile's setting edit");
@@ -730,17 +743,16 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
         !disk.includes("4111111111111111"), "Passwords and card numbers stay out of the plaintext journal");
       Assert.equal(history.snapshot.pending, 0);
       Assert.equal(passwords.snapshot.pending, 0);
-      const cleared = await history.clearHistory();
-      Assert.ok(cleared.clearBeforeMs >= state.visitTimeUsec / 1000,
-        "The server returned a cutoff after the synchronized visits");
-      Assert.equal(await historyAdapter.readDay(state.url, state.dayStartUsec), null);
+      await Assert.rejects(history.clearHistory(), error => error.code === "authenticated_control_required");
+      Assert.deepEqual(await historyAdapter.readDay(state.url, state.dayStartUsec), merged,
+        "An unauthenticated history clear preserves the local visits");
       const remaining = await PlacesUtils.withConnectionWrapper("Midori history clear integration", db => db.executeCached(
         `SELECT COUNT(*) AS count FROM moz_historyvisits v JOIN moz_places p ON p.id = v.place_id
          WHERE p.url = :url`, { url: state.url }));
-      Assert.equal(remaining[0].getResultByName("count"), 0,
-        "The confirmed clear physically removes the old visits from Places");
+      Assert.equal(remaining[0].getResultByName("count"), 3,
+        "Rejecting the clear leaves every merged visit in Places");
       Assert.ok((await passwordAdapter.read(state.passwordId)).password === "synthetic updated password",
-        "Clearing history leaves synchronized passwords intact");
+        "Rejecting a history clear leaves synchronized passwords intact");
       await formAutofillStorage.initialize();
       await formAutofillStorage.creditCards.remove(state.cardId);
       const cardTracker = new MidoriSyncRecordTracker({ engine: cards, adapter: cardAdapter });
@@ -750,23 +762,23 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       Assert.ok((await cards.record(state.cardId)).remote.deleted,
         "Deleting a card creates a synchronized tombstone");
       await history.run();
-      Assert.equal(history.snapshot.pending, 0, "The cleared history is not re-uploaded");
+      Assert.equal(history.snapshot.pending, 0, "Rejecting a clear does not enqueue destructive operations");
     } else {
       Assert.equal(Services.prefs.getIntPref("midori.verticaltabs.width"), 400,
         "The restored second profile keeps its setting after reconnecting");
       Assert.equal(Services.prefs.getStringPref("midori.verticaltabs.position"), "right");
       Assert.equal(account.snapshot.device.id, state.deviceBId, "The disconnected profile retains its device identity");
-      Assert.equal(await historyAdapter.readDay(state.url, state.dayStartUsec), null,
-        "The returning profile removes visits before the server cutoff");
+      Assert.ok((await historyAdapter.readDay(state.url, state.dayStartUsec)).visits.length >= 2,
+        "The returning profile preserves history after the rejected clear");
       const remaining = await PlacesUtils.withConnectionWrapper("Midori history returning profile", db => db.executeCached(
         `SELECT COUNT(*) AS count FROM moz_historyvisits v JOIN moz_places p ON p.id = v.place_id
          WHERE p.url = :url`, { url: state.url }));
-      Assert.equal(remaining[0].getResultByName("count"), 0,
-        "The disconnected profile physically removes the deleted visits");
-      Assert.equal((await journal.list("history", "record")).length, 0,
-        "The old generation cannot requeue the removed history");
+      Assert.ok(remaining[0].getResultByName("count") >= 2,
+        "The rejected clear cannot erase visits in another profile");
+      Assert.ok((await journal.list("history", "record")).length > 0,
+        "The authenticated history journal remains available after reconnecting");
       Assert.ok((await passwordAdapter.read(state.passwordId)).password === "synthetic updated password",
-        "Recovering the history generation preserves Login Manager");
+        "Reconnect after a rejected clear preserves Login Manager");
       Assert.ok((await cards.record(state.cardId))?.remote?.deleted,
         "The returning profile downloaded the card tombstone");
       Assert.equal(cards.snapshot.conflicts, 0, "The remote card deletion has no unresolved conflict");

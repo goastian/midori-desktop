@@ -15,4 +15,12 @@ if command -v python3 >/dev/null 2>&1; then
   fi
 fi
 
+for argument in "$@"; do
+  if [[ "$argument" == "build" || "$argument" == "package" ]]; then
+    PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    python3 "$PROJECT_DIR/scripts/check-rust-integrity.py"
+    break
+  fi
+done
+
 exec "$@"

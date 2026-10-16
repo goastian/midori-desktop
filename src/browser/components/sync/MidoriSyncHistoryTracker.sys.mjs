@@ -140,7 +140,8 @@ export class MidoriSyncHistoryTracker {
           if (!Number.isSafeInteger(time) || !Number.isSafeInteger(visitId)) {
             throw new SyncProtocolError("invalid_history_visit");
           }
-          const id = this.#adapter.rememberLocal(url, Math.floor(time / DAY_USECS) * DAY_USECS);
+          const id = await this.#adapter.rememberLocal(url, Math.floor(time / DAY_USECS) * DAY_USECS);
+          this.#ensureOpen();
           if (id && !seen.has(id)) {
             record(await this.#engine.capture(id), id);
             seen.add(id);

@@ -33,10 +33,11 @@ impl Drop for HistoryPage {
     fn drop(&mut self) {
         self.url.zeroize();
         self.title.zeroize();
+        self.day_start_usec.zeroize();
         for visit in &mut self.visits {
-            visit.at_usec = 0;
-            visit.transition = 0;
-            visit.count = 0;
+            visit.at_usec.zeroize();
+            visit.transition.zeroize();
+            visit.count.zeroize();
         }
     }
 }

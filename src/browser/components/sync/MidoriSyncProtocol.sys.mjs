@@ -72,7 +72,6 @@ export function validateChangePage(page, state) {
 export function validateRemoteRecord(record) {
   if (!validSyncRecordId(record?.id) || !validSyncCounter(record.revision, 2147483647n) || record.revision === "0" ||
       typeof record.deleted !== "boolean" || typeof record.payload !== "string" || encoder.encode(record.payload).length > 262144 ||
-      (record.deleted && record.payload !== "") ||
       (record.ttl !== null && (typeof record.ttl !== "string" || record.ttl.length > 40 ||
         !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)$/.test(record.ttl) || !Number.isFinite(Date.parse(record.ttl))))) {
     throw new SyncProtocolError("invalid_record");

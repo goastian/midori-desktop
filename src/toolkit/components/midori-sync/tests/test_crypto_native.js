@@ -187,3 +187,49 @@ add_task(async function native_capacity_and_shutdown_discard_pending_results() {
   await Assert.rejects(pending, isResult(Cr.NS_ERROR_ABORT));
   Assert.throws(() => crypto.nativeKeyId(ids[1]), isResult(Cr.NS_ERROR_NOT_AVAILABLE));
 });
+
+add_task(async function opaque_record_ids_are_stable_and_copy_sensitive_inputs() {
+  const crypto = createCrypto();
+  const id = await recover(crypto);
+  for (const [collection, vector] of Object.entries(vectors.identities)) {
+    const input = encoder.encode(vector.input);
+    const pending = crypto.deriveNativeRecordId(id, collection, input);
+    input.fill(0);
+    Assert.equal(await pending, vector.digest, collection);
+  }
+  const vector = vectors.identities.history;
+  const passphrase = encoder.encode("another public fixture passphrase");
+  const bundle = await crypto.wrapNativeKey(id, passphrase);
+  const other = createCrypto();
+  const restored = await other.recoverNativeKey(JSON.stringify(vectors.scope), passphrase, bundle);
+  passphrase.fill(0);
+  Assert.equal(await other.deriveNativeRecordId(restored, "history", encoder.encode(vector.input)), vector.digest);
+  await Assert.rejects(crypto.deriveNativeRecordId(id, "unknown", encoder.encode(vector.input)),
+    isResult(Cr.NS_ERROR_INVALID_ARG));
+  Assert.throws(() => crypto.deriveNativeRecordId(id, "history", new Uint8Array()),
+    isResult(Cr.NS_ERROR_INVALID_ARG));
+  Assert.throws(() => crypto.deriveNativeRecordId(id, "history", new Uint8Array(16385)),
+    isResult(Cr.NS_ERROR_INVALID_ARG));
+  await crypto.forgetKey(id);
+  await Assert.rejects(crypto.deriveNativeRecordId(id, "history", encoder.encode(vector.input)),
+    isResult(Cr.NS_ERROR_NOT_AVAILABLE));
+  const pending = other.deriveNativeRecordId(restored, "history", encoder.encode(vector.input));
+  other.close();
+  await Assert.rejects(pending, isResult(Cr.NS_ERROR_ABORT));
+});
+
+add_task(async function control_schema_is_authenticated_without_rewriting_legacy_aad() {
+  const crypto = createCrypto();
+  const id = await recover(crypto);
+  const context = { ...vectors.records.history.record.envelope.context, schema_version: 2 };
+  const bytes = encoder.encode(JSON.stringify({ version: 2, deleted: true, ttl: null, value: null }));
+  const envelope = await crypto.sealNative(id, RECORD_PURPOSE, JSON.stringify(context), bytes);
+  Assert.deepEqual(await crypto.openNative(id, RECORD_PURPOSE, locator(context), envelope), bytes);
+  const changed = JSON.parse(envelope);
+  changed.context.schema_version = 1;
+  await Assert.rejects(crypto.openNative(id, RECORD_PURPOSE, locator(context), JSON.stringify(changed)),
+    error => error.name === "OperationError");
+  await Assert.rejects(crypto.sealNative(id, RECORD_PURPOSE,
+    JSON.stringify({ ...context, schema_version: 3 }), bytes), error => error.name === "NotSupportedError");
+  bytes.fill(0);
+});

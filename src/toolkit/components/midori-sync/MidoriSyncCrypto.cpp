@@ -49,6 +49,7 @@ enum class Operation {
   GenerateNative,
   RecoverNative,
   NativeKeyId,
+  NativeRecordId,
   SealNative,
   OpenNative,
   WrapNative,
@@ -188,6 +189,7 @@ nsresult MidoriSyncCrypto::Dispatch(Request&& aRequest, JSContext* aCx,
                    operation == Operation::RecoverNative) {
           promise->MaybeResolve(result.mKeyId);
         } else if (operation == Operation::NativeKeyId ||
+                   operation == Operation::NativeRecordId ||
                    operation == Operation::SealNative ||
                    operation == Operation::WrapNative ||
                    operation == Operation::ProcessBookmark ||
@@ -277,6 +279,7 @@ nsresult MidoriSyncCrypto::Dispatch(Request&& aRequest, JSContext* aCx,
                 &result.mKeyId);
             break;
           case Operation::NativeKeyId:
+          case Operation::NativeRecordId:
           case Operation::SealNative:
           case Operation::OpenNative:
           case Operation::WrapNative: {
@@ -284,6 +287,10 @@ nsresult MidoriSyncCrypto::Dispatch(Request&& aRequest, JSContext* aCx,
             if (request.mOperation == Operation::NativeKeyId) {
               status = midori_sync_native_key_id(state->mKeyring.get(),
                                                  request.mKeyId, &bytes);
+            } else if (request.mOperation == Operation::NativeRecordId) {
+              status = midori_sync_native_record_id(
+                  state->mKeyring.get(), request.mKeyId, metadata,
+                  request.mMetadata.Length(), request.mSecret.get(), &bytes);
             } else if (request.mOperation == Operation::SealNative) {
               status = midori_sync_seal_native(
                   state->mKeyring.get(), request.mKeyId, request.mPurpose,
@@ -358,6 +365,21 @@ NS_IMETHODIMP MidoriSyncCrypto::NativeKeyId(uint32_t aKeyId, JSContext* aCx,
   NS_ENSURE_TRUE(aKeyId, NS_ERROR_INVALID_ARG);
   Request request{Operation::NativeKeyId};
   request.mKeyId = aKeyId;
+  return Dispatch(std::move(request), aCx, aPromise);
+}
+
+NS_IMETHODIMP MidoriSyncCrypto::DeriveNativeRecordId(
+    uint32_t aKeyId, const nsACString& aCollection,
+    const nsTArray<uint8_t>& aInput, JSContext* aCx, Promise** aPromise) {
+  NS_ENSURE_TRUE(aKeyId && !aCollection.IsEmpty() &&
+                     aCollection.Length() <= 64 && !aInput.IsEmpty() &&
+                     aInput.Length() <= 16384,
+                 NS_ERROR_INVALID_ARG);
+  Request request{Operation::NativeRecordId};
+  request.mKeyId = aKeyId;
+  request.mMetadata = aCollection;
+  request.mSecret.reset(
+      midori_sync_plaintext_copy(aInput.Elements(), aInput.Length()));
   return Dispatch(std::move(request), aCx, aPromise);
 }
 

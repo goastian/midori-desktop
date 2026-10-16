@@ -10,6 +10,7 @@ const encoder = new TextEncoder();
 const DAY_USECS = 86400000000;
 const MAX_VISITS = 2048;
 const MAX_IDENTITIES = 8192;
+const MAX_PENDING_HINTS = 128;
 const EVENTS = ["page-visited", "page-title-changed"];
 
 export function historyRetentionDays() {
@@ -48,6 +49,8 @@ export class MidoriSyncHistory {
   #asyncHistory;
   #observers;
   #model;
+  #deriveRecordId;
+  #allowLegacy;
   #identities = new Map();
   #urlIds = new Map();
   #clearBeforeUsec = 0;
@@ -57,11 +60,17 @@ export class MidoriSyncHistory {
   constructor({ withConnection = PlacesUtils.withConnectionWrapper.bind(PlacesUtils),
     asyncHistory = Cc["@mozilla.org/browser/history;1"].getService(Ci.mozIAsyncHistory),
     observers = PlacesUtils.observers,
-    model = Cc["@astian.org/midori-sync-crypto;1"].createInstance(Ci.nsIMidoriSyncCrypto) } = {}) {
+    model = Cc["@astian.org/midori-sync-crypto;1"].createInstance(Ci.nsIMidoriSyncCrypto),
+    deriveRecordId = null, allowLegacy = false } = {}) {
+    if ((deriveRecordId !== null && typeof deriveRecordId !== "function") || typeof allowLegacy !== "boolean") {
+      throw new SyncProtocolError("invalid_history_identity");
+    }
     this.#withConnection = withConnection;
     this.#asyncHistory = asyncHistory;
     this.#observers = observers;
     this.#model = model;
+    this.#deriveRecordId = deriveRecordId;
+    this.#allowLegacy = allowLegacy;
   }
 
   get clearBeforeUsec() {
@@ -88,6 +97,16 @@ export class MidoriSyncHistory {
 
   observe(listener) {
     this.#ensureOpen();
+    let active = true;
+    let pending = 0;
+    let tail = Promise.resolve();
+    const notify = event => {
+      if (active && !this.#closed) {
+        try {
+          listener(event);
+        } catch {}
+      }
+    };
     const callback = events => {
       if (this.#closed) {
         return;
@@ -106,13 +125,13 @@ export class MidoriSyncHistory {
           continue;
         }
         if (event.type === "page-title-changed") {
-          const ids = this.#urlIds.get(event.url);
-          if (ids?.size) {
+          const ids = [...this.#urlIds.get(event.url) ?? []].filter(id => id.startsWith("h2:"));
+          if (ids.length) {
             for (const id of ids) {
-              listener({ id });
+              notify({ id });
             }
           } else {
-            listener({ rescan: true });
+            notify({ rescan: true });
           }
           continue;
         }
@@ -122,14 +141,25 @@ export class MidoriSyncHistory {
           continue;
         }
         const dayStartUsec = Math.floor(event.visitTime / DAY_USECS) * DAY_USECS;
-        const id = this.rememberLocal(event.url, dayStartUsec);
-        if (id) {
-          listener({ id });
+        if (pending >= MAX_PENDING_HINTS) {
+          notify({ rescan: true });
+          continue;
         }
+        ++pending;
+        tail = tail.then(async () => {
+          if (!active || this.#closed || event.visitTime <= this.#clearBeforeUsec) {
+            return;
+          }
+          const id = await this.rememberLocal(event.url, dayStartUsec);
+          if (id && event.visitTime > this.#clearBeforeUsec) {
+            notify({ id });
+          }
+        }).catch(() => notify({ rescan: true })).finally(() => { --pending; });
       }
     };
     this.#observers.addListener(EVENTS, callback);
     const unsubscribe = () => {
+      active = false;
       if (this.#subscriptions.delete(unsubscribe)) {
         this.#observers.removeListener(EVENTS, callback);
       }
@@ -140,6 +170,22 @@ export class MidoriSyncHistory {
 
   async validate(id, value) {
     this.#ensureOpen();
+    if (typeof id !== "string" || !/^h[12]:[0-9a-f]{64}$/.test(id) ||
+        (id.startsWith("h1:") && !this.#allowLegacy)) {
+      throw new SyncProtocolError("invalid_record");
+    }
+    const canonical = await this.#validateValue(value);
+    const expected = id.startsWith("h1:") ? historyRecordId(canonical.url, canonical.dayStartUsec) :
+      await this.#identity(canonical.url, canonical.dayStartUsec);
+    this.#ensureOpen();
+    if (id !== expected || canonical.visits.some(visit => visit.atUsec <= this.#clearBeforeUsec)) {
+      throw new SyncProtocolError("invalid_record");
+    }
+    this.#remember(id, canonical.url, canonical.dayStartUsec);
+    return canonical;
+  }
+
+  async #validateValue(value) {
     const canonical = await this.#process({ action: "validate", value });
     let url;
     try {
@@ -148,15 +194,21 @@ export class MidoriSyncHistory {
       throw new SyncProtocolError("invalid_record");
     }
     if (!["http:", "https:"].includes(url.protocol) || url.href !== canonical.url || url.username || url.password ||
-        id !== historyRecordId(canonical.url, canonical.dayStartUsec) ||
         canonical.visits.some(visit => visit.atUsec <= this.#clearBeforeUsec)) {
       throw new SyncProtocolError("invalid_record");
     }
-    this.#remember(id, canonical.url, canonical.dayStartUsec);
     return canonical;
   }
 
-  rememberLocal(url, dayStartUsec) {
+  async migrationId(value) {
+    this.#ensureOpen();
+    const canonical = await this.#validateValue(value);
+    const id = await this.#identity(canonical.url, canonical.dayStartUsec);
+    this.#ensureOpen();
+    return id;
+  }
+
+  async rememberLocal(url, dayStartUsec) {
     this.#ensureOpen();
     try {
       const parsed = new URL(url);
@@ -169,13 +221,20 @@ export class MidoriSyncHistory {
     } catch {
       return null;
     }
-    const id = historyRecordId(url, dayStartUsec);
+    const id = await this.#identity(url, dayStartUsec);
+    this.#ensureOpen();
+    if (dayStartUsec + DAY_USECS <= this.#clearBeforeUsec) {
+      return null;
+    }
     this.#remember(id, url, dayStartUsec);
     return id;
   }
 
   async read(id, hint = null) {
     this.#ensureOpen();
+    if (typeof id !== "string" || (id.startsWith("h1:") && !this.#allowLegacy)) {
+      throw new SyncProtocolError("invalid_record");
+    }
     if (hint) {
       await this.validate(id, hint);
     }
@@ -192,7 +251,6 @@ export class MidoriSyncHistory {
         dayStartUsec % DAY_USECS !== 0 || dayStartUsec > Number.MAX_SAFE_INTEGER - DAY_USECS) {
       throw new SyncProtocolError("invalid_record");
     }
-    const id = historyRecordId(url, dayStartUsec);
     const rows = await this.#withConnection("MidoriSyncHistory: readDay", db => db.executeCached(
       `SELECT p.title AS title, v.visit_date AS atUsec, v.visit_type AS transition
        FROM moz_historyvisits v JOIN moz_places p ON p.id = v.place_id
@@ -220,7 +278,18 @@ export class MidoriSyncHistory {
     const value = visits.size ? { version: 1, url, title, dayStartUsec,
       visits: [...visits.values()].sort((left, right) => left.atUsec - right.atUsec || left.transition - right.transition) } : null;
     this.#ensureOpen();
-    return value === null ? null : this.validate(id, value);
+    if (value === null) {
+      return null;
+    }
+    const canonical = await this.#validateValue(value);
+    if (this.#deriveRecordId) {
+      await this.rememberLocal(canonical.url, canonical.dayStartUsec);
+    }
+    this.#ensureOpen();
+    if (canonical.visits.some(visit => visit.atUsec <= this.#clearBeforeUsec)) {
+      throw new SyncProtocolError("invalid_record");
+    }
+    return canonical;
   }
 
   matchesLocal(_id, current, base) {
@@ -251,9 +320,17 @@ export class MidoriSyncHistory {
     return { current, decision };
   }
 
+  isRetired(incoming) {
+    return !!this.#deriveRecordId && incoming?.deleted === true && incoming.authenticatedSchema === 2 &&
+      /^h1:[0-9a-f]{64}$/.test(incoming.id);
+  }
+
   async apply(incoming, previous = null) {
     this.#ensureOpen();
     if (incoming.deleted) {
+      if (this.isRetired(incoming)) {
+        return { status: "applied" };
+      }
       return { status: "conflict", reason: "history_deletion_scope_required" };
     }
     if (incoming.value?.dayStartUsec + DAY_USECS < (Date.now() - historyRetentionDays() * 86400000) * 1000) {
@@ -340,6 +417,29 @@ export class MidoriSyncHistory {
         throw new SyncProtocolError("invalid_record");
       }
       throw error;
+    } finally {
+      bytes.fill(0);
+    }
+  }
+
+  async #identity(url, dayStartUsec) {
+    this.#ensureOpen();
+    if (!this.#deriveRecordId) {
+      throw new SyncProtocolError("history_identity_unavailable");
+    }
+    for (const id of this.#urlIds.get(url) ?? []) {
+      if (id.startsWith("h2:") && this.#identities.get(id)?.dayStartUsec === dayStartUsec) {
+        return id;
+      }
+    }
+    const bytes = encoder.encode(JSON.stringify([url, dayStartUsec]));
+    try {
+      const digest = await this.#deriveRecordId("history", bytes);
+      this.#ensureOpen();
+      if (typeof digest !== "string" || !/^[0-9a-f]{64}$/.test(digest)) {
+        throw new SyncProtocolError("invalid_history_identity");
+      }
+      return `h2:${digest}`;
     } finally {
       bytes.fill(0);
     }

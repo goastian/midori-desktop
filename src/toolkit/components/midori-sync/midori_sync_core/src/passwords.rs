@@ -42,6 +42,8 @@ impl Drop for Login {
         self.password.zeroize();
         self.username_field.zeroize();
         self.password_field.zeroize();
+        self.time_created.zeroize();
+        self.time_password_changed.zeroize();
     }
 }
 

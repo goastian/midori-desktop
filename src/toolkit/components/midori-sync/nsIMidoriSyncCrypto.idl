@@ -4,7 +4,7 @@
 
 #include "nsISupports.idl"
 
-[scriptable, uuid(4c6f7564-aa52-43a0-be30-d55baf46c535)]
+[scriptable, uuid(9fc3c214-82e9-4756-b8d4-6308e6c8c2d0)]
 interface nsIMidoriSyncCrypto : nsISupports
 {
   [implicit_jscontext, must_use]
@@ -16,6 +16,10 @@ interface nsIMidoriSyncCrypto : nsISupports
 
   [implicit_jscontext, must_use]
   Promise nativeKeyId(in unsigned long keyId);
+
+  [implicit_jscontext, must_use]
+  Promise deriveNativeRecordId(in unsigned long keyId,
+                               in AUTF8String collection, in Array<uint8_t> input);
 
   const unsigned long PURPOSE_RECORD = 0;
   const unsigned long PURPOSE_LOCAL = 1;
