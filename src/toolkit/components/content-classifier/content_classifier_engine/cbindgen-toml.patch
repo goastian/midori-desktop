@@ -1,0 +1,11 @@
+diff --git a/toolkit/components/content-classifier/content_classifier_engine/cbindgen.toml b/toolkit/components/content-classifier/content_classifier_engine/cbindgen.toml
+--- a/toolkit/components/content-classifier/content_classifier_engine/cbindgen.toml
++++ b/toolkit/components/content-classifier/content_classifier_engine/cbindgen.toml
+@@ -9,6 +9,7 @@
+ tab_width = 2
+ language = "C++"
+ namespaces = []
++include_guard = "mozilla_content_classifier_ffi_h"
+ includes = ["nsError.h", "nsString.h", "nsTArray.h"]
+ 
+ 

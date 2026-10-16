@@ -2,34 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::sync::Mutex;
-
 use adblock::{lists::FilterSet, resources::Resource, Engine};
-use cstr::cstr;
-use nserror::{
-    nsresult, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG, NS_ERROR_SERVICE_NOT_AVAILABLE, NS_OK,
-};
+use nserror::{nsresult, NS_ERROR_FAILURE, NS_ERROR_INVALID_ARG, NS_OK};
 use nsstring::{nsACString, nsCString};
 use thin_vec::ThinVec;
 
-use xpcom::interfaces::nsIEffectiveTLDService;
-
-static ETLD_SERVICE: Mutex<Option<xpcom::RefPtr<nsIEffectiveTLDService>>> = Mutex::new(None);
-
-pub struct ContentClassifierFFIEngine {
+pub struct MidoriBlockerFFIEngine {
     engine: Engine,
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_initialize_domain_resolver() -> nsresult {
-    let etld_service = match xpcom::get_service::<nsIEffectiveTLDService>(cstr!(
-        "@mozilla.org/network/effective-tld-service;1"
-    )) {
-        Some(s) => s,
-        None => return NS_ERROR_SERVICE_NOT_AVAILABLE,
-    };
-    if let Ok(mut guard) = ETLD_SERVICE.lock() {
-        guard.replace(etld_service);
+pub unsafe extern "C" fn midori_blocker_initialize_domain_resolver() -> nsresult {
+    let result = super::content_classifier_initialize_domain_resolver();
+    if result.failed() {
+        return result;
     }
     let resolver = Box::new(SchemelessSiteResolver {});
     let _ = adblock::url_parser::set_domain_resolver(resolver);
@@ -37,16 +23,9 @@ pub unsafe extern "C" fn content_classifier_initialize_domain_resolver() -> nsre
 }
 
 #[no_mangle]
-pub extern "C" fn content_classifier_teardown_domain_resolver() {
-    if let Ok(mut guard) = ETLD_SERVICE.lock() {
-        guard.take();
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_from_rules(
+pub unsafe extern "C" fn midori_blocker_engine_from_rules(
     rules: &ThinVec<nsCString>,
-    out_engine: *mut *mut ContentClassifierFFIEngine,
+    out_engine: *mut *mut MidoriBlockerFFIEngine,
 ) -> nsresult {
     if out_engine.is_null() {
         return NS_ERROR_INVALID_ARG;
@@ -62,23 +41,21 @@ pub unsafe extern "C" fn content_classifier_engine_from_rules(
     filter_set.add_filter_list(list_text, adblock::lists::ParseOptions::default());
     let engine = Engine::new_with_filter_set(filter_set);
 
-    let boxed_engine = Box::new(ContentClassifierFFIEngine { engine });
+    let boxed_engine = Box::new(MidoriBlockerFFIEngine { engine });
     *out_engine = Box::into_raw(boxed_engine);
     NS_OK
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_destroy(
-    engine: *mut ContentClassifierFFIEngine,
-) {
+pub unsafe extern "C" fn midori_blocker_engine_destroy(engine: *mut MidoriBlockerFFIEngine) {
     if !engine.is_null() {
         drop(Box::from_raw(engine));
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_check_network_request_preparsed(
-    engine: *const ContentClassifierFFIEngine,
+pub unsafe extern "C" fn midori_blocker_engine_check_network_request_preparsed(
+    engine: *const MidoriBlockerFFIEngine,
     url: &nsACString,
     schemeless_site: &nsACString,
     source_schemeless_site: &nsACString,
@@ -132,8 +109,8 @@ pub unsafe extern "C" fn content_classifier_engine_check_network_request_prepars
 /// rewrite directives. Kept separate from the function above so upstream can
 /// reshape its own check without touching the blocker path.
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_check_network_request_preparsed_detailed(
-    engine: *const ContentClassifierFFIEngine,
+pub unsafe extern "C" fn midori_blocker_engine_check_network_request_preparsed_detailed(
+    engine: *const MidoriBlockerFFIEngine,
     url: &nsACString,
     hostname: &nsACString,
     source_hostname: &nsACString,
@@ -202,8 +179,8 @@ pub unsafe extern "C" fn content_classifier_engine_check_network_request_prepars
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_get_csp_directives_preparsed(
-    engine: *const ContentClassifierFFIEngine,
+pub unsafe extern "C" fn midori_blocker_engine_get_csp_directives_preparsed(
+    engine: *const MidoriBlockerFFIEngine,
     url: &nsACString,
     hostname: &nsACString,
     source_hostname: &nsACString,
@@ -243,8 +220,8 @@ pub unsafe extern "C" fn content_classifier_engine_get_csp_directives_preparsed(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_get_replace_directives_preparsed(
-    engine: *const ContentClassifierFFIEngine,
+pub unsafe extern "C" fn midori_blocker_engine_get_replace_directives_preparsed(
+    engine: *const MidoriBlockerFFIEngine,
     url: &nsACString,
     hostname: &nsACString,
     source_hostname: &nsACString,
@@ -283,8 +260,8 @@ pub unsafe extern "C" fn content_classifier_engine_get_replace_directives_prepar
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_serialize(
-    engine: *const ContentClassifierFFIEngine,
+pub unsafe extern "C" fn midori_blocker_engine_serialize(
+    engine: *const MidoriBlockerFFIEngine,
     out_data: &mut ThinVec<u8>,
 ) -> nsresult {
     if engine.is_null() {
@@ -297,8 +274,8 @@ pub unsafe extern "C" fn content_classifier_engine_serialize(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_deserialize(
-    out_engine: *mut *mut ContentClassifierFFIEngine,
+pub unsafe extern "C" fn midori_blocker_engine_deserialize(
+    out_engine: *mut *mut MidoriBlockerFFIEngine,
     data: &ThinVec<u8>,
 ) -> nsresult {
     if out_engine.is_null() {
@@ -310,14 +287,14 @@ pub unsafe extern "C" fn content_classifier_engine_deserialize(
         return NS_ERROR_FAILURE;
     }
 
-    let boxed_engine = Box::new(ContentClassifierFFIEngine { engine });
+    let boxed_engine = Box::new(MidoriBlockerFFIEngine { engine });
     *out_engine = Box::into_raw(boxed_engine);
     NS_OK
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_url_cosmetic_resources(
-    engine: *const ContentClassifierFFIEngine,
+pub unsafe extern "C" fn midori_blocker_engine_url_cosmetic_resources(
+    engine: *const MidoriBlockerFFIEngine,
     url: &nsACString,
     out_json: &mut nsCString,
 ) -> nsresult {
@@ -338,8 +315,8 @@ pub unsafe extern "C" fn content_classifier_engine_url_cosmetic_resources(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_hidden_class_id_selectors(
-    engine: *const ContentClassifierFFIEngine,
+pub unsafe extern "C" fn midori_blocker_engine_hidden_class_id_selectors(
+    engine: *const MidoriBlockerFFIEngine,
     classes_json: &nsACString,
     ids_json: &nsACString,
     exceptions_json: &nsACString,
@@ -377,8 +354,8 @@ pub unsafe extern "C" fn content_classifier_engine_hidden_class_id_selectors(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn content_classifier_engine_use_resources(
-    engine: *mut ContentClassifierFFIEngine,
+pub unsafe extern "C" fn midori_blocker_engine_use_resources(
+    engine: *mut MidoriBlockerFFIEngine,
     resources_json: &nsACString,
 ) -> nsresult {
     if engine.is_null() {
@@ -398,32 +375,9 @@ struct SchemelessSiteResolver {}
 
 impl adblock::url_parser::ResolvesDomain for SchemelessSiteResolver {
     fn get_host_domain(&self, host: &str) -> (usize, usize) {
-        let guard = match ETLD_SERVICE.lock() {
-            Ok(g) => g,
-            Err(_) => return (0, host.len()),
-        };
-        let etld_service = match guard.as_ref() {
-            Some(s) => s,
-            None => return (0, host.len()),
-        };
-
-        let mut host_cstring = nsCString::new();
-        host_cstring.assign(host);
-
-        let mut base_domain = nsCString::new();
-
-        unsafe {
-            if etld_service
-                .GetBaseDomainFromHost(&*host_cstring, 0, &mut *base_domain)
-                .succeeded()
-            {
-                let base_domain_len = base_domain.len();
-                if base_domain_len > 0 && base_domain_len <= host.len() {
-                    return (host.len() - base_domain_len, host.len());
-                }
-            }
-        }
-
-        (0, host.len())
+        etp_engine::url_parser::ResolvesDomain::get_host_domain(
+            &super::SchemelessSiteResolver {},
+            host,
+        )
     }
 }

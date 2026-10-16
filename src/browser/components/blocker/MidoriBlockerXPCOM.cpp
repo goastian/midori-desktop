@@ -69,7 +69,7 @@ void WriteFastCheckResult(nsACString& aOut, bool aMatched, bool aImportant,
 bool EnsureDomainResolver() {
   static bool sInitialized = false;
   if (!sInitialized &&
-      NS_SUCCEEDED(content_classifier_initialize_domain_resolver())) {
+      NS_SUCCEEDED(midori_blocker_initialize_domain_resolver())) {
     sInitialized = true;
   }
   return sInitialized;
@@ -137,9 +137,9 @@ MidoriBlockerXPCOM::MidoriBlockerXPCOM() = default;
 
 MidoriBlockerXPCOM::~MidoriBlockerXPCOM() { ResetEngine(nullptr); }
 
-void MidoriBlockerXPCOM::ResetEngine(ContentClassifierFFIEngine* aEngine) {
+void MidoriBlockerXPCOM::ResetEngine(MidoriBlockerFFIEngine* aEngine) {
   if (mEngine) {
-    content_classifier_engine_destroy(mEngine);
+    midori_blocker_engine_destroy(mEngine);
   }
   mEngine = aEngine;
 }
@@ -149,8 +149,8 @@ MidoriBlockerXPCOM::InitFromLists(const nsTArray<nsCString>& aFilterLists) {
   NS_ENSURE_TRUE(!aFilterLists.IsEmpty(), NS_ERROR_INVALID_ARG);
   NS_ENSURE_TRUE(EnsureDomainResolver(), NS_ERROR_NOT_AVAILABLE);
 
-  ContentClassifierFFIEngine* engine = nullptr;
-  nsresult rv = content_classifier_engine_from_rules(&aFilterLists, &engine);
+  MidoriBlockerFFIEngine* engine = nullptr;
+  nsresult rv = midori_blocker_engine_from_rules(&aFilterLists, &engine);
   NS_ENSURE_SUCCESS(rv, rv);
 
   ResetEngine(engine);
@@ -161,8 +161,8 @@ NS_IMETHODIMP
 MidoriBlockerXPCOM::InitFromCache(const nsTArray<uint8_t>& aCacheData) {
   NS_ENSURE_TRUE(EnsureDomainResolver(), NS_ERROR_NOT_AVAILABLE);
 
-  ContentClassifierFFIEngine* engine = nullptr;
-  nsresult rv = content_classifier_engine_deserialize(&engine, &aCacheData);
+  MidoriBlockerFFIEngine* engine = nullptr;
+  nsresult rv = midori_blocker_engine_deserialize(&engine, &aCacheData);
   NS_ENSURE_SUCCESS(rv, rv);
   NS_ENSURE_TRUE(engine, NS_ERROR_FAILURE);
 
@@ -184,11 +184,10 @@ MidoriBlockerXPCOM::CheckRequestDetailed(
   nsCString rewrittenUrl;
   nsCString exception;
 
-  nsresult rv =
-      content_classifier_engine_check_network_request_preparsed_detailed(
-          mEngine, &aUrl, &aHostname, &aSourceHostname, &aRequestType,
-          &aRequestMethod, aIsThirdParty, &matched, &important, &redirect,
-          &rewrittenUrl, &exception);
+  nsresult rv = midori_blocker_engine_check_network_request_preparsed_detailed(
+      mEngine, &aUrl, &aHostname, &aSourceHostname, &aRequestType,
+      &aRequestMethod, aIsThirdParty, &matched, &important, &redirect,
+      &rewrittenUrl, &exception);
   NS_ENSURE_SUCCESS(rv, rv);
 
   WriteCheckResultJSON(_retval, matched, important, redirect, rewrittenUrl,
@@ -209,11 +208,10 @@ MidoriBlockerXPCOM::CheckRequestFast(
   nsCString rewrittenUrl;
   nsCString exception;
 
-  nsresult rv =
-      content_classifier_engine_check_network_request_preparsed_detailed(
-          mEngine, &aUrl, &aHostname, &aSourceHostname, &aRequestType,
-          &aRequestMethod, aIsThirdParty, &matched, &important, &redirect,
-          &rewrittenUrl, &exception);
+  nsresult rv = midori_blocker_engine_check_network_request_preparsed_detailed(
+      mEngine, &aUrl, &aHostname, &aSourceHostname, &aRequestType,
+      &aRequestMethod, aIsThirdParty, &matched, &important, &redirect,
+      &rewrittenUrl, &exception);
   NS_ENSURE_SUCCESS(rv, rv);
 
   WriteFastCheckResult(_retval, matched, important, redirect, rewrittenUrl,
@@ -232,7 +230,7 @@ MidoriBlockerXPCOM::GetCspDirectives(
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
 
   nsCString directives;
-  nsresult rv = content_classifier_engine_get_csp_directives_preparsed(
+  nsresult rv = midori_blocker_engine_get_csp_directives_preparsed(
       mEngine, &aUrl, &aHostname, &aSourceHostname, &aRequestType,
       &aRequestMethod, aIsThirdParty, &directives);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -251,7 +249,7 @@ MidoriBlockerXPCOM::GetReplaceDirectives(
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
 
   nsCString directivesJson;
-  nsresult rv = content_classifier_engine_get_replace_directives_preparsed(
+  nsresult rv = midori_blocker_engine_get_replace_directives_preparsed(
       mEngine, &aUrl, &aHostname, &aSourceHostname, &aRequestType,
       &aRequestMethod, aIsThirdParty, &directivesJson);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -265,7 +263,7 @@ MidoriBlockerXPCOM::Serialize(nsTArray<uint8_t>& _retval) {
   _retval.Clear();
 
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
-  return content_classifier_engine_serialize(mEngine, &_retval);
+  return midori_blocker_engine_serialize(mEngine, &_retval);
 }
 
 NS_IMETHODIMP
@@ -276,8 +274,8 @@ MidoriBlockerXPCOM::GetCosmeticResources(const nsACString& aUrl,
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
 
   nsCString outJson;
-  nsresult rv = content_classifier_engine_url_cosmetic_resources(mEngine, &aUrl,
-                                                                 &outJson);
+  nsresult rv =
+      midori_blocker_engine_url_cosmetic_resources(mEngine, &aUrl, &outJson);
   NS_ENSURE_SUCCESS(rv, rv);
 
   _retval.Assign(outJson);
@@ -293,7 +291,7 @@ MidoriBlockerXPCOM::GetHiddenClassIdSelectors(
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
 
   nsCString outJson;
-  nsresult rv = content_classifier_engine_hidden_class_id_selectors(
+  nsresult rv = midori_blocker_engine_hidden_class_id_selectors(
       mEngine, &aClassesJson, &aIdsJson, &aExceptionsJson, &outJson);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -304,7 +302,7 @@ MidoriBlockerXPCOM::GetHiddenClassIdSelectors(
 NS_IMETHODIMP
 MidoriBlockerXPCOM::UseResources(const nsACString& aResourcesJson) {
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
-  return content_classifier_engine_use_resources(mEngine, &aResourcesJson);
+  return midori_blocker_engine_use_resources(mEngine, &aResourcesJson);
 }
 
 // Follows nsIUrlClassifierDBService: components.conf maps CID/contract here,

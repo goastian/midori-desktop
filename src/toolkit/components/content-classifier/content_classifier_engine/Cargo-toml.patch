@@ -1,0 +1,16 @@
+diff --git a/toolkit/components/content-classifier/content_classifier_engine/Cargo.toml b/toolkit/components/content-classifier/content_classifier_engine/Cargo.toml
+--- a/toolkit/components/content-classifier/content_classifier_engine/Cargo.toml
++++ b/toolkit/components/content-classifier/content_classifier_engine/Cargo.toml
+@@ -6,10 +6,12 @@
+ license = "MPL-2.0"
+
+ [dependencies]
++adblock = { version = "0.13.2", features = ["full-regex-handling", "single-thread"], default-features = false }
+ etp_engine = { path = "../etp_engine", features = ["full-regex-handling", "single-thread", "malloc-size-of"], default-features = false }
+ cstr = "0.2"
+ malloc_size_of = { path = "../../../../gfx/wr/wr_malloc_size_of", package = "wr_malloc_size_of", default-features = false }
+ nsstring = { path = "../../../../xpcom/rust/nsstring" }
+ nserror = { path = "../../../../xpcom/rust/nserror" }
++serde_json = "1"
+ thin-vec = { version = "0.2.1", features = ["gecko-ffi"] }
+ xpcom = { path = "../../../../xpcom/rust/xpcom" }

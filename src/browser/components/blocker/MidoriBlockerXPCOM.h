@@ -48,9 +48,9 @@ class MidoriBlockerXPCOM final : public nsIMidoriBlockerEngine {
  private:
   ~MidoriBlockerXPCOM();
 
-  void ResetEngine(ContentClassifierFFIEngine* aEngine);
+  void ResetEngine(MidoriBlockerFFIEngine* aEngine);
 
-  ContentClassifierFFIEngine* mEngine = nullptr;
+  MidoriBlockerFFIEngine* mEngine = nullptr;
 };
 
 #endif  // midori_blocker_xpcom_h
