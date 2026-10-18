@@ -1,7 +1,8 @@
 diff --git a/browser/components/about/components.conf b/browser/components/about/components.conf
+index f76be11e93..d030ae363f 100644
 --- a/browser/components/about/components.conf
 +++ b/browser/components/about/components.conf
-@@ -6,6 +6,7 @@
+@@ -6,6 +6,7 @@ pages = [
      'aichatcontent',
      'asrouter',
      'blocked',
@@ -9,19 +10,12 @@ diff --git a/browser/components/about/components.conf b/browser/components/about
      'certerror',
      'downloads',
      'framecrashed',
-@@ -13,6 +14,7 @@
-     'logins',
-     'loginsimportreport',
-     'firefoxview',
-+    'midorilink',
-     'messagepreview',
-     'opentabs',
-     'policies',
-@@ -27,6 +29,7 @@
+@@ -27,6 +28,8 @@ pages = [
      'robots',
      'sessionrestore',
      'settings',
 +    'setup',
++    'sync',
      'smartformfillreview',
      'smartpage',
      'smartwindowtasks',
