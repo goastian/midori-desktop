@@ -3,6 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { isRegularBrowserWindow } from 'resource:///modules/MidoriWebAppUtils.sys.mjs';
+import {
+  MidoriEssentials,
+  PREF_ESSENTIALS_ITEMS,
+} from 'resource:///modules/MidoriEssentials.sys.mjs';
 
 /**
  * MidoriVerticalTabs — Flat Design UI system for Midori Browser.
@@ -34,20 +38,13 @@ const PREF_VERTICAL_SHOW_RAIL = 'midori.verticaltabs.showRail';
 const PREF_VERTICAL_SHOW_PINNED_SECTION = 'midori.verticaltabs.showPinnedSection';
 const PREF_VERTICAL_ESSENTIALS_ENABLED = 'midori.verticaltabs.essentials.enabled';
 const PREF_VERTICAL_ESSENTIALS_MAX = 'midori.verticaltabs.essentials.max';
-const PREF_VERTICAL_ESSENTIALS_PROMO = 'midori.verticaltabs.essentialsPromo';
 const PREF_VERTICAL_URLBAR_AUTO_SELECT = 'midori.verticaltabs.urlbar.autoSelect';
 const PREF_VERTICAL_ACCENT_MODE = 'midori.verticaltabs.accent.mode';
 const PREF_VERTICAL_ACCENT_CUSTOM = 'midori.verticaltabs.accent.custom';
 const PREF_ARC_MODE_ENABLED = 'midori.arcmode.enabled';
+const PREF_VERTICAL_STYLE = 'midori.verticaltabs.style';
 const PREF_HORIZONTAL_POSITION = 'midori.horizontaltabs.position';
 const STYLE_ID = 'midori-verticaltabs-style';
-const ESSENTIALS_PROMO_ID = 'midori-essentials-promo';
-const ESSENTIAL_ATTR = 'midori-essential';
-const FIRST_REGULAR_PINNED_ATTR = 'midori-first-regular-pinned';
-const ESSENTIALS_CTX_SEPARATOR_ID = 'midori-context-essentials-separator';
-const ESSENTIALS_CTX_ADD_ID = 'midori-context-add-essential';
-const ESSENTIALS_CTX_REMOVE_ID = 'midori-context-remove-essential';
-const PINNED_STATE_ATTRS = new Set(['pinned', ESSENTIAL_ATTR]);
 
 const OBSERVED_PREFS = new Set([
   PREF_ENABLED,
@@ -62,11 +59,12 @@ const OBSERVED_PREFS = new Set([
   PREF_VERTICAL_SHOW_PINNED_SECTION,
   PREF_VERTICAL_ESSENTIALS_ENABLED,
   PREF_VERTICAL_ESSENTIALS_MAX,
-  PREF_VERTICAL_ESSENTIALS_PROMO,
+  PREF_ESSENTIALS_ITEMS,
   PREF_VERTICAL_URLBAR_AUTO_SELECT,
   PREF_VERTICAL_ACCENT_MODE,
   PREF_VERTICAL_ACCENT_CUSTOM,
   PREF_ARC_MODE_ENABLED,
+  PREF_VERTICAL_STYLE,
   PREF_HORIZONTAL_POSITION,
 ]);
 
@@ -97,11 +95,12 @@ export const MidoriVerticalTabs = {
     Services.prefs.addObserver(PREF_VERTICAL_SHOW_PINNED_SECTION, this);
     Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_ENABLED, this);
     Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_MAX, this);
-    Services.prefs.addObserver(PREF_VERTICAL_ESSENTIALS_PROMO, this);
+    Services.prefs.addObserver(PREF_ESSENTIALS_ITEMS, this);
     Services.prefs.addObserver(PREF_VERTICAL_URLBAR_AUTO_SELECT, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_MODE, this);
     Services.prefs.addObserver(PREF_VERTICAL_ACCENT_CUSTOM, this);
     Services.prefs.addObserver(PREF_ARC_MODE_ENABLED, this);
+    Services.prefs.addObserver(PREF_VERTICAL_STYLE, this);
     Services.prefs.addObserver(PREF_HORIZONTAL_POSITION, this);
     Services.obs.addObserver(this, 'browser-delayed-startup-finished');
     Services.obs.addObserver(this, 'domwindowclosed');
@@ -132,6 +131,23 @@ export const MidoriVerticalTabs = {
 
   _isArcModeEnabled() {
     return Services.prefs.getBoolPref(PREF_ARC_MODE_ENABLED, false);
+  },
+
+  _getVerticalStyle() {
+    const style = Services.prefs.getStringPref(PREF_VERTICAL_STYLE, 'arc');
+    return style === 'classic' ? 'classic' : 'arc';
+  },
+
+  /**
+   * The Arc layout is the default look of vertical tabs. The legacy
+   * midori.arcmode.enabled pref forces it on; midori.verticaltabs.style set to
+   * 'classic' is the escape hatch back to the previous plain vertical look.
+   */
+  _isArcLayoutActive() {
+    return (
+      this._isArcModeEnabled() ||
+      (this.isEnabled() && this._getVerticalStyle() === 'arc')
+    );
   },
 
   _getHorizontalPosition() {
@@ -182,10 +198,6 @@ export const MidoriVerticalTabs = {
   _getEssentialsMax() {
     const value = Services.prefs.getIntPref(PREF_VERTICAL_ESSENTIALS_MAX, 4);
     return Math.max(1, Math.min(12, value));
-  },
-
-  _isEssentialsPromoEnabled() {
-    return Services.prefs.getBoolPref(PREF_VERTICAL_ESSENTIALS_PROMO, true);
   },
 
   _isUrlbarAutoSelectEnabled() {
@@ -280,13 +292,6 @@ export const MidoriVerticalTabs = {
     );
   },
 
-  _applyEssentialsPromo(root) {
-    root.setAttribute(
-      'midori-vt-essentials-promo',
-      this._isEssentialsPromoEnabled() ? 'true' : 'false'
-    );
-  },
-
   _applyVerticalRootState(doc) {
     const root = doc.documentElement;
     this._applyDensity(root);
@@ -296,10 +301,9 @@ export const MidoriVerticalTabs = {
     this._applyFloatingUrlbar(root);
     this._applyShowRail(root);
     this._applyShowPinnedSection(root);
-    this._applyEssentialsPromo(root);
     root.setAttribute('midori-vt-essentials-enabled', this._isEssentialsEnabled() ? 'true' : 'false');
     root.setAttribute('midori-vt-essentials-max', String(this._getEssentialsMax()));
-    root.setAttribute('midori-arc-mode', this._isArcModeEnabled() ? 'true' : 'false');
+    root.setAttribute('midori-arc-mode', this._isArcLayoutActive() ? 'true' : 'false');
 
     const accent = this._resolveVerticalAccent(doc);
     root.style.setProperty('--midori-vt-accent', accent);
@@ -321,13 +325,9 @@ export const MidoriVerticalTabs = {
     root.removeAttribute('midori-vt-floating-urlbar');
     root.removeAttribute('midori-vt-show-rail');
     root.removeAttribute('midori-vt-show-pinned-section');
-    root.removeAttribute('midori-vt-essentials-promo');
     root.removeAttribute('midori-vt-essentials-enabled');
     root.removeAttribute('midori-vt-essentials-max');
-    root.removeAttribute('midori-vt-has-essentials');
-    root.removeAttribute('midori-vt-essentials-count');
     root.removeAttribute('midori-vt-has-pinned');
-    root.removeAttribute('midori-vt-pinned-count');
     root.removeAttribute('midori-vt-accent-mode');
     root.removeAttribute('midori-vt-rtl');
     root.removeAttribute('midori-arc-mode');
@@ -358,7 +358,10 @@ export const MidoriVerticalTabs = {
     Services.prefs.setBoolPref('sidebar.verticalTabs', enabled);
     Services.prefs.setBoolPref('sidebar.revamp', enabled);
     if (enabled) {
-      Services.prefs.setCharPref('sidebar.visibility', 'always-show');
+      Services.prefs.setCharPref(
+        'sidebar.visibility',
+        this._isVerticalCollapse() ? 'expand-on-hover' : 'always-show'
+      );
       const logicalStartSide = Services.locale.isAppLocaleRTL
         ? 'right'
         : 'left';
@@ -376,36 +379,36 @@ export const MidoriVerticalTabs = {
   _applyToWindow(win) {
     if (!isRegularBrowserWindow(win)) return;
     const doc = win.document;
+    // The injected CSS only depends on the layout mode; every other setting is
+    // driven by root attributes and variables, so the sheet is rebuilt only
+    // when the mode changes.
+    const mode = this.isEnabled() ? 'vertical' : 'base';
     const existing = doc.getElementById(STYLE_ID);
-    if (existing) existing.remove();
-
-    const style = doc.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = this.isEnabled() ? this._buildVerticalCSS() : this._buildBaseCSS();
-    doc.documentElement.appendChild(style);
+    if (!existing || existing.getAttribute('data-midori-mode') !== mode) {
+      existing?.remove();
+      const style = doc.createElement('style');
+      style.id = STYLE_ID;
+      style.setAttribute('data-midori-mode', mode);
+      style.textContent = mode === 'vertical' ? this._buildVerticalCSS() : this._buildBaseCSS();
+      doc.documentElement.appendChild(style);
+    }
 
     if (this.isEnabled()) {
       doc.documentElement.removeAttribute('midori-horizontal-tabs');
       doc.documentElement.setAttribute('midori-vertical-tabs', this._getVerticalSide());
       this._applyVerticalRootState(doc);
-      this._initEssentialsPromo(win);
-      this._initEssentialsContextMenu(win);
-      this._updatePinnedState(win);
+      this._initEssentials(win);
     } else {
       doc.documentElement.removeAttribute('midori-vertical-tabs');
       doc.documentElement.setAttribute('midori-horizontal-tabs', this._getHorizontalPosition());
       this._clearVerticalRootState(doc);
-      this._removeEssentialsPromo(win);
-      this._updateEssentialsContextMenu(win);
+      MidoriEssentials.cleanupWindow(win);
     }
 
     this._applyCompactMode(doc.documentElement);
 
     // --- Move TabsToolbar for bottom horizontal tabs ---
     this._applyBottomTabs(doc);
-
-    // --- Pinned tabs icon feature (Natsumi-inspired) ---
-    this._initPinnedTabsIcon(win);
 
     // --- Auto-select URL bar content on open (Natsumi urlbar.uc.mjs) ---
     this._initUrlbarAutoSelect(win);
@@ -481,56 +484,6 @@ export const MidoriVerticalTabs = {
   },
 
   /**
-   * Copies each pinned tab's favicon into a CSS custom property
-   * (--midori-tab-icon) so CSS can reference it for decorative purposes.
-   * Inspired by Natsumi's pinned-tabs-icon.uc.mjs.
-   */
-  _initPinnedTabsIcon(win) {
-    const doc = win.document;
-    if (doc._midoriPinnedIconInit) return;
-    doc._midoriPinnedIconInit = true;
-
-    const copyTabIcon = (tab) => {
-      const image = tab.getAttribute('image');
-      tab.style.setProperty(
-        '--midori-tab-icon',
-        image ? `url("${image}")` : `url("chrome://global/skin/icons/defaultFavicon.svg")`
-      );
-    };
-
-    const observeTab = (tab) => {
-      const obs = new win.MutationObserver(() => copyTabIcon(tab));
-      obs.observe(tab, { attributes: true, attributeFilter: ['image'] });
-      this._trackWindowObserver(win, obs);
-    };
-
-    // Process existing pinned tabs
-    for (const container of [
-      doc.getElementById('pinned-tabs-container'),
-      doc.getElementById('vertical-pinned-tabs-container'),
-    ]) {
-      if (!container) continue;
-      for (const tab of container.querySelectorAll('tab')) {
-        copyTabIcon(tab);
-        observeTab(tab);
-      }
-      // Watch for newly pinned tabs
-      const containerObserver = new win.MutationObserver((mutations) => {
-        for (const m of mutations) {
-          for (const node of m.addedNodes) {
-            if (node.nodeName === 'tab') {
-              copyTabIcon(node);
-              observeTab(node);
-            }
-          }
-        }
-      });
-      containerObserver.observe(container, { childList: true });
-      this._trackWindowObserver(win, containerObserver);
-    }
-  },
-
-  /**
    * Auto-selects the URL bar text when the floating URL bar opens.
    * Only selects on the initial open (before the user starts typing).
    * Once the user presses a key, auto-select is suppressed until the
@@ -579,392 +532,77 @@ export const MidoriVerticalTabs = {
     this._trackWindowObserver(win, urlbarObserver);
   },
 
-  _updatePinnedState(win) {
-    const doc = win?.document;
-    const gBrowser = win?.gBrowser;
-    if (!doc || !gBrowser) return;
-
-    const root = doc.documentElement;
-    const pinnedTabs = gBrowser.tabs.filter(tab => tab.pinned && !tab.closing);
-    const essentialTabs = this._normalizeEssentials(win, pinnedTabs);
-    const pinnedCount = pinnedTabs.length;
-    const essentialsCount = essentialTabs.length;
-
-    for (const tab of pinnedTabs) {
-      tab.removeAttribute(FIRST_REGULAR_PINNED_ATTR);
-    }
-
-    const firstRegularPinned = pinnedTabs.find(tab => !tab.hasAttribute(ESSENTIAL_ATTR));
-    if (firstRegularPinned) {
-      firstRegularPinned.setAttribute(FIRST_REGULAR_PINNED_ATTR, 'true');
-    }
-
-    root.setAttribute('midori-vt-pinned-count', String(pinnedCount));
-    root.setAttribute('midori-vt-has-pinned', pinnedCount > 0 ? 'true' : 'false');
-    root.setAttribute('midori-vt-essentials-count', String(essentialsCount));
-    root.setAttribute('midori-vt-has-essentials', essentialsCount > 0 ? 'true' : 'false');
-
-    this._updateEssentialsPromo(win, pinnedCount, essentialsCount);
+  _initEssentials(win) {
+    MidoriEssentials.initWindow(win, {
+      onPinnedChange: () => this._schedulePinnedState(win),
+    });
+    this._initPinnedState(win);
   },
 
-  _normalizeEssentials(win, pinnedTabs) {
-    if (!win?.gBrowser) {
-      return [];
-    }
-
-    const maxEssentials = this._getEssentialsMax();
-    const essentialsEnabled = this._isEssentialsEnabled();
-    const gBrowser = win.gBrowser;
-
-    if (!essentialsEnabled) {
-      for (const tab of pinnedTabs) {
-        if (tab.hasAttribute(ESSENTIAL_ATTR)) {
-          tab.removeAttribute(ESSENTIAL_ATTR);
-        }
-      }
-      return [];
-    }
-
-    const essentialTabs = [];
-    for (const tab of pinnedTabs) {
-      if (!tab.hasAttribute(ESSENTIAL_ATTR)) {
-        continue;
-      }
-      if (essentialTabs.length >= maxEssentials) {
-        tab.removeAttribute(ESSENTIAL_ATTR);
-        continue;
-      }
-      essentialTabs.push(tab);
-    }
-
-    // Keep essentials grouped at the beginning of the pinned area.
-    for (let i = 0; i < essentialTabs.length; i++) {
-      const tab = essentialTabs[i];
-      if (tab._tPos !== i) {
-        gBrowser.moveTabTo(tab, i);
-      }
-    }
-
-    return gBrowser.tabs.filter(
-      tab => tab.pinned && !tab.closing && tab.hasAttribute(ESSENTIAL_ATTR)
-    );
-  },
-
-  _canAddCurrentToEssentials(win, essentialsCount = null) {
-    const selectedTab = win?.gBrowser?.selectedTab;
-    if (!selectedTab || selectedTab.closing || selectedTab.hasAttribute(ESSENTIAL_ATTR)) {
-      return false;
-    }
-    if (essentialsCount === null) {
-      essentialsCount = win.gBrowser.tabs.filter(
-        tab => tab.pinned && !tab.closing && tab.hasAttribute(ESSENTIAL_ATTR)
-      ).length;
-    }
-    return this._isEssentialsEnabled() && essentialsCount < this._getEssentialsMax();
-  },
-
-  _isEssentialsAtCapacity(win, contextTab = null) {
-    if (!win?.gBrowser) {
-      return true;
-    }
-
-    const max = this._getEssentialsMax();
-    let count = win.gBrowser.tabs.filter(
-      tab => tab.pinned && !tab.closing && tab.hasAttribute(ESSENTIAL_ATTR)
-    ).length;
-
-    if (contextTab?.hasAttribute?.(ESSENTIAL_ATTR)) {
-      count -= 1;
-    }
-
-    return count >= max;
-  },
-
-  _shouldMarkTabEssentialByPosition(win, tab) {
-    if (!win?.gBrowser || !tab?.pinned || tab.closing || !this._isEssentialsEnabled()) {
-      return false;
-    }
-    return tab._tPos < this._getEssentialsMax();
-  },
-
-  _handlePinnedTabMove(win, movedTab) {
-    if (!this.isEnabled() || !this._isEssentialsEnabled()) {
-      return;
-    }
-    if (!movedTab || movedTab.closing || !movedTab.pinned) {
-      return;
-    }
-
-    if (this._shouldMarkTabEssentialByPosition(win, movedTab)) {
-      movedTab.setAttribute(ESSENTIAL_ATTR, 'true');
-    } else if (movedTab.hasAttribute(ESSENTIAL_ATTR)) {
-      movedTab.removeAttribute(ESSENTIAL_ATTR);
-    }
-  },
-
-  _setTabEssential(win, tab, value) {
-    if (!win?.gBrowser || !tab || tab.closing) {
-      return;
-    }
-
-    if (!value) {
-      tab.removeAttribute(ESSENTIAL_ATTR);
+  _initPinnedState(win) {
+    const doc = win.document;
+    if (doc._midoriPinnedStateInit) {
       this._updatePinnedState(win);
       return;
     }
-
-    if (!tab.pinned) {
-      win.gBrowser.pinTab(tab);
-    }
-    tab.setAttribute(ESSENTIAL_ATTR, 'true');
-    this._updatePinnedState(win);
-  },
-
-  _updateEssentialsPromo(win, pinnedCount, essentialsCount) {
-    const doc = win?.document;
-    if (!doc) return;
-
-    if (
-      !this.isEnabled() ||
-      !this._isEssentialsEnabled() ||
-      !this._isEssentialsPromoEnabled() ||
-      !this._isShowPinnedSectionEnabled()
-    ) {
-      this._removeEssentialsPromo(win);
+    const tabContainer = win.gBrowser?.tabContainer;
+    if (!tabContainer) {
       return;
     }
+    doc._midoriPinnedStateInit = true;
 
-    const pinnedContainer = doc.getElementById('pinned-tabs-container');
-    if (!pinnedContainer || pinnedContainer.getAttribute('orient') !== 'vertical') {
-      this._removeEssentialsPromo(win);
-      return;
-    }
-
-    if (essentialsCount > 0) {
-      this._removeEssentialsPromo(win);
-      return;
-    }
-
-    let promo = doc.getElementById(ESSENTIALS_PROMO_ID);
-    if (!promo) {
-      promo = doc.createXULElement('vbox');
-      promo.id = ESSENTIALS_PROMO_ID;
-      promo.className = 'midori-essentials-promo';
-
-      const title = doc.createXULElement('label');
-      title.className = 'midori-essentials-promo-title';
-      title.setAttribute('value', 'Pin your essentials');
-
-      const subtitle = doc.createXULElement('label');
-      subtitle.className = 'midori-essentials-promo-subtitle';
-      subtitle.setAttribute('value', 'Pin important tabs for instant access here.');
-
-      const button = doc.createXULElement('toolbarbutton');
-      button.id = 'midori-essentials-promo-button';
-      button.className = 'toolbarbutton-1 midori-essentials-promo-button';
-      button.setAttribute('label', 'Add current to essentials');
-      button.setAttribute('tooltiptext', 'Pin and mark the selected tab as essential');
-      button.addEventListener('command', () => {
-        const tab = win.gBrowser?.selectedTab;
-        if (!tab || !this._canAddCurrentToEssentials(win, essentialsCount)) {
-          return;
-        }
-        this._setTabEssential(win, tab, true);
-      });
-
-      promo.appendChild(title);
-      promo.appendChild(subtitle);
-      promo.appendChild(button);
-
-      pinnedContainer.appendChild(promo);
-    }
-
-    const button = doc.getElementById('midori-essentials-promo-button');
-    if (button) {
-      const canAddCurrent = this._canAddCurrentToEssentials(win, essentialsCount);
-      button.disabled = !canAddCurrent;
-      button.setAttribute(
-        'tooltiptext',
-        canAddCurrent
-          ? 'Pin and mark the selected tab as essential'
-          : essentialsCount >= this._getEssentialsMax()
-            ? 'You reached the maximum number of essentials'
-            : 'Select a regular tab that is not already essential'
-      );
-    }
-  },
-
-  _removeEssentialsPromo(win) {
-    const promo = win?.document?.getElementById(ESSENTIALS_PROMO_ID);
-    if (promo) {
-      promo.remove();
-    }
-  },
-
-  _initEssentialsContextMenu(win) {
-    const doc = win?.document;
-    if (!doc || doc._midoriEssentialsContextMenuInit) {
-      this._updateEssentialsContextMenu(win);
-      return;
-    }
-
-    const popup = doc.getElementById('tabContextMenu');
-    if (!popup) {
-      return;
-    }
-
-    let separator = doc.getElementById(ESSENTIALS_CTX_SEPARATOR_ID);
-    if (!separator) {
-      separator = doc.createXULElement('menuseparator');
-      separator.id = ESSENTIALS_CTX_SEPARATOR_ID;
-      popup.appendChild(separator);
-    }
-
-    let addItem = doc.getElementById(ESSENTIALS_CTX_ADD_ID);
-    if (!addItem) {
-      addItem = doc.createXULElement('menuitem');
-      addItem.id = ESSENTIALS_CTX_ADD_ID;
-      addItem.setAttribute('label', 'Add to Essentials');
-      addItem.addEventListener('command', () => {
-        const tab = win.TabContextMenu?.contextTab;
-        if (!tab || tab.closing || tab.hasAttribute(ESSENTIAL_ATTR)) {
-          return;
-        }
-        if (this._isEssentialsAtCapacity(win, tab)) {
-          return;
-        }
-        this._setTabEssential(win, tab, true);
-      });
-      popup.appendChild(addItem);
-    }
-
-    let removeItem = doc.getElementById(ESSENTIALS_CTX_REMOVE_ID);
-    if (!removeItem) {
-      removeItem = doc.createXULElement('menuitem');
-      removeItem.id = ESSENTIALS_CTX_REMOVE_ID;
-      removeItem.setAttribute('label', 'Remove from Essentials');
-      removeItem.addEventListener('command', () => {
-        const tab = win.TabContextMenu?.contextTab;
-        if (!tab || tab.closing || !tab.hasAttribute(ESSENTIAL_ATTR)) {
-          return;
-        }
-        this._setTabEssential(win, tab, false);
-      });
-      popup.appendChild(removeItem);
-    }
-
-    const onPopupShowing = event => {
-      if (event.target?.id !== 'tabContextMenu') {
+    let frame = 0;
+    const schedule = () => {
+      if (frame) {
         return;
       }
-      this._updateEssentialsContextMenu(win);
-    };
-
-    this._trackWindowListener(win, popup, 'popupshowing', onPopupShowing);
-    doc._midoriEssentialsContextMenuInit = true;
-    doc._midoriEssentialsContextMenuPopupHandler = onPopupShowing;
-
-    this._updateEssentialsContextMenu(win);
-  },
-
-  _updateEssentialsContextMenu(win) {
-    const doc = win?.document;
-    if (!doc) {
-      return;
-    }
-
-    const separator = doc.getElementById(ESSENTIALS_CTX_SEPARATOR_ID);
-    const addItem = doc.getElementById(ESSENTIALS_CTX_ADD_ID);
-    const removeItem = doc.getElementById(ESSENTIALS_CTX_REMOVE_ID);
-    if (!separator || !addItem || !removeItem) {
-      return;
-    }
-
-    const tab = win.TabContextMenu?.contextTab;
-    const canUseEssentials =
-      this.isEnabled() &&
-      this._isShowPinnedSectionEnabled() &&
-      this._isEssentialsEnabled() &&
-      !!tab &&
-      !tab.closing;
-
-    const tabIsEssential = canUseEssentials && tab.hasAttribute(ESSENTIAL_ATTR);
-    const canAdd =
-      canUseEssentials &&
-      !tabIsEssential &&
-      !this._isEssentialsAtCapacity(win, tab);
-    const canRemove = canUseEssentials && tabIsEssential;
-
-    separator.hidden = !canUseEssentials;
-    addItem.hidden = !canUseEssentials;
-    removeItem.hidden = !canUseEssentials;
-
-    addItem.disabled = !canAdd;
-    removeItem.disabled = !canRemove;
-  },
-
-  _initEssentialsPromo(win) {
-    const doc = win?.document;
-    if (!doc || doc._midoriEssentialsPromoInit) return;
-    doc._midoriEssentialsPromoInit = true;
-
-    let updateFrame = 0;
-    const update = () => {
-      if (updateFrame) {
-        return;
-      }
-      updateFrame = win.requestAnimationFrame(() => {
-        updateFrame = 0;
+      frame = win.requestAnimationFrame(() => {
+        frame = 0;
         this._updatePinnedState(win);
       });
     };
-    const updateNow = () => {
-      if (updateFrame) {
-        win.cancelAnimationFrame(updateFrame);
-        updateFrame = 0;
+    const scheduleIfPinned = event => {
+      if (event.target?.pinned) {
+        schedule();
       }
-      this._updatePinnedState(win);
     };
-
-    doc._midoriEssentialsPromoUpdate = update;
+    doc._midoriPinnedStateUpdate = schedule;
     this._getWindowState(win).cleanups.push(() => {
-      if (updateFrame) {
-        win.cancelAnimationFrame(updateFrame);
-        updateFrame = 0;
+      if (frame) {
+        win.cancelAnimationFrame(frame);
+        frame = 0;
       }
     });
 
-    const tabContainer = win.gBrowser?.tabContainer;
-    if (tabContainer) {
-      const onTabPinned = event => {
-        this._handlePinnedTabMove(win, event.target);
-        update();
-      };
-      const onTabMove = event => {
-        this._handlePinnedTabMove(win, event.target);
-        update();
-      };
-      const onTabAttrModified = event => {
-        const changed = event.detail?.changed || [];
-        if (changed.some(attr => PINNED_STATE_ATTRS.has(attr))) {
-          update();
-        }
-      };
-      this._trackWindowListener(win, tabContainer, 'TabPinned', onTabPinned);
-      this._trackWindowListener(win, tabContainer, 'TabUnpinned', update);
-      this._trackWindowListener(win, tabContainer, 'TabMove', onTabMove);
-      this._trackWindowListener(
-        win,
-        tabContainer,
-        'TabAttrModified',
-        onTabAttrModified
-      );
-      this._trackWindowListener(win, tabContainer, 'TabClose', update);
-      this._trackWindowListener(win, tabContainer, 'TabOpen', update);
-      this._trackWindowListener(win, tabContainer, 'TabSelect', update);
-    }
+    this._trackWindowListener(win, tabContainer, 'TabPinned', schedule);
+    this._trackWindowListener(win, tabContainer, 'TabUnpinned', schedule);
+    this._trackWindowListener(win, tabContainer, 'TabClose', scheduleIfPinned);
+    this._trackWindowListener(win, tabContainer, 'TabOpen', scheduleIfPinned);
+    this._updatePinnedState(win);
+  },
 
-    updateNow();
+  _schedulePinnedState(win) {
+    const schedule = win?.document?._midoriPinnedStateUpdate;
+    if (schedule) {
+      schedule();
+    } else {
+      this._updatePinnedState(win);
+    }
+  },
+
+  /**
+   * Reflects whether the native pinned section has tabs of its own. Essentials
+   * tabs are hidden there, so an otherwise empty section is hidden by CSS.
+   */
+  _updatePinnedState(win) {
+    const root = win?.document?.documentElement;
+    if (!root || !win.gBrowser) {
+      return;
+    }
+    root.setAttribute(
+      'midori-vt-has-pinned',
+      MidoriEssentials.countRegularPinned(win) > 0 ? 'true' : 'false'
+    );
   },
 
   _refreshAllWindows() {
@@ -1022,31 +660,15 @@ export const MidoriVerticalTabs = {
     if (!doc) return;
 
     doc.getElementById(STYLE_ID)?.remove();
-    doc.getElementById(ESSENTIALS_PROMO_ID)?.remove();
-    const contextMenu = doc.getElementById('tabContextMenu');
-    const contextHandler = doc._midoriEssentialsContextMenuPopupHandler;
-    if (contextMenu && contextHandler) {
-      contextMenu.removeEventListener('popupshowing', contextHandler);
-    }
-    doc.getElementById(ESSENTIALS_CTX_SEPARATOR_ID)?.remove();
-    doc.getElementById(ESSENTIALS_CTX_ADD_ID)?.remove();
-    doc.getElementById(ESSENTIALS_CTX_REMOVE_ID)?.remove();
+    MidoriEssentials.cleanupWindow(win);
     this._restoreTabsToolbar(doc);
     this._clearVerticalRootState(doc);
     doc.documentElement.removeAttribute('midori-vertical-tabs');
     doc.documentElement.removeAttribute('midori-horizontal-tabs');
 
-    for (const tab of win.gBrowser?.tabs || []) {
-      tab.style.removeProperty('--midori-tab-icon');
-      tab.removeAttribute(FIRST_REGULAR_PINNED_ATTR);
-    }
-
-    delete doc._midoriPinnedIconInit;
     delete doc._midoriUrlbarAutoSelectInit;
-    delete doc._midoriEssentialsContextMenuInit;
-    delete doc._midoriEssentialsContextMenuPopupHandler;
-    delete doc._midoriEssentialsPromoInit;
-    delete doc._midoriEssentialsPromoUpdate;
+    delete doc._midoriPinnedStateInit;
+    delete doc._midoriPinnedStateUpdate;
   },
 
   uninit() {

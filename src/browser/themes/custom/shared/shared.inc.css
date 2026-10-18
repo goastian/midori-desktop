@@ -647,6 +647,7 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 
 :root[midori-vertical-tabs] {
   --pf-sidebar-width: var(--midori-vt-width, 248px);
+  --sidebar-expanded-launcher-width: var(--pf-sidebar-width);
   --midori-vt-accent: var(--pf-accent-color);
   min-width: calc(var(--window-min-width, 500px) + 120px) !important;
 }
@@ -699,36 +700,10 @@ toolbar .toolbarbutton-1:not([disabled]):active {
   margin-inline: var(--pf-browser-separation) 0 !important;
 }
 
-:root[midori-vertical-tabs][midori-vt-collapse="true"] {
-  --pf-sidebar-collapsed-width: 58px;
-}
-
-:root[midori-vertical-tabs][midori-vt-collapse="true"] #sidebar-box {
-  width: var(--pf-sidebar-collapsed-width) !important;
-  min-width: var(--pf-sidebar-collapsed-width) !important;
-  max-width: var(--pf-sidebar-collapsed-width) !important;
-  transition: width var(--pf-ts-25) var(--pf-fx-sidebar),
-    min-width var(--pf-ts-25) var(--pf-fx-sidebar),
-    max-width var(--pf-ts-25) var(--pf-fx-sidebar),
-    box-shadow var(--pf-ts-25) !important;
-}
-
-:root[midori-vertical-tabs][midori-vt-collapse="true"] #sidebar-box:hover,
-:root[midori-vertical-tabs][midori-vt-collapse="true"] #sidebar-box:has(:focus-visible) {
-  width: var(--pf-sidebar-width) !important;
-  min-width: var(--pf-sidebar-width) !important;
-  max-width: var(--pf-sidebar-width) !important;
-  box-shadow: var(--pf-shadow-md), inset 0 0 0 1px var(--pf-border-color) !important;
-}
-
-@media -moz-pref("midori.verticaltabs.collapse") {
-  :root:has(#tabbrowser-tabs[orient="vertical"]) #sidebar-box {
-    width: var(--pf-sidebar-collapsed-width, 58px) !important;
-    min-width: var(--pf-sidebar-collapsed-width, 58px) !important;
-    max-width: var(--pf-sidebar-collapsed-width, 58px) !important;
-    transition: none !important;
-  }
-}
+/* Collapsing the vertical tabs is handled by the engine: with the collapse
+ * option on, sidebar.visibility is set to "expand-on-hover" (see
+ * MidoriVerticalTabs._syncFirefoxPrefs), which keeps a collapsed launcher in
+ * flow and expands it over the page without resizing the content. */
 
 :root[midori-vertical-tabs] #midori-workspace-rail {
   display: flex !important;
@@ -763,6 +738,7 @@ toolbar .toolbarbutton-1:not([disabled]):active {
   --pf-navbar-bgcolor: var(--pf-sidebar-bgcolor);
   --pf-tab-selected-bgcolor: color-mix(in srgb, var(--pf-accent-color), var(--pf-panel-bgcolor) 80%);
   --pf-urlbar-width-max: 640px;
+  --midori-selected-ring: inset 0 0 0 1px color-mix(in srgb, var(--pf-accent-color), transparent 62%);
 }
 
 :root[midori-vertical-tabs][midori-arc-mode="true"]:not([inDOMFullscreen], [chromehidden~="toolbar"], [taskbartab]) #navigator-toolbox {
@@ -923,11 +899,31 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 
 :root[midori-vertical-tabs][midori-arc-mode="true"] .tab-background[selected] {
   background-color: var(--pf-tab-selected-bgcolor) !important;
-  box-shadow: inset 3px 0 0 var(--pf-accent-color), var(--pf-tab-selected-shadow) !important;
+  box-shadow: var(--midori-selected-ring), var(--pf-tab-selected-shadow) !important;
 }
 
-:root[midori-vertical-tabs="right"][midori-arc-mode="true"] .tab-background[selected] {
-  box-shadow: inset -3px 0 0 var(--pf-accent-color), var(--pf-tab-selected-shadow) !important;
+/* Compact workspace header: the current space as a plain row, no caption. */
+:root[midori-vertical-tabs][midori-arc-mode="true"] #midori-workspace-rail {
+  padding: 6px var(--pf-separation) 2px !important;
+  border-block-end: 0;
+  background: transparent;
+}
+
+:root[midori-vertical-tabs][midori-arc-mode="true"] #midori-workspace-rail::before {
+  display: none;
+}
+
+:root[midori-vertical-tabs][midori-arc-mode="true"] #midori-workspace-dropdown {
+  justify-content: flex-start !important;
+  min-height: 30px !important;
+  padding: 3px 8px !important;
+  border-color: transparent !important;
+  border-radius: var(--pf-border-radius-hl) !important;
+  background: transparent !important;
+}
+
+:root[midori-vertical-tabs][midori-arc-mode="true"] #midori-workspace-dropdown:hover {
+  background: var(--pf-toolbar-bgcolor-hover) !important;
 }
 
 :root[midori-vertical-tabs][midori-vt-show-rail="false"] #midori-workspace-rail {
@@ -1029,6 +1025,230 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 :root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-dropdown-label,
 :root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-label {
   display: none !important;
+}
+
+/* Essentials: a grid of site tiles above the workspace rail (Arc favorites,
+ * Zen essentials). Tabs opened from a tile stay pinned but are hidden in the
+ * strip; the tile represents them. */
+#midori-essentials {
+  order: -2;
+  display: grid;
+  grid-template-columns: repeat(var(--midori-essentials-columns, 3), minmax(0, 1fr));
+  gap: 6px;
+  padding: var(--pf-separation) var(--pf-separation) 2px;
+  -moz-window-dragging: no-drag;
+}
+
+#midori-essentials[hidden] {
+  display: none;
+}
+
+.midori-essential-tile {
+  appearance: none;
+  position: relative;
+  min-width: 0;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--pf-border-radius-md);
+  background: color-mix(in srgb, var(--pf-text-color), transparent 93%);
+  transition: background-color var(--pf-ts-15), transform var(--pf-ts-15);
+}
+
+.midori-essential-tile:hover {
+  background: color-mix(in srgb, var(--pf-text-color), transparent 88%);
+}
+
+.midori-essential-tile:active {
+  transform: scale(0.96);
+}
+
+.midori-essential-tile:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: -2px;
+}
+
+.midori-essential-tile[selected] {
+  background: var(--pf-tab-selected-bgcolor);
+  box-shadow: var(--midori-selected-ring, inset 0 0 0 1px var(--pf-accent-color)), var(--pf-tab-selected-shadow);
+}
+
+.midori-essential-tile > .toolbarbutton-text {
+  display: none;
+}
+
+.midori-essential-tile > .toolbarbutton-icon {
+  box-sizing: content-box;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  border-radius: 8px;
+  -moz-context-properties: fill, stroke;
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+/* Site icons are transparent and often dark: give them a light plate so any
+ * favicon stays legible on every theme. Bundled icons carry their own. */
+.midori-essential-tile[icon-kind="favicon"] > .toolbarbutton-icon {
+  width: 22px;
+  height: 22px;
+  padding: 5px;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+  fill: #5f6368;
+  stroke: #5f6368;
+}
+
+.midori-essential-tile[dragging] {
+  opacity: 0.45;
+}
+
+#midori-essentials[dragover] {
+  border-radius: var(--pf-border-radius-md);
+  background: color-mix(in srgb, var(--pf-accent-color), transparent 92%);
+  outline: 1.5px dashed color-mix(in srgb, var(--pf-accent-color), transparent 40%);
+  outline-offset: -3px;
+}
+
+/* Insertion marker drawn in the gap next to the tile that receives the drop. */
+.midori-essential-tile[drop-before]::before,
+.midori-essential-tile[drop-after]::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset-block: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--pf-accent-color);
+  pointer-events: none;
+}
+
+.midori-essential-tile[drop-before]::before {
+  inset-inline-start: -5px;
+}
+
+.midori-essential-tile[drop-after]::before {
+  inset-inline-end: -5px;
+}
+
+#midori-essentials[drop-axis="vertical"] .midori-essential-tile:is([drop-before], [drop-after])::before {
+  inset-block: auto;
+  inset-inline: 4px;
+  width: auto;
+  height: 3px;
+}
+
+#midori-essentials[drop-axis="vertical"] .midori-essential-tile[drop-before]::before {
+  inset-block-start: -5px;
+}
+
+#midori-essentials[drop-axis="vertical"] .midori-essential-tile[drop-after]::before {
+  inset-block-end: -5px;
+}
+
+.midori-essential-tile[live]::after {
+  content: "";
+  position: absolute;
+  inset-block-end: 4px;
+  inset-inline: 0;
+  width: 4px;
+  height: 4px;
+  margin-inline: auto;
+  border-radius: 50%;
+  background: var(--pf-accent-color);
+  opacity: 0.8;
+}
+
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-essentials {
+  grid-template-columns: minmax(0, 1fr);
+  padding-inline: 4px;
+}
+
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-essential-tile {
+  height: 40px;
+}
+
+/* Tabs owned by a tile, and the pinned section when only those are pinned. */
+.tabbrowser-tab[midori-essential-tab] {
+  display: none !important;
+}
+
+:root[midori-vertical-tabs][midori-vt-has-pinned="false"] :is(#pinned-tabs-container[orient="vertical"], #vertical-pinned-tabs-splitter) {
+  display: none !important;
+}
+
+/* Workspace switcher pinned to the bottom of the column. */
+#midori-workspace-switcher {
+  order: 10;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px var(--pf-separation);
+  border-block-start: 1px solid var(--pf-border-color-light);
+  -moz-window-dragging: no-drag;
+}
+
+:root[midori-vt-show-rail="false"] #midori-workspace-switcher {
+  display: none;
+}
+
+.midori-workspace-switch-btn,
+#midori-workspace-switch-add {
+  appearance: none;
+  min-width: 0;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--pf-border-radius-hl);
+  background: transparent;
+  justify-content: center;
+  transition: background-color var(--pf-ts-15);
+}
+
+.midori-workspace-switch-btn > .toolbarbutton-icon {
+  display: none;
+}
+
+.midori-workspace-switch-btn > .toolbarbutton-text {
+  margin: 0;
+  font-size: 15px;
+}
+
+.midori-workspace-switch-btn:hover,
+#midori-workspace-switch-add:hover {
+  background: var(--pf-toolbar-bgcolor-hover);
+}
+
+.midori-workspace-switch-btn[selected] {
+  background: color-mix(in srgb, var(--midori-workspace-switch-accent, var(--pf-accent-color)), transparent 80%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--midori-workspace-switch-accent, var(--pf-accent-color)), transparent 40%);
+}
+
+#midori-workspace-switch-add {
+  margin-inline-start: auto;
+}
+
+#midori-workspace-switch-add > .toolbarbutton-icon {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  -moz-context-properties: fill;
+  fill: var(--pf-icon-color);
+}
+
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-switcher {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  padding-inline: 4px;
+}
+
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-switch-add {
+  margin-inline-start: 0;
 }
 
 /* ------------------------------------------------------------------
@@ -1137,10 +1357,6 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 
 :root[midori-vertical-tabs] #pinned-tabs-container[orient="vertical"]::before {
   content: "Pinned";
-}
-
-:root[midori-vertical-tabs][midori-vt-has-essentials="true"] #pinned-tabs-container[orient="vertical"]::before {
-  content: "Essentials";
 }
 
 tab-group .tab-group-label {

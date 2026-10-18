@@ -208,7 +208,7 @@ export const MidoriSidebar = {
       this._destroyWindowUI(win);
       return;
     }
-    const position = Prefs.getPosition();
+    const position = Prefs.getEffectivePosition();
     const width = Prefs.getWidth();
     const autohideEnabled = Prefs.getAutohideEnabled();
     const autohideMode = Prefs.getAutohideMode();

@@ -55,6 +55,10 @@ const POPUP_ID = 'midori-workspace-popup';
 const VERTICAL_RAIL_ID = 'midori-workspace-rail';
 const QUICK_ICONS_ID = 'midori-workspace-quick-icons';
 const DROPDOWN_ID = 'midori-workspace-dropdown';
+const SWITCHER_ID = 'midori-workspace-switcher';
+const SWITCHER_BUTTON_CLASS = 'midori-workspace-switch-btn';
+const SWITCHER_ADD_ID = 'midori-workspace-switch-add';
+const WORKSPACES_FTL = 'browser/midori/workspaces.ftl';
 const CTX_SEPARATOR_ID = 'midori-workspace-context-separator';
 const CTX_MENU_ID = 'midori-workspace-context-menu';
 const CTX_MENU_POPUP_ID = 'midori-workspace-context-menupopup';
@@ -687,8 +691,85 @@ export const MidoriWorkspaces = {
       popup.openPopup(dropdown, 'after_start', 0, 0, false, false);
     });
 
+    this._injectSwitcher(win, state, verticalTabs);
+
     console.log('MidoriWorkspaces: Vertical UI injected successfully');
     return true;
+  },
+
+  /**
+   * Arc-style space switcher: one button per workspace pinned to the bottom of
+   * the vertical tabs column, followed by a "new workspace" button.
+   */
+  _injectSwitcher(win, state, verticalTabs) {
+    const doc = win.document;
+    if (doc.getElementById(SWITCHER_ID)) return;
+
+    if (!doc._midoriWorkspacesFtl) {
+      doc._midoriWorkspacesFtl = true;
+      doc.l10n.addResourceIds([WORKSPACES_FTL]);
+    }
+
+    const switcher = doc.createXULElement('hbox');
+    switcher.id = SWITCHER_ID;
+    switcher.className = 'midori-workspace-switcher';
+
+    const add = doc.createXULElement('toolbarbutton');
+    add.id = SWITCHER_ADD_ID;
+    add.setAttribute('image', 'chrome://global/skin/icons/plus.svg');
+    doc.l10n.setAttributes(add, 'midori-workspaces-new');
+    switcher.appendChild(add);
+
+    switcher.addEventListener('command', (event) => {
+      const target = event.target;
+      if (target?.id === SWITCHER_ADD_ID) {
+        this._showCreateDialog(win, state);
+        return;
+      }
+      const id = target?.closest?.(`.${SWITCHER_BUTTON_CLASS}`)?.getAttribute('data-workspace-id');
+      if (id) this.switchWorkspace(win, id);
+    });
+
+    verticalTabs.appendChild(switcher);
+    this._renderSwitcher(win, state);
+  },
+
+  _renderSwitcher(win, state) {
+    const doc = win.document;
+    const switcher = doc.getElementById(SWITCHER_ID);
+    const add = doc.getElementById(SWITCHER_ADD_ID);
+    if (!switcher || !add) return;
+
+    const { workspaces, selectedId } = state.data;
+    const buttons = new Map();
+    for (const node of [...switcher.querySelectorAll(`.${SWITCHER_BUTTON_CLASS}`)]) {
+      const id = node.getAttribute('data-workspace-id');
+      if (workspaces.some((ws) => ws.id === id)) {
+        buttons.set(id, node);
+      } else {
+        node.remove();
+      }
+    }
+
+    workspaces.forEach((ws, index) => {
+      let button = buttons.get(ws.id);
+      if (!button) {
+        button = doc.createXULElement('toolbarbutton');
+        button.className = SWITCHER_BUTTON_CLASS;
+        button.setAttribute('data-workspace-id', ws.id);
+      }
+      const name = WorkspaceModel.sanitizeWorkspaceName(ws.name);
+      button.setAttribute('label', WorkspaceModel.getEmojiForIcon(ws.icon));
+      button.setAttribute('tooltiptext', name);
+      button.setAttribute('aria-label', name);
+      button.style.setProperty('--midori-workspace-switch-accent', WorkspaceModel.getWorkspaceAccent(ws.icon));
+      button.toggleAttribute('selected', ws.id === selectedId);
+      if (switcher.children[index] !== button) {
+        switcher.insertBefore(button, switcher.children[index] || add);
+      }
+    });
+
+    add.hidden = workspaces.length >= WorkspaceModel.MAX_WORKSPACES;
   },
 
   /**
@@ -752,6 +833,7 @@ export const MidoriWorkspaces = {
     // Vertical mode: update the dropdown button
     if (doc.getElementById(DROPDOWN_ID)) {
       this._updateDropdown(doc, state);
+      this._renderSwitcher(win, state);
       return;
     }
   },
@@ -797,6 +879,7 @@ export const MidoriWorkspaces = {
     if (verticalRail) verticalRail.remove();
     const dropdown = doc.getElementById(DROPDOWN_ID);
     if (dropdown) dropdown.remove();
+    doc.getElementById(SWITCHER_ID)?.remove();
     const selector = doc.getElementById(SELECTOR_ID);
     if (selector) selector.remove();
     const quickIcons = doc.getElementById(QUICK_ICONS_ID);

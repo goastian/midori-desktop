@@ -3726,9 +3726,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       { value: 'left', label: 'Izquierda' },
       { value: 'right', label: 'Derecha' },
     ],
-    () => Prefs.getPosition(),
+    () => Prefs.getEffectivePosition(),
     (value) => Services.prefs.setStringPref(Prefs.PREF_POSITION, value)
   );
+  positionSetting.disabled = Prefs.isPositionForcedByVerticalTabs();
   const railExpandedSetting = checkboxRow(appearanceSection, 'Mostrar nombres de paneles', Prefs.PREF_RAIL_EXPANDED);
   const animationsSetting = checkboxRow(appearanceSection, 'Usar animaciones', Prefs.PREF_ANIMATIONS_ENABLED, true);
 
@@ -3796,7 +3797,8 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     for (const button of presetRow.querySelectorAll('[data-preset]')) {
       setBoolAttr(button, 'selected', button.getAttribute('data-preset') === preset);
     }
-    positionSetting.value = Prefs.getPosition();
+    positionSetting.value = Prefs.getEffectivePosition();
+    positionSetting.disabled = Prefs.isPositionForcedByVerticalTabs();
     railExpandedSetting.checked = Prefs.getRailExpanded();
     animationsSetting.checked = Prefs.getAnimationsEnabled();
     autohideSetting.checked = Prefs.getAutohideEnabled();

@@ -52,6 +52,30 @@ export function getPosition() {
   return pos === POSITION_RIGHT ? POSITION_RIGHT : POSITION_LEFT;
 }
 
+const PREF_VERTICAL_TABS = 'midori.verticaltabs.enabled';
+const PREF_VERTICAL_TABS_POSITION = 'midori.verticaltabs.position';
+const PREF_ARC_MODE = 'midori.arcmode.enabled';
+
+/**
+ * With vertical tabs on, the sidebar always sits on the opposite edge so the
+ * two columns never stack on the same side. The stored position is left
+ * untouched and applies again when vertical tabs are turned off.
+ */
+export function isPositionForcedByVerticalTabs() {
+  return (
+    Services.prefs.getBoolPref(PREF_VERTICAL_TABS, false) ||
+    Services.prefs.getBoolPref(PREF_ARC_MODE, false)
+  );
+}
+
+export function getEffectivePosition() {
+  if (!isPositionForcedByVerticalTabs()) {
+    return getPosition();
+  }
+  const tabsSide = Services.prefs.getStringPref(PREF_VERTICAL_TABS_POSITION, POSITION_LEFT);
+  return tabsSide === POSITION_RIGHT ? POSITION_LEFT : POSITION_RIGHT;
+}
+
 export function getWidth() {
   const width = Services.prefs.getIntPref(PREF_WIDTH, 320);
   return Math.min(800, Math.max(200, width));
