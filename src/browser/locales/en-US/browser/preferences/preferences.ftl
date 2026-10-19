@@ -3011,3 +3011,167 @@ settings-keyboard-shortcuts-customkeys-link =
 passports-delete-passport-prompt-title = Delete this passport?
 passports-delete-passport-prompt-confirm-button = Delete
 passports-delete-passport-prompt-cancel-button = Cancel
+
+## Strings added to match the Firefox base
+
+tls-key-logging-notice-nav =
+    .label = An app or service may see your encrypted traffic.
+
+update-application-radio-group =
+    .aria-label = Installation
+
+settings-keyboard-shortcuts-group =
+    .label = Keyboard shortcuts
+    .description = Control how you move around and interact with { -brand-short-name }.
+
+containers-section-header2 =
+    .heading = Container settings
+
+containers-card-header2 =
+    .label = Containers
+    .description = Separate cookies by container so you can use different accounts on the same site and limit cross-site tracking.
+
+containers-add-button2 =
+    .label = Add new container
+    .accesskey = A
+
+containers-new-tab-check3 =
+    .label = Select a container for each new tab
+    .accesskey = S
+
+containers-external-links-check =
+    .label = Don’t use containers for links opened from external apps
+    .accesskey = D
+
+containers-settings-button2 =
+    .title = Settings
+
+containers-remove-button3 =
+    .title = Delete
+
+containers-sites-card-header =
+    .label = Site-specific containers
+    .description = Choose a container for a site and { -brand-short-name } will use it every time the site opens.
+
+containers-sites-add-button =
+    .label = Add website
+    .accesskey = w
+
+containers-site-container-select = Container for { $site }
+
+containers-site-remove-button =
+    .title = Delete
+
+account-disabled-group =
+    .label = Account
+    .description = Account settings are unavailable.
+
+forms-primary-pw-on-2 = Primary password is <strong>ON</strong>
+
+payment-moz-box-item-with-security-code =
+  .label = { $cardNumber }
+  .description = { $expDate } | CVV saved
+
+payment-moz-box-item-security-code-only =
+  .label = { $cardNumber }
+  .description = CVV saved
+
+personal-info-group =
+    .label = Personal info
+
+autofill-personal-info-checkbox-message =
+    .label = Save and autofill personal info
+
+autofill-personal-info-manage-button =
+    .label = Manage personal info
+
+passports-list-header =
+    .label = Passports
+
+passports-delete-passport-button-label =
+    .aria-label = Delete
+
+passports-edit-passport-button-label =
+    .aria-label = Edit
+
+autofill-passports-add-button = Add new passport
+
+autofill-personal-info-manage-title =
+    .heading = Manage personal info
+
+passports-no-passports-stored-message =
+    .label = No passports added
+
+history-mode-radio-group =
+    .aria-label = History
+
+history-shutdown-exceptions =
+    .label = Manage Exceptions
+    .accesskey = x
+
+preferences-doh-radio-group =
+    .aria-label = Enable DNS over HTTPS using:
+
+appearance-window-density-group =
+    .label = Window density
+    .description = Adjust the spacing around window elements like toolbar, tabs, and sidebar.
+
+appearance-window-density-radio-group =
+    .aria-label = Window density
+
+appearance-window-density-automatic =
+    .label = Automatic (default)
+    .description = Standard, compact, or touch spacing is applied automatically
+
+appearance-window-density-automatic-no-touch =
+    .label = Automatic (default)
+    .description = Standard or compact spacing is applied automatically
+
+appearance-window-density-standard =
+    .label = Standard
+    .description = Balanced spacing for most screens
+
+appearance-window-density-auto-touch-mode =
+    .label = Use touch spacing for tablet mode
+
+appearance-window-density-compact =
+    .label = Compact
+    .description = Reduced spacing for smaller screens
+
+appearance-window-density-touch =
+    .label = Touch
+    .description = Larger window elements and click targets, optimized for touch screens
+
+preferences-ai-controls-speech-recognition-control =
+    .label = Speech recognition
+    .description = Transcribe speech locally.
+
+preferences-ai-controls-sidebar-chatbot-group-3 =
+    .label = AI chatbot providers in sidebar
+    .description = Keep a chatbot in view as you browse. Choose from multiple providers and switch anytime.
+
+preferences-ai-controls-block-confirmation-speech-recognition = Speech recognition
+
+preferences-etp-level-radio-group =
+    .aria-label = Enhanced Tracking Protection
+
+preferences-etp-tracker-count-enabled =
+    .label = Show trackers blocked in address bar
+
+preferences-etp-custom-cookie-behavior-block-cross-site-tracking-cookies =
+    .label = Block cross-site tracking cookies
+
+security-privacy-issue-warning-doh2 =
+  .label = DNS over HTTPS is disabled
+  .description = DNS over HTTPS helps hide what sites you’re about to visit from your network provider.
+
+security-privacy-issue-warning-ech2 =
+  .label = Encrypted Client Hello is disabled
+  .description = Encrypted Client Hello helps hide what sites you’re about to visit from your network provider.
+
+referrals-section-header2 =
+  .label = Share { -brand-product-name }
+  .description = Invite someone to choose the browser that puts privacy first.
+
+referrals-link2 =
+  .label = Share { -brand-product-name }
