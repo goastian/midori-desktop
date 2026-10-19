@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Midori Sync autofill test</title>
+<form id="address">
+  <label>Name <input id="name" name="name" autocomplete="name"></label>
+  <label>Street <input id="street" name="street" autocomplete="street-address"></label>
+  <label>City <input id="city" name="city" autocomplete="address-level2"></label>
+  <label>State <input id="state" name="state" autocomplete="address-level1"></label>
+  <label>Postal code <input id="postal" name="postal" autocomplete="postal-code"></label>
+  <label>Country <select id="country" name="country" autocomplete="country">
+    <option value="US">United States</option>
+    <option value="CO">Colombia</option>
+  </select></label>
+  <label>Email <input id="email" name="email" autocomplete="email"></label>
+  <label>Phone <input id="tel" name="tel" autocomplete="tel"></label>
+</form>
+<form id="history">
+  <label>Saved note <input id="note" name="midori-sync-saved-note" autocomplete="on"></label>
+</form>
