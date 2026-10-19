@@ -2,3 +2,6 @@ browser.jar:
 %   content browser %content/browser/ contentaccessible=yes
     content/browser/sync/midoriSyncPanel.css (content/midoriSyncPanel.css)
     content/browser/sync/sync.svg (content/sync.svg)
+    content/browser/sync/sync.html (content/sync.html)
+    content/browser/sync/sync.css (content/sync.css)
+    content/browser/sync/sync.sys.mjs (content/sync.sys.mjs)
