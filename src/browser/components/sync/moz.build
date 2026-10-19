@@ -6,13 +6,19 @@ DIRS += ["/toolkit/components/midori-sync"]
 
 EXTRA_JS_MODULES += [
     "MidoriSyncAccount.sys.mjs",
+    "MidoriSyncAddresses.sys.mjs",
+    "MidoriSyncAddressTracker.sys.mjs",
     "MidoriSyncBookmarks.sys.mjs",
     "MidoriSyncBookmarkTracker.sys.mjs",
     "MidoriSyncCollection.sys.mjs",
     "MidoriSyncConnection.sys.mjs",
+    "MidoriSyncControl.sys.mjs",
     "MidoriSyncCreditCards.sys.mjs",
     "MidoriSyncDataPanel.sys.mjs",
     "MidoriSyncDisconnect.sys.mjs",
+    "MidoriSyncEnrollmentPanel.sys.mjs",
+    "MidoriSyncFormHistory.sys.mjs",
+    "MidoriSyncFormHistoryTracker.sys.mjs",
     "MidoriSyncHints.sys.mjs",
     "MidoriSyncHistory.sys.mjs",
     "MidoriSyncHistoryTracker.sys.mjs",
@@ -37,6 +43,7 @@ EXTRA_JS_MODULES += [
     "MidoriSyncStore.sys.mjs",
     "MidoriSyncTabs.sys.mjs",
     "MidoriSyncTransport.sys.mjs",
+    "MidoriSyncUi.sys.mjs",
     "MidoriSyncVault.sys.mjs",
 ]
 

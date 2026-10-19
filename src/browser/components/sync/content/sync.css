@@ -1,0 +1,229 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:root {
+  --sync-accent: #2f7d57;
+}
+
+body {
+  margin: 0;
+  padding: 32px 16px;
+}
+
+main {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 8px;
+  background: var(--in-content-box-background, Canvas);
+  box-shadow: var(--card-shadow, 0 1px 4px rgba(0, 0, 0, 0.15));
+}
+
+.account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.identity {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.message {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-block-start: 8px;
+}
+
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.radio {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.radio input {
+  margin: 0;
+}
+
+.advanced {
+  border-top: 1px solid var(--in-content-border-color, rgba(128, 128, 128, 0.3));
+  padding-top: 12px;
+}
+
+.advanced > summary {
+  cursor: pointer;
+  list-style-position: outside;
+}
+
+#midori-sync-data,
+#midori-sync-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+#midori-sync-data-heading {
+  font-weight: 600;
+}
+
+.midori-sync-collection-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.midori-sync-collection-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 10px 0;
+}
+
+.midori-sync-collection-list li > label {
+  display: contents;
+}
+
+.midori-sync-collection-list li > span,
+.midori-sync-collection-list li > small {
+  grid-column: 1;
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
+.midori-sync-collection-list li > label > span:first-child {
+  grid-column: 1;
+  font-size: 1rem;
+  opacity: 1;
+}
+
+.toggles-hidden .midori-sync-switch {
+  display: none;
+}
+
+.midori-sync-switch {
+  appearance: none;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  position: relative;
+  width: 40px;
+  height: 22px;
+  margin: 0;
+  border-radius: 11px;
+  background: rgba(128, 128, 128, 0.5);
+  transition: background 0.15s;
+}
+
+.midori-sync-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  inset-inline-start: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: inset-inline-start 0.15s;
+}
+
+.midori-sync-switch:checked {
+  background: var(--sync-accent);
+}
+
+.midori-sync-switch:checked::after {
+  inset-inline-start: 21px;
+}
+
+.midori-sync-switch:disabled {
+  opacity: 0.5;
+}
+
+#midori-sync-remote-tabs ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#midori-sync-remote-tabs button {
+  border: none;
+  background: transparent;
+  color: var(--link-color, LinkText);
+  text-align: start;
+  padding: 4px 0;
+}
+
+.midori-sync-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#midori-sync-generated-code,
+#midori-sync-stored-recovery-code {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  resize: none;
+}
+
+#midori-sync-keys form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.retention {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.midori-sync-enrollment-code {
+  font-family: monospace;
+  font-size: 1.6em;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}

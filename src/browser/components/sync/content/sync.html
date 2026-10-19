@@ -1,0 +1,28 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src chrome:; object-src 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <title data-l10n-id="midori-sync-page-title"></title>
+    <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
+    <link rel="stylesheet" href="chrome://browser/content/sync/sync.css" />
+    <link rel="localization" href="branding/brand.ftl" />
+    <link rel="localization" href="browser/midori/sync.ftl" />
+  </head>
+  <body>
+    <main>
+      <h1 data-l10n-id="midori-sync-page-heading"></h1>
+      <section id="sync-card" class="card"></section>
+    </main>
+    <script type="module" src="chrome://browser/content/sync/sync.sys.mjs"></script>
+  </body>
+</html>
