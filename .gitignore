@@ -5,6 +5,8 @@
 .dotbuild/
 .midori-sync-dev/
 /artifacts/
+/artifacts.zip
+/midori-sync/
 engine/
 firefox-*/
 node_modules/
