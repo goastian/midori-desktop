@@ -197,7 +197,21 @@ h2 {
 
 .midori-sync-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+#midori-sync-conflict-list li {
+  margin-block: 12px;
+}
+
+#midori-sync-conflict-list span {
+  margin-inline-start: 8px;
+  overflow-wrap: anywhere;
+}
+
+#midori-sync-conflict-detail dd {
+  overflow-wrap: anywhere;
 }
 
 #midori-sync-generated-code,

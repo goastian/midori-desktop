@@ -87,7 +87,8 @@
   background-color: var(--button-hover-bgcolor, rgba(128, 128, 128, 0.2));
 }
 
-#midori-sync-panel .midori-sync-message {
+#midori-sync-panel .midori-sync-message,
+#midori-sync-panel .midori-sync-identity {
   font-size: 0.9em;
   text-align: center;
   overflow-wrap: anywhere;
