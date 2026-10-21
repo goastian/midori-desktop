@@ -7,3 +7,11 @@
 midori-workspaces-new =
     .tooltiptext = New Workspace
     .aria-label = New Workspace
+
+midori-workspaces-sync-capacity =
+    .label =
+        { $count ->
+            [one] One more workspace is waiting for space
+           *[other] { $count } more workspaces are waiting for space
+        }
+    .tooltiptext = This window can show 25 workspaces. Make room to show the workspaces saved by Sync.
