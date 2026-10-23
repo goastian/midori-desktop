@@ -13,7 +13,8 @@ const MAX_RETRY_MS = 60 * 60000;
 
 export function canScheduleSync({ enabled, backgroundEnabled, account, keys }) {
   return enabled === true && backgroundEnabled === true &&
-    ["connected", "renewal-required"].includes(account?.status) && keys?.status === "ready";
+    keys?.status === "ready" && (account?.status === "local" ? keys.localOnly === true :
+      ["connected", "renewal-required"].includes(account?.status) && keys.localOnly !== true);
 }
 
 export class MidoriSyncScheduler {
@@ -145,7 +146,8 @@ export class MidoriSyncScheduler {
       const result = await this.#run({ inventory });
       const errors = Object.entries(result?.errors ?? {}).filter(([name, code]) =>
         !(name === "passwords" && code === "passwords_locked") &&
-        !(name === "credit-cards" && code === "cards_locked"));
+        !(name === "credit-cards" && code === "cards_locked") &&
+        !(name === "form-history" && code === "form_history_disabled"));
       if (errors.length && errors.every(([, code]) => code === "busy")) {
         this.#failures = 0;
         this.#retryAt = 0;
@@ -163,9 +165,15 @@ export class MidoriSyncScheduler {
       this.#failures = 0;
       this.#retryAt = 0;
       more = result?.more === true;
-    } catch {
+    } catch (error) {
       if (inventory) {
         this.#inventoryDueAt = 0;
+      }
+      if (["cancelled", "sync_paused", "collection_disabled"].includes(error?.code)) {
+        this.#failures = 0;
+        this.#retryAt = 0;
+        more = true;
+        return;
       }
       const base = Math.min(retryCap, RETRY_DELAY_MS * 2 ** Math.min(this.#failures++, 7));
       this.#retryAt = this.#now() + Math.max(serverRetryAfter, base + Math.floor(base * 0.25 * this.#random()));
@@ -173,7 +181,8 @@ export class MidoriSyncScheduler {
       this.#running = false;
       const delay = this.#hintedDelay ?? (more ? CONTINUE_DELAY_MS : POLL_DELAY_MS);
       this.#hintedDelay = null;
-      this.#schedule(this.#now() + delay);
+      const now = this.#now();
+      this.#schedule(this.#retryAt > now ? this.#retryAt : now + delay);
     }
   }
 }

@@ -114,12 +114,18 @@ export class MidoriSyncAccount {
   #status = "unknown";
   #error = null;
   #busy = false;
+  #interactionBusy = false;
   #closed = false;
   #listeners = new Set();
   #revocationPending = false;
   #authorization = null;
   #generation = 0;
   #creditCardsSupported = false;
+  #formHistorySupported = false;
+  #addressesSupported = false;
+  #workspacesSupported = false;
+  #collectionSupport = null;
+  #registryAuthVersion = 0;
 
   constructor({ connection, vaultFactory, transportFactory, prepareDisconnect, oidcAuthorization = authorizeOidc,
     browserAuthorization = authorizeBrowserLogin, now = Date.now,
@@ -144,8 +150,14 @@ export class MidoriSyncAccount {
     return Object.freeze({
       status,
       busy: this.#busy, error: this.#error, revocationPending: this.#revocationPending,
+      interactionBusy: this.#busy && this.#interactionBusy,
       generation: this.#generation,
       creditCardsSupported: this.#creditCardsSupported,
+      formHistorySupported: this.#formHistorySupported,
+      addressesSupported: this.#addressesSupported,
+      workspacesSupported: this.#workspacesSupported,
+      collectionSupport: this.#collectionSupport,
+      registryAuthVersion: this.#registryAuthVersion,
       user: account ? Object.freeze({ name: account.user.name, email: account.user.email }) : null,
       device: account ? Object.freeze({ id: account.device.id, name: account.device.name }) : null,
     });
@@ -226,59 +238,70 @@ export class MidoriSyncAccount {
     if (typeof openURL !== "function" || !text(deviceName, 255)) {
       throw new SyncAccountError("invalid_oidc_request");
     }
-    return this.#connect(async (transport, authentication) => {
-      if ((!authentication.browserLogin && !authentication.oidc) || !authentication.refresh) {
-        throw new SyncAccountError("oidc_unavailable");
-      }
-      const controller = new AbortController();
-      this.#authorization = controller;
-      let result;
-      try {
-        result = authentication.browserLogin ?
+    const controller = new AbortController();
+    try {
+      return await this.#connect(async (transport, authentication) => {
+        if ((!authentication.browserLogin && !authentication.oidc) || !authentication.refresh) {
+          throw new SyncAccountError("oidc_unavailable");
+        }
+        const result = authentication.browserLogin ?
           await this.#browserAuthorization(this.#connection.snapshot.server.baseURL, openURL, controller.signal) :
           await this.#oidcAuthorization(authentication.oidc, openURL, controller.signal);
-      } finally {
-        if (this.#authorization === controller) {
-          this.#authorization = null;
+        if (controller.signal.aborted) {
+          throw new SyncAccountError("cancelled");
         }
+        const { data } = await transport.request(authentication.browserLogin ?
+          "api/v1/auth/browser-token" : "api/v1/auth/native-token", {
+          method: "POST", maxBytes: 16384, timeout: 10000, signal: controller.signal,
+          body: authentication.browserLogin ? { code: result.code, code_verifier: result.verifier,
+            device_name: deviceName } : { id_token: result.idToken, access_token: result.accessToken,
+            nonce: result.nonce, device_name: deviceName },
+        });
+        return data;
+      }, { authorization: controller });
+    } finally {
+      if (this.#authorization === controller) {
+        this.#authorization = null;
       }
-      const { data } = await transport.request(authentication.browserLogin ?
-        "api/v1/auth/browser-token" : "api/v1/auth/native-token", {
-        method: "POST", maxBytes: 16384, timeout: 10000,
-        body: authentication.browserLogin ? { code: result.code, code_verifier: result.verifier,
-          device_name: deviceName } : { id_token: result.idToken, access_token: result.accessToken,
-          nonce: result.nonce, device_name: deviceName },
-      });
-      return data;
-    });
+    }
   }
 
   cancelAuthorization() {
     this.#authorization?.abort();
   }
 
-  async #connect(issue) {
+  async #connect(issue, { authorization = null } = {}) {
+    const ensureActive = () => {
+      this.#ensureOpen();
+      if (authorization?.signal.aborted) {
+        throw new SyncAccountError("cancelled");
+      }
+    };
     return this.#run(async () => {
+      if (authorization) {
+        this.#authorization = authorization;
+      }
       const vault = await this.#vault();
       if ((await vault.inspect()).present) {
         throw new SyncAccountError("account_connected");
       }
+      ensureActive();
       await vault.unlock();
-      this.#ensureOpen();
+      ensureActive();
       const server = this.#connection.snapshot.server;
       const transport = this.#openTransport(server);
       let token = null;
       let refreshProof = null;
       try {
         const authentication = await this.#authentication(transport, server);
-        this.#ensureOpen();
+        ensureActive();
         const data = await issue(transport, authentication);
         refreshProof = typeof data?.refresh_token === "string" && REFRESH_TOKEN.test(data.refresh_token) ? data.refresh_token : null;
         if (typeof data?.token !== "string" || !TOKEN.test(data.token)) {
           throw new SyncAccountError("invalid_account");
         }
         token = data.token;
-        this.#ensureOpen();
+        ensureActive();
         const paired = validateAccount(data, server, authentication);
         let renewal = null;
         if (authentication.refresh) {
@@ -291,12 +314,13 @@ export class MidoriSyncAccount {
           throw new SyncAccountError("invalid_renewal");
         }
         const account = await this.#verify(transport, token, server, authentication, paired);
+        ensureActive();
         const scope = syncAccountScope(server, account.identity.issuer, account.identity.subject);
         await vault.save(scope, {
           version: 1, server: server.baseURL, allowLocalHTTP: server.requiresLoopbackTransport, token, account,
           ...(renewal ? { renewal } : {}),
         });
-        this.#ensureOpen();
+        ensureActive();
         this.#session = { token, account, server, renewal };
         this.#recoveryCandidate = null;
         ++this.#generation;
@@ -324,7 +348,10 @@ export class MidoriSyncAccount {
     });
   }
 
-  async unlock({ interactive = true } = {}) {
+  async unlock({ interactive = true, localOnly = false } = {}) {
+    if (typeof interactive !== "boolean" || typeof localOnly !== "boolean") {
+      throw new SyncAccountError("invalid_account_options");
+    }
     return this.#run(async () => {
       this.#session = null;
       this.#recoveryCandidate = null;
@@ -344,6 +371,12 @@ export class MidoriSyncAccount {
       }
       const server = this.#connection.snapshot.server;
       const session = this.#validateStored(stored, server);
+      if (localOnly) {
+        this.#session = session;
+        ++this.#generation;
+        this.#status = "local";
+        return;
+      }
       const transport = this.#openTransport(server);
       try {
         const authentication = await this.#authentication(transport, server);
@@ -411,6 +444,17 @@ export class MidoriSyncAccount {
 
   withLocalSecrets(work) {
     return this.#secrets(work, true);
+  }
+
+  async withSignedOutState(work) {
+    let result;
+    await this.#run(async () => {
+      if (this.#session || this.#status !== "signed-out" || (await (await this.#vault()).inspect()).present) {
+        throw new SyncAccountError("local_state_unavailable");
+      }
+      result = await work();
+    }, false);
+    return result;
   }
 
   renew() {
@@ -702,10 +746,16 @@ export class MidoriSyncAccount {
   }
 
   async #authentication(transport, server) {
-    const { data } = await transport.request("api/v1/capabilities", { maxBytes: 32768, timeout: 10000 });
+    const capabilities = this.#connection.getCapabilities ? await this.#connection.getCapabilities(server) :
+      validateSyncCapabilities((await transport.request("api/v1/capabilities", { maxBytes: 32768, timeout: 10000 })).data);
     this.#ensureOpen();
-    const { authentication, creditCards } = validateSyncCapabilities(data);
+    const { authentication, collectionSupport, creditCards, formHistory, addresses, workspaces, registryAuthVersion } = capabilities;
     this.#creditCardsSupported = creditCards;
+    this.#formHistorySupported = formHistory;
+    this.#addressesSupported = addresses;
+    this.#workspacesSupported = workspaces;
+    this.#collectionSupport = collectionSupport;
+    this.#registryAuthVersion = registryAuthVersion;
     if (!authentication?.issuer) {
       throw new SyncAccountError("pairing_unavailable");
     }
@@ -760,7 +810,7 @@ export class MidoriSyncAccount {
 
   async #run(work, reportError = true) {
     await this.initialize();
-    this.#begin();
+    this.#begin(false, reportError);
     this.#error = null;
     try {
       await work();
@@ -789,17 +839,19 @@ export class MidoriSyncAccount {
     return this.snapshot;
   }
 
-  #begin(changingServer = false) {
+  #begin(changingServer = false, interaction = true) {
     this.#ensureOpen();
     if (this.#busy || (!changingServer && this.#connection.snapshot.checking)) {
       throw new SyncAccountError("busy");
     }
     this.#busy = true;
+    this.#interactionBusy = interaction;
     this.#notify();
   }
 
   #finish() {
     this.#busy = false;
+    this.#interactionBusy = false;
     this.#notify();
   }
 

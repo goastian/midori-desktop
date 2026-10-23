@@ -1,0 +1,52 @@
+--- a/third_party/application-services/components/logins/src/store.rs
++++ b/third_party/application-services/components/logins/src/store.rs
+@@ -250,6 +250,11 @@
+     }
+ 
+     #[handle_error(Error)]
++    pub fn delete_if_current(&self, expected: LoginEntryWithMeta) -> ApiResult<bool> {
++        self.lock_db()?.delete_if_current(expected)
++    }
++
++    #[handle_error(Error)]
+     pub fn delete_many(&self, ids: Vec<String>) -> ApiResult<Vec<bool>> {
+         // Note we need to receive a vector of String here because `Vec<&str>` is not supported
+         // with UDL.
+@@ -311,6 +316,37 @@
+         let db = self.lock_db()?;
+         db.update(id, entry)
+             .and_then(|enc_login| enc_login.decrypt(db.encdec.as_ref()))
++    }
++
++    #[handle_error(Error)]
++    pub fn update_with_meta(&self, id: &str, entry: LoginEntryWithMeta) -> ApiResult<Login> {
++        let db = self.lock_db()?;
++        db.update_with_meta(id, entry)
++            .and_then(|enc_login| enc_login.decrypt(db.encdec.as_ref()))
++    }
++
++    #[handle_error(Error)]
++    pub fn update_if_current(
++        &self,
++        expected: LoginEntryWithMeta,
++        replacement: LoginEntryWithMeta,
++    ) -> ApiResult<Option<Login>> {
++        let db = self.lock_db()?;
++        db.update_if_current(expected, replacement)?
++            .map(|login| login.decrypt(db.encdec.as_ref()))
++            .transpose()
++    }
++
++    #[handle_error(Error)]
++    pub fn adopt_guid(
++        &self,
++        expected: LoginEntryWithMeta,
++        replacement: LoginEntryWithMeta,
++    ) -> ApiResult<Option<Login>> {
++        let db = self.lock_db()?;
++        db.adopt_guid(expected, replacement)?
++            .map(|login| login.decrypt(db.encdec.as_ref()))
++            .transpose()
+     }
+ 
+     #[handle_error(Error)]

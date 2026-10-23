@@ -1,0 +1,41 @@
+--- a/extensions/permissions/PermissionManager.h
++++ b/extensions/permissions/PermissionManager.h
+@@ -21,6 +21,7 @@
+ #include "nsHashKeys.h"
+ #include "nsRefPtrHashtable.h"
+ #include "mozilla/Atomics.h"
++#include "mozilla/Maybe.h"
+ #include "mozilla/Monitor.h"
+ #include "mozilla/MozPromise.h"
+ #include "mozilla/OriginAttributes.h"
+@@ -435,6 +436,22 @@
+                                           uint32_t aType, bool aExactHostMatch)
+       MOZ_REQUIRES(mMonitor);
+ 
++  Maybe<PermissionEntry> SnapshotSyncPermission(PermissionKey* aKey,
++                                                const nsACString& aType)
++      MOZ_REQUIRES(mMonitor);
++  nsresult RememberSyncPermissionOmission(nsIPrincipal* aPrincipal,
++                                          const nsACString& aType,
++                                          uint32_t aReason,
++                                          int64_t aModificationTime = 0)
++      MOZ_REQUIRES(mMonitor);
++  bool PreserveSyncPermissionExpiry(nsIPrincipal* aPrincipal,
++                                    const nsACString& aType,
++                                    const PermissionEntry& aExpected)
++      MOZ_REQUIRES(mMonitor);
++  Maybe<nsresult> AddSyncLocalPermission(
++      nsIPrincipal* aPrincipal, const nsACString& aType, uint32_t aPermission,
++      uint32_t aExpireType, int64_t aExpireTime) MOZ_REQUIRES(mMonitor);
++
+   nsresult RemoveFromPrincipalInternal(nsIPrincipal* aPrincipal,
+                                        const nsACString& aType)
+       MOZ_REQUIRES(mMonitor);
+@@ -702,6 +719,7 @@
+   void CompleteMigrations() MOZ_REQUIRES(mMonitor);
+ 
+   Atomic<bool> mMemoryOnlyDB;
++  Atomic<bool> mSyncPermissionTracking{false};
+ 
+   nsTHashtable<PermissionHashKey> mPermissionTable MOZ_GUARDED_BY(mMonitor);
+   // a unique, monotonically increasing id used to identify each database entry

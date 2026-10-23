@@ -62,13 +62,14 @@ test('about:setup currently offers every horizontal and vertical tab placement',
   assert.match(setup, /midori\.horizontaltabs\.position/);
 });
 
-test('Multi-Sidebar position is independent from the vertical tab manager', () => {
+test('Multi-Sidebar sits opposite to vertical tabs without rewriting its stored position', () => {
   assert.match(
     sidebarPrefs,
     /PREF_POSITION\s*=\s*['"]midori\.msidebar\.position['"]/
   );
-  assert.match(sidebar, /const position = Prefs\.getPosition\(\)/);
+  assert.match(sidebar, /const position = Prefs\.getEffectivePosition\(\)/);
   assert.doesNotMatch(sidebar, /_getEffectiveSidebarPosition/);
+  assert.doesNotMatch(sidebar, /setStringPref\(Prefs\.PREF_POSITION/);
   assert.match(verticalTabs, /const logicalStartSide = Services\.locale\.isAppLocaleRTL/);
   assert.match(verticalTabs, /this\._getVerticalSide\(\) === logicalStartSide/);
 });
@@ -301,16 +302,14 @@ test('tab layout presets never overwrite web-panel sidebar preferences', () => {
   assert.doesNotMatch(block, /midori\.msidebar\./);
 });
 
-test('vertical tab collapse ignores stale pointer focus', () => {
-  const start = sharedCss.indexOf(
-    ':root[midori-vertical-tabs][midori-vt-collapse="true"] #sidebar-box {'
+test('vertical tab collapse relies on the engine expand-on-hover sidebar', () => {
+  assert.doesNotMatch(sharedCss, /midori-vt-collapse="true"\] #sidebar-box/);
+  assert.doesNotMatch(sharedCss, /@media -moz-pref\("midori\.verticaltabs\.collapse"\)/);
+  assert.doesNotMatch(sharedCss, /--pf-sidebar-collapsed-width/);
+  assert.match(
+    sharedCss,
+    /:root\[midori-vertical-tabs\] \{[^}]*--sidebar-expanded-launcher-width: var\(--pf-sidebar-width\);/s
   );
-  const end = sharedCss.indexOf('\n:root[midori-vertical-tabs] #midori-workspace-rail', start);
-  const block = sharedCss.slice(start, end);
-
-  assert.ok(start >= 0 && end > start);
-  assert.match(block, /#sidebar-box:has\(:focus-visible\)/);
-  assert.doesNotMatch(block, /#sidebar-box:focus-within/);
 });
 
 test('about:setup reflects preference changes made by another surface', () => {

@@ -468,6 +468,12 @@ fn collection_index(collection: &str) -> Result<u64, CryptoError> {
         "devices" => Ok(7),
         "passwords" => Ok(8),
         "credit-cards" => Ok(11),
+        "form-history" => Ok(12),
+        "addresses" => Ok(13),
+        "workspaces" => Ok(14),
+        "site-permissions" => Ok(15),
+        "extensions" => Ok(16),
+        "extension-settings" => Ok(17),
         _ => Err(CryptoError::UnsupportedCollection),
     }
 }

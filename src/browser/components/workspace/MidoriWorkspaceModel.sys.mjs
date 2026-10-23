@@ -65,7 +65,7 @@ export function sanitizeWorkspaceName(name) {
   if (typeof name !== 'string') {
     return 'Workspace';
   }
-  const sanitized = name.slice(0, MAX_NAME_LENGTH).replace(/[<>"'&]/g, '').trim();
+  const sanitized = name.replace(/[\p{Cc}\p{Cs}<>"'&]/gu, '').slice(0, MAX_NAME_LENGTH).replace(/\p{Cs}/gu, '').trim();
   return sanitized || 'Workspace';
 }
 
@@ -127,6 +127,7 @@ export function validateWorkspaceWindowData(winData) {
       name: sanitizeWorkspaceName(ws.name),
       icon: validateIconId(ws.icon),
       isDefault: !!ws.isDefault,
+      ...(Object.hasOwn(ws, 'syncId') ? { syncId: ws.syncId } : {}),
     });
   }
 
@@ -161,6 +162,12 @@ export function validateWorkspaceWindowData(winData) {
 
 export function validateWorkspaceStore(data) {
   const store = { windows: {} };
+  if (data && Object.hasOwn(data, 'sync')) {
+    if (!data.windows || typeof data.windows !== 'object' || Array.isArray(data.windows)) {
+      throw new Error('invalid_workspace_catalog');
+    }
+    store.sync = structuredClone(data.sync);
+  }
   if (!data || typeof data !== 'object' || !data.windows || typeof data.windows !== 'object') {
     return store;
   }

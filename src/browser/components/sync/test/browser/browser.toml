@@ -2,6 +2,7 @@
 firefox-appdir = "browser"
 prefs = [
   "midori.sync.enabled=true",
+  'midori.sync.serverConfig={"baseURL":"http://localhost:9/","allowLocalHTTP":true}',
   "services.sync.username=existing@example.invalid",
   "dom.battery.enabled=true",
   "dom.battery.test.default=true",
@@ -17,6 +18,12 @@ prefs = [
 
 ["browser_sync_data.js"]
 
+["browser_sync_preference_persistence.js"]
+
+["browser_sync_conflicts.js"]
+
+["browser_sync_native_conflicts.js"]
+
 ["browser_sync_addresses.js"]
 support-files = ["file_sync_autofill.html"]
 
@@ -28,8 +35,23 @@ support-files = ["file_sync_autofill.html"]
 
 ["browser_sync_hints.js"]
 
+["browser_sync_journals.js"]
+
 ["browser_sync_keys.js"]
 
 ["browser_sync_popup.js"]
 
 ["browser_sync_page.js"]
+
+# Deferred until the additional collections are enabled for a later update.
+# ["browser_sync_workspaces.js"]
+# support-files = ["file_sync_autofill.html"]
+#
+# ["browser_sync_privacy_filters.js"]
+# support-files = ["file_sync_autofill.html"]
+#
+# ["browser_sync_permissions.js"]
+# support-files = ["file_sync_autofill.html"]
+#
+# ["browser_sync_extensions.js"]
+# support-files = ["!/toolkit/mozapps/extensions/test/xpinstall/amosigned.xpi"]

@@ -1,0 +1,717 @@
+--- a/extensions/permissions/PermissionManager.cpp
++++ b/extensions/permissions/PermissionManager.cpp
+@@ -169,7 +169,119 @@
+ static constexpr std::array<nsLiteralCString, 3> kStripOAPermissions = {
+     {"cookie"_ns, "https-only-load-insecure"_ns, "ipp-vpn"_ns}};
+ 
++constexpr auto kMidoriSyncOmissionPrefix = "midori-sync-omitted^"_ns;
++constexpr auto kMidoriSyncTrackingOrigin = "https://midori-sync.invalid"_ns;
++constexpr auto kMidoriSyncTrackingType = "midori-sync-omitted^enabled"_ns;
++constexpr std::array<nsLiteralCString, 7> kMidoriSyncPortableTypes = {
++    {"cookie"_ns, "popup"_ns, "midori-blocker"_ns, "camera"_ns, "microphone"_ns,
++     "geo"_ns, "desktop-notification"_ns}};
++
++nsCString MidoriSyncOmissionType(const nsACString& aType) {
++  nsCString marker;
++  for (const auto& type : kMidoriSyncPortableTypes) {
++    if (type == aType) {
++      marker.Assign(kMidoriSyncOmissionPrefix);
++      marker.Append(type);
++      break;
++    }
++  }
++  return marker;
++}
++
++nsCString MidoriSyncPortableTypeSql() {
++  nsCString clause("(");
++  for (const auto& type : kMidoriSyncPortableTypes) {
++    if (clause.Length() > 1) {
++      clause.Append(',');
++    }
++    clause.Append('\'');
++    clause.Append(type);
++    clause.Append('\'');
++  }
++  clause.Append(')');
++  return clause;
++}
++
++struct MidoriSyncPermissionSnapshot {
++  nsCString type;
++  Maybe<mozilla::PermissionManager::PermissionEntry> entry;
++  RefPtr<mozilla::PermissionManager::PermissionKey> key = nullptr;
++};
++
++bool MidoriSyncPermissionEntriesEqual(
++    const Maybe<mozilla::PermissionManager::PermissionEntry>& aLeft,
++    const Maybe<mozilla::PermissionManager::PermissionEntry>& aRight) {
++  if (!aLeft || !aRight) {
++    return !aLeft && !aRight;
++  }
++  return aLeft->mID == aRight->mID &&
++         aLeft->mPermission == aRight->mPermission &&
++         aLeft->mExpireType == aRight->mExpireType &&
++         aLeft->mExpireTime == aRight->mExpireTime &&
++         aLeft->mModificationTime == aRight->mModificationTime;
++}
++
++nsresult WriteMidoriSyncPermissionSnapshots(
++    mozIStorageConnection* aConnection, const nsACString& aOrigin,
++    const nsTArray<MidoriSyncPermissionSnapshot>& aSnapshots) {
++  nsresult rv = aConnection->BeginTransaction();
++  NS_ENSURE_SUCCESS(rv, rv);
++  auto rollback = MakeScopeExit([&] { aConnection->RollbackTransaction(); });
++  for (const auto& snapshot : aSnapshots) {
++    nsCOMPtr<mozIStorageStatement> remove;
++    rv = aConnection->CreateStatement(
++        "DELETE FROM moz_perms WHERE origin = :origin AND type = :type"_ns,
++        getter_AddRefs(remove));
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = remove->BindUTF8StringByName(
++        "origin"_ns, snapshot.key ? snapshot.key->mOrigin : aOrigin);
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = remove->BindUTF8StringByName("type"_ns, snapshot.type);
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = remove->Execute();
++    NS_ENSURE_SUCCESS(rv, rv);
++  }
++  for (const auto& snapshot : aSnapshots) {
++    if (!snapshot.entry || snapshot.entry->mID == cIDPermissionIsDefault) {
++      continue;
++    }
++    const auto& entry = *snapshot.entry;
++    nsCOMPtr<mozIStorageStatement> insert;
++    rv = aConnection->CreateStatement(
++        "INSERT INTO moz_perms (id, origin, type, permission, expireType, "
++        "expireTime, modificationTime) "
++        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"_ns,
++        getter_AddRefs(insert));
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = insert->BindInt64ByIndex(0, entry.mID);
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = insert->BindUTF8StringByIndex(
++        1, snapshot.key ? snapshot.key->mOrigin : aOrigin);
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = insert->BindUTF8StringByIndex(2, snapshot.type);
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = insert->BindInt32ByIndex(3, entry.mPermission);
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = insert->BindInt32ByIndex(4, entry.mExpireType);
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = insert->BindInt64ByIndex(5, entry.mExpireTime);
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = insert->BindInt64ByIndex(6, entry.mModificationTime);
++    NS_ENSURE_SUCCESS(rv, rv);
++    rv = insert->Execute();
++    NS_ENSURE_SUCCESS(rv, rv);
++  }
++  rv = aConnection->CommitTransaction();
++  if (NS_SUCCEEDED(rv)) {
++    rollback.release();
++  }
++  return rv;
++}
++
+ bool IsOAForceStripPermission(const nsACString& aType) {
++  if (aType.EqualsLiteral("midori-sync-omitted^cookie")) {
++    return true;
++  }
+   if (aType.IsEmpty()) {
+     return false;
+   }
+@@ -1708,10 +1820,14 @@
+         }
+ 
+         nsCOMPtr<mozIStorageStatement> stmtDeleteExpired;
++        nsCString deleteExpired(
++            "DELETE FROM moz_perms WHERE expireType = ?1 AND expireTime <= ?2");
++        if (self->mSyncPermissionTracking) {
++          deleteExpired.AppendLiteral(" AND type NOT IN ");
++          deleteExpired.Append(MidoriSyncPortableTypeSql());
++        }
+         nsresult rv = data->mDBConn->CreateStatement(
+-            nsLiteralCString("DELETE FROM moz_perms WHERE expireType = "
+-                             "?1 AND expireTime <= ?2"),
+-            getter_AddRefs(stmtDeleteExpired));
++            deleteExpired, getter_AddRefs(stmtDeleteExpired));
+         NS_ENSURE_SUCCESS_VOID(rv);
+ 
+         rv = stmtDeleteExpired->BindInt32ByIndex(
+@@ -1907,8 +2023,47 @@
+   // A modificationTime of zero will cause AddInternal to use now().
+   int64_t modificationTime = 0;
+   MonitorAutoLock lock{mMonitor};
+-  return AddInternal(aPrincipal, aType, aPermission, 0, aExpireType,
+-                     aExpireTime, modificationTime, eNotify, eWriteToDB);
++  const nsCString type(aType);
++  const nsCString markerType = MidoriSyncOmissionType(type);
++  if (markerType.IsEmpty()) {
++    return AddInternal(aPrincipal, type, aPermission, 0, aExpireType,
++                       aExpireTime, modificationTime, eNotify, eWriteToDB);
++  }
++  if (auto local = AddSyncLocalPermission(aPrincipal, type, aPermission,
++                                          aExpireType, aExpireTime)) {
++    return *local;
++  }
++  EnsureReadCompleted();
++  if (!mSyncPermissionTracking) {
++    return AddInternal(aPrincipal, type, aPermission, 0, aExpireType,
++                       aExpireTime, modificationTime, eNotify, eWriteToDB);
++  }
++  RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(
++      aPrincipal, IsOAForceStripPermission(type), IsSiteScopedPermission(type),
++      rv);
++  NS_ENSURE_SUCCESS(rv, rv);
++  const auto before = SnapshotSyncPermission(key, type);
++  rv = AddInternal(aPrincipal, type, aPermission, 0, aExpireType, aExpireTime,
++                   modificationTime, eNotify, eWriteToDB);
++  NS_ENSURE_SUCCESS(rv, rv);
++  const auto after = SnapshotSyncPermission(key, type);
++  const auto marker = SnapshotSyncPermission(key, markerType);
++  const bool removing = aPermission == UNKNOWN_ACTION;
++  const bool matches = removing
++                           ? (!after || after->mID == cIDPermissionIsDefault ||
++                              after->mPermission == UNKNOWN_ACTION)
++                           : after && after->mPermission == aPermission &&
++                                 after->mExpireType == aExpireType &&
++                                 (aExpireType != EXPIRE_TIME ||
++                                  after->mExpireTime == aExpireTime);
++  const bool temporaryRemoval =
++      removing && ((before && (before->mExpireType == EXPIRE_SESSION ||
++                               before->mExpireType == EXPIRE_POLICY)) ||
++                   (!before && marker && marker->mPermission != DENY_ACTION));
++  if (matches && marker && !temporaryRemoval) {
++    rv = RemoveFromPrincipalInternal(aPrincipal, markerType);
++  }
++  return rv;
+ }
+ 
+ NS_IMETHODIMP
+@@ -2143,9 +2298,9 @@
+       PermissionEntry oldPermissionEntry = entry->GetPermissions()[index];
+       id = oldPermissionEntry.mID;
+ 
+-      // If the type we want to remove is EXPIRE_POLICY, we need to reject
+-      // attempts to change the permission.
+-      if (entry->GetPermissions()[index].mExpireType == EXPIRE_POLICY) {
++      // Only the policy engine may remove its own managed permission.
++      if (entry->GetPermissions()[index].mExpireType == EXPIRE_POLICY &&
++          aExpireType != EXPIRE_POLICY) {
+         NS_WARNING("Attempting to remove EXPIRE_POLICY permission");
+         break;
+       }
+@@ -2337,7 +2492,33 @@
+   ENSURE_NOT_CHILD_PROCESS;
+ 
+   MonitorAutoLock lock{mMonitor};
+-  return RemoveFromPrincipalInternal(aPrincipal, aType);
++  const nsCString type(aType);
++  const nsCString markerType = MidoriSyncOmissionType(type);
++  if (markerType.IsEmpty() || !aPrincipal || aPrincipal->IsSystemPrincipal() ||
++      IsExpandedPrincipal(aPrincipal)) {
++    return RemoveFromPrincipalInternal(aPrincipal, type);
++  }
++  EnsureReadCompleted();
++  if (!mSyncPermissionTracking) {
++    return RemoveFromPrincipalInternal(aPrincipal, type);
++  }
++  nsresult rv;
++  RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(
++      aPrincipal, IsOAForceStripPermission(type), IsSiteScopedPermission(type),
++      rv);
++  NS_ENSURE_SUCCESS(rv, rv);
++  const auto before = SnapshotSyncPermission(key, type);
++  const auto marker = SnapshotSyncPermission(key, markerType);
++  rv = RemoveFromPrincipalInternal(aPrincipal, type);
++  NS_ENSURE_SUCCESS(rv, rv);
++  const bool temporary =
++      (before && (before->mExpireType == EXPIRE_SESSION ||
++                  before->mExpireType == EXPIRE_POLICY)) ||
++      (!before && marker && marker->mPermission != DENY_ACTION);
++  if (marker && !temporary) {
++    rv = RemoveFromPrincipalInternal(aPrincipal, markerType);
++  }
++  return rv;
+ }
+ 
+ nsresult PermissionManager::RemoveFromPrincipalInternal(
+@@ -2503,15 +2684,21 @@
+     EnsureReadCompleted();
+ 
+     int32_t typeIndex = GetTypeIndex(aType, false);
+-    // If type == -1, the type isn't known,
+-    // so just return NS_OK
+-    if (typeIndex == -1) {
++    const nsCString markerType = MidoriSyncOmissionType(aType);
++    int32_t markerIndex =
++        markerType.IsEmpty() ? -1 : GetTypeIndex(markerType, false);
++    // If neither type is known, there are no entries to remove.
++    if (typeIndex == -1 && markerIndex == -1) {
+       return NS_OK;
+     }
+ 
+-    rv =
+-        RemovePermissionEntries([typeIndex](const PermissionEntry& aPermEntry) {
+-          return static_cast<uint32_t>(typeIndex) == aPermEntry.mType;
++    rv = RemovePermissionEntries(
++        [typeIndex, markerIndex](const PermissionEntry& aPermEntry) {
++          return (typeIndex >= 0 &&
++                  static_cast<uint32_t>(typeIndex) == aPermEntry.mType) ||
++                 (markerIndex >= 0 &&
++                  static_cast<uint32_t>(markerIndex) == aPermEntry.mType &&
++                  aPermEntry.mPermission == DENY_ACTION);
+         });
+   }
+ 
+@@ -3282,7 +3469,10 @@
+     // if the entry is expired, remove and keep looking for others.
+     if (HasExpired(permEntry.mExpireType, permEntry.mExpireTime)) {
+       entry = nullptr;
+-      RemoveFromPrincipalInternal(aPrincipal, mTypeArray[aType]);
++      if (!PreserveSyncPermissionExpiry(aPrincipal, mTypeArray[aType],
++                                        permEntry)) {
++        RemoveFromPrincipalInternal(aPrincipal, mTypeArray[aType]);
++      }
+     } else if (permEntry.mPermission == nsIPermissionManager::UNKNOWN_ACTION) {
+       entry = nullptr;
+     }
+@@ -3354,7 +3544,10 @@
+           return nullptr;
+         }
+       }
+-      RemoveFromPrincipal(principal, mTypeArray[aType]);
++      if (!PreserveSyncPermissionExpiry(principal, mTypeArray[aType],
++                                        permEntry)) {
++        RemoveFromPrincipalInternal(principal, mTypeArray[aType]);
++      }
+     } else if (permEntry.mPermission == nsIPermissionManager::UNKNOWN_ACTION) {
+       entry = nullptr;
+     }
+@@ -3443,6 +3636,49 @@
+   nsresult rv;
+   bool hasResult;
+   nsCOMPtr<mozIStorageStatement> stmt;
++
++  rv = data->mDBConn->CreateStatement(
++      "SELECT 1 FROM moz_perms WHERE type GLOB 'midori-sync-omitted^*' LIMIT 1"_ns,
++      getter_AddRefs(stmt));
++  NS_ENSURE_SUCCESS(rv, rv);
++  rv = stmt->ExecuteStep(&hasResult);
++  NS_ENSURE_SUCCESS(rv, rv);
++  mSyncPermissionTracking = hasResult;
++  stmt = nullptr;
++  if (mSyncPermissionTracking) {
++    const int64_t now = EXPIRY_NOW;
++    nsCString expired("expireType = 2 AND expireTime <= :now AND type IN ");
++    expired.Append(MidoriSyncPortableTypeSql());
++    expired.AppendLiteral(
++        " AND (origin LIKE 'http://%' OR origin LIKE 'https://%') "
++        "AND origin NOT LIKE '%privateBrowsingId=%'");
++    nsCString removeStale(
++        "DELETE FROM moz_perms WHERE type GLOB 'midori-sync-omitted^*' "
++        "AND (origin, type) IN (SELECT origin, 'midori-sync-omitted^' || type "
++        "FROM moz_perms WHERE ");
++    removeStale.Append(expired);
++    removeStale.Append(')');
++    nsCString omitExpired(
++        "UPDATE moz_perms SET type = 'midori-sync-omitted^' || type, "
++        "permission = 2, expireType = 0, expireTime = 0 WHERE ");
++    omitExpired.Append(expired);
++    rv = data->mDBConn->BeginTransaction();
++    NS_ENSURE_SUCCESS(rv, rv);
++    auto rollback =
++        MakeScopeExit([&] { data->mDBConn->RollbackTransaction(); });
++    for (const auto& query : {removeStale, omitExpired}) {
++      rv = data->mDBConn->CreateStatement(query, getter_AddRefs(stmt));
++      NS_ENSURE_SUCCESS(rv, rv);
++      rv = stmt->BindInt64ByName("now"_ns, now);
++      NS_ENSURE_SUCCESS(rv, rv);
++      rv = stmt->Execute();
++      NS_ENSURE_SUCCESS(rv, rv);
++      stmt = nullptr;
++    }
++    rv = data->mDBConn->CommitTransaction();
++    NS_ENSURE_SUCCESS(rv, rv);
++    rollback.release();
++  }
+ 
+   // Let's retrieve the last used ID.
+   rv = data->mDBConn->CreateStatement(
+@@ -4958,6 +5194,7 @@
+     nsCString mType;
+     nsCString mOrigin;
+     int64_t mModificationTime = 0;
++    Maybe<PermissionEntry> mPermission;
+   };
+   nsTArray<ExpireEntry> toExpire;
+ 
+@@ -5009,6 +5246,7 @@
+       expireEntry.mType = nsCString(permType);
+       expireEntry.mOrigin = origin;
+       expireEntry.mModificationTime = perm.mModificationTime;
++      expireEntry.mPermission.emplace(perm);
+       toExpire.AppendElement(std::move(expireEntry));
+     }
+   }
+@@ -5039,7 +5277,10 @@
+   }
+ 
+   for (const auto& entry : toExpire) {
+-    RemoveFromPrincipalInternal(entry.mPrincipal, entry.mType);
++    if (!PreserveSyncPermissionExpiry(entry.mPrincipal, entry.mType,
++                                      *entry.mPermission)) {
++      RemoveFromPrincipalInternal(entry.mPrincipal, entry.mType);
++    }
+   }
+ }
+ 
+@@ -5241,6 +5482,348 @@
+     }
+   }
+ 
++  return NS_OK;
++}
++
++Maybe<PermissionManager::PermissionEntry>
++PermissionManager::SnapshotSyncPermission(PermissionKey* aKey,
++                                          const nsACString& aType) {
++  const int32_t typeIndex = GetTypeIndex(aType, false);
++  const auto* entry = mPermissionTable.GetEntry(aKey);
++  const int32_t index =
++      entry && typeIndex >= 0 ? entry->GetPermissionIndex(typeIndex) : -1;
++  return index >= 0 ? Some(entry->GetPermissions()[index]) : Nothing();
++}
++
++nsresult PermissionManager::RememberSyncPermissionOmission(
++    nsIPrincipal* aPrincipal, const nsACString& aType, uint32_t aReason,
++    int64_t aModificationTime) {
++  const nsCString markerType = MidoriSyncOmissionType(aType);
++  NS_ENSURE_TRUE(!markerType.IsEmpty(), NS_ERROR_INVALID_ARG);
++  nsresult rv;
++  RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(
++      aPrincipal, IsOAForceStripPermission(aType),
++      IsSiteScopedPermission(aType), rv);
++  NS_ENSURE_SUCCESS(rv, rv);
++  nsCOMPtr<nsIPrincipal> normalized;
++  rv = GetPrincipalFromOrigin(key->mOrigin, false, getter_AddRefs(normalized));
++  NS_ENSURE_SUCCESS(rv, rv);
++  NS_ENSURE_TRUE(!normalized->GetIsInPrivateBrowsing(), NS_ERROR_INVALID_ARG);
++  NS_ENSURE_TRUE(mThread, NS_ERROR_NOT_INITIALIZED);
++  rv = AddInternal(normalized, markerType, aReason, ++mLargestID, EXPIRE_NEVER,
++                   0, aModificationTime, eDontNotify, eNoDBOperation);
++  NS_ENSURE_SUCCESS(rv, rv);
++  auto marker = SnapshotSyncPermission(key, markerType);
++  NS_ENSURE_TRUE(marker, NS_ERROR_UNEXPECTED);
++  nsTArray<MidoriSyncPermissionSnapshot> snapshots;
++  snapshots.AppendElement(
++      MidoriSyncPermissionSnapshot{nsCString(aType), Nothing()});
++  snapshots.AppendElement(MidoriSyncPermissionSnapshot{markerType, marker});
++  RefPtr<PermissionManager> self = this;
++  nsCString origin(key->mOrigin);
++  return mThread->Dispatch(NS_NewRunnableFunction(
++      "PermissionManager::RememberSyncPermissionOmission",
++      [self, origin, snapshots = snapshots.Clone()] {
++        auto data = self->mThreadBoundData.Access();
++        if (self->mState == eClosed || !data->mDBConn) {
++          return;
++        }
++        nsresult result = WriteMidoriSyncPermissionSnapshots(data->mDBConn,
++                                                             origin, snapshots);
++        NS_ENSURE_SUCCESS_VOID(result);
++      }));
++}
++
++bool PermissionManager::PreserveSyncPermissionExpiry(
++    nsIPrincipal* aPrincipal, const nsACString& aType,
++    const PermissionEntry& aExpected) {
++  const nsCString type(aType);
++  if (!mSyncPermissionTracking || IsChildProcess() ||
++      MidoriSyncOmissionType(type).IsEmpty() || aExpected.mID < 0 ||
++      aExpected.mExpireType == EXPIRE_SESSION ||
++      aExpected.mExpireType == EXPIRE_POLICY) {
++    return false;
++  }
++  nsresult rv;
++  RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(
++      aPrincipal, IsOAForceStripPermission(type), IsSiteScopedPermission(type),
++      rv);
++  if (NS_FAILED(rv)) {
++    return true;
++  }
++  if (!StringBeginsWith(key->mOrigin, "http://"_ns) &&
++      !StringBeginsWith(key->mOrigin, "https://"_ns)) {
++    return false;
++  }
++  nsCOMPtr<nsIPrincipal> normalized;
++  rv = GetPrincipalFromOrigin(key->mOrigin, false, getter_AddRefs(normalized));
++  if (NS_FAILED(rv)) {
++    return true;
++  }
++  if (normalized->GetIsInPrivateBrowsing()) {
++    return false;
++  }
++  if (!MidoriSyncPermissionEntriesEqual(SnapshotSyncPermission(key, type),
++                                        Some(aExpected))) {
++    return true;
++  }
++  rv = RememberSyncPermissionOmission(normalized, type, DENY_ACTION,
++                                      aExpected.mModificationTime);
++  if (NS_FAILED(rv)) {
++    return true;
++  }
++  (void)AddInternal(normalized, type, UNKNOWN_ACTION, 0, EXPIRE_NEVER, 0, 0,
++                    eNotify, eNoDBOperation);
++  return true;
++}
++
++Maybe<nsresult> PermissionManager::AddSyncLocalPermission(
++    nsIPrincipal* aPrincipal, const nsACString& aType, uint32_t aPermission,
++    uint32_t aExpireType, int64_t aExpireTime) {
++  if ((aExpireType != EXPIRE_SESSION && aExpireType != EXPIRE_POLICY) ||
++      MidoriSyncOmissionType(aType).IsEmpty()) {
++    return Nothing();
++  }
++  nsresult rv;
++  RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(
++      aPrincipal, IsOAForceStripPermission(aType),
++      IsSiteScopedPermission(aType), rv);
++  if (NS_FAILED(rv)) {
++    return Some(rv);
++  }
++  if (!StringBeginsWith(key->mOrigin, "http://"_ns) &&
++      !StringBeginsWith(key->mOrigin, "https://"_ns)) {
++    return Nothing();
++  }
++  nsCOMPtr<nsIPrincipal> normalized;
++  rv = GetPrincipalFromOrigin(key->mOrigin, false, getter_AddRefs(normalized));
++  if (NS_FAILED(rv)) {
++    return Some(rv);
++  }
++  if (normalized->GetIsInPrivateBrowsing()) {
++    return Nothing();
++  }
++  EnsureReadCompleted();
++  if (!mThread || !mSyncPermissionTracking) {
++    return Nothing();
++  }
++  const auto before = SnapshotSyncPermission(key, aType);
++  if (aPrincipal->GetIsInPrivateBrowsing() &&
++      (!before || before->mID < 0 ||
++       (before->mExpireType != EXPIRE_NEVER &&
++        before->mExpireType != EXPIRE_TIME))) {
++    return Nothing();
++  }
++  const int64_t id = before && before->mID >= 0 ? before->mID : ++mLargestID;
++  rv = AddInternal(aPrincipal, aType, aPermission, id, aExpireType, aExpireTime,
++                   0, eDontNotify, eNoDBOperation);
++  if (NS_FAILED(rv)) {
++    return Some(rv);
++  }
++  const auto after = SnapshotSyncPermission(key, aType);
++  const bool removed = aPermission == UNKNOWN_ACTION;
++  if ((!removed && (!after || after->mPermission != aPermission ||
++                    after->mExpireType != aExpireType)) ||
++      (removed && after && after->mID >= 0 &&
++       after->mPermission != UNKNOWN_ACTION)) {
++    return Some(NS_OK);
++  }
++  rv = RememberSyncPermissionOmission(
++      aPrincipal, aType, aExpireType == EXPIRE_POLICY ? 4 : 3,
++      aPrincipal->GetIsInPrivateBrowsing() && before ? before->mModificationTime
++                                                     : 0);
++  if (NS_FAILED(rv)) {
++    return Some(rv);
++  }
++  IPC::Permission permission(key->mOrigin, aType, aPermission, aExpireType,
++                             aExpireTime);
++  nsAutoCString permissionKey;
++  GetKeyForPermission(aPrincipal, aType, permissionKey);
++  nsTArray<ContentParent*> parents;
++  ContentParent::GetAll(parents);
++  for (auto* parent : parents) {
++    if (parent->NeedsPermissionsUpdate(permissionKey)) {
++      (void)parent->SendAddPermission(permission);
++    }
++  }
++  if (!MidoriSyncPermissionEntriesEqual(before, after)) {
++    if (!removed && !aPrincipal->GetIsInPrivateBrowsing()) {
++      UpdateLastInteractionInternal(key->mOrigin);
++    }
++    const auto& shown = removed && before ? *before : *after;
++    NotifyObserversWithPermission(aPrincipal, aType, shown.mPermission,
++                                  shown.mExpireType, shown.mExpireTime,
++                                  shown.mModificationTime,
++                                  removed  ? u"deleted"_ns
++                                  : before ? u"changed"_ns
++                                           : u"added"_ns);
++  }
++  return Some(NS_OK);
++}
++
++NS_IMETHODIMP
++PermissionManager::PersistPermissionFromPrincipal(nsIPrincipal* aPrincipal,
++                                                  const nsACString& aType,
++                                                  JSContext* aCx,
++                                                  Promise** aPromise) {
++  ENSURE_NOT_CHILD_PROCESS;
++  MOZ_ASSERT(NS_IsMainThread());
++  NS_ENSURE_ARG_POINTER(aPrincipal);
++  if (aType.IsEmpty() || aPrincipal->IsSystemPrincipal() ||
++      IsExpandedPrincipal(aPrincipal) ||
++      BasePrincipal::Cast(aPrincipal)
++          ->OriginAttributesRef()
++          .mPrivateBrowsingId) {
++    return NS_ERROR_INVALID_ARG;
++  }
++  nsIGlobalObject* global = xpc::CurrentNativeGlobal(aCx);
++  NS_ENSURE_TRUE(global, NS_ERROR_FAILURE);
++  ErrorResult error;
++  RefPtr<Promise> promise = Promise::Create(global, error);
++  if (error.Failed()) {
++    return error.StealNSResult();
++  }
++  nsresult rv;
++  RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(
++      aPrincipal, IsOAForceStripPermission(aType),
++      IsSiteScopedPermission(aType), rv);
++  NS_ENSURE_SUCCESS(rv, rv);
++  if (!StringBeginsWith(key->mOrigin, "http://"_ns) &&
++      !StringBeginsWith(key->mOrigin, "https://"_ns)) {
++    return NS_ERROR_INVALID_ARG;
++  }
++  nsTArray<MidoriSyncPermissionSnapshot> snapshots;
++  nsCOMPtr<nsIThread> thread;
++  {
++    MonitorAutoLock lock(mMonitor);
++    EnsureReadCompleted();
++    const auto expected = SnapshotSyncPermission(key, aType);
++    if (expected && expected->mExpireType != EXPIRE_NEVER &&
++        expected->mExpireType != EXPIRE_TIME) {
++      return NS_ERROR_NOT_AVAILABLE;
++    }
++    snapshots.AppendElement(
++        MidoriSyncPermissionSnapshot{nsCString(aType), expected});
++    const nsCString markerType = MidoriSyncOmissionType(aType);
++    if (!markerType.IsEmpty() && mThread) {
++      snapshots.AppendElement(MidoriSyncPermissionSnapshot{
++          markerType, SnapshotSyncPermission(key, markerType)});
++      nsCOMPtr<nsIPrincipal> trackingPrincipal;
++      rv = GetPrincipalFromOrigin(kMidoriSyncTrackingOrigin, false,
++                                  getter_AddRefs(trackingPrincipal));
++      NS_ENSURE_SUCCESS(rv, rv);
++      RefPtr<PermissionKey> trackingKey =
++          new PermissionKey(kMidoriSyncTrackingOrigin);
++      if (!SnapshotSyncPermission(trackingKey, kMidoriSyncTrackingType)) {
++        rv = AddInternal(trackingPrincipal, kMidoriSyncTrackingType,
++                         DENY_ACTION, ++mLargestID, EXPIRE_NEVER, 0, 0,
++                         eDontNotify, eNoDBOperation);
++        NS_ENSURE_SUCCESS(rv, rv);
++      }
++      mSyncPermissionTracking = true;
++      snapshots.AppendElement(MidoriSyncPermissionSnapshot{
++          nsCString(kMidoriSyncTrackingType),
++          SnapshotSyncPermission(trackingKey, kMidoriSyncTrackingType),
++          trackingKey});
++    }
++    thread = mThread;
++  }
++  if (!thread) {
++    promise->MaybeReject(NS_ERROR_NOT_INITIALIZED);
++    promise.forget(aPromise);
++    return NS_OK;
++  }
++  RefPtr<PermissionManager> self = this;
++  nsCString origin(key->mOrigin);
++  InvokeAsync(thread, __func__,
++              [self, origin,
++               snapshots = snapshots.Clone()]() -> RefPtr<GenericPromise> {
++                auto data = self->mThreadBoundData.Access();
++                if (self->mState == eClosed || !data->mDBConn) {
++                  return GenericPromise::CreateAndReject(
++                      NS_ERROR_NOT_INITIALIZED, __func__);
++                }
++                nsresult result = WriteMidoriSyncPermissionSnapshots(
++                    data->mDBConn, origin, snapshots);
++                return NS_FAILED(result)
++                           ? GenericPromise::CreateAndReject(result, __func__)
++                           : GenericPromise::CreateAndResolve(true, __func__);
++              })
++      ->Then(
++          GetMainThreadSerialEventTarget(), __func__,
++          [self, promise, key, snapshots = snapshots.Clone()](bool) {
++            MonitorAutoLock lock(self->mMonitor);
++            bool current = true;
++            for (const auto& snapshot : snapshots) {
++              current &= MidoriSyncPermissionEntriesEqual(
++                  snapshot.entry,
++                  self->SnapshotSyncPermission(
++                      snapshot.key ? snapshot.key.get() : key.get(),
++                      snapshot.type));
++            }
++            promise->MaybeResolve(current);
++          },
++          [promise](nsresult result) { promise->MaybeReject(result); });
++  promise.forget(aPromise);
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++PermissionManager::GetPermissionSourceFromPrincipal(nsIPrincipal* aPrincipal,
++                                                    const nsACString& aType,
++                                                    nsACString& aSource) {
++  ENSURE_NOT_CHILD_PROCESS;
++  MOZ_ASSERT(NS_IsMainThread());
++  NS_ENSURE_ARG_POINTER(aPrincipal);
++  if (aType.IsEmpty() || aPrincipal->IsSystemPrincipal() ||
++      IsExpandedPrincipal(aPrincipal)) {
++    return NS_ERROR_INVALID_ARG;
++  }
++  if (BasePrincipal::Cast(aPrincipal)
++          ->OriginAttributesRef()
++          .mPrivateBrowsingId) {
++    aSource.AssignLiteral("private");
++    return NS_OK;
++  }
++  nsresult rv;
++  RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(
++      aPrincipal, IsOAForceStripPermission(aType),
++      IsSiteScopedPermission(aType), rv);
++  NS_ENSURE_SUCCESS(rv, rv);
++  MonitorAutoLock lock(mMonitor);
++  EnsureReadCompleted();
++  const int32_t typeIndex = GetTypeIndex(aType, false);
++  const auto* entry = mPermissionTable.GetEntry(key);
++  const int32_t index =
++      entry && typeIndex >= 0 ? entry->GetPermissionIndex(typeIndex) : -1;
++  const nsCString markerType = MidoriSyncOmissionType(aType);
++  const auto marker = markerType.IsEmpty()
++                          ? Nothing()
++                          : SnapshotSyncPermission(key, markerType);
++  if (marker && (index < 0 || entry->GetPermissions()[index].mID ==
++                                  cIDPermissionIsDefault)) {
++    aSource.AssignLiteral("omitted");
++    return NS_OK;
++  }
++  if (index < 0) {
++    aSource.AssignLiteral("absent");
++    return NS_OK;
++  }
++  const auto& permission = entry->GetPermissions()[index];
++  if (HasExpired(permission.mExpireType, permission.mExpireTime)) {
++    aSource.AssignLiteral("expired");
++  } else if (permission.mExpireType == EXPIRE_POLICY) {
++    aSource.AssignLiteral("policy");
++  } else if (permission.mExpireType == EXPIRE_SESSION ||
++             permission.mExpireType == EXPIRE_SESSION_TAB) {
++    aSource.AssignLiteral("session");
++  } else if (permission.mID == cIDPermissionIsDefault) {
++    aSource.AssignLiteral("default");
++  } else if (permission.mPermission == UNKNOWN_ACTION) {
++    aSource.AssignLiteral("unsupported");
++  } else {
++    aSource.AssignLiteral("user");
++  }
+   return NS_OK;
+ }
+ 

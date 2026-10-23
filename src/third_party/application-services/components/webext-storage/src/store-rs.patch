@@ -1,0 +1,73 @@
+--- a/third_party/application-services/components/webext-storage/src/store.rs
++++ b/third_party/application-services/components/webext-storage/src/store.rs
+@@ -12,6 +12,27 @@
+ 
+ use interrupt_support::SqlInterruptHandle;
+ use serde_json::Value as JsonValue;
++use sql_support::ConnExt;
++
++fn read_sync_snapshot(conn: &rusqlite::Connection, ext_id: &str) -> Result<JsonValue> {
++    let saved = conn
++        .try_query_one::<Option<String>, _>(
++            "SELECT data FROM storage_sync_data WHERE ext_id = :ext_id",
++            &[(":ext_id", &ext_id)],
++            true,
++        )?
++        .flatten();
++    let data = match saved {
++        Some(text) => {
++            if text.len() > 2 * 1024 * 1024 {
++                return Err(Error::QuotaError(QuotaReason::TotalBytes));
++            }
++            serde_json::from_str::<serde_json::Map<String, JsonValue>>(&text)?
++        }
++        None => serde_json::Map::new(),
++    };
++    Ok(JsonValue::Object(data))
++}
+ 
+ /// A store is used to access `storage.sync` data. It manages an underlying
+ /// database connection, and exposes methods for reading and writing storage
+@@ -65,6 +86,42 @@
+         let result = api::set(&tx, ext_id, val)?;
+         tx.commit()?;
+         Ok(result)
++    }
++
++    pub fn get_sync_snapshot(&self, ext_id: &str) -> Result<JsonValue> {
++        let db = &self.db.lock();
++        read_sync_snapshot(db.get_connection()?, ext_id)
++    }
++
++    pub fn compare_and_replace(
++        &self,
++        ext_id: &str,
++        expected: JsonValue,
++        desired: JsonValue,
++    ) -> Result<Option<StorageChanges>> {
++        let expected: serde_json::Map<String, JsonValue> = serde_json::from_value(expected)?;
++        let desired: serde_json::Map<String, JsonValue> = serde_json::from_value(desired)?;
++        let db = &self.db.lock();
++        let conn = db.get_connection()?;
++        let tx = conn.unchecked_transaction()?;
++        if read_sync_snapshot(&tx, ext_id)?.as_object() != Some(&expected) {
++            return Ok(None);
++        }
++        let removed = expected
++            .keys()
++            .filter(|key| !desired.contains_key(*key))
++            .cloned()
++            .map(JsonValue::String)
++            .collect();
++        let mut changes = api::remove(&tx, ext_id, JsonValue::Array(removed))?;
++        let changed = desired
++            .into_iter()
++            .filter(|(key, value)| expected.get(key) != Some(value))
++            .collect();
++        let updated = api::set(&tx, ext_id, JsonValue::Object(changed))?;
++        changes.changes.extend(updated.changes);
++        tx.commit()?;
++        Ok(Some(changes))
+     }
+ 
+     /// Returns information about per-extension usage

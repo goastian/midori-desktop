@@ -3,8 +3,10 @@
 
 const { MidoriSyncAccount } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncAccount.sys.mjs");
 const { MidoriSyncConnection } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncConnection.sys.mjs");
-const { createProfileSyncVault } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncSecretStore.sys.mjs");
+const { createProfileSyncVault, createProfileSyncSavedCustody } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncSecretStore.sys.mjs");
 const { createNativeSyncKeys } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncNativeKeys.sys.mjs");
+const { assertSyncAccountSettled } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncDisconnect.sys.mjs");
+const { openSyncStore, openDiscoveredSyncStore, createSyncJournalFiles, assertSavedSyncCopiesIndependent } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncStore.sys.mjs");
 
 add_task(async function local_pairing_persists_in_the_native_vault_and_revokes_on_disconnect() {
   const keyStore = Cc["@mozilla.org/security/oskeystore;1"].getService(Ci.nsIOSKeyStore);
@@ -47,6 +49,7 @@ add_task(async function local_pairing_persists_in_the_native_vault_and_revokes_o
         authentication: { pairing: true, development: true, issuer: "urn:midori:sync:local",
           refresh: { version: 1, request_bytes: 4096, lifetime_seconds: 2592000, receipts_per_session: 1024, sessions_per_account: 32 } },
         features: ["opaque_cursors", "snapshot_fence", "tombstones", "device_acknowledgements", "conditional_operations", "idempotent_operations"],
+        client_recovery: { registry_auth_version: 2 },
         limits: { change_page_records: 100, change_page_payload_bytes: 4194304, record_payload_bytes: 262144, operation_batch_records: 100, operation_batch_bytes: 4194304 },
       });
     });
@@ -80,10 +83,12 @@ add_task(async function local_pairing_persists_in_the_native_vault_and_revokes_o
       const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(stream.readByteArray(stream.available()))));
       Assert.deepEqual(data.crypto, { epoch: cryptoState.epoch, revision: "0" });
       Assert.equal(data.custody, "client");
+      Assert.equal(data.registry_auth_version, 2);
       Assert.ok(!Object.hasOwn(data, "recovery_secret"));
       ++activations;
       cryptoState = { ...cryptoState, revision: "1", mode: "native", active_key_id: data.key_id,
         custody: "client", identity_key: data.identity_key, registry_auth: data.registry_auth,
+        registry_auth_version: data.registry_auth_version,
         keys: [{ key_id: data.key_id, encrypted_bundle: data.encrypted_bundle }] };
       respondJSON(response, { error: "simulated failure after commit" }, 500);
     });
@@ -122,6 +127,7 @@ add_task(async function local_pairing_persists_in_the_native_vault_and_revokes_o
     let account;
     let vault;
     let keys;
+    const journalDirectory = PathUtils.join(PathUtils.profileDir, "midori-sync", "journals");
     const connection = new MidoriSyncConnection({
       baseURL, allowLocalHTTP: true, saveServer: () => {},
       transportFactory: (url, options) => new MidoriSyncTransport(url, options),
@@ -132,6 +138,8 @@ add_task(async function local_pairing_persists_in_the_native_vault_and_revokes_o
       now: () => clock,
       vaultFactory: async () => { vault = await createProfileSyncVault(); return vault; },
       transportFactory: (url, options) => new MidoriSyncTransport(url, options),
+      prepareDisconnect: context => assertSyncAccountSettled({ ...context, identity: context.journal,
+        directory: journalDirectory, openStore: openSyncStore, assertSavedCopies: assertSavedSyncCopiesIndependent }),
     });
     account = createAccount();
     try {
@@ -205,8 +213,44 @@ add_task(async function local_pairing_persists_in_the_native_vault_and_revokes_o
         await keys.refresh();
         Assert.equal(keys.snapshot.status, "ready", "Explicit authentication restores the same key custody");
       }
+      const savedId = Services.uuid.generateUUID().toString().slice(1, -1);
+      const saved = await openSyncStore({ directory: journalDirectory, storeId: savedId,
+        deviceId: account.snapshot.device.id, keys, create: true });
+      const pendingId = Services.uuid.generateUUID().toString().slice(1, -1);
+      await saved.commit([{ id: pendingId, collection: "bookmarks", kind: "outbox", expectedRevision: 0,
+        value: { title: "Synthetic saved pending change" } }]);
+      await saved.close();
+      const files = createSyncJournalFiles(journalDirectory);
+      const fingerprint = await files.fingerprint(savedId);
+      const custodyBeforeDisconnect = await vault.load();
+      const encryptedCustodyBeforeDisconnect = await IOUtils.readUTF8(PathUtils.join(PathUtils.profileDir, "midori-sync", "account.json"));
+      await Assert.rejects(account.disconnect(), /saved_journals_require_review/,
+        "A lost journal identity cannot make another saved queue disappear during logout");
+      Assert.ok(active, "The server session has not been revoked");
+      Assert.equal(account.snapshot.status, "connected");
+      Assert.equal(keys.snapshot.status, "ready");
+      Assert.deepEqual(await vault.load(), custodyBeforeDisconnect);
+      Assert.equal(await IOUtils.readUTF8(PathUtils.join(PathUtils.profileDir, "midori-sync", "account.json")), encryptedCustodyBeforeDisconnect,
+        "Blocked disconnect leaves the real OS-protected vault unchanged");
+      Assert.equal(await files.fingerprint(savedId), fingerprint);
+      const savedCustody = createProfileSyncSavedCustody();
+      await account.withLocalSecrets(lease => savedCustody.save({ id: savedId, fingerprint,
+        scope: lease.scope, deviceId: lease.deviceId, localKeys: lease.readLocalKeys() }));
       await account.disconnect();
       Assert.equal(keys.snapshot.status, "locked");
+      Assert.ok(!active, "Protected copies allow the real session revocation to complete");
+      Assert.deepEqual(await vault.inspect(), { present: false });
+      Assert.equal(await files.fingerprint(savedId), fingerprint, "Successful logout retains the saved copy itself");
+      const archived = await savedCustody.open({ id: savedId, fingerprint, scope: custodyBeforeDisconnect.scope });
+      Assert.ok(archived, "A separate native secret survives account deletion");
+      const preserved = await openDiscoveredSyncStore({ directory: journalDirectory, storeId: savedId, keys: archived.keys });
+      try {
+        Assert.equal((await preserved.store.read(pendingId)).value.title, "Synthetic saved pending change");
+      } finally {
+        await preserved.store.close();
+        archived.keys.close();
+      }
+      await files.remove(savedId, fingerprint);
       await account.pair("0123456789ABCDEF", "Desktop ñ");
       await keys.refresh();
       Assert.equal(keys.snapshot.status, "recovery-required", "A fresh local account has no cloud recovery secret");

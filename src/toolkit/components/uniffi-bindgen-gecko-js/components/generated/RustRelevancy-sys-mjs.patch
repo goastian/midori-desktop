@@ -1,0 +1,92 @@
+--- a/toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRelevancy.sys.mjs
++++ b/toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRelevancy.sys.mjs
+@@ -1417,7 +1417,7 @@
+         FfiConverterString.checkType(dbPath);
+         FfiConverterTypeRemoteSettingsService.checkType(remoteSettings);
+         const result = UniFFIScaffolding.callSync(
+-            192, // uniffi_relevancy_fn_constructor_relevancystore_new
++            196, // uniffi_relevancy_fn_constructor_relevancystore_new
+             FfiConverterString.lower(dbPath),
+             FfiConverterTypeRemoteSettingsService.lower(remoteSettings),
+         )
+@@ -1445,7 +1445,7 @@
+         FfiConverterString.checkType(bandit);
+         FfiConverterSequenceString.checkType(arms);
+         const result = await UniFFIScaffolding.callAsyncWrapper(
+-            193, // uniffi_relevancy_fn_method_relevancystore_bandit_init
++            197, // uniffi_relevancy_fn_method_relevancystore_bandit_init
+             FfiConverterTypeRelevancyStore.lowerReceiver(this),
+             FfiConverterString.lower(bandit),
+             FfiConverterSequenceString.lower(arms),
+@@ -1476,7 +1476,7 @@
+         FfiConverterString.checkType(bandit);
+         FfiConverterSequenceString.checkType(arms);
+         const result = await UniFFIScaffolding.callAsyncWrapper(
+-            194, // uniffi_relevancy_fn_method_relevancystore_bandit_select
++            198, // uniffi_relevancy_fn_method_relevancystore_bandit_select
+             FfiConverterTypeRelevancyStore.lowerReceiver(this),
+             FfiConverterString.lower(bandit),
+             FfiConverterSequenceString.lower(arms),
+@@ -1509,7 +1509,7 @@
+         FfiConverterString.checkType(arm);
+         FfiConverterBoolean.checkType(selected);
+         const result = await UniFFIScaffolding.callAsyncWrapper(
+-            195, // uniffi_relevancy_fn_method_relevancystore_bandit_update
++            199, // uniffi_relevancy_fn_method_relevancystore_bandit_update
+             FfiConverterTypeRelevancyStore.lowerReceiver(this),
+             FfiConverterString.lower(bandit),
+             FfiConverterString.lower(arm),
+@@ -1530,7 +1530,7 @@
+     close() {
+        
+         const result = UniFFIScaffolding.callSync(
+-            196, // uniffi_relevancy_fn_method_relevancystore_close
++            200, // uniffi_relevancy_fn_method_relevancystore_close
+             FfiConverterTypeRelevancyStore.lowerReceiver(this),
+         )
+         return handleRustResult(
+@@ -1546,7 +1546,7 @@
+     async ensureInterestDataPopulated() {
+        
+         const result = await UniFFIScaffolding.callAsyncWrapper(
+-            197, // uniffi_relevancy_fn_method_relevancystore_ensure_interest_data_populated
++            201, // uniffi_relevancy_fn_method_relevancystore_ensure_interest_data_populated
+             FfiConverterTypeRelevancyStore.lowerReceiver(this),
+         )
+         return handleRustResult(
+@@ -1569,7 +1569,7 @@
+         FfiConverterString.checkType(bandit);
+         FfiConverterString.checkType(arm);
+         const result = await UniFFIScaffolding.callAsyncWrapper(
+-            198, // uniffi_relevancy_fn_method_relevancystore_get_bandit_data
++            202, // uniffi_relevancy_fn_method_relevancystore_get_bandit_data
+             FfiConverterTypeRelevancyStore.lowerReceiver(this),
+             FfiConverterString.lower(bandit),
+             FfiConverterString.lower(arm),
+@@ -1601,7 +1601,7 @@
+        
+         FfiConverterSequenceString.checkType(topUrlsByFrecency);
+         const result = await UniFFIScaffolding.callAsyncWrapper(
+-            199, // uniffi_relevancy_fn_method_relevancystore_ingest
++            203, // uniffi_relevancy_fn_method_relevancystore_ingest
+             FfiConverterTypeRelevancyStore.lowerReceiver(this),
+             FfiConverterSequenceString.lower(topUrlsByFrecency),
+         )
+@@ -1618,7 +1618,7 @@
+     interrupt() {
+        
+         const result = UniFFIScaffolding.callSync(
+-            200, // uniffi_relevancy_fn_method_relevancystore_interrupt
++            204, // uniffi_relevancy_fn_method_relevancystore_interrupt
+             FfiConverterTypeRelevancyStore.lowerReceiver(this),
+         )
+         return handleRustResult(
+@@ -1638,7 +1638,7 @@
+     async userInterestVector() {
+        
+         const result = await UniFFIScaffolding.callAsyncWrapper(
+-            201, // uniffi_relevancy_fn_method_relevancystore_user_interest_vector
++            205, // uniffi_relevancy_fn_method_relevancystore_user_interest_vector
+             FfiConverterTypeRelevancyStore.lowerReceiver(this),
+         )
+         return handleRustResult(

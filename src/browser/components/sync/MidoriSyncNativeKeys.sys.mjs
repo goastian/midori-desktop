@@ -4,9 +4,18 @@
 
 import { MidoriSyncKeys } from "./MidoriSyncKeys.sys.mjs";
 
+function deviceName() {
+  try {
+    return Services.dns.myHostName;
+  } catch {
+    return "";
+  }
+}
+
 export function createNativeSyncKeys(account) {
   return new MidoriSyncKeys({
     account,
+    deviceName: deviceName(),
     cryptoFactory: () => Cc["@astian.org/midori-sync-crypto;1"].createInstance(Ci.nsIMidoriSyncCrypto),
     randomBytes(length) {
       const random = Cc["@mozilla.org/security/random-generator;1"].getService(Ci.nsIRandomGenerator)

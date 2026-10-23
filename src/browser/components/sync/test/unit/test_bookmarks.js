@@ -1,6 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+const { TestUtils } = ChromeUtils.importESModule("resource://testing-common/TestUtils.sys.mjs");
 const { PlacesUtils } = ChromeUtils.importESModule("resource://gre/modules/PlacesUtils.sys.mjs");
 const { MidoriSyncBookmarks } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncBookmarks.sys.mjs");
 
@@ -409,6 +410,101 @@ add_task(async function prepared_writes_replay_once_and_reject_intervening_edits
   }
 });
 
+add_task(async function an_explicit_remote_conflict_resumes_native_order_projection_before_publication() {
+  const { MidoriSyncCollection } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncCollection.sys.mjs");
+  const { syncJournalEntryId } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncIndex.sys.mjs");
+  const uuid = () => Services.uuid.generateUUID().toString().slice(1, -1);
+  const bookmarks = PlacesUtils.bookmarks;
+  const folder = await bookmarks.insert({ parentGuid: bookmarks.unfiledGuid, type: bookmarks.TYPE_FOLDER, title: "Resolution fixture" });
+  let adapter = new MidoriSyncBookmarks();
+  let engine;
+  try {
+    const first = await bookmarks.insert({ parentGuid: folder.guid, title: "Local title", url: "https://resolution.invalid/first" });
+    const second = await bookmarks.insert({ parentGuid: folder.guid, title: "Second", url: "https://resolution.invalid/second" });
+    const original = await adapter.read(first.guid);
+    const sibling = await adapter.read(second.guid);
+    const generation = uuid();
+    const crypto = { epoch: uuid(), revision: "1" };
+    const remote = { id: first.guid, revision: "2", deleted: false, payload: "synthetic authenticated fixture", ttl: null,
+      value: { ...original, title: "Remote title", index: 1 } };
+    const conflictId = uuid();
+    const rows = new Map();
+    const add = (kind, id, value) => rows.set(id, { id, collection: "bookmarks", kind, revision: 1, value });
+    add("metadata", syncJournalEntryId("bookmarks", "metadata", "collection-state-v1"), {
+      version: 3, generation, cursor: "fixture-cursor", sequence: "2", fence: null, inbox: null, index: 0, ack: null,
+      initialized: true, pending: 0, conflicts: 1, deferred: 0, activeApplication: null, applicationAfter: null,
+    });
+    for (const record of [remote, { ...remote, id: second.guid, revision: "1", value: sibling }]) {
+      add("record", syncJournalEntryId("bookmarks", "record", record.id), {
+        version: 1, id: record.id, remote: record, pending: null, blocked: record.id === first.guid, applying: null,
+      });
+    }
+    add("conflict", conflictId, { version: 1, source: "download", change: { sequence: "2", record: remote },
+      base: { ...remote, revision: "1", value: original }, outcome: { status: "conflict", reason: "bookmark_fields_diverged" } });
+    let failPublication = true;
+    const journal = {
+      async read(id) { return structuredClone(rows.get(id) ?? null); },
+      async list(collection, kind, { after = null, limit = 100 } = {}) {
+        return structuredClone([...rows.values()].filter(row => row.collection === collection && row.kind === kind && (!after || row.id > after))
+          .sort((left, right) => left.id.localeCompare(right.id)).slice(0, limit));
+      },
+      async commit(changes) {
+        if (failPublication && changes.some(change => change.kind === "outbox")) {
+          throw Object.assign(new Error("disk_full"), { code: "disk_full" });
+        }
+        for (const change of changes) { Assert.equal(rows.get(change.id)?.revision ?? 0, change.expectedRevision); }
+        for (const change of changes) {
+          if (change.deleted) { rows.delete(change.id); }
+          else { rows.set(change.id, structuredClone({ ...change, revision: change.expectedRevision + 1 })); }
+        }
+      },
+    };
+    let uploads = 0;
+    let requests = 0;
+    const create = () => new MidoriSyncCollection({ collection: "bookmarks", journal, adapter,
+      keys: { snapshot: { status: "ready", custody: "server" }, writeContext: crypto,
+        async sealRecord() { return { crypto, payload: "synthetic encrypted operation" }; } },
+      entryId: syncJournalEntryId, createId: uuid,
+      async request(path, { body }) {
+        ++requests;
+        if (path.endsWith("/operations")) {
+          ++uploads;
+          return { data: { generation, results: body.operations.map((operation, index) => ({ index, id: operation.id,
+            operation_id: operation.operation_id, status: "applied", revision: "3" })) } };
+        }
+        if (path.endsWith("/ack")) { return { data: { generation, acknowledged_sequence: "2" } }; }
+        return { data: { generation, changes: [], has_more: false, snapshot_sequence: "2", next_cursor: "fixture-cursor" } };
+      },
+    });
+    engine = create();
+    const [conflict] = (await engine.conflictPage()).entries;
+    await Assert.rejects(engine.resolveConflict({ ...conflict, choice: "remote" }), /disk_full/);
+    Assert.equal((await bookmarks.fetch(first.guid)).title, "Remote title");
+    Assert.equal((await bookmarks.fetch(first.guid)).index, 1);
+    Assert.equal((await bookmarks.fetch(second.guid)).index, 0);
+    Assert.ok(rows.has(conflictId), "The conflict stays durable until a new operation is saved");
+    Assert.equal(uploads, 0);
+    engine.close();
+    adapter = new MidoriSyncBookmarks();
+    engine = create();
+    failPublication = false;
+    Assert.deepEqual(await engine.recoverLocal(), { captureReady: true, more: false });
+    Assert.equal(requests, 0, "Native application and position recovery use no HTTP while offline");
+    await engine.run();
+    Assert.equal(uploads, 1);
+    Assert.equal(engine.snapshot.conflicts, 0);
+    Assert.equal(engine.snapshot.deferred, 0);
+    Assert.equal((await bookmarks.fetch(second.guid)).index, 0, "Reopening cannot shift the sibling twice");
+    const mirror = await engine.record(second.guid);
+    Assert.equal(mirror.remote.value.index, 1, "The authenticated server snapshot is preserved");
+    Assert.equal(mirror.position.index, 0, "The native shift has a durable local projection");
+  } finally {
+    engine?.close();
+    adapter.close();
+    await bookmarks.remove(folder.guid);
+  }
+});
+
 add_task(async function capture_inventory_and_notifications_follow_real_places_changes() {
   const { MidoriSyncBookmarkTracker } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncBookmarkTracker.sys.mjs");
   const bookmarks = PlacesUtils.bookmarks;
@@ -487,6 +583,77 @@ add_task(async function capture_inventory_and_notifications_follow_real_places_c
   } finally {
     tracker?.close();
     unsubscribe();
+    adapter.close();
+    await bookmarks.remove(root.guid);
+  }
+});
+
+add_task(async function tags_and_keywords_travel_with_the_bookmark_and_merge_as_sets() {
+  const bookmarks = PlacesUtils.bookmarks;
+  const adapter = new MidoriSyncBookmarks();
+  const root = await bookmarks.insert({ parentGuid: bookmarks.unfiledGuid, type: bookmarks.TYPE_FOLDER, title: "Label fixture" });
+  const id = "synclabeled_";
+  const url = "https://example.invalid/labels";
+  const seen = [];
+  const unsubscribe = adapter.observe(event => seen.push(event.id));
+  const value = { version: 1, kind: "bookmark", parentGuid: root.guid, index: 0, title: "Labelled", url, dateAdded: 1000,
+    tags: ["alpha", "zeta"], keyword: "golabel" };
+  try {
+    Assert.equal((await adapter.apply(remoteBookmark(id, value))).status, "applied");
+    const created = await adapter.read(id);
+    Assert.deepEqual(created.tags, ["alpha", "zeta"], "Tags are created in Places with the bookmark");
+    Assert.equal(created.keyword, "golabel");
+    Assert.deepEqual(PlacesUtils.tagging.getTagsForURI(Services.io.newURI(url)).sort(), ["alpha", "zeta"]);
+    Assert.equal((await PlacesUtils.keywords.fetch("golabel")).url.href, url);
+    Assert.equal((await adapter.apply(remoteBookmark(id, value), remoteBookmark(id, value))).status, "applied",
+      "A replay changes nothing");
+
+    PlacesUtils.tagging.tagURI(Services.io.newURI(url), ["local"]);
+    const remote = { ...created, tags: ["alpha", "beta"] };
+    Assert.equal((await adapter.apply(remoteBookmark(id, remote), remoteBookmark(id, created))).status, "applied");
+    Assert.deepEqual((await adapter.read(id)).tags, ["alpha", "beta", "local"],
+      "A remote addition and removal merge with a concurrent local tag");
+
+    const renamed = { ...(await adapter.read(id)), keyword: "newlabel" };
+    Assert.equal((await adapter.apply(remoteBookmark(id, renamed), remoteBookmark(id, created))).status, "applied");
+    Assert.equal((await adapter.read(id)).keyword, "newlabel");
+    Assert.equal(await PlacesUtils.keywords.fetch("golabel"), null, "The replaced keyword is released");
+
+    await TestUtils.waitForCondition(() => seen.includes(id), "A tag change is reported for its bookmark");
+    const count = seen.length;
+    PlacesUtils.tagging.untagURI(Services.io.newURI(url), ["beta"]);
+    await TestUtils.waitForCondition(() => seen.length > count, "Removing a tag is also captured");
+
+    const folderValue = { version: 1, kind: "folder", parentGuid: root.guid, index: 1, title: "Folder", url: null,
+      dateAdded: 1000, tags: ["nope"] };
+    await Assert.rejects(adapter.validate("syncfolder2_", folderValue), /invalid_record/, "Only bookmarks carry labels");
+    await Assert.rejects(adapter.validate(id, { ...value, tags: ["b", "a"] }), /invalid_record/, "Tags are canonical");
+  } finally {
+    unsubscribe();
+    adapter.close();
+    PlacesUtils.tagging.untagURI(Services.io.newURI(url), null);
+    await bookmarks.remove(root.guid);
+  }
+});
+
+add_task(async function a_stuck_parent_or_position_is_repaired_deterministically() {
+  const bookmarks = PlacesUtils.bookmarks;
+  const adapter = new MidoriSyncBookmarks();
+  const root = await bookmarks.insert({ parentGuid: bookmarks.unfiledGuid, type: bookmarks.TYPE_FOLDER, title: "Repair fixture" });
+  const value = { version: 1, kind: "bookmark", parentGuid: "missing_____", index: 5, title: "Orphan",
+    url: "https://example.invalid/orphan", dateAdded: 1000 };
+  try {
+    const repaired = await adapter.repair(value, "bookmark_parent_missing", "syncorphan__");
+    Assert.equal(repaired.parentGuid, bookmarks.unfiledGuid, "An orphan goes to the unfiled bookmarks");
+    Assert.equal(repaired.title, "Orphan");
+    Assert.equal((await adapter.apply(remoteBookmark("syncorphan__", repaired))).status, "applied");
+    Assert.equal((await adapter.read("syncorphan__")).parentGuid, bookmarks.unfiledGuid);
+    const crowded = { ...value, parentGuid: root.guid, index: 9 };
+    const clamped = await adapter.repair(crowded, "bookmark_position_pending", "syncclamped_");
+    Assert.equal(clamped.index, 0, "A position past the siblings is clamped to the end");
+    Assert.equal(await adapter.repair(value, "bookmark_changed", "syncorphan__"), null, "Other reasons are never repaired");
+    await bookmarks.remove("syncorphan__");
+  } finally {
     adapter.close();
     await bookmarks.remove(root.guid);
   }

@@ -63,6 +63,14 @@ const PREF_REMOTE_RESOURCES_ENABLED = "midori.blocker.remoteResourcesEnabled";
 const PREF_GLOBAL_STATS = "midori.blocker.globalStats";
 const PREF_DOMAIN_EXCEPTIONS = "midori.blocker.domainExceptions";
 const PREF_BRANCH = "midori.blocker.";
+let gCustomFiltersWriteChain = Promise.resolve();
+const gCustomFiltersObservers = new Set();
+
+function withCustomFiltersWrite(task) {
+  const update = gCustomFiltersWriteChain.then(task);
+  gCustomFiltersWriteChain = update.catch(() => {});
+  return update;
+}
 
 const BLOCKED_COUNT_MAP_MAX_ENTRIES = 500;
 const BLOCKED_COUNT_MAP_TRIM_TO_ENTRIES = 250;
@@ -3545,6 +3553,65 @@ export const MidoriBlockerService = {
     return lazy.ListStore.getCustomFiltersText();
   },
 
+  async readCustomFiltersSnapshot() {
+    return withCustomFiltersWrite(() => this._readCustomFiltersSnapshot());
+  },
+
+  observeCustomFilters(listener) {
+    if (typeof listener !== "function") {
+      throw new TypeError("A custom-filter observer is required");
+    }
+    gCustomFiltersObservers.add(listener);
+    return () => gCustomFiltersObservers.delete(listener);
+  },
+
+  _notifyCustomFiltersChanged() {
+    for (const listener of [...gCustomFiltersObservers]) {
+      try {
+        listener();
+      } catch (error) {
+        console.error("[MidoriBlocker] Custom-filter observer failed:", error);
+      }
+    }
+  },
+
+  async withCustomFiltersSettings(task) {
+    if (typeof task !== "function") {
+      throw new TypeError("A custom-filter settings task is required");
+    }
+    return withCustomFiltersWrite(task);
+  },
+
+  async _readCustomFiltersSnapshot() {
+    const present = await IOUtils.exists(this._customFiltersPath());
+    return { present, text: await this.getCustomFiltersText() };
+  },
+
+  // The callback receives {present, text} and returns new text or null.
+  async updateCustomFiltersText(update, options = {}) {
+    if (typeof update !== "function") {
+      throw new TypeError("A custom-filter update callback is required");
+    }
+    const captured = { enabled: options.enabled };
+    return withCustomFiltersWrite(async () => {
+      const current = await this._readCustomFiltersSnapshot();
+      const next = await update(current);
+      if (next === null) {
+        return false;
+      }
+      if (typeof next !== "string") {
+        throw new TypeError("A custom-filter update must return text or null");
+      }
+      const normalized = this._normalizeCustomFiltersText(next);
+      if (current.present && normalized === current.text &&
+          (typeof captured.enabled !== "boolean" || captured.enabled === this.areCustomFiltersEnabled())) {
+        return false;
+      }
+      await this._setCustomFiltersText(normalized, captured);
+      return true;
+    });
+  },
+
   areCustomFiltersEnabled() {
     return Services.prefs.getBoolPref(PREF_CUSTOM_FILTERS_ENABLED, true);
   },
@@ -3557,11 +3624,20 @@ export const MidoriBlockerService = {
    */
   async setCustomFiltersText(text, options = {}) {
     const normalized = this._normalizeCustomFiltersText(text);
+    const captured = { enabled: options.enabled };
+    return withCustomFiltersWrite(() =>
+      this._setCustomFiltersText(normalized, captured)
+    );
+  },
+
+  async _setCustomFiltersText(normalized, options) {
     const path = this._customFiltersPath();
     const hadPreviousFile = await IOUtils.exists(path);
     const previousEnabled = this.areCustomFiltersEnabled();
+    const hadEnabledUserValue = Services.prefs.prefHasUserValue(PREF_CUSTOM_FILTERS_ENABLED);
+    const changeEnabled = typeof options.enabled === "boolean";
     const enabled =
-      typeof options.enabled === "boolean" ? options.enabled : previousEnabled;
+      changeEnabled ? options.enabled : previousEnabled;
     let previousText = "";
 
     if (hadPreviousFile) {
@@ -3572,15 +3648,19 @@ export const MidoriBlockerService = {
           "[MidoriBlocker] Failed reading previous custom filters for rollback:",
           err
         );
+        throw err;
       }
     }
 
     await lazy.ListStore.setCustomFiltersText(normalized, {
       alreadyNormalized: true,
     });
-    Services.prefs.setBoolPref(PREF_CUSTOM_FILTERS_ENABLED, enabled);
+    if (changeEnabled) {
+      Services.prefs.setBoolPref(PREF_CUSTOM_FILTERS_ENABLED, enabled);
+    }
 
     if (!this.isEnabled()) {
+      this._notifyCustomFiltersChanged();
       return;
     }
 
@@ -3594,14 +3674,18 @@ export const MidoriBlockerService = {
         if (hadPreviousFile) {
           await IOUtils.writeUTF8(path, previousText, {
             tmpPath: `${path}.tmp`,
+            flush: true,
           });
         } else {
           await IOUtils.remove(path, { ignoreAbsent: true });
         }
-        Services.prefs.setBoolPref(
-          PREF_CUSTOM_FILTERS_ENABLED,
-          previousEnabled
-        );
+        if (changeEnabled) {
+          if (hadEnabledUserValue) {
+            Services.prefs.setBoolPref(PREF_CUSTOM_FILTERS_ENABLED, previousEnabled);
+          } else {
+            Services.prefs.clearUserPref(PREF_CUSTOM_FILTERS_ENABLED);
+          }
+        }
 
         await this._rebuildEngineFromCurrentSources({
           preservePreviousEngine: true,
@@ -3615,6 +3699,7 @@ export const MidoriBlockerService = {
 
       throw err;
     }
+    this._notifyCustomFiltersChanged();
   },
 
   /**

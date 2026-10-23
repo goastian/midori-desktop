@@ -1,11 +1,42 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/* global Assert, add_task */
+
 const { MidoriSyncCreditCards } = ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncCreditCards.sys.mjs");
 
 function card(number = "4111111111111111", name = "Example") {
   return { version: 1, name, number, month: 12, year: 2032 };
 }
+
+add_task(async function prepared_card_writes_resume_without_overwriting_new_edits() {
+  const adapter = new MidoriSyncCreditCards();
+  const id = "replay000001";
+  const base = card("5555555555554444", "Prepared replay fixture");
+  try {
+    let previous = null;
+    for (const value of [base, { ...base, name: "Changed replay fixture" }, null]) {
+      const incoming = { id, deleted: value === null, value };
+      const plan = await adapter.prepare(incoming, previous);
+      Assert.deepEqual(await adapter.applyPrepared(plan), { status: "applied" });
+      Assert.deepEqual(await adapter.applyPrepared(plan), { status: "applied" },
+        "An already applied create, update or deletion can finish its durable intent");
+      Assert.deepEqual(await adapter.read(id), value);
+      previous = incoming;
+    }
+    await adapter.apply({ id, deleted: false, value: base });
+    const obsolete = await adapter.prepare({ id, deleted: true }, { id, deleted: false, value: base });
+    const edited = { ...base, month: 11 };
+    await adapter.apply({ id, deleted: false, value: edited }, { id, deleted: false, value: base });
+    Assert.equal((await adapter.applyPrepared(obsolete)).status, "deferred",
+      "A genuine edit after preparation still prevents the deletion");
+    Assert.deepEqual(await adapter.read(id), edited);
+  } finally {
+    const { formAutofillStorage } = ChromeUtils.importESModule("resource://autofill/FormAutofillStorage.sys.mjs");
+    await formAutofillStorage.creditCards.remove(id);
+    adapter.close();
+  }
+});
 
 function fakeStorage() {
   const entries = new Map();
@@ -18,10 +49,7 @@ function fakeStorage() {
     creditCards: {
       async get(guid) { return entries.has(guid) ? structuredClone(entries.get(guid)) : null; },
       async getAll() { return [...entries].map(([guid]) => ({ guid })); },
-      async findDuplicateGUID(entry) {
-        Assert.ok(entry.guid && Object.hasOwn(entry, "version"), "Duplicate checks receive a complete store identity");
-        return [...entries].find(([, value]) => value["cc-number"] === entry["cc-number"])?.[0] ?? null;
-      },
+      async findDuplicateGUID() { return null; },
       async add(entry) {
         entries.set(entry.guid, structuredClone(entry));
         notify(entry.guid, "add");
@@ -38,6 +66,60 @@ function fakeStorage() {
     },
   };
 }
+
+add_task(async function native_card_duplicates_do_not_depend_on_firefox_sync_metadata() {
+  const { formAutofillStorage: storage } = ChromeUtils.importESModule("resource://autofill/FormAutofillStorage.sys.mjs");
+  await storage.initialize();
+  const adapter = new MidoriSyncCreditCards({ storage });
+  const id = "nativeccdupe";
+  const similar = "similarcc001";
+  let local;
+  const value = card("5555555555554444", "Native duplicate fixture");
+  try {
+    local = await storage.creditCards.add({ "cc-name": value.name, "cc-number": value.number,
+      "cc-exp-month": value.month, "cc-exp-year": value.year });
+    Assert.deepEqual(await adapter.apply({ id, deleted: false, value }), { status: "applied" });
+    Assert.deepEqual(await adapter.read(id), value);
+    Assert.equal(await adapter.read(local), null);
+    Assert.deepEqual((await storage.creditCards.getAll()).map(record => record.guid), [id],
+      "The actual native backend contains one card after deduplication");
+    Assert.deepEqual(await adapter.apply({ id: similar, deleted: false, value: { ...value, name: "Other holder" } }),
+      { status: "conflict", reason: "card_duplicate" });
+    Assert.deepEqual(await adapter.read(id), value);
+    await adapter.flush();
+  } finally {
+    for (const guid of [local, id, similar].filter(Boolean)) {
+      if (await storage.creditCards.get(guid)) {
+        await storage.creditCards.remove(guid);
+      }
+    }
+    adapter.close();
+  }
+});
+
+add_task(async function card_identity_plans_resume_after_the_canonical_copy_is_created() {
+  const storage = fakeStorage();
+  const adapter = new MidoriSyncCreditCards({ storage });
+  const local = "abc123def456";
+  const remote = "xyz789uvw012";
+  const value = card();
+  try {
+    await storage.creditCards.add({ guid: local, "cc-name": value.name, "cc-number": value.number,
+      "cc-exp-month": value.month, "cc-exp-year": value.year });
+    const plan = await adapter.prepare({ id: remote, deleted: false, value });
+    const remove = storage.creditCards.remove.bind(storage.creditCards);
+    storage.creditCards.remove = () => { throw new Error("synthetic native write failure"); };
+    await Assert.rejects(adapter.applyPrepared(plan), /card_apply_failed/);
+    Assert.deepEqual(await adapter.read(local), value, "A failed retirement retains the source card");
+    Assert.deepEqual(await adapter.read(remote), value, "The canonical copy already exists before source removal");
+    storage.creditCards.remove = remove;
+    Assert.deepEqual(await adapter.applyPrepared(plan), { status: "applied" });
+    Assert.equal(await adapter.read(local), null);
+    Assert.deepEqual(await adapter.read(remote), value);
+  } finally {
+    adapter.close();
+  }
+});
 
 add_task(async function cards_reject_unexpected_secrets_and_masked_numbers() {
   const adapter = new MidoriSyncCreditCards({ storage: fakeStorage() });
@@ -169,6 +251,32 @@ add_task(async function cards_keep_guid_in_the_rust_autofill_adapter() {
     Assert.deepEqual(await adapter.apply({ id: "abc123def456", deleted: true },
       { id: "abc123def456", deleted: false, value: card() }), { status: "applied" });
     Assert.deepEqual(await adapter.listIds(), []);
+  } finally {
+    unsubscribe();
+    adapter.close();
+  }
+});
+
+add_task(async function an_identical_card_adopts_the_remote_identity_and_a_similar_one_stays_a_conflict() {
+  const storage = fakeStorage();
+  const adapter = new MidoriSyncCreditCards({ storage });
+  const seen = [];
+  const unsubscribe = adapter.observe(event => seen.push(event.id));
+  try {
+    await storage.creditCards.add({ guid: "abc123def456", "cc-name": "Example", "cc-number": "4111111111111111",
+      "cc-exp-month": 12, "cc-exp-year": 2032 });
+    seen.length = 0;
+    Assert.deepEqual(await adapter.apply({ id: "xyz789uvw012", deleted: false, value: card() }), { status: "applied" },
+      "The same card from another device is not stored twice");
+    Assert.deepEqual([...storage.entries.keys()], ["xyz789uvw012"], "The remote identity replaces the identical local card");
+    Assert.equal(await adapter.read("abc123def456"), null);
+    Assert.deepEqual(await adapter.read("xyz789uvw012"), card());
+    Assert.ok(!seen.includes("xyz789uvw012") && !seen.includes("abc123def456"),
+      "Adopting the remote identity does not echo back to the server");
+
+    Assert.deepEqual(await adapter.apply({ id: "lmn345opq678", deleted: false, value: card("4111111111111111", "Another holder") }),
+      { status: "conflict", reason: "card_duplicate" }, "A card with different details is never replaced");
+    Assert.deepEqual([...storage.entries.keys()], ["xyz789uvw012"]);
   } finally {
     unsubscribe();
     adapter.close();

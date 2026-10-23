@@ -4,9 +4,66 @@
 
 import { SYNC_STORE_UUID } from "./MidoriSyncLocalCodec.sys.mjs";
 
+export const SYNC_DESKTOP_COLLECTIONS = Object.freeze([
+  "bookmarks", "history", "passwords", "credit-cards", "form-history", "addresses", "tabs", "browser-settings",
+]);
+
 const encoder = new TextEncoder();
 const MAX_SEQUENCE = 9223372036854775807n;
 export const MAX_ENGINE_PAGE_BYTES = 2 * 1024 * 1024;
+
+export const SYNC_COLLECTION_SCHEMAS = Object.freeze({
+  bookmarks: 2,
+  history: 2,
+  passwords: 1,
+  "credit-cards": 1,
+  "form-history": 1,
+  addresses: 1,
+  workspaces: 1,
+  "midori-privacy": 1,
+  "site-permissions": 1,
+  extensions: 1,
+  "extension-settings": 1,
+  tabs: 2,
+  "browser-settings": 1,
+});
+
+const COLLECTION_FEATURES = Object.freeze({
+  bookmarks: ["bookmark_labels"],
+  history: ["history_parts", "history_visit_removals"],
+  "credit-cards": ["credit_cards"],
+  "form-history": ["form_history"],
+  addresses: ["addresses"],
+  workspaces: ["workspace_metadata"],
+  "midori-privacy": ["custom_filters"],
+  "site-permissions": ["site_permissions"],
+  extensions: ["extension_catalog"],
+  "extension-settings": ["extension_settings"],
+  tabs: ["tab_fragments"],
+});
+
+export function negotiateSyncCollections(value) {
+  const collections = Array.isArray(value?.collections) ? value.collections : [];
+  const features = Array.isArray(value?.features) ? value.features : [];
+  const schemas = value?.data_schemas;
+  const validSchemas = schemas !== null && typeof schemas === "object" && !Array.isArray(schemas);
+  return Object.freeze(Object.fromEntries(Object.entries(SYNC_COLLECTION_SCHEMAS).map(([name, version]) => [
+    name,
+    collections.includes(name) && validSchemas && Object.hasOwn(schemas, name) && schemas[name] === version &&
+      (COLLECTION_FEATURES[name] ?? []).every(feature => features.includes(feature)),
+  ])));
+}
+
+export function syncCollectionSupported(name, account, connection) {
+  if (account?.status === "local") {
+    return true;
+  }
+  if (connection?.error === "incompatible_server") {
+    return false;
+  }
+  const support = connection == null ? account?.collectionSupport : connection.capabilities?.collectionSupport;
+  return support?.[name] === true && Object.hasOwn(support, name);
+}
 
 export class SyncProtocolError extends Error {
   constructor(code) {
@@ -22,6 +79,10 @@ export function validSyncCounter(value, max = MAX_SEQUENCE) {
 
 export function validSyncRecordId(value) {
   return typeof value === "string" && value.length > 0 && encoder.encode(value).length <= 255 && !/[\p{Cc}\p{Cs}]/u.test(value);
+}
+
+export function validSyncPasswordId(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= 64 && !/[^\x20-\x7E]|,/.test(value);
 }
 
 export function validSyncCursor(value) {
@@ -49,10 +110,17 @@ export function validateChangePage(page, state) {
   if (state.generation && page.generation !== state.generation) {
     throw new SyncProtocolError("reset_required");
   }
-  if ((state.fence !== null && state.fence !== page.snapshot_sequence) || BigInt(page.snapshot_sequence) < BigInt(state.sequence)) {
+  const floor = page.compacted_through ?? "0";
+  const rebased = page.snapshot_rebased === true;
+  if (!validSyncCounter(floor) || BigInt(floor) < BigInt(state.compactedThrough ?? "0") ||
+      BigInt(floor) > BigInt(page.snapshot_sequence) ||
+      (page.snapshot_rebased !== undefined && typeof page.snapshot_rebased !== "boolean") ||
+      (rebased && BigInt(floor) < BigInt(state.sequence)) ||
+      (!rebased && state.fence !== null && state.fence !== page.snapshot_sequence) ||
+      BigInt(page.snapshot_sequence) < BigInt(state.sequence)) {
     throw new SyncProtocolError("invalid_change_page");
   }
-  let sequence = BigInt(state.sequence);
+  let sequence = rebased ? BigInt(floor) : BigInt(state.sequence);
   for (const change of page.changes) {
     if (!validSyncCounter(change?.sequence) || BigInt(change.sequence) <= sequence ||
         BigInt(change.sequence) > BigInt(page.snapshot_sequence) || !change.record || typeof change.record !== "object") {

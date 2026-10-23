@@ -29,6 +29,7 @@ function choose(base, local, remote, field) {
   return { conflict: true };
 }
 
+/** Synchronizes payment cards through native encrypted Form Autofill storage. */
 export class MidoriSyncCreditCards {
   #storage;
   #subscriptions = new Set();
@@ -68,8 +69,35 @@ export class MidoriSyncCreditCards {
     return unsubscribe;
   }
 
+  async flush() {
+    this.#ensureOpen();
+    await this.#storage.flush();
+    this.#ensureOpen();
+  }
+
   matchesLocal(_id, current, base) {
     return equal(current, base);
+  }
+
+  async canDelete(id, base, { record }) {
+    await this.validate(id, base);
+    let mirror = await record(id);
+    let previousId = id;
+    while (mirror?.replacementId) {
+      const candidateId = mirror.replacementId;
+      if (!validCardId(candidateId) || candidateId >= previousId) {
+        throw new SyncProtocolError("card_identity_conflict");
+      }
+      const current = await this.read(candidateId);
+      mirror = await record(candidateId);
+      this.#ensureOpen();
+      if (current) {
+        return Boolean(mirror?.remote && !mirror.remote.deleted && !mirror.pending && !mirror.applying &&
+          !mirror.blocked && equal(current, mirror.remote.value));
+      }
+      previousId = candidateId;
+    }
+    return true;
   }
 
   async validate(id, value) {
@@ -162,75 +190,169 @@ export class MidoriSyncCreditCards {
       { status: "apply", value: merged } };
   }
 
-  async apply(incoming, previous = null) {
+  async prepare(incoming, previous = null, { record } = {}) {
     this.#ensureOpen();
     const { current, decision } = await this.plan(incoming, previous);
+    let duplicate = null;
+    let similar = false;
+    let published = false;
+    let canonicalId = incoming.id;
+    if (current === null && decision.status === "apply" && decision.value) {
+      const cards = (await this.#storage.creditCards.getAll()).filter(card => validCardId(card.guid))
+        .sort((left, right) => left.guid < right.guid ? -1 : 1);
+      for (const card of cards) {
+        if (card.guid === incoming.id) {
+          continue;
+        }
+        const value = await this.read(card.guid);
+        if (value?.number !== decision.value.number) {
+          continue;
+        }
+        if (equal(value, decision.value)) {
+          duplicate = { id: card.guid, value };
+          break;
+        }
+        similar = true;
+      }
+      if (!duplicate && similar) {
+        return { version: 1, id: incoming.id, current, decision: { status: "conflict", reason: "card_duplicate" } };
+      }
+      if (duplicate) {
+        const mirror = await record?.(duplicate.id);
+        this.#ensureOpen();
+        published = Boolean(mirror?.pending || mirror?.localChange || (mirror?.remote && !mirror.remote.deleted));
+        if (published && duplicate.id < incoming.id) {
+          canonicalId = duplicate.id;
+        }
+      }
+    }
+    return { version: 1, id: incoming.id, current, decision, duplicate, canonicalId, published };
+  }
+
+  async apply(incoming, previous = null) {
+    return this.applyPrepared(await this.prepare(incoming, previous));
+  }
+
+  async applyPrepared(plan) {
+    this.#ensureOpen();
+    plan = structuredClone(plan);
+    if (plan?.version !== 1 || !validCardId(plan.id) || !plan.decision ||
+        !["apply", "keep_local", "conflict"].includes(plan.decision.status)) {
+      throw new SyncProtocolError("invalid_record");
+    }
+    const { id, current, decision, duplicate } = plan;
     if (decision.status === "conflict") {
       return decision;
     }
     if (decision.status === "keep_local") {
       return { status: "applied" };
     }
-    if (!equal(await this.read(incoming.id), current)) {
+    if (current !== null) {
+      await this.validate(id, current);
+    }
+    if (decision.value !== null) {
+      decision.value = await this.validate(id, decision.value);
+    }
+    if (duplicate !== null) {
+      return this.#applyDuplicate(plan);
+    }
+    return this.#write(id, decision.value, current);
+  }
+
+  async #applyDuplicate({ id, current, decision, duplicate, canonicalId, published }) {
+    if (current !== null || !decision.value || !validCardId(duplicate?.id) || duplicate.id === id ||
+        typeof published !== "boolean" || ![id, duplicate.id].includes(canonicalId) ||
+        (!published && canonicalId !== id) || (published && canonicalId !== (id < duplicate.id ? id : duplicate.id))) {
+      throw new SyncProtocolError("invalid_record");
+    }
+    duplicate.value = await this.validate(duplicate.id, duplicate.value);
+    if (!equal(duplicate.value, decision.value)) {
+      throw new SyncProtocolError("invalid_record");
+    }
+    const incoming = await this.read(id);
+    const existing = await this.read(duplicate.id);
+    if ((incoming !== null && (canonicalId !== id || !equal(incoming, decision.value))) ||
+        (existing !== null && !equal(existing, duplicate.value)) ||
+        (existing === null && (canonicalId !== id || !equal(incoming, decision.value)))) {
+      return { status: "conflict", reason: "card_duplicate_changed" };
+    }
+    if (canonicalId === id && incoming === null) {
+      const result = await this.#write(id, decision.value, null);
+      if (result.status !== "applied") {
+        return result;
+      }
+    }
+    const otherId = canonicalId === id ? duplicate.id : id;
+    if (canonicalId === id && existing !== null) {
+      const result = await this.#write(duplicate.id, null, duplicate.value);
+      if (result.status !== "applied") {
+        return result;
+      }
+    }
+    if (!equal(await this.read(canonicalId), decision.value) || await this.read(otherId) !== null) {
       return { status: "deferred", reason: "card_changed" };
     }
+    return published ? { status: "applied", replacement: { id: otherId, replacementId: canonicalId } } : { status: "applied" };
+  }
+
+  async #write(id, value, current) {
     const cards = this.#storage.creditCards;
-    this.#applying.add(incoming.id);
+    const observed = await this.read(id);
+    if (cards !== this.#storage.creditCards) {
+      return { status: "deferred", reason: "card_changed" };
+    }
+    if (equal(observed, value)) {
+      return { status: "applied" };
+    }
+    if (!equal(observed, current)) {
+      return { status: "deferred", reason: "card_changed" };
+    }
+    this.#applying.add(id);
     try {
-      if (decision.value === null) {
-        await cards.remove(incoming.id);
-        if (await this.read(incoming.id) !== null) {
+      if (value === null) {
+        if (current !== null) {
+          await cards.remove(id);
+        }
+        if (await this.read(id) !== null) {
           return { status: "deferred", reason: "card_changed" };
         }
       } else {
-        const entry = { "cc-name": decision.value.name, "cc-number": decision.value.number };
-        if (decision.value.month !== null) {
-          entry["cc-exp-month"] = decision.value.month;
+        const entry = { "cc-name": value.name, "cc-number": value.number };
+        if (value.month !== null) {
+          entry["cc-exp-month"] = value.month;
         }
-        if (decision.value.year !== null) {
-          entry["cc-exp-year"] = decision.value.year;
+        if (value.year !== null) {
+          entry["cc-exp-year"] = value.year;
         }
         if (current) {
-          await cards.update(incoming.id, entry, false, { sourceSync: true });
+          await cards.update(id, entry, false, { sourceSync: true });
         } else {
-          let duplicate;
-          try {
-            const existing = typeof cards.findDuplicateGUID === "function" ? [] :
-              await Promise.all((await cards.getAll()).map(card => typeof cards._recordForMigrationExport === "function" ?
-                cards._recordForMigrationExport(card) : card));
-            duplicate = typeof cards.findDuplicateGUID === "function" ?
-              await cards.findDuplicateGUID({ ...entry, guid: incoming.id, version: cards.version }) : existing.find(card =>
-                card["cc-number"] === entry["cc-number"] &&
-                (card["cc-name"] ?? "") === entry["cc-name"] &&
-                (card["cc-exp-month"] ?? null) === (entry["cc-exp-month"] ?? null) &&
-                (card["cc-exp-year"] ?? null) === (entry["cc-exp-year"] ?? null))?.guid;
-          } catch {
-            throw new SyncProtocolError("cards_locked");
-          }
-          if (duplicate) {
-            return { status: "conflict", reason: "card_duplicate" };
-          }
           const now = Date.now();
           if (typeof cards.findDuplicateGUID !== "function" && typeof cards.addManyWithMeta === "function") {
             const [result] = await cards.addManyWithMeta([{
-              ...entry, guid: incoming.id, version: cards.version, timeCreated: now,
+              ...entry, guid: id, version: cards.version, timeCreated: now,
               _sync: { changeCounter: 0 },
             }]);
-            if (result?.guid !== incoming.id) {
+            if (result?.guid !== id) {
               throw new SyncProtocolError("card_apply_failed");
             }
             await cards.notifySyncApplied();
-          } else if (await cards.add({ ...entry, guid: incoming.id, version: cards.version,
+          } else if (await cards.add({ ...entry, guid: id, version: cards.version,
             timeCreated: now, timeLastModified: now, timeLastUsed: 0, timesUsed: 0 },
-          { sourceSync: true }) !== incoming.id) {
+          { sourceSync: true }) !== id) {
             throw new SyncProtocolError("card_apply_failed");
           }
         }
       }
       this.#ensureOpen();
       return { status: "applied" };
+    } catch (error) {
+      if (error instanceof SyncProtocolError) {
+        throw error;
+      }
+      throw new SyncProtocolError("card_apply_failed");
     } finally {
-      this.#applying.delete(incoming.id);
+      this.#applying.delete(id);
     }
   }
 

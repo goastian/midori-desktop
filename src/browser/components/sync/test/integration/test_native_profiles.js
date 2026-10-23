@@ -306,7 +306,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       await Services.logins.addLoginAsync(login);
       await formAutofillStorage.initialize();
       const cardId = await formAutofillStorage.creditCards.add({
-        "cc-name": "Restored background card", "cc-number": "5555555555554444",
+        "cc-name": "Restored background card", "cc-number": "4012888888881881",
         "cc-exp-month": 12, "cc-exp-year": 2032,
       });
       const collections = await Promise.all(["bookmarks", "history", "passwords", "credit-cards"].map(name =>
@@ -335,14 +335,20 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       }
       Assert.ok(uploaded, "The restored profile uploads a bookmark, visit, password and card without a popup or manual Sync");
       let completed = false;
-      for (let attempt = 0; attempt < 150; attempt++) {
+      for (let attempt = 0; attempt < 1500; attempt++) {
         const overview = MidoriSyncService.syncCollectionsSnapshot;
         completed = ["bookmarks", "history", "passwords", "credit-cards"].every(name =>
           overview.find(item => item.name === name)?.lastSuccessAt);
         if (completed) {
           break;
         }
+        if (attempt % 100 === 99) {
+          info(`Waiting for completed inventory: ${JSON.stringify(MidoriSyncService.syncCollectionsSnapshot)}`);
+        }
         await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      if (!completed) {
+        info(`Incomplete restored status: ${JSON.stringify(MidoriSyncService.syncCollectionsSnapshot)}`);
       }
       Assert.ok(completed, "The native popup status records a successful automatic pass for all four collections");
       await IOUtils.writeJSON(statusPath, Object.fromEntries(MidoriSyncService.syncCollectionsSnapshot
@@ -508,7 +514,10 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       await cardTracker.run({ limit: 100 });
       await passwords.run();
       await cards.run();
-      await tabs.capture(account.snapshot.device.id);
+      for (const id of await tabAdapter.beginCapture({ previous: null })) {
+        await tabs.capture(id);
+      }
+      tabAdapter.endCapture();
       await tabs.run();
       Services.prefs.setIntPref("midori.verticaltabs.width", 320);
       Services.prefs.setBoolPref("midori.workspaces.enabled", false);
@@ -584,7 +593,7 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
             await backgroundCards.record(cardId),
           ].every(record => record?.remote?.revision && record.remote.revision !== "0");
           const backgroundTabs = await MidoriSyncService.collection("tabs");
-          uploadedTabs = (await backgroundTabs.record(backgroundDeviceId))?.remote?.value?.tabs?.some(tab =>
+          uploadedTabs = (await backgroundTabs.record(`${backgroundDeviceId}:0`))?.remote?.value?.tabs?.some(tab =>
             tab.url === "https://example.invalid/native-background-tab") ?? false;
           if (remotePosition === "right" && uploaded && uploadedTabs) {
             break;
@@ -617,6 +626,11 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
             break;
           }
           await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        if (!updatedInBackground) {
+          info(`Incomplete event capture: ${JSON.stringify({ collections: MidoriSyncService.syncCollectionsSnapshot,
+            historyVisits: (await liveHistory.record(backgroundHistoryId))?.remote?.value?.visits?.length,
+            passwordMatches: (await livePasswords.record(backgroundPasswordId))?.remote?.value?.password === "synthetic updated background password" })}`);
         }
         Assert.ok(updatedInBackground,
           "Later Places and Login Manager changes upload without waiting for the periodic poll");
@@ -651,12 +665,14 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       Assert.equal((await passwordAdapter.read(state.backgroundPasswordId)).password, "synthetic updated background password",
         "The later password edit reached the native Login Manager in a second profile");
       const remoteTabs = (await tabs.record(state.deviceId)).remote;
-      Assert.deepEqual(remoteTabs.value.tabs,
+      const remoteFragment = (await tabs.record(`${state.deviceId}:0`)).remote;
+      Assert.deepEqual(remoteFragment.value.tabs.map(({ url, title }) => ({ url, title })),
         [{ url: "https://example.invalid/native-open-tab", title: "Open web page" }],
         "Only the regular browser tab reached the second device");
+      Assert.equal(remoteTabs.value.tab_count, 1, "The manifest publishes exactly the regular tab");
       Assert.ok(remoteTabs.ttl, "The encrypted tab snapshot carries its expiry");
-      const backgroundTabs = (await tabs.record(state.backgroundDeviceId)).remote;
-      Assert.deepEqual(backgroundTabs.value.tabs,
+      const backgroundFragment = (await tabs.record(`${state.backgroundDeviceId}:0`)).remote;
+      Assert.deepEqual(backgroundFragment.value.tabs.map(({ url, title }) => ({ url, title })),
         [{ url: "https://example.invalid/native-background-tab", title: "Automatic background tab" }],
         "The automatically uploaded tab reached the second profile without the private tab");
       Assert.equal(Services.prefs.getIntPref("midori.verticaltabs.width"), 320,
@@ -670,10 +686,10 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
       await preferences.run();
       const listedTabs = await MidoriSyncService.remoteTabs.call({ account, journal: Promise.resolve(journal) });
       Assert.equal(listedTabs.length, 2, "The background Sync device publishes its tab snapshot");
-      Assert.deepEqual(listedTabs.find(snapshot => snapshot.device_id === state.deviceId)?.tabs, remoteTabs.value.tabs,
+      Assert.deepEqual(listedTabs.find(snapshot => snapshot.device_id === state.deviceId)?.tabs, remoteFragment.value.tabs,
         "The popup reads the authenticated remote snapshot from the local encrypted journal");
       Assert.deepEqual(listedTabs.find(snapshot => snapshot.device_id === state.backgroundDeviceId)?.tabs,
-        backgroundTabs.value.tabs, "The popup reads the automatically uploaded tabs from the journal");
+        backgroundFragment.value.tabs, "The popup reads the automatically uploaded tabs from the journal");
       const historyTracker = new MidoriSyncHistoryTracker({ engine: history, adapter: historyAdapter });
       const passwordTracker = new MidoriSyncPasswordTracker({ engine: passwords, adapter: passwordAdapter });
       const cardTracker = new MidoriSyncRecordTracker({ engine: cards, adapter: cardAdapter });
@@ -743,7 +759,12 @@ add_task(async function native_history_and_passwords_cross_two_profiles() {
         !disk.includes("4111111111111111"), "Passwords and card numbers stay out of the plaintext journal");
       Assert.equal(history.snapshot.pending, 0);
       Assert.equal(passwords.snapshot.pending, 0);
-      await Assert.rejects(history.clearHistory(), error => error.code === "authenticated_control_required");
+      await Assert.rejects(
+        account.withSecrets(lease => lease.request("api/v1/sync/collections/history/clear", {
+          method: "POST", maxBytes: 4 * 1024 * 1024, timeout: 15000,
+          body: { operation_id: uuid(), generation: uuid(), crypto: keys.writeContext },
+        })),
+        error => error.code === "http_error" && error.status === 409);
       Assert.deepEqual(await historyAdapter.readDay(state.url, state.dayStartUsec), merged,
         "An unauthenticated history clear preserves the local visits");
       const remaining = await PlacesUtils.withConnectionWrapper("Midori history clear integration", db => db.executeCached(

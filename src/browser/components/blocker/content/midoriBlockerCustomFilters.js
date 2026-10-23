@@ -85,6 +85,9 @@ var gMidoriBlockerCustomFilters = {
   _status: null,
   _statusUpdateGeneration: 0,
   _textarea: null,
+  _closed: false,
+  _changedElsewhere: false,
+  _externalRefresh: Promise.resolve(),
 
   async init() {
     this._dialog = document.getElementById("customFiltersDialog");
@@ -156,12 +159,50 @@ var gMidoriBlockerCustomFilters = {
     });
 
     await this._load();
+    if (window.closed) {
+      return;
+    }
+    const changed = () => {
+      this._externalRefresh = this._externalRefresh.then(() => this._refreshExternal()).catch(error => {
+        console.error("[MidoriBlocker] Failed to refresh custom filters:", error);
+      });
+    };
+    const stop = MidoriBlockerService.observeCustomFilters(changed);
+    const enabledPref = "midori.blocker.customFiltersEnabled";
+    Services.prefs.addObserver(enabledPref, changed);
+    window.addEventListener("unload", () => {
+      this._closed = true;
+      stop();
+      Services.prefs.removeObserver(enabledPref, changed);
+    }, { once: true });
+    changed();
+  },
+
+  async _refreshExternal() {
+    if (this._closed || this._saving || this._loadFailed) {
+      return;
+    }
+    const snapshot = await MidoriBlockerService.readCustomFiltersSnapshot();
+    if (this._closed || this._saving) {
+      return;
+    }
+    const enabled = MidoriBlockerService.areCustomFiltersEnabled();
+    if (this._textarea.value === this._initialText && this._enabledCheckbox?.checked === this._initialEnabled) {
+      this._initialText = snapshot.text;
+      this._initialEnabled = enabled;
+      this._textarea.value = snapshot.text;
+      this._enabledCheckbox.checked = enabled;
+      this._changedElsewhere = false;
+    } else {
+      this._changedElsewhere = snapshot.text !== this._initialText || enabled !== this._initialEnabled;
+    }
+    this._updateStatus();
   },
 
   async _load() {
     this._setBusy(true);
     try {
-      this._initialText = await MidoriBlockerService.getCustomFiltersText();
+      this._initialText = (await MidoriBlockerService.readCustomFiltersSnapshot()).text;
       this._initialEnabled = MidoriBlockerService.areCustomFiltersEnabled();
       this._textarea.value = this._initialText;
       if (this._enabledCheckbox) {
@@ -239,6 +280,9 @@ var gMidoriBlockerCustomFilters = {
       if (dirty) {
         status += " Unsaved changes.";
       }
+      if (this._changedElsewhere) {
+        status += " Filters changed elsewhere. Your unsaved edits are kept.";
+      }
 
       this._status.removeAttribute("data-l10n-id");
       this._status.setAttribute("value", status);
@@ -268,6 +312,10 @@ var gMidoriBlockerCustomFilters = {
       );
       status = `${status} ${unsavedStatus}`.trim();
     }
+    if (this._changedElsewhere) {
+      status += ` ${await formatValue("midori-blocker-custom-filters-changed-elsewhere",
+        "Filters changed elsewhere. Your unsaved edits are kept.")}`;
+    }
 
     if (
       generation !== this._statusUpdateGeneration ||
@@ -289,8 +337,27 @@ var gMidoriBlockerCustomFilters = {
     this._setBusy(true);
     try {
       const normalized = normalizeCustomFiltersText(this._textarea.value);
-      const enabled = this._enabledCheckbox?.checked ?? true;
-      await MidoriBlockerService.setCustomFiltersText(normalized, { enabled });
+      const enabled = this._enabledCheckbox?.checked;
+      const [title, message] = await Promise.all([
+        formatValue("midori-blocker-custom-filters-concurrent-title", "Replace updated filters?"),
+        formatValue("midori-blocker-custom-filters-concurrent-message",
+          "Filters changed since you opened this editor. Replace those updates with your edits?"),
+      ]);
+      let cancelled = false;
+      await MidoriBlockerService.updateCustomFiltersText(current => {
+        if (this._textarea.value === this._initialText) {
+          return current.text;
+        }
+        if (current.text !== this._initialText && current.text !== normalized &&
+            !Services.prompt.confirm(window, title, message)) {
+          cancelled = true;
+          return null;
+        }
+        return normalized;
+      }, { enabled: enabled === this._initialEnabled ? undefined : enabled });
+      if (cancelled) {
+        return;
+      }
       this._initialText = normalized;
       this._initialEnabled = enabled;
       this._textarea.value = normalized;

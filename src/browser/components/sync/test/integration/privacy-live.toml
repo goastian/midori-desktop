@@ -1,0 +1,8 @@
+[DEFAULT]
+firefox-appdir = "browser"
+midori-appdir = "browser"
+head = "head_h2_profiles.js ../unit/head.js"
+prefs = ["network.trr.mode=5", "midori.blocker.enabled=false"]
+
+["test_privacy_live_backend.js"]
+requesttimeoutfactor = 8

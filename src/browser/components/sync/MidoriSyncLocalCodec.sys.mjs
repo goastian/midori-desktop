@@ -6,7 +6,7 @@ export const MAX_LOCAL_VALUE_BYTES = 4 * 1024 * 1024;
 export const MAX_LOCAL_CIPHERTEXT_BYTES = 6 * 1024 * 1024;
 export const SYNC_STORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const CHUNK_BYTES = 128 * 1024;
-const COLLECTIONS = new Set(["bookmarks", "history", "passwords", "credit-cards", "tabs", "browser-settings", "midori-privacy", "devices", "midori-tab"]);
+const COLLECTIONS = new Set(["bookmarks", "history", "passwords", "credit-cards", "form-history", "addresses", "workspaces", "site-permissions", "extensions", "extension-settings", "tabs", "browser-settings", "midori-privacy", "devices", "midori-tab"]);
 const KINDS = new Set(["metadata", "outbox", "inbox", "record", "conflict", "application"]);
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -24,6 +24,51 @@ export function validateSyncStoreEntry({ id, collection, kind, revision }) {
       !Number.isInteger(revision) || revision < 1 || revision > 2147483647) {
     throw new SyncStoreError("invalid_store_entry");
   }
+}
+
+function localContext(storeId, entry, generation, index) {
+  return { collection: entry.collection, id: `${storeId}/${entry.id}/${index}`, generation,
+    schema_version: 1, base_revision: String(entry.revision) };
+}
+
+async function openManifest(keys, storeId, entry, value) {
+  validateSyncStoreEntry(entry);
+  if (!SYNC_STORE_UUID.test(storeId) || typeof value !== "string" || value.length > MAX_LOCAL_CIPHERTEXT_BYTES) {
+    throw new SyncStoreError("store_corrupt");
+  }
+  let encoded;
+  try {
+    encoded = JSON.parse(value);
+  } catch {
+    throw new SyncStoreError("store_corrupt");
+  }
+  if (encoded?.version !== 1 || !SYNC_STORE_UUID.test(encoded.generation) || !Array.isArray(encoded.chunks) ||
+      encoded.chunks.length < 2 || encoded.chunks.length > 33 ||
+      encoded.chunks.some(chunk => typeof chunk !== "string" || chunk.length > 262144)) {
+    throw new SyncStoreError("store_corrupt");
+  }
+  const { collection, id, generation } = localContext(storeId, entry, encoded.generation, 0);
+  const bytes = await keys.openLocal({ collection, id, generation }, encoded.chunks[0]);
+  let manifest;
+  try {
+    if (bytes.length > 1024) {
+      throw new SyncStoreError("store_corrupt");
+    }
+    manifest = JSON.parse(decoder.decode(bytes));
+  } finally {
+    bytes.fill(0);
+  }
+  if (manifest?.version !== 1 || !SYNC_STORE_UUID.test(manifest.device) || manifest.kind !== entry.kind ||
+      manifest.revision !== entry.revision || !Number.isInteger(manifest.bytes) ||
+      manifest.bytes < 1 || manifest.bytes > MAX_LOCAL_VALUE_BYTES ||
+      manifest.chunks !== Math.ceil(manifest.bytes / CHUNK_BYTES) || encoded.chunks.length !== manifest.chunks + 1) {
+    throw new SyncStoreError("store_corrupt");
+  }
+  return { encoded, manifest };
+}
+
+export async function discoverSyncStoreDeviceId(keys, storeId, entry, value) {
+  return (await openManifest(keys, storeId, entry, value)).manifest.device;
 }
 
 export class MidoriSyncLocalCodec {
@@ -74,35 +119,8 @@ export class MidoriSyncLocalCodec {
   }
 
   async decode(entry, value) {
-    validateSyncStoreEntry(entry);
-    if (typeof value !== "string" || value.length > MAX_LOCAL_CIPHERTEXT_BYTES) {
-      throw new SyncStoreError("store_corrupt");
-    }
-    let encoded;
-    try {
-      encoded = JSON.parse(value);
-    } catch {
-      throw new SyncStoreError("store_corrupt");
-    }
-    if (encoded?.version !== 1 || !SYNC_STORE_UUID.test(encoded.generation) || !Array.isArray(encoded.chunks) ||
-        encoded.chunks.length < 2 || encoded.chunks.length > 33 ||
-        encoded.chunks.some(chunk => typeof chunk !== "string" || chunk.length > 262144)) {
-      throw new SyncStoreError("store_corrupt");
-    }
-    const manifestBytes = await this.#open(entry, encoded, 0);
-    let manifest;
-    try {
-      if (manifestBytes.length > 1024) {
-        throw new SyncStoreError("store_corrupt");
-      }
-      manifest = JSON.parse(decoder.decode(manifestBytes));
-    } finally {
-      manifestBytes.fill(0);
-    }
-    if (manifest?.version !== 1 || manifest.device !== this.#deviceId || manifest.kind !== entry.kind ||
-        manifest.revision !== entry.revision || !Number.isInteger(manifest.bytes) ||
-        manifest.bytes < 1 || manifest.bytes > MAX_LOCAL_VALUE_BYTES ||
-        manifest.chunks !== Math.ceil(manifest.bytes / CHUNK_BYTES) || encoded.chunks.length !== manifest.chunks + 1) {
+    const { encoded, manifest } = await openManifest(this.#keys, this.#storeId, entry, value);
+    if (manifest.device !== this.#deviceId) {
       throw new SyncStoreError("store_corrupt");
     }
     const bytes = new Uint8Array(manifest.bytes);
@@ -125,10 +143,7 @@ export class MidoriSyncLocalCodec {
   }
 
   #context(entry, generation, index) {
-    return {
-      collection: entry.collection, id: `${this.#storeId}/${entry.id}/${index}`, generation,
-      schema_version: 1, base_revision: String(entry.revision),
-    };
+    return localContext(this.#storeId, entry, generation, index);
   }
 
   #open(entry, encoded, index) {

@@ -1,0 +1,20 @@
+--- Policies.sys.mjs
++++ Policies.sys.mjs
+@@ -1904,7 +1904,7 @@
+               // Can't use the addon from getActiveAddons since it doesn't have uninstall.
+               const addon = await lazy.AddonManager.getAddonByID(extensionID);
+               try {
+-                await addon.uninstall();
++                await addon.uninstall(false, { syncSource: "policy" });
+                 addons.delete(extensionID);
+               } catch (e) {
+                 // This can fail for add-ons that can't be uninstalled.
+@@ -1939,7 +1939,7 @@
+               const addonToUninstall = await lazy.AddonManager.getAddonByID(
+                 addon.id
+               );
+-              await addonToUninstall.uninstall();
++              await addonToUninstall.uninstall(false, { syncSource: "policy" });
+               addons.delete(addon.id);
+             } catch (e) {
+               // This can fail for add-ons that can't be uninstalled.

@@ -1,0 +1,25 @@
+--- a/third_party/application-services/components/logins/src/logins.udl
++++ b/third_party/application-services/components/logins/src/logins.udl
+@@ -182,10 +182,22 @@
+     Login update([ByRef] string id, LoginEntry login);
+ 
+     [Throws=LoginsApiError]
++    Login update_with_meta([ByRef] string id, LoginEntryWithMeta login);
++
++    [Throws=LoginsApiError]
++    Login? update_if_current(LoginEntryWithMeta expected, LoginEntryWithMeta replacement);
++
++    [Throws=LoginsApiError]
++    Login? adopt_guid(LoginEntryWithMeta expected, LoginEntryWithMeta replacement);
++
++    [Throws=LoginsApiError]
+     Login add_or_update(LoginEntry login);
+ 
+     [Throws=LoginsApiError]
+     boolean delete([ByRef] string id);
++
++    [Throws=LoginsApiError]
++    boolean delete_if_current(LoginEntryWithMeta expected);
+ 
+     [Throws=LoginsApiError, Self=ByArc]
+     sequence<boolean> delete_many(sequence<string> ids);

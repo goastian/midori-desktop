@@ -39,7 +39,15 @@ pub struct Bookmark {
     #[serde(deserialize_with = "nullable")]
     url: Option<String>,
     date_added: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    keyword: Option<String>,
 }
+
+const MAX_TAGS: usize = 32;
+const MAX_TAG_UNITS: usize = 100;
+const MAX_KEYWORD_UNITS: usize = 100;
 
 fn nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
@@ -56,6 +64,8 @@ impl Drop for Bookmark {
         self.title.zeroize();
         self.url.zeroize();
         self.date_added.zeroize();
+        self.tags.zeroize();
+        self.keyword.zeroize();
     }
 }
 
@@ -101,6 +111,37 @@ impl Bookmark {
         }
         if self.kind == Kind::Separator && !self.title.is_empty() {
             return Err(BookmarkError);
+        }
+        self.validate_labels()
+    }
+
+    fn validate_labels(&self) -> Result<(), BookmarkError> {
+        if self.kind != Kind::Bookmark && (!self.tags.is_empty() || self.keyword.is_some()) {
+            return Err(BookmarkError);
+        }
+        if self.tags.len() > MAX_TAGS {
+            return Err(BookmarkError);
+        }
+        let mut previous: Option<&str> = None;
+        for tag in &self.tags {
+            if tag.is_empty()
+                || tag.encode_utf16().count() > MAX_TAG_UNITS
+                || tag.chars().any(char::is_control)
+                || tag.trim() != tag
+                || previous.is_some_and(|value| value >= tag.as_str())
+            {
+                return Err(BookmarkError);
+            }
+            previous = Some(tag);
+        }
+        if let Some(keyword) = &self.keyword {
+            if keyword.is_empty()
+                || keyword.encode_utf16().count() > MAX_KEYWORD_UNITS
+                || keyword.chars().any(|ch| ch.is_control() || ch.is_whitespace())
+                || keyword.to_lowercase() != *keyword
+            {
+                return Err(BookmarkError);
+            }
         }
         Ok(())
     }
@@ -354,6 +395,12 @@ fn reconcile(
             } else if remote_position != base_position && local_position != remote_position {
                 fields.push("position");
             }
+            if local.keyword == base.keyword {
+                merged.keyword.clone_from(&remote.keyword);
+            } else if remote.keyword != base.keyword && local.keyword != remote.keyword {
+                fields.push("keyword");
+            }
+            merged.tags = merge_tags(&base.tags, &local.tags, &remote.tags);
             merged.date_added = base.date_added.min(local.date_added).min(remote.date_added);
             if !fields.is_empty() {
                 Decision::Conflict {
@@ -370,6 +417,22 @@ fn reconcile(
         }
         _ => Decision::KeepLocal,
     }
+}
+
+fn merge_tags(base: &[String], local: &[String], remote: &[String]) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let base: BTreeSet<&String> = base.iter().collect();
+    let local: BTreeSet<&String> = local.iter().collect();
+    let remote: BTreeSet<&String> = remote.iter().collect();
+    let mut merged: BTreeSet<String> = BTreeSet::new();
+    for tag in local.union(&remote) {
+        let kept_by_both = local.contains(*tag) && remote.contains(*tag);
+        let added = !base.contains(*tag);
+        if kept_by_both || added {
+            merged.insert((*tag).clone());
+        }
+    }
+    merged.into_iter().collect()
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -422,6 +485,8 @@ mod tests {
             title: "Título ñ".into(),
             url: Some("https://example.invalid/one".into()),
             date_added: 1000,
+            tags: vec![],
+            keyword: None,
         }
     }
 
@@ -760,5 +825,70 @@ mod tests {
             process_request(&serde_json::to_vec(&request).unwrap()),
             Err(BookmarkError)
         );
+    }
+
+    #[test]
+    fn tags_merge_as_sets_and_keywords_as_scalars() {
+        let mut base = bookmark();
+        base.tags = vec!["alpha".into(), "beta".into()];
+        let mut local = base.clone();
+        local.tags = vec!["alpha".into(), "gamma".into()];
+        let mut remote = base.clone();
+        remote.tags = vec!["alpha".into(), "beta".into(), "delta".into()];
+        let Decision::Apply {
+            value: Some(merged),
+        } = reconcile(Some(&base), Some(&local), Some(&remote))
+        else {
+            panic!("Expected a merge");
+        };
+        assert_eq!(merged.tags, vec!["alpha", "delta", "gamma"]);
+        assert!(matches!(
+            reconcile(Some(&base), Some(&merged), Some(&remote)),
+            Decision::KeepLocal | Decision::Apply { .. }
+        ));
+        let mut local = base.clone();
+        local.keyword = Some("one".into());
+        let mut remote = base.clone();
+        remote.keyword = Some("two".into());
+        assert_eq!(
+            reconcile(Some(&base), Some(&local), Some(&remote)),
+            Decision::Conflict {
+                reason: "concurrent_fields",
+                fields: vec!["keyword"]
+            }
+        );
+        remote.keyword = None;
+        remote.tags = vec!["beta".into()];
+        assert!(matches!(
+            reconcile(Some(&base), Some(&local), Some(&remote)),
+            Decision::Apply { .. }
+        ));
+    }
+
+    #[test]
+    fn labels_are_canonical_and_only_belong_to_bookmarks() {
+        let id = "abcdefghijkl";
+        let mut value = bookmark();
+        value.tags = vec!["b".into(), "a".into()];
+        assert!(value.validate(id).is_err());
+        value.tags = vec!["a".into(), "a".into()];
+        assert!(value.validate(id).is_err());
+        value.tags = vec![" padded".into()];
+        assert!(value.validate(id).is_err());
+        value.tags = (0..33).map(|index| format!("tag{index:02}")).collect();
+        assert!(value.validate(id).is_err());
+        value.tags = vec!["work".into(), "ñandú".into()];
+        value.keyword = Some("Upper".into());
+        assert!(value.validate(id).is_err());
+        value.keyword = Some("two words".into());
+        assert!(value.validate(id).is_err());
+        value.keyword = Some("go".into());
+        assert!(value.validate(id).is_ok());
+        let mut folder = value.clone();
+        folder.kind = Kind::Folder;
+        folder.url = None;
+        assert!(folder.validate(id).is_err());
+        let encoded = serde_json::to_string(&bookmark()).unwrap();
+        assert!(!encoded.contains("tags") && !encoded.contains("keyword"));
     }
 }

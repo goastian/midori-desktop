@@ -1,0 +1,20 @@
+--- AddonManager.sys.mjs
++++ AddonManager.sys.mjs
+@@ -2658,6 +2658,17 @@
+         true,
+         "local"
+       );
++    }
++
++    if (options.beforePermissionPrompt) {
++      if (typeof options.beforePermissionPrompt !== "function") {
++        throw new TypeError("beforePermissionPrompt must be a function");
++      }
++      const promptHandler = install.promptHandler;
++      install.promptHandler = async (...args) => {
++        await options.beforePermissionPrompt();
++        return promptHandler(...args);
++      };
+     }
+ 
+     AddonManagerInternal.startInstall(browser, uri, install);

@@ -1,0 +1,295 @@
+--- XPIDatabase.sys.mjs
++++ XPIDatabase.sys.mjs
+@@ -1470,9 +1470,17 @@
+     return addonFor(this).isCompatibleWith(aAppVersion, aPlatformVersion);
+   }
+ 
+-  async uninstall(alwaysAllowUndo) {
++  get syncRemovalSource() {
++    try {
++      return XPIDatabase.getSyncAddonState(this.id)?.removal?.source ?? null;
++    } catch {
++      return "unreadable";
++    }
++  }
++
++  async uninstall(alwaysAllowUndo, { syncSource = "user" } = {}) {
+     let addon = addonFor(this);
+-    return XPIExports.XPIInstall.uninstallAddon(addon, alwaysAllowUndo);
++    return XPIExports.XPIInstall.uninstallAddon(addon, alwaysAllowUndo, syncSource);
+   }
+ 
+   cancelUninstall() {
+@@ -1789,6 +1797,7 @@
+   blocklistAttentionAddonIdsSet: new Set(),
+ 
+   _saveTask: null,
++  _syncMetadata: null,
+ 
+   // Saved error object if we fail to read an existing database
+   _loadError: null,
+@@ -1807,11 +1816,208 @@
+     return null;
+   },
+ 
+-  async _saveNow() {
++  _getSyncMetadata() {
++    const state = this._syncMetadata;
++    if (state === null) {
++      return null;
++    }
++    const validId = id =>
++      typeof id === "string" &&
++      id.length <= 255 &&
++      /^(?:\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}|[a-z0-9._-]*@[a-z0-9._-]+)$/i.test(
++        id
++      );
++    if (
++      !state ||
++      typeof state !== "object" ||
++      Array.isArray(state) ||
++      Object.keys(state).length !== 3 ||
++      state.version !== 1 ||
++      !Array.isArray(state.tracked) ||
++      state.tracked.length > 10000 ||
++      state.tracked.some(id => !validId(id)) ||
++      new Set(state.tracked).size !== state.tracked.length ||
++      !Array.isArray(state.removals) ||
++      state.removals.length > state.tracked.length ||
++      new Set(state.removals.map(item => item?.addonId)).size !==
++        state.removals.length ||
++      state.removals.some(
++        item =>
++          !item ||
++          Object.keys(item).length !== 3 ||
++          !state.tracked.includes(item.addonId) ||
++          !["user", "policy", "sync", "unknown"].includes(item.source) ||
++          typeof item.token !== "string" ||
++          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
++            item.token
++          )
++      )
++    ) {
++      throw new Error("Unsupported or invalid native Sync extension metadata");
++    }
++    return state;
++  },
++
++  getSyncAddonState(addonId) {
++    if (!this.initialized) {
++      throw new Error("The add-on database has not been initialized");
++    }
++    const state = this._getSyncMetadata();
++    if (!state?.tracked.includes(addonId)) {
++      return null;
++    }
++    return {
++      tracked: true,
++      removal: structuredClone(
++        state.removals.find(item => item.addonId === addonId) ?? null
++      ),
++    };
++  },
++
++  getSyncAddonByID(addonId) {
++    if (!this.initialized) {
++      throw new Error("The add-on database has not been initialized");
++    }
++    return (
++      [...this.addonDB.values()].find(
++        addon => addon.id === addonId && addon.visible
++      )?.wrapper ?? null
++    );
++  },
++
++  getSyncAddonStates() {
++    if (!this.initialized) {
++      throw new Error("The add-on database has not been initialized");
++    }
++    const state = this._getSyncMetadata();
++    return (state?.tracked ?? []).map(addonId => ({
++      addonId,
++      removal: structuredClone(
++        state.removals.find(item => item.addonId === addonId) ?? null
++      ),
++    }));
++  },
++
++  hasSyncAddonTracking(addonId) {
++    try {
++      return this._getSyncMetadata()?.tracked.includes(addonId) ?? false;
++    } catch {
++      return false;
++    }
++  },
++
++  _isSyncAddonPortable(addon) {
++    const value = addon?.wrapper ?? addon;
++    return (
++      value?.type === "extension" &&
++      value.isSyncable === true &&
++      !value.isSystem &&
++      !value.isBuiltin &&
++      !value.temporarilyInstalled &&
++      [
++        lazy.AddonManager.SIGNEDSTATE_SIGNED,
++        lazy.AddonManager.SIGNEDSTATE_PRIVILEGED,
++      ].includes(value.signedState)
++    );
++  },
++
++  async trackSyncAddon(addonId) {
++    await this.asyncLoadDB();
++    const addon = await this.getAddonByID(addonId);
++    const state = this._getSyncMetadata();
++    if (
++      (addon && !this._isSyncAddonPortable(addon)) ||
++      (!addon && !state?.tracked.includes(addonId))
++    ) {
++      throw new Error("Cannot track a non-portable native extension");
++    }
++    if (!state?.tracked.includes(addonId)) {
++      if ((state?.tracked.length ?? 0) >= 10000) {
++        throw new Error("Native Sync extension tracking limit exceeded");
++      }
++      this._syncMetadata = {
++        version: 1,
++        tracked: [...(state?.tracked ?? []), addonId],
++        removals: [...(state?.removals ?? [])],
++      };
++      this._getSyncMetadata();
++    }
++    await this.saveSyncChanges();
++  },
++
++  async prepareSyncAddonRemoval(addon, source) {
++    const state = this._getSyncMetadata();
++    if (!state?.tracked.includes(addon.id)) {
++      return;
++    }
++    if (!["user", "policy", "sync", "unknown"].includes(source)) {
++      throw new Error("Invalid native extension removal source");
++    }
++    if (source === "user" && !this._isSyncAddonPortable(addon)) {
++      source = "unknown";
++    }
++    const token = Services.uuid.generateUUID().toString().slice(1, -1);
++    this._syncMetadata = {
++      ...state,
++      removals: [
++        ...state.removals.filter(item => item.addonId !== addon.id),
++        { addonId: addon.id, source, token },
++      ],
++    };
++    try {
++      await this.saveSyncChanges();
++    } catch (error) {
++      if (this.getSyncAddonState(addon.id)?.removal?.token === token) {
++        this.clearSyncAddonRemoval(addon.id);
++        this.saveChanges();
++      }
++      throw error;
++    }
++    if (
++      !addon.inDatabase ||
++      this.addonDB.get(addon._key) !== addon ||
++      this.getSyncAddonState(addon.id)?.removal?.token !== token
++    ) {
++      throw new Error("Native extension changed before removal");
++    }
++  },
++
++  clearSyncAddonRemoval(addonId) {
++    if (!this.hasSyncAddonTracking(addonId)) {
++      return;
++    }
++    const state = this._getSyncMetadata();
++    if (state.removals.some(item => item.addonId === addonId)) {
++      this._syncMetadata = {
++        ...state,
++        removals: state.removals.filter(item => item.addonId !== addonId),
++      };
++    }
++  },
++
++  async saveSyncChanges() {
++    await this.asyncLoadDB();
++    if (XPIExports.XPIProvider._closing) {
++      throw new Error("Cannot persist Sync changes during add-on shutdown");
++    }
++    return this._saveNow({ failOnError: true });
++  },
++
++  _saveNow({ failOnError = false } = {}) {
++    const saving = (this._saveTail ?? Promise.resolve()).then(() =>
++      this._writeNow(failOnError)
++    );
++    this._saveTail = saving.catch(() => {});
++    return saving;
++  },
++
++  async _writeNow(failOnError) {
+     try {
+       await IOUtils.writeJSON(this.jsonFilePath, this, {
+         tmpPath: `${this.jsonFilePath}.tmp`,
++        flush: failOnError,
+       });
++      this._saveError = null;
+ 
+       if (!this._schemaVersionSet) {
+         // Update the XPIDB schema version preference the first time we
+@@ -1833,7 +2039,11 @@
+       logger.warn("Failed to save XPI database", error);
+       this._saveError = error;
+ 
+-      if (!DOMException.isInstance(error) || error.name !== "AbortError") {
++      if (
++        failOnError ||
++        !DOMException.isInstance(error) ||
++        error.name !== "AbortError"
++      ) {
+         throw error;
+       }
+     }
+@@ -1868,11 +2078,10 @@
+ 
+   async finalize() {
+     // handle the "in memory only" and "saveChanges never called" cases
+-    if (!this._saveTask) {
+-      return;
+-    }
+-
+-    await this._saveTask.finalize();
++    if (this._saveTask) {
++      await this._saveTask.finalize();
++    }
++    await this._saveTail;
+   },
+ 
+   /**
+@@ -1893,6 +2102,9 @@
+         addon => !addon.location.isTemporary
+       ),
+     };
++    if (this._syncMetadata !== null) {
++      toSave.midoriSync = this._syncMetadata;
++    }
+     return toSave;
+   },
+ 
+@@ -2005,6 +2217,7 @@
+       Glean.xpiDatabase.parses.stopAndAccumulate(timerId);
+       parseTimer.done();
+       this.addonDB = addonDB;
++      this._syncMetadata = aInputAddons.midoriSync ?? null;
+       logger.debug("Successfully read XPI database");
+       this.initialized = true;
+     } catch (e) {
+@@ -2784,6 +2997,7 @@
+    *        the AddonInternal that was added to the database
+    */
+   addToDatabase(aAddon, aPath) {
++    this.clearSyncAddonRemoval(aAddon.id);
+     aAddon.addedToDatabase();
+     aAddon.path = aPath;
+     this.addonDB.set(aAddon._key, aAddon);

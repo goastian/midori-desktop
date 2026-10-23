@@ -9,6 +9,7 @@ const TITLE_ATTRIBUTES = ["label", "titlechanged"];
 
 export class MidoriSyncHints {
   #onChange;
+  #onTabsChange;
   #prefs;
   #windowMediator;
   #observers;
@@ -18,11 +19,12 @@ export class MidoriSyncHints {
   #prefNames = new Set();
   #active = false;
 
-  constructor({ onChange, prefs = Services.prefs, windowMediator = Services.wm,
+  constructor({ onChange, onTabsChange = onChange, prefs = Services.prefs, windowMediator = Services.wm,
     observers = Services.obs,
     isPrivate = win => ChromeUtils.importESModule("resource://gre/modules/PrivateBrowsingUtils.sys.mjs")
       .PrivateBrowsingUtils.isWindowPrivate(win) }) {
     this.#onChange = onChange;
+    this.#onTabsChange = onTabsChange;
     this.#prefs = prefs;
     this.#windowMediator = windowMediator;
     this.#observers = observers;
@@ -74,7 +76,7 @@ export class MidoriSyncHints {
         !event.detail?.changed?.some(name => TITLE_ATTRIBUTES.includes(name)))) {
       return;
     }
-    this.#onChange();
+    this.#onTabsChange();
   }
 
   close() {

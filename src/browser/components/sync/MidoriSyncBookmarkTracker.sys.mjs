@@ -78,7 +78,9 @@ export class MidoriSyncBookmarkTracker {
         ++progress.queued;
       } else if (result.status === "pending") {
         ++progress.pending;
-        this.#remember(id);
+        if (!result.durable) {
+          this.#remember(id);
+        }
       } else if (result.status === "conflict") {
         ++progress.conflicts;
       } else if (result.status !== "unchanged") {
@@ -89,7 +91,7 @@ export class MidoriSyncBookmarkTracker {
       for (const [id, revision] of [...this.#dirty].slice(0, limit)) {
         const result = await this.#engine.capture(id);
         record(id, result);
-        if (result.status !== "pending" && this.#dirty.get(id) === revision) {
+        if ((result.status !== "pending" || result.durable) && this.#dirty.get(id) === revision) {
           this.#dirty.delete(id);
         }
       }

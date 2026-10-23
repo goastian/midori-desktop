@@ -1,0 +1,45 @@
+--- a/toolkit/components/extensions/ExtensionStorageSync.sys.mjs
++++ b/toolkit/components/extensions/ExtensionStorageSync.sys.mjs
+@@ -118,6 +118,28 @@
+     return await this.callRustStoreFn("getBytesInUse", extension, keys);
+   }
+ 
++  async readSyncSnapshot(extensionId) {
++    const store = await this.#getRustStore();
++    return store.getSyncSnapshot(extensionId);
++  }
++
++  async replaceSyncSnapshot(extensionId, expected, desired) {
++    const store = await this.#getRustStore();
++    const changes = await store.compareAndReplace(
++      extensionId,
++      expected,
++      desired
++    );
++    if (changes === null) {
++      return false;
++    }
++    const parsed = this._parseRustStorageValueChangeList(changes);
++    if (Object.keys(parsed).length) {
++      this.notifyListeners(extensionId, parsed);
++    }
++    return true;
++  }
++
+   addOnChangedListener(extension, listener) {
+     let listeners = this.listeners.get(extension.id) || new Set();
+     listeners.add(listener);
+@@ -147,6 +169,13 @@
+   }
+ 
+   notifyListeners(extId, changes) {
++    if (Object.keys(changes).length) {
++      Services.obs.notifyObservers(
++        null,
++        "midori-sync-extension-settings-changed",
++        extId
++      );
++    }
+     let listeners = this.listeners.get(extId) || new Set();
+ 
+     if (listeners) {

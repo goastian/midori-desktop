@@ -53,7 +53,7 @@ export async function openSyncRecord(keys, expected, record) {
   const state = keys.snapshot;
   if (state.custody === "client" && (!state.activeKeyId || envelope.key_id !== state.activeKeyId)) {
     const retired = state.activeKeyId && state.rotation?.phase === "complete" &&
-      state.rotation.source_key_ids?.includes(envelope.key_id) &&
+      (state.rotation.source_key_ids?.includes(envelope.key_id) || keys.hasLocalKey?.(envelope.key_id) === true) &&
       Object.entries(expected).every(([name, value]) => envelope.context?.[name] === value);
     throw new SyncProtocolError(retired ? "record_key_retired" : "record_authentication_failed");
   }

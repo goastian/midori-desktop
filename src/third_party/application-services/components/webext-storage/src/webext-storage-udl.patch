@@ -1,0 +1,15 @@
+--- a/third_party/application-services/components/webext-storage/src/webext-storage.udl
++++ b/third_party/application-services/components/webext-storage/src/webext-storage.udl
+@@ -43,6 +43,12 @@
+ 
+     [Throws=WebExtStorageApiError]
+     StorageChanges set([ByRef] string ext_id, JsonValue val);
++
++    [Throws=WebExtStorageApiError]
++    JsonValue get_sync_snapshot([ByRef] string ext_id);
++
++    [Throws=WebExtStorageApiError]
++    StorageChanges? compare_and_replace([ByRef] string ext_id, JsonValue expected, JsonValue desired);
+ 
+     [Throws=WebExtStorageApiError]
+     JsonValue get([ByRef] string ext_id, JsonValue keys);

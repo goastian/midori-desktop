@@ -1,0 +1,142 @@
+--- a/toolkit/components/passwordmgr/storage-rust.sys.mjs
++++ b/toolkit/components/passwordmgr/storage-rust.sys.mjs
+@@ -62,16 +62,22 @@
+ 
+ // Convert a LoginInfo to a LoginEntryWithMeta, to be used for migrating
+ // records between legacy and Rust storage.
+-const loginInfoToLoginEntryWithMeta = loginInfo => {
++const loginInfoToLoginEntryWithMeta = (loginInfo, forUpdate = false) => {
+   const now = Date.now();
+   return new LoginEntryWithMeta({
+     entry: loginInfoToLoginEntry(loginInfo),
+     meta: new LoginMeta({
+       id: loginInfo.guid || Services.uuid.generateUUID().toString(),
+-      timesUsed: loginInfo.timesUsed || 1,
+-      timeCreated: loginInfo.timeCreated || now,
+-      timeLastUsed: loginInfo.timeLastUsed || now,
+-      timePasswordChanged: loginInfo.timePasswordChanged || now,
++      timesUsed: forUpdate ? loginInfo.timesUsed : loginInfo.timesUsed || 1,
++      timeCreated: forUpdate
++        ? loginInfo.timeCreated
++        : loginInfo.timeCreated || now,
++      timeLastUsed: forUpdate
++        ? loginInfo.timeLastUsed
++        : loginInfo.timeLastUsed || now,
++      timePasswordChanged: forUpdate
++        ? loginInfo.timePasswordChanged
++        : loginInfo.timePasswordChanged || now,
+       timeLastBreachAlertDismissed:
+         loginInfo.timeLastBreachAlertDismissed || null,
+     }),
+@@ -183,9 +189,22 @@
+     return logins.map(loginToLoginInfo);
+   }
+ 
+-  async update(id, loginInfo) {
+-    const loginEntry = loginInfoToLoginEntry(loginInfo);
+-    const login = await this.#store.update(id, loginEntry);
++  async update(id, loginInfo, fromSync = false, expectedLogin = null) {
++    let login;
++    if (fromSync) {
++      const update = loginInfo.guid === id ? "updateIfCurrent" : "adoptGuid";
++      login = await this.#store[update](
++        loginInfoToLoginEntryWithMeta(expectedLogin, true),
++        loginInfoToLoginEntryWithMeta(loginInfo, true)
++      );
++      if (!login) {
++        const error = new Error("Login identity changed");
++        error.code = "login_identity_changed";
++        throw error;
++      }
++    } else {
++      login = await this.#store.update(id, loginInfoToLoginEntry(loginInfo));
++    }
+     return loginToLoginInfo(login);
+   }
+ 
+@@ -231,7 +250,20 @@
+       .map(({ login }) => loginToLoginInfo(login));
+   }
+ 
+-  async delete(id) {
++  async delete(id, expectedLogin = null) {
++    if (expectedLogin) {
++      if (
++        id !== expectedLogin.guid ||
++        !(await this.#store.deleteIfCurrent(
++          loginInfoToLoginEntryWithMeta(expectedLogin, true)
++        ))
++      ) {
++        const error = new Error("Login identity changed");
++        error.code = "login_identity_changed";
++        throw error;
++      }
++      return true;
++    }
+     return await this.#store.delete(id);
+   }
+ 
+@@ -701,12 +733,16 @@
+     return storedLogin;
+   }
+ 
+-  async modifyLoginAsync(oldLogin, newLoginData, _fromSync) {
++  async modifyLoginAsync(oldLogin, newLoginData, fromSync = false) {
+     try {
+       const oldStoredLogin = await this.#findLoginWithSameCredentials(oldLogin);
+ 
+       if (!oldStoredLogin) {
+-        throw new Error("No matching logins");
++        const error = new Error("No matching logins");
++        if (fromSync) {
++          error.code = "login_identity_changed";
++        }
++        throw error;
+       }
+ 
+       const idToModify = oldStoredLogin.guid;
+@@ -719,6 +755,7 @@
+       // Check if the new GUID is duplicate.
+       if (
+         newLogin.guid != idToModify &&
++        !fromSync &&
+         (await this.#storageAdapter.get(newLogin.guid))
+       ) {
+         throw new Error("specified GUID already exists");
+@@ -746,7 +783,9 @@
+ 
+       const updatedLogin = await this.#storageAdapter.update(
+         idToModify,
+-        newLogin
++        newLogin,
++        fromSync,
++        oldLogin
+       );
+ 
+       // The Rust `update` deliberately treats an edit as "not a use" and leaves
+@@ -1024,13 +1063,20 @@
+     return [foundLogins, foundIds];
+   }
+ 
+-  async removeLoginAsync(login, _fromSync) {
++  async removeLoginAsync(login, fromSync = false) {
+     const storedLogin = await this.#findLoginWithSameCredentials(login);
+     if (!storedLogin) {
+-      throw new Error("No matching logins");
+-    }
+-
+-    await this.#storageAdapter.delete(storedLogin.guid);
++      const error = new Error("No matching logins");
++      if (fromSync) {
++        error.code = "login_identity_changed";
++      }
++      throw error;
++    }
++
++    await this.#storageAdapter.delete(
++      storedLogin.guid,
++      fromSync ? login : null
++    );
+ 
+     if (this.#isActive) {
+       Glean.pwmgr.numSavedPasswords.set(

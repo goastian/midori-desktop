@@ -1,0 +1,79 @@
+--- a/toolkit/components/passwordmgr/storage-json.sys.mjs
++++ b/toolkit/components/passwordmgr/storage-json.sys.mjs
+@@ -44,6 +44,19 @@
+   oldLogin.QueryInterface(Ci.nsILoginMetaInfo).QueryInterface(Ci.nsILoginInfo);
+   newLogin.QueryInterface(Ci.nsILoginMetaInfo).QueryInterface(Ci.nsILoginInfo);
+   return SYNCABLE_LOGIN_FIELDS.some(prop => oldLogin[prop] != newLogin[prop]);
++}
++
++function assertSyncLoginCurrent(expected, current, identityMatches) {
++  if (
++    !identityMatches ||
++    !current ||
++    expected.guid !== current.guid ||
++    isSyncableChange(expected, current)
++  ) {
++    const error = new Error("Login identity changed");
++    error.code = "login_identity_changed";
++    throw error;
++  }
+ }
+ 
+ // Returns true if the argument is for the FxA login.
+@@ -361,6 +374,9 @@
+     this._store.ensureDataReady();
+ 
+     let [idToDelete, storedLogin] = this._getIdForLogin(login);
++    if (fromSync) {
++      assertSyncLoginCurrent(login, storedLogin, Boolean(idToDelete));
++    }
+     if (!idToDelete) {
+       throw new Error("No matching logins");
+     }
+@@ -394,6 +410,9 @@
+     this._store.ensureDataReady();
+ 
+     let [idToModify, oldStoredLogin] = this._getIdForLogin(oldLogin);
++    if (fromSync) {
++      assertSyncLoginCurrent(oldLogin, oldStoredLogin, Boolean(idToModify));
++    }
+     if (!idToModify) {
+       throw new Error("No matching logins");
+     }
+@@ -408,7 +427,11 @@
+       newLogin.guid != oldStoredLogin.guid &&
+       !this._isGuidUnique(newLogin.guid)
+     ) {
+-      throw new Error("specified GUID already exists");
++      const error = new Error("specified GUID already exists");
++      if (fromSync) {
++        error.code = "login_identity_changed";
++      }
++      throw error;
+     }
+ 
+     // Look for an existing entry in case key properties changed.
+@@ -441,6 +464,23 @@
+     // Get the encrypted value of the username and password.
+     let [encUsername, encPassword, encType, encUnknownFields] =
+       this._encryptLogin(newLogin);
++
++    if (fromSync) {
++      const [currentId, current] = this._getIdForLogin(oldLogin);
++      assertSyncLoginCurrent(
++        oldLogin,
++        current,
++        currentId === idToModify &&
++          (newLogin.guid === oldLogin.guid || this._isGuidUnique(newLogin.guid))
++      );
++      for (const field of [
++        "timesUsed",
++        "timeLastUsed",
++        "timeLastBreachAlertDismissed",
++      ]) {
++        newLogin[field] = current[field];
++      }
++    }
+ 
+     for (let loginItem of this._store.data.logins) {
+       if (loginItem.id == idToModify && !loginItem.deleted) {

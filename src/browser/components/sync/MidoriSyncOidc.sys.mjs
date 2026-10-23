@@ -222,7 +222,7 @@ export function receiveOidcCallback(state) {
     },
     onStopListening() {},
   });
-  timer.initWithCallback(() => settle(null, "oidc_timeout"), 180000, Ci.nsITimer.TYPE_ONE_SHOT);
+  timer.initWithCallback(() => settle(null, "oidc_timeout"), 600000, Ci.nsITimer.TYPE_ONE_SHOT);
   return { redirectURI, promise, cancel: () => settle(null, "cancelled") };
 }
 

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { MidoriSyncVault, SyncVaultError, MAX_VAULT_FILE_BYTES } from "./MidoriSyncVault.sys.mjs";
+import { MidoriSyncSavedCustody } from "./MidoriSyncSavedCustody.sys.mjs";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -80,7 +81,9 @@ export async function createProfileSyncVault() {
     if (error.name !== "NotFoundError") {
       throw new SyncVaultError("vault_corrupt");
     }
-    if (await store.read() !== null) {
+    const savedKeys = PathUtils.join(directory, "saved-keys");
+    if (await store.read() !== null ||
+        (await IOUtils.exists(savedKeys)) && (await IOUtils.getChildren(savedKeys)).length) {
       throw new SyncVaultError("vault_corrupt");
     }
     profileId = createId();
@@ -91,6 +94,10 @@ export async function createProfileSyncVault() {
   if (!UUID.test(profileId)) {
     throw new SyncVaultError("vault_corrupt");
   }
+  return profileVault(store, profileId, createId);
+}
+
+function profileVault(store, profileId, createId = () => Services.uuid.generateUUID().toString().slice(1, -1)) {
   const keyStore = Cc["@mozilla.org/security/oskeystore;1"].getService(Ci.nsIOSKeyStore);
   return new MidoriSyncVault({
     store,
@@ -99,5 +106,59 @@ export async function createProfileSyncVault() {
     createId,
     authorize: options => authorizeSyncSecretStore(keyStore, () =>
       Cc["@mozilla.org/security/internalkeytoken;1"].createInstance(Ci.nsIPKCS11Token), options),
+  });
+}
+
+export function createProfileSyncSavedCustody() {
+  const root = PathUtils.join(PathUtils.profileDir, "midori-sync");
+  const pathFor = async (storeId, archiveId = null) => {
+    if (!UUID.test(storeId) || (archiveId !== null && !UUID.test(archiveId))) {
+      throw new SyncVaultError("saved_custody_invalid");
+    }
+    let directory = root;
+    for (const part of ["saved-keys", storeId, ...(archiveId === null ? [] : [archiveId])]) {
+      directory = PathUtils.join(directory, part);
+      if (await IOUtils.exists(directory)) {
+        const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+        file.initWithPath(directory);
+        if (file.isSymlink() || !file.isDirectory()) {
+          throw new SyncVaultError("saved_custody_invalid");
+        }
+      }
+    }
+    return directory;
+  };
+  return new MidoriSyncSavedCustody({
+    async vaultFactory(storeId, archiveId) {
+      const directory = await pathFor(storeId, archiveId);
+      const bytes = await IOUtils.read(PathUtils.join(root, "profile-id"), { maxBytes: 37 });
+      const profileId = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      if (!UUID.test(profileId)) { throw new SyncVaultError("vault_corrupt"); }
+      const store = createSyncVaultFileStore(directory);
+      const check = async () => {
+        await pathFor(storeId, archiveId);
+        for (const name of ["account.json", "account.json.tmp"]) {
+          const path = PathUtils.join(directory, name);
+          if (!(await IOUtils.exists(path))) { continue; }
+          const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+          file.initWithPath(path);
+          if (file.isSymlink() || !file.isFile()) { throw new SyncVaultError("saved_custody_invalid"); }
+        }
+      };
+      return profileVault({
+        async read() { await check(); return store.read(); },
+        async write(record) { await check(); return store.write(record); },
+      }, profileId);
+    },
+    async list(storeId, { after, limit }) {
+      if ((after !== null && !UUID.test(after)) || !Number.isInteger(limit) || limit < 1 || limit > 25) {
+        throw new SyncVaultError("saved_custody_invalid");
+      }
+      const directory = await pathFor(storeId);
+      if (!(await IOUtils.exists(directory))) { return []; }
+      const ids = (await IOUtils.getChildren(directory)).map(path => PathUtils.filename(path))
+        .filter(id => UUID.test(id) && (after === null || id > after)).sort();
+      return ids.slice(0, limit);
+    },
   });
 }

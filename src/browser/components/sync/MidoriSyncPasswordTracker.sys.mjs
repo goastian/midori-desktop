@@ -33,8 +33,10 @@ export class MidoriSyncRecordTracker {
       this.#onChange();
       if (event.rescan) {
         this.#rescan = true;
+        ++this.#revision;
       } else if (this.#dirty.size >= MAX_HINTS && !this.#dirty.has(event.id)) {
         this.#rescan = true;
+        ++this.#revision;
       } else {
         this.#dirty.delete(event.id);
         this.#dirty.set(event.id, ++this.#revision);
@@ -51,6 +53,7 @@ export class MidoriSyncRecordTracker {
   requestInventory() {
     this.#ensureOpen();
     this.#rescan = true;
+    ++this.#revision;
   }
 
   async run({ limit = 100 } = {}) {
@@ -70,7 +73,7 @@ export class MidoriSyncRecordTracker {
         ++progress.queued;
       } else if (result.status === "pending") {
         ++progress.pending;
-        if (this.#dirty.size < MAX_HINTS) {
+        if (!result.durable && this.#dirty.size < MAX_HINTS) {
           this.#dirty.set(id, ++this.#revision);
         }
       } else if (result.status === "conflict") {
@@ -87,9 +90,10 @@ export class MidoriSyncRecordTracker {
         }
       }
       if (!this.#inventory && this.#rescan) {
+        const revision = this.#revision;
         const ids = await this.#adapter.listIds();
         this.#ensureOpen();
-        this.#rescan = false;
+        this.#rescan = this.#revision !== revision;
         this.#inventory = { ids, index: 0, stage: "local", after: null };
       }
       while (this.#inventory && progress.checked < limit) {

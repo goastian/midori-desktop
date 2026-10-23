@@ -1,0 +1,34 @@
+{
+    "generator": "PHP sodium; fixed public test keys and nonces, never user data",
+    "scope": [
+        "https://sync.example.invalid/",
+        "https://accounts.example.invalid/",
+        "fixture-usuario-ñ"
+    ],
+    "local_secret": "2525252525252525252525252525252525252525252525252525252525252525",
+    "state": {
+        "crypto_state_version": 1,
+        "epoch": "00000000-0000-4000-8000-000000000002",
+        "revision": "7",
+        "mode": "native",
+        "active_key_id": "EREREREREREREREREREREQ",
+        "keys": [
+            {
+                "key_id": "EREREREREREREREREREREQ",
+                "encrypted_bundle": "{\"bundle_version\":2,\"crypto_version\":2,\"key_id\":\"EREREREREREREREREREREQ\",\"kdf\":{\"algorithm\":\"argon2id13\",\"memory_kib\":65536,\"iterations\":3,\"parallelism\":1},\"salt\":\"EBESExQVFhcYGRobHB0eHw==\",\"nonce\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYX\",\"ciphertext\":\"E8P0Np583fR3XcORe2GerIYuUoQbdXUFxOSVrP8XPB8JD/n8RHk033Dz+jgCurmz\"}"
+            }
+        ],
+        "incompatible_sessions": 0,
+        "migration_required": false,
+        "server_recovery": false,
+        "custody": "client",
+        "identity_key": {
+            "key_id": "HR0dHR0dHR0dHR0dHR0dHQ",
+            "encrypted_bundle": "{\"bundle_version\":2,\"crypto_version\":2,\"key_id\":\"HR0dHR0dHR0dHR0dHR0dHQ\",\"kdf\":{\"algorithm\":\"argon2id13\",\"memory_kib\":65536,\"iterations\":3,\"parallelism\":1},\"salt\":\"EBESExQVFhcYGRobHB0eHw==\",\"nonce\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYX\",\"ciphertext\":\"F8fwMpp42fBzWceVf2WaqIIqVoAfcXEBwOCRqPsTOBsT0XT2jjqt3vf8ANLXHxcg\"}"
+        },
+        "registry_auth_version": 2,
+        "rotation": null,
+        "registry_auth": "777190a32accedc2fda05c394d3b4fd63b3ca80ea8bb2e4bfb8c2e5a1db21e9a"
+    },
+    "canonical": "[\"MidoriSync/key-registry/v2\",\"00000000-0000-4000-8000-000000000002\",\"7\",\"EREREREREREREREREREREQ\",{\"key_id\":\"HR0dHR0dHR0dHR0dHR0dHQ\",\"encrypted_bundle\":\"{\\\"bundle_version\\\":2,\\\"crypto_version\\\":2,\\\"key_id\\\":\\\"HR0dHR0dHR0dHR0dHR0dHQ\\\",\\\"kdf\\\":{\\\"algorithm\\\":\\\"argon2id13\\\",\\\"memory_kib\\\":65536,\\\"iterations\\\":3,\\\"parallelism\\\":1},\\\"salt\\\":\\\"EBESExQVFhcYGRobHB0eHw==\\\",\\\"nonce\\\":\\\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYX\\\",\\\"ciphertext\\\":\\\"F8fwMpp42fBzWceVf2WaqIIqVoAfcXEBwOCRqPsTOBsT0XT2jjqt3vf8ANLXHxcg\\\"}\"},[{\"key_id\":\"EREREREREREREREREREREQ\",\"encrypted_bundle\":\"{\\\"bundle_version\\\":2,\\\"crypto_version\\\":2,\\\"key_id\\\":\\\"EREREREREREREREREREREQ\\\",\\\"kdf\\\":{\\\"algorithm\\\":\\\"argon2id13\\\",\\\"memory_kib\\\":65536,\\\"iterations\\\":3,\\\"parallelism\\\":1},\\\"salt\\\":\\\"EBESExQVFhcYGRobHB0eHw==\\\",\\\"nonce\\\":\\\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYX\\\",\\\"ciphertext\\\":\\\"E8P0Np583fR3XcORe2GerIYuUoQbdXUFxOSVrP8XPB8JD/n8RHk033Dz+jgCurmz\\\"}\"}],\"client\",false,null]"
+}

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { normalizeSyncServer } from "./MidoriSyncServerConfig.sys.mjs";
+import { negotiateSyncCollections } from "./MidoriSyncProtocol.sys.mjs";
 
 export class SyncConnectionError extends Error {
   constructor(code) {
@@ -85,9 +86,18 @@ export function validateSyncCapabilities(value) {
     }
     authentication = Object.freeze(authentication);
   }
+  const collectionSupport = negotiateSyncCollections(value);
   return Object.freeze({
     nativeReady: value.native_ready,
-    creditCards: value.features.includes("credit_cards"),
+    collectionSupport,
+    creditCards: collectionSupport["credit-cards"],
+    formHistory: collectionSupport["form-history"],
+    addresses: collectionSupport.addresses,
+    workspaces: collectionSupport.workspaces,
+    deviceEnrollment: value.crypto?.enrollment === true,
+    keyReset: value.crypto?.reset === true,
+    pageByteBudget: value.features.includes("change_page_byte_budget"),
+    registryAuthVersion: value.client_recovery?.registry_auth_version === 2 ? 2 : 0,
     authentication,
     pageRecords: Math.min(limits.change_page_records, 100),
     pageBytes: Math.min(limits.change_page_payload_bytes, 4 * 1024 * 1024),
@@ -103,24 +113,30 @@ export class MidoriSyncConnection {
   #prepareServerChange;
   #server;
   #capabilities = null;
+  #capabilitiesCheckedAt = null;
+  #now;
   #listeners = new Set();
   #probe = null;
+  #probeInteractive = false;
+  #refresh = null;
   #transport = null;
   #closed = false;
   #error = null;
 
-  constructor({ baseURL, allowLocalHTTP = false, transportFactory, saveServer, prepareServerChange = () => () => {} }) {
+  constructor({ baseURL, allowLocalHTTP = false, transportFactory, saveServer, prepareServerChange = () => () => {}, now = Date.now }) {
     this.#server = normalizeSyncServer(baseURL, { allowLocalHTTP });
     this.#transportFactory = transportFactory;
     this.#saveServer = saveServer;
     this.#prepareServerChange = prepareServerChange;
+    this.#now = now;
   }
 
   get snapshot() {
     return Object.freeze({
       server: this.#server,
       capabilities: this.#capabilities,
-      checking: this.#probe !== null,
+      registryAuthVersion: this.#capabilities?.registryAuthVersion ?? 0,
+      checking: this.#probeInteractive,
       error: this.#error,
     });
   }
@@ -133,6 +149,80 @@ export class MidoriSyncConnection {
     return () => this.#listeners.delete(listener);
   }
 
+  async getCapabilities(server) {
+    this.#ensureServer(server);
+    const state = await this.refreshCapabilities({ background: true });
+    this.#ensureServer(server);
+    if (!state.capabilities) {
+      throw new SyncConnectionError(state.error ?? "incompatible_server");
+    }
+    return state.capabilities;
+  }
+
+  refreshCapabilities({ maxAge = 0, background = false } = {}) {
+    if (this.#closed) {
+      return Promise.reject(new SyncConnectionError("cancelled"));
+    }
+    if (!Number.isInteger(maxAge) || maxAge < 0 || maxAge > 300000) {
+      return Promise.reject(new SyncConnectionError("invalid_capability_query"));
+    }
+    if (this.#refresh) {
+      return this.#refresh;
+    }
+    if (this.#probe) {
+      return Promise.reject(new SyncConnectionError("busy"));
+    }
+    const age = this.#now() - this.#capabilitiesCheckedAt;
+    if (this.#capabilitiesCheckedAt !== null && age >= 0 && age < maxAge) {
+      return Promise.resolve(this.snapshot);
+    }
+    const server = this.#server;
+    const transport = this.#transportFactory(server.baseURL, { allowLocalHTTP: server.requiresLoopbackTransport });
+    let resolve, reject;
+    const pending = new Promise((res, rej) => { resolve = res; reject = rej; });
+    this.#refresh = pending;
+    this.#probe = transport;
+    this.#probeInteractive = !background;
+    this.#error = null;
+    this.#notify();
+    const work = (async () => {
+      try {
+        const { data } = await transport.request("api/v1/capabilities", { maxBytes: 32768, timeout: 10000 });
+        if (this.#closed || this.#probe !== transport || this.#server !== server) {
+          throw new SyncConnectionError("cancelled");
+        }
+        this.#capabilities = validateSyncCapabilities(data);
+        this.#capabilitiesCheckedAt = this.#now();
+        this.#error = null;
+      } catch (error) {
+        if (this.#probe === transport) {
+          if (error.code === "incompatible_server") {
+            this.#invalidateCapabilities();
+          }
+          this.#error = ["incompatible_server", "timeout", "network_error", "redirect_rejected",
+            "invalid_response", "response_too_large", "rate_limited", "server_error", "cancelled"].includes(error.code)
+            ? error.code : "connection_failed";
+        }
+        throw error;
+      } finally {
+        transport.close();
+        if (this.#probe === transport) {
+          this.#probe = null;
+          this.#probeInteractive = false;
+          this.#notify();
+        }
+      }
+    })();
+    const finish = () => {
+      if (this.#refresh === pending) {
+        this.#refresh = null;
+      }
+    };
+    pending.then(finish, finish);
+    work.then(() => resolve(this.snapshot), reject);
+    return pending;
+  }
+
   async checkAndUseServer(baseURL, { allowLocalHTTP = false } = {}) {
     if (this.#closed) {
       throw new SyncConnectionError("cancelled");
@@ -141,6 +231,7 @@ export class MidoriSyncConnection {
     this.cancelCheck();
     const transport = this.#transportFactory(server.baseURL, { allowLocalHTTP });
     this.#probe = transport;
+    this.#probeInteractive = true;
     this.#error = null;
     this.#notify();
     let release;
@@ -151,27 +242,33 @@ export class MidoriSyncConnection {
         throw new SyncConnectionError("cancelled");
       }
       const { data } = await transport.request("api/v1/capabilities", { maxBytes: 32768, timeout: 10000 });
-      const capabilities = validateSyncCapabilities(data);
       if (this.#probe !== transport || this.#closed) {
         throw new SyncConnectionError("cancelled");
       }
+      const capabilities = validateSyncCapabilities(data);
       this.#saveServer({ baseURL: server.baseURL, allowLocalHTTP: server.requiresLoopbackTransport });
       this.#transport?.close();
       this.#transport = null;
       this.#server = server;
       this.#capabilities = capabilities;
+      this.#capabilitiesCheckedAt = this.#now();
     } catch (error) {
       if (this.#probe === transport) {
-        this.#error = ["incompatible_server", "timeout", "network_error", "redirect_rejected",
-          "invalid_response", "response_too_large", "rate_limited", "server_error", "cancelled",
-          "account_connected", "busy"].includes(error.code)
-          ? error.code : "connection_failed";
+        if (error.code === "incompatible_server" && server.baseURL === this.#server.baseURL) {
+          this.#invalidateCapabilities();
+        } else {
+          this.#error = ["incompatible_server", "timeout", "network_error", "redirect_rejected",
+            "invalid_response", "response_too_large", "rate_limited", "server_error", "cancelled",
+            "account_connected", "busy"].includes(error.code)
+            ? error.code : "connection_failed";
+        }
       }
       throw error;
     } finally {
       transport.close();
       if (this.#probe === transport) {
         this.#probe = null;
+        this.#probeInteractive = false;
         this.#notify();
       }
       release?.();
@@ -182,6 +279,8 @@ export class MidoriSyncConnection {
   cancelCheck() {
     const probe = this.#probe;
     this.#probe = null;
+    this.#probeInteractive = false;
+    this.#refresh = null;
     probe?.close();
     if (probe) {
       this.#notify();
@@ -204,6 +303,19 @@ export class MidoriSyncConnection {
     this.#transport?.close();
     this.#transport = null;
     this.#listeners.clear();
+  }
+
+  #ensureServer(server) {
+    if (this.#closed || server?.baseURL !== this.#server.baseURL ||
+        server?.requiresLoopbackTransport !== this.#server.requiresLoopbackTransport) {
+      throw new SyncConnectionError("cancelled");
+    }
+  }
+
+  #invalidateCapabilities() {
+    this.#capabilities = null;
+    this.#capabilitiesCheckedAt = this.#now();
+    this.#error = "incompatible_server";
   }
 
   #notify() {

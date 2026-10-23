@@ -3,12 +3,27 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { SyncStoreError, SYNC_STORE_UUID } from "./MidoriSyncLocalCodec.sys.mjs";
-import { recoverLocalSyncKeys } from "./MidoriSyncKeys.sys.mjs";
+import { localSyncKeyIds, recoverLocalSyncKeys } from "./MidoriSyncKeys.sys.mjs";
 import { validateSyncCollectionState } from "./MidoriSyncCollection.sys.mjs";
 import { validSyncRecordId, validateRemoteRecord } from "./MidoriSyncProtocol.sys.mjs";
 import { syncJournalEntryId } from "./MidoriSyncIndex.sys.mjs";
 
-const SYNC_COLLECTIONS = new Set(["bookmarks", "history", "passwords", "credit-cards", "tabs", "browser-settings"]);
+const SYNC_COLLECTIONS = new Set(["bookmarks", "history", "passwords", "credit-cards", "form-history", "addresses", "workspaces", "tabs", "browser-settings"]);
+
+export async function assertSyncAccountSettled(options) {
+  if (typeof options.assertSavedCopies !== "function") {
+    throw new SyncStoreError("sync_disconnect_unavailable");
+  }
+  await assertSyncStoreSettled(options);
+  let keyIds;
+  try {
+    keyIds = localSyncKeyIds(options.localKeys);
+  } catch {
+    throw new SyncStoreError("sync_disconnect_unavailable");
+  }
+  await options.assertSavedCopies({ directory: options.directory, activeId: options.identity?.store_id ?? null,
+    keyIds, scope: options.scope });
+}
 
 export async function assertSyncStoreSettled({
   identity, localKeys, scope, deviceId, directory, openStore, entryId = syncJournalEntryId,
@@ -48,7 +63,7 @@ export async function assertSyncStoreSettled({
             throw new SyncStoreError("sync_disconnect_unavailable");
           }
           const state = validateSyncCollectionState(entry.value);
-          if (state.pending || state.conflicts || state.deferred || state.inbox || state.activeApplication || state.ack || state.fence) {
+          if (state.pending || state.localChanges || state.conflicts || state.deferred || state.inbox || state.activeApplication || state.ack || state.fence) {
             throw new SyncStoreError("sync_pending_operations");
           }
           states.add(entry.collection);
@@ -60,7 +75,7 @@ export async function assertSyncStoreSettled({
               (value.applying != null && !SYNC_STORE_UUID.test(value.applying))) {
             throw new SyncStoreError("sync_disconnect_unavailable");
           }
-          if (value.pending || value.blocked || value.applying) {
+          if (value.pending || value.localChange || value.blocked || value.applying) {
             throw new SyncStoreError("sync_pending_operations");
           }
           validateRemoteRecord(value.remote);

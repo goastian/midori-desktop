@@ -1,15 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const RESOURCE_BUNDLE_PATH = [
-  "midori",
-  "browser",
-  "components",
-  "blocker",
-  "assets",
-  "resources",
-  "resources.json",
-];
+const RESOURCE_BUNDLE_URL =
+  "resource://midori/blocker/assets/resources/resources.json";
 const ENGINE_CONTRACT_ID = "@astian.org/midori-blocker-engine;1";
 
 let gResourcesJson;
@@ -55,12 +48,9 @@ function assertRedirectResource({ rule, url, requestType, expectedMime }) {
 }
 
 add_setup(async function setup() {
-  const repoDir = Services.env.get("MOZ_DEVELOPER_REPO_DIR");
-  Assert.ok(repoDir, "xpcshell should expose the checkout path");
-
-  gResourcesJson = await IOUtils.readUTF8(
-    PathUtils.join(repoDir, ...RESOURCE_BUNDLE_PATH)
-  );
+  const response = await fetch(RESOURCE_BUNDLE_URL);
+  Assert.ok(response.ok, "the packaged resource bundle should be readable");
+  gResourcesJson = await response.text();
   const resources = JSON.parse(gResourcesJson);
   Assert.ok(Array.isArray(resources), "resource bundle should be an array");
   Assert.ok(

@@ -10,7 +10,40 @@ const GUID = /^[A-Za-z0-9_-]{12}$/;
 export const SYNC_BOOKMARK_ROOTS = Object.freeze(["menu________", "toolbar_____", "unfiled_____", "mobile______"]);
 const RESERVED_GUIDS = new Set([...SYNC_BOOKMARK_ROOTS, "root________", "tags________", "new_________",
   "menu_______v", "toolbar____v", "unfiled____v", "mobile_____v"]);
-const CAPTURE_EVENTS = ["bookmark-added", "bookmark-removed", "bookmark-moved", "bookmark-title-changed", "bookmark-url-changed", "bookmark-time-changed", "bookmark-guid-changed"];
+const CAPTURE_EVENTS = ["bookmark-added", "bookmark-removed", "bookmark-moved", "bookmark-title-changed", "bookmark-url-changed", "bookmark-time-changed", "bookmark-guid-changed", "bookmark-tags-changed", "bookmark-keyword-changed"];
+const STRUCTURE = ["version", "kind", "parentGuid", "index", "title", "url", "dateAdded"];
+const MAX_TAGS = 32;
+const MAX_LABEL_UNITS = 100;
+
+function codePointCompare(left, right) {
+  const a = Array.from(left, character => character.codePointAt(0));
+  const b = Array.from(right, character => character.codePointAt(0));
+  for (let index = 0; index < Math.min(a.length, b.length); index++) {
+    if (a[index] !== b[index]) {
+      return a[index] - b[index];
+    }
+  }
+  return a.length - b.length;
+}
+
+function canonicalTags(tags) {
+  const unique = new Set();
+  for (const tag of tags ?? []) {
+    if (typeof tag === "string" && tag && tag.length <= MAX_LABEL_UNITS && tag.trim() === tag && !/\p{Cc}/u.test(tag)) {
+      unique.add(tag);
+    }
+  }
+  return [...unique].sort(codePointCompare).slice(0, MAX_TAGS);
+}
+
+function validKeyword(keyword) {
+  return typeof keyword === "string" && keyword && keyword.length <= MAX_LABEL_UNITS &&
+    !/[\p{Cc}\s]/u.test(keyword) && keyword === keyword.toLowerCase();
+}
+
+function structure(value) {
+  return value === null ? null : Object.fromEntries(STRUCTURE.map(field => [field, value[field]]));
+}
 
 export class MidoriSyncBookmarks {
   #model;
@@ -18,11 +51,16 @@ export class MidoriSyncBookmarks {
   #closed = false;
   #abort = new AbortController();
   #observers;
+  #tagging;
+  #keywords;
   #subscriptions = new Set();
 
   constructor({ bookmarks = PlacesUtils.bookmarks, observers = PlacesUtils.observers,
+    tagging = PlacesUtils.tagging, keywords = PlacesUtils.keywords,
     model = Cc["@astian.org/midori-sync-crypto;1"].createInstance(Ci.nsIMidoriSyncCrypto) } = {}) {
     this.#bookmarks = bookmarks;
+    this.#tagging = tagging;
+    this.#keywords = keywords;
     this.#observers = observers;
     this.#model = model;
   }
@@ -152,6 +190,29 @@ export class MidoriSyncBookmarks {
     return outcome.status === "applied" ? { ...outcome, position: plan.position, effects: plan.effects } : outcome;
   }
 
+  async repair(value, reason, id) {
+    this.#ensureOpen();
+    if (!value || !["bookmark", "folder", "separator"].includes(value.kind)) {
+      return null;
+    }
+    const tail = async parentGuid => {
+      const last = await this.#bookmarks.fetch({ parentGuid, index: this.#bookmarks.DEFAULT_INDEX });
+      this.#ensureOpen();
+      return last ? last.index + 1 : 0;
+    };
+    if (reason === "bookmark_parent_missing") {
+      const parentGuid = this.#bookmarks.unfiledGuid;
+      return { ...value, parentGuid, index: await tail(parentGuid) };
+    }
+    if (reason === "bookmark_position_pending") {
+      const current = id ? await this.#bookmarks.fetch(id) : null;
+      this.#ensureOpen();
+      const count = await tail(value.parentGuid) - (current?.parentGuid === value.parentGuid ? 1 : 0);
+      return value.index > count ? { ...value, index: count } : null;
+    }
+    return null;
+  }
+
   positionOf(id, value) {
     if (!GUID.test(id) || RESERVED_GUIDS.has(id) || !value || !["bookmark", "folder", "separator"].includes(value.kind) ||
         !GUID.test(value.parentGuid) || !Number.isInteger(value.index) || value.index < 0 || value.index > 1000000) {
@@ -166,7 +227,64 @@ export class MidoriSyncBookmarks {
 
   #same(left, right) {
     return left === null || right === null ? left === right :
-      ["version", "kind", "parentGuid", "index", "title", "url", "dateAdded"].every(field => left[field] === right[field]);
+      STRUCTURE.every(field => left[field] === right[field]) &&
+      (left.keyword ?? null) === (right.keyword ?? null) &&
+      JSON.stringify(left.tags ?? []) === JSON.stringify(right.tags ?? []);
+  }
+
+  #sameStructure(left, right) {
+    return left !== null && right !== null && STRUCTURE.every(field => left[field] === right[field]);
+  }
+
+  async #labels(item) {
+    if (item.type !== this.#bookmarks.TYPE_BOOKMARK) {
+      return {};
+    }
+    const labels = {};
+    const tags = canonicalTags(this.#tagging.getTagsForURI(Services.io.newURI(item.url.href)));
+    if (tags.length) {
+      labels.tags = tags;
+    }
+    const entry = await this.#keywords.fetch({ url: item.url.href });
+    this.#ensureOpen();
+    if (entry && !entry.postData && validKeyword(entry.keyword)) {
+      labels.keyword = entry.keyword;
+    }
+    return labels;
+  }
+
+  async #applyLabels(value, current) {
+    if (value.kind !== "bookmark") {
+      return;
+    }
+    const uri = Services.io.newURI(value.url);
+    const wanted = canonicalTags(value.tags);
+    const existing = canonicalTags(this.#tagging.getTagsForURI(uri));
+    const previous = current?.tags ?? [];
+    const remove = existing.filter(tag => previous.includes(tag) && !wanted.includes(tag));
+    const add = wanted.filter(tag => !existing.includes(tag));
+    if (remove.length) {
+      this.#tagging.untagURI(uri, remove, PlacesUtils.bookmarks.SOURCES.SYNC);
+    }
+    if (add.length) {
+      this.#tagging.tagURI(uri, add, PlacesUtils.bookmarks.SOURCES.SYNC);
+    }
+    const keyword = value.keyword ?? null;
+    const currentKeyword = current?.keyword ?? null;
+    if (keyword !== currentKeyword) {
+      if (currentKeyword && (current.url === value.url || keyword === null)) {
+        await this.#keywords.remove({ keyword: currentKeyword, source: PlacesUtils.bookmarks.SOURCES.SYNC });
+      }
+      if (keyword !== null) {
+        const owner = await this.#keywords.fetch(keyword);
+        this.#ensureOpen();
+        if (owner && owner.url.href !== value.url) {
+          return;
+        }
+        await this.#keywords.insert({ keyword, url: value.url, source: PlacesUtils.bookmarks.SOURCES.SYNC });
+      }
+    }
+    this.#ensureOpen();
   }
 
   async #inputs(incoming, previous) {
@@ -212,7 +330,7 @@ export class MidoriSyncBookmarks {
     try {
       const position = value === null ? null : await this.#position(id, current, value);
       const options = {
-        midoriCondition: { version: 1, guid: id, expected: current, position },
+        midoriCondition: { version: 1, guid: id, expected: structure(current), position },
         midoriSignal: this.#abort.signal,
       };
       this.#ensureOpen();
@@ -228,11 +346,14 @@ export class MidoriSyncBookmarks {
         if (value.kind === "bookmark") {
           info.url = value.url;
         }
-        if (current) {
-          await this.#bookmarks.update(info, options);
-        } else {
-          await this.#bookmarks.insert(info, options);
+        if (!this.#sameStructure(current, value)) {
+          if (current) {
+            await this.#bookmarks.update(info, options);
+          } else {
+            await this.#bookmarks.insert(info, options);
+          }
         }
+        await this.#applyLabels(value, current);
       }
       this.#ensureOpen();
       return { status: "applied" };
@@ -290,7 +411,7 @@ export class MidoriSyncBookmarks {
     return this.validate(item.guid, {
       version: 1, kind, parentGuid: item.parentGuid, index: item.index,
       title: item.title ?? "", url: kind === "bookmark" ? item.url.href : null,
-      dateAdded: item.dateAdded.getTime(),
+      dateAdded: item.dateAdded.getTime(), ...await this.#labels(item),
     });
   }
 

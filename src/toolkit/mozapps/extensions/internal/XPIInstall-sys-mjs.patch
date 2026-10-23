@@ -1,0 +1,30 @@
+--- XPIInstall.sys.mjs
++++ XPIInstall.sys.mjs
+@@ -5018,7 +5018,7 @@
+    * @throws if the addon cannot be uninstalled because it is in an install
+    *         location that does not allow it
+    */
+-  async uninstallAddon(aAddon, aForcePending) {
++  async uninstallAddon(aAddon, aForcePending, aSyncSource = "unknown") {
+     if (!aAddon.inDatabase) {
+       throw new Error(
+         `Cannot uninstall addon ${aAddon.id} because it is not installed`
+@@ -5041,6 +5041,10 @@
+ 
+     if (aForcePending && aAddon.pendingUninstall) {
+       throw new Error("Add-on is already marked to be uninstalled");
++    }
++
++    if (XPIExports.XPIDatabase.hasSyncAddonTracking(aAddon.id)) {
++      await XPIExports.XPIDatabase.prepareSyncAddonRemoval(aAddon, aSyncSource);
+     }
+ 
+     if (aAddon._updateCheck) {
+@@ -5160,6 +5164,7 @@
+       throw new Error("Add-on is not marked to be uninstalled");
+     }
+ 
++    XPIExports.XPIDatabase.clearSyncAddonRemoval(aAddon.id);
+     XPIExports.XPIDatabase.setAddonProperties(aAddon, {
+       pendingUninstall: false,
+     });

@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXTRA_JS_MODULES += [
+    "MidoriWorkspaceCatalog.sys.mjs",
     "MidoriWorkspaceModel.sys.mjs",
     "MidoriWorkspaces.sys.mjs",
     "WorkspaceTabIndex.sys.mjs",

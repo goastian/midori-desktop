@@ -230,6 +230,11 @@ for RETIRED_ADDON in "${RETIRED_ADDONS[@]}"; do
     fi
 done
 
+MOZBUILD_FILE="$EXTENSIONS_DIR/moz.build"
+if [[ -f "$MOZBUILD_FILE" ]]; then
+    sed -i -E '/^[[:space:]]*"midori-privacy",?[[:space:]]*$/d; /^[[:space:]]*DIRS[[:space:]]*\+=[[:space:]]*\[[[:space:]]*"midori-privacy"[[:space:]]*\][[:space:]]*$/d' "$MOZBUILD_FILE"
+fi
+
 # Read addons from amelia.json
 if [[ ${#REQUESTED_ADDONS[@]} -gt 0 ]]; then
     for REQUESTED_ADDON in "${REQUESTED_ADDONS[@]}"; do
@@ -251,6 +256,7 @@ mkdir -p "$TMP_DIR"
 
 # Track which addons we process for moz.build registration
 PROCESSED_ADDONS=()
+DOWNLOADED_FILES=()
 
 for ADDON_KEY in $ADDON_KEYS; do
     echo ""
@@ -354,6 +360,7 @@ for ADDON_KEY in $ADDON_KEYS; do
         elif [[ -n "$DOWNLOAD_URL" ]]; then
             echo "INFO: Downloading from $DOWNLOAD_URL"
             TEMP_FILE="$TMP_DIR/$ADDON_KEY.zip"
+            DOWNLOADED_FILES+=("$TEMP_FILE")
             if ! curl -sL -o "$TEMP_FILE" "$DOWNLOAD_URL"; then
                 echo "ERROR: Download failed for $ADDON_KEY. Keeping existing files."
                 DOWNLOAD_URL=""
@@ -496,7 +503,6 @@ for ADDON_KEY in $ADDON_KEYS; do
 done
 
 # Register addons in moz.build if not already present
-MOZBUILD_FILE="$EXTENSIONS_DIR/moz.build"
 if [[ -f "$MOZBUILD_FILE" ]]; then
     CHANGED=false
     for ADDON in "${PROCESSED_ADDONS[@]}"; do
@@ -517,7 +523,9 @@ if [[ -f "$MOZBUILD_FILE" ]]; then
 fi
 
 # Cleanup temp dir
-rm -rf "$TMP_DIR"
+for DOWNLOADED_FILE in "${DOWNLOADED_FILES[@]}"; do
+    rm -f -- "$DOWNLOADED_FILE"
+done
 
 echo ""
 echo "=== Addon integration complete ==="

@@ -2,11 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setL10n } from "./MidoriSyncUi.sys.mjs";
+import { SYNC_DESKTOP_COLLECTIONS } from "./MidoriSyncProtocol.sys.mjs";
+import { createSyncExtensionsPanel } from "./MidoriSyncExtensionsPanel.sys.mjs";
+
 export function createSyncDataPanel(doc, service, openTab = () => {}) {
   const element = (tag, id) => {
     const node = doc.createElementNS("http://www.w3.org/1999/xhtml", tag);
     if (id) {
-      doc.l10n.setAttributes(node, id);
+      setL10n(doc.l10n, node, id);
     }
     return node;
   };
@@ -23,15 +27,36 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
   collectionList.className = "midori-sync-collection-list";
   const collectionRows = new Map();
   const timeFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-  for (const name of ["bookmarks", "history", "passwords", "credit-cards", "tabs", "browser-settings"]) {
+  for (const name of SYNC_DESKTOP_COLLECTIONS) {
     const row = element("li");
     row.dataset.collection = name;
     const label = element("span", `midori-sync-collection-${name}`);
+    const selection = element("input");
+    selection.type = "checkbox";
+    selection.className = "midori-sync-switch";
+    selection.dataset.collectionSelection = name;
+    const container = element("label");
+    container.append(label, selection);
+    row.append(container);
+    selection.addEventListener("change", () => {
+      try {
+        service.setCollectionEnabled(name, selection.checked);
+      } catch {}
+      refresh();
+    });
     const state = element("span");
     const last = element("small");
-    row.append(label, state, last);
+    row.append(state, last);
+    if (["site-permissions", "extensions", "extension-settings"].includes(name)) {
+      const helpId = name === "site-permissions" ? "midori-sync-permissions-help" : `midori-sync-${name}-help`;
+      const help = element("small", helpId);
+      help.id = helpId;
+      help.className = "midori-sync-collection-help";
+      selection.setAttribute("aria-describedby", help.id);
+      row.append(help);
+    }
     collectionList.append(row);
-    collectionRows.set(name, { state, last });
+    collectionRows.set(name, { state, last, selection });
   }
   const sync = element("button", "midori-sync-data-now");
   sync.type = "button";
@@ -55,7 +80,12 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
   remoteStatus.setAttribute("role", "status");
   const remoteList = element("div");
   remoteList.id = "midori-sync-remote-tabs";
-  section.append(heading, status, collectionList, sync, clear, warning, actions, clearStatus,
+  const advanced = element("details");
+  advanced.className = "midori-sync-advanced";
+  const advancedTitle = element("summary", "midori-sync-advanced-summary");
+  advanced.append(advancedTitle, clear, warning, actions, clearStatus);
+  const extensions = SYNC_DESKTOP_COLLECTIONS.includes("extensions") ? createSyncExtensionsPanel(doc, service) : null;
+  section.append(heading, status, collectionList, element("p", "midori-sync-selection-help"), sync, ...(extensions ? [extensions.section] : []), advanced,
     remoteHeading, remoteStatus, remoteList);
   let visible = false;
   let working = false;
@@ -69,6 +99,8 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
   let remoteRequest = 0;
   let fixedBody = null;
   let statusId = null;
+  let keysRefreshGeneration = null;
+  let remoteSignature = null;
   const loadRemote = async () => {
     if (!visible || typeof service.remoteTabs !== "function") {
       return;
@@ -78,10 +110,15 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
     try {
       const snapshots = await service.remoteTabs();
       if (!visible || version !== currentVersion || remoteRequest !== currentRequest ||
-          !["connected", "renewal-required"].includes(service.account.snapshot.status) ||
+          !["connected", "renewal-required", "local"].includes(service.account.snapshot.status) ||
           service.keys.snapshot.status !== "ready") {
         return;
       }
+      const signature = JSON.stringify(snapshots);
+      if (signature === remoteSignature) {
+        return;
+      }
+      remoteSignature = signature;
       remoteList.replaceChildren();
       for (const snapshot of snapshots) {
         const device = element("section");
@@ -105,7 +142,7 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
         if (snapshot.tabs.length > 10) {
           const more = element("button");
           more.type = "button";
-          doc.l10n.setAttributes(more, "midori-sync-tabs-show-more", { count: snapshot.tabs.length - 10 });
+          setL10n(doc.l10n, more, "midori-sync-tabs-show-more", { count: snapshot.tabs.length - 10 });
           more.addEventListener("click", () => {
             for (const tab of snapshot.tabs.slice(10)) {
               addTab(tab);
@@ -116,23 +153,120 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
         }
         if (snapshot.omitted) {
           const omitted = element("p");
-          doc.l10n.setAttributes(omitted, "midori-sync-tabs-omitted", { count: snapshot.omitted });
+          setL10n(doc.l10n, omitted, "midori-sync-tabs-omitted", { count: snapshot.omitted });
           device.append(omitted);
         }
         remoteList.append(device);
       }
-      doc.l10n.setAttributes(remoteStatus, snapshots.length ? "midori-sync-tabs-available" : "midori-sync-tabs-empty");
-    } catch {
+      setL10n(doc.l10n, remoteStatus, snapshots.length ? "midori-sync-tabs-available" : "midori-sync-tabs-empty");
+    } catch (failure) {
       if (visible && version === currentVersion && remoteRequest === currentRequest) {
-        doc.l10n.setAttributes(remoteStatus, "midori-sync-tabs-unavailable");
+        if (["busy", "cancelled"].includes(failure.code)) {
+          remoteLoaded = false;
+        } else {
+          setL10n(doc.l10n, remoteStatus, "midori-sync-tabs-unavailable");
+        }
       }
     }
   };
+  const refreshCollectionRows = (collectionSnapshots, accountBusy) => {
+    collectionList.hidden = !collectionSnapshots;
+    if (collectionSnapshots) {
+      for (const snapshot of collectionSnapshots) {
+        const row = collectionRows.get(snapshot.name);
+        if (!row) {
+          continue;
+        }
+        if (row.selection) {
+          row.selection.checked = snapshot.enabled !== false;
+          row.selection.disabled = accountBusy ||
+            typeof service.setCollectionEnabled !== "function";
+        }
+        const waitingStatus = { "site-permissions": "permissions-waiting", extensions: "extensions-waiting", "extension-settings": "extension-settings-waiting" };
+        const waiting = Object.hasOwn(waitingStatus, snapshot.name) && snapshot.status === "more" && snapshot.deferred > 0;
+        const count = waiting ? snapshot.deferred : snapshot.status === "conflict" ? snapshot.conflicts : snapshot.pending;
+        const stateId = waiting ? waitingStatus[snapshot.name] : snapshot.status === "error" && ["server_error", "network_error", "timeout", "rate_limited", "form_history_disabled", "native_write_failed"].includes(snapshot.error) ?
+          snapshot.error.replaceAll("_", "-") : snapshot.status;
+        const stateKey = `${stateId}:${count}`;
+        if (row.state.dataset.key !== stateKey) {
+          row.state.dataset.key = stateKey;
+          setL10n(doc.l10n, row.state, `midori-sync-collection-status-${stateId}`, { count });
+        }
+        row.last.hidden = !snapshot.lastSuccessAt;
+        if (snapshot.lastSuccessAt && row.last.dataset.timestamp !== String(snapshot.lastSuccessAt)) {
+          row.last.dataset.timestamp = String(snapshot.lastSuccessAt);
+          const time = timeFormatter.format(new Date(snapshot.lastSuccessAt));
+          setL10n(doc.l10n, row.last, "midori-sync-collection-last-pass", { time });
+        }
+      }
+    }
+  };
+  const summaryStatus = ({ account, ready, paused, keysNeedAction, collectionSnapshots }) => {
+    if (paused) {
+      return "user-paused";
+    }
+    if (working) {
+      return "working";
+    }
+    if (collectionSnapshots?.some(snapshot => snapshot.name === "passwords" && snapshot.status === "locked")) {
+      return "passwords-locked";
+    }
+    if (collectionSnapshots?.some(snapshot => snapshot.name === "credit-cards" && snapshot.status === "locked")) {
+      return "cards-locked";
+    }
+    if (collectionSnapshots?.some(snapshot => snapshot.status === "error" && snapshot.error === "native_write_failed")) {
+      return "device-storage";
+    }
+    if (collectionSnapshots?.some(snapshot => snapshot.status === "error" && snapshot.error === "server_error")) {
+      return "server-error";
+    }
+    if (collectionSnapshots?.some(snapshot => snapshot.status === "error" && snapshot.error === "form_history_disabled")) {
+      return "form-history-disabled";
+    }
+    if (collectionSnapshots?.some(snapshot => snapshot.enabled !== false && snapshot.status === "unsupported")) {
+      return "server-update-required";
+    }
+    const selected = collectionSnapshots?.some(snapshot => snapshot.enabled !== false && snapshot.status !== "disabled");
+    if (ready && collectionSnapshots?.length && !selected) {
+      return "no-selection";
+    }
+    if (error || collectionSnapshots?.some(snapshot => snapshot.status === "error")) {
+      return "partial";
+    }
+    if (collectionSnapshots?.some(snapshot => snapshot.status === "syncing")) {
+      return "working";
+    }
+    if (ready && (account.status === "local" || service.backgroundSnapshot?.offline)) {
+      return "offline";
+    }
+    if (collectionSnapshots?.some(snapshot => ["pending", "more"].includes(snapshot.status))) {
+      return "more";
+    }
+    if (ready && selected && collectionSnapshots.every(snapshot => ["completed", "disabled"].includes(snapshot.status))) {
+      return "up-to-date";
+    }
+    if (ready) {
+      return "ready";
+    }
+    return keysNeedAction ? "keys-required" : "paused";
+  };
   const refresh = () => {
     const account = service.account.snapshot;
-    const ready = ["connected", "renewal-required"].includes(account.status) &&
-      service.keys.snapshot.status === "ready";
+    const accountBusy = account.interactionBusy ?? account.busy;
+    const keysSnapshot = service.keys.snapshot;
+    const connected = ["connected", "renewal-required"].includes(account.status);
+    const ready = (connected || account.status === "local") && keysSnapshot.status === "ready";
+    const paused = service.backgroundSnapshot?.globalEnabled === false;
+    if (connected && keysSnapshot.status === "locked" && !keysSnapshot.busy && !keysSnapshot.error &&
+        keysRefreshGeneration !== account.generation) {
+      keysRefreshGeneration = account.generation;
+      service.keys.refresh().catch(() => {});
+    }
+    const keysNeedAction = connected && !ready && !keysSnapshot.busy && (keysSnapshot.error ||
+      ["empty", "recovery-required", "migration-required", "backup-required", "pending",
+        "rotation-pending", "rotation-backup-required"].includes(keysSnapshot.status));
     const collectionSnapshots = service.syncCollectionsSnapshot;
+    const historySelected = collectionSnapshots?.find(snapshot => snapshot.name === "history")?.enabled !== false;
     const currentState = JSON.stringify(collectionSnapshots?.map(snapshot =>
       [snapshot.name, snapshot.status, snapshot.error, snapshot.pending, snapshot.lastSuccessAt]));
     if (error && errorState !== currentState) {
@@ -141,9 +275,11 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
     }
     const tabsPass = collectionSnapshots?.find(snapshot => snapshot.name === "tabs")?.lastSuccessAt ?? null;
     section.hidden = !visible || !["connected", "renewal-required", "local"].includes(account.status);
+    extensions?.refresh(visible && !section.hidden);
     remoteHeading.hidden = remoteStatus.hidden = remoteList.hidden = !ready;
     if (!ready) {
       remoteList.replaceChildren();
+      remoteSignature = null;
       remoteLoaded = false;
       remotePass = null;
       ++remoteRequest;
@@ -152,57 +288,24 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
       remotePass = tabsPass;
       Promise.resolve().then(loadRemote);
     }
-    sync.disabled = !ready || account.busy || working;
-    clear.disabled = !ready || account.busy || working;
+    sync.disabled = paused || !ready || accountBusy || working;
+    clear.disabled = paused || !historySelected || !ready || account.status === "local" || service.backgroundSnapshot?.offline || accountBusy || working;
     clear.hidden = confirmingClear;
     warning.hidden = actions.hidden = !confirmingClear;
-    cancelClear.disabled = confirmClear.disabled = !ready || account.busy || working;
+    cancelClear.disabled = working;
+    confirmClear.disabled = paused || !historySelected || !ready || accountBusy || working;
     clearStatus.hidden = !clearResult;
     if (clearResult) {
-      doc.l10n.setAttributes(clearStatus, `midori-sync-history-clear-${clearResult}`);
+      setL10n(doc.l10n, clearStatus, `midori-sync-history-clear-${clearResult}`);
     }
-    collectionList.hidden = !collectionSnapshots;
-    if (collectionSnapshots) {
-      for (const snapshot of collectionSnapshots) {
-        const row = collectionRows.get(snapshot.name);
-        if (!row) {
-          continue;
-        }
-        const count = snapshot.status === "conflict" ? snapshot.conflicts : snapshot.pending;
-        const stateId = snapshot.status === "error" && ["server_error", "network_error", "timeout", "rate_limited"].includes(snapshot.error) ?
-          snapshot.error.replaceAll("_", "-") : snapshot.status;
-        const stateKey = `${stateId}:${count}`;
-        if (row.state.dataset.key !== stateKey) {
-          row.state.dataset.key = stateKey;
-          doc.l10n.setAttributes(row.state, `midori-sync-collection-status-${stateId}`, { count });
-        }
-        row.last.hidden = !snapshot.lastSuccessAt;
-        if (snapshot.lastSuccessAt && row.last.dataset.timestamp !== String(snapshot.lastSuccessAt)) {
-          row.last.dataset.timestamp = String(snapshot.lastSuccessAt);
-          const time = timeFormatter.format(new Date(snapshot.lastSuccessAt));
-          doc.l10n.setAttributes(row.last, "midori-sync-collection-last-pass", { time });
-        }
-      }
-    }
-    const serverError = collectionSnapshots?.some(snapshot => snapshot.status === "error" && snapshot.error === "server_error");
-    const collectionError = collectionSnapshots?.some(snapshot => snapshot.status === "error");
-    const passwordNeedsUnlock = collectionSnapshots?.some(snapshot =>
-      snapshot.name === "passwords" && snapshot.status === "locked");
-    const cardNeedsUnlock = collectionSnapshots?.some(snapshot =>
-      snapshot.name === "credit-cards" && snapshot.status === "locked");
-    const automaticallyCurrent = ready && collectionSnapshots?.length &&
-      collectionSnapshots.every(snapshot => ["completed", "unsupported"].includes(snapshot.status));
-    const backgroundWorking = collectionSnapshots?.some(snapshot => snapshot.status === "syncing");
-    const more = collectionSnapshots?.some(snapshot => ["pending", "more"].includes(snapshot.status));
-    const id = working ? "working" : passwordNeedsUnlock ? "passwords-locked" : cardNeedsUnlock ? "cards-locked" : serverError ? "server-error" :
-      error || collectionError ? "partial" :
-      backgroundWorking ? "working" : more ? "more" : automaticallyCurrent ? "up-to-date" : ready ? "ready" : "paused";
+    refreshCollectionRows(collectionSnapshots, accountBusy);
+    const id = summaryStatus({ account, ready, paused, keysNeedAction, collectionSnapshots });
     const nextStatusId = id === "ready" && !account.creditCardsSupported &&
       !service.connection.snapshot.capabilities?.creditCards ?
       "midori-sync-data-ready-legacy" : `midori-sync-data-${id}`;
     if (statusId !== nextStatusId) {
       statusId = nextStatusId;
-      doc.l10n.setAttributes(status, statusId);
+      setL10n(doc.l10n, status, statusId);
     }
   };
   clear.addEventListener("click", () => {
@@ -258,16 +361,16 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
     try {
       const outcome = await service.syncNow({ limit: 100, inventory: true, promptPasswords: true });
       if (visible && version === currentVersion) {
-        error = Object.keys(outcome.errors).length > 0;
+        error = Boolean(Object.keys(outcome.errors).length);
         errorState = error ? JSON.stringify(service.syncCollectionsSnapshot?.map(snapshot =>
           [snapshot.name, snapshot.status, snapshot.error, snapshot.pending, snapshot.lastSuccessAt])) : null;
         await loadRemote();
       }
-    } catch {
+    } catch (failure) {
       if (visible && version === currentVersion) {
-        error = true;
-        errorState = JSON.stringify(service.syncCollectionsSnapshot?.map(snapshot =>
-          [snapshot.name, snapshot.status, snapshot.error, snapshot.pending, snapshot.lastSuccessAt]));
+        error = !["cancelled", "sync_paused", "collection_disabled"].includes(failure.code);
+        errorState = error ? JSON.stringify(service.syncCollectionsSnapshot?.map(snapshot =>
+          [snapshot.name, snapshot.status, snapshot.error, snapshot.pending, snapshot.lastSuccessAt])) : null;
       }
     } finally {
       if (visible && version === currentVersion) {
@@ -282,7 +385,7 @@ export function createSyncDataPanel(doc, service, openTab = () => {}) {
       confirmingClear = false; clearResult = null; remoteLoaded = false; remotePass = null; refresh(); },
     close() { visible = false; ++version; working = false; error = false; errorState = null;
       confirmingClear = false; clearResult = null; remoteLoaded = false; remotePass = null; ++remoteRequest;
-      remoteList.replaceChildren(); section.hidden = true;
+      remoteList.replaceChildren(); extensions?.close(); section.hidden = true;
       if (fixedBody) {
         fixedBody.style.removeProperty("height");
         fixedBody = null;

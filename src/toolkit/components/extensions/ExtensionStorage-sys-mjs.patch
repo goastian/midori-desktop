@@ -1,0 +1,22 @@
+--- ExtensionStorage.sys.mjs
++++ ExtensionStorage.sys.mjs
+@@ -319,6 +319,19 @@
+     return null;
+   },
+ 
++  async persistSyncRemoval(extensionId, isCurrent) {
++    if (typeof isCurrent !== "function") {
++      throw new TypeError("A current removal check is required");
++    }
++    const jsonFile = await this.getFile(extensionId);
++    if (!isCurrent()) {
++      return false;
++    }
++    jsonFile.data.clear();
++    await jsonFile.saveNow();
++    return isCurrent();
++  },
++
+   /**
+    * Asynchronously retrieves the values for the given storage items for
+    * the given extension ID.

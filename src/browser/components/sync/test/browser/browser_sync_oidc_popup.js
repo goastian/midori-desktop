@@ -51,9 +51,9 @@ add_task(async function public_oidc_server_offers_one_click_account_connection()
     const connect = document.getElementById("midori-sync-connect-oidc");
     ok(BrowserTestUtils.isVisible(connect), "The popup offers account authorization without a code");
     ok(!connect.disabled, "A verified OIDC server enables account connection");
-    ok(BrowserTestUtils.isHidden(document.getElementById("midori-sync-pair-form")),
+    ok(!document.getElementById("midori-sync-pair-form"),
       "The pairing form is hidden when direct sign-in is configured");
-    is(document.getElementById("midori-sync-account-status").getAttribute("data-l10n-id"),
+    is(panel.querySelector(".midori-sync-message").getAttribute("data-l10n-id"),
       "midori-sync-account-connect-ready", "The popup explains direct account connection");
     const account = MidoriSyncService.account;
     const originalConnectOidc = account.connectOidc;
@@ -89,7 +89,7 @@ add_task(async function public_oidc_server_offers_one_click_account_connection()
       const cancelledTab = (await openedAgain).target;
       await BrowserTestUtils.removeTab(cancelledTab);
       await TestUtils.waitForCondition(() => cancellations === 1, "Closing login cancels authorization");
-      is(document.getElementById("midori-sync-account-status").getAttribute("data-l10n-id"),
+      is(panel.querySelector(".midori-sync-message").getAttribute("data-l10n-id"),
         "midori-sync-account-authorization-cancelled", "The popup reports that authorization was cancelled");
     } finally {
       account.connectOidc = originalConnectOidc;
@@ -106,19 +106,19 @@ add_task(async function public_oidc_server_offers_one_click_account_connection()
     await MidoriSyncService.connection.checkAndUseServer(`http://localhost:${server.identity.primaryPort}/`, {
       allowLocalHTTP: true,
     });
-    ok(BrowserTestUtils.isHidden(document.getElementById("midori-sync-pair-form")),
+    ok(!document.getElementById("midori-sync-pair-form"),
       "A production server without OIDC does not fall back to a pairing code");
     ok(BrowserTestUtils.isVisible(connect) && connect.disabled,
       "Connect account stays visible but unavailable until OIDC is configured");
-    is(document.getElementById("midori-sync-account-status").getAttribute("data-l10n-id"),
+    is(panel.querySelector(".midori-sync-message").getAttribute("data-l10n-id"),
       "midori-sync-account-connect-unavailable", "The popup explains the server configuration problem");
     development = true;
     await MidoriSyncService.connection.checkAndUseServer(`http://localhost:${server.identity.primaryPort}/`, {
       allowLocalHTTP: true,
     });
-    ok(BrowserTestUtils.isVisible(document.getElementById("midori-sync-pair-form")),
-      "Development servers still offer pairing for local tests");
     ok(BrowserTestUtils.isHidden(connect), "Development pairing hides the OIDC action");
+    ok(BrowserTestUtils.isVisible(document.getElementById("midori-sync-open-settings-link")),
+      "Development servers send pairing to the settings page");
   } finally {
     if (panel && panel.state !== "closed") {
       const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");

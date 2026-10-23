@@ -335,6 +335,222 @@
                     "ciphertext": "0ffh9nlvSIn3JTClDuYK64AZIWfvlZEw2ugEc4FTWQ1vMK1cmaCTx8dZkIB+Xz1zt9WPCSM+lrpq2N6iBRzUj/kHpD2R2g=="
                 }
             }
+        },
+        "form-history": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAADGZvcm0taGlzdG9yeQAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "form-history",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "l77jPsa7vmXaNT3Ss6LyH8I2C66PR61dso6bAaS2CglCWxDLDYfCFrNSjW+mzjjLqt5y2GnqDRfKRnMrkZeFucZhJm94Bw=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAMZm9ybS1oaXN0b3J5AAAAC3JlZ2lzdHJvLcOxAAAAJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMQAAABA5MDA3MTk5MjU0NzQwOTkz",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "form-history",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "JWw79T8e6jKev0/4Az5lp8hJbeC83MZuQYqbY+Gv5oM/LE9GBDzQ2x4AfxjK/BDYtzX4Ppq21N+t3WgrSr9Y/AoqbZn10A=="
+                }
+            }
+        },
+        "addresses": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAACWFkZHJlc3NlcwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "addresses",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "2SYfXGmWrtGI+SW1AZ/8dWixHnBY5/YWJgMHTPwn9Lx4O8m2G74f4CWqshPVcHxGAJrtIs5haeaXs5BV+dy+W0ZjqaYZXg=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAJYWRkcmVzc2VzAAAAC3JlZ2lzdHJvLcOxAAAAJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMQAAABA5MDA3MTk5MjU0NzQwOTkz",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "addresses",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "FD+6+STN12OdbckBHSxvJWOuN1hQ7HJse2leU6vHr/nq2dm4p82+WgXAJ4uPGDKjRzrrMdFRoUraPHWwen398JTyEwv1xw=="
+                }
+            }
+        },
+        "workspaces": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAACndvcmtzcGFjZXMAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "workspaces",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "8N8GK7o81jRdz5R6lDimZ+zwoMHqrAUh/B8QmltA+D92VANJ92W3GpJEBrk7rbzPfonkkwEo5w0PUrpyVaVAQ5q2HgbnNQ=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAKd29ya3NwYWNlcwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "workspaces",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "QVXCyD3et/EZnc/wBAsLOlYXPo4wFrMkBuOe8lnMEewDWwU9c8s/P29tT1K/Iqda0yQvVLLe/K17NDTqkE/syY6ft6E+JQ=="
+                }
+            }
+        },
+        "site-permissions": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAAEHNpdGUtcGVybWlzc2lvbnMAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "site-permissions",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "YtfES4hI8UvHlbzZzRQzje9afoaJx7Y3O0X+BLi8Wt3rHwgDvpHD+SA5QqNXQ3wIB038RjujsctgxQRyyKST2GLuNO30Ng=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAQc2l0ZS1wZXJtaXNzaW9ucwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "site-permissions",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "otIdl9n0dCUsblG6iFyJO+SNg3HrRgYlduy3RD2gF1O7EfiyyM9KoSUPukv6w80kCkeJ/MzCfF97tBDhGA+ja+ts8ypfRg=="
+                }
+            }
+        },
+        "extensions": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAACmV4dGVuc2lvbnMAAAALcmVnaXN0cm8tw7EAAAAkMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxAAAAEDkwMDcxOTkyNTQ3NDA5OTM=",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "extensions",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "MMOGatnL9vif1yBFQHbR7I5N1bq4fWzmzWwCBfXhxM8islaub5BnqeYjxnOYXl8tiYxcquzbKIE7gJaBcwlTuxxYzWCq3A=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAAKZXh0ZW5zaW9ucwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "extensions",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "DEGjhkrXz1C/5KLa7AuGXsRI5NxKeF8kssH6QzPqGQlzMdOvw4v5QJ1zN5BDciLegOhfXknxsG7g2O5mGu1EX/ko9POPmg=="
+                }
+            }
+        },
+        "extension-settings": {
+            "record": {
+                "aad": "TWlkb3JpU3luYwByZWNvcmQAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAABAAAAEmV4dGVuc2lvbi1zZXR0aW5ncwAAAAtyZWdpc3Ryby3DsQAAACQwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEAAAAQOTAwNzE5OTI1NDc0MDk5Mw==",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "record",
+                    "context": {
+                        "collection": "extension-settings",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "o7j+rHH9CeIZdZB+TxUBeypMarTRkNfzUn+E8ZaDqOxEJs+vkB5ARnIcj+OdeRAjIWG0f2XhzNTAHELqjaL/f7noYHmXlQ=="
+                }
+            },
+            "local": {
+                "aad": "TWlkb3JpU3luYwBsb2NhbAAAAAACAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAWSUNFaUl5UWxKaWNvS1NvckxDMHVMdwAAAAEAAAASZXh0ZW5zaW9uLXNldHRpbmdzAAAAC3JlZ2lzdHJvLcOxAAAAJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMQAAABA5MDA3MTk5MjU0NzQwOTkz",
+                "envelope": {
+                    "crypto_version": 2,
+                    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+                    "purpose": "local",
+                    "context": {
+                        "collection": "extension-settings",
+                        "id": "registro-ñ",
+                        "generation": "00000000-0000-4000-8000-000000000001",
+                        "schema_version": 1,
+                        "base_revision": "9007199254740993"
+                    },
+                    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+                    "ciphertext": "zm9XoZ8omM85pN2M5O/hKqTUaP5+wEy+BngNLpARq44k4EgPXEljre+QM+owXXtxZeQ5JB1CZj8+fY/Tq2x5xjxtuAufEw=="
+                }
+            }
         }
     },
     "identities": {
@@ -382,6 +598,36 @@
             "input": "[\"https://example.invalid/página?query=ñ\",1728000000000000]",
             "message": "TWlkb3JpU3luYwBpZGVudGl0eQAAAAABAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAMY3JlZGl0LWNhcmRzAAAAPVsiaHR0cHM6Ly9leGFtcGxlLmludmFsaWQvcMOhZ2luYT9xdWVyeT3DsSIsMTcyODAwMDAwMDAwMDAwMF0=",
             "digest": "97ebdb557b80218904a4da201b61616dbbe69e9427499d3af18fae04330c88eb"
+        },
+        "form-history": {
+            "input": "[\"https://example.invalid/página?query=ñ\",1728000000000000]",
+            "message": "TWlkb3JpU3luYwBpZGVudGl0eQAAAAABAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAMZm9ybS1oaXN0b3J5AAAAPVsiaHR0cHM6Ly9leGFtcGxlLmludmFsaWQvcMOhZ2luYT9xdWVyeT3DsSIsMTcyODAwMDAwMDAwMDAwMF0=",
+            "digest": "75866cdf88930beca1a811080790c9c36b35a998f35ad8fdae76c99e74496638"
+        },
+        "addresses": {
+            "input": "[\"https://example.invalid/página?query=ñ\",1728000000000000]",
+            "message": "TWlkb3JpU3luYwBpZGVudGl0eQAAAAABAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAJYWRkcmVzc2VzAAAAPVsiaHR0cHM6Ly9leGFtcGxlLmludmFsaWQvcMOhZ2luYT9xdWVyeT3DsSIsMTcyODAwMDAwMDAwMDAwMF0=",
+            "digest": "55d68e9dcd968e515d81d8add6bdd648bf961feaa546efa168afaaffffbf5019"
+        },
+        "workspaces": {
+            "input": "[\"https://example.invalid/página?query=ñ\",1728000000000000]",
+            "message": "TWlkb3JpU3luYwBpZGVudGl0eQAAAAABAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAKd29ya3NwYWNlcwAAAD1bImh0dHBzOi8vZXhhbXBsZS5pbnZhbGlkL3DDoWdpbmE/cXVlcnk9w7EiLDE3MjgwMDAwMDAwMDAwMDBd",
+            "digest": "c3197d4c23ee2420167341e0756ba4d87ff2cfac533194aa74db221258cf394e"
+        },
+        "site-permissions": {
+            "input": "[1,\"site-permission\",\"https://example.invalid\",\"popup\"]",
+            "message": "TWlkb3JpU3luYwBpZGVudGl0eQAAAAABAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAQc2l0ZS1wZXJtaXNzaW9ucwAAADdbMSwic2l0ZS1wZXJtaXNzaW9uIiwiaHR0cHM6Ly9leGFtcGxlLmludmFsaWQiLCJwb3B1cCJd",
+            "digest": "855df84bc9d89199b6fc8cb8da10e1a45cc38d81b1cc1ee027d5b5818e063f34"
+        },
+        "extensions": {
+            "input": "[1,\"extension\",\"amo\",\"@portable-extension\"]",
+            "message": "TWlkb3JpU3luYwBpZGVudGl0eQAAAAABAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAKZXh0ZW5zaW9ucwAAACtbMSwiZXh0ZW5zaW9uIiwiYW1vIiwiQHBvcnRhYmxlLWV4dGVuc2lvbiJd",
+            "digest": "3dce33f6e91863612545b5a0f5c5ae4fdb88d675fa70d8154e66a46fcd18f6d5"
+        },
+        "extension-settings": {
+            "input": "[1,\"extension-settings\",\"amo\",\"@portable-extension\"]",
+            "message": "TWlkb3JpU3luYwBpZGVudGl0eQAAAAABAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAASZXh0ZW5zaW9uLXNldHRpbmdzAAAANFsxLCJleHRlbnNpb24tc2V0dGluZ3MiLCJhbW8iLCJAcG9ydGFibGUtZXh0ZW5zaW9uIl0=",
+            "digest": "07246b740180bde5a53143ad8c2015d665c8161d5a024094dc2a15148871b734"
         }
     },
     "bundle_aad": "TWlkb3JpU3luYwBidW5kbGUAAAAAAgAAAB1odHRwczovL3N5bmMuZXhhbXBsZS5pbnZhbGlkLwAAACFodHRwczovL2FjY291bnRzLmV4YW1wbGUuaW52YWxpZC8AAAASZml4dHVyZS11c3VhcmlvLcOxAAAAFklDRWlJeVFsSmljb0tTb3JMQzB1THcAAAAKYXJnb24yaWQxMwABAAAAAAADAAAAAQAAABAQERITFBUWFxgZGhscHR4f",

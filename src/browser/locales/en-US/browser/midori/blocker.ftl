@@ -282,6 +282,9 @@ midori-blocker-custom-filters-status =
     }
 
 midori-blocker-custom-filters-status-unsaved = Unsaved changes.
+midori-blocker-custom-filters-changed-elsewhere = Filters changed elsewhere. Your unsaved edits are kept.
+midori-blocker-custom-filters-concurrent-title = Replace updated filters?
+midori-blocker-custom-filters-concurrent-message = Filters changed since you opened this editor. Replace those updates with your edits?
 
 midori-blocker-custom-filters-import =
     .label = Import…

@@ -18,6 +18,28 @@ const { ListStore } = ChromeUtils.importESModule(
 
 do_get_profile();
 
+add_task(async function custom_filter_byte_limit_includes_the_final_newline() {
+  const limit = ListStore.MAX_CUSTOM_FILTERS_BYTES;
+  const valid = `${"a".repeat(1023)}\n`.repeat(limit / 1024);
+  const path = ListStore.customFiltersPath();
+  try {
+    await ListStore.setCustomFiltersText(valid);
+    Assert.equal((await IOUtils.stat(path)).size, limit);
+    Assert.equal(await ListStore.getCustomFiltersText(), valid);
+    const missingNewline = `${valid.slice(0, -1)}a`;
+    await Assert.rejects(ListStore.setCustomFiltersText(missingNewline), /too large/,
+      "The appended newline cannot create a file the next read rejects");
+    Assert.equal(await ListStore.getCustomFiltersText(), valid,
+      "Rejecting an oversized edit preserves the previous readable filters");
+    const multiByte = `${"\u00e9".repeat(511)}ab\n`.repeat(limit / 1024);
+    Assert.throws(() => ListStore.normalizeCustomFiltersText(multiByte), /too large/,
+      "The limit counts UTF-8 bytes rather than string length");
+    Assert.equal(ListStore.normalizeCustomFiltersText("||example.invalid^\r\n"), "||example.invalid^\n");
+  } finally {
+    await IOUtils.remove(path, { ignoreAbsent: true });
+  }
+});
+
 const DESCRIPTORS = [
   {
     filename: "atomic.txt",

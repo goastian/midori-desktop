@@ -23,23 +23,22 @@ export function normalizeCustomFiltersText(text) {
   const normalized = String(text || "")
     .toWellFormed()
     .replace(/\r\n?/g, "\n");
+  const canonical = !normalized || normalized.endsWith("\n")
+    ? normalized
+    : `${normalized}\n`;
 
-  const bytes = new TextEncoder().encode(normalized);
+  const bytes = new TextEncoder().encode(canonical);
   if (bytes.length > MAX_CUSTOM_FILTERS_BYTES) {
     throw new Error("Custom filters are too large");
   }
 
-  for (const line of normalized.split("\n")) {
+  for (const line of canonical.split("\n")) {
     if (line.length > MAX_CUSTOM_FILTER_LINE_LENGTH) {
       throw new Error("Custom filter line is too long");
     }
   }
 
-  if (!normalized || normalized.endsWith("\n")) {
-    return normalized;
-  }
-
-  return `${normalized}\n`;
+  return canonical;
 }
 
 function cacheRootPath() {
@@ -408,7 +407,10 @@ export const ListStore = {
     const path = customFiltersPath();
 
     await this.ensureRootDir();
-    await IOUtils.writeUTF8(path, normalized, atomicWriteOptions(path));
+    await IOUtils.writeUTF8(path, normalized, {
+      ...atomicWriteOptions(path),
+      flush: true,
+    });
 
     return {
       normalized,

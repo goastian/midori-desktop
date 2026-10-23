@@ -1,0 +1,48 @@
+--- ExtensionParent.sys.mjs
++++ ExtensionParent.sys.mjs
+@@ -2466,12 +2466,32 @@
+     "webext.sc.lz4"
+   ),
+ 
+-  async _saveNow() {
+-    let data = new Uint8Array(lazy.aomStartup.encodeBlob(this._data));
+-    await this._ensureDirectoryPromise;
+-    await IOUtils.write(this.file, data, { tmpPath: `${this.file}.tmp` });
+-
++  _saveNow({ flush = false } = {}) {
++    const saving = (this._saveTail ?? Promise.resolve()).then(() =>
++      this._writeNow(flush)
++    );
++    this._saveTail = saving.catch(() => {
++      this._ensureDirectoryPromise = null;
++    });
++    return saving;
++  },
++
++  async _writeNow(flush) {
++    await this.dataPromise;
++    await this._ensureDirectory();
++    const data = new Uint8Array(lazy.aomStartup.encodeBlob(this._data));
++    await IOUtils.write(this.file, data, {
++      tmpPath: `${this.file}.tmp`,
++      flush,
++    });
+     Glean.extensions.startupCacheWriteBytelength.set(data.byteLength);
++  },
++
++  async saveSyncChanges() {
++    await this.dataPromise;
++    this.save();
++    this._saveTask.disarm();
++    await this._saveNow({ flush: true });
+   },
+ 
+   save() {
+@@ -2484,6 +2504,7 @@
+         "Flush WebExtension StartupCache",
+         async () => {
+           await this._saveTask.finalize();
++          await this._saveTail;
+           this._saveTask = null;
+         }
+       );

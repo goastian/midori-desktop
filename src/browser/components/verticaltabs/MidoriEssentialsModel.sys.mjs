@@ -19,12 +19,12 @@ const MAX_TITLE_LENGTH = 80;
 const MAX_URL_LENGTH = 2048;
 
 export const DEFAULT_ESSENTIALS = Object.freeze([
-  { id: 'gmail', title: 'Gmail', url: 'https://mail.google.com/', icon: `${ICON_BASE}gmail.svg` },
-  { id: 'youtube', title: 'YouTube', url: 'https://www.youtube.com/', icon: `${ICON_BASE}youtube.png` },
-  { id: 'whatsapp', title: 'WhatsApp', url: 'https://web.whatsapp.com/', icon: `${ICON_BASE}whatsapp.svg` },
-  { id: 'spotify', title: 'Spotify', url: 'https://open.spotify.com/', icon: `${ICON_BASE}spotify.svg` },
-  { id: 'github', title: 'GitHub', url: 'https://github.com/', icon: `${ICON_BASE}github-plate.svg` },
-  { id: 'reddit', title: 'Reddit', url: 'https://www.reddit.com/', icon: `${ICON_BASE}reddit.svg` },
+  { id: 'gmail', title: 'Gmail', url: 'https://mail.google.com/'},
+  { id: 'youtube', title: 'YouTube', url: 'https://www.youtube.com/'},
+  { id: 'whatsapp', title: 'WhatsApp', url: 'https://web.whatsapp.com/'},
+  { id: 'spotify', title: 'Spotify', url: 'https://open.spotify.com/',},
+  { id: 'github', title: 'GitHub', url: 'https://github.com/',},
+  { id: 'reddit', title: 'Reddit', url: 'https://www.reddit.com/'},
 ].map(item => Object.freeze(item)));
 
 export function clampMaxEssentials(value) {

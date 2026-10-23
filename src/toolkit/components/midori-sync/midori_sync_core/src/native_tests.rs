@@ -74,6 +74,58 @@ fn records_and_local_storage_match_independent_sodium_vectors() {
 }
 
 #[test]
+fn new_collections_keep_separate_keys_and_existing_assignments() {
+    assert_eq!(collection_index("credit-cards"), Ok(11));
+    assert_eq!(collection_index("form-history"), Ok(12));
+    assert_eq!(collection_index("addresses"), Ok(13));
+    assert_eq!(collection_index("workspaces"), Ok(14));
+    assert_eq!(collection_index("site-permissions"), Ok(15));
+    assert_eq!(collection_index("extensions"), Ok(16));
+    assert_eq!(collection_index("extension-settings"), Ok(17));
+    let key = fixture_key();
+    for collection in [
+        "form-history",
+        "addresses",
+        "workspaces",
+        "site-permissions",
+        "extensions",
+        "extension-settings",
+    ] {
+        let context = context(collection);
+        let sealed = key
+            .seal(Purpose::Record, &context, b"private autofill value")
+            .unwrap();
+        assert_eq!(
+            key.open(Purpose::Local, &locator(&context), &sealed),
+            Err(CryptoError::AuthenticationFailed)
+        );
+        let other = if collection == "addresses" {
+            "form-history"
+        } else {
+            "addresses"
+        };
+        let mut changed: Value = serde_json::from_str(&sealed).unwrap();
+        changed["context"]["collection"] = json!(other);
+        let mut expected = locator(&context);
+        expected.collection = other.into();
+        assert_eq!(
+            key.open(Purpose::Record, &expected, &changed.to_string()),
+            Err(CryptoError::AuthenticationFailed)
+        );
+        let mut foreign = fixture_key();
+        foreign.scope.0[2].push('x');
+        assert_eq!(
+            foreign.open(Purpose::Record, &locator(&context), &sealed),
+            Err(CryptoError::AuthenticationFailed)
+        );
+        assert_ne!(
+            key.record_id(collection, b"same input").unwrap(),
+            key.record_id(other, b"same input").unwrap()
+        );
+    }
+}
+
+#[test]
 fn bundle_matches_sodium_and_recovers_same_key() {
     let v = vectors();
     let key = fixture_key();

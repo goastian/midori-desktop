@@ -1,0 +1,11 @@
+--- a/toolkit/components/uniffi-bindgen-gecko-js/tests/generated/RustUniffiBindingsTestsCollision.sys.mjs
++++ b/toolkit/components/uniffi-bindgen-gecko-js/tests/generated/RustUniffiBindingsTestsCollision.sys.mjs
+@@ -46,7 +46,7 @@
+     FfiConverterTypeTestCallbackInterface.checkType(cb);
+ }
+ const result = UniFFIScaffolding.callSync(
+-    376, // uniffi_uniffi_bindings_tests_collision_fn_func_invoke_collision_callback
++    382, // uniffi_uniffi_bindings_tests_collision_fn_func_invoke_collision_callback
+     FfiConverterTypeTestCallbackInterface.lower(cb),
+ )
+ return handleRustResult(

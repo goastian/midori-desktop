@@ -19,6 +19,20 @@ struct Visit {
     count: u16,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct VisitKey {
+    at_usec: u64,
+    transition: u8,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Part {
+    start_usec: u64,
+    len_usec: u64,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct HistoryPage {
@@ -27,6 +41,22 @@ struct HistoryPage {
     title: String,
     day_start_usec: u64,
     visits: Vec<Visit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    part: Option<Part>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    removed: Vec<VisitKey>,
+}
+
+const MAX_REMOVED: usize = 2048;
+const MIN_PART_USEC: u64 = DAY_MICROSECONDS >> 16;
+
+impl HistoryPage {
+    fn window(&self) -> (u64, u64) {
+        match self.part {
+            Some(part) => (part.start_usec, part.start_usec + part.len_usec),
+            None => (self.day_start_usec, self.day_start_usec + DAY_MICROSECONDS),
+        }
+    }
 }
 
 impl Drop for HistoryPage {
@@ -39,6 +69,7 @@ impl Drop for HistoryPage {
             visit.transition.zeroize();
             visit.count.zeroize();
         }
+        self.removed.clear();
     }
 }
 
@@ -62,16 +93,41 @@ impl HistoryPage {
             || self.title.chars().any(char::is_control)
             || self.day_start_usec % DAY_MICROSECONDS != 0
             || self.day_start_usec > MAX_SAFE_MICROSECONDS - DAY_MICROSECONDS
-            || self.visits.is_empty()
+            || (self.visits.is_empty() && self.removed.is_empty())
             || self.visits.len() > 2048
+            || self.removed.len() > MAX_REMOVED
         {
             return Err(HistoryError);
+        }
+        if let Some(part) = &self.part {
+            let offset = part.start_usec.checked_sub(self.day_start_usec);
+            if part.len_usec < MIN_PART_USEC
+                || part.len_usec >= DAY_MICROSECONDS
+                || DAY_MICROSECONDS % part.len_usec != 0
+                || !offset.is_some_and(|offset| offset % part.len_usec == 0)
+                || part.start_usec + part.len_usec > self.day_start_usec + DAY_MICROSECONDS
+            {
+                return Err(HistoryError);
+            }
+        }
+        let (window_start, window_end) = self.window();
+        let mut previous_removed: Option<VisitKey> = None;
+        for key in &self.removed {
+            if key.at_usec < window_start
+                || key.at_usec >= window_end
+                || !matches!(key.transition, 1..=3 | 5..=9)
+                || previous_removed.is_some_and(|value| value >= *key)
+            {
+                return Err(HistoryError);
+            }
+            previous_removed = Some(*key);
         }
         let mut previous = None;
         for visit in &self.visits {
             let key = (visit.at_usec, visit.transition);
-            if visit.at_usec < self.day_start_usec
-                || visit.at_usec >= self.day_start_usec + DAY_MICROSECONDS
+            if visit.at_usec < window_start
+                || visit.at_usec >= window_end
+                || self.removed.binary_search(&VisitKey { at_usec: visit.at_usec, transition: visit.transition }).is_ok()
                 || !matches!(visit.transition, 1..=3 | 5..=9)
                 || visit.count == 0
                 || previous.is_some_and(|value| value >= key)
@@ -146,7 +202,13 @@ fn reconcile(
                 .chain(base_counts.keys())
                 .copied()
                 .collect();
+            let removed: BTreeSet<VisitKey> = [base, Some(local), Some(remote)]
+                .into_iter()
+                .flatten()
+                .flat_map(|page| page.removed.iter().copied())
+                .collect();
             let mut merged = local.clone();
+            merged.removed = removed.iter().copied().collect();
             merged.title = if local.title == remote.title {
                 local.title.clone()
             } else if base.is_some_and(|page| local.title == page.title) {
@@ -158,6 +220,9 @@ fn reconcile(
             };
             merged.visits.clear();
             for (at_usec, transition) in keys {
+                if removed.contains(&VisitKey { at_usec, transition }) {
+                    continue;
+                }
                 let original = base_counts
                     .get(&(at_usec, transition))
                     .copied()
@@ -193,6 +258,9 @@ fn reconcile(
                     transition,
                     count,
                 });
+            }
+            if merged.visits.is_empty() && merged.removed.is_empty() {
+                return Decision::Apply { value: None };
             }
             if merged.validate().is_err() {
                 return Decision::Conflict {
@@ -239,11 +307,11 @@ pub fn process_request(bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, HistoryError>
                 .into_iter()
                 .flatten()
                 .next()
-                .map(|page| (&page.url, page.day_start_usec));
+                .map(|page| (&page.url, page.day_start_usec, page.part));
             if [base.as_ref(), local.as_ref(), remote.as_ref()]
                 .into_iter()
                 .flatten()
-                .any(|page| Some((&page.url, page.day_start_usec)) != identity)
+                .any(|page| Some((&page.url, page.day_start_usec, page.part)) != identity)
             {
                 return Err(HistoryError);
             }
@@ -269,6 +337,8 @@ mod tests {
                 transition: 1,
                 count: 1,
             }],
+            part: None,
+            removed: vec![],
         }
     }
 
@@ -382,5 +452,85 @@ mod tests {
         assert_eq!(value["version"], 1);
         assert_eq!(value["visits"][0]["atUsec"], page().day_start_usec + 101);
         assert_eq!(value["dayStartUsec"], page().day_start_usec);
+    }
+
+    #[test]
+    fn parts_bound_visits_and_identity() {
+        let mut part = page();
+        part.part = Some(Part {
+            start_usec: part.day_start_usec,
+            len_usec: DAY_MICROSECONDS / 24,
+        });
+        assert_eq!(part.validate(), Ok(()));
+        let mut outside = part.clone();
+        outside.visits[0].at_usec = outside.day_start_usec + DAY_MICROSECONDS / 24;
+        assert_eq!(outside.validate(), Err(HistoryError));
+        let mut misaligned = part.clone();
+        misaligned.part = Some(Part {
+            start_usec: part.day_start_usec + 5,
+            len_usec: DAY_MICROSECONDS / 24,
+        });
+        assert_eq!(misaligned.validate(), Err(HistoryError));
+        let mut whole_day = part.clone();
+        whole_day.part = Some(Part {
+            start_usec: part.day_start_usec,
+            len_usec: DAY_MICROSECONDS,
+        });
+        assert_eq!(whole_day.validate(), Err(HistoryError));
+        let request = json!({ "action": "merge", "base": null, "local": page(), "remote": part });
+        assert_eq!(
+            process_request(request.to_string().as_bytes()),
+            Err(HistoryError)
+        );
+    }
+
+    #[test]
+    fn explicit_removals_propagate_and_unrecorded_ones_conflict() {
+        let mut base = page();
+        base.visits.push(Visit {
+            at_usec: base.day_start_usec + 200,
+            transition: 1,
+            count: 1,
+        });
+        let mut local = base.clone();
+        local.visits.remove(1);
+        local.removed = vec![VisitKey {
+            at_usec: base.day_start_usec + 200,
+            transition: 1,
+        }];
+        let Decision::Apply {
+            value: Some(merged),
+        } = reconcile(Some(&base), Some(&base), Some(&local))
+        else {
+            panic!("expected the remote removal to apply");
+        };
+        assert_eq!(merged.visits.len(), 1);
+        assert_eq!(merged.removed.len(), 1);
+        let mut other = base.clone();
+        other.visits.push(Visit {
+            at_usec: base.day_start_usec + 300,
+            transition: 1,
+            count: 1,
+        });
+        let Decision::Apply {
+            value: Some(merged),
+        } = reconcile(Some(&base), Some(&other), Some(&local))
+        else {
+            panic!("expected removal and concurrent visit to merge");
+        };
+        assert_eq!(
+            merged.visits.iter().map(|visit| visit.at_usec - base.day_start_usec).collect::<Vec<_>>(),
+            vec![101, 300]
+        );
+        let mut emptied = local.clone();
+        emptied.visits.clear();
+        emptied.removed = vec![
+            VisitKey { at_usec: base.day_start_usec + 101, transition: 1 },
+            VisitKey { at_usec: base.day_start_usec + 200, transition: 1 },
+        ];
+        assert_eq!(emptied.validate(), Ok(()));
+        let mut unsorted = emptied.clone();
+        unsorted.removed.reverse();
+        assert_eq!(unsorted.validate(), Err(HistoryError));
     }
 }

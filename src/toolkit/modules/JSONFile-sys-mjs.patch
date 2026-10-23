@@ -1,0 +1,71 @@
+--- a/toolkit/modules/JSONFile.sys.mjs
++++ b/toolkit/modules/JSONFile.sys.mjs
+@@ -416,7 +416,23 @@
+    *   Resolves when the operation finished successfully.
+    * @rejects JavaScript exception.
+    */
+-  async _save() {
++  async saveNow() {
++    if (this._finalizePromise) {
++      throw new Error(`The file ${this.path} has already been finalized`);
++    }
++    this._saver.disarm();
++    return this._save({ failOnError: true });
++  },
++
++  _save({ failOnError = false } = {}) {
++    const saving = (this._saveTail ?? Promise.resolve()).then(() =>
++      this._writeData(failOnError)
++    );
++    this._saveTail = saving.catch(() => {});
++    return saving;
++  },
++
++  async _writeData(failOnError) {
+     // Create or overwrite the file.
+     if (this._beforeSave) {
+       await Promise.resolve(this._beforeSave());
+@@ -426,7 +442,11 @@
+       await IOUtils.writeJSON(
+         this.path,
+         this._data,
+-        Object.assign({ tmpPath: this.path + ".tmp" }, this._options)
++        Object.assign(
++          { tmpPath: this.path + ".tmp" },
++          this._options,
++          failOnError ? { flush: true } : {}
++        )
+       );
+     } catch (ex) {
+       if (typeof this._data.toJSONSafe == "function") {
+@@ -434,7 +454,11 @@
+         await IOUtils.writeUTF8(
+           this.path,
+           this._data.toJSONSafe(),
+-          Object.assign({ tmpPath: this.path + ".tmp" }, this._options)
++          Object.assign(
++            { tmpPath: this.path + ".tmp" },
++            this._options,
++            failOnError ? { flush: true } : {}
++          )
+         );
+       } else {
+         // Something went wrong with saving that we cannot recover from. If
+@@ -450,6 +474,9 @@
+             saveFailureEx
+           );
+         }
++        if (failOnError) {
++          throw ex;
++        }
+       }
+     }
+   },
+@@ -494,6 +521,7 @@
+     }
+     this._finalizePromise = (async () => {
+       await this._saver.finalize();
++      await this._saveTail;
+       this._data = null;
+       this.dataReady = false;
+     })();

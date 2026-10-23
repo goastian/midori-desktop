@@ -1,0 +1,81 @@
+--- a/modules/libpref/Preferences.cpp
++++ b/modules/libpref/Preferences.cpp
+@@ -4163,12 +4163,15 @@
+   // on disk are in sync with what we have in memory.
+   static Atomic<int> sPendingWriteCount;
+ 
++  static Atomic<nsresult> sLastProfileWriteResult;
++
+   // See PWRunnable::Run for details on why we need this lock.
+   static StaticMutex sWritingToFile MOZ_UNANNOTATED;
+ };
+ 
+ Atomic<PrefSaveData*> PreferencesWriter::sPendingWriteData(nullptr);
+ Atomic<int> PreferencesWriter::sPendingWriteCount(0);
++Atomic<nsresult> PreferencesWriter::sLastProfileWriteResult(NS_OK);
+ StaticMutex PreferencesWriter::sWritingToFile;
+ 
+ class PWRunnable : public Runnable {
+@@ -4243,6 +4246,7 @@
+           PreferencesWriter::sPendingWriteData.exchange(nullptr));
+       if (prefs) {
+         rv = PreferencesWriter::Write(mFile, *prefs);
++        PreferencesWriter::sLastProfileWriteResult = rv;
+         DispatchWriteComplete(rv, /* aRetryOnFailure */ true);
+       }
+     }
+@@ -5180,6 +5184,54 @@
+   // This is the method accessible from service API. Make it off main thread.
+   return sPImpl->SavePrefFileInternal(
+       aFile, PreferencesImpl::SaveMethod::Asynchronous);
++}
++
++NS_IMETHODIMP
++Preferences::FlushPrefFile(JSContext* aCx, Promise** aPromise) {
++  MOZ_ASSERT(NS_IsMainThread());
++  ENSURE_PARENT_PROCESS("Preferences::FlushPrefFile", "all prefs");
++  if (sPImpl->mProfileShutdown) {
++    return NS_ERROR_ILLEGAL_DURING_SHUTDOWN;
++  }
++  if (!sPImpl->mCurrentFile) {
++    return NS_ERROR_NOT_INITIALIZED;
++  }
++  ErrorResult result;
++  RefPtr<Promise> promise =
++      Promise::Create(xpc::CurrentNativeGlobal(aCx), result);
++  if (result.Failed()) {
++    return result.StealNSResult();
++  }
++  nsresult rv = SavePrefFileAsynchronous();
++  if (NS_FAILED(rv)) {
++    promise->MaybeReject(rv);
++  } else if (!sPImpl->mAsyncTarget) {
++    promise->MaybeResolveWithUndefined();
++  } else {
++    nsMainThreadPtrHandle<Promise> holder(new nsMainThreadPtrHolder<Promise>(
++        "Preferences::FlushPrefFile promise", promise));
++    rv = sPImpl->mAsyncTarget->Dispatch(
++        NS_NewRunnableFunction(
++            "Preferences::FlushPrefFile",
++            [holder] {
++              const nsresult writeResult =
++                  PreferencesWriter::sLastProfileWriteResult;
++              SchedulerGroup::Dispatch(NS_NewRunnableFunction(
++                  "Preferences::FlushPrefFileComplete", [holder, writeResult] {
++                    if (NS_FAILED(writeResult)) {
++                      holder.get()->MaybeReject(writeResult);
++                    } else {
++                      holder.get()->MaybeResolveWithUndefined();
++                    }
++                  }));
++            }),
++        nsIEventTarget::DISPATCH_EVENT_MAY_BLOCK);
++    if (NS_FAILED(rv)) {
++      promise->MaybeReject(rv);
++    }
++  }
++  promise.forget(aPromise);
++  return NS_OK;
+ }
+ 
+ NS_IMETHODIMP

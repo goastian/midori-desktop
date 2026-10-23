@@ -5,6 +5,7 @@ import {
   getEmojiForIcon,
   getLabelForIcon,
   getWorkspaceAccent,
+  sanitizeWorkspaceName,
   validateIconId,
   validateWorkspaceStore,
   WORKSPACE_ICONS,
@@ -17,6 +18,12 @@ test('workspace icons expose stable labels and fallbacks', () => {
   assert.equal(validateIconId('secure'), 'secure');
   assert.equal(validateIconId('missing'), 'default');
   assert.equal(getWorkspaceAccent('missing'), getWorkspaceAccent('default'));
+});
+
+test('workspace name limits never leave a partial Unicode character or control', () => {
+  assert.equal(sanitizeWorkspaceName('a'.repeat(31) + '\u{1F30D}'), 'a'.repeat(31));
+  assert.equal(sanitizeWorkspaceName('a'.repeat(30) + '\u{1F30D}'), 'a'.repeat(30) + '\u{1F30D}');
+  assert.equal(sanitizeWorkspaceName('A\0B\nC\ud800'), 'ABC');
 });
 
 test('workspace store validation keeps only known icon ids and tab mappings', () => {

@@ -1,0 +1,14 @@
+--- a/toolkit/components/formautofill/default/FormAutofillStorage.sys.mjs
++++ b/toolkit/components/formautofill/default/FormAutofillStorage.sys.mjs
+@@ -158,6 +158,11 @@
+     }
+   }
+ 
++  async flush() {
++    await this.initialize();
++    await this._store.saveNow();
++  }
++
+   _finalize() {
+     if (this.#initPromise) {
+       Services.prefs.removeObserver(ADDRESS_RUST_ENABLED_PREF, this);

@@ -1,23 +1,72 @@
 [DEFAULT]
 firefox-appdir = "browser"
+midori-appdir = "browser"
 head = "head.js"
-prefs = ["network.trr.mode=5"]
+prefs = [
+  "network.trr.mode=5",
+  "midori.sync.enabled=true",
+  'midori.sync.serverConfig={"baseURL":"http://localhost:9/","allowLocalHTTP":true}',
+]
 
 ["test_account.js"]
 
+["test_addresses.js"]
+
 ["test_bookmarks.js"]
+
+["test_controls.js"]
+support-files = ["fixtures/h1-controls.json"]
 
 ["test_credit_cards.js"]
 
+["test_credit_cards_rust.js"]
+support-files = ["test_credit_cards.js"]
+prefs = [
+  "extensions.formautofill.creditCards.storage.rust.enabled=true",
+  "extensions.formautofill.creditCards.storage.rust.active=true",
+]
+
 ["test_firefox_sync_disabled.js"]
 
+["test_extension_persistence.js"]
+
+["test_extension_settings_storage.js"]
+
+["test_form_history.js"]
+
 ["test_history_model.js"]
+
+["test_journal_recovery.js"]
+
+["test_key_registry.js"]
+support-files = ["fixtures/h1-key-registry.json"]
+
+["test_local_key_pool.js"]
 
 ["test_oidc_callback.js"]
 
 ["test_passwords.js"]
 
+["test_passwords_rust.js"]
+prefs = [
+  "signon.storage.rust.enabled=true",
+  "signon.storage.rust.active=true",
+]
+support-files = ["test_passwords.js"]
+
+["test_persistence.js"]
+
+["test_permission_persistence.js"]
+
+["test_permissions.js"]
+
+["test_pause.js"]
+
 ["test_preferences.js"]
+
+["test_privacy_filters.js"]
+
+["test_preference_persistence.js"]
 
 ["test_sync_now.js"]
 
@@ -25,5 +74,9 @@ prefs = ["network.trr.mode=5"]
 
 ["test_transport.js"]
 
+["test_text_bundle.js"]
+
 ["test_vault.js"]
 support-files = ["unlock_test_keyring.py"]
+
+["test_workspaces.js"]

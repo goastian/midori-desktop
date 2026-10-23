@@ -1,0 +1,61 @@
+--- ExtensionPermissions.sys.mjs
++++ ExtensionPermissions.sys.mjs
+@@ -99,6 +99,11 @@
+       delete prefs.data[extensionId];
+       prefs.saveSoon();
+     }
++  }
++
++  async saveSyncChanges() {
++    await this.lazyInit();
++    await prefs.saveNow();
+   }
+ 
+   async uninitForTest() {
+@@ -565,6 +570,46 @@
+     });
+   },
+ 
++  _persistSyncState(extensionId, isCurrent, remove) {
++    if (typeof isCurrent !== "function") {
++      throw new TypeError("A current extension check is required");
++    }
++    return extPermAccessQueues.runWriteTask(extensionId, async () => {
++      await store.lazyInit();
++      if (!isCurrent()) {
++        return false;
++      }
++      if (remove) {
++        this.tempOrigins.delete(extensionId);
++        await store.delete(extensionId);
++        await lazy.StartupCache.permissions.delete(extensionId);
++      } else {
++        if (await store.has(extensionId)) {
++          await store.put(extensionId, await store.get(extensionId));
++        } else {
++          await store.delete(extensionId);
++        }
++        await lazy.StartupCache.permissions.set(
++          extensionId,
++          await store.get(extensionId)
++        );
++      }
++      if (store instanceof LegacyPermissionStore) {
++        await store.saveSyncChanges();
++      }
++      await lazy.StartupCache.saveSyncChanges();
++      return isCurrent();
++    });
++  },
++
++  persistSyncRemoval(extensionId, isCurrent) {
++    return this._persistSyncState(extensionId, isCurrent, true);
++  },
++
++  persistSyncChanges(extensionId, isCurrent) {
++    return this._persistSyncState(extensionId, isCurrent, false);
++  },
++
+   // This is meant for tests only
+   async _has(extensionId) {
+     return store.has(extensionId);

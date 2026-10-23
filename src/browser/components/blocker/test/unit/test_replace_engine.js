@@ -16,7 +16,7 @@ function directivesFor(engine, url = "https://cdn.example/data.js") {
     engine.getReplaceDirectives(
       url,
       "publisher.example",
-      "cdn.example",
+      new URL(url).hostname,
       "script",
       "GET",
       true

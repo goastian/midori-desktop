@@ -1,0 +1,31 @@
+--- a/netwerk/base/nsIPermissionManager.idl
++++ b/netwerk/base/nsIPermissionManager.idl
+@@ -32,7 +32,7 @@
+ interface nsIPrincipal;
+ interface nsIPermission;
+ 
+-[scriptable, builtinclass, uuid(4dcb3851-eba2-4e42-b236-82d2596fca22)]
++[scriptable, builtinclass, uuid(1d6ea7a8-f309-451b-bdb0-d55acfd8b09c)]
+ interface nsIPermissionManager : nsISupports
+ {
+   /**
+@@ -410,6 +410,19 @@
+   void copyBrowserPermissions(
+       in uint64_t srcBrowserId,
+       in uint64_t destBrowserId);
++
++  /**
++   * Persist an HTTP(S) permission's current state, including removal. Rejects
++   * storage errors, session/policy permissions and private principals. Resolves
++   * true if the saved state is still current, or false after a concurrent edit.
++   */
++  [implicit_jscontext]
++  Promise persistPermissionFromPrincipal(in nsIPrincipal principal,
++                                        in ACString type);
++
++  /** Returns user, default, absent, session, policy, private, expired, omitted or unsupported. */
++  ACString getPermissionSourceFromPrincipal(in nsIPrincipal principal,
++                                          in ACString type);
+ };
+ 
+ %{ C++

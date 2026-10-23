@@ -1,0 +1,14 @@
+--- XPIProvider.sys.mjs
++++ XPIProvider.sys.mjs
+@@ -1880,6 +1880,11 @@
+     }
+ 
+     this._jsonFile.saveSoon();
++  },
++
++  async saveSyncChanges() {
++    this.save();
++    await this._jsonFile.saveNow();
+   },
+ 
+   toJSON() {

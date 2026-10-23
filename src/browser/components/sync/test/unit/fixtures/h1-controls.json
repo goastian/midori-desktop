@@ -1,0 +1,59 @@
+{
+    "generator": "PHP sodium; public compatibility keys from native-sodium.json",
+    "scope": [
+        "https://sync.example.invalid/",
+        "https://accounts.example.invalid/",
+        "fixture-usuario-ñ"
+    ],
+    "master_key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+    "key_id": "ICEiIyQlJicoKSorLC0uLw",
+    "passphrase": "Synthetic compatibility fixture, not a user secret",
+    "bundle": {
+        "bundle_version": 2,
+        "crypto_version": 2,
+        "key_id": "ICEiIyQlJicoKSorLC0uLw",
+        "kdf": {
+            "algorithm": "argon2id13",
+            "memory_kib": 65536,
+            "iterations": 3,
+            "parallelism": 1
+        },
+        "salt": "EBESExQVFhcYGRobHB0eHw==",
+        "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+        "ciphertext": "XtRVTyjTJk6rbvi0Ns5zlIBW9wYxsgpVAEW0AsY/tWtFLFIvahPpSu424bjtHpL+"
+    },
+    "cases": [
+        {
+            "control": {
+                "version": 1,
+                "epoch": "00000000-0000-4000-8000-000000000002",
+                "collection": "history",
+                "operation_id": "00000000-0000-4000-8000-000000000003",
+                "previous_generation": "00000000-0000-4000-8000-000000000004",
+                "generation": "00000000-0000-4000-8000-000000000005",
+                "control_revision": "2",
+                "kind": "history_clear",
+                "clear_before_ms": 1792022400123,
+                "proof": "a22af442a7937624938e4c937b5b5c56f250fb39861328fdbb0bbecde0286069"
+            },
+            "canonical": "[\"MidoriSync/control/v1\",\"00000000-0000-4000-8000-000000000002\",\"history\",\"00000000-0000-4000-8000-000000000003\",\"00000000-0000-4000-8000-000000000004\",\"00000000-0000-4000-8000-000000000005\",\"2\",\"history_clear\",1792022400123]",
+            "message": "TWlkb3JpU3luYwBpZGVudGl0eQAAAAABAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAHZGV2aWNlcwAAAOFbIk1pZG9yaVN5bmMvY29udHJvbC92MSIsIjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMiIsImhpc3RvcnkiLCIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDMiLCIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDQiLCIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDUiLCIyIiwiaGlzdG9yeV9jbGVhciIsMTc5MjAyMjQwMDEyM10="
+        },
+        {
+            "control": {
+                "version": 1,
+                "epoch": "00000000-0000-4000-8000-000000000002",
+                "collection": "addresses",
+                "operation_id": "00000000-0000-4000-8000-000000000003",
+                "previous_generation": "00000000-0000-4000-8000-000000000004",
+                "generation": "00000000-0000-4000-8000-000000000005",
+                "control_revision": "2",
+                "kind": "collection_clear",
+                "clear_before_ms": 0,
+                "proof": "a5d2de74720d04c051a567a74e4435eeef38c637d7e81a3cee5525df05541768"
+            },
+            "canonical": "[\"MidoriSync/control/v1\",\"00000000-0000-4000-8000-000000000002\",\"addresses\",\"00000000-0000-4000-8000-000000000003\",\"00000000-0000-4000-8000-000000000004\",\"00000000-0000-4000-8000-000000000005\",\"2\",\"collection_clear\",0]",
+            "message": "TWlkb3JpU3luYwBpZGVudGl0eQAAAAABAAAAHWh0dHBzOi8vc3luYy5leGFtcGxlLmludmFsaWQvAAAAIWh0dHBzOi8vYWNjb3VudHMuZXhhbXBsZS5pbnZhbGlkLwAAABJmaXh0dXJlLXVzdWFyaW8tw7EAAAAHZGV2aWNlcwAAANpbIk1pZG9yaVN5bmMvY29udHJvbC92MSIsIjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMiIsImFkZHJlc3NlcyIsIjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMyIsIjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwNCIsIjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwNSIsIjIiLCJjb2xsZWN0aW9uX2NsZWFyIiwwXQ=="
+        }
+    ]
+}

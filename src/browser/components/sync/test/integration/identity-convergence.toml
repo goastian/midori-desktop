@@ -1,0 +1,9 @@
+[DEFAULT]
+firefox-appdir = "browser"
+midori-appdir = "browser"
+head = "head_identity_convergence.js ../unit/head.js"
+prefs = ["network.trr.mode=5"]
+support-files = ["identity_live_session.sys.mjs"]
+
+["test_identity_convergence.js"]
+requesttimeoutfactor = 12

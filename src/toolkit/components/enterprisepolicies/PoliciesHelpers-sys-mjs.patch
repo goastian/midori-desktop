@@ -1,0 +1,11 @@
+--- PoliciesHelpers.sys.mjs
++++ PoliciesHelpers.sys.mjs
+@@ -952,7 +952,7 @@
+       continue;
+     }
+     try {
+-      await addon.uninstall();
++      await addon.uninstall(false, { syncSource: "policy" });
+     } catch (e) {
+       reportFailure(
+         "Extensions",

@@ -1,0 +1,25 @@
+--- a/modules/libpref/nsIPrefService.idl
++++ b/modules/libpref/nsIPrefService.idl
+@@ -52,7 +52,7 @@
+  * @see nsIPrefBranch
+  */
+ 
+-[scriptable, uuid(1f84fd56-3956-40df-b86a-1ea01402ee96)]
++[scriptable, uuid(8cb79ec4-3b1d-47ab-9f6c-7835d75fc680)]
+ interface nsIPrefService : nsISupports
+ {
+   /**
+@@ -77,6 +77,13 @@
+    * @see nsIFile
+    */
+   void savePrefFile(in nsIFile aFile);
++
++  /**
++   * Persist current profile preferences and reject I/O failures. Resolves after
++   * the preference writer has processed this call and all earlier writes.
++   */
++  [implicit_jscontext]
++  Promise flushPrefFile();
+ 
+   /**
+    * Called to write current preferences state to a file off of the main thread.

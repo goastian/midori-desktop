@@ -1,0 +1,790 @@
+--- a/third_party/application-services/components/logins/src/db.rs
++++ b/third_party/application-services/components/logins/src/db.rs
+@@ -565,6 +565,7 @@
+         let sql = format!(
+             "UPDATE loginsL
+              SET local_modified                           = :now_millis,
++                 timeCreated                              = :time_created,
+                  timeLastUsed                             = :time_last_used,
+                  timePasswordChanged                      = :time_password_changed,
+                  httpRealm                                = :http_realm,
+@@ -588,6 +589,7 @@
+                 ":form_action_origin": login.fields.form_action_origin,
+                 ":username_field": login.fields.username_field,
+                 ":password_field": login.fields.password_field,
++                ":time_created": login.meta.time_created,
+                 ":time_last_used": login.meta.time_last_used,
+                 ":times_used": login.meta.times_used,
+                 ":time_password_changed": login.meta.time_password_changed,
+@@ -738,9 +740,149 @@
+     }
+ 
+     pub fn update(&self, sguid: &str, entry: LoginEntry) -> Result<EncryptedLogin> {
++        self.update_internal(sguid, entry, None)
++    }
++
++    pub fn update_with_meta(
++        &self,
++        sguid: &str,
++        entry: LoginEntryWithMeta,
++    ) -> Result<EncryptedLogin> {
++        if entry.meta.id != sguid {
++            return Err(InvalidLogin::IllegalFieldValue {
++                field_info: "metadata id does not match the login".into(),
++            }
++            .into());
++        }
++        self.update_internal(sguid, entry.entry, Some(entry.meta.sanitize_timestamps()))
++    }
++
++    pub fn update_if_current(
++        &self,
++        expected: LoginEntryWithMeta,
++        replacement: LoginEntryWithMeta,
++    ) -> Result<Option<EncryptedLogin>> {
++        if replacement.meta.id != expected.meta.id {
++            return Err(InvalidLogin::IllegalFieldValue {
++                field_info: "metadata id does not match the login".into(),
++            }
++            .into());
++        }
++        let tx = self.unchecked_transaction()?;
++        let Some(current) = self.get_if_current(&expected)? else {
++            return Ok(None);
++        };
++        let mut meta = replacement.meta.sanitize_timestamps();
++        meta.times_used = current.times_used;
++        meta.time_last_used = current.time_last_used;
++        meta.time_last_breach_alert_dismissed = current.time_last_breach_alert_dismissed;
++        let result =
++            self.update_in_transaction(&expected.meta.id, replacement.entry, Some(meta))?;
++        tx.commit()?;
++        Ok(Some(result))
++    }
++
++    pub fn adopt_guid(
++        &self,
++        expected: LoginEntryWithMeta,
++        replacement: LoginEntryWithMeta,
++    ) -> Result<Option<EncryptedLogin>> {
++        let guid = Guid::from_string(replacement.meta.id.clone());
++        if !guid.is_valid_for_sync_server() || replacement.meta.id == expected.meta.id {
++            return Err(InvalidLogin::IllegalFieldValue {
++                field_info: "invalid replacement identity".into(),
++            }
++            .into());
++        }
++        let tx = self.unchecked_transaction()?;
++        let Some(existing) = self.get_if_current(&expected)? else {
++            return Ok(None);
++        };
++        let occupied: bool = self.db.query_row(
++            "SELECT EXISTS (SELECT 1 FROM loginsL WHERE guid = :guid
++                UNION ALL SELECT 1 FROM loginsM WHERE guid = :guid)",
++            named_params! { ":guid": replacement.meta.id },
++            |row| row.get(0),
++        )?;
++        if occupied {
++            return Ok(None);
++        }
++        let entry = replacement.entry.fixup()?;
++        if entry.origin != existing.origin
++            || entry.form_action_origin != existing.form_action_origin
++            || entry.http_realm != existing.http_realm
++            || entry.username != existing.username
++            || entry.password != existing.password
++        {
++            return Ok(None);
++        }
++        let meta = replacement.meta.sanitize_timestamps();
++        let result = Login {
++            id: meta.id,
++            time_created: meta.time_created,
++            time_password_changed: meta.time_password_changed,
++            username_field: entry.username_field,
++            password_field: entry.password_field,
++            ..existing
++        }
++        .encrypt(self.encdec.as_ref())?;
++        self.insert_new_login(&result)?;
++        self.ensure_local_overlay_exists(&expected.meta.id)?;
++        self.mark_mirror_overridden(&expected.meta.id)?;
++        let deleted = self.execute(
++            "UPDATE loginsL SET local_modified = :now_ms, sync_status = :changed,
++                is_deleted = 1, secFields = '', origin = '', httpRealm = NULL,
++                formActionOrigin = NULL WHERE guid = :guid AND is_deleted = 0",
++            named_params! {
++                ":now_ms": util::system_time_ms_i64(SystemTime::now()),
++                ":changed": SyncStatus::Changed as u8,
++                ":guid": expected.meta.id,
++            },
++        )?;
++        if deleted != 1 {
++            return Ok(None);
++        }
++        tx.commit()?;
++        Ok(Some(result))
++    }
++
++    fn get_if_current(&self, expected: &LoginEntryWithMeta) -> Result<Option<Login>> {
++        let Some(stored) = self.get_by_id(&expected.meta.id)? else {
++            return Ok(None);
++        };
++        if stored.meta.id != expected.meta.id
++            || stored.meta.time_created != expected.meta.time_created
++            || stored.meta.time_password_changed != expected.meta.time_password_changed
++        {
++            return Ok(None);
++        }
++        let current = stored.decrypt(self.encdec.as_ref())?;
++        if current.entry() != expected.entry {
++            return Ok(None);
++        }
++        Ok(Some(current))
++    }
++
++    fn update_internal(
++        &self,
++        sguid: &str,
++        entry: LoginEntry,
++        metadata: Option<LoginMeta>,
++    ) -> Result<EncryptedLogin> {
++        let tx = self.unchecked_transaction()?;
++        let result = self.update_in_transaction(sguid, entry, metadata)?;
++        tx.commit()?;
++        Ok(result)
++    }
++
++    fn update_in_transaction(
++        &self,
++        sguid: &str,
++        entry: LoginEntry,
++        metadata: Option<LoginMeta>,
++    ) -> Result<EncryptedLogin> {
+         let guid = Guid::new(sguid);
+         let now_ms = util::system_time_ms_i64(SystemTime::now());
+-        let tx = self.unchecked_transaction()?;
+ 
+         let entry = entry.fixup()?;
+ 
+@@ -783,7 +925,7 @@
+         }
+         .encrypt(self.encdec.as_ref(), &existing.id)?;
+         let result = EncryptedLogin {
+-            meta: LoginMeta {
++            meta: metadata.unwrap_or(LoginMeta {
+                 id: existing.id,
+                 time_created: existing.time_created,
+                 time_password_changed,
+@@ -791,7 +933,7 @@
+                 time_last_used: existing.time_last_used,
+                 times_used: existing.times_used,
+                 time_last_breach_alert_dismissed: None,
+-            },
++            }),
+             fields: LoginFields {
+                 origin: entry.origin,
+                 form_action_origin: entry.form_action_origin,
+@@ -803,7 +945,6 @@
+         };
+ 
+         self.update_existing_login(&result)?;
+-        tx.commit()?;
+         Ok(result)
+     }
+ 
+@@ -935,6 +1076,16 @@
+         Ok(results.pop().expect("there should be a single result"))
+     }
+ 
++    pub fn delete_if_current(&self, expected: LoginEntryWithMeta) -> Result<bool> {
++        let tx = self.unchecked_transaction_imm()?;
++        if self.get_if_current(&expected)?.is_none() {
++            return Ok(false);
++        }
++        self.delete_many_in_transaction(vec![&expected.meta.id])?;
++        tx.commit()?;
++        Ok(true)
++    }
++
+     // Delete all records. Return an array with the ids of the deleted logins
+     pub fn delete_all(&self) -> Result<Vec<String>> {
+         let ids: Vec<String> = self.db.query_rows_and_then_cached(
+@@ -966,6 +1117,12 @@
+     /// indicating whether the respective records already existed.
+     pub fn delete_many(&self, ids: Vec<&str>) -> Result<Vec<bool>> {
+         let tx = self.unchecked_transaction_imm()?;
++        let result = self.delete_many_in_transaction(ids)?;
++        tx.commit()?;
++        Ok(result)
++    }
++
++    fn delete_many_in_transaction(&self, ids: Vec<&str>) -> Result<Vec<bool>> {
+         let sql = format!(
+             "
+             UPDATE loginsL
+@@ -1011,8 +1168,6 @@
+ 
+             result.push(exists);
+         }
+-
+-        tx.commit()?;
+ 
+         Ok(result)
+     }
+@@ -2126,6 +2281,555 @@
+         assert_eq!(login.sec_fields, login2.sec_fields);
+     }
+ 
++    fn identity_snapshot(db: &LoginDb, id: &str) -> LoginEntryWithMeta {
++        let encrypted = db.get_by_id(id).unwrap().unwrap();
++        let meta = encrypted.meta.clone();
++        let entry = encrypted.decrypt(db.encdec.as_ref()).unwrap().entry();
++        LoginEntryWithMeta { entry, meta }
++    }
++
++    fn identity_fixture(db: &LoginDb) -> EncryptedLogin {
++        db.add(LoginEntry {
++            origin: "https://identity.example.invalid".into(),
++            form_action_origin: Some("https://identity.example.invalid".into()),
++            username: "fixture".into(),
++            password: "public identity fixture".into(),
++            ..Default::default()
++        })
++        .unwrap()
++    }
++
++    #[test]
++    fn test_adopt_guid_preserves_usage_and_reencrypts_for_remote_identity() {
++        ensure_initialized();
++        let db = LoginDb::open_in_memory();
++        let local = identity_fixture(&db);
++        let id = local.meta.id.clone();
++        let target = Guid::random().to_string();
++        let mut replacement = identity_snapshot(&db, &id);
++        let expected = identity_snapshot(&db, &id);
++        db.touch(&id).unwrap();
++        let used = db.get_by_id(&id).unwrap().unwrap().meta;
++        replacement.meta.id = target.clone();
++        replacement.meta.time_created = 1_700_000_000_000;
++        replacement.meta.time_password_changed = 1_700_000_001_000;
++        replacement.meta.times_used = 999;
++        replacement.meta.time_last_used = 0;
++        replacement.entry.username_field = "received-user".into();
++        let applied = db.adopt_guid(expected, replacement).unwrap().unwrap();
++        assert_eq!(applied.meta.id, target);
++        assert_eq!(applied.meta.time_created, 1_700_000_000_000);
++        assert_eq!(applied.meta.time_password_changed, 1_700_000_001_000);
++        assert_eq!(applied.meta.times_used, used.times_used);
++        assert_eq!(applied.meta.time_last_used, used.time_last_used);
++        assert!(db.get_by_id(&id).unwrap().is_none());
++        let read = db.get_by_id(&target).unwrap().unwrap();
++        assert_eq!(applied, read);
++        let decrypted = read.decrypt(db.encdec.as_ref()).unwrap();
++        assert_eq!(decrypted.password, "public identity fixture");
++        assert_eq!(decrypted.username_field, "received-user");
++        let (deleted, secret): (bool, String) = db
++            .query_row(
++                "SELECT is_deleted, secFields FROM loginsL WHERE guid = ?1",
++                [&id],
++                |row| Ok((row.get(0)?, row.get(1)?)),
++            )
++            .unwrap();
++        assert!(deleted);
++        assert!(secret.is_empty());
++    }
++
++    #[test]
++    fn test_adopt_guid_rejects_stale_native_data_and_occupied_identities() {
++        ensure_initialized();
++        let db = LoginDb::open_in_memory();
++        let id = identity_fixture(&db).meta.id;
++        let expected = identity_snapshot(&db, &id);
++        let mut replacement = identity_snapshot(&db, &id);
++        replacement.meta.id = Guid::random().to_string();
++        let target = replacement.meta.id.clone();
++        let mut changed = expected.entry.clone();
++        changed.password = "public local edit".into();
++        db.update(&id, changed).unwrap();
++        assert!(db.adopt_guid(expected, replacement).unwrap().is_none());
++        assert!(db.get_by_id(&target).unwrap().is_none());
++        assert_eq!(
++            db.get_by_id(&id)
++                .unwrap()
++                .unwrap()
++                .decrypt(db.encdec.as_ref())
++                .unwrap()
++                .password,
++            "public local edit"
++        );
++        let occupied = db
++            .add(LoginEntry {
++                origin: "https://occupied.example.invalid".into(),
++                http_realm: Some("fixture".into()),
++                password: "public occupied fixture".into(),
++                ..Default::default()
++            })
++            .unwrap();
++        let target = occupied.meta.id.clone();
++        for deleted in [false, true] {
++            if deleted {
++                db.delete(&target).unwrap();
++            }
++            let mut replacement = identity_snapshot(&db, &id);
++            replacement.meta.id = target.clone();
++            assert!(db
++                .adopt_guid(identity_snapshot(&db, &id), replacement)
++                .unwrap()
++                .is_none());
++            assert!(db.get_by_id(&id).unwrap().is_some());
++            assert_eq!(db.get_by_id(&target).unwrap().is_none(), deleted);
++        }
++    }
++
++    #[test]
++    fn test_adopt_guid_rolls_back_insert_if_old_identity_cannot_be_retired() {
++        ensure_initialized();
++        let db = LoginDb::open_in_memory();
++        let local = identity_fixture(&db);
++        let id = local.meta.id.clone();
++        let target = Guid::random().to_string();
++        db.execute_batch(
++            "CREATE TRIGGER reject_identity_retirement BEFORE UPDATE OF is_deleted ON loginsL
++            WHEN NEW.is_deleted = 1 BEGIN SELECT RAISE(ABORT, 'synthetic retirement failure'); END",
++        )
++        .unwrap();
++        let mut replacement = identity_snapshot(&db, &id);
++        replacement.meta.id = target.clone();
++        assert!(db
++            .adopt_guid(identity_snapshot(&db, &id), replacement)
++            .is_err());
++        assert_eq!(db.get_by_id(&id).unwrap().unwrap(), local);
++        assert!(db.get_by_id(&target).unwrap().is_none());
++    }
++
++    #[test]
++    fn test_adopt_guid_handles_mirror_only_login_and_reserves_mirror_targets() {
++        ensure_initialized();
++        let db = LoginDb::open_in_memory();
++        let local = identity_fixture(&db);
++        let id = local.meta.id.clone();
++        test_utils::add_mirror(&db, &local, &sync15::ServerTimestamp(1), false).unwrap();
++        db.execute("DELETE FROM loginsL WHERE guid = ?1", [&id])
++            .unwrap();
++        let target = Guid::random().to_string();
++        let mut occupied = local.clone();
++        occupied.meta.id = target.clone();
++        test_utils::add_mirror(&db, &occupied, &sync15::ServerTimestamp(1), false).unwrap();
++        let mut replacement = identity_snapshot(&db, &id);
++        replacement.meta.id = target.clone();
++        assert!(db
++            .adopt_guid(identity_snapshot(&db, &id), replacement)
++            .unwrap()
++            .is_none());
++        assert!(db.get_by_id(&id).unwrap().is_some());
++        let target = Guid::random().to_string();
++        let mut replacement = identity_snapshot(&db, &id);
++        replacement.meta.id = target.clone();
++        assert!(db
++            .adopt_guid(identity_snapshot(&db, &id), replacement)
++            .unwrap()
++            .is_some());
++        assert!(db.get_by_id(&id).unwrap().is_none());
++        assert!(db.get_by_id(&target).unwrap().is_some());
++        let overridden: bool = db
++            .query_row(
++                "SELECT is_overridden FROM loginsM WHERE guid = ?1",
++                [&id],
++                |row| row.get(0),
++            )
++            .unwrap();
++        assert!(overridden);
++    }
++
++    #[test]
++    fn test_update_if_current_preserves_usage_and_applies_remote_metadata() {
++        ensure_initialized();
++        let db = LoginDb::open_in_memory();
++        let id = identity_fixture(&db).meta.id;
++        let expected = identity_snapshot(&db, &id);
++        let mut replacement = identity_snapshot(&db, &id);
++        replacement.entry.password = "public received password".into();
++        replacement.meta.time_created = 1_700_000_000_000;
++        replacement.meta.time_password_changed = 1_700_000_001_000;
++        replacement.meta.times_used = 999;
++        replacement.meta.time_last_used = 0;
++        replacement.meta.time_last_breach_alert_dismissed = Some(0);
++        db.touch(&id).unwrap();
++        db.execute(
++            "UPDATE loginsL SET timeLastBreachAlertDismissed = ?1 WHERE guid = ?2",
++            rusqlite::params![1_700_000_002_000_i64, &id],
++        )
++        .unwrap();
++        let used = db.get_by_id(&id).unwrap().unwrap().meta;
++        let result = db
++            .update_if_current(expected, replacement)
++            .unwrap()
++            .unwrap();
++        assert_eq!(result.meta.id, id);
++        assert_eq!(result.meta.time_created, 1_700_000_000_000);
++        assert_eq!(result.meta.time_password_changed, 1_700_000_001_000);
++        assert_eq!(result.meta.times_used, used.times_used);
++        assert_eq!(result.meta.time_last_used, used.time_last_used);
++        assert_eq!(
++            result.meta.time_last_breach_alert_dismissed,
++            used.time_last_breach_alert_dismissed
++        );
++        assert_eq!(result, db.get_by_id(&id).unwrap().unwrap());
++        assert_eq!(
++            result.decrypt(db.encdec.as_ref()).unwrap().password,
++            "public received password"
++        );
++    }
++
++    #[test]
++    fn test_update_if_current_rejects_stale_fields_and_dates() {
++        ensure_initialized();
++        for field in [
++            "origin",
++            "form_action_origin",
++            "http_realm",
++            "username",
++            "password",
++            "username_field",
++            "password_field",
++            "time_created",
++            "time_password_changed",
++        ] {
++            let db = LoginDb::open_in_memory();
++            let id = identity_fixture(&db).meta.id;
++            let expected = identity_snapshot(&db, &id);
++            let mut replacement = identity_snapshot(&db, &id);
++            replacement.entry.password = "public stale received password".into();
++            let mut current = identity_snapshot(&db, &id);
++            match field {
++                "origin" => current.entry.origin = "https://edited.example.invalid".into(),
++                "form_action_origin" => {
++                    current.entry.form_action_origin = Some("https://edited.example.invalid".into())
++                }
++                "http_realm" => {
++                    current.entry.form_action_origin = None;
++                    current.entry.http_realm = Some("edited realm".into());
++                }
++                "username" => current.entry.username = "edited user".into(),
++                "password" => current.entry.password = "public edited password".into(),
++                "username_field" => current.entry.username_field = "edited username field".into(),
++                "password_field" => current.entry.password_field = "edited password field".into(),
++                "time_created" => current.meta.time_created -= 1000,
++                "time_password_changed" => current.meta.time_password_changed -= 1000,
++                _ => unreachable!(),
++            }
++            let edited = db.update_with_meta(&id, current).unwrap();
++            assert!(
++                db.update_if_current(expected, replacement)
++                    .unwrap()
++                    .is_none(),
++                "{field}"
++            );
++            assert_eq!(db.get_by_id(&id).unwrap().unwrap(), edited, "{field}");
++        }
++    }
++
++    #[test]
++    fn test_update_if_current_preserves_deleted_and_unrelated_identities() {
++        ensure_initialized();
++        let db = LoginDb::open_in_memory();
++        let id = identity_fixture(&db).meta.id;
++        let mut replacement = identity_snapshot(&db, &id);
++        replacement.meta.id = Guid::random().to_string();
++        let other_id = replacement.meta.id.clone();
++        assert!(db
++            .update_if_current(identity_snapshot(&db, &id), replacement)
++            .is_err());
++        assert!(db.get_by_id(&other_id).unwrap().is_none());
++        let expected = identity_snapshot(&db, &id);
++        let replacement = identity_snapshot(&db, &id);
++        let mut missing_expected = identity_snapshot(&db, &id);
++        let mut missing_replacement = identity_snapshot(&db, &id);
++        missing_expected.meta.id = other_id.clone();
++        missing_replacement.meta.id = other_id.clone();
++        db.delete(&id).unwrap();
++        assert!(db
++            .update_if_current(expected, replacement)
++            .unwrap()
++            .is_none());
++        assert!(db.get_by_id(&id).unwrap().is_none());
++        assert!(db
++            .update_if_current(missing_expected, missing_replacement)
++            .unwrap()
++            .is_none());
++        assert!(db.get_by_id(&other_id).unwrap().is_none());
++    }
++
++    #[test]
++    fn test_update_if_current_handles_mirror_only_and_rolls_back_failed_overlay() {
++        ensure_initialized();
++        for reject_write in [false, true] {
++            let db = LoginDb::open_in_memory();
++            let original = identity_fixture(&db);
++            let id = original.meta.id.clone();
++            test_utils::add_mirror(&db, &original, &sync15::ServerTimestamp(1), false).unwrap();
++            db.execute("DELETE FROM loginsL WHERE guid = ?1", [&id])
++                .unwrap();
++            let expected = identity_snapshot(&db, &id);
++            let mut replacement = identity_snapshot(&db, &id);
++            replacement.entry.password = "public mirror replacement".into();
++            if reject_write {
++                db.execute_batch(
++                    "CREATE TRIGGER reject_sync_update BEFORE UPDATE ON loginsL
++                    BEGIN SELECT RAISE(ABORT, 'synthetic Sync update failure'); END",
++                )
++                .unwrap();
++            }
++            let result = db.update_if_current(expected, replacement);
++            let overridden: bool = db
++                .query_row(
++                    "SELECT is_overridden FROM loginsM WHERE guid = ?1",
++                    [&id],
++                    |row| row.get(0),
++                )
++                .unwrap();
++            let local_exists: bool = db
++                .query_row(
++                    "SELECT EXISTS(SELECT 1 FROM loginsL WHERE guid = ?1)",
++                    [&id],
++                    |row| row.get(0),
++                )
++                .unwrap();
++            if reject_write {
++                assert!(result.is_err());
++                assert!(!overridden);
++                assert!(!local_exists);
++                assert_eq!(db.get_by_id(&id).unwrap().unwrap(), original);
++            } else {
++                assert!(result.unwrap().is_some());
++                assert!(overridden);
++                assert!(local_exists);
++                assert_eq!(
++                    db.get_by_id(&id)
++                        .unwrap()
++                        .unwrap()
++                        .decrypt(db.encdec.as_ref())
++                        .unwrap()
++                        .password,
++                    "public mirror replacement"
++                );
++            }
++        }
++    }
++
++    #[test]
++    fn test_delete_if_current_preserves_stale_fields_and_dates() {
++        ensure_initialized();
++        for field in [
++            "origin",
++            "form_action_origin",
++            "http_realm",
++            "username",
++            "password",
++            "username_field",
++            "password_field",
++            "time_created",
++            "time_password_changed",
++        ] {
++            let db = LoginDb::open_in_memory();
++            let id = identity_fixture(&db).meta.id;
++            let expected = identity_snapshot(&db, &id);
++            let mut current = identity_snapshot(&db, &id);
++            match field {
++                "origin" => current.entry.origin = "https://retained.example.invalid".into(),
++                "form_action_origin" => {
++                    current.entry.form_action_origin =
++                        Some("https://retained.example.invalid".into())
++                }
++                "http_realm" => {
++                    current.entry.form_action_origin = None;
++                    current.entry.http_realm = Some("retained realm".into());
++                }
++                "username" => current.entry.username = "retained user".into(),
++                "password" => current.entry.password = "public retained password".into(),
++                "username_field" => current.entry.username_field = "retained username field".into(),
++                "password_field" => current.entry.password_field = "retained password field".into(),
++                "time_created" => current.meta.time_created -= 1000,
++                "time_password_changed" => current.meta.time_password_changed -= 1000,
++                _ => unreachable!(),
++            }
++            let retained = db.update_with_meta(&id, current).unwrap();
++            assert!(!db.delete_if_current(expected).unwrap(), "{field}");
++            assert_eq!(db.get_by_id(&id).unwrap().unwrap(), retained, "{field}");
++        }
++    }
++
++    #[test]
++    fn test_delete_if_current_allows_uses_and_preserves_other_logins() {
++        ensure_initialized();
++        let db = LoginDb::open_in_memory();
++        let id = identity_fixture(&db).meta.id;
++        let expected = identity_snapshot(&db, &id);
++        let removed = identity_snapshot(&db, &id);
++        let other = db
++            .add(LoginEntry {
++                origin: "https://unrelated.example.invalid".into(),
++                http_realm: Some("unrelated fixture".into()),
++                password: "public unrelated password".into(),
++                ..Default::default()
++            })
++            .unwrap();
++        db.touch(&id).unwrap();
++        db.record_breach_alert_dismissal_time(&id, 1_700_000_000_000)
++            .unwrap();
++        assert!(db.delete_if_current(expected).unwrap());
++        assert!(db.get_by_id(&id).unwrap().is_none());
++        assert!(!db.delete_if_current(removed).unwrap());
++        assert_eq!(db.get_by_id(&other.meta.id).unwrap().unwrap(), other);
++        let (deleted, secret, origin): (bool, String, String) = db
++            .query_row(
++                "SELECT is_deleted, secFields, origin FROM loginsL WHERE guid = ?1",
++                [&id],
++                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
++            )
++            .unwrap();
++        assert!(deleted);
++        assert!(secret.is_empty());
++        assert!(origin.is_empty());
++    }
++
++    #[test]
++    fn test_delete_if_current_handles_mirror_only_and_rolls_back_errors() {
++        ensure_initialized();
++        for mirror_only in [false, true] {
++            for reject_write in [false, true] {
++                let db = LoginDb::open_in_memory();
++                let original = identity_fixture(&db);
++                let id = original.meta.id.clone();
++                test_utils::add_mirror(&db, &original, &sync15::ServerTimestamp(1), false).unwrap();
++                if mirror_only {
++                    db.execute("DELETE FROM loginsL WHERE guid = ?1", [&id])
++                        .unwrap();
++                }
++                let expected = identity_snapshot(&db, &id);
++                if reject_write {
++                    db.execute_batch(
++                        "CREATE TRIGGER reject_sync_delete BEFORE UPDATE ON loginsM
++                        WHEN NEW.is_overridden = 1
++                        BEGIN SELECT RAISE(ABORT, 'synthetic Sync deletion failure'); END",
++                    )
++                    .unwrap();
++                }
++                let result = db.delete_if_current(expected);
++                let overridden: bool = db
++                    .query_row(
++                        "SELECT is_overridden FROM loginsM WHERE guid = ?1",
++                        [&id],
++                        |row| row.get(0),
++                    )
++                    .unwrap();
++                if reject_write {
++                    assert!(result.is_err());
++                    assert!(!overridden);
++                    assert_eq!(db.get_by_id(&id).unwrap().unwrap(), original);
++                    let local_exists: bool = db
++                        .query_row(
++                            "SELECT EXISTS(SELECT 1 FROM loginsL WHERE guid = ?1)",
++                            [&id],
++                            |row| row.get(0),
++                        )
++                        .unwrap();
++                    assert_eq!(local_exists, !mirror_only);
++                } else {
++                    assert!(
++                        result.unwrap(),
++                        "A mirror-only deletion also reports success"
++                    );
++                    assert!(overridden);
++                    assert!(db.get_by_id(&id).unwrap().is_none());
++                }
++            }
++        }
++    }
++
++    #[test]
++    fn test_delete_if_current_preserves_a_reused_guid() {
++        ensure_initialized();
++        let db = LoginDb::open_in_memory();
++        let id = identity_fixture(&db).meta.id;
++        let expected = identity_snapshot(&db, &id);
++        let mut replacement = identity_snapshot(&db, &id);
++        db.delete(&id).unwrap();
++        replacement.entry.origin = "https://reused.example.invalid".into();
++        replacement.entry.form_action_origin = Some("https://reused.example.invalid".into());
++        replacement.entry.password = "public reused identity password".into();
++        let retained = db.add_with_meta(replacement).unwrap();
++        assert!(!db.delete_if_current(expected).unwrap());
++        assert_eq!(db.get_by_id(&id).unwrap().unwrap(), retained);
++    }
++
++    #[test]
++    fn test_update_with_meta_preserves_remote_time_and_rejects_identity_changes() {
++        ensure_initialized();
++        let db = LoginDb::open_in_memory();
++        let entry = LoginEntry {
++            origin: "https://sync.example.invalid".into(),
++            http_realm: Some("fixture".into()),
++            username: "fixture".into(),
++            password: "public old fixture".into(),
++            ..Default::default()
++        };
++        let initial = db.add(entry.clone()).unwrap();
++        let id = initial.meta.id.clone();
++        let mut meta = initial.meta.clone();
++        meta.time_created = 1_700_000_000_000;
++        meta.time_password_changed = 1_700_000_001_000;
++        meta.time_last_used = 0;
++        meta.times_used = 0;
++        let mut incoming = LoginEntryWithMeta {
++            entry: LoginEntry {
++                password: "public received fixture".into(),
++                ..entry
++            },
++            meta,
++        };
++        let applied = db
++            .update_with_meta(
++                &id,
++                LoginEntryWithMeta {
++                    entry: incoming.entry.clone(),
++                    meta: incoming.meta.clone(),
++                },
++            )
++            .unwrap();
++        let expected_meta = applied.meta.clone();
++        assert_eq!(applied.meta.time_created, incoming.meta.time_created);
++        assert_eq!(
++            applied.meta.time_password_changed,
++            incoming.meta.time_password_changed
++        );
++        assert_eq!(applied.meta.time_last_used, 0);
++        assert_eq!(applied.meta.times_used, 0);
++        assert_eq!(
++            applied.decrypt(db.encdec.as_ref()).unwrap().password,
++            incoming.entry.password
++        );
++        incoming.meta.id = Guid::random().to_string();
++        assert!(db.update_with_meta(&id, incoming).is_err());
++        let stored = db.get_by_id(&id).unwrap().unwrap();
++        assert_eq!(stored.meta.time_created, expected_meta.time_created);
++        assert_eq!(stored.meta.time_last_used, 0);
++        assert_eq!(stored.meta.times_used, 0);
++        assert_eq!(
++            stored.meta.time_password_changed,
++            expected_meta.time_password_changed
++        );
++        assert_eq!(
++            stored.decrypt(db.encdec.as_ref()).unwrap().password,
++            "public received fixture"
++        );
++    }
++
+     #[test]
+     fn test_update() {
+         ensure_initialized();

@@ -2,15 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { MIDORI_SYNC_LOCAL_SERVER, MIDORI_SYNC_OFFICIAL_SERVER } from "./MidoriSyncServerConfig.sys.mjs";
-import { createSyncKeysPanel } from "./MidoriSyncKeysPanel.sys.mjs";
-import { createSyncDataPanel } from "./MidoriSyncDataPanel.sys.mjs";
+import { MIDORI_SYNC_SETTINGS_URL, setL10n, syncAccountErrorId, syncDisplayName, syncSummary } from "./MidoriSyncUi.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   CustomizableUI: "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
   PanelMultiView: "moz-src:///browser/components/customizableui/PanelMultiView.sys.mjs",
   MidoriSyncService: "resource:///modules/MidoriSyncService.sys.mjs",
+  createSyncEnrollmentPanel: "resource:///modules/MidoriSyncEnrollmentPanel.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
@@ -95,6 +94,10 @@ export const MidoriSyncPanel = {
     });
   },
 
+  openSettings(win) {
+    win.gBrowser.selectedTab = win.gBrowser.addTrustedTab(MIDORI_SYNC_SETTINGS_URL);
+  },
+
   _createPanel(win) {
     const doc = win.document;
     const privateWindow = lazy.PrivateBrowsingUtils.isWindowPrivate(win);
@@ -111,134 +114,50 @@ export const MidoriSyncPanel = {
     view.classList.add("PanelUI-subView");
     const body = html(doc, "section");
     body.className = "midori-sync-body";
+
+    const header = html(doc, "header");
+    header.className = "midori-sync-header";
+    const avatar = html(doc, "div");
+    avatar.className = "midori-sync-avatar";
+    avatar.setAttribute("aria-hidden", "true");
     const title = html(doc, "h2", "midori-sync-title");
     title.id = "midori-sync-heading";
-    const serverLabel = html(doc, "p");
-    serverLabel.className = "midori-sync-server";
+    const identity = html(doc, "p");
+    identity.id = "midori-sync-account-identity";
+    identity.className = "midori-sync-identity";
+    const disconnect = button(doc, "midori-sync-sign-out", () => accountAction(account => account.disconnect()));
+    disconnect.id = "midori-sync-sign-out";
+    disconnect.className = "midori-sync-disconnect";
+    header.append(avatar, title, identity, disconnect);
+
     const status = html(doc, "p");
+    status.className = "midori-sync-message";
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
-    const form = html(doc, "form");
-    form.hidden = true;
-    const modeLabel = html(doc, "label", "midori-sync-server-label");
-    modeLabel.htmlFor = "midori-sync-server-mode";
-    const mode = html(doc, "select");
-    mode.id = modeLabel.htmlFor;
-    for (const value of ["official", "custom", "local"]) {
-      const option = html(doc, "option", `midori-sync-server-${value}`);
-      option.value = value;
-      mode.appendChild(option);
-    }
-    const urlLabel = html(doc, "label", "midori-sync-server-url-label");
-    urlLabel.htmlFor = "midori-sync-server-url";
-    const url = html(doc, "input");
-    url.id = urlLabel.htmlFor;
-    url.type = "text";
-    url.maxLength = 2048;
-    url.required = true;
-    url.autocomplete = "off";
-    url.spellcheck = false;
+
+    const list = html(doc, "ul");
+    list.className = "midori-sync-rows";
+    const syncRow = html(doc, "li");
+    const syncButton = button(doc, null, () => {
+      this.openSettings(win);
+      panel.hidePopup();
+    });
+    syncButton.id = "midori-sync-open-settings";
+    syncButton.className = "midori-sync-row";
+    const syncIcon = html(doc, "span");
+    syncIcon.className = "midori-sync-row-icon";
+    const syncText = html(doc, "span");
+    syncText.className = "midori-sync-row-text";
+    const syncName = html(doc, "strong", "midori-sync-row-title");
+    const syncState = html(doc, "span");
+    syncState.id = "midori-sync-row-state";
+    syncText.append(syncName, syncState);
+    syncButton.append(syncIcon, syncText);
+    syncRow.append(syncButton);
+    list.append(syncRow);
+
     const actions = html(doc, "div");
     actions.className = "midori-sync-actions";
-    const cancel = button(doc, "midori-sync-cancel", () => {
-      lazy.MidoriSyncService.connection.cancelCheck();
-      form.hidden = true;
-      change.hidden = false;
-      accountSection.hidden = false;
-      change.focus();
-    });
-    const apply = html(doc, "button", "midori-sync-server-apply");
-    apply.type = "submit";
-    actions.append(cancel, apply);
-    form.append(modeLabel, mode, urlLabel, url, actions);
-    const change = button(doc, "midori-sync-server-change", () => {
-      const { server } = lazy.MidoriSyncService.connection.snapshot;
-      mode.value = server.requiresLoopbackTransport ? "local" : server.official ? "official" : "custom";
-      url.value = server.baseURL;
-      url.disabled = mode.value === "official";
-      form.hidden = false;
-      change.hidden = true;
-      accountSection.hidden = true;
-      mode.focus();
-    });
-    mode.addEventListener("change", () => {
-      url.disabled = mode.value === "official";
-      if (mode.value === "official") {
-        url.value = MIDORI_SYNC_OFFICIAL_SERVER;
-      } else if (mode.value === "local") {
-        url.value = MIDORI_SYNC_LOCAL_SERVER;
-      } else {
-        url.value = "";
-      }
-      if (!url.disabled) {
-        url.focus();
-      }
-    });
-    let submitting = false;
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
-      if (submitting) {
-        return;
-      }
-      submitting = true;
-      apply.disabled = mode.disabled = url.disabled = true;
-      try {
-        await lazy.MidoriSyncService.connection.checkAndUseServer(url.value, {
-          allowLocalHTTP: mode.value === "local",
-        });
-        form.hidden = true;
-        change.hidden = false;
-        accountSection.hidden = false;
-        change.focus();
-      } catch (error) {
-        const code = error.code === "https_required" ? "https-required" :
-          error.code === "invalid_server_url" ? "invalid-url" :
-          error.code === "incompatible_server" ? "incompatible" :
-          error.code === "account_connected" ? "account-connected" :
-          error.code === "cancelled" ? "cancelled" : "failed";
-        doc.l10n.setAttributes(status, `midori-sync-connection-${code}`);
-      } finally {
-        submitting = false;
-        apply.disabled = mode.disabled = false;
-        url.disabled = mode.value === "official";
-      }
-    });
-    const accountSection = html(doc, "section");
-    accountSection.className = "midori-sync-account";
-    const accountStatus = html(doc, "p");
-    accountStatus.id = "midori-sync-account-status";
-    accountStatus.setAttribute("role", "status");
-    accountStatus.setAttribute("aria-live", "polite");
-    const userLabel = html(doc, "p");
-    userLabel.className = "midori-sync-server";
-    const pairForm = html(doc, "form");
-    pairForm.id = "midori-sync-pair-form";
-    const getPairingCode = button(doc, "midori-sync-get-pair-code", () => {
-      const server = lazy.MidoriSyncService.connection.snapshot.server;
-      win.gBrowser.addTab(new URL("devices", server.baseURL).href, {
-        triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}), inBackground: false,
-      });
-    });
-    const codeLabel = html(doc, "label", "midori-sync-pair-code-label");
-    codeLabel.htmlFor = "midori-sync-pair-code";
-    const code = html(doc, "input");
-    code.id = codeLabel.htmlFor;
-    code.type = "password";
-    code.maxLength = 32;
-    code.autocomplete = "off";
-    code.required = true;
-    const nameLabel = html(doc, "label", "midori-sync-device-name-label");
-    nameLabel.htmlFor = "midori-sync-device-name";
-    const deviceName = html(doc, "input");
-    deviceName.id = nameLabel.htmlFor;
-    deviceName.type = "text";
-    deviceName.maxLength = 255;
-    deviceName.value = "Midori Desktop";
-    deviceName.autocomplete = "off";
-    deviceName.required = true;
-    const pair = html(doc, "button", "midori-sync-pair-submit");
-    pair.type = "submit";
-    pairForm.append(getPairingCode, codeLabel, code, nameLabel, deviceName, pair);
     const connectOidc = button(doc, "midori-sync-connect-oidc", () => {
       let authorizationTab;
       let connected = false;
@@ -270,138 +189,137 @@ export const MidoriSyncPanel = {
       });
     });
     connectOidc.id = "midori-sync-connect-oidc";
-    const accountAction = async action => {
-      try {
-        await action(lazy.MidoriSyncService.account);
-      } catch (error) {
-        showAccountError(error.code);
-      }
-    };
     const unlock = button(doc, "midori-sync-account-unlock", () => accountAction(account =>
       account.snapshot.status === "renewal-required" ? account.renew() : account.unlock()));
-    const disconnect = button(doc, "midori-sync-account-disconnect", () => accountAction(account => account.disconnect()));
-    pairForm.addEventListener("submit", event => {
-      event.preventDefault();
-      const value = code.value;
-      code.value = "";
-      accountAction(account => account.pair(value, deviceName.value.trim()));
+    const settings = button(doc, "midori-sync-open-settings-link", () => {
+      this.openSettings(win);
+      panel.hidePopup();
     });
-    const showAccountError = error => {
-      const id = error === "primary_password_required" ? "primary-password" :
-        ["vault_locked", "vault_unavailable"].includes(error) ? "vault-locked" :
-        error === "invalid_pairing_input" ? "invalid-code" :
-        error === "invalid_pairing_code" ? "expired-code" :
-        error === "sync_pending_operations" ? "sync-pending" :
-        error === "sync_disconnect_unavailable" ? "sync-unverified" :
-        error === "revocation_unconfirmed" ? "revocation-unconfirmed" :
-        ["renewal_pending", "refresh_unavailable", "renewal_unavailable"].includes(error) ? "renewal-required" :
-        ["invalid_renewal", "refresh_superseded", "refresh_operation_conflict", "refresh_capacity"].includes(error) ? "renewal-failed" :
-        ["vault_corrupt", "vault_unreadable", "local_secret_missing"].includes(error) ? "saved-unreadable" :
-        error === "pairing_unavailable" ? "unavailable" :
-        ["oidc_unavailable", "oidc_provider_unavailable", "oidc_invalid_response", "oidc_timeout"].includes(error) ? "authorization-failed" :
-        ["oidc_authorization_cancelled", "cancelled"].includes(error) ? "authorization-cancelled" :
-        error === "auth_required" ? "expired" :
-        ["account_scope_mismatch", "refresh_identity_changed", "native_identity_required", "identity_issuer_mismatch", "invalid_account_identity"].includes(error) ? "identity-changed" : "failed";
-      doc.l10n.setAttributes(accountStatus, `midori-sync-account-${id}`);
+    settings.id = "midori-sync-open-settings-link";
+    settings.className = "midori-sync-link";
+    actions.append(connectOidc, unlock, settings);
+
+    let actionError = null;
+    let accountActionVersion = 0;
+    const accountAction = async action => {
+      const owner = lazy.MidoriSyncService.account;
+      const generation = owner.snapshot.generation;
+      const server = lazy.MidoriSyncService.connection.snapshot.server;
+      const current = ++accountActionVersion;
+      actionError = null;
+      try {
+        await action(owner);
+      } catch (error) {
+        if (!win.closed && current === accountActionVersion && lazy.MidoriSyncService.account === owner &&
+            owner.snapshot.generation === generation && lazy.MidoriSyncService.connection.snapshot.server === server) {
+          actionError = { owner, generation, server, code: error.code ?? "account_failed" };
+        }
+      } finally {
+        if (!win.closed) { state.refresh(); }
+      }
     };
-    accountSection.append(accountStatus, userLabel, pairForm, connectOidc, unlock, disconnect);
-    const keysView = privateWindow ? null : createSyncKeysPanel(doc, lazy.MidoriSyncService);
-    const dataView = privateWindow ? null : createSyncDataPanel(doc, lazy.MidoriSyncService, url => {
-      win.gBrowser.addTab(url, {
-        triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}), inBackground: false,
-      });
-    });
-    if (keysView) {
-      accountSection.append(keysView.section);
-      accountSection.append(dataView.section);
-    }
-    body.append(title, serverLabel, status, change, form);
-    body.append(accountSection);
+    const enrollment = privateWindow ? null : lazy.createSyncEnrollmentPanel(doc, lazy.MidoriSyncService);
+    body.append(header, status, ...(enrollment ? [enrollment.section] : []), list, actions);
     view.appendChild(body);
     multiview.appendChild(view);
     panel.appendChild(multiview);
     doc.getElementById("mainPopupSet").appendChild(panel);
+
     const state = {
       panel,
       unsubscribe: null,
-      clearSecrets() {
-        code.value = "";
-        keysView?.close();
-        dataView?.close();
-      },
+      clearSecrets() { actionError = null; },
       refresh() {
+        enrollment?.refresh();
         if (privateWindow) {
-          change.hidden = form.hidden = accountSection.hidden = true;
-          doc.l10n.setAttributes(status, "midori-sync-private-window");
+          header.hidden = list.hidden = actions.hidden = true;
+          setL10n(doc.l10n, status, "midori-sync-private-window");
           return;
         }
-        const snapshot = lazy.MidoriSyncService.connection.snapshot;
-        serverLabel.textContent = snapshot.server.baseURL;
-        const id = snapshot.checking ? "checking" : snapshot.error ? "failed" :
-          snapshot.capabilities ? "verified" : "not-connected";
-        doc.l10n.setAttributes(status, `midori-sync-connection-${id}`);
-        const account = lazy.MidoriSyncService.account.snapshot;
-        const disabled = account.busy || snapshot.checking || account.status === "unknown";
-        getPairingCode.disabled = pair.disabled = code.disabled = deviceName.disabled = connectOidc.disabled =
-          unlock.disabled = disconnect.disabled = disabled;
-        change.disabled = disabled;
-        const authentication = snapshot.capabilities?.authentication;
+        const connection = lazy.MidoriSyncService.connection.snapshot;
+        const owner = lazy.MidoriSyncService.account;
+        const account = owner.snapshot;
+        if (actionError && (actionError.owner !== owner || actionError.generation !== account.generation || actionError.server !== connection.server)) {
+          actionError = null;
+        }
+        const accountError = actionError?.code ?? account.error;
+        const summary = syncSummary(lazy.MidoriSyncService);
+        const signedOut = account.status === "signed-out";
+        const accountBusy = account.interactionBusy ?? account.busy;
+        const disabled = accountBusy || connection.checking || account.status === "unknown";
+        const authentication = connection.capabilities?.authentication;
         const oidcAvailable = Boolean(authentication?.browserLogin || authentication?.oidc);
-        const developmentPairing = authentication?.development === true && authentication.pairing === true;
-        pairForm.hidden = account.status !== "signed-out" || !developmentPairing;
-        connectOidc.hidden = account.status !== "signed-out" || developmentPairing;
-        connectOidc.disabled = disabled || !oidcAvailable;
-        unlock.hidden = !["locked", "expired", "error", "local", "renewal-required"].includes(account.status);
-        disconnect.hidden = ["signed-out", "unknown"].includes(account.status);
-        userLabel.textContent = account.user?.email || account.user?.name || "";
-        keysView?.refresh();
-        dataView?.refresh();
-        if (account.busy) {
-          doc.l10n.setAttributes(accountStatus, "midori-sync-account-working");
-        } else if (account.error) {
-          showAccountError(account.error);
+        const name = syncDisplayName(account);
+        avatar.textContent = (name || "M").slice(0, 1).toUpperCase();
+        setL10n(doc.l10n, title, name ? "midori-sync-greeting" : "midori-sync-title", name ? { name } : undefined);
+        identity.hidden = !account.user;
+        if (account.user) {
+          setL10n(doc.l10n, identity, "midori-sync-account-signed-in-as", { account: account.user.email || name });
         } else {
-          const accountId = account.revocationPending ? "revocation-pending" : account.status;
-          const statusId = accountId === "signed-out" && !developmentPairing ?
-            (oidcAvailable ? "connect-ready" : snapshot.capabilities ? "connect-unavailable" : "server-unavailable") : accountId;
-          doc.l10n.setAttributes(accountStatus, `midori-sync-account-${statusId}`);
+          identity.removeAttribute("data-l10n-id");
+          identity.removeAttribute("data-l10n-args");
+          identity.textContent = "";
+        }
+        header.classList.toggle("signed-out", signedOut);
+        disconnect.hidden = signedOut || account.status === "unknown";
+        disconnect.disabled = disabled;
+        list.hidden = signedOut || account.status === "unknown";
+        syncState.dataset.summary = summary;
+        setL10n(doc.l10n, syncName, "midori-sync-row-title");
+        setL10n(doc.l10n, syncState, `midori-sync-summary-${summary}`);
+        syncButton.disabled = account.status === "unknown";
+        const developmentPairing = authentication?.development === true && authentication.pairing === true;
+        connectOidc.hidden = !signedOut || developmentPairing;
+        connectOidc.disabled = disabled || !oidcAvailable;
+        unlock.hidden = !["locked", "reconnect"].includes(summary);
+        unlock.disabled = disabled;
+        settings.hidden = !signedOut && accountError !== "saved_journals_require_review";
+        if (account.status === "unknown") {
+          setL10n(doc.l10n, status, "midori-sync-account-unknown");
+          status.hidden = false;
+        } else if (connection.checking) {
+          setL10n(doc.l10n, status, "midori-sync-connection-checking");
+          status.hidden = false;
+        } else if (accountBusy) {
+          setL10n(doc.l10n, status, "midori-sync-account-working");
+          status.hidden = false;
+        } else if (accountError) {
+          setL10n(doc.l10n, status, `midori-sync-account-${syncAccountErrorId(accountError)}`);
+          status.hidden = false;
+        } else if (signedOut) {
+          setL10n(doc.l10n, status, oidcAvailable ? "midori-sync-account-connect-ready" :
+            connection.capabilities ? "midori-sync-account-connect-unavailable" : "midori-sync-account-server-unavailable");
+          status.hidden = false;
+        } else {
+          status.hidden = !["locked", "reconnect"].includes(summary);
+          if (!status.hidden) {
+            setL10n(doc.l10n, status, `midori-sync-account-${account.status}`);
+          }
         }
       },
       onUnload: () => {
         state.unsubscribe?.();
-        state.clearSecrets();
         this._windows.delete(win);
       },
     };
     panel.addEventListener("popupshown", () => {
       if (!privateWindow && !state.unsubscribe) {
-        const unsubscribeConnection = lazy.MidoriSyncService.connection.subscribe(() => state.refresh());
-        const unsubscribeAccount = lazy.MidoriSyncService.account.subscribe(() => state.refresh());
-        const unsubscribeKeys = lazy.MidoriSyncService.keys.subscribe(() => state.refresh());
-        let statusFrame = null;
-        const unsubscribeSyncStatus = lazy.MidoriSyncService.subscribeSyncStatus(() => {
-          if (statusFrame === null) {
-            statusFrame = win.requestAnimationFrame(() => {
-              statusFrame = null;
-              dataView.refresh();
-            });
-          }
-        });
-        state.unsubscribe = () => {
-          unsubscribeConnection(); unsubscribeAccount(); unsubscribeKeys(); unsubscribeSyncStatus();
-          if (statusFrame !== null) {
-            win.cancelAnimationFrame(statusFrame);
-          }
-        };
-        keysView.open();
-        dataView.open();
+        const unsubscribers = [
+          lazy.MidoriSyncService.connection.subscribe(() => state.refresh()),
+          lazy.MidoriSyncService.account.subscribe(() => state.refresh()),
+          lazy.MidoriSyncService.keys.subscribe(() => state.refresh()),
+          lazy.MidoriSyncService.subscribeSyncStatus(() => state.refresh()),
+        ];
+        state.unsubscribe = () => unsubscribers.forEach(unsubscribe => unsubscribe());
         state.refresh();
+        enrollment?.open();
       }
     });
     panel.addEventListener("popuphidden", () => {
+      state.clearSecrets();
+      enrollment?.close();
       state.unsubscribe?.();
       state.unsubscribe = null;
-      state.clearSecrets();
     });
     win.addEventListener("unload", state.onUnload, { once: true });
     this._windows.set(win, state);

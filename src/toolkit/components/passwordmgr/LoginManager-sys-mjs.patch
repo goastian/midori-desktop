@@ -1,0 +1,65 @@
+--- a/toolkit/components/passwordmgr/LoginManager.sys.mjs
++++ b/toolkit/components/passwordmgr/LoginManager.sys.mjs
+@@ -32,6 +32,32 @@
+     duration_ms: Math.round(ChromeUtils.now() - startedAt),
+   });
+   return result;
++}
++
++export async function modifyLoginForSync(logins, oldLogin, newLogin) {
++  const manager = logins
++    .QueryInterface(Ci.nsIInterfaceRequestor)
++    .getInterface(Ci.nsIVariant);
++  await manager.modifyLoginAsync(oldLogin, newLogin, true);
++}
++
++export async function removeLoginForSync(logins, login) {
++  const manager = logins
++    .QueryInterface(Ci.nsIInterfaceRequestor)
++    .getInterface(Ci.nsIVariant);
++  await manager.removeLoginAsync(login, true);
++}
++
++export async function flushLoginManagerData(logins = Services.logins) {
++  const manager = logins
++    .QueryInterface(Ci.nsIInterfaceRequestor)
++    .getInterface(Ci.nsIVariant);
++  const storage = await manager._getStorage();
++  if (storage.backendName === "json") {
++    await storage._store.saveNow();
++  } else if (storage.backendName !== "rust") {
++    throw new Error("login_storage_persistence_unavailable");
++  }
+ }
+ 
+ export function LoginManager() {
+@@ -299,25 +325,25 @@
+   /**
+    * Remove the specified login from the stored logins.
+    */
+-  async removeLoginAsync(login) {
++  async removeLoginAsync(login, fromSync = false) {
+     const storage = await this._getStorage();
+     lazy.log.debug(
+       "Removing login",
+       login.QueryInterface(Ci.nsILoginMetaInfo).guid
+     );
+-    return storage.removeLoginAsync(login);
++    return storage.removeLoginAsync(login, fromSync);
+   },
+ 
+   /**
+    * Async: Change the specified login to match the new login or new properties.
+    */
+-  async modifyLoginAsync(oldLogin, newLogin) {
++  async modifyLoginAsync(oldLogin, newLogin, fromSync = false) {
+     const storage = await this._getStorage();
+     lazy.log.debug(
+       "Modifying login",
+       oldLogin.QueryInterface(Ci.nsILoginMetaInfo).guid
+     );
+-    await storage.modifyLoginAsync(oldLogin, newLogin);
++    await storage.modifyLoginAsync(oldLogin, newLogin, fromSync);
+   },
+ 
+   async recordPasswordUseAsync(
