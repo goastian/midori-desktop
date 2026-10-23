@@ -106,6 +106,17 @@ jobs:
           trap 'rm -rf "$stage_dir"' EXIT
           tar \
             --exclude='./.git' \
+            --exclude='./.tmp-addons' \
+            --exclude='./artifacts' \
+            --exclude='./artifacts.zip' \
+            --exclude='./midori-sync' \
+            --exclude='./.codex' \
+            --exclude='./.agents' \
+            --exclude='./.aws' \
+            --exclude='./.env' \
+            --exclude='./*/.env' \
+            --exclude='./.env.*' \
+            --exclude='./*/.env.*' \
             --exclude='./.github' \
             --exclude='./.hg' \
             --exclude='./.svn' \

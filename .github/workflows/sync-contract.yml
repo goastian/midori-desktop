@@ -1,0 +1,225 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+name: Sync shared contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      desktop_sha:
+        description: Full commit SHA in goastian/midori-desktop
+        required: true
+        type: string
+      backend_sha:
+        description: Full commit SHA in goastian/midori-sync
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      desktop_sha:
+        required: true
+        type: string
+      backend_sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Desktop and backend contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: midori_sync_test
+          POSTGRES_USER: midori_sync_test
+          POSTGRES_PASSWORD: midori-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U midori_sync_test -d midori_sync_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DESKTOP_SHA: ${{ inputs.desktop_sha }}
+      BACKEND_SHA: ${{ inputs.backend_sha }}
+      APP_ENV: testing
+      APP_DEBUG: 'false'
+      APP_URL: http://127.0.0.1:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: '5432'
+      DB_DATABASE: midori_sync_test
+      DB_USERNAME: midori_sync_test
+      DB_PASSWORD: midori-ci-only
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      CARGO_TARGET_DIR: ${{ runner.temp }}/midori-sync-contract-target
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - name: Require immutable revisions
+        working-directory: .
+        run: |
+          [[ "$DESKTOP_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$BACKEND_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Checkout Desktop
+        uses: actions/checkout@v7
+        with:
+          repository: goastian/midori-desktop
+          ref: ${{ inputs.desktop_sha }}
+          path: desktop
+          persist-credentials: false
+
+      - name: Checkout backend
+        uses: actions/checkout@v7
+        with:
+          repository: goastian/midori-sync
+          ref: ${{ inputs.backend_sha }}
+          path: desktop/midori-sync
+          persist-credentials: false
+
+      - name: Verify checked out revisions
+        run: |
+          test "$(git rev-parse HEAD)" = "$DESKTOP_SHA"
+          test "$(git -C midori-sync rev-parse HEAD)" = "$BACKEND_SHA"
+          mkdir -p artifacts
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path('artifacts/versions.json').write_text(json.dumps({
+              'desktop': {'repository': 'goastian/midori-desktop', 'sha': os.environ['DESKTOP_SHA']},
+              'backend': {'repository': 'goastian/midori-sync', 'sha': os.environ['BACKEND_SHA']},
+              'scope': 'source-contract-and-backend; native Gecko and deployment gates remain separate',
+          }, indent=2) + '\n')
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: desktop/.nvmrc
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_pgsql, pgsql, pcntl, sodium
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts
+          python3 -m pip install -r scripts/sync-contract-requirements.txt
+          composer install --working-dir=midori-sync --no-interaction --no-progress --prefer-dist
+          cp midori-sync/.env.example midori-sync/.env
+          php midori-sync/artisan key:generate --no-interaction
+
+      - name: Source tests
+        id: source
+        run: |
+          npm run test:unit > artifacts/source-tests.log 2>&1
+          npm run test:rust-integrity > artifacts/integrity-tests.log 2>&1
+
+      - name: Independent sodium vectors
+        id: vectors
+        run: |
+          php scripts/sync-crypto-native-vectors.php > artifacts/native-sodium-generated.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          generated = json.loads(Path('artifacts/native-sodium-generated.json').read_text())
+          for name in ('src/toolkit/components/midori-sync/midori_sync_core/tests/fixtures/native-sodium.json',
+                       'midori-sync/tests/Fixtures/native-sodium.json'):
+              assert json.loads(Path(name).read_text()) == generated, f'Independent vectors differ: {name}'
+          print('Both projects match the independently generated sodium vectors.')
+          PY
+
+      - name: Rust core and FFI
+        id: rust
+        run: |
+          cargo test --locked --manifest-path src/toolkit/components/midori-sync/midori_sync_core/Cargo.toml > artifacts/rust-core.log 2>&1
+          cargo test --locked --manifest-path src/toolkit/components/midori-sync/midori_sync_ffi/Cargo.toml > artifacts/rust-ffi.log 2>&1
+
+      - name: Backend tests
+        id: backend
+        run: php midori-sync/artisan test > artifacts/backend-tests.log 2>&1
+
+      - name: Public capabilities and complete route contract
+        id: api
+        run: |
+          php midori-sync/artisan route:list --path=api/v1 --json > artifacts/api-routes.json
+          (
+            cd midori-sync
+            exec php -S 127.0.0.1:8000 -t public public/index.php
+          ) > artifacts/capabilities-server.log 2>&1 &
+          sync_contract_server_pid=$!
+          trap 'kill "$sync_contract_server_pid" 2>/dev/null || true; wait "$sync_contract_server_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 --max-time 3 \
+            --dump-header artifacts/capabilities.headers \
+            --output artifacts/capabilities.json http://127.0.0.1:8000/api/v1/capabilities
+          python3 - <<'PY'
+          from pathlib import Path
+          headers = Path('artifacts/capabilities.headers').read_text().lower().splitlines()
+          assert any(line.startswith('cache-control:') and 'no-store' in line for line in headers)
+          PY
+          python3 scripts/check-sync-refresh-contract.py --routes artifacts/api-routes.json \
+            --capabilities artifacts/capabilities.json > artifacts/public-contract.log 2>&1
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          routes = json.loads(Path('artifacts/api-routes.json').read_text())
+          altered = [route for route in routes if not (route['uri'] == 'api/v1/crypto/password' and 'GET' in route['method'].split('|'))]
+          assert len(altered) < len(routes), 'Negative control route must exist'
+          Path('artifacts/api-routes-negative.json').write_text(json.dumps(altered))
+          PY
+          if python3 scripts/check-sync-refresh-contract.py --routes artifacts/api-routes-negative.json \
+            --capabilities artifacts/capabilities.json > artifacts/public-contract-negative.log 2>&1; then
+            echo 'The route verifier accepted the negative control.' >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          assert 'Missing route: get /crypto/password' in Path('artifacts/public-contract-negative.log').read_text()
+          PY
+
+      - name: Record gate outcomes
+        if: always()
+        env:
+          SOURCE_RESULT: ${{ steps.source.outcome }}
+          VECTORS_RESULT: ${{ steps.vectors.outcome }}
+          RUST_RESULT: ${{ steps.rust.outcome }}
+          BACKEND_RESULT: ${{ steps.backend.outcome }}
+          API_RESULT: ${{ steps.api.outcome }}
+        run: |
+          mkdir -p artifacts
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          names = ('SOURCE', 'VECTORS', 'RUST', 'BACKEND', 'API')
+          outcomes = {name.lower(): os.environ[f'{name}_RESULT'] for name in names}
+          Path('artifacts/gates.json').write_text(json.dumps(outcomes, indent=2) + '\n')
+          assert all(result == 'success' for result in outcomes.values()), outcomes
+          PY
+
+      - name: Archive evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sync-contract-${{ inputs.desktop_sha }}-${{ inputs.backend_sha }}
+          path: desktop/artifacts/
+          if-no-files-found: error
+          retention-days: 30
