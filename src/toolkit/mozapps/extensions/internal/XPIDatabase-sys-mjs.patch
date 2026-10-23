@@ -1,5 +1,6 @@
---- XPIDatabase.sys.mjs
-+++ XPIDatabase.sys.mjs
+diff --git a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs b/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs
+--- a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs
++++ b/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs
 @@ -1470,9 +1470,17 @@
      return addonFor(this).isCompatibleWith(aAppVersion, aPlatformVersion);
    }

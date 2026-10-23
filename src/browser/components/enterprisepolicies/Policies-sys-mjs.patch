@@ -1,5 +1,6 @@
---- Policies.sys.mjs
-+++ Policies.sys.mjs
+diff --git a/browser/components/enterprisepolicies/Policies.sys.mjs b/browser/components/enterprisepolicies/Policies.sys.mjs
+--- a/browser/components/enterprisepolicies/Policies.sys.mjs
++++ b/browser/components/enterprisepolicies/Policies.sys.mjs
 @@ -1904,7 +1904,7 @@
                // Can't use the addon from getActiveAddons since it doesn't have uninstall.
                const addon = await lazy.AddonManager.getAddonByID(extensionID);

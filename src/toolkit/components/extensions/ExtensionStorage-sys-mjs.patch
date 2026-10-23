@@ -1,5 +1,6 @@
---- ExtensionStorage.sys.mjs
-+++ ExtensionStorage.sys.mjs
+diff --git a/toolkit/components/extensions/ExtensionStorage.sys.mjs b/toolkit/components/extensions/ExtensionStorage.sys.mjs
+--- a/toolkit/components/extensions/ExtensionStorage.sys.mjs
++++ b/toolkit/components/extensions/ExtensionStorage.sys.mjs
 @@ -319,6 +319,19 @@
      return null;
    },

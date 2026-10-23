@@ -1,5 +1,6 @@
---- ExtensionPermissions.sys.mjs
-+++ ExtensionPermissions.sys.mjs
+diff --git a/toolkit/components/extensions/ExtensionPermissions.sys.mjs b/toolkit/components/extensions/ExtensionPermissions.sys.mjs
+--- a/toolkit/components/extensions/ExtensionPermissions.sys.mjs
++++ b/toolkit/components/extensions/ExtensionPermissions.sys.mjs
 @@ -99,6 +99,11 @@
        delete prefs.data[extensionId];
        prefs.saveSoon();

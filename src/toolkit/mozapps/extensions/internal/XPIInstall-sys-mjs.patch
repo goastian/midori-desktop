@@ -1,5 +1,6 @@
---- XPIInstall.sys.mjs
-+++ XPIInstall.sys.mjs
+diff --git a/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs b/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
+--- a/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
++++ b/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
 @@ -5018,7 +5018,7 @@
     * @throws if the addon cannot be uninstalled because it is in an install
     *         location that does not allow it

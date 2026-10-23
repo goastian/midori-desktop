@@ -1,5 +1,6 @@
---- ExtensionParent.sys.mjs
-+++ ExtensionParent.sys.mjs
+diff --git a/toolkit/components/extensions/ExtensionParent.sys.mjs b/toolkit/components/extensions/ExtensionParent.sys.mjs
+--- a/toolkit/components/extensions/ExtensionParent.sys.mjs
++++ b/toolkit/components/extensions/ExtensionParent.sys.mjs
 @@ -2466,12 +2466,32 @@
      "webext.sc.lz4"
    ),

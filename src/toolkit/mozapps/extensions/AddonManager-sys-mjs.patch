@@ -1,5 +1,6 @@
---- AddonManager.sys.mjs
-+++ AddonManager.sys.mjs
+diff --git a/toolkit/mozapps/extensions/AddonManager.sys.mjs b/toolkit/mozapps/extensions/AddonManager.sys.mjs
+--- a/toolkit/mozapps/extensions/AddonManager.sys.mjs
++++ b/toolkit/mozapps/extensions/AddonManager.sys.mjs
 @@ -2658,6 +2658,17 @@
          true,
          "local"

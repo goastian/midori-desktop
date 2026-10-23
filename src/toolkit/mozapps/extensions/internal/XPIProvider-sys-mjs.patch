@@ -1,5 +1,6 @@
---- XPIProvider.sys.mjs
-+++ XPIProvider.sys.mjs
+diff --git a/toolkit/mozapps/extensions/internal/XPIProvider.sys.mjs b/toolkit/mozapps/extensions/internal/XPIProvider.sys.mjs
+--- a/toolkit/mozapps/extensions/internal/XPIProvider.sys.mjs
++++ b/toolkit/mozapps/extensions/internal/XPIProvider.sys.mjs
 @@ -1880,6 +1880,11 @@
      }
  

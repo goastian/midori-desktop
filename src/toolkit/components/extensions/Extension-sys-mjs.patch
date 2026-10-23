@@ -1,5 +1,6 @@
---- Extension.sys.mjs
-+++ Extension.sys.mjs
+diff --git a/toolkit/components/extensions/Extension.sys.mjs b/toolkit/components/extensions/Extension.sys.mjs
+--- a/toolkit/components/extensions/Extension.sys.mjs
++++ b/toolkit/components/extensions/Extension.sys.mjs
 @@ -343,6 +343,10 @@
  const UUID_MAP_PREF = "extensions.webextensions.uuids";
  const LEAVE_STORAGE_PREF = "extensions.webextensions.keepStorageOnUninstall";
