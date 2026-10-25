@@ -140,6 +140,8 @@ npm run package:linux-x64-formats
 
 The archives and native packages are written to `dist/`. Use the matching `package:<platform>-<architecture>` script for macOS or Windows. Release builds additionally set CI-only environment variables and may require signing keys; do not set `MIDORI_RELEASE` for an ordinary local development build.
 
+After a Windows build, use `npm run package:win-x64` or `npm run package:win-arm64` to create the ZIP, MAR and installers. Linux and Windows packaging select the object directory for the requested target; build that target first. The build/package wrapper reapplies the Amelia compatibility patches before execution, including removal of its obsolete Tor requirement. Packaging stops if the archive, language packaging or MAR generation fails.
+
 ### Tests and common recovery commands
 
 ```bash
