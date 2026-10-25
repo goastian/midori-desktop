@@ -186,6 +186,32 @@ cd midori-desktop
 
 See [BUILD.md](BUILD.md) for platform-specific instructions.
 
+### Rust dependency updates
+
+`npm run import` and the build/package scripts run `npm run check:rust` before
+compilation. This resolves the full Cargo workspace with `--locked --offline`
+against Firefox's vendored dependencies and checks the files in Midori's vendor
+overlays against their checksums.
+
+After updating Firefox or changing Rust dependencies, import the updated source,
+then run `npm run rust:refresh` if the Rust check reports a stale lock file. This
+starts from the original Firefox `Cargo.lock`, resolves Midori's additions offline,
+and updates `src/Cargo.lock`. Review and commit that change with the update.
+Missing vendor dependencies or invalid checksums must be fixed before the check
+can pass; refreshing the lock does not download missing crates.
+
+Run `npm run test:rust-integrity` to exercise the checker and lock refresh recovery.
+
+The Midori blocker FFI lives in `content_classifier_engine/src/midori_blocker.rs`.
+The Firefox classifier sources remain upstream, with small patches that add the
+Midori module, its dependencies, and an include guard for the generated FFI header.
+`npm run import` migrates known legacy copies and links before applying these
+patches, preserving unrelated local edits.
+Changes to this integration must also compile
+`toolkit/components/content-classifier`, `browser/components/blocker`, and
+`xpcom/components`, which combines the component headers. Cargo metadata
+validation alone does not check the generated C++/Rust interface.
+
 ---
 
 ## Making Changes
@@ -478,7 +504,6 @@ Every contribution:
 - 🔒 [Security Policy](SECURITY.md)
 - ⚖️ [Code of Conduct](CODE_OF_CONDUCT.md)
 - 📊 [Performance Guidelines](docs/performance.md)
-- [Native Sync and Link integration](docs/plan-integracion-sync-link-nativo.md)
 
 ---
 

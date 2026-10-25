@@ -4,6 +4,7 @@
 
 .dotbuild/
 .midori-sync-dev/
+/.tmp-addons/
 /artifacts/
 /artifacts.zip
 /midori-sync/
@@ -44,3 +45,4 @@ build/
 build-*/
 build-*/dist/
 flatpak-node/
+/docs/

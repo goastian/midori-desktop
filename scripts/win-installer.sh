@@ -12,6 +12,10 @@
 set -euo pipefail
 
 ARCH="${1:-x86_64}"
+if [[ "$ARCH" != "x86_64" && "$ARCH" != "aarch64" ]]; then
+  echo "Unsupported Windows architecture: $ARCH" >&2
+  exit 2
+fi
 ENGINE_DIR="$(cd "$(dirname "$0")/../engine" && pwd)"
 MOZBUILD="${HOME}/.mozbuild"
 
@@ -43,37 +47,65 @@ python3 "$ENGINE_DIR/../scripts/rebrand_windows_sfx.py" \
 SFX_STUB="$BRANDED_SFX"
 
 # ── 1. Find the package zip ──
-ZIP_FILE=$(find "$DIST_DIR" -maxdepth 1 -name "*.${PKG_SUFFIX}.zip" ! -name "*xpt*" | head -1)
-if [[ -z "$ZIP_FILE" ]]; then
-  echo "✘ Error: No se encontró el paquete .zip en $DIST_DIR"
+BUILT_VERSION=$(python3 - "$DIST_DIR/bin/application.ini" <<'PY'
+import configparser
+import sys
+application = configparser.ConfigParser()
+with open(sys.argv[1], encoding='utf-8') as source:
+    application.read_file(source)
+print(application['App']['Version'])
+PY
+)
+mapfile -t ZIP_FILES < <(find "$DIST_DIR" -maxdepth 1 -type f \
+  -name "*-${BUILT_VERSION}.*.${PKG_SUFFIX}.zip" ! -name "*xpt*" -print)
+if [[ "${#ZIP_FILES[@]}" != 1 ]]; then
+  echo "Error: Expected one ZIP for $BUILT_VERSION/$PKG_SUFFIX in $DIST_DIR; found ${#ZIP_FILES[@]}" >&2
   echo "  Ejecuta primero: npm run package:win-${ARCH/x86_64/x64}"
   exit 1
 fi
+ZIP_FILE="${ZIP_FILES[0]}"
 echo "→ Paquete encontrado: $(basename "$ZIP_FILE")"
 
 # Get the package name (directory name inside the zip)
-PKG_NAME=$(python3 -c "
-import zipfile, sys
-with zipfile.ZipFile('$ZIP_FILE') as z:
+PKG_NAME=$(python3 - "$ZIP_FILE" <<'PY'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:
     top = set(n.split('/')[0] for n in z.namelist() if '/' in n)
-    print(top.pop() if len(top) == 1 else 'midori')
-" 2> /dev/null || echo "midori")
+    if len(top) != 1:
+        sys.exit('The ZIP must contain one application directory')
+    print(top.pop())
+PY
+)
 echo "  Nombre del paquete: $PKG_NAME"
 
 # ── 2. Generate uninstaller (helper.exe) if missing ──
 if [[ ! -f "$DIST_DIR/bin/uninstall/helper.exe" ]]; then
   echo "→ Generando desinstalador (helper.exe)..."
-  gmake -C "$OBJ_DIR/browser/installer/windows" uninstaller 2>&1 | tail -5
+  gmake -C "$OBJ_DIR/browser/installer/windows" uninstaller
 fi
 
 # ── 3. Generate setup.exe if missing ──
 if [[ ! -f "$INSTGEN_DIR/setup.exe" ]]; then
   echo "→ Generando setup.exe (NSIS)..."
-  gmake -C "$OBJ_DIR/browser/installer/windows" "$INSTGEN_DIR/setup.exe" 2>&1 | tail -10
+  gmake -C "$OBJ_DIR/browser/installer/windows" "$INSTGEN_DIR/setup.exe"
 fi
 
-# ── 4. Get version from the zip filename ──
-VERSION=$(echo "$(basename "$ZIP_FILE")" | sed -E 's/^[^-]+-([0-9]+\.[0-9]+\.[0-9]+)\..*/\1/')
+# ── 4. Get version from the packaged application ──
+VERSION=$(python3 - "$ZIP_FILE" "$PKG_NAME" <<'PY'
+import configparser
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:
+    application = configparser.ConfigParser()
+    application.read_string(z.read(f'{sys.argv[2]}/application.ini').decode('utf-8'))
+    print(application['App']['Version'])
+PY
+)
+if [[ "$VERSION" != "$BUILT_VERSION" ]]; then
+  echo "Package version $VERSION does not match the build version $BUILT_VERSION" >&2
+  exit 1
+fi
 echo "  Versión: $VERSION"
 
 # ── 5. Build the full installer (.installer.exe) ──
@@ -84,7 +116,7 @@ export AMELIA_COMPAT="$ARCH"
 export SURFER_COMPAT="$ARCH"
 export MIDORI_CROSS_COMPILING=true
 
-cd "$ENGINE_DIR"
+cd "$OBJ_DIR"
 "$MACH" repackage installer \
   -o "$INSTALLER_OUT" \
   --package-name "$PKG_NAME" \
@@ -104,7 +136,7 @@ fi
 if [[ -f "$INSTGEN_DIR/setup-stub.exe" ]]; then
   STUB_OUT="$DIST_DIR/${PKG_NAME}-${VERSION}.en-US.${PKG_SUFFIX}.installer-stub.exe"
   echo "→ Generando instalador stub (desde internet)..."
-  cd "$ENGINE_DIR"
+  cd "$OBJ_DIR"
   "$MACH" repackage installer \
     -o "$STUB_OUT" \
     --tag "$ENGINE_DIR/browser/installer/windows/stub.tag" \

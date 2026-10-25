@@ -7,9 +7,10 @@ set -e
 # 2) addon download flow issues in CI:
 #    - git identity requirement during addon initialization
 #    - hard failure when browser/extensions/moz.build is not present
-# 3) obsolete Tor preflight: Tor browsing was removed from Midori, no embedded
-#    tor runtime is shipped and scripts/download-tor.sh no longer exists, so the
-#    upstream check must not abort packaging when dist/bin/tor is absent.
+# 3) obsolete Tor preflight and target selection during packaging.
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_DIR"
 
 AMELIA_PKG="node_modules/@goastian/amelia/dist/commands/package.js"
 AMELIA_ADDON="node_modules/@goastian/amelia/dist/commands/download/addon.js"
@@ -18,6 +19,7 @@ AMELIA_BRANDING="node_modules/@goastian/amelia/dist/commands/patches/branding-pa
 if [ -f "$AMELIA_PKG" ]; then
   node <<'NODE'
 const fs = require('node:fs');
+const vm = require('node:vm');
 
 const file = 'node_modules/@goastian/amelia/dist/commands/package.js';
 if (!fs.existsSync(file)) {
@@ -48,37 +50,92 @@ if (!content.includes('mach package-multi-locale` failed. Multi-language packagi
   }
 }
 
-// Tor browsing is not part of this product, so a missing dist/bin/tor must
-// warn instead of aborting packaging. log.error throws; log.warning continues.
-const torMissingCall = "        log_1.log.error(`Tor runtime files are missing in ${torDir}. Run scripts/download-tor.sh for the target platform before packaging.`);";
-const torMissingReplacement = "        log_1.log.warning(`Tor runtime files are missing in ${torDir}. Tor browsing is not included in this product; continuing without an embedded Tor runtime.`);";
-if (content.includes(torMissingCall)) {
-  content = content.replace(torMissingCall, torMissingReplacement);
+content = content.replace(
+  /        if \(product\.id === 'firefox'\) \{\r?\n            verifyTorRuntimeIfRequired\(\);\r?\n        \}\r?\n/,
+  ''
+);
+if (/\bverifyTorRuntimeIfRequired\s*\([^)]*\)\s*;/.test(content)) {
+  throw new Error('[patch-amelia] Unsupported Tor preflight in Amelia; update the packaging patch.');
 }
 
+content = content.replace(
+  /dispatch\)\(machPath, arguments_, constants_1\.ENGINE_DIR, true\)/g,
+  'dispatch)(machPath, arguments_, constants_1.OBJ_DIR, true)'
+).replace(
+  /dispatch\)\(machPath, \['package-multi-locale', '--locales', \.\.\.\(await getLocales\(\)\)\], constants_1\.ENGINE_DIR, true\)/g,
+  "dispatch)(machPath, ['package-multi-locale', '--locales', ...(await getLocales())], constants_1.OBJ_DIR, true)"
+);
+
+if (!content.includes('No configured build for packaging:')) {
+  content = content.replace(
+    "        const arguments_ = ['package'];",
+    "        if (!(0, node_fs_1.existsSync)((0, node_path_1.join)(constants_1.OBJ_DIR, 'mozinfo.json'))) {\n            log_1.log.error(`No configured build for packaging: ${constants_1.OBJ_DIR}. Run the matching build command first.`);\n        }\n        const arguments_ = ['package'];"
+  );
+}
+
+const marCall = "    await (0, utils_1.configDispatch)('./tools/update-packaging/make_full_update.sh', {";
+const marReplacement = "    if ((0, node_fs_1.existsSync)(marPath)) {\n        await (0, promises_1.unlink)(marPath);\n    }\n    const marResult = await (0, utils_1.configDispatch)('./tools/update-packaging/make_full_update.sh', {";
+if (content.includes(marCall)) {
+  content = content.replace(marCall, marReplacement).replace(
+    '    return marPath;',
+    "    if (!marResult.success || !(0, node_fs_1.existsSync)(marPath) || (0, node_fs_1.statSync)(marPath).size === 0) {\n        log_1.log.error('MAR creation failed. Aborting to avoid shipping stale artifacts.');\n    }\n    return marPath;"
+  );
+}
+
+for (const required of [
+  'return localesText.split(\'\\n\').filter(Boolean);',
+  'mach package` failed. Aborting to avoid shipping stale artifacts.',
+  'mach package-multi-locale` failed. Multi-language packaging was not applied.',
+  'MAR creation failed. Aborting to avoid shipping stale artifacts.',
+  'No configured build for packaging:',
+  'dispatch)(machPath, arguments_, constants_1.OBJ_DIR, true)',
+  "dispatch)(machPath, ['package-multi-locale', '--locales', ...(await getLocales())], constants_1.OBJ_DIR, true)",
+]) {
+  if (!content.includes(required)) {
+    throw new Error(`[patch-amelia] Unsupported Amelia packaging code: ${required}`);
+  }
+}
+
+new vm.Script(content, { filename: file });
 fs.writeFileSync(file, content, 'utf8');
 NODE
 
-  if grep -q "split('\\\\n').filter(Boolean)" "$AMELIA_PKG"; then
-    echo "[patch-amelia] package.js locale fix applied."
-  else
-    echo "[patch-amelia] WARNING: Could not patch package.js locale parsing."
-  fi
+  echo "[patch-amelia] package.js locale fix applied."
+  echo "[patch-amelia] Added hard-fail checks for package and package-multi-locale."
+  echo "[patch-amelia] Removed obsolete Tor preflight; packaging and MAR failures remain fatal."
+fi
 
-  if grep -Fq '`mach package` failed. Aborting to avoid shipping stale artifacts.' "$AMELIA_PKG" &&
-    grep -Fq '`mach package-multi-locale` failed. Multi-language packaging was not applied.' "$AMELIA_PKG"; then
-    echo "[patch-amelia] Added hard-fail checks for package and package-multi-locale."
-  else
-    echo "[patch-amelia] WARNING: Could not verify package.js hard-fail checks."
-  fi
-
-  if grep -Fq 'continuing without an embedded Tor runtime.' "$AMELIA_PKG"; then
-    echo "[patch-amelia] Demoted obsolete Tor preflight to a warning."
-  elif grep -Fq 'Tor runtime files are missing' "$AMELIA_PKG"; then
-    echo "[patch-amelia] WARNING: Could not demote Tor preflight check."
-  else
-    echo "[patch-amelia] No upstream Tor preflight found; nothing to demote."
-  fi
+if [ -f node_modules/@goastian/amelia/dist/constants/index.js ]; then
+  node <<'NODE'
+const fs = require('node:fs');
+const vm = require('node:vm');
+const file = 'node_modules/@goastian/amelia/dist/constants/index.js';
+let content = fs.readFileSync(file, 'utf8');
+if (!content.includes('const midoriObjectTargets =')) {
+  const original = "let CONFIG_GUESS = '';";
+  const replacement = `const midoriObjectTargets = {
+    linux: { x86_64: 'x86_64-pc-linux-gnu', aarch64: 'aarch64-unknown-linux-gnu' },
+    win32: { x86_64: 'x86_64-pc-windows-msvc', aarch64: 'aarch64-pc-windows-msvc' },
+};
+const midoriTargetPlatform = process.env.AMELIA_PLATFORM || process.platform;
+const midoriTargetArch = process.env.AMELIA_COMPAT || process.env.SURFER_COMPAT || ({ x64: 'x86_64', arm64: 'aarch64' })[process.arch];
+let CONFIG_GUESS = midoriObjectTargets[midoriTargetPlatform]?.[midoriTargetArch] || '';`;
+  if (!content.includes(original) || !content.includes('if ((0, node_fs_1.existsSync)(exports.ENGINE_DIR)) {')) {
+    throw new Error('[patch-amelia] Unsupported Amelia object directory selection.');
+  }
+  content = content.replace(original, replacement).replace(
+    'if ((0, node_fs_1.existsSync)(exports.ENGINE_DIR)) {',
+    'if (!CONFIG_GUESS && (0, node_fs_1.existsSync)(exports.ENGINE_DIR)) {'
+  );
+}
+content = content.replace(
+  'const midoriTargetArch = process.env.AMELIA_COMPAT || process.env.SURFER_COMPAT;',
+  "const midoriTargetArch = process.env.AMELIA_COMPAT || process.env.SURFER_COMPAT || ({ x64: 'x86_64', arm64: 'aarch64' })[process.arch];"
+);
+new vm.Script(content, { filename: file });
+fs.writeFileSync(file, content, 'utf8');
+NODE
+  echo "[patch-amelia] Object directory selection respects the requested Linux/Windows target."
 fi
 
 if [ -f "$AMELIA_BRANDING" ]; then

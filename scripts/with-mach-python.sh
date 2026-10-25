@@ -18,6 +18,7 @@ fi
 for argument in "$@"; do
   if [[ "$argument" == "build" || "$argument" == "package" ]]; then
     PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    bash "$PROJECT_DIR/scripts/patch-amelia.sh"
     python3 "$PROJECT_DIR/scripts/check-rust-integrity.py"
     break
   fi
