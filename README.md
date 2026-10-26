@@ -18,6 +18,7 @@ Midori Browser is a lightweight, fast, and secure browser that promotes user pri
 - [Install Midori](#install-midori)
 - [Build from source](#build-from-source)
 - [Project layout](#project-layout)
+- [Sponsors](#sponsors)
 - [Contributing](#contributing)
 - [Documentation and support](#documentation-and-support)
 - [License](#license)
@@ -26,6 +27,7 @@ Midori Browser is a lightweight, fast, and secure browser that promotes user pri
 
 - Privacy-oriented defaults and a built-in protection extension.
 - Workspace management and a customized new-tab page.
+- 
 - Custom branding and update configuration.
 - Builds for Linux, macOS, and Windows.
 - Compatibility with Firefox WebExtensions.
@@ -161,6 +163,13 @@ configs/   Branding and platform configuration
 scripts/   Build, packaging, and validation helpers
 tests/     Repository-level tests
 ```
+
+## Sponsors
+<div align="left">
+  <a href="https://www.herodevs.com/">
+    <img src="https://cdn.prod.website-files.com/62865614b39c464b76d339aa/668c0ec8bc50d24d58a40475_Logo%20Gradient%20Darkmode.svg" alt="HeroDevs Logo" width="400" height="200">
+  </a>
+</div>
 
 ## Contributing
 
