@@ -8,6 +8,7 @@ pub mod bookmarks;
 pub mod crypto;
 pub mod history;
 pub mod keyring;
+pub mod mobile;
 pub mod native;
 pub mod passwords;
 mod secret;
