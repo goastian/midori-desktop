@@ -28,7 +28,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   getThemesList: 'moz-src:///browser/themes/ThemesList.sys.mjs',
   getL10nIdForThemeProp: 'resource://gre/modules/addons/ThemesBundledLocalization.sys.mjs',
   ExtensionParent: 'resource://gre/modules/ExtensionParent.sys.mjs',
-  MigrationUtils: 'resource:///modules/MigrationUtils.sys.mjs',
+  MigrationUtils: 'moz-src:///browser/components/migration/MigrationUtils.sys.mjs',
   MidoriVerticalTabs: 'resource:///modules/MidoriVerticalTabs.sys.mjs',
 });
 

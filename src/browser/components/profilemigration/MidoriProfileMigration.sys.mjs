@@ -37,10 +37,10 @@ function runtimeModules() {
     "resource://gre/modules/AppConstants.sys.mjs"
   );
   const { ArchiveEncryptionState } = ChromeUtils.importESModule(
-    "resource:///modules/backup/ArchiveEncryptionState.sys.mjs"
+    "moz-src:///browser/components/backup/ArchiveEncryptionState.sys.mjs"
   );
   const { BackupService } = ChromeUtils.importESModule(
-    "resource:///modules/backup/BackupService.sys.mjs"
+    "moz-src:///browser/components/backup/BackupService.sys.mjs"
   );
   const { MidoriLegacyProfileBackupResource } = ChromeUtils.importESModule(
     "resource:///modules/MidoriLegacyProfileBackupResource.sys.mjs"

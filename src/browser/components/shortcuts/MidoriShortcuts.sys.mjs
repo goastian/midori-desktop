@@ -12,7 +12,7 @@ import {
 export { isReservedBrowserShortcut, isSafeGlobalShortcut };
 
 const KEYSET_ID = 'midori-shortcuts-keyset';
-const SEARCH_UI_UTILS_MODULE_URL = 'resource:///modules/SearchUIUtils.sys.mjs';
+const SEARCH_UI_UTILS_MODULE_URL = 'moz-src:///browser/components/search/SearchUIUtils.sys.mjs';
 
 export const PREF_SHORTCUT_OPEN_CENTER = 'midori.shortcuts.general.openCenter';
 export const PREF_SHORTCUT_TOGGLE_VERTICAL_TABS = 'midori.shortcuts.tabs.toggleVertical';

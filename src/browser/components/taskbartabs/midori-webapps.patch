@@ -29,7 +29,7 @@ index 4a40301d7b3e2f31324c9465b3f68c01c912fef5..e329274aa56d0ed7ffd6929a16adbc1b
                  }
                }
 diff --git a/browser/components/taskbartabs/TaskbarTabs.sys.mjs b/browser/components/taskbartabs/TaskbarTabs.sys.mjs
-index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c89eec2e4 100644
+index aa395b25ed92c802f1b16cdca1d5e62a82481965..f2ee506d1feb397c78b807d2bb00ad98f80b656f 100644
 --- a/browser/components/taskbartabs/TaskbarTabs.sys.mjs
 +++ b/browser/components/taskbartabs/TaskbarTabs.sys.mjs
 @@ -19,6 +19,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
@@ -40,11 +40,11 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +    "resource:///modules/MidoriWebAppMigration.sys.mjs",
    ShellService: "moz-src:///browser/components/shell/ShellService.sys.mjs",
  });
-
+ 
 @@ -29,6 +31,33 @@ ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
    });
  });
-
+ 
 +function isInstallableTaskbarTabURL(aUrl) {
 +  if (!(aUrl instanceof Ci.nsIURL) || aUrl.userPass) {
 +    return false;
@@ -84,25 +84,25 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +  #mutationQueues = new Map();
 +  #activeOSMutations = 0;
 +  #osMutationWaiters = [];
-
+ 
    constructor() {
 -    this.#ready = initRegistry().then(registry => {
 +    this.#ready = initRegistry().then(({ registry, storage }) => {
        this.#registry = registry;
 +      this.#storage = storage;
        this.#windowManager = initWindowManager(registry);
-
+ 
        this.#updateMetrics();
      });
 +    this.#ready.catch(error => {
 +      lazy.logConsole.error(`Could not initialize Taskbar Tabs: ${error}`);
 +    });
    }
-
+ 
    #updateMetrics() {
      Glean.webApp.installedWebAppCount.set(this.#registry.countTaskbarTabs());
    }
-
+ 
 +  async #runMutation(aId, aOperation) {
 +    const previous = this.#mutationQueues.get(aId) ?? Promise.resolve();
 +    const current = previous.catch(() => {}).then(aOperation);
@@ -252,7 +252,7 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 @@ -103,17 +262,25 @@ export const TaskbarTabs = new (class {
        aDetails
      );
-
+ 
 +    let integration = null;
      if (result.created || aDetails.ensurePinned) {
 -      // Don't wait for the pinning to complete.
@@ -265,7 +265,7 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +        integration = await pin;
 +      }
      }
-
+ 
 -    return {
 +    const response = {
        created: result.created,
@@ -276,12 +276,12 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +    }
 +    return response;
    }
-
-  // Used internally; can expose non-public members in its result.
+ 
+   // Used internally; can expose non-public members in its result.
 @@ -127,6 +294,21 @@ export const TaskbarTabs = new (class {
-      };
-    }
-
+       };
+     }
+ 
 +    for (const property of ["start_url", "scope"]) {
 +      if (!aDetails.manifest?.[property]) {
 +        continue;
@@ -297,11 +297,11 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +      }
 +    }
 +
-    let result = this.#registry.findOrCreateTaskbarTab(
-      aUrl,
-      aUserContextId,
-@@ -130,6 +311,13 @@ export const TaskbarTabs = new (class {
-
+     let result = this.#registry.findOrCreateTaskbarTab(
+       aUrl,
+       aUserContextId,
+@@ -138,6 +320,13 @@ export const TaskbarTabs = new (class {
+ 
        let icon = await fetchIconForTaskbarTab(result.taskbarTab, aDetails);
        result.icon = icon;
 +      try {
@@ -314,10 +314,10 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
      } else {
        result.icon = await loadSavedTaskbarTabIcon(result.taskbarTab.id);
      }
-@@ -137,18 +325,6 @@ export const TaskbarTabs = new (class {
+@@ -145,18 +334,6 @@ export const TaskbarTabs = new (class {
      return result;
    }
-
+ 
 -  async #pinTaskbarTab(aTaskbarTab, aIcon, aDetails) {
 -    let result = await TaskbarTabsPin.pinTaskbarTab(
 -      aTaskbarTab,
@@ -333,10 +333,10 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
    async findTaskbarTab(...args) {
      await this.#ready;
      return this.#registry.findTaskbarTab(...args);
-@@ -159,6 +335,15 @@ export const TaskbarTabs = new (class {
+@@ -167,6 +344,15 @@ export const TaskbarTabs = new (class {
      return this.#registry.countTaskbarTabs();
    }
-
+ 
 +  async listTaskbarTabs() {
 +    await this.#ready;
 +    return this.#registry.getAllTaskbarTabs();
@@ -349,10 +349,10 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
    /**
     * Moves an existing tab into a new Taskbar Tab window.
     *
-@@ -174,6 +359,10 @@ export const TaskbarTabs = new (class {
+@@ -182,6 +368,10 @@ export const TaskbarTabs = new (class {
      let url = browser.currentURI;
      let userContextId = aTab.userContextId;
-
+ 
 +    if (!isInstallableTaskbarTabURL(url)) {
 +      throw new TypeError("Taskbar Tabs require HTTPS or a loopback HTTP URL.");
 +    }
@@ -360,20 +360,20 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
      let [, manifest] = await Promise.all([
        this.#ready,
        lazy.ManifestObtainer.browserObtainManifest(browser).catch(e => {
-@@ -181,6 +370,9 @@ export const TaskbarTabs = new (class {
+@@ -189,6 +379,9 @@ export const TaskbarTabs = new (class {
          return {};
        }),
      ]);
 +    if (!browser.currentURI.equals(url)) {
 +      throw new Error("The page changed while the web app was being prepared.");
 +    }
-
+ 
      let { taskbarTab, icon, created } = await this.#findOrCreateTaskbarTab(
        url,
-@@ -193,16 +385,31 @@ export const TaskbarTabs = new (class {
+@@ -201,16 +394,31 @@ export const TaskbarTabs = new (class {
        }
      );
-
+ 
 -    let win = await this.#windowManager.replaceTabWithWindow(
 -      taskbarTab,
 -      aTab,
@@ -401,27 +401,27 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +      }
 +      throw error;
 +    }
-
+ 
      if (created) {
 -      // Don't wait for pinning to complete. (This is separate so we can call
 -      // it with the newly-created window.)
 -      this.#pinTaskbarTab(taskbarTab, icon, win);
 +      this.#schedulePin(taskbarTab, icon, { window: win });
      }
-
+ 
      return {
-@@ -213,31 +420,297 @@ export const TaskbarTabs = new (class {
-
+@@ -222,31 +430,297 @@ export const TaskbarTabs = new (class {
+ 
    async resetForTests(...args) {
      await this.#ready;
 +    await Promise.allSettled(this.#mutationQueues.values());
 +    this.#mutationQueues.clear();
      return this.#registry.resetForTests(...args);
    }
-
+ 
 -  async removeTaskbarTab(...args) {
 +  async removeTaskbarTab(aId) {
-+    await this.#ready;
+     await this.#ready;
 +    let taskbarTab;
 +    try {
 +      taskbarTab = this.#registry.getTaskbarTab(aId);
@@ -510,10 +510,14 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +      })
 +    );
 +  }
-+
+ 
+-    let taskbarTab = this.#registry.removeTaskbarTab(...args);
+-    this.#updateMetrics();
 +  async renameTaskbarTab(aId, aName, { window = null } = {}) {
 +    await this.#ready;
-+
+ 
+-    // Don't wait for unpinning to finish.
+-    TaskbarTabsPin.unpinTaskbarTab(taskbarTab);
 +    if (typeof aName !== "string") {
 +      throw new TypeError("Web app names must be strings.");
 +    }
@@ -605,13 +609,14 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +      this.#notifyChange("renamed", taskbarTab);
 +      return taskbarTab;
 +    });
-+  }
-+
+   }
+ 
+-  async openWindow(aTaskbarTab) {
 +  async repairTaskbarTab(aId, { window = null } = {}) {
      await this.#ready;
-
--    let taskbarTab = this.#registry.removeTaskbarTab(...args);
--    this.#updateMetrics();
+ 
+-    let icon = await loadSavedTaskbarTabIcon(aTaskbarTab.id);
+-    return this.#windowManager.openWindow(aTaskbarTab, icon);
 +    return this.#runMutation(aId, async () => {
 +      const taskbarTab = this.#registry.getTaskbarTab(aId);
 +      requireInstallableTaskbarTab(taskbarTab);
@@ -653,9 +658,7 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +        );
 +        throw new Error("Could not create the system shortcut.");
 +      }
-
--    // Don't wait for unpinning to finish.
--    TaskbarTabsPin.unpinTaskbarTab(taskbarTab);
++
 +      try {
 +        await this.#commitRegistry();
 +      } catch (error) {
@@ -673,14 +676,11 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +      this.#notifyChange("repaired", taskbarTab);
 +      return taskbarTab;
 +    });
-   }
-
--  async openWindow(aTaskbarTab) {
++  }
++
 +  async openWindow(aTaskbarTab, aOptions = {}) {
-     await this.#ready;
-
--    let icon = await loadSavedTaskbarTabIcon(aTaskbarTab.id);
--    return this.#windowManager.openWindow(aTaskbarTab, icon);
++    await this.#ready;
++
 +    return this.#runMutation(aTaskbarTab.id, async () => {
 +      const registered = this.#registry.getTaskbarTab(aTaskbarTab.id);
 +      requireInstallableTaskbarTab(registered);
@@ -698,10 +698,10 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +      });
 +    });
    }
-
+ 
    async replaceTabWithWindow(aTaskbarTab, aTab) {
      await this.#ready;
-
+ 
 -    let icon = await loadSavedTaskbarTabIcon(aTaskbarTab.id);
 -    return this.#windowManager.replaceTabWithWindow(aTaskbarTab, aTab, icon);
 +    return this.#runMutation(aTaskbarTab.id, async () => {
@@ -716,9 +716,9 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
 +      return this.#windowManager.replaceTabWithWindow(registered, aTab, icon);
 +    });
    }
-
+ 
    async ejectWindow(...args) {
-@@ -254,7 +727,7 @@ export const TaskbarTabs = new (class {
+@@ -263,7 +737,7 @@ export const TaskbarTabs = new (class {
  /**
   * Taskbar Tabs Registry initialization.
   *
@@ -727,44 +727,45 @@ index 1d342d847dffe639552bec36a0e7fd48a7c7f2ad..f368b4481e426af5411b7bbff942b17c
   */
  async function initRegistry() {
    const kRegistryFilename = "taskbartabs.json";
-@@ -262,7 +735,9 @@ async function initRegistry() {
+@@ -271,7 +745,9 @@ async function initRegistry() {
    let registryFile = TaskbarTabsUtils.getTaskbarTabsFolder();
    registryFile.append(kRegistryFilename);
-
+ 
 -  return await new TaskbarTabsRegistryStorage(registryFile).load();
 +  const storage = new TaskbarTabsRegistryStorage(registryFile);
 +  const registry = await storage.load();
 +  return { registry, storage };
  }
-
+ 
  /**
-@@ -297,7 +772,7 @@ async function fetchIconForTaskbarTab(aTaskbarTab, aDetails) {
+@@ -306,7 +782,7 @@ async function fetchIconForTaskbarTab(aTaskbarTab, aDetails) {
        return Services.io.newURI(findBestManifestIcon(aDetails.manifest));
      },
      async () => await TaskbarTabsUtils.getFaviconUri(startUri),
 -    async () => await TaskbarTabsUtils.getFaviconUri(aDetails.createdForUrl),
 +    async () => await TaskbarTabsUtils.getFaviconUri(aDetails.creatingForUrl),
    ];
-
+ 
    for (const choice of choices) {
 diff --git a/browser/components/taskbartabs/TaskbarTabsChrome.sys.mjs b/browser/components/taskbartabs/TaskbarTabsChrome.sys.mjs
-index 2f876c6acbc0748fcf0f3ecd148ee4a6649b3122..2879c5e0c56176c6812a99b64016b0e7bd1fdde8 100644
+index 2f876c6acbc0748fcf0f3ecd148ee4a6649b3122..6d1b62b08a72f0fd0c4f7b7584684f78ac1d4598 100644
 --- a/browser/components/taskbartabs/TaskbarTabsChrome.sys.mjs
 +++ b/browser/components/taskbartabs/TaskbarTabsChrome.sys.mjs
-@@ -6,6 +6,11 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
+@@ -6,6 +6,12 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+ 
  let lazy = {};
-
+ 
 +ChromeUtils.defineESModuleGetters(lazy, {
-+  TaskbarTabs: "resource:///modules/taskbartabs/TaskbarTabs.sys.mjs",
-+  TaskbarTabsUtils: "resource:///modules/taskbartabs/TaskbarTabsUtils.sys.mjs",
++  TaskbarTabs: "moz-src:///browser/components/taskbartabs/TaskbarTabs.sys.mjs",
++  TaskbarTabsUtils:
++    "moz-src:///browser/components/taskbartabs/TaskbarTabsUtils.sys.mjs",
 +});
 +
  XPCOMUtils.defineLazyServiceGetters(lazy, {
    Favicons: ["@mozilla.org/browser/favicon-service;1", Ci.nsIFaviconService],
  });
-@@ -37,9 +42,59 @@ export const TaskbarTabsChrome = {
-
+@@ -37,9 +43,59 @@ export const TaskbarTabsChrome = {
+ 
      // Add a button to control muting/unmuting
      initAudioButton(aWindow);
 +
@@ -773,7 +774,7 @@ index 2f876c6acbc0748fcf0f3ecd148ee4a6649b3122..2879c5e0c56176c6812a99b64016b0e7
 +    );
    },
  };
-
+ 
 +async function initScopeNavigation(aWindow) {
 +  const id = lazy.TaskbarTabsUtils.getTaskbarTabIdFromWindow(aWindow);
 +  let taskbarTab;
@@ -824,21 +825,21 @@ index 2f876c6acbc0748fcf0f3ecd148ee4a6649b3122..2879c5e0c56176c6812a99b64016b0e7
    const favicon = aWindow.document.getElementById("taskbar-tabs-favicon");
    const tab = aWindow.gBrowser.tabs[0];
 diff --git a/browser/components/taskbartabs/TaskbarTabsCmd.sys.mjs b/browser/components/taskbartabs/TaskbarTabsCmd.sys.mjs
-index e235f6b9f3da3aefdd3ed909ad20db365f006f9e..98abb03b90b23f31edc1885b9c1f97df969bc16b 100644
+index b44b9d24f1ac670c80603fa7200d6a3f8d189a4b..8d4e1b1ca9118cf316cb8125d989beecf820d805 100644
 --- a/browser/components/taskbartabs/TaskbarTabsCmd.sys.mjs
 +++ b/browser/components/taskbartabs/TaskbarTabsCmd.sys.mjs
 @@ -5,6 +5,7 @@
  let lazy = {};
-
+ 
  ChromeUtils.defineESModuleGetters(lazy, {
 +  migrateLegacySsbById: "resource:///modules/MidoriWebAppMigration.sys.mjs",
-   TaskbarTabs: "resource:///modules/taskbartabs/TaskbarTabs.sys.mjs",
-   TaskbarTabsUtils: "resource:///modules/taskbartabs/TaskbarTabsUtils.sys.mjs",
- });
-@@ -32,8 +33,20 @@ export class CommandLineHandler {
+   TaskbarTabs: "moz-src:///browser/components/taskbartabs/TaskbarTabs.sys.mjs",
+   TaskbarTabsUtils:
+     "moz-src:///browser/components/taskbartabs/TaskbarTabsUtils.sys.mjs",
+@@ -33,8 +34,20 @@ export class CommandLineHandler {
        return;
      }
-
+ 
 -    let id = aCmdLine.handleFlagWithParam("taskbar-tab", false);
 -    if (!id) {
 +    const id = aCmdLine.handleFlagWithParam("taskbar-tab", false);
@@ -857,8 +858,8 @@ index e235f6b9f3da3aefdd3ed909ad20db365f006f9e..98abb03b90b23f31edc1885b9c1f97df
 +      });
        return;
      }
-
-@@ -42,11 +55,20 @@ export class CommandLineHandler {
+ 
+@@ -43,11 +56,20 @@ export class CommandLineHandler {
      // Handle the commands before entering an async context so that they're not
      // handled by other nsICommandLine handlers.
      let urlParam = aCmdLine.handleFlagWithParam("new-window", false);
@@ -870,7 +871,7 @@ index e235f6b9f3da3aefdd3ed909ad20db365f006f9e..98abb03b90b23f31edc1885b9c1f97df
 +        lazy.logConsole.error(`Invalid Taskbar Tab fallback URL: ${error}`);
 +      }
 +    }
-
+ 
      let containerParam = aCmdLine.handleFlagWithParam("container", false);
      if (containerParam !== null) {
 -      context.userContextId = Number(containerParam);
@@ -879,9 +880,9 @@ index e235f6b9f3da3aefdd3ed909ad20db365f006f9e..98abb03b90b23f31edc1885b9c1f97df
 +        context.userContextId = userContextId;
 +      }
      }
-
+ 
      lazy.logConsole.info(
-@@ -59,9 +81,26 @@ export class CommandLineHandler {
+@@ -60,9 +82,26 @@ export class CommandLineHandler {
      // Retrieving Taskbar Tabs requires async operations. Prevent shutdown while
      // it loads context to open the window.
      Services.startup.enterLastWindowClosingSurvivalArea();
@@ -910,11 +911,11 @@ index e235f6b9f3da3aefdd3ed909ad20db365f006f9e..98abb03b90b23f31edc1885b9c1f97df
 +    lazy.logConsole.error(`Could not launch legacy SSB ${aId}: ${error}`);
    }
  }
-
-@@ -92,6 +131,10 @@ async function launchTaskbarTab(aContext) {
+ 
+@@ -93,6 +132,10 @@ async function launchTaskbarTab(aContext) {
          Services.scriptSecurityManager.DEFAULT_USER_CONTEXT_ID;
      }
-
+ 
 +    if (!aContext.url) {
 +      throw new Error("The Taskbar Tab shortcut has no valid fallback URL.");
 +    }
@@ -923,9 +924,10 @@ index e235f6b9f3da3aefdd3ed909ad20db365f006f9e..98abb03b90b23f31edc1885b9c1f97df
        aContext.url,
        aContext.userContextId
 diff --git a/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs b/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs
+index f16f1375296d2011bdea868b7b00c7d48630b33c..e5ac12410f17611d6e52d7564083b982c2eca6f6 100644
 --- a/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs
 +++ b/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs
-@@ -107,6 +107,25 @@
+@@ -108,6 +108,25 @@ export const TaskbarTabsPageAction = {
            await lazy.TaskbarTabs.removeTaskbarTab(id);
          }
        }
@@ -951,9 +953,9 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs b/brow
      } finally {
        lazy.logConsole.debug(`Unblocking Page Action input for tab.`);
        this._processingTabs.delete(currentTab);
-@@ -125,6 +144,9 @@
+@@ -126,6 +145,9 @@ function initVisibilityChanges(aWindow, aElement) {
    let isTaskbarTabsEnabled = false;
-
+ 
    const shouldShow = aLocation => {
 +    if (lazy.TaskbarTabsUtils.isTaskbarTabWindow(aWindow)) {
 +      return true;
@@ -961,10 +963,10 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs b/brow
      if (!isTaskbarTabsEnabled) {
        return false;
      }
-@@ -138,19 +160,11 @@
+@@ -139,19 +161,11 @@ function initVisibilityChanges(aWindow, aElement) {
        return false;
      }
-
+ 
 -    // Forcefully initialize Taskbar Tabs. At some point, this will also affect
 -    // the page action; in the meantime, ensures that telemetry info is
 -    // prepared whenever the pref is enabled.
@@ -976,21 +978,20 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsPageAction.sys.mjs b/brow
      if (!(aLocation instanceof Ci.nsIURL)) {
        return false;
      }
-
+ 
 -    return ["http", "https", "moz-extension"].includes(aLocation.scheme);
 +    return lazy.TaskbarTabs.isInstallableURL(aLocation);
    };
-
+ 
    aWindow.gBrowser.addProgressListener({
-
 diff --git a/browser/components/taskbartabs/TaskbarTabsPin.sys.mjs b/browser/components/taskbartabs/TaskbarTabsPin.sys.mjs
-index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e7657f5ee 100644
+index 7f429d2db809455b3102f73acc7e850ec7374291..7ef64cd7b09a3e2998cee6c6cd2dabffbc78c04e 100644
 --- a/browser/components/taskbartabs/TaskbarTabsPin.sys.mjs
 +++ b/browser/components/taskbartabs/TaskbarTabsPin.sys.mjs
-@@ -18,6 +18,16 @@ ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
+@@ -19,6 +19,16 @@ ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
    });
  });
-
+ 
 +const reservedShortcutPaths = new Set();
 +
 +function isNotFoundError(aError) {
@@ -1004,7 +1005,7 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
  /**
   * Provides functionality to pin and unping Taskbar Tabs.
   */
-@@ -29,79 +39,134 @@ export const TaskbarTabsPin = {
+@@ -30,79 +40,134 @@ export const TaskbarTabsPin = {
     * @param {imgIContainer} aIcon - The icon to show with this Taskbar Tab.
     * @param {object} [aDetails] - Additional options for this pin.
     * @param {DOMWindow} [aDetails.window] - The window to associate any UI with.
@@ -1013,16 +1014,16 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
     */
    async pinTaskbarTab(aTaskbarTab, aIcon, { window = null } = {}) {
      lazy.logConsole.info("Pinning Taskbar Tab to the taskbar.");
-
+ 
 +    let iconPath = null;
      let shortcut = null;
 +    const previousShortcutRelativePath = aTaskbarTab.shortcutRelativePath;
      try {
 -      let iconPath = await createTaskbarIcon(aTaskbarTab, aIcon);
 +      iconPath = await createTaskbarIcon(aTaskbarTab, aIcon);
-
+ 
        shortcut = await createShortcut(aTaskbarTab, iconPath, window);
-
+ 
        if (AppConstants.platform === "win" && !lazy.TaskbarTabsUtils.isMSIX()) {
 -        await lazy.ShellService.pinShortcutToTaskbar(
 +        const pinResult = await lazy.ShellService.pinShortcutToTaskbar(
@@ -1065,7 +1066,7 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
 -
 -    return shortcut;
    },
-
+ 
    /**
     * Unpins the provided Taskbar Tab from the taskbar.
     *
@@ -1083,14 +1084,14 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
      let unpinError = null;
      let removalError = null;
 +    let shortcutRemoved = !aShortcutRelativePath;
-
+ 
      let isMSIX = lazy.TaskbarTabsUtils.isMSIX();
      try {
        lazy.logConsole.info("Unpinning Taskbar Tab from the taskbar.");
-
+ 
 -      let relativePath = aTaskbarTab.shortcutRelativePath;
 +      const relativePath = aShortcutRelativePath;
-
+ 
        try {
 -        if (AppConstants.platform === "win" && !isMSIX) {
 +        if (relativePath && AppConstants.platform === "win" && !isMSIX) {
@@ -1104,7 +1105,7 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
 +          unpinError = e;
 +        }
        }
-
+ 
 -      let iconFile = getIconFile(aTaskbarTab);
 -
 -      lazy.logConsole.debug(`Deleting ${relativePath}`);
@@ -1170,7 +1171,7 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
      } catch (e) {
        lazy.logConsole.error(
          `An error occurred while uninstalling: ${e.message}`
-@@ -114,6 +179,12 @@ export const TaskbarTabsPin = {
+@@ -115,6 +180,12 @@ export const TaskbarTabsPin = {
        result: message(unpinError),
        removal_result: message(removalError),
      });
@@ -1181,9 +1182,9 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
 +      removalError,
 +    };
    },
-
+ 
    /**
-@@ -153,12 +224,11 @@ async function createTaskbarIcon(aTaskbarTab, aIcon) {
+@@ -154,12 +225,11 @@ async function createTaskbarIcon(aTaskbarTab, aIcon) {
   *
   * @param {TaskbarTab} aTaskbarTab - The Taskbar Tab to generate a shortcut for.
   * @param {nsIFile} aFileIcon - The icon file to use for the shortcut.
@@ -1195,10 +1196,10 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
 -async function createShortcut(aTaskbarTab, aFileIcon, aRegistry, aWindow) {
 +async function createShortcut(aTaskbarTab, aFileIcon, aWindow) {
    lazy.logConsole.info("Creating Taskbar Tabs shortcut.");
-
+ 
    let targetfile = Services.dirsvc.get("XREExeF", Ci.nsIFile);
-@@ -177,33 +247,41 @@ async function createShortcut(aTaskbarTab, aFileIcon, aRegistry, aWindow) {
-
+@@ -178,33 +248,41 @@ async function createShortcut(aTaskbarTab, aFileIcon, aRegistry, aWindow) {
+ 
    if (AppConstants.platform === "win" && lazy.TaskbarTabsUtils.isMSIX()) {
      let secondaryTileId = "taskbartab-" + aTaskbarTab.id;
 -    await lazy.ShellService.requestCreateAndPinSecondaryTile(
@@ -1211,10 +1212,10 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
 +    if (!accepted) {
 +      throw new Error("Secondary tile creation was declined.");
 +    }
-
+ 
      return secondaryTileId;
    }
-
+ 
    if (AppConstants.platform === "win") {
      // non-MSIX
 -    let { relativePath, description } = await generateShortcutInfo(aTaskbarTab);
@@ -1223,7 +1224,7 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
      lazy.logConsole.debug(
        `Using shortcut path relative to Programs folder: ${relativePath}`
      );
-
+ 
 -    await lazy.ShellService.createShortcut(
 -      targetfile,
 -      args,
@@ -1248,22 +1249,22 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
 +    } finally {
 +      reservedShortcutPaths.delete(reservation);
 +    }
-
+ 
      return relativePath;
    }
-@@ -238,7 +316,7 @@ async function createShortcut(aTaskbarTab, aFileIcon, aRegistry, aWindow) {
+@@ -239,7 +317,7 @@ async function createShortcut(aTaskbarTab, aFileIcon, aRegistry, aWindow) {
  async function generateShortcutInfo(aTaskbarTab) {
    const l10n = TaskbarTabsPin._getLocalization();
-
+ 
 -  let basename = sanitizeFilename(aTaskbarTab.name + ".lnk");
 +  const basename = sanitizeFilename(`${aTaskbarTab.name}.lnk`);
    let dirname = await l10n.formatValue("taskbar-tab-shortcut-folder");
    dirname = sanitizeFilename(dirname, { allowDirectoryNames: true });
-
-@@ -247,12 +325,55 @@ async function generateShortcutInfo(aTaskbarTab) {
+ 
+@@ -248,12 +326,55 @@ async function generateShortcutInfo(aTaskbarTab) {
      { name: aTaskbarTab.name }
    );
-
+ 
 +  const previousPath = aTaskbarTab.shortcutRelativePath;
 +  let relativePath =
 +    typeof previousPath === "string" &&
@@ -1305,7 +1306,7 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
 +    reservation,
    };
  }
-
+ 
 +function shortcutExists(aRelativePath) {
 +  const shortcut = Services.dirsvc.get("Progs", Ci.nsIFile);
 +  for (const segment of aRelativePath.split("\\")) {
@@ -1318,9 +1319,10 @@ index 7d3e024f42c709ea008b3815871d518b368dbaeb..f6e97eea75e0c24dfd31db60efb4ae3e
   * Cleans up the filename so it can be saved safely. This means replacing invalid names
   * (e.g. DOS devices) with others, or replacing invalid characters (e.g. asterisks on
 diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs
+index 72ad9b6cde0727a81da2e3712045a24aa7be3c73..2534afed5bbdfc1ae736cd0d17b263eda31b784e 100644
 --- a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs
 +++ b/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs
-@@ -65,7 +65,7 @@
+@@ -65,7 +65,7 @@ class TaskbarTab {
      shortcutRelativePath,
    }) {
      this.#id = id;
@@ -1329,16 +1331,16 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
      this.#userContextId = userContextId;
      this.#startUrl = startUrl;
      this.#name = name;
-@@ -78,7 +78,7 @@
+@@ -78,7 +78,7 @@ class TaskbarTab {
    }
-
+ 
    get scopes() {
 -    return [...this.#scopes];
 +    return this.#scopes.map(scope => ({ ...scope }));
    }
-
+ 
    get userContextId() {
-@@ -105,16 +105,21 @@
+@@ -105,16 +105,21 @@ class TaskbarTab {
     * @throws {Error} If `aId` is not a valid Taskbar Tabs ID.
     */
    isScopeNavigable(aUrl) {
@@ -1346,7 +1348,7 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +    if (!(aUrl instanceof Ci.nsIURL)) {
 +      throw new TypeError("Scope navigation requires an nsIURL.");
 +    }
-
+ 
      for (const scope of this.#scopes) {
 -      let scopeBaseDomain = Services.eTLD.getBaseDomainFromHost(scope.hostname);
 -
@@ -1365,9 +1367,9 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +      lazy.logConsole.info(`${aUrl} is navigable for Taskbar Tab ${this.#id}.`);
 +      return true;
      }
-
+ 
      lazy.logConsole.info(
-@@ -148,8 +153,13 @@
+@@ -148,9 +153,14 @@ class TaskbarTab {
      if ("shortcutRelativePath" in aPatch) {
        this.#shortcutRelativePath = aPatch.shortcutRelativePath;
      }
@@ -1376,12 +1378,13 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +    }
    }
  }
-+
+ 
 +export class TaskbarTabsRegistryVersionError extends Error {}
-
++
  /**
   * Storage class for Taskbar Tabs feature's persistent storage.
-@@ -206,7 +216,34 @@
+  */
+@@ -206,7 +216,34 @@ export class TaskbarTabsRegistry {
     *   The matching or created Taskbar Tab, along with whether it was created.
     */
    findOrCreateTaskbarTab(aUrl, aUserContextId, { manifest = {} } = {}) {
@@ -1417,16 +1420,16 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
      if (existing) {
        return {
          created: false,
-@@ -214,7 +251,7 @@
+@@ -214,7 +251,7 @@ export class TaskbarTabsRegistry {
        };
      }
-
+ 
 -    let scope = { hostname: aUrl.host };
 +    let scope = { hostname: aUrl.host, origin: aUrl.prePath };
      if ("scope" in manifest) {
        // Note: manifest.scope will not be set unless the start_url is
        // within scope. As such, this scope always contains the start_url.
-@@ -223,31 +260,23 @@
+@@ -223,31 +260,23 @@ export class TaskbarTabsRegistry {
        const scopeUri = Services.io.newURI(manifest.scope);
        scope = {
          hostname: scopeUri.host,
@@ -1434,7 +1437,7 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
          prefix: scopeUri.filePath,
        };
      }
-
+ 
 -    let startUrl;
 -    if (manifest.start_url) {
 -      startUrl = manifest.start_url;
@@ -1452,7 +1455,7 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +    const startUrl =
 +      manifest.start_url ??
 +      aUrl.mutate().setQuery("").setRef("").finalize().spec;
-
+ 
      let id = Services.uuid.generateUUID().toString().slice(1, -1);
      let taskbarTab = new TaskbarTab({
        id,
@@ -1465,22 +1468,22 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
        startUrl,
      });
      this.#taskbarTabs.push(taskbarTab);
-@@ -287,6 +316,14 @@
-
-     lazy.logConsole.error(`Taskbar Tab ID ${aId} not found.`);
+@@ -289,6 +318,14 @@ export class TaskbarTabsRegistry {
      return null;
-+  }
-+
+   }
+ 
 +  restoreTaskbarTab(aTaskbarTab) {
 +    if (this.#taskbarTabs.some(item => item.id === aTaskbarTab?.id)) {
 +      throw new Error("Cannot restore a duplicate Taskbar Tab.");
 +    }
 +    this.#taskbarTabs.push(aTaskbarTab);
 +    this.#storage.save(this);
-   }
-
++  }
++
    /**
-@@ -305,25 +342,22 @@
+    * Searches for an existing Taskbar Tab matching the URL and Container.
+    *
+@@ -305,25 +342,22 @@ export class TaskbarTabsRegistry {
          "Invalid argument, `aUrl` should be instance of `nsIURL`"
        );
      }
@@ -1488,13 +1491,10 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +    if (!Number.isInteger(aUserContextId) || aUserContextId < 0) {
        throw new TypeError(
 -        "Invalid argument, `aUserContextId` should be type of `number`"
--      );
--    }
--
 +        "Invalid argument, `aUserContextId` should be a non-negative integer"
-+      );
-+    }
-+
+       );
+     }
+ 
 +    let bestMatch = null;
 +    let bestPrefixLength = -1;
      for (const tt of this.#taskbarTabs) {
@@ -1515,7 +1515,7 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
              continue;
            }
          }
-@@ -333,12 +367,20 @@
+@@ -333,14 +367,22 @@ export class TaskbarTabsRegistry {
              `Matched TaskbarTab for URL ${aUrl.host} to ${scope.hostname}, but container ${aUserContextId} mismatched ${tt.userContextId}.`
            );
          } else {
@@ -1530,17 +1530,19 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +          }
          }
        }
-+    }
-+
+     }
+ 
 +    if (bestMatch) {
 +      lazy.logConsole.info(
 +        `Matched TaskbarTab for URL ${aUrl.host} with container ${aUserContextId}.`
 +      );
 +      return bestMatch;
-     }
-
++    }
++
      lazy.logConsole.info(
-@@ -377,10 +419,34 @@
+       `No matching TaskbarTab found for URL ${aUrl.spec} and container ${aUserContextId}.`
+     );
+@@ -377,12 +419,36 @@ export class TaskbarTabsRegistry {
     * @throws {Error} If any taskbar tab in aTaskbarTabs is unknown.
     */
    patchTaskbarTab(aTaskbarTab, aPatch) {
@@ -1559,8 +1561,8 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +    }
      aTaskbarTab._applyPatch(aPatch);
      this.#storage.save(this);
-+  }
-+
+   }
+ 
 +  /**
 +   * Gets immutable plain-object snapshots of all registered Taskbar Tabs.
 +   *
@@ -1574,10 +1576,12 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +      );
 +      return Object.freeze(snapshot);
 +    });
-   }
-
++  }
++
    /**
-@@ -412,8 +478,12 @@
+    * Gets the number of taskbar tabs that are registered in this registry.
+    *
+@@ -412,8 +478,12 @@ export class TaskbarTabsRegistry {
  export class TaskbarTabsRegistryStorage {
    // The file to save to and load from.
    #file;
@@ -1587,10 +1591,10 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +  #saveRequested = false;
 +  #saveScheduled = false;
 +  #backupExisting = false;
-
+ 
    /**
     * @param {nsIFile} aFile - The file to load and save.
-@@ -428,40 +498,88 @@
+@@ -428,40 +498,88 @@ export class TaskbarTabsRegistryStorage {
     * @returns {TaskbarTabsRegistry} The loaded registry.
     */
    async load() {
@@ -1635,15 +1639,11 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 -        return null;
 -      }),
 -    ]);
--
--    if (!jsonObject) {
--      return new TaskbarTabsRegistry(this, []);
--    }
--
--    if (!schema.validate(jsonObject).valid) {
 +      }
 +    }
-+
+ 
+-    if (!jsonObject) {
+-      return new TaskbarTabsRegistry(this, []);
 +    if (!storedTaskbarTabs) {
 +      for (const candidate of [temporaryFile, backupFile]) {
 +        if (!candidate.exists()) {
@@ -1662,21 +1662,30 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +          );
 +        }
 +      }
-+    }
-+
+     }
+ 
+-    if (!schema.validate(jsonObject).valid) {
+-      throw new Error(
+-        `JSON from file ${this.#file.path} is invalid for the Taskbar Tabs Schema.`
+-      );
 +    if (!storedTaskbarTabs) {
 +      recovered =
 +        this.#file.exists() || backupFile.exists() || temporaryFile.exists();
 +      storedTaskbarTabs = [];
-+    }
-+
+     }
+ 
+-    if (jsonObject.version > kStorageVersion) {
+-      throw new Error(`File ${this.#file.path} has an unrecognized version.
+-      Current Version: ${kStorageVersion}
+-      File Version: ${jsonObject.version}`);
 +    this.#registry = new TaskbarTabsRegistry(this, storedTaskbarTabs);
 +    if (recovered) {
 +      await this.save(this.#registry, { backupExisting: false });
-+    }
+     }
 +    return this.#registry;
 +  }
-+
+ 
+-    return new TaskbarTabsRegistry(this, jsonObject.taskbarTabs);
 +  async #read(aFile, aSchema) {
 +    lazy.logConsole.info(`Loading file ${aFile.path} for Taskbar Tabs.`);
 +    const jsonObject = await IOUtils.readJSON(aFile.path);
@@ -1690,26 +1699,15 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +          File Version: ${jsonObject.version}`);
 +    }
 +    if (!aSchema.validate(jsonObject).valid) {
-       throw new Error(
--        `JSON from file ${this.#file.path} is invalid for the Taskbar Tabs Schema.`
--      );
--    }
--
--    if (jsonObject.version > kStorageVersion) {
--      throw new Error(`File ${this.#file.path} has an unrecognized version.
--      Current Version: ${kStorageVersion}
--      File Version: ${jsonObject.version}`);
--    }
--
--    return new TaskbarTabsRegistry(this, jsonObject.taskbarTabs);
++      throw new Error(
 +        `JSON from file ${aFile.path} is invalid for the Taskbar Tabs Schema.`
 +      );
 +    }
 +    return jsonObject.taskbarTabs;
    }
-
+ 
    /**
-@@ -475,40 +593,76 @@
+@@ -475,41 +593,77 @@ export class TaskbarTabsRegistryStorage {
     * @param {TaskbarTabsRegistry} aRegistry - The registry to serialize.
     * @returns {Promise} Resolves once the current save operation completes.
     */
@@ -1731,13 +1729,6 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 -              JSON.stringify(result.errors)
 -          );
 -        }
--
--        await IOUtils.makeDirectory(this.#file.parent.path);
--        await IOUtils.writeJSON(this.#file.path, json);
--
--        lazy.logConsole.info(`Tasbkar Tabs storage file updated.`);
--      })
--      .catch(e => {
 +  save(aRegistry = this.#registry, { backupExisting = true } = {}) {
 +    if (!aRegistry) {
 +      throw new TypeError("A Taskbar Tabs registry is required for saving.");
@@ -1761,33 +1752,37 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +            this.#saveScheduled = false;
 +          }
 +        });
-+
+ 
+-        await IOUtils.makeDirectory(this.#file.parent.path);
+-        await IOUtils.writeJSON(this.#file.path, json);
 +      lazy.AsyncShutdown.profileBeforeChange.addBlocker(
 +        "Taskbar Tabs: finalizing registry serialization to disk.",
 +        this.#saveQueue
 +      );
-+
+ 
+-        lazy.logConsole.info(`Tasbkar Tabs storage file updated.`);
+-      })
+-      .catch(e => {
 +      this.#saveQueue.catch(e => {
          lazy.logConsole.error(`Error writing Taskbar Tabs file: ${e}`);
        });
--
++    }
+ 
 -    lazy.AsyncShutdown.profileBeforeChange.addBlocker(
 -      "Taskbar Tabs: finalizing registry serialization to disk.",
 -      this.#saveQueue
 -    );
-+    }
-
-     return this.#saveQueue;
++    return this.#saveQueue;
 +  }
-+
+ 
 +  flush() {
 +    if (this.#saveRequested && !this.#saveScheduled) {
 +      return this.save(this.#registry, {
 +        backupExisting: this.#backupExisting,
 +      });
 +    }
-+    return this.#saveQueue;
-+  }
+     return this.#saveQueue;
+   }
 +
 +  async #write(backupExisting) {
 +    lazy.logConsole.info(`Updating Taskbar Tabs storage file.`);
@@ -1813,10 +1808,11 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +    await IOUtils.writeJSON(this.#file.path, json, options);
 +
 +    lazy.logConsole.info(`Taskbar Tabs storage file updated.`);
-   }
++  }
  }
-
-@@ -521,7 +675,10 @@
+ 
+ /**
+@@ -521,7 +675,10 @@ export class TaskbarTabsRegistryStorage {
   * @returns {object} aStored exactly.
   */
  function migrateStoredTaskbarTab(aStored) {
@@ -1828,10 +1824,10 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
      try {
        aStored.name = generateName(Services.io.newURI(aStored.startUrl));
      } catch (e) {
-@@ -529,7 +686,29 @@
+@@ -529,9 +686,31 @@ function migrateStoredTaskbarTab(aStored) {
      }
    }
-
+ 
 +  try {
 +    const origin = Services.io.newURI(aStored.startUrl).prePath;
 +    aStored.scopes = aStored.scopes.map(scope => ({
@@ -1843,8 +1839,8 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +  }
 +
    return aStored;
-+}
-+
+ }
+ 
 +function normalizeStoredName(aName) {
 +  if (typeof aName !== "string") {
 +    return null;
@@ -1855,13 +1851,15 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +    .replace(/\s+/g, " ")
 +    .trim();
 +  return name ? name.slice(0, 80) : null;
- }
-
++}
++
  /**
-@@ -549,9 +728,13 @@
+  * Generates a name for the Taskbar Tab appropriate for user facing UI.
+  *
+@@ -549,9 +728,13 @@ export function generateName(aUri) {
      hostParts.shift();
    }
-
+ 
 -  let suffixDomainCount = Services.eTLD
 -    .getKnownPublicSuffix(aUri)
 -    .split(".").length;
@@ -1872,24 +1870,23 @@ diff --git a/browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs b/browse
 +  } catch {
 +    return aUri.displayHost || aUri.host;
 +  }
-
+ 
    // ["subdomain", "example"]
    hostParts.splice(-suffixDomainCount);
-@@ -564,5 +747,5 @@
+@@ -564,5 +747,5 @@ export function generateName(aUri) {
      // "Example Subdomain"
      .join(" ");
-
+ 
 -  return name;
 +  return name || aUri.displayHost || aUri.host;
  }
-
 diff --git a/browser/components/taskbartabs/TaskbarTabsWindowManager.sys.mjs b/browser/components/taskbartabs/TaskbarTabsWindowManager.sys.mjs
-index d761047552af966f8fad70ea8feab9eb051ccb19..c7c79f6cdc1847b12c1020dd0179159911a0328d 100644
+index 9991e5ba8c49c0fdff28152760266d57e23ec25c..b922ed9cc55ebd6de329d12e5ad6f23ab0586062 100644
 --- a/browser/components/taskbartabs/TaskbarTabsWindowManager.sys.mjs
 +++ b/browser/components/taskbartabs/TaskbarTabsWindowManager.sys.mjs
 @@ -70,7 +70,12 @@ export class TaskbarTabsWindowManager {
      args.appendElement(extraOptions);
-
+ 
      this.#tabOriginMap.set(tabId, windowId);
 -    return await this.#openWindow(aTaskbarTab, args, aIcon);
 +    try {
@@ -1899,7 +1896,7 @@ index d761047552af966f8fad70ea8feab9eb051ccb19..c7c79f6cdc1847b12c1020dd01791599
 +      throw error;
 +    }
    }
-
+ 
    /**
 @@ -78,9 +83,18 @@ export class TaskbarTabsWindowManager {
     *
@@ -1925,7 +1922,7 @@ index d761047552af966f8fad70ea8feab9eb051ccb19..c7c79f6cdc1847b12c1020dd01791599
 @@ -116,6 +130,31 @@ export class TaskbarTabsWindowManager {
      return await this.#openWindow(aTaskbarTab, args, aIcon);
    }
-
+ 
 +  /**
 +   * Focuses an existing window for a Taskbar Tab.
 +   *
@@ -1956,7 +1953,7 @@ index d761047552af966f8fad70ea8feab9eb051ccb19..c7c79f6cdc1847b12c1020dd01791599
     *
 @@ -135,32 +174,48 @@ export class TaskbarTabsWindowManager {
      this.#trackWindow(aTaskbarTab.id, win);
-
+ 
      if (AppConstants.platform === "win") {
 -      lazy.WindowsUIUtils.setWindowIcon(win, aIcon, aIcon);
 -
@@ -1993,7 +1990,7 @@ index d761047552af966f8fad70ea8feab9eb051ccb19..c7c79f6cdc1847b12c1020dd01791599
 -        lazy.WinTaskbar.setGroupIdForWindow(win, aTaskbarTab.id);
        }
      }
-
+ 
 -    this.#attachWindowFocusTelemetry(win);
 +    try {
 +      this.#attachWindowFocusTelemetry(win);
@@ -2019,20 +2016,21 @@ index d761047552af966f8fad70ea8feab9eb051ccb19..c7c79f6cdc1847b12c1020dd01791599
 +    } catch (error) {
 +      lazy.logConsole.error(`Could not focus the Web App window: ${error}`);
 +    }
-
+ 
      return win;
    }
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_chromeTest.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_chromeTest.js
-index b58db1ccb491e285f1d80cbbaa94db34ae4dcd40..1b7be745b6c9fbc733698b06e0a11c6804b5ab7a 100644
+index 809dd0f06855013891bff5545f6c352bca63e4ab..ffc2423726f19d9623f4ec4d1104a63c458a93e8 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_chromeTest.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_chromeTest.js
-@@ -6,6 +6,21 @@ XPCOMUtils.defineLazyServiceGetters(this, {
+@@ -6,6 +6,22 @@ XPCOMUtils.defineLazyServiceGetters(this, {
    Favicons: ["@mozilla.org/browser/favicon-service;1", Ci.nsIFaviconService],
  });
-
+ 
 +ChromeUtils.defineESModuleGetters(this, {
-+  TaskbarTabs: "resource:///modules/taskbartabs/TaskbarTabs.sys.mjs",
-+  TaskbarTabsPin: "resource:///modules/taskbartabs/TaskbarTabsPin.sys.mjs",
++  TaskbarTabs: "moz-src:///browser/components/taskbartabs/TaskbarTabs.sys.mjs",
++  TaskbarTabsPin:
++    "moz-src:///browser/components/taskbartabs/TaskbarTabsPin.sys.mjs",
 +});
 +
 +sinon.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
@@ -2047,11 +2045,11 @@ index b58db1ccb491e285f1d80cbbaa94db34ae4dcd40..1b7be745b6c9fbc733698b06e0a11c68
 +
  const gAudioPage =
    "https://example.com/browser/dom/base/test/file_audioLoop.html";
-
-@@ -159,6 +174,43 @@ add_task(async function testReplaceTabWithWindowChromeContainer() {
+ 
+@@ -163,6 +179,43 @@ add_task(async function testReplaceTabWithWindowChromeContainer() {
    await BrowserTestUtils.closeWindow(win);
  });
-
+ 
 +add_task(async function testOutOfScopeNavigationReturnsToBrowser() {
 +  const { taskbarTab } = await TaskbarTabs.findOrCreateTaskbarTab(
 +    Services.io.newURI("https://example.com/app/start"),
@@ -2093,23 +2091,23 @@ index b58db1ccb491e285f1d80cbbaa94db34ae4dcd40..1b7be745b6c9fbc733698b06e0a11c68
    const win = await openTaskbarTabWindow();
    const favicon = win.document.getElementById("taskbar-tabs-favicon");
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_cmd.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_cmd.js
-index dc7c18dc8b825f4948b9d1ea1030ca7732cc77a6..cced549d911fe484080171865f3bea9226a04bb8 100644
+index 61845ba6b0a8206e59534735e81ee6f082796afc..86314575963b87ebe68d60eae2d3ca1a17b11760 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_cmd.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_cmd.js
-@@ -11,7 +11,10 @@ ChromeUtils.defineESModuleGetters(this, {
-   TaskbarTabsUtils: "resource:///modules/taskbartabs/TaskbarTabsUtils.sys.mjs",
+@@ -13,7 +13,10 @@ ChromeUtils.defineESModuleGetters(this, {
+     "moz-src:///browser/components/taskbartabs/TaskbarTabsUtils.sys.mjs",
  });
-
+ 
 -sinon.stub(TaskbarTabsPin, "pinTaskbarTab");
 +sinon.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
 +  ok: true,
 +  shortcutRelativePath: "test-shortcut",
 +});
-
+ 
  registerCleanupFunction(async () => {
    sinon.restore();
-@@ -109,12 +112,17 @@ add_task(async function test_commandline_handling() {
-
+@@ -111,12 +114,17 @@ add_task(async function test_commandline_handling() {
+ 
    is(
      registered.startUrl,
 -    "https://www.subdomain.example.com",
@@ -2129,19 +2127,21 @@ index dc7c18dc8b825f4948b9d1ea1030ca7732cc77a6..cced549d911fe484080171865f3bea92
    );
    is(registered.userContextId, 1, "The container ID should be correct.");
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_content.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_content.js
-index 64d9e0467aa903a1c65c3ebd57624253d3322214..fc231190ea8ddd0c21f9e05d95c664782460c727 100644
+index eb55440852b1fdb9dee1d0291b84425f705ea7b6..7a8b1cadc63f8b1c0fbf681b2fbf3281754f60fb 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_content.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_content.js
-@@ -4,16 +4,33 @@ http://creativecommons.org/publicdomain/zero/1.0/ */
+@@ -4,17 +4,35 @@ http://creativecommons.org/publicdomain/zero/1.0/ */
  "use strict";
-
+ 
  ChromeUtils.defineESModuleGetters(this, {
 +  sinon: "resource://testing-common/Sinon.sys.mjs",
-   TaskbarTabs: "resource:///modules/taskbartabs/TaskbarTabs.sys.mjs",
-+  TaskbarTabsPin: "resource:///modules/taskbartabs/TaskbarTabsPin.sys.mjs",
-   TaskbarTabsUtils: "resource:///modules/taskbartabs/TaskbarTabsUtils.sys.mjs",
+   TaskbarTabs: "moz-src:///browser/components/taskbartabs/TaskbarTabs.sys.mjs",
++  TaskbarTabsPin:
++    "moz-src:///browser/components/taskbartabs/TaskbarTabsPin.sys.mjs",
+   TaskbarTabsUtils:
+     "moz-src:///browser/components/taskbartabs/TaskbarTabsUtils.sys.mjs",
  });
-
+ 
 -const registry = createInMemoryRegistry();
 +sinon.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
 +  ok: true,
@@ -2151,7 +2151,7 @@ index 64d9e0467aa903a1c65c3ebd57624253d3322214..fc231190ea8ddd0c21f9e05d95c66478
 +  ok: true,
 +  shortcutRelativePath: null,
 +});
-
+ 
  const url1 = Services.io.newURI("https://example.com");
  const userContextId1 = 0;
 -const taskbarTab1 = createTaskbarTab(registry, url1, userContextId1);
@@ -2166,14 +2166,14 @@ index 64d9e0467aa903a1c65c3ebd57624253d3322214..fc231190ea8ddd0c21f9e05d95c66478
 +  sinon.restore();
 +  await TaskbarTabs.resetForTests();
 +});
-
+ 
  const checkMedia = (aBrowser, aMode) =>
    SpecialPowers.spawn(aBrowser, [aMode], mode => {
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_icons.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_icons.js
-index 8c0815a7beb09cd0f9fa01e61f0cbdd1b604b797..f44db7046fa279a9a8a3739bfa045496e2dd180f 100644
+index 26e031027660ddf7fc2fe7bdf0cdc3a2fca10bac..23a2bf28552886c86ad40c6837eba17dce473bbf 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_icons.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_icons.js
-@@ -53,8 +53,8 @@ add_setup(async function setup() {
+@@ -55,8 +55,8 @@ add_setup(async function setup() {
      pinShortcutToTaskbar: sinon.stub().resolves(),
      unpinShortcutFromTaskbar: sinon.stub().resolves(),
    });
@@ -2182,9 +2182,9 @@ index 8c0815a7beb09cd0f9fa01e61f0cbdd1b604b797..f44db7046fa279a9a8a3739bfa045496
 +  sandbox.stub(ShellService, "requestCreateAndPinSecondaryTile").resolves(true);
 +  sandbox.stub(ShellService, "requestDeleteSecondaryTile").resolves(true);
    registerCleanupFunction(() => sandbox.restore());
-
+ 
    gGoodFaviconImg = encodeImagePNG(
-@@ -280,7 +280,10 @@ add_task(async function test_findOrCreateTaskbarTab_noIcon() {
+@@ -282,7 +282,10 @@ add_task(async function test_findOrCreateTaskbarTab_noIcon() {
    let fakeImg = {};
    sandbox.stub(TaskbarTabsUtils, "getFaviconUri").resolves(null);
    sandbox.stub(TaskbarTabsUtils, "getDefaultIcon").resolves(fakeImg);
@@ -2193,49 +2193,49 @@ index 8c0815a7beb09cd0f9fa01e61f0cbdd1b604b797..f44db7046fa279a9a8a3739bfa045496
 +    ok: true,
 +    shortcutRelativePath: "test-shortcut",
 +  });
-
+ 
    let result = await TaskbarTabs.findOrCreateTaskbarTab(kBaseUri, 0);
    Assert.equal(
-@@ -339,7 +342,10 @@ async function checkManifestIcon(aImageWithTab, aImageWithoutTab, aManifest) {
+@@ -341,7 +344,10 @@ async function checkManifestIcon(aImageWithTab, aImageWithoutTab, aManifest) {
    // This case checks moveTabIntoTaskbarTab.
    await checkTaskbarTabIcon(aImageWithTab, { manifest: aManifest });
-
+ 
 -  let pinStub = sandbox.stub(TaskbarTabsPin, "pinTaskbarTab").resolves();
 +  let pinStub = sandbox.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
 +    ok: true,
 +    shortcutRelativePath: "test-shortcut",
 +  });
-
+ 
    let { taskbarTab } = await TaskbarTabs.findOrCreateTaskbarTab(kBaseUri, 0, {
      manifest: aManifest,
-@@ -381,6 +387,7 @@ async function checkTaskbarTabIcon(
+@@ -383,6 +389,7 @@ async function checkTaskbarTabIcon(
      .stub(TaskbarTabsPin, "pinTaskbarTab")
      .callsFake((...args) => {
        pendingPin = TaskbarTabsPin.pinTaskbarTab.wrappedMethod(...args);
 +      return pendingPin;
      });
-
+ 
    let replaceStub = sandbox
-@@ -483,7 +490,10 @@ async function openAndMoveIntoTaskbarTab(aUri, aManifest) {
+@@ -485,7 +492,10 @@ async function openAndMoveIntoTaskbarTab(aUri, aManifest) {
  async function checkLoadsCorrectIcon(methodName, index, callback) {
    let sandbox = sinon.createSandbox();
-
+ 
 -  sandbox.stub(TaskbarTabsPin, "pinTaskbarTab").resolves();
 +  sandbox.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
 +    ok: true,
 +    shortcutRelativePath: "test-shortcut",
 +  });
    let { taskbarTab } = await TaskbarTabs.findOrCreateTaskbarTab(kBaseUri, 0);
-
+ 
    let fakeImg = { which: "fakeImg" };
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_manifest.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_manifest.js
-index 7f2634061b3b4023823b4204913d1662b602bd5c..8cc2aa79ae486c291b05efe2e4ff68093a67e21b 100644
+index efbb280e6a537344b7e192334c8bd89c75e6098f..ae3965fc7ff396b44b3288b0d4112e219ae1a2a5 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_manifest.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_manifest.js
-@@ -11,8 +11,14 @@ ChromeUtils.defineESModuleGetters(this, {
-   TaskbarTabsUtils: "resource:///modules/taskbartabs/TaskbarTabsUtils.sys.mjs",
+@@ -13,8 +13,14 @@ ChromeUtils.defineESModuleGetters(this, {
+     "moz-src:///browser/components/taskbartabs/TaskbarTabsUtils.sys.mjs",
  });
-
+ 
 -sinon.stub(TaskbarTabsPin, "pinTaskbarTab");
 -sinon.stub(TaskbarTabsPin, "unpinTaskbarTab");
 +sinon.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
@@ -2246,10 +2246,10 @@ index 7f2634061b3b4023823b4204913d1662b602bd5c..8cc2aa79ae486c291b05efe2e4ff6809
 +  ok: true,
 +  shortcutRelativePath: null,
 +});
-
+ 
  let gHttpServer = null;
  let gManifest = null;
-@@ -56,9 +62,12 @@ add_task(async function test_noManifest() {
+@@ -58,9 +64,12 @@ add_task(async function test_noManifest() {
    gManifest = null;
    await usingManifest((aWindow, aTaskbarTab) => {
      ok(true, "Created a taskbar tab with no manifest");
@@ -2263,9 +2263,9 @@ index 7f2634061b3b4023823b4204913d1662b602bd5c..8cc2aa79ae486c291b05efe2e4ff6809
 +    );
 +  }, "/launch/path?token=secret#fragment");
  });
-
+ 
  add_task(async function test_emptyManifest() {
-@@ -111,6 +120,7 @@ add_task(async function test_scope() {
+@@ -113,6 +122,7 @@ add_task(async function test_scope() {
    await usingManifest((aWindow, aTaskbarTab) => {
      Assert.deepEqual(aTaskbarTab.scopes[0], {
        hostname: "localhost",
@@ -2273,7 +2273,7 @@ index 7f2634061b3b4023823b4204913d1662b602bd5c..8cc2aa79ae486c291b05efe2e4ff6809
        prefix: "/example/",
      });
    }, "/example/file");
-@@ -125,11 +135,37 @@ add_task(async function test_startUrlOutOfScope() {
+@@ -127,11 +137,37 @@ add_task(async function test_startUrlOutOfScope() {
    await usingManifest((aWindow, aTaskbarTab) => {
      Assert.deepEqual(aTaskbarTab.scopes[0], {
        hostname: "localhost",
@@ -2282,7 +2282,7 @@ index 7f2634061b3b4023823b4204913d1662b602bd5c..8cc2aa79ae486c291b05efe2e4ff6809
      });
    }, "/example");
  });
-
+ 
 +add_task(async function test_inlineManifestUsesDocumentPathAsBase() {
 +  const uri = Services.io.newURI(httpUrl("/install/page"));
 +  const { taskbarTab } = await TaskbarTabs.findOrCreateTaskbarTab(uri, 0, {
@@ -2311,10 +2311,10 @@ index 7f2634061b3b4023823b4204913d1662b602bd5c..8cc2aa79ae486c291b05efe2e4ff6809
  add_task(async function test_scopeDistinguishesTaskbarTabs() {
    const find = prefix =>
      TaskbarTabs.findTaskbarTab(Services.io.newURI(httpUrl(prefix)), 0);
-@@ -205,8 +241,8 @@ async function usingManifest(aCallback, aLocation = "/") {
+@@ -207,8 +243,8 @@ async function usingManifest(aCallback, aLocation = "/") {
        );
        await aCallback(result.window, tt);
-
+ 
 -      await TaskbarTabs.removeTaskbarTab(tt.id);
        await BrowserTestUtils.closeWindow(result.window);
 +      await TaskbarTabs.removeTaskbarTab(tt.id);
@@ -2322,13 +2322,13 @@ index 7f2634061b3b4023823b4204913d1662b602bd5c..8cc2aa79ae486c291b05efe2e4ff6809
    );
  }
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pageAction.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pageAction.js
-index 168e859c5389de35e18b8f067e3ddfca46ecae98..a7e42193439ffb64d44ab629f660ef39c917cd62 100644
+index 12986c85e37cc790adf60cde18ec270d2f2e174c..c07ef2553a163981c106bc38e0e703be26057ec5 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pageAction.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pageAction.js
-@@ -23,8 +23,14 @@ ChromeUtils.defineESModuleGetters(this, {
-   TaskbarTabsUtils: "resource:///modules/taskbartabs/TaskbarTabsUtils.sys.mjs",
+@@ -25,8 +25,14 @@ ChromeUtils.defineESModuleGetters(this, {
+     "moz-src:///browser/components/taskbartabs/TaskbarTabsUtils.sys.mjs",
  });
-
+ 
 -sinon.stub(TaskbarTabsPin, "pinTaskbarTab");
 -sinon.stub(TaskbarTabsPin, "unpinTaskbarTab");
 +sinon.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
@@ -2339,10 +2339,10 @@ index 168e859c5389de35e18b8f067e3ddfca46ecae98..a7e42193439ffb64d44ab629f660ef39
 +  ok: true,
 +  shortcutRelativePath: null,
 +});
-
+ 
  const kFakeAddonId = "taskbartabs-test-addon@tests.mozilla.org";
  const kFakeAddonName = "browser_taskbarTabs_addons.js test addon";
-@@ -270,12 +276,12 @@ add_task(async function revertToMostRecent() {
+@@ -272,10 +278,10 @@ add_task(async function revertToMostRecent() {
  add_task(async function testVariousVisibilityChanges() {
    const argsList = [
      [BASE_URL, HIDDEN_URI, true, false],
@@ -2356,12 +2356,10 @@ index 168e859c5389de35e18b8f067e3ddfca46ecae98..a7e42193439ffb64d44ab629f660ef39
      [FILE_URI, BASE_URL, false, true],
      [BASE_URL, FILE_URI, true, false],
      [MOZ_EXTENSION_URI, BASE_URL, true, true],
-     [HIDDEN_URI, MOZ_EXTENSION_URI, false, true],
-   ];
-@@ -335,6 +341,70 @@ add_task(async function testPrefIsMonitored() {
+@@ -363,6 +369,70 @@ add_task(async function testPrefIsMonitored() {
    });
  });
-
+ 
 +add_task(async function test_insecure_remote_install_is_rejected() {
 +  await BrowserTestUtils.withNewTab(BASE_URL_HTTP, async browser => {
 +    const tab = window.gBrowser.getTabForBrowser(browser);
@@ -2429,10 +2427,10 @@ index 168e859c5389de35e18b8f067e3ddfca46ecae98..a7e42193439ffb64d44ab629f660ef39
  add_task(async function test_moveTabIntoTaskbarTabCreation() {
    const uri = Services.io.newURI(BASE_URL);
    Assert.equal(
-@@ -354,6 +424,34 @@ add_task(async function test_moveTabIntoTaskbarTabCreation() {
+@@ -382,6 +452,34 @@ add_task(async function test_moveTabIntoTaskbarTabCreation() {
    });
  });
-
+ 
 +add_task(async function test_failed_window_open_rolls_back_new_app() {
 +  const url = "https://window-failure.example.com/";
 +  const uri = Services.io.newURI(url);
@@ -2465,20 +2463,20 @@ index 168e859c5389de35e18b8f067e3ddfca46ecae98..a7e42193439ffb64d44ab629f660ef39
    // Ensure example.com has a Taskbar Tab.
    const uri = Services.io.newURI(BASE_URL);
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pin.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pin.js
-index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa36fa70b5 100644
+index b47b2505072f8e74c9c99e525c67a9a2810534cd..2636797ee83ad3d95af9f8275adc82783df153f6 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pin.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_pin.js
-@@ -11,14 +11,38 @@ ChromeUtils.defineESModuleGetters(this, {
-   sinon: "resource://testing-common/Sinon.sys.mjs",
-   TaskbarTabs: "resource:///modules/taskbartabs/TaskbarTabs.sys.mjs",
-   TaskbarTabsPin: "resource:///modules/taskbartabs/TaskbarTabsPin.sys.mjs",
+@@ -12,14 +12,38 @@ ChromeUtils.defineESModuleGetters(this, {
+   TaskbarTabs: "moz-src:///browser/components/taskbartabs/TaskbarTabs.sys.mjs",
+   TaskbarTabsPin:
+     "moz-src:///browser/components/taskbartabs/TaskbarTabsPin.sys.mjs",
 +  TaskbarTabsRegistryStorage:
-+    "resource:///modules/taskbartabs/TaskbarTabsRegistry.sys.mjs",
++    "moz-src:///browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs",
  });
-
+ 
  const BASE_URL = "https://example.com/";
 +const SHORTCUT_RELATIVE_PATH = "test-shortcut";
-
+ 
  const gPinStub = sinon
    .stub(TaskbarTabsPin, "pinTaskbarTab")
 -  .callsFake(() => "shortcut relative path");
@@ -2506,12 +2504,12 @@ index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa
 +  sinon.restore();
 +  await TaskbarTabs.resetForTests();
 +});
-
+ 
  add_task(async function test_moveTabIntoTaskbarTabParentWindow() {
    await BrowserTestUtils.withNewTab("https://example.com/", async browser => {
-@@ -26,9 +50,13 @@ add_task(async function test_moveTabIntoTaskbarTabParentWindow() {
+@@ -27,9 +51,13 @@ add_task(async function test_moveTabIntoTaskbarTabParentWindow() {
      gPinStub.resetHistory();
-
+ 
      const move = await TaskbarTabs.moveTabIntoTaskbarTab(tab);
 +    await TestUtils.waitForCondition(
 +      () => gPinStub.calledOnce,
@@ -2524,9 +2522,9 @@ index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa
        move.window,
        "The newly-created window was passed as part of the pinning"
      );
-@@ -42,7 +70,10 @@ add_task(async function test_findOrCreateTaskbarTabParentWindow() {
+@@ -43,7 +71,10 @@ add_task(async function test_findOrCreateTaskbarTabParentWindow() {
    gPinStub.resetHistory();
-
+ 
    let uri = Services.io.newURI(BASE_URL);
 -  let result = await TaskbarTabs.findOrCreateTaskbarTab(uri, 0);
 +  let result = await TaskbarTabs.findOrCreateTaskbarTab(uri, 0, {
@@ -2536,7 +2534,7 @@ index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa
    is(gPinStub.callCount, 1, "Exactly one pin was attempted");
    Assert.strictEqual(
      gPinStub.firstCall.args[2]?.window,
-@@ -54,6 +85,8 @@ add_task(async function test_findOrCreateTaskbarTabParentWindow() {
+@@ -55,6 +86,8 @@ add_task(async function test_findOrCreateTaskbarTabParentWindow() {
    uri = Services.io.newURI(BASE_URL);
    const fakeWindow = {};
    result = await TaskbarTabs.findOrCreateTaskbarTab(uri, 0, {
@@ -2545,9 +2543,9 @@ index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa
      window: fakeWindow,
    });
    is(gPinStub.callCount, 2, "Exactly one pin was attempted");
-@@ -69,13 +102,34 @@ add_task(async function test_findOrCreateTaskbarTabEnsurePin() {
+@@ -70,13 +103,34 @@ add_task(async function test_findOrCreateTaskbarTabEnsurePin() {
    gPinStub.resetHistory();
-
+ 
    let uri = Services.io.newURI(BASE_URL);
 -  let result1 = await TaskbarTabs.findOrCreateTaskbarTab(uri, 0);
 +  let result1 = await TaskbarTabs.findOrCreateTaskbarTab(uri, 0, {
@@ -2566,7 +2564,7 @@ index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa
 +    shortcutPathAtRepin = taskbarTab.shortcutRelativePath;
 +    return { ok: true, shortcutRelativePath: shortcutPathAtRepin };
 +  });
-
+ 
    let result2 = await TaskbarTabs.findOrCreateTaskbarTab(uri, 0, {
 +    awaitSystemIntegration: true,
      ensurePinned: true,
@@ -2578,17 +2576,17 @@ index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa
 +    SHORTCUT_RELATIVE_PATH,
 +    "ensurePinned reuses the tracked shortcut path"
 +  );
-
+ 
    Assert.equal(
      result1.taskbarTab.id,
-@@ -89,50 +143,373 @@ add_task(async function test_findOrCreateTaskbarTabEnsurePin() {
+@@ -90,50 +144,373 @@ add_task(async function test_findOrCreateTaskbarTabEnsurePin() {
      "The taskbar tab was reused the second time"
    );
-
+ 
 +  restorePinBehavior();
    await TaskbarTabs.removeTaskbarTab(result1.taskbarTab.id);
  });
-
+ 
  add_task(async function test_shortcutRelativePathIsUpdated() {
 -  let sandbox = sinon.createSandbox();
 -  let patchStub = sandbox.stub(
@@ -2625,11 +2623,11 @@ index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa
 +    "The successful pin path was saved"
    );
    await TaskbarTabs.removeTaskbarTab(taskbarTab.id);
-
+ 
    await BrowserTestUtils.withNewTab(BASE_URL, async browser => {
      const tab = window.gBrowser.getTabForBrowser(browser);
 -    patchStub.resetHistory();
-
+ 
      const move = await TaskbarTabs.moveTabIntoTaskbarTab(tab);
 -    Assert.equal(patchStub.callCount, 1, "Exactly one pin was attempted");
 -    Assert.equal(
@@ -2928,7 +2926,7 @@ index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa
 +  const saveStub = sandbox.stub(TaskbarTabsRegistryStorage.prototype, "save");
 +  saveStub.resolves();
 +  saveStub.onCall(2).rejects(persistenceError);
-
+ 
 -  sandbox.restore();
 +  gPinStub.resetHistory();
 +  gPinStub.resetBehavior();
@@ -2982,18 +2980,18 @@ index f049d3ea9f344dc9946f031ce6dd8284cb7fadf9..60fca0a8e41ac04e2e4d9635b2e012fa
 +  await TaskbarTabs.removeTaskbarTab(taskbarTab.id);
  });
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_telemetry.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_telemetry.js
-index 599e80d0168982121e2a981819bee5f241dc4ea1..a96b46f5320dd4e7375ed9c2054247329bf16a03 100644
+index 7a4cdf50cb67376c703bab1f89d71341bb2f3600..8951b5a745bdaca2dbe751ca52032c3ee84892f9 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_telemetry.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_telemetry.js
-@@ -36,6 +36,7 @@ const exposeDeleteResult = async () => {
+@@ -38,6 +38,7 @@ const exposeDeleteResult = async () => {
      error.name = gShortcutDeleteResult;
      throw error;
    }
 +  return true;
  };
-
+ 
  const proxyNativeShellService = {
-@@ -52,7 +53,7 @@ sinon.stub(ShellService, "createLinuxDesktopEntry").resolves();
+@@ -54,7 +55,7 @@ sinon.stub(ShellService, "createLinuxDesktopEntry").resolves();
  sinon
    .stub(ShellService, "deleteLinuxDesktopEntry")
    .callsFake(exposeDeleteResult);
@@ -3002,10 +3000,10 @@ index 599e80d0168982121e2a981819bee5f241dc4ea1..a96b46f5320dd4e7375ed9c205424732
  sinon
    .stub(ShellService, "requestDeleteSecondaryTile")
    .callsFake(exposeDeleteResult);
-@@ -111,6 +112,37 @@ add_task(async function testPinMetricSuccess() {
+@@ -113,6 +114,37 @@ add_task(async function testPinMetricSuccess() {
    await testPinMetricCustom(null);
  });
-
+ 
 +add_task(async function testPinMetricRejected() {
 +  const taskbarTab = createTaskbarTab(gRegistry, PARSED_URL, 0);
 +  Services.fog.testResetFOG();
@@ -3040,18 +3038,18 @@ index 599e80d0168982121e2a981819bee5f241dc4ea1..a96b46f5320dd4e7375ed9c205424732
  add_task(async function testPinMetricFail() {
    await testPinMetricCustom("Pin fail!");
  }).skip(AppConstants.platform !== "win" || TaskbarTabsUtils.isMSIX()); // Pinning shortcuts is Windows-non-MSIX-only.
-@@ -162,18 +194,28 @@ add_task(async function testPinAndUnpinMetric_UnpinSuccessDeleteSuccess() {
+@@ -164,18 +196,28 @@ add_task(async function testPinAndUnpinMetric_UnpinSuccessDeleteSuccess() {
  });
-
+ 
  add_task(async function testPinAndUnpinMetric_UnpinFailDeleteSuccess() {
 -  await testUnpinMetricCustom("Unpin fail!", null);
 +  await testUnpinMetricCustom("Unpin fail!", null, null, "Not attempted");
  }).skip(AppConstants.platform !== "win" || TaskbarTabsUtils.isMSIX()); // Unpinning shortcuts is Windows-non-MSIX-only.
-
+ 
  add_task(async function testPinAndUnpinMetric_UnpinSuccessDeleteFail() {
    await testUnpinMetricCustom(null, "Deletion fail!");
  });
-
+ 
 -add_task(async function testPinAndUnpinMetric_UnpinSuccessDeleteFail() {
 -  await testUnpinMetricCustom("Unpin fail!", "Deletion fail!");
 +add_task(async function testPinAndUnpinMetric_UnpinFailDeleteNotAttempted() {
@@ -3071,25 +3069,25 @@ index 599e80d0168982121e2a981819bee5f241dc4ea1..a96b46f5320dd4e7375ed9c205424732
 +    "Not attempted"
 +  );
  }).skip(AppConstants.platform !== "win" || TaskbarTabsUtils.isMSIX()); // Unpinning shortcuts is Windows-non-MSIX-only.
-
+ 
  add_task(async function testPinAndUnpinMetric_DeleteInvalid() {
-@@ -187,13 +229,11 @@ add_task(async function testActivateWhenWindowOpened() {
+@@ -189,13 +231,11 @@ add_task(async function testActivateWhenWindowOpened() {
    const win1 = await gWindowManager.openWindow(taskbarTab);
    const win2 = await gWindowManager.openWindow(taskbarTab);
-
+ 
 +  is(win2, win1, "A second activation reuses the existing window");
    const snapshot = Glean.webApp.activate.testGetValue();
    is(snapshot.length, 2, "Should record an activate event each time");
-
+ 
 -  await Promise.all([
 -    BrowserTestUtils.closeWindow(win1),
 -    BrowserTestUtils.closeWindow(win2),
 -  ]);
 +  await BrowserTestUtils.closeWindow(win1);
-
+ 
    gRegistry.removeTaskbarTab(taskbarTab.id);
  });
-@@ -226,8 +266,14 @@ add_task(async function testMoveToTaskbarHighLevelMetric() {
+@@ -228,8 +268,14 @@ add_task(async function testMoveToTaskbarHighLevelMetric() {
    // moveTabIntoTaskbarTab is implemented in the TaskbarTabs module itself, so
    // we need to stub out system interaction.
    const sandbox = sinon.createSandbox();
@@ -3104,16 +3102,16 @@ index 599e80d0168982121e2a981819bee5f241dc4ea1..a96b46f5320dd4e7375ed9c205424732
 +    shortcutRelativePath: null,
 +  });
    const { TaskbarTabs } = ChromeUtils.importESModule(
-     "resource:///modules/taskbartabs/TaskbarTabs.sys.mjs"
+     "moz-src:///browser/components/taskbartabs/TaskbarTabs.sys.mjs"
    );
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_title.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_title.js
-index 6778ec5f210901efe8b13e11ca312f79561815b5..53fd69c57fccbddc075dc1e0e83ad98c91d3224a 100644
+index 0c913341e462d594fb51c9859fe009e2c5922b5e..1f03279bfa98ed4a39dd552f0338afe31a2daf7f 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_title.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_title.js
-@@ -15,8 +15,14 @@ let gProfileName = null;
-
+@@ -16,8 +16,14 @@ let gProfileName = null;
+ 
  const kUri = Services.io.newURI("https://example.com");
-
+ 
 -sinon.stub(TaskbarTabsPin, "pinTaskbarTab");
 -sinon.stub(TaskbarTabsPin, "unpinTaskbarTab");
 +sinon.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
@@ -3124,25 +3122,26 @@ index 6778ec5f210901efe8b13e11ca312f79561815b5..53fd69c57fccbddc075dc1e0e83ad98c
 +  ok: true,
 +  shortcutRelativePath: null,
 +});
-
+ 
  add_setup(function setup() {
    sinon
 diff --git a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_windowManager.js b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_windowManager.js
-index f58c16fce9eb8e2f3f64441479546e1f6277c718..fca30f8f5a7eca27a6840d85c596f17ae654fe83 100644
+index 8f9f10cbdbf0802f7f8e8391439829b346eb50fe..6457435dd5caafc736169c9e0662d42067d4b9b8 100644
 --- a/browser/components/taskbartabs/test/browser/browser_taskbarTabs_windowManager.js
 +++ b/browser/components/taskbartabs/test/browser/browser_taskbarTabs_windowManager.js
-@@ -8,6 +8,7 @@ ChromeUtils.defineESModuleGetters(this, {
+@@ -8,6 +8,8 @@ ChromeUtils.defineESModuleGetters(this, {
    ShellService: "moz-src:///browser/components/shell/ShellService.sys.mjs",
    sinon: "resource://testing-common/Sinon.sys.mjs",
-   TaskbarTabs: "resource:///modules/taskbartabs/TaskbarTabs.sys.mjs",
-+  TaskbarTabsPin: "resource:///modules/taskbartabs/TaskbarTabsPin.sys.mjs",
-   TaskbarTabsUtils: "resource:///modules/taskbartabs/TaskbarTabsUtils.sys.mjs",
+   TaskbarTabs: "moz-src:///browser/components/taskbartabs/TaskbarTabs.sys.mjs",
++  TaskbarTabsPin:
++    "moz-src:///browser/components/taskbartabs/TaskbarTabsPin.sys.mjs",
+   TaskbarTabsUtils:
+     "moz-src:///browser/components/taskbartabs/TaskbarTabsUtils.sys.mjs",
  });
-
-@@ -27,6 +28,19 @@ const userContextId2 = 1;
+@@ -28,6 +30,19 @@ const userContextId2 = 1;
  const taskbarTab2 = createTaskbarTab(registry, url2, userContextId2);
  const id2 = taskbarTab2.id;
-
+ 
 +sinon.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
 +  ok: true,
 +  shortcutRelativePath: "test-shortcut",
@@ -3159,26 +3158,26 @@ index f58c16fce9eb8e2f3f64441479546e1f6277c718..fca30f8f5a7eca27a6840d85c596f17a
  add_task(async function test_count_for_id() {
    const wm = new TaskbarTabsWindowManager();
    let testWindowCount = (aCount1, aCount2) => {
-@@ -45,13 +59,13 @@ add_task(async function test_count_for_id() {
+@@ -46,13 +61,13 @@ add_task(async function test_count_for_id() {
    testWindowCount(0, 0);
-
+ 
    let windowPromise = BrowserTestUtils.waitForNewWindow();
 -  await wm.openWindow(taskbarTab1);
 +  await wm.openWindow(taskbarTab1, undefined, { reuse: false });
    let win1_to_eject = await windowPromise;
-
+ 
    testWindowCount(1, 0);
-
+ 
    windowPromise = BrowserTestUtils.waitForNewWindow();
 -  await wm.openWindow(taskbarTab1);
 +  await wm.openWindow(taskbarTab1, undefined, { reuse: false });
    let win2 = await windowPromise;
-
+ 
    testWindowCount(2, 0);
-@@ -95,6 +109,40 @@ add_task(async function test_count_for_id() {
+@@ -96,6 +111,40 @@ add_task(async function test_count_for_id() {
    ]);
  });
-
+ 
 +add_task(async function test_open_window_reuses_existing_app() {
 +  const wm = new TaskbarTabsWindowManager();
 +  const first = await wm.openWindow(taskbarTab1);
@@ -3216,14 +3215,14 @@ index f58c16fce9eb8e2f3f64441479546e1f6277c718..fca30f8f5a7eca27a6840d85c596f17a
  add_task(async function test_user_context_id() {
    function checkUserContextId(win, taskbarTab) {
      is(
-@@ -260,25 +308,29 @@ add_task(async function testLinuxWindowClassRestores() {
+@@ -261,25 +310,29 @@ add_task(async function testLinuxWindowClassRestores() {
      "If for some reason it's in a subdirectory, only the basename is used."
    );
-
+ 
 -  registry.removeTaskbarTab(taskbarTab);
 +  registry.removeTaskbarTab(taskbarTab.id);
  }).skip(AppConstants.platform !== "linux"); // windowclass is only used on Linux
-
+ 
  add_task(async function testTaskbarTabCount() {
 -  const count = () => TaskbarTabs.getCountForId(taskbarTab1.id);
 +  const { taskbarTab } = await TaskbarTabs.findOrCreateTaskbarTab(url1, 0, {
@@ -3231,39 +3230,39 @@ index f58c16fce9eb8e2f3f64441479546e1f6277c718..fca30f8f5a7eca27a6840d85c596f17a
 +    notify: false,
 +  });
 +  const count = () => TaskbarTabs.getCountForId(taskbarTab.id);
-
+ 
    is(await count(), 0, "window count starts at 0");
-
+ 
 -  const window1 = await TaskbarTabs.openWindow(taskbarTab1);
 +  const window1 = await TaskbarTabs.openWindow(taskbarTab);
    is(await count(), 1, "window count increases on first open");
-
+ 
 -  const window2 = await TaskbarTabs.openWindow(taskbarTab1);
 +  const window2 = await TaskbarTabs.openWindow(taskbarTab, { reuse: false });
    is(await count(), 2, "window count increases on second open");
-
+ 
    await BrowserTestUtils.closeWindow(window1);
    is(await count(), 1, "window count decreases on first close");
-
+ 
    const addedTab = BrowserTestUtils.addTab(gBrowser, url1.spec);
 -  const window3 = await TaskbarTabs.replaceTabWithWindow(taskbarTab1, addedTab);
 +  const window3 = await TaskbarTabs.replaceTabWithWindow(taskbarTab, addedTab);
    is(await count(), 2, "window count increases on replace");
-
+ 
    await TaskbarTabs.ejectWindow(window2);
-@@ -293,7 +345,7 @@ add_task(async function testTaskbarTabCount() {
+@@ -294,7 +347,7 @@ add_task(async function testTaskbarTabCount() {
    gBrowser.removeTab(ejected);
    await promise;
-
+ 
 -  TaskbarTabs.removeTaskbarTab(taskbarTab1.id);
 +  await TaskbarTabs.removeTaskbarTab(taskbarTab.id);
  });
-
+ 
  add_task(async function testWindowIconSet() {
-@@ -350,6 +402,28 @@ add_task(async function testWindowIconSet() {
+@@ -351,6 +404,28 @@ add_task(async function testWindowIconSet() {
    wm.testOnlyMockUIUtils(null);
  }).skip(AppConstants.platform !== "win"); // The window icon is only set on Windows.
-
+ 
 +add_task(async function testWindowIconFailureKeepsMinimalUI() {
 +  const wm = new TaskbarTabsWindowManager();
 +  wm.testOnlyMockUIUtils({
@@ -3288,25 +3287,25 @@ index f58c16fce9eb8e2f3f64441479546e1f6277c718..fca30f8f5a7eca27a6840d85c596f17a
 +
  add_task(async function test_taskbarTab_persistence() {
    const wm = new TaskbarTabsWindowManager();
-
+ 
 diff --git a/browser/components/taskbartabs/test/xpcshell/test_TaskbarTabsRegistry.js b/browser/components/taskbartabs/test/xpcshell/test_TaskbarTabsRegistry.js
-index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df33186bb4 100644
+index 6b39cdac4eb3fe10be574b1a41f96a941801c2fe..aac4e80816cd6134a69ebd98aeffbe2dad355f8e 100644
 --- a/browser/components/taskbartabs/test/xpcshell/test_TaskbarTabsRegistry.js
 +++ b/browser/components/taskbartabs/test/xpcshell/test_TaskbarTabsRegistry.js
 @@ -4,10 +4,13 @@
-
+ 
  "use strict";
-
+ 
 -const { TaskbarTabsRegistry, TaskbarTabsRegistryStorage } =
 -  ChromeUtils.importESModule(
--    "resource:///modules/taskbartabs/TaskbarTabsRegistry.sys.mjs"
+-    "moz-src:///browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs"
 -  );
 +const {
 +  TaskbarTabsRegistry,
 +  TaskbarTabsRegistryStorage,
 +  TaskbarTabsRegistryVersionError,
 +} = ChromeUtils.importESModule(
-+  "resource:///modules/taskbartabs/TaskbarTabsRegistry.sys.mjs"
++  "moz-src:///browser/components/taskbartabs/TaskbarTabsRegistry.sys.mjs"
 +);
  const { sinon } = ChromeUtils.importESModule(
    "resource://testing-common/Sinon.sys.mjs"
@@ -3314,7 +3313,7 @@ index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df
 @@ -17,10 +20,12 @@ function testFile() {
    let filename = Services.uuid.generateUUID().toString().slice(1, -1);
    path.append(filename + ".json");
-
+ 
 -  registerCleanupFunction(() => {
 -    if (path.exists()) {
 -      path.remove(false);
@@ -3326,12 +3325,12 @@ index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df
 +      )
 +    );
    });
-
+ 
    return path;
 @@ -80,6 +85,30 @@ add_task(async function test_create_taskbar_tab() {
    );
  });
-
+ 
 +add_task(async function test_root_manifest_reuses_origin_scope() {
 +  const registry = createInMemoryRegistry();
 +  const url = Services.io.newURI("https://www.test.com/start");
@@ -3394,12 +3393,12 @@ index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df
 +  Assert.equal(taskbarTab.name, "Renamed App", "The visible name is mutable");
 +  Assert.notEqual(snapshot.name, taskbarTab.name, "The snapshot stays stable");
  });
-
+ 
  add_task(async function test_container_mismatch() {
 @@ -126,12 +185,39 @@ add_task(async function test_container_mismatch() {
    );
  });
-
+ 
 +add_task(async function test_invalid_container_is_rejected() {
 +  const registry = createInMemoryRegistry();
 +  const url = Services.io.newURI("https://www.test.com/start");
@@ -3438,7 +3437,7 @@ index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df
    );
 @@ -146,8 +232,16 @@ add_task(async function test_scope_navigable() {
    );
-
+ 
    Assert.ok(
 -    taskbarTab.isScopeNavigable(validNavigationSubdomain),
 -    `${validNavigationSubdomain} should be a valid navigation target for ${taskbarTab.scopes[0].hostname}.`
@@ -3458,7 +3457,7 @@ index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df
 @@ -193,6 +287,77 @@ add_task(async function test_save_and_load_consistency() {
    );
  });
-
+ 
 +add_task(async function test_storage_coalesces_pending_saves() {
 +  const file = testFile();
 +  const storage = new TaskbarTabsRegistryStorage(file);
@@ -3545,7 +3544,7 @@ index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df
 +      origin,
 +    }));
 +  }
-
+ 
    Assert.deepEqual(
      outputData,
 -    originalData,
@@ -3565,7 +3564,7 @@ index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df
 +    "A future registry version raises a distinct non-recoverable error"
    );
  });
-
+ 
 @@ -266,13 +450,34 @@ add_task(async function test_guards_against_commandline_strings() {
      /Invalid argument, `aUrl` should be instance of `nsIURL`/,
      "Should reject URLs provided as a string."
@@ -3585,7 +3584,7 @@ index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df
      "Should reject userContextId provided as a string."
    );
  });
-
+ 
 +add_task(async function test_loopback_names_have_safe_fallbacks() {
 +  for (const spec of [
 +    "https://localhost/start",
@@ -3603,19 +3602,19 @@ index f14b58ea589dd4fcde5aaec20ddb4b3f4dba6f00..a2a50e5d19ff72fe7fad9eee76b103df
    // about:blank is a URI, but not a URL.
    const url = Services.io.newURI("about:blank");
 @@ -375,4 +580,4 @@ add_task(async function test_multiple_match_longest_prefix() {
-
+ 
    equal(find("/abc/d/").id, ttABCD.id, "/abc/d/ matches /abc/d/");
    equal(find("/abc/d/efgh").id, ttABCD.id, "/abc/d/efgh matches /abc/d/");
 -}).skip(); // TODO bug 2000948
 +});
 diff --git a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_existingInstalledCountMetric.js b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_existingInstalledCountMetric.js
-index c48d6036d406f566e11bba1f3cc0ca007d6c489c..3926c6b4871e5f33647c68037b6da2da4bf34401 100644
+index 0cc9259767ad63326a969c71e4196e53ecfcd98f..31ca57abfc0bec00d343546da46bd289790d15f9 100644
 --- a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_existingInstalledCountMetric.js
 +++ b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_existingInstalledCountMetric.js
-@@ -17,8 +17,14 @@ add_setup(function test_setup() {
+@@ -18,8 +18,14 @@ add_setup(function test_setup() {
    do_get_profile();
    Services.fog.initializeFOG();
-
+ 
 -  sinon.stub(TaskbarTabsPin, "pinTaskbarTab");
 -  sinon.stub(TaskbarTabsPin, "unpinTaskbarTab");
 +  sinon.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
@@ -3627,16 +3626,16 @@ index c48d6036d406f566e11bba1f3cc0ca007d6c489c..3926c6b4871e5f33647c68037b6da2da
 +    shortcutRelativePath: null,
 +  });
  });
-
+ 
  add_task(async function test_installedCounterMetric() {
 diff --git a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_installedCountMetric.js b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_installedCountMetric.js
-index fd95c0955dfd87a600a0233f908fbc96a42a1e5f..a25c85807f9eb09c08fbf2a9f32ba002fa9f41ad 100644
+index 07c41190d05dd3a17f31db3bbed38312760f5636..80356841178828dfec607c1a0dca0568ea2357f5 100644
 --- a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_installedCountMetric.js
 +++ b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_installedCountMetric.js
-@@ -17,8 +17,14 @@ add_setup(function test_setup() {
+@@ -18,8 +18,14 @@ add_setup(function test_setup() {
    do_get_profile();
    Services.fog.initializeFOG();
-
+ 
 -  sinon.stub(TaskbarTabsPin, "pinTaskbarTab");
 -  sinon.stub(TaskbarTabsPin, "unpinTaskbarTab");
 +  sinon.stub(TaskbarTabsPin, "pinTaskbarTab").resolves({
@@ -3648,16 +3647,16 @@ index fd95c0955dfd87a600a0233f908fbc96a42a1e5f..a25c85807f9eb09c08fbf2a9f32ba002
 +    shortcutRelativePath: null,
 +  });
  });
-
+ 
  add_task(async function test_installedCounterMetric() {
 diff --git a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinLinux.js b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinLinux.js
-index 3662b57f3ba5d809765f4544f7a6918a348475b3..1af6d1bf645ef58ca665681414eb48fdaeedccc2 100644
+index 17ccf72c881f4c1204911f8b4dec44fd84b72e8d..f610af7c353506f6b4c2e39ef8892a94b7737562 100644
 --- a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinLinux.js
 +++ b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinLinux.js
-@@ -71,10 +71,15 @@ add_task(async function test_pinCreatesDesktopEntry() {
+@@ -72,10 +72,15 @@ add_task(async function test_pinCreatesDesktopEntry() {
    const taskbarTab = createTaskbarTab(gRegistry, parsedURI, 0);
    sinon.resetHistory();
-
+ 
 -  Assert.equal(
 -    await TaskbarTabsPin.pinTaskbarTab(taskbarTab),
 -    "glib.mock.prgname.webapp-" + taskbarTab.id + ".desktop",
@@ -3672,12 +3671,12 @@ index 3662b57f3ba5d809765f4544f7a6918a348475b3..1af6d1bf645ef58ca665681414eb48fd
 +    },
 +    "The structured result contains the expected shortcut path"
    );
-
+ 
    checkCreateLinuxDesktopEntryCall(taskbarTab);
-@@ -91,10 +96,15 @@ add_task(async function test_pinUnusualName() {
+@@ -92,10 +97,15 @@ add_task(async function test_pinUnusualName() {
    });
    sinon.resetHistory();
-
+ 
 -  Assert.equal(
 -    await TaskbarTabsPin.pinTaskbarTab(invalidTaskbarTab),
 -    "glib.mock.prgname.webapp-" + invalidTaskbarTab.id + ".desktop",
@@ -3692,15 +3691,15 @@ index 3662b57f3ba5d809765f4544f7a6918a348475b3..1af6d1bf645ef58ca665681414eb48fd
 +    },
 +    "The structured result contains the expected shortcut path"
    );
-
+ 
    checkCreateLinuxDesktopEntryCall(invalidTaskbarTab);
-@@ -109,8 +119,14 @@ add_task(async function test_unpin() {
+@@ -110,8 +120,14 @@ add_task(async function test_unpin() {
    });
-
+ 
    sinon.resetHistory();
 -  await TaskbarTabsPin.unpinTaskbarTab(tt);
 +  const result = await TaskbarTabsPin.unpinTaskbarTab(tt);
-
+ 
 +  Assert.ok(result.ok, "unpinTaskbarTab reported success");
 +  Assert.strictEqual(
 +    result.shortcutRelativePath,
@@ -3711,10 +3710,10 @@ index 3662b57f3ba5d809765f4544f7a6918a348475b3..1af6d1bf645ef58ca665681414eb48fd
      ShellService.deleteLinuxDesktopEntry.callCount,
      1,
 diff --git a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinMsix.js b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinMsix.js
-index cdea0dfc85b5e48d6dee6497f3be9554eec9842e..9bc8cd8db7ae0992549b681cbb219eb8c9592789 100644
+index 349edfc63e6989ebc11806f0bfa3a2bd2a5e5ce7..25a10a392ccf5ebb7cbafc32caf37a12af445eab 100644
 --- a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinMsix.js
 +++ b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinMsix.js
-@@ -24,8 +24,8 @@ sinon.stub(ShellService, "shellService").value({
+@@ -25,8 +25,8 @@ sinon.stub(ShellService, "shellService").value({
    pinShortcutToTaskbar: sinon.stub().throws(),
    unpinShortcutFromTaskbar: sinon.stub().throws(),
  });
@@ -3722,13 +3721,13 @@ index cdea0dfc85b5e48d6dee6497f3be9554eec9842e..9bc8cd8db7ae0992549b681cbb219eb8
 -sinon.stub(ShellService, "requestDeleteSecondaryTile").resolves();
 +sinon.stub(ShellService, "requestCreateAndPinSecondaryTile").resolves(true);
 +sinon.stub(ShellService, "requestDeleteSecondaryTile").resolves(true);
-
+ 
  sinon.stub(TaskbarTabsPin, "_getLocalization").returns({
    formatValue(msg) {
-@@ -77,10 +77,14 @@ add_task(async function test_pinCreatesDesktopEntry() {
+@@ -78,10 +78,14 @@ add_task(async function test_pinCreatesDesktopEntry() {
    const taskbarTab = createTaskbarTab(gRegistry, parsedURI, 0);
    sinon.resetHistory();
-
+ 
 -  Assert.equal(
 -    await TaskbarTabsPin.pinTaskbarTab(taskbarTab),
 -    "taskbartab-" + taskbarTab.id,
@@ -3742,12 +3741,12 @@ index cdea0dfc85b5e48d6dee6497f3be9554eec9842e..9bc8cd8db7ae0992549b681cbb219eb8
 +    },
 +    "The structured result contains the expected tile ID"
    );
-
+ 
    checkCreateSecondaryTileCall(taskbarTab);
-@@ -97,16 +101,42 @@ add_task(async function test_pinUnusualName() {
+@@ -98,16 +102,42 @@ add_task(async function test_pinUnusualName() {
    });
    sinon.resetHistory();
-
+ 
 -  Assert.equal(
 -    await TaskbarTabsPin.pinTaskbarTab(invalidTaskbarTab),
 -    "taskbartab-" + invalidTaskbarTab.id,
@@ -3761,11 +3760,11 @@ index cdea0dfc85b5e48d6dee6497f3be9554eec9842e..9bc8cd8db7ae0992549b681cbb219eb8
 +    },
 +    "The structured result contains the expected tile ID"
    );
-
+ 
    checkCreateSecondaryTileCall(invalidTaskbarTab);
    gRegistry.removeTaskbarTab(invalidTaskbarTab.id);
  });
-
+ 
 +add_task(async function test_declined_pin_is_reported() {
 +  const taskbarTab = createTaskbarTab(
 +    gRegistry,
@@ -3791,13 +3790,13 @@ index cdea0dfc85b5e48d6dee6497f3be9554eec9842e..9bc8cd8db7ae0992549b681cbb219eb8
  add_task(async function test_unpin() {
    const parsedURI = Services.io.newURI("https://example.com");
    const tt = createTaskbarTab(gRegistry, parsedURI, 0);
-@@ -115,8 +145,14 @@ add_task(async function test_unpin() {
+@@ -116,8 +146,14 @@ add_task(async function test_unpin() {
    });
-
+ 
    sinon.resetHistory();
 -  await TaskbarTabsPin.unpinTaskbarTab(tt);
 +  const result = await TaskbarTabsPin.unpinTaskbarTab(tt);
-
+ 
 +  Assert.ok(result.ok, "unpinTaskbarTab reported success");
 +  Assert.strictEqual(
 +    result.shortcutRelativePath,
@@ -3807,7 +3806,7 @@ index cdea0dfc85b5e48d6dee6497f3be9554eec9842e..9bc8cd8db7ae0992549b681cbb219eb8
    Assert.equal(
      ShellService.requestDeleteSecondaryTile.callCount,
      1,
-@@ -128,3 +164,29 @@ add_task(async function test_unpin() {
+@@ -129,3 +165,29 @@ add_task(async function test_unpin() {
      "requestDeleteSecondaryTile was called with the value in shortcutRelativePath"
    );
  });
@@ -3838,10 +3837,10 @@ index cdea0dfc85b5e48d6dee6497f3be9554eec9842e..9bc8cd8db7ae0992549b681cbb219eb8
 +  gRegistry.removeTaskbarTab(taskbarTab.id);
 +});
 diff --git a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinWindows.js b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinWindows.js
-index f82296f2e05ddd81e6fa46695fc7eb7929bfab4d..dbcd8e4ca23da57d998282879cec995510d3f6ce 100644
+index 5a32e073fbb8a5d9172e020f8134b4db0463b04a..d54d51287d1fee496b7e9695d52820bf8304d4ea 100644
 --- a/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinWindows.js
 +++ b/browser/components/taskbartabs/test/xpcshell/test_taskbarTabs_pinWindows.js
-@@ -25,7 +25,7 @@ const kMockNativeShellService = {
+@@ -27,7 +27,7 @@ const kMockNativeShellService = {
    ...ShellService.shellService,
    createShortcut: sinon.stub().resolves("dummy_path"),
    deleteShortcut: sinon.stub().resolves("dummy_path"),
@@ -3849,10 +3848,10 @@ index f82296f2e05ddd81e6fa46695fc7eb7929bfab4d..dbcd8e4ca23da57d998282879cec9955
 +  pinShortcutToTaskbar: sinon.stub().resolves(Ci.nsIWindowsShellService.PINNED),
    unpinShortcutFromTaskbar: sinon.stub(),
  };
-
-@@ -49,14 +49,20 @@ const registry = createInMemoryRegistry();
+ 
+@@ -51,14 +51,20 @@ const registry = createInMemoryRegistry();
  do_get_profile();
-
+ 
  async function attemptPin(aTaskbarTab, aDestFolder, aShortcutRelativePath) {
 -  Assert.equal(
 -    await TaskbarTabsPin.pinTaskbarTab(
@@ -3878,7 +3877,7 @@ index f82296f2e05ddd81e6fa46695fc7eb7929bfab4d..dbcd8e4ca23da57d998282879cec9955
    ok(
      ShellService.writeShortcutIcon.calledOnce,
      `Icon creation should have been called.`
-@@ -72,8 +78,8 @@ async function attemptPin(aTaskbarTab, aDestFolder, aShortcutRelativePath) {
+@@ -74,8 +80,8 @@ async function attemptPin(aTaskbarTab, aDestFolder, aShortcutRelativePath) {
    );
    Assert.equal(
      kMockNativeShellService.createShortcut.firstCall.args[7],
@@ -3889,19 +3888,19 @@ index f82296f2e05ddd81e6fa46695fc7eb7929bfab4d..dbcd8e4ca23da57d998282879cec9955
    );
    ok(
      kMockNativeShellService.pinShortcutToTaskbar.calledOnce,
-@@ -89,6 +95,8 @@ async function attemptPin(aTaskbarTab, aDestFolder, aShortcutRelativePath) {
+@@ -91,6 +97,8 @@ async function attemptPin(aTaskbarTab, aDestFolder, aShortcutRelativePath) {
      kMockNativeShellService.createShortcut.firstCall.args[7],
      `The created and pinned shortcuts should be the same file.`
    );
 +
 +  return result;
  }
-
+ 
  function shellUnpinCalled(aShortcutRelativePath) {
-@@ -126,6 +134,27 @@ add_task(async function test_pin_location() {
+@@ -128,6 +136,27 @@ add_task(async function test_pin_location() {
    registry.removeTaskbarTab(taskbarTab.id);
  });
-
+ 
 +add_task(async function test_repin_reuses_existing_shortcut() {
 +  const taskbarTab = createTaskbarTab(
 +    registry,
@@ -3926,7 +3925,7 @@ index f82296f2e05ddd81e6fa46695fc7eb7929bfab4d..dbcd8e4ca23da57d998282879cec9955
  add_task(async function test_pin_location_dos_name() {
    const parsedURI = Services.io.newURI("https://aux.test");
    const invalidTaskbarTab = createTaskbarTab(registry, parsedURI, 0);
-@@ -134,8 +163,6 @@ add_task(async function test_pin_location_dos_name() {
+@@ -136,8 +165,6 @@ add_task(async function test_pin_location_dos_name() {
    await attemptPin(
      invalidTaskbarTab,
      "Programs",
@@ -3934,11 +3933,11 @@ index f82296f2e05ddd81e6fa46695fc7eb7929bfab4d..dbcd8e4ca23da57d998282879cec9955
 -    // AUX is a reserved name on Windows.
      "[formatValue_taskbar-tab-shortcut-folder]\\Untitled.lnk"
    );
-
-@@ -151,11 +178,13 @@ add_task(async function test_pin_location_bad_characters() {
+ 
+@@ -153,11 +180,13 @@ add_task(async function test_pin_location_bad_characters() {
    });
    sinon.resetHistory();
-
+ 
 -  await attemptPin(
 -    invalidTaskbarTab,
 -    "Programs",
@@ -3950,20 +3949,20 @@ index f82296f2e05ddd81e6fa46695fc7eb7929bfab4d..dbcd8e4ca23da57d998282879cec9955
 +    "The visible shortcut name contains no invalid Windows characters"
    );
 +  Assert.ok(basename.endsWith(".lnk"), "The shortcut keeps its extension");
-
+ 
    registry.removeTaskbarTab(invalidTaskbarTab.id);
  });
-@@ -172,12 +201,63 @@ add_task(async function test_pin_location_lnk_extension() {
+@@ -174,12 +203,63 @@ add_task(async function test_pin_location_lnk_extension() {
    await attemptPin(
      invalidTaskbarTab,
      "Programs",
 -    "[formatValue_taskbar-tab-shortcut-folder]\\coolstartup.lnk.lnk"
 +    `[formatValue_taskbar-tab-shortcut-folder]\\coolstartup.lnk.lnk`
    );
-
+ 
    registry.removeTaskbarTab(invalidTaskbarTab.id);
  });
-
+ 
 +add_task(async function test_concurrent_same_name_shortcuts_do_not_collide() {
 +  const sharedName = `Concurrent ${Services.uuid
 +    .generateUUID()
@@ -4018,13 +4017,13 @@ index f82296f2e05ddd81e6fa46695fc7eb7929bfab4d..dbcd8e4ca23da57d998282879cec9955
  add_task(async function test_unpin() {
    const exampleUrl = Services.io.newURI("https://example.com");
    const tt = createTaskbarTab(registry, exampleUrl, 0);
-@@ -186,7 +266,236 @@ add_task(async function test_unpin() {
+@@ -188,7 +268,236 @@ add_task(async function test_unpin() {
    });
-
+ 
    sinon.resetHistory();
 -  await TaskbarTabsPin.unpinTaskbarTab(tt);
 +  const result = await TaskbarTabsPin.unpinTaskbarTab(tt);
-
+ 
 +  Assert.ok(result.ok, "unpinTaskbarTab reported success");
 +  Assert.strictEqual(
 +    result.shortcutRelativePath,

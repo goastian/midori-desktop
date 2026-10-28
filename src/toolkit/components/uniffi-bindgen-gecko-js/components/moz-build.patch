@@ -1,0 +1,16 @@
+diff --git a/toolkit/components/uniffi-bindgen-gecko-js/components/moz.build b/toolkit/components/uniffi-bindgen-gecko-js/components/moz.build
+index 881433937fe1ad07803d3b2cfb2ab2f062eb162f..35d8a735989b6b919e67dba7b6dac3583e8e64e8 100644
+--- a/toolkit/components/uniffi-bindgen-gecko-js/components/moz.build
++++ b/toolkit/components/uniffi-bindgen-gecko-js/components/moz.build
+@@ -27,7 +27,10 @@ with Files("**"):
+     BUG_COMPONENT = ("Toolkit", "UniFFI Bindings")
+ 
+ RustLibrary(
+-    "gkrust-uniffi-components", features=["mozbuild"], output_category="uniffi-target"
++    "gkrust-uniffi-components",
++    features=["mozbuild"],
++    output_category="uniffi-target",
++    cargo_crate_type="staticlib",
+ )
+ 
+ if CONFIG["MOZ_APPSERVICES_IN_TREE"]:

@@ -1,11 +1,13 @@
+diff --git a/toolkit/components/uniffi-bindgen-gecko-js/tests/generated/RustUniffiBindingsTestsCollision.sys.mjs b/toolkit/components/uniffi-bindgen-gecko-js/tests/generated/RustUniffiBindingsTestsCollision.sys.mjs
+index c7ce94f6683cb11a2d44b44dfee6d81d1f35a43b..bb6c99dac40ba4bc8e7a3839755bbf02661a1e5d 100644
 --- a/toolkit/components/uniffi-bindgen-gecko-js/tests/generated/RustUniffiBindingsTestsCollision.sys.mjs
 +++ b/toolkit/components/uniffi-bindgen-gecko-js/tests/generated/RustUniffiBindingsTestsCollision.sys.mjs
-@@ -46,7 +46,7 @@
+@@ -46,7 +46,7 @@ if (cb instanceof UniffiSkipJsTypeCheck) {
      FfiConverterTypeTestCallbackInterface.checkType(cb);
  }
  const result = UniFFIScaffolding.callSync(
--    376, // uniffi_uniffi_bindings_tests_collision_fn_func_invoke_collision_callback
-+    382, // uniffi_uniffi_bindings_tests_collision_fn_func_invoke_collision_callback
+-    377, // uniffi_uniffi_bindings_tests_collision_fn_func_invoke_collision_callback
++    383, // uniffi_uniffi_bindings_tests_collision_fn_func_invoke_collision_callback
      FfiConverterTypeTestCallbackInterface.lower(cb),
  )
  return handleRustResult(

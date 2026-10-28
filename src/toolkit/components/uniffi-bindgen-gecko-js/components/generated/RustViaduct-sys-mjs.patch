@@ -1,11 +1,13 @@
+diff --git a/toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustViaduct.sys.mjs b/toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustViaduct.sys.mjs
+index 759b16b1769b7c3492b0d36e868014554b91ef2a..748368a3c227087a204df5e18c395e217311ea97 100644
 --- a/toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustViaduct.sys.mjs
 +++ b/toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustViaduct.sys.mjs
-@@ -1530,7 +1530,7 @@
+@@ -1530,7 +1530,7 @@ export class BackendImpl extends Backend {
          FfiConverterTypeRequest.checkType(request);
          FfiConverterTypeClientSettings.checkType(settings);
          const result = await UniFFIScaffolding.callAsync(
--            272, // uniffi_viaduct_fn_method_backend_send_request
-+            276, // uniffi_viaduct_fn_method_backend_send_request
+-            273, // uniffi_viaduct_fn_method_backend_send_request
++            277, // uniffi_viaduct_fn_method_backend_send_request
              FfiConverterTypeBackend.lowerReceiver(this),
              FfiConverterTypeRequest.lower(request),
              FfiConverterTypeClientSettings.lower(settings),

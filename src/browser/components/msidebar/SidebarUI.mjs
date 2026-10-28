@@ -31,7 +31,8 @@ import {
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   AboutNewTab: 'resource:///modules/AboutNewTab.sys.mjs',
-  ContextualIdentityService: 'resource://gre/modules/ContextualIdentityService.sys.mjs',
+  ContextualIdentityService:
+    'moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs',
   PlacesUtils: 'resource://gre/modules/PlacesUtils.sys.mjs',
 });
 

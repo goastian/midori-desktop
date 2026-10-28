@@ -1,0 +1,14 @@
+diff --git a/toolkit/components/uniffi-bindgen-gecko-js/test-fixtures/moz.build b/toolkit/components/uniffi-bindgen-gecko-js/test-fixtures/moz.build
+index 0876c91fdd5af270a2e4888d94b972e7a17ab87d..150f5692a035dfa86e3d27f20a1db870ae652932 100644
+--- a/toolkit/components/uniffi-bindgen-gecko-js/test-fixtures/moz.build
++++ b/toolkit/components/uniffi-bindgen-gecko-js/test-fixtures/moz.build
+@@ -7,4 +7,8 @@
+ with Files("**"):
+     BUG_COMPONENT = ("Toolkit", "UniFFI Bindings")
+ 
+-RustLibrary("uniffi-bindgen-gecko-js-test-fixtures", output_category="uniffi-target")
++RustLibrary(
++    "uniffi-bindgen-gecko-js-test-fixtures",
++    output_category="uniffi-target",
++    cargo_crate_type="staticlib",
++)
