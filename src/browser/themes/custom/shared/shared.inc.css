@@ -652,38 +652,39 @@ toolbar .toolbarbutton-1:not([disabled]):active {
   min-width: calc(var(--window-min-width, 500px) + 120px) !important;
 }
 
-:root[midori-vertical-tabs] #sidebar-box {
-  width: var(--pf-sidebar-width) !important;
-  min-width: var(--pf-sidebar-width) !important;
-  max-width: var(--pf-sidebar-width) !important;
-  margin: 0 0 var(--pf-browser-separation) var(--pf-browser-separation) !important;
-  border-radius: var(--pf-browser-radius) !important;
-  background:
-    var(--pf-sidebar-bgcolor) !important;
-  box-shadow: inset 0 0 0 1px var(--pf-border-color-light) !important;
-  overflow: clip !important;
-  position: relative !important;
-  z-index: var(--browser-area-z-index-sidebar, 2);
+:root[midori-vertical-tabs] #sidebar-container {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background-color: var(--pf-sidebar-bgcolor) !important;
 }
 
-:root[midori-vertical-tabs="right"] #sidebar-box {
-  margin-inline: 0 var(--pf-browser-separation) !important;
+:root[midori-vertical-tabs] #sidebar-container[sidebar-launcher-expanded] {
+  min-width: 180px;
+  max-width: min(360px, 50vw);
 }
 
-:root[midori-vertical-tabs] #sidebar-splitter {
-  width: var(--pf-browser-separation) !important;
-  min-width: var(--pf-browser-separation) !important;
+:root[midori-vertical-tabs] #sidebar-launcher-splitter {
+  width: 4px;
+  min-width: 4px;
   border: 0 !important;
   background: transparent !important;
 }
 
+:root[midori-vertical-tabs] #sidebar-launcher-splitter:hover {
+  background: var(--pf-border-color) !important;
+}
+
 :root[midori-vertical-tabs] #vertical-tabs {
   width: 100% !important;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column !important;
 }
 
 :root[midori-vertical-tabs] #vertical-tabs > #tabbrowser-tabs {
   flex: 1 1 auto !important;
+  min-width: 0 !important;
   min-height: 0 !important;
   padding-block: var(--pf-separation) !important;
 }
@@ -775,28 +776,9 @@ toolbar .toolbarbutton-1:not([disabled]):active {
   display: none !important;
 }
 
-:root[midori-vertical-tabs][midori-arc-mode="true"] #sidebar-box {
-  width: var(--pf-sidebar-width) !important;
-  min-width: 190px !important;
-  max-width: 300px !important;
-  margin: var(--pf-browser-separation) 0 var(--pf-browser-separation) var(--pf-browser-separation) !important;
-  border: 0 !important;
-  border-radius: 10px !important;
-  background: var(--pf-sidebar-bgcolor) !important;
-  box-shadow: none !important;
-}
-
-:root[midori-vertical-tabs="right"][midori-arc-mode="true"] #sidebar-box {
-  margin-inline: 0 var(--pf-browser-separation) !important;
-}
-
-:root[midori-vertical-tabs][midori-arc-mode="true"] #sidebar-header {
-  display: none !important;
-}
-
 :root[midori-vertical-tabs][midori-arc-mode="true"] #tabbrowser-tabbox {
   margin: var(--pf-browser-separation) var(--pf-browser-separation) var(--pf-browser-separation) 0 !important;
-  border: 10px solid color-mix(in srgb, var(--pf-sidebar-bgcolor), var(--pf-browser-bgcolor) 18%) !important;
+  border: 0 !important;
   border-radius: 14px !important;
   box-shadow: none !important;
   background: color-mix(in srgb, var(--pf-sidebar-bgcolor), var(--pf-browser-bgcolor) 18%) !important;
@@ -969,6 +951,20 @@ toolbar .toolbarbutton-1:not([disabled]):active {
   border-color: color-mix(in srgb, var(--pf-accent-color), transparent 62%) !important;
 }
 
+.midori-workspace-dropdown-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.midori-workspace-dropdown-arrow {
+  width: 12px;
+  height: 12px;
+  margin-inline-start: auto;
+  list-style-image: url("chrome://global/skin/icons/arrow-down.svg");
+  -moz-context-properties: fill;
+  fill: currentColor;
+}
+
 #midori-msidebar-main {
   background:
     var(--pf-sidebar-bgcolor) !important;
@@ -1023,6 +1019,7 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 :root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-rail::before,
 :root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #pinned-tabs-container[orient="vertical"]::before,
 :root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-dropdown-label,
+:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-dropdown-arrow,
 :root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) .midori-workspace-label {
   display: none !important;
 }
@@ -1178,77 +1175,6 @@ toolbar .toolbarbutton-1:not([disabled]):active {
 
 :root[midori-vertical-tabs][midori-vt-has-pinned="false"] :is(#pinned-tabs-container[orient="vertical"], #vertical-pinned-tabs-splitter) {
   display: none !important;
-}
-
-/* Workspace switcher pinned to the bottom of the column. */
-#midori-workspace-switcher {
-  order: 10;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 6px var(--pf-separation);
-  border-block-start: 1px solid var(--pf-border-color-light);
-  -moz-window-dragging: no-drag;
-}
-
-:root[midori-vt-show-rail="false"] #midori-workspace-switcher {
-  display: none;
-}
-
-.midori-workspace-switch-btn,
-#midori-workspace-switch-add {
-  appearance: none;
-  min-width: 0;
-  width: 30px;
-  height: 30px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--pf-border-radius-hl);
-  background: transparent;
-  justify-content: center;
-  transition: background-color var(--pf-ts-15);
-}
-
-.midori-workspace-switch-btn > .toolbarbutton-icon {
-  display: none;
-}
-
-.midori-workspace-switch-btn > .toolbarbutton-text {
-  margin: 0;
-  font-size: 15px;
-}
-
-.midori-workspace-switch-btn:hover,
-#midori-workspace-switch-add:hover {
-  background: var(--pf-toolbar-bgcolor-hover);
-}
-
-.midori-workspace-switch-btn[selected] {
-  background: color-mix(in srgb, var(--midori-workspace-switch-accent, var(--pf-accent-color)), transparent 80%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--midori-workspace-switch-accent, var(--pf-accent-color)), transparent 40%);
-}
-
-#midori-workspace-switch-add {
-  margin-inline-start: auto;
-}
-
-#midori-workspace-switch-add > .toolbarbutton-icon {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  -moz-context-properties: fill;
-  fill: var(--pf-icon-color);
-}
-
-:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-switcher {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  padding-inline: 4px;
-}
-
-:root[midori-vertical-tabs]:has(#tabbrowser-tabs[orient="vertical"]:not([expanded])) #midori-workspace-switch-add {
-  margin-inline-start: 0;
 }
 
 /* ------------------------------------------------------------------
