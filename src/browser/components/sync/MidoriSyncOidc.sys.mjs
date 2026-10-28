@@ -273,7 +273,7 @@ export async function authorizeBrowserLogin(serverURL, openURL, signal = null) {
     }
     const url = new URL("auth/desktop", serverURL);
     url.search = new URLSearchParams({ state, code_challenge: challenge,
-      redirect_uri: callback.redirectURI }).toString();
+      redirect_uri: callback.redirectURI, device_type: "desktop" }).toString();
     openURL(url.href);
     return { code: await callback.promise, verifier };
   } finally {
