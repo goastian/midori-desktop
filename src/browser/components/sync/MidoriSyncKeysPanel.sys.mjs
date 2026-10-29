@@ -399,6 +399,10 @@ export function createSyncKeysPanel(doc, service, { saveRecoveryCode = saveSyncR
     });
   });
   const showError = error => {
+    if (service.keys.snapshot.accountRecoverySupported) {
+      setL10n(doc.l10n, status, "midori-sync-keys-account-connection-failed");
+      return;
+    }
     const id = ["recovery_failed", "invalid_recovery_code"].includes(error) ? "recovery-failed" :
       error === "busy" ? "busy" :
       error === "password_unlock_failed" ? "password-failed" :
@@ -448,8 +452,9 @@ export function createSyncKeysPanel(doc, service, { saveRecoveryCode = saveSyncR
       clearReview();
     }
     const disabled = (account.interactionBusy ?? account.busy) || keys.busy || migrationWorking || acting;
+    const managed = keys.accountRecoverySupported === true;
     const passwordUnlocking = keys.status === "recovery-required";
-    passwordForm.hidden = !keys.passwordUnlockSupported ||
+    passwordForm.hidden = managed || !keys.passwordUnlockSupported ||
       !(keys.status === "ready" && keys.rotation?.phase !== "rewriting" || passwordUnlocking && keys.passwordUnlockAvailable);
     password.disabled = passwordConfirmation.disabled = disabled;
     password.autocomplete = passwordUnlocking ? "current-password" : "new-password";
@@ -480,20 +485,20 @@ export function createSyncKeysPanel(doc, service, { saveRecoveryCode = saveSyncR
     confirm.disabled = disabled || (!pending && (!saved.checked || !generated.value ||
       confirmation.value.toUpperCase() !== generated.value.slice(-8))) || (!rotating && keys.incompatibleSessions > 0 && !revoke.checked);
     check.hidden = drafting || ["pending", "rotation-pending", "empty", "recovery-required"].includes(keys.status);
-    create.hidden = keys.status !== "empty";
+    create.hidden = managed || keys.status !== "empty";
     rotate.hidden = !keys.canRotate || drafting || pending;
-    missingBackup.hidden = keys.status !== "ready" || keys.recoveryCodeAvailable !== false || keys.rotation?.phase === "rewriting";
+    missingBackup.hidden = managed || keys.status !== "ready" || keys.recoveryCodeAvailable !== false || keys.rotation?.phase === "rewriting";
     replaceBackup.hidden = missingBackup.hidden || !keys.canRotate;
     migrate.hidden = keys.status !== "ready" || keys.rotation?.phase !== "rewriting" || typeof service.migrateEncryption !== "function";
     remaining.hidden = keys.rotation?.phase !== "rewriting" || !Number.isSafeInteger(keys.rotation.live_records);
     if (!remaining.hidden) {
       setL10n(doc.l10n, remaining, "midori-sync-keys-rotation-remaining", { count: keys.rotation.live_records });
     }
-    recovery.hidden = keys.status !== "recovery-required" && !(keys.status === "migration-required" && !keys.canRotate);
-    backup.hidden = !drafting && !pending;
-    storedBackup.hidden = keys.status !== "ready" || keys.rotation?.phase === "rewriting" || !keys.recoveryCodeAvailable;
+    recovery.hidden = managed || keys.status !== "recovery-required" && !(keys.status === "migration-required" && !keys.canRotate);
+    backup.hidden = managed || !drafting && !pending;
+    storedBackup.hidden = managed || keys.status !== "ready" || keys.rotation?.phase === "rewriting" || !keys.recoveryCodeAvailable;
     setL10n(doc.l10n, storedDescription, keys.backupPending ? "midori-sync-keys-stored-backup-help" : "midori-sync-keys-backup-available");
-    advanced.hidden = check.hidden && rotate.hidden && migrate.hidden;
+    advanced.hidden = managed || check.hidden && rotate.hidden && migrate.hidden;
     storedCode.hidden = storedDownload.hidden = !storedCode.value;
     storedSaved.hidden = storedSavedLabel.hidden = acknowledge.hidden = !storedCode.value || !keys.backupPending;
     generatedDownload.hidden = !drafting;
@@ -508,12 +513,16 @@ export function createSyncKeysPanel(doc, service, { saveRecoveryCode = saveSyncR
     revoke.hidden = revokeLabel.hidden = rotating || keys.incompatibleSessions === 0;
     setL10n(doc.l10n, confirm, rotating ? "midori-sync-keys-confirm-rotation" : "midori-sync-keys-confirm");
     if (keys.busy || migrationWorking || acting) {
-      setL10n(doc.l10n, status, "midori-sync-keys-working");
+      setL10n(doc.l10n, status, managed ? "midori-sync-keys-account-connecting" : "midori-sync-keys-working");
     } else if (keys.error) {
       showError(keys.error);
     } else if (actionError) {
       showError(actionError);
     } else {
+      if (managed && ["ready", "empty"].includes(keys.status)) {
+        setL10n(doc.l10n, status, keys.status === "ready" ? "midori-sync-keys-account-ready" : "midori-sync-keys-account-connecting");
+        return;
+      }
       setL10n(doc.l10n, status, keys.status === "ready" && keys.rotation?.phase === "rewriting" ?
         keys.serverRecovery ? "midori-sync-keys-migration-running" : "midori-sync-keys-rotation-running" : keys.status === "ready" && keys.registryUpgradeRequired ?
           "midori-sync-keys-registry-upgrade-required" : keys.status === "ready" && keys.backupPending ?

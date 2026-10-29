@@ -95,6 +95,7 @@ export function validateSyncCapabilities(value) {
     addresses: collectionSupport.addresses,
     workspaces: collectionSupport.workspaces,
     deviceEnrollment: value.crypto?.enrollment === true,
+    accountRecovery: value.crypto?.account_recovery_version === 1,
     keyReset: value.crypto?.reset === true,
     pageByteBudget: value.features.includes("change_page_byte_budget"),
     registryAuthVersion: value.client_recovery?.registry_auth_version === 2 ? 2 : 0,

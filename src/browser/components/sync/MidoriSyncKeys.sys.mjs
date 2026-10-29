@@ -24,6 +24,16 @@ function fail(code = "invalid_crypto_state") {
   throw new SyncKeysError(code);
 }
 
+function sameAccountScope(left, right) {
+  try {
+    const scope = JSON.parse(left);
+    return Array.isArray(scope) && scope.length === 3 && scope.every(value => typeof value === "string") &&
+      JSON.stringify(scope) === JSON.stringify(JSON.parse(right));
+  } catch {
+    return false;
+  }
+}
+
 function validRevision(value) {
   return typeof value === "string" && /^(0|[1-9][0-9]{0,9})$/.test(value) && Number(value) <= 2147483647;
 }
@@ -61,6 +71,7 @@ export function validateNativeCryptoState(value) {
       !["legacy", "native"].includes(value.mode) || typeof value.migration_required !== "boolean" ||
       (value.legacy_frozen !== undefined && typeof value.legacy_frozen !== "boolean") ||
       typeof value.server_recovery !== "boolean" ||
+      (value.account_recovery !== undefined && typeof value.account_recovery !== "boolean") ||
       !["server", "client", "transition"].includes(value.custody) ||
       (value.legacy_frozen === true && value.mode !== "legacy") ||
       !Number.isSafeInteger(value.incompatible_sessions) || value.incompatible_sessions < 0 ||
@@ -87,6 +98,7 @@ export function validateNativeCryptoState(value) {
     incompatible_sessions: value.incompatible_sessions,
     server_recovery: value.server_recovery, custody: value.custody,
     ...(typeof value.password_unlock === "boolean" ? { password_unlock: value.password_unlock } : {}),
+    ...(typeof value.account_recovery === "boolean" ? { account_recovery: value.account_recovery } : {}),
     identity_key: identityKey, registry_auth: value.registry_auth, registry_auth_version: value.registry_auth_version ?? 1, rotation,
   };
 }
@@ -451,10 +463,13 @@ export class MidoriSyncKeys {
 
   get snapshot() {
     return Object.freeze({ status: this.#status, busy: this.#operation !== null, error: this.#error,
-      incompatibleSessions: this.#incompatible, backupPending: this.#backupPending,
+      incompatibleSessions: this.#incompatible,
+      backupPending: this.#backupPending && typeof this.#remoteState?.account_recovery !== "boolean",
       recoveryCodeAvailable: !!this.#active?.localBackup,
       passwordUnlockSupported: typeof this.#remoteState?.password_unlock === "boolean",
       passwordUnlockAvailable: this.#remoteState?.password_unlock === true,
+      accountRecoverySupported: typeof this.#remoteState?.account_recovery === "boolean",
+      accountRecoveryAvailable: this.#remoteState?.account_recovery === true,
       activeKeyId: this.#remoteState?.active_key_id ?? null,
       keyCount: this.#remoteState?.keys.length ?? 0,
       registryAuthVersion: this.#remoteState?.registry_auth_version ?? 1,
@@ -497,14 +512,25 @@ export class MidoriSyncKeys {
         this.#discardActive();
         this.#remoteState = state;
         this.#backupPending = false;
+        if (state.account_recovery === true) {
+          await this.#restoreAccount(lease, version, state);
+          return;
+        }
         this.#status = state.migration_required || (state.keys.length && state.custody === "server") ?
           "migration-required" : state.keys.length ? "recovery-required" : "empty";
+        if (state.account_recovery === false && (state.keys.length || state.migration_required)) {
+          this.#status = "account-recovery-pending";
+        }
         return;
       }
       this.#checkContinuity(local, state);
       this.#backupPending = !!local.backup && !local.backup.acknowledged;
       if (local.pending) {
         if (!this.#published(local.pending, state)) {
+          if (state.account_recovery === true && state.keys.length && !local.verified_state) {
+            await this.#restoreAccount(lease, version, state);
+            return;
+          }
           if (state.revision !== local.revision || state.keys.length || state.migration_required) {
             fail("crypto_state_conflict");
           }
@@ -524,6 +550,10 @@ export class MidoriSyncKeys {
         local.rotation = null;
       }
       if (state.keys.some(key => !local.keys.some(saved => saved.key_id === key.key_id))) {
+        if (state.account_recovery === true) {
+          await this.#restoreAccount(lease, version, state);
+          return;
+        }
         if (local.identity_key && state.identity_key?.key_id === local.identity_key.key_id) {
           await this.#verifySavedRegistry(lease, local, state, version);
           local.revision = state.revision;
@@ -533,12 +563,16 @@ export class MidoriSyncKeys {
           this.#remoteState = state;
         }
         this.#discardActive();
-        this.#status = "recovery-required";
+        this.#status = state.account_recovery === false ? "account-recovery-pending" : "recovery-required";
         return;
       }
       if (state.identity_key && local.identity_key?.key_id !== state.identity_key.key_id) {
+        if (state.account_recovery === true) {
+          await this.#restoreAccount(lease, version, state);
+          return;
+        }
         this.#discardActive();
-        this.#status = "recovery-required";
+        this.#status = state.account_recovery === false ? "account-recovery-pending" : "recovery-required";
         return;
       }
       if (!state.keys.length) {
@@ -554,11 +588,53 @@ export class MidoriSyncKeys {
         await lease.writeLocalKeys(local);
         this.#assert(version);
         this.#install(candidate, state, local);
+        if (state.account_recovery === false && state.registry_auth_version === 2) {
+          await lease.request("api/v1/crypto/account-recovery", { method: "PUT", maxBytes: 1024,
+            body: { crypto: { epoch: state.epoch, revision: state.revision }, capsule: this.#accountCapsule(lease.scope, local, state) } });
+          this.#assert(version);
+          state.account_recovery = true;
+        }
       } finally {
         secret.fill(0);
         this.#discardUnused(candidate);
       }
     });
+  }
+
+  #accountCapsule(scope, local, state) {
+    if (!local.identity_key || local.identity_key.key_id !== state.identity_key?.key_id || local.epoch !== state.epoch) {
+      fail("local_keys_invalid");
+    }
+    const keys = state.keys.map(key => {
+      const saved = local.keys.find(item => item.key_id === key.key_id);
+      if (!saved) { fail("local_keys_invalid"); }
+      return validateKey(saved);
+    });
+    return { version: 1, scope, epoch: state.epoch, secret: local.secret, keys,
+      identity_key: validateKey(local.identity_key) };
+  }
+
+  async #restoreAccount(lease, version, state) {
+    const { data } = await lease.request("api/v1/crypto/account-recovery", { maxBytes: 65536 });
+    this.#assert(version);
+    const capsule = data?.capsule;
+    if (data?.epoch !== state.epoch || capsule?.version !== 1 || !sameAccountScope(capsule.scope, lease.scope) ||
+        capsule.epoch !== state.epoch || !HEX_SECRET.test(capsule.secret) ||
+        !Array.isArray(capsule.keys) || capsule.keys.length !== state.keys.length) {
+      fail("invalid_account_capsule");
+    }
+    const bundles = { keys: capsule.keys.map(validateKey), identity_key: validateKey(capsule.identity_key) };
+    if (new Set(bundles.keys.map(key => key.key_id)).size !== state.keys.length ||
+        state.keys.some(key => !bundles.keys.some(saved => saved.key_id === key.key_id))) {
+      fail("invalid_account_capsule");
+    }
+    const secret = unhex(capsule.secret);
+    capsule.secret = null;
+    try {
+      await this.#restore(lease, version, state, secret, bundles);
+    } finally {
+      secret.fill(0);
+    }
   }
 
   async unlockLocal() {
@@ -720,6 +796,11 @@ export class MidoriSyncKeys {
           identity_key: local.pending.identity_key, registry_auth: local.pending.registry_auth,
           registry_auth_version: local.pending.registry_auth_version,
           custody: "client", revoke_incompatible: revokeIncompatible === true };
+        if (typeof state.account_recovery === "boolean") {
+          body.account_recovery = this.#accountCapsule(lease.scope, local, {
+            ...state, keys: [local.pending], identity_key: local.pending.identity_key,
+          });
+        }
         try {
           const response = await lease.request("api/v1/crypto/activate", { method: "POST", body, maxBytes: 32768 });
           state = validateNativeCryptoState(response.data);
@@ -733,6 +814,11 @@ export class MidoriSyncKeys {
         this.#assert(version);
         this.#checkContinuity(local, state);
         if (!this.#published(local.pending, state)) {
+          if (state.account_recovery === true && state.keys.length && !local.verified_state) {
+            await this.#restoreAccount(lease, version, state);
+            this.#draft = null;
+            return;
+          }
           fail("activation_unconfirmed");
         }
       }
@@ -864,13 +950,18 @@ export class MidoriSyncKeys {
   }
 
   async #restore(lease, version, state, passphrase, bundles = null, recoveryCode = null) {
-    const saved = validateLocal(lease.readLocalKeys());
+    let saved = validateLocal(lease.readLocalKeys());
     if (saved) {
       this.#checkContinuity(saved, state);
       if (saved.pending) {
-        fail("activation_unconfirmed");
+        if (state.account_recovery === true && state.keys.length && !saved.verified_state &&
+            saved.keys.length === 1 && !this.#published(saved.pending, state)) {
+          saved = null;
+        } else {
+          fail("activation_unconfirmed");
+        }
       }
-      if (saved.rotation) {
+      if (saved?.rotation) {
         fail("rotation_unconfirmed");
       }
     }
@@ -1074,6 +1165,11 @@ export class MidoriSyncKeys {
         }
         this.#requireRegistrySupport();
         await this.#upgradePendingRegistry(lease, local, state, version, "rotation");
+        if (typeof state.account_recovery === "boolean") {
+          local.rotation.account_recovery = this.#accountCapsule(lease.scope, local, {
+            ...state, keys: local.rotation.keys, identity_key: local.rotation.identity_key,
+          });
+        }
         try {
           await lease.writeLocalKeys(local);
         } finally {
@@ -1209,9 +1305,15 @@ export class MidoriSyncKeys {
             ...state, revision: nextRevision(state.revision), registry_auth_version: 2,
             keys: state.keys.filter(value => value.key_id !== key.key_id),
           }, version);
+          const body = { crypto: { epoch: state.epoch, revision: state.revision }, registry_auth: registryAuth, registry_auth_version: 2 };
+          if (typeof state.account_recovery === "boolean") {
+            body.account_recovery = this.#accountCapsule(lease.scope, local, {
+              ...state, keys: state.keys.filter(value => value.key_id !== key.key_id),
+            });
+          }
           try {
             const response = await lease.request(`api/v1/crypto/native-keys/${key.key_id}`, {
-              method: "DELETE", body: { crypto: { epoch: state.epoch, revision: state.revision }, registry_auth: registryAuth, registry_auth_version: 2 },
+              method: "DELETE", body,
               maxBytes: 32768,
             });
             state = validateNativeCryptoState(response.data);

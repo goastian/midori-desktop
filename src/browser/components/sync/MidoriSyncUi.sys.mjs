@@ -60,13 +60,16 @@ export function syncSummary(service) {
     return "locked";
   }
   const keys = service.keys.snapshot;
+  if (keys.accountRecoverySupported && !keys.error && keys.status !== "ready") {
+    return "syncing";
+  }
   if (keys.status === "recovery-required") {
     return keys.passwordUnlockAvailable ? "password" : "recovery";
   }
   if (["backup-required", "rotation-backup-required"].includes(keys.status)) {
     return "backup";
   }
-  if (keys.status === "ready" && keys.backupPending) {
+  if (keys.status === "ready" && keys.backupPending && !keys.accountRecoverySupported) {
     return "backup-pending";
   }
   if (keys.status === "migration-required") {

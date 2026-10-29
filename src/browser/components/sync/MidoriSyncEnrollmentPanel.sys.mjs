@@ -81,9 +81,9 @@ export function createSyncEnrollmentPanel(doc, service) {
     const account = service.account.snapshot;
     const keys = service.keys.snapshot;
     const connected = account.status === "connected";
-    const supported = service.connection.snapshot.capabilities?.deviceEnrollment === true;
+    const supported = !keys.accountRecoverySupported && service.connection.snapshot.capabilities?.deviceEnrollment === true;
     const needsKeys = connected && keys.status === "recovery-required" && supported;
-    const pending = connected && keys.status === "ready" ? service.enrollmentRequests : [];
+    const pending = connected && !keys.accountRecoverySupported && keys.status === "ready" ? service.enrollmentRequests : [];
     section.hidden = !visible || (!needsKeys && !pending.length);
     waiting.hidden = !needsKeys;
     if (needsKeys) {

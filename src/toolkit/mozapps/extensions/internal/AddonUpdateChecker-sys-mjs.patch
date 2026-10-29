@@ -1,0 +1,15 @@
+diff --git a/toolkit/mozapps/extensions/internal/AddonUpdateChecker.sys.mjs b/toolkit/mozapps/extensions/internal/AddonUpdateChecker.sys.mjs
+--- a/toolkit/mozapps/extensions/internal/AddonUpdateChecker.sys.mjs
++++ b/toolkit/mozapps/extensions/internal/AddonUpdateChecker.sys.mjs
+@@ -558,7 +558,10 @@
+     aIgnoreStrictCompat
+   ) {
+     if (!aAppVersion) {
+-      aAppVersion = Services.appinfo.version;
++      aAppVersion =
++        aAddon.type === "extension"
++          ? aPlatformVersion || Services.appinfo.platformVersion
++          : Services.appinfo.version;
+     }
+     if (!aPlatformVersion) {
+       aPlatformVersion = Services.appinfo.platformVersion;
