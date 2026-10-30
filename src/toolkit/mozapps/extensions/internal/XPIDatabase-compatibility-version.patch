@@ -1,0 +1,16 @@
+diff --git a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs b/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs
+--- a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs
++++ b/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs
+@@ -567,7 +567,11 @@
+     let maxVersion = app.maxVersion || "*";
+ 
+     if (!aAppVersion) {
+-      aAppVersion = Services.appinfo.version;
++      // Firefox extension manifests specify Gecko versions.
++      aAppVersion =
++        this.type === "extension"
++          ? aPlatformVersion || Services.appinfo.platformVersion
++          : Services.appinfo.version;
+     }
+     if (!aPlatformVersion) {
+       aPlatformVersion = Services.appinfo.platformVersion;

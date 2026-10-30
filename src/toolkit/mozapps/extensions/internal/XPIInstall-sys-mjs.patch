@@ -1,18 +1,8 @@
 diff --git a/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs b/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
+index ca1a16c6da..77fdb2449e 100644
 --- a/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
 +++ b/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
-@@ -3271,7 +3271,9 @@
-       aUpdates,
-       this.addon.version,
-       this.syncCompatibility,
--      null,
-+      this.addon.type === "extension"
-+        ? Services.appinfo.platformVersion
-+        : null,
-       null,
-       ignoreMaxVersion,
-       ignoreStrictCompat
-@@ -5018,7 +5018,7 @@
+@@ -5056,7 +5056,7 @@ export var XPIInstall = {
     * @throws if the addon cannot be uninstalled because it is in an install
     *         location that does not allow it
     */
@@ -21,18 +11,18 @@ diff --git a/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs b/toolkit/mo
      if (!aAddon.inDatabase) {
        throw new Error(
          `Cannot uninstall addon ${aAddon.id} because it is not installed`
-@@ -5041,6 +5041,10 @@
- 
-     if (aForcePending && aAddon.pendingUninstall) {
+@@ -5081,6 +5081,10 @@ export var XPIInstall = {
        throw new Error("Add-on is already marked to be uninstalled");
-+    }
-+
-+    if (XPIExports.XPIDatabase.hasSyncAddonTracking(aAddon.id)) {
-+      await XPIExports.XPIDatabase.prepareSyncAddonRemoval(aAddon, aSyncSource);
      }
  
++    if (XPIExports.XPIDatabase.hasSyncAddonTracking(aAddon.id)) {
++      await XPIExports.XPIDatabase.prepareSyncAddonRemoval(aAddon, aSyncSource);
++    }
++
      if (aAddon._updateCheck) {
-@@ -5160,6 +5164,7 @@
+       logger.debug(`Cancel in-progress update check for ${aAddon.id}`);
+       aAddon._updateCheck.cancel();
+@@ -5198,6 +5202,7 @@ export var XPIInstall = {
        throw new Error("Add-on is not marked to be uninstalled");
      }
  

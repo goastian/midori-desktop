@@ -1,0 +1,22 @@
+diff --git a/toolkit/mozapps/extensions/AddonManager.sys.mjs b/toolkit/mozapps/extensions/AddonManager.sys.mjs
+index 6cbb0c74d3..2f16ef55d6 100644
+--- a/toolkit/mozapps/extensions/AddonManager.sys.mjs
++++ b/toolkit/mozapps/extensions/AddonManager.sys.mjs
+@@ -2681,6 +2681,17 @@ var AddonManagerInternal = {
+       );
+     }
+ 
++    if (options.beforePermissionPrompt) {
++      if (typeof options.beforePermissionPrompt !== "function") {
++        throw new TypeError("beforePermissionPrompt must be a function");
++      }
++      const promptHandler = install.promptHandler;
++      install.promptHandler = async (...args) => {
++        await options.beforePermissionPrompt();
++        return promptHandler(...args);
++      };
++    }
++
+     AddonManagerInternal.startInstall(browser, uri, install);
+   },
+ 

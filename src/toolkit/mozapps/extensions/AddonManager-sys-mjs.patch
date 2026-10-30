@@ -12,7 +12,7 @@ diff --git a/toolkit/mozapps/extensions/AddonManager.sys.mjs b/toolkit/mozapps/e
      let params = new Map(
        Object.entries({
          ITEM_ID: aAddon.id,
-@@ -1279,12 +1283,12 @@
+@@ -1279,11 +1283,11 @@
          ITEM_VERSION: aAddon.version,
          ITEM_STATUS: addonStatus,
          APP_ID: Services.appinfo.ID,
@@ -26,22 +26,3 @@ diff --git a/toolkit/mozapps/extensions/AddonManager.sys.mjs b/toolkit/mozapps/e
 +        CURRENT_APP_VERSION: compatibilityVersion,
        })
      );
- 
-@@ -2658,6 +2658,17 @@
-         true,
-         "local"
-       );
-+    }
-+
-+    if (options.beforePermissionPrompt) {
-+      if (typeof options.beforePermissionPrompt !== "function") {
-+        throw new TypeError("beforePermissionPrompt must be a function");
-+      }
-+      const promptHandler = install.promptHandler;
-+      install.promptHandler = async (...args) => {
-+        await options.beforePermissionPrompt();
-+        return promptHandler(...args);
-+      };
-     }
- 
-     AddonManagerInternal.startInstall(browser, uri, install);

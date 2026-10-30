@@ -1,21 +1,8 @@
 diff --git a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs b/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs
+index e9bab9dccf..dffe0ceb07 100644
 --- a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs
 +++ b/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs
-@@ -567,9 +567,13 @@
-     let minVersion = app.minVersion || "0";
-     let maxVersion = app.maxVersion || "*";
- 
-     if (!aAppVersion) {
--      aAppVersion = Services.appinfo.version;
-+      // Firefox extension manifests specify Gecko versions.
-+      aAppVersion =
-+        this.type === "extension"
-+          ? aPlatformVersion || Services.appinfo.platformVersion
-+          : Services.appinfo.version;
-     }
-     if (!aPlatformVersion) {
-       aPlatformVersion = Services.appinfo.platformVersion;
-@@ -1470,9 +1470,17 @@
+@@ -1470,9 +1470,17 @@ export class AddonWrapper {
      return addonFor(this).isCompatibleWith(aAppVersion, aPlatformVersion);
    }
  
@@ -35,7 +22,7 @@ diff --git a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs b/toolkit/m
    }
  
    cancelUninstall() {
-@@ -1789,6 +1797,7 @@
+@@ -1789,6 +1797,7 @@ export const XPIDatabase = {
    blocklistAttentionAddonIdsSet: new Set(),
  
    _saveTask: null,
@@ -43,7 +30,7 @@ diff --git a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs b/toolkit/m
  
    // Saved error object if we fail to read an existing database
    _loadError: null,
-@@ -1807,11 +1816,208 @@
+@@ -1807,11 +1816,208 @@ export const XPIDatabase = {
      return null;
    },
  
@@ -253,7 +240,7 @@ diff --git a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs b/toolkit/m
  
        if (!this._schemaVersionSet) {
          // Update the XPIDB schema version preference the first time we
-@@ -1833,7 +2039,11 @@
+@@ -1833,7 +2039,11 @@ export const XPIDatabase = {
        logger.warn("Failed to save XPI database", error);
        this._saveError = error;
  
@@ -266,23 +253,22 @@ diff --git a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs b/toolkit/m
          throw error;
        }
      }
-@@ -1868,11 +2078,10 @@
+@@ -1868,11 +2078,10 @@ export const XPIDatabase = {
  
    async finalize() {
      // handle the "in memory only" and "saveChanges never called" cases
 -    if (!this._saveTask) {
 -      return;
--    }
--
--    await this._saveTask.finalize();
 +    if (this._saveTask) {
 +      await this._saveTask.finalize();
-+    }
+     }
+-
+-    await this._saveTask.finalize();
 +    await this._saveTail;
    },
  
    /**
-@@ -1893,6 +2102,9 @@
+@@ -1893,6 +2102,9 @@ export const XPIDatabase = {
          addon => !addon.location.isTemporary
        ),
      };
@@ -292,7 +278,7 @@ diff --git a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs b/toolkit/m
      return toSave;
    },
  
-@@ -2005,6 +2217,7 @@
+@@ -2005,6 +2217,7 @@ export const XPIDatabase = {
        Glean.xpiDatabase.parses.stopAndAccumulate(timerId);
        parseTimer.done();
        this.addonDB = addonDB;
@@ -300,7 +286,7 @@ diff --git a/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs b/toolkit/m
        logger.debug("Successfully read XPI database");
        this.initialized = true;
      } catch (e) {
-@@ -2784,6 +2997,7 @@
+@@ -2784,6 +2997,7 @@ export const XPIDatabase = {
     *        the AddonInternal that was added to the database
     */
    addToDatabase(aAddon, aPath) {

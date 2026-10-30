@@ -1,0 +1,14 @@
+diff --git a/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs b/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
+--- a/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
++++ b/toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
+@@ -3271,7 +3271,9 @@
+       aUpdates,
+       this.addon.version,
+       this.syncCompatibility,
+-      null,
++      this.addon.type === "extension"
++        ? Services.appinfo.platformVersion
++        : null,
+       null,
+       ignoreMaxVersion,
+       ignoreStrictCompat
