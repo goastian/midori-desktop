@@ -55,7 +55,8 @@
     --pf-panel-padding: 3px;
     --pf-panel-radius: 8px;
     --pf-menuitem-radius: 5px;
-    --pf-menuitem-padding: 3px 8px;
+    --pf-menuitem-padding-block: 3px;
+    --pf-menuitem-padding-inline: 8px;
     --pf-menuitem-margin: 1px;
   }
 }
@@ -65,7 +66,8 @@
     --pf-panel-padding: 7px;
     --pf-panel-radius: 12px;
     --pf-menuitem-radius: 8px;
-    --pf-menuitem-padding: 8px 12px;
+    --pf-menuitem-padding-block: 8px;
+    --pf-menuitem-padding-inline: 12px;
     --pf-menuitem-margin: 2px;
   }
 }
@@ -552,6 +554,8 @@
     menucaption {
       --menuitem-border-radius: var(--pf-menuitem-radius) !important;
       --menuitem-padding: var(--pf-menuitem-padding) !important;
+      --menuitem-padding-block: var(--pf-menuitem-padding-block) !important;
+      --menuitem-padding-inline: var(--pf-menuitem-padding-inline) !important;
       --menuitem-margin: var(--pf-menuitem-margin) !important;
     }
 

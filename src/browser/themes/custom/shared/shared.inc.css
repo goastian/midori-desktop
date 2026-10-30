@@ -82,8 +82,12 @@
   --pf-panel-padding: 4px;
   --pf-panel-radius: 10px;
   --pf-menuitem-radius: 6px;
-  --pf-menuitem-padding: 5px 9px;
+  --pf-menuitem-padding-block: 5px;
+  --pf-menuitem-padding-inline: 9px;
+  --pf-menuitem-padding: var(--pf-menuitem-padding-block) var(--pf-menuitem-padding-inline);
   --pf-menuitem-margin: 1px 2px;
+  --panel-menuitem-padding-block: var(--pf-menuitem-padding-block) !important;
+  --panel-menuitem-padding-inline: var(--pf-menuitem-padding-inline) !important;
 }
 
 :root:not([lwtheme]) {
@@ -1331,6 +1335,7 @@ tab-group .tab-group-label {
 
 #urlbar {
   --urlbarview-separator-color: var(--pf-border-color-light) !important;
+  --urlbarview-row-border-radius: var(--pf-urlbar-sr-radius) !important;
   color: var(--pf-text-color) !important;
 }
 
@@ -1565,6 +1570,8 @@ menupopup {
   --panel-border-radius: var(--pf-panel-radius) !important;
   --menuitem-border-radius: var(--pf-menuitem-radius) !important;
   --menuitem-padding: var(--pf-menuitem-padding) !important;
+  --menuitem-padding-block: var(--pf-menuitem-padding-block) !important;
+  --menuitem-padding-inline: var(--pf-menuitem-padding-inline) !important;
   --menuitem-margin: var(--pf-menuitem-margin) !important;
   color: var(--pf-text-color) !important;
   background: var(--pf-panel-bgcolor) !important;
@@ -1585,6 +1592,8 @@ menucaption {
   color: var(--pf-text-color) !important;
   --menuitem-border-radius: var(--pf-menuitem-radius) !important;
   --menuitem-padding: var(--pf-menuitem-padding) !important;
+  --menuitem-padding-block: var(--pf-menuitem-padding-block) !important;
+  --menuitem-padding-inline: var(--pf-menuitem-padding-inline) !important;
   --menuitem-margin: var(--pf-menuitem-margin) !important;
   fill: currentColor !important;
   transition:
