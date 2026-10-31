@@ -7,7 +7,7 @@
 interface nsILoadInfo;
 interface nsIURI;
 
-[scriptable, builtinclass, uuid(472a8d4a-2e48-454a-9eba-4021e82edb10)]
+[scriptable, builtinclass, uuid(85cf5030-6f1b-436c-b274-daa96b86de45)]
 interface nsIMidoriBlockerEngine : nsISupports
 {
   // Initialise from filter list text. Each element is a full list.
@@ -15,6 +15,12 @@ interface nsIMidoriBlockerEngine : nsISupports
 
   // Initialise from serialised cache (fast path).
   void initFromCache(in Array<octet> cacheData);
+
+  [implicit_jscontext]
+  Promise initFromListsAsync(in Array<ACString> filterLists);
+
+  [implicit_jscontext]
+  Promise initFromCacheAsync(in Array<octet> cacheData);
 
   // Check a network request. Returns JSON:
   // { matched, important, redirect, rewrittenUrl, exception }
@@ -52,7 +58,8 @@ interface nsIMidoriBlockerEngine : nsISupports
                                 in boolean isThirdParty);
 
   // Serialise engine for caching.
-  Array<octet> serialize();
+  [implicit_jscontext]
+  jsval serialize();
 
   // Cosmetic filtering.
   ACString getCosmeticResources(in ACString url);

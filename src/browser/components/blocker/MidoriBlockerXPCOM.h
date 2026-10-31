@@ -12,7 +12,7 @@
 #include "nsIMidoriBlocker.h"
 
 extern "C" nsresult midori_blocker_xpcom_constructor(REFNSIID aIID,
-                                                       void** aResult);
+                                                     void** aResult);
 
 /**
  * Content policy that checks every resource load against the blocker,
@@ -49,8 +49,13 @@ class MidoriBlockerXPCOM final : public nsIMidoriBlockerEngine {
   ~MidoriBlockerXPCOM();
 
   void ResetEngine(MidoriBlockerFFIEngine* aEngine);
+  nsresult InitAsync(nsTArray<nsCString>&& aFilterLists,
+                     nsTArray<uint8_t>&& aCacheData, JSContext* aCx,
+                     mozilla::dom::Promise** aResult);
 
   MidoriBlockerFFIEngine* mEngine = nullptr;
+  nsTArray<uint8_t> mCachedSerialization;
+  uint64_t mInitGeneration = 0;
 };
 
 #endif  // midori_blocker_xpcom_h

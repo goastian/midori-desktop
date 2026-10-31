@@ -6,6 +6,15 @@ const DIALOG_URL =
   "chrome://browser/content/preferences/dialogs/midoriBlockerFilterLists.xhtml";
 const WINDOW_ID = "MidoriBlockerFilterListsWindow";
 
+add_setup(async function setup() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["midori.blocker.enabled", false],
+      ["ui.prefersReducedMotion", 1],
+    ],
+  });
+});
+
 add_task(async function test_filter_lists_dialog_enforces_usable_width() {
   Services.xulStore.setValue(DIALOG_URL, WINDOW_ID, "width", "260");
   registerCleanupFunction(() => {

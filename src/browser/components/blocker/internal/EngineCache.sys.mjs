@@ -118,7 +118,7 @@ async function clearCacheFiles(configurationHash = engineConfigurationHash()) {
   }
 }
 
-function computeListsHash(descriptors, listRecords) {
+async function computeListsHash(descriptors, listRecords) {
   const makeRecordKey = (url, filename) => JSON.stringify([url, filename]);
   const byKey = new Map(
     listRecords.map(record => [
@@ -145,6 +145,7 @@ function computeListsHash(descriptors, listRecords) {
   };
 
   for (const descriptor of descriptors) {
+    await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
     const key = makeRecordKey(descriptor.url, descriptor.filename);
     descriptorKeys.add(key);
     updateHash(descriptor.url, descriptor.filename, byKey.get(key)?.text ?? "");
@@ -154,6 +155,7 @@ function computeListsHash(descriptors, listRecords) {
     .filter(key => !descriptorKeys.has(key))
     .sort();
   for (const key of extraRecordKeys) {
+    await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
     const record = byKey.get(key);
     updateHash(record.url, record.filename, record.text ?? "");
   }
@@ -240,36 +242,15 @@ export const EngineCache = {
       return false;
     }
 
-    return computeListsHash(descriptors, listRecords) === cacheMeta.listsHash;
+    const listsHash = await computeListsHash(descriptors, listRecords);
+    return configurationHash === engineConfigurationHash() &&
+      listsHash === cacheMeta.listsHash;
   },
 
   async read() {
     await gCacheWriteChain.catch(() => {});
     const configurationHash = engineConfigurationHash();
     return IOUtils.read(engineCachePath(configurationHash));
-  },
-
-  readSync() {
-    const configurationHash = engineConfigurationHash();
-    const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-    file.initWithPath(engineCachePath(configurationHash));
-    if (!file.exists() || file.fileSize === 0) {
-      return null;
-    }
-
-    const stream = Cc[
-      "@mozilla.org/network/file-input-stream;1"
-    ].createInstance(Ci.nsIFileInputStream);
-    stream.init(file, 0x01 /* PR_RDONLY */, 0, 0);
-    try {
-      const binaryStream = Cc[
-        "@mozilla.org/binaryinputstream;1"
-      ].createInstance(Ci.nsIBinaryInputStream);
-      binaryStream.setInputStream(stream);
-      return binaryStream.readByteArray(file.fileSize);
-    } finally {
-      stream.close();
-    }
   },
 
   async write(engine, descriptors, listRecords) {
@@ -294,7 +275,7 @@ export const EngineCache = {
       const path = engineCachePath(configurationHash);
       await IOUtils.write(path, bytes, atomicWriteOptions(path));
 
-      const listsHash = computeListsHash(descriptors, listRecords);
+      const listsHash = await computeListsHash(descriptors, listRecords);
       await writeJSON(cacheMetaPath(configurationHash), {
         configurationHash,
         createdAt: nowISO(),

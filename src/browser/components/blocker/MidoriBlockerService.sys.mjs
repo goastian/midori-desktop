@@ -1840,25 +1840,6 @@ export const MidoriBlockerService = {
     return Cc[CONTRACT_ID].createInstance(Ci.nsIMidoriBlockerEngine);
   },
 
-  /**
-   * Reads the serialised engine cache before the first load request can run.
-   * Hash verification is left to async initialisation and periodic updates.
-   */
-  _tryInitFromCacheSync() {
-    try {
-      const cacheData = lazy.EngineCache.readSync();
-      if (!cacheData?.length) {
-        return;
-      }
-
-      const engine = this._createEngine();
-      engine.initFromCache(cacheData);
-      this._engine = engine;
-    } catch (_) {
-      // Cache missing, corrupt, or incompatible. Async path will rebuild.
-    }
-  },
-
   _customFiltersDescriptor() {
     return lazy.ListCatalog.customFiltersDescriptor();
   },
@@ -1902,13 +1883,18 @@ export const MidoriBlockerService = {
 
   async _preprocessListRecords(listRecords) {
     const records = await lazy.ListStore.withMidoriUnbreakRecord(listRecords);
-    return records.map(record => ({
-      ...record,
-      text: lazy.ListPreprocessor.preprocessFilterListText(record.text),
-    }));
+    const processed = [];
+    for (const record of records) {
+      await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
+      processed.push({
+        ...record,
+        text: lazy.ListPreprocessor.preprocessFilterListText(record.text),
+      });
+    }
+    return processed;
   },
 
-  _createEngineFromListRecords(listRecords) {
+  async _createEngineFromListRecords(listRecords) {
     const filterLists = [];
     let totalBytes = 0;
     for (const record of listRecords) {
@@ -1929,7 +1915,7 @@ export const MidoriBlockerService = {
     }
 
     const engine = this._createEngine();
-    engine.initFromLists(filterLists);
+    await engine.initFromListsAsync(filterLists);
     return engine;
   },
 
@@ -1967,7 +1953,7 @@ export const MidoriBlockerService = {
       return;
     }
 
-    const nextEngine = this._createEngineFromListRecords(listRecordsForEngine);
+    const nextEngine = await this._createEngineFromListRecords(listRecordsForEngine);
     if (!nextEngine) {
       throw new Error("Filter lists contained no valid rules");
     }
@@ -2001,12 +1987,8 @@ export const MidoriBlockerService = {
    * Resolves once an in-flight engine initialisation has settled.
    */
   async whenEngineReady() {
-    if (!this._engineInitPromise) {
-      return;
-    }
-
     try {
-      await this._engineInitPromise;
+      await (this._startupPromise || this._engineInitPromise);
     } catch (_) {
       // Initialisation failures are handled by the init path itself.
     }
@@ -2027,8 +2009,7 @@ export const MidoriBlockerService = {
     const generation = this._initGeneration;
 
     if (this._engine) {
-      // Engine may already be loaded from the synchronous cache path. Verify
-      // it still matches the current list set before trusting it.
+      // Revalidate an existing engine after a configuration change.
       const descriptors = await this._getListDescriptors();
       if (this._initGeneration !== generation) {
         return;
@@ -3050,7 +3031,7 @@ export const MidoriBlockerService = {
     const cacheData = await lazy.EngineCache.read();
     const candidate = this._createEngine();
     try {
-      candidate.initFromCache(cacheData);
+      await candidate.initFromCacheAsync(cacheData);
     } catch (_) {
       // Cache data can be stale or incompatible after engine updates.
       return false;
@@ -3101,7 +3082,7 @@ export const MidoriBlockerService = {
       }
 
       const nextEngine =
-        this._createEngineFromListRecords(listRecordsForEngine);
+        await this._createEngineFromListRecords(listRecordsForEngine);
       if (!nextEngine) {
         return true;
       }
@@ -4292,7 +4273,6 @@ export const MidoriBlockerService = {
     this._initialized = true;
     if (this.isEnabled()) {
       this._registerNetworkObservers();
-      this._tryInitFromCacheSync();
     }
 
     const startupPromise = (async () => {
@@ -4314,9 +4294,6 @@ export const MidoriBlockerService = {
         }
 
         this._registerNetworkObservers();
-        if (!this._engine) {
-          this._tryInitFromCacheSync();
-        }
         lazy.EngineCache.cleanupStale().catch(err => {
           console.warn("[MidoriBlocker] Cache cleanup failed:", err);
         });

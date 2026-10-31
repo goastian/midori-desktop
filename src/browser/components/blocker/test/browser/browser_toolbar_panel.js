@@ -4,6 +4,15 @@
 
 const WIDGET_ID = "midori-protection_astian_org-browser-action";
 
+add_setup(async function setup() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["midori.blocker.enabled", false],
+      ["ui.prefersReducedMotion", 1],
+    ],
+  });
+});
+
 add_task(async function test_toolbar_button_opens_native_panel() {
   const { MidoriBlockerPanel } = ChromeUtils.importESModule(
     "resource:///modules/MidoriBlockerPanel.sys.mjs"

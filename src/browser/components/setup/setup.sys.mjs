@@ -107,6 +107,29 @@ const MSIDEBAR_SETUP_PREFS = [
   PREF_SHOW_INACTIVE_TABS,
 ];
 
+function syncSetupSurface(chromeWindow) {
+  const root = document.documentElement;
+  const chromeRoot = chromeWindow.document.documentElement;
+  const style = chromeWindow.getComputedStyle(chromeRoot);
+  for (const [target, source] of Object.entries({
+    'theme-accent': 'accent-color',
+    bg: 'browser-bgcolor',
+    surface: 'panel-bgcolor',
+    text: 'text-color',
+    border: 'border-color',
+  })) {
+    root.style.setProperty(`--setup-${target}`, style.getPropertyValue(`--pf-${source}`));
+  }
+  const scheme = chromeRoot.hasAttribute('lwtheme')
+    ? style.getPropertyValue('--toolbar-color-scheme').trim()
+    : style.colorScheme;
+  const systemDark = chromeWindow.matchMedia('(-moz-system-dark-theme)').matches;
+  const dark = scheme === 'dark' || (scheme !== 'light' && systemDark);
+  root.style.colorScheme = dark ? 'dark' : 'light';
+  root.dataset.setupDark = String(dark);
+  document.getElementById('novaThemes').dataset.dark = String(systemDark);
+}
+
 /** Controls a single page in the setup flow. */
 class Page {
   /**
@@ -217,6 +240,8 @@ class ColorTheme extends Page {
     this._darkMode.addEventListener('change', this._sync);
     window.addEventListener('unload', () => {
       this._closed = true;
+      window.cancelIdleCallback(this._themeLoadTask);
+      this._chromeWindow.cancelAnimationFrame(this._surfaceFrame);
       for (const pref of this._prefs) {
         Services.prefs.removeObserver(pref, this._sync);
       }
@@ -235,7 +260,16 @@ class ColorTheme extends Page {
     });
     this.element.addEventListener('keydown', event => this._onKeydown(event));
     this._syncFromPrefs();
-    void this._loadThemes();
+  }
+
+  show() {
+    super.show();
+    if (!this._themesRequested) {
+      this._themesRequested = true;
+      this._themeLoadTask = window.requestIdleCallback(() => {
+        if (!this._closed) void this._loadThemes();
+      }, { timeout: 1000 });
+    }
   }
 
   async _loadThemes() {
@@ -367,32 +401,19 @@ class ColorTheme extends Page {
       !themeId ||
       this._cards.some(card => card.dataset.themeId === themeId);
     // Preference media queries settle on the browser window's next refresh.
-    this._chromeWindow.requestAnimationFrame(() => {
-      this._chromeWindow.requestAnimationFrame(() => this._syncSurface());
-    });
+    if (!this._surfaceFrame) {
+      this._surfaceFrame = this._chromeWindow.requestAnimationFrame(() => {
+        this._surfaceFrame = this._chromeWindow.requestAnimationFrame(() => {
+          this._surfaceFrame = null;
+          this._syncSurface();
+        });
+      });
+    }
   }
 
   _syncSurface() {
     if (this._closed) return;
-    const root = document.documentElement;
-    const style = this._chromeWindow.getComputedStyle(this._chromeWindow.document.documentElement);
-    for (const [target, source] of Object.entries({
-      'theme-accent': 'accent-color',
-      bg: 'browser-bgcolor',
-      surface: 'panel-bgcolor',
-      text: 'text-color',
-      border: 'border-color',
-    })) {
-      root.style.setProperty(`--setup-${target}`, style.getPropertyValue(`--pf-${source}`));
-    }
-    const chromeRoot = this._chromeWindow.document.documentElement;
-    const scheme = chromeRoot.hasAttribute('lwtheme')
-      ? style.getPropertyValue('--toolbar-color-scheme').trim()
-      : style.colorScheme;
-    const dark = scheme === 'dark' || (scheme !== 'light' && this._darkMode.matches);
-    root.style.colorScheme = dark ? 'dark' : 'light';
-    root.dataset.setupDark = String(dark);
-    this._themeGrid.dataset.dark = String(this._darkMode.matches);
+    syncSetupSurface(this._chromeWindow);
   }
 }
 
@@ -819,10 +840,10 @@ class Pages {
   /**
    * A wrapper around all pages
    *
-   * @param {Page[]} pages The pages
+   * @param {Function[]} pages Factories for the page controllers.
    */
   constructor(pages) {
-    this.pages = pages;
+    this.pages = pages.map(create => ({ create, controller: null }));
     this.currentPage = 0;
     const indicator = document.querySelector('.step-indicator');
     indicator.replaceChildren(
@@ -833,8 +854,6 @@ class Pages {
       })
     );
     this.stepDots = indicator.querySelectorAll('.step-dot');
-
-    this.pages.forEach((page) => page.setPages(this));
 
     this._displayCurrentPage();
   }
@@ -871,11 +890,14 @@ class Pages {
   }
 
   _displayCurrentPage() {
-    for (const page of this.pages) {
-      page.hide();
+    const entry = this.pages[this.currentPage];
+    if (!entry.controller) {
+      entry.controller = entry.create();
+      entry.controller.setPages(this);
     }
-
-    this.pages[this.currentPage].show();
+    this._visiblePage?.hide();
+    this._visiblePage = entry.controller;
+    this._visiblePage.show();
 
     this.stepDots.forEach((dot, i) => {
       dot.classList.remove('active', 'done');
@@ -888,14 +910,16 @@ class Pages {
   }
 }
 
-void (async () => {
-  new Pages([
-    new Page('welcome'),
-    new Account('account'),
-    new Import('import'),
-    new ColorTheme('color'),
-    new TabLayout('tablayout'),
-    new MSidebar('msidebar'),
-    new Page('warmwelcome'),
-  ]);
-})();
+new Pages([
+  () => new Page('welcome'),
+  () => new Account('account'),
+  () => new Import('import'),
+  () => new ColorTheme('color'),
+  () => new TabLayout('tablayout'),
+  () => new MSidebar('msidebar'),
+  () => new Page('warmwelcome'),
+]);
+
+window.requestAnimationFrame(() => {
+  syncSetupSurface(window.browsingContext.topChromeWindow);
+});

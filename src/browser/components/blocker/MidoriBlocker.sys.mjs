@@ -34,6 +34,7 @@ function registerActors() {
     allFrames: true,
     messageManagerGroups: ["browsers"],
     remoteTypes: ["web"],
+    safeForUntrustedWebProcess: true,
   });
 
   ChromeUtils.registerWindowActor("MidoriBlockedPage", {
@@ -48,6 +49,7 @@ function registerActors() {
     },
     matches: ["about:contentblocked?*"],
     allFrames: true,
+    safeForUntrustedWebProcess: true,
   });
 
   actorsRegistered = true;

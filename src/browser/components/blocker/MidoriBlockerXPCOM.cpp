@@ -5,10 +5,15 @@
 #include "MidoriBlockerXPCOM.h"
 
 #include "mozilla/JSONStringWriteFuncs.h"
+#include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/Span.h"
+#include "mozilla/dom/Promise.h"
+#include "mozilla/dom/TypedArray.h"
 #include "nsError.h"
 #include "nsImportModule.h"
+#include "nsThreadUtils.h"
+#include "xpcpublic.h"
 
 using mozilla::JSONStringRefWriteFunc;
 using mozilla::JSONWriter;
@@ -75,14 +80,23 @@ bool EnsureDomainResolver() {
   return sInitialized;
 }
 
+struct AsyncEngineResult {
+  ~AsyncEngineResult() { midori_blocker_engine_destroy(mEngine); }
+
+  MidoriBlockerFFIEngine* mEngine = nullptr;
+  nsTArray<uint8_t> mSerialized;
+};
+
+using EnginePromise =
+    mozilla::MozPromise<mozilla::UniquePtr<AsyncEngineResult>, nsresult, true>;
+
 }  // namespace
 
 MidoriBlockerContentPolicy::MidoriBlockerContentPolicy() = default;
 
 MidoriBlockerContentPolicy::~MidoriBlockerContentPolicy() = default;
 
-nsIMidoriBlockerContentPolicyBridge*
-MidoriBlockerContentPolicy::GetBridge() {
+nsIMidoriBlockerContentPolicyBridge* MidoriBlockerContentPolicy::GetBridge() {
   if (mBridge) {
     return mBridge;
   }
@@ -100,8 +114,8 @@ MidoriBlockerContentPolicy::GetBridge() {
 
 NS_IMETHODIMP
 MidoriBlockerContentPolicy::ShouldLoad(nsIURI* aContentLocation,
-                                         nsILoadInfo* aLoadInfo,
-                                         int16_t* aDecision) {
+                                       nsILoadInfo* aLoadInfo,
+                                       int16_t* aDecision) {
   NS_ENSURE_ARG_POINTER(aDecision);
 
   *aDecision = nsIContentPolicy::ACCEPT;
@@ -125,8 +139,8 @@ MidoriBlockerContentPolicy::ShouldLoad(nsIURI* aContentLocation,
 
 NS_IMETHODIMP
 MidoriBlockerContentPolicy::ShouldProcess(nsIURI* /* aContentLocation */,
-                                            nsILoadInfo* /* aLoadInfo */,
-                                            int16_t* aDecision) {
+                                          nsILoadInfo* /* aLoadInfo */,
+                                          int16_t* aDecision) {
   NS_ENSURE_ARG_POINTER(aDecision);
 
   *aDecision = nsIContentPolicy::ACCEPT;
@@ -142,12 +156,14 @@ void MidoriBlockerXPCOM::ResetEngine(MidoriBlockerFFIEngine* aEngine) {
     midori_blocker_engine_destroy(mEngine);
   }
   mEngine = aEngine;
+  mCachedSerialization.Clear();
 }
 
 NS_IMETHODIMP
 MidoriBlockerXPCOM::InitFromLists(const nsTArray<nsCString>& aFilterLists) {
   NS_ENSURE_TRUE(!aFilterLists.IsEmpty(), NS_ERROR_INVALID_ARG);
   NS_ENSURE_TRUE(EnsureDomainResolver(), NS_ERROR_NOT_AVAILABLE);
+  ++mInitGeneration;
 
   MidoriBlockerFFIEngine* engine = nullptr;
   nsresult rv = midori_blocker_engine_from_rules(&aFilterLists, &engine);
@@ -160,6 +176,7 @@ MidoriBlockerXPCOM::InitFromLists(const nsTArray<nsCString>& aFilterLists) {
 NS_IMETHODIMP
 MidoriBlockerXPCOM::InitFromCache(const nsTArray<uint8_t>& aCacheData) {
   NS_ENSURE_TRUE(EnsureDomainResolver(), NS_ERROR_NOT_AVAILABLE);
+  ++mInitGeneration;
 
   MidoriBlockerFFIEngine* engine = nullptr;
   nsresult rv = midori_blocker_engine_deserialize(&engine, &aCacheData);
@@ -168,6 +185,79 @@ MidoriBlockerXPCOM::InitFromCache(const nsTArray<uint8_t>& aCacheData) {
 
   ResetEngine(engine);
   return NS_OK;
+}
+
+nsresult MidoriBlockerXPCOM::InitAsync(nsTArray<nsCString>&& aFilterLists,
+                                       nsTArray<uint8_t>&& aCacheData,
+                                       JSContext* aCx,
+                                       mozilla::dom::Promise** aResult) {
+  MOZ_ASSERT(NS_IsMainThread());
+  NS_ENSURE_TRUE(EnsureDomainResolver(), NS_ERROR_NOT_AVAILABLE);
+
+  mozilla::ErrorResult error;
+  RefPtr<mozilla::dom::Promise> promise =
+      mozilla::dom::Promise::Create(xpc::CurrentNativeGlobal(aCx), error);
+  if (error.Failed()) {
+    return error.StealNSResult();
+  }
+
+  const uint64_t generation = ++mInitGeneration;
+  RefPtr<EnginePromise::Private> task = new EnginePromise::Private(__func__);
+  task->Then(
+      mozilla::GetMainThreadSerialEventTarget(), __func__,
+      [self = RefPtr{this}, promise,
+       generation](mozilla::UniquePtr<AsyncEngineResult>&& aEngine) {
+        if (generation != self->mInitGeneration) {
+          promise->MaybeReject(NS_ERROR_ABORT);
+          return;
+        }
+        self->ResetEngine(std::exchange(aEngine->mEngine, nullptr));
+        self->mCachedSerialization = std::move(aEngine->mSerialized);
+        promise->MaybeResolveWithUndefined();
+      },
+      [promise](nsresult aError) { promise->MaybeReject(aError); });
+
+  nsresult rv = NS_DispatchBackgroundTask(NS_NewRunnableFunction(
+      "MidoriBlockerXPCOM::InitAsync",
+      [task, lists = std::move(aFilterLists), cache = std::move(aCacheData)]() {
+        auto result = mozilla::MakeUnique<AsyncEngineResult>();
+        nsresult rv;
+        if (lists.IsEmpty()) {
+          rv = midori_blocker_engine_deserialize(&result->mEngine, &cache);
+        } else {
+          rv = midori_blocker_engine_from_rules(&lists, &result->mEngine);
+          if (NS_SUCCEEDED(rv) && result->mEngine) {
+            rv = midori_blocker_engine_serialize(result->mEngine,
+                                                 &result->mSerialized);
+          }
+        }
+        if (NS_FAILED(rv) || !result->mEngine) {
+          task->Reject(NS_FAILED(rv) ? rv : NS_ERROR_FAILURE, __func__);
+          return;
+        }
+        task->Resolve(std::move(result), __func__);
+      }));
+  if (NS_FAILED(rv)) {
+    task->Reject(rv, __func__);
+  }
+  promise.forget(aResult);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+MidoriBlockerXPCOM::InitFromListsAsync(const nsTArray<nsCString>& aFilterLists,
+                                       JSContext* aCx,
+                                       mozilla::dom::Promise** aResult) {
+  NS_ENSURE_TRUE(!aFilterLists.IsEmpty(), NS_ERROR_INVALID_ARG);
+  return InitAsync(aFilterLists.Clone(), {}, aCx, aResult);
+}
+
+NS_IMETHODIMP
+MidoriBlockerXPCOM::InitFromCacheAsync(const nsTArray<uint8_t>& aCacheData,
+                                       JSContext* aCx,
+                                       mozilla::dom::Promise** aResult) {
+  NS_ENSURE_TRUE(!aCacheData.IsEmpty(), NS_ERROR_INVALID_ARG);
+  return InitAsync({}, aCacheData.Clone(), aCx, aResult);
 }
 
 // Returns JSON: { matched, important, redirect, rewrittenUrl, exception }.
@@ -196,10 +286,12 @@ MidoriBlockerXPCOM::CheckRequestDetailed(
 }
 
 NS_IMETHODIMP
-MidoriBlockerXPCOM::CheckRequestFast(
-    const nsACString& aUrl, const nsACString& aSourceHostname,
-    const nsACString& aHostname, const nsACString& aRequestType,
-    const nsACString& aRequestMethod, bool aIsThirdParty, nsACString& _retval) {
+MidoriBlockerXPCOM::CheckRequestFast(const nsACString& aUrl,
+                                     const nsACString& aSourceHostname,
+                                     const nsACString& aHostname,
+                                     const nsACString& aRequestType,
+                                     const nsACString& aRequestMethod,
+                                     bool aIsThirdParty, nsACString& _retval) {
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
 
   bool matched = false;
@@ -221,10 +313,12 @@ MidoriBlockerXPCOM::CheckRequestFast(
 
 // Returns an empty string when no directives apply.
 NS_IMETHODIMP
-MidoriBlockerXPCOM::GetCspDirectives(
-    const nsACString& aUrl, const nsACString& aSourceHostname,
-    const nsACString& aHostname, const nsACString& aRequestType,
-    const nsACString& aRequestMethod, bool aIsThirdParty, nsACString& _retval) {
+MidoriBlockerXPCOM::GetCspDirectives(const nsACString& aUrl,
+                                     const nsACString& aSourceHostname,
+                                     const nsACString& aHostname,
+                                     const nsACString& aRequestType,
+                                     const nsACString& aRequestMethod,
+                                     bool aIsThirdParty, nsACString& _retval) {
   _retval.Truncate();
 
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
@@ -259,16 +353,26 @@ MidoriBlockerXPCOM::GetReplaceDirectives(
 }
 
 NS_IMETHODIMP
-MidoriBlockerXPCOM::Serialize(nsTArray<uint8_t>& _retval) {
-  _retval.Clear();
-
+MidoriBlockerXPCOM::Serialize(JSContext* aCx,
+                              JS::MutableHandle<JS::Value> aResult) {
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
-  return midori_blocker_engine_serialize(mEngine, &_retval);
+  nsTArray<uint8_t> serialized = std::move(mCachedSerialization);
+  if (serialized.IsEmpty()) {
+    nsresult rv = midori_blocker_engine_serialize(mEngine, &serialized);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+  mozilla::ErrorResult error;
+  JSObject* bytes = mozilla::dom::Uint8Array::Create(aCx, serialized, error);
+  if (error.Failed()) {
+    return error.StealNSResult();
+  }
+  aResult.setObject(*bytes);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 MidoriBlockerXPCOM::GetCosmeticResources(const nsACString& aUrl,
-                                           nsACString& _retval) {
+                                         nsACString& _retval) {
   _retval.Truncate();
 
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
@@ -283,9 +387,10 @@ MidoriBlockerXPCOM::GetCosmeticResources(const nsACString& aUrl,
 }
 
 NS_IMETHODIMP
-MidoriBlockerXPCOM::GetHiddenClassIdSelectors(
-    const nsACString& aClassesJson, const nsACString& aIdsJson,
-    const nsACString& aExceptionsJson, nsACString& _retval) {
+MidoriBlockerXPCOM::GetHiddenClassIdSelectors(const nsACString& aClassesJson,
+                                              const nsACString& aIdsJson,
+                                              const nsACString& aExceptionsJson,
+                                              nsACString& _retval) {
   _retval.Truncate();
 
   NS_ENSURE_TRUE(mEngine, NS_ERROR_NOT_INITIALIZED);
@@ -308,7 +413,7 @@ MidoriBlockerXPCOM::UseResources(const nsACString& aResourcesJson) {
 // Follows nsIUrlClassifierDBService: components.conf maps CID/contract here,
 // this allocates the implementation and returns the requested interface.
 extern "C" nsresult midori_blocker_xpcom_constructor(REFNSIID aIID,
-                                                       void** aResult) {
+                                                     void** aResult) {
   NS_ENSURE_ARG_POINTER(aResult);
   *aResult = nullptr;
 

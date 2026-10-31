@@ -71,6 +71,29 @@ function deferred() {
   return { promise, resolve };
 }
 
+add_task(async function test_resources_wait_for_the_startup_migration() {
+  const originalStartup = MidoriBlockerService._startupPromise;
+  const originalEngineInit = MidoriBlockerService._engineInitPromise;
+  const startup = deferred();
+  MidoriBlockerService._startupPromise = startup.promise;
+  MidoriBlockerService._engineInitPromise = null;
+  try {
+    let ready = false;
+    const pending = MidoriBlockerService.whenEngineReady().then(() => {
+      ready = true;
+    });
+    await Promise.resolve();
+    Assert.ok(!ready, "Resources wait even before engine initialization begins");
+    startup.resolve();
+    await pending;
+    Assert.ok(ready, "Resources can be queried after startup finishes");
+  } finally {
+    startup.resolve();
+    MidoriBlockerService._startupPromise = originalStartup;
+    MidoriBlockerService._engineInitPromise = originalEngineInit;
+  }
+});
+
 async function withMockedFetch(fetchImpl, task) {
   await task(fetchImpl);
 }
@@ -219,11 +242,11 @@ add_task(function test_custom_list_count_is_bounded() {
   }
 });
 
-add_task(function test_engine_receives_whole_filter_lists() {
+add_task(async function test_engine_receives_whole_filter_lists() {
   const originalCreateEngine = MidoriBlockerService._createEngine;
   let receivedLists = null;
   MidoriBlockerService._createEngine = () => ({
-    initFromLists(lists) {
+    async initFromListsAsync(lists) {
       receivedLists = lists;
     },
   });
@@ -231,7 +254,7 @@ add_task(function test_engine_receives_whole_filter_lists() {
   try {
     const first = "! first\n||ads.example^\nexample.com##.ad\n";
     const second = "! second\n||tracker.example^\n";
-    const engine = MidoriBlockerService._createEngineFromListRecords([
+    const engine = await MidoriBlockerService._createEngineFromListRecords([
       { text: first },
       { text: "  " },
       { text: second },
@@ -857,7 +880,7 @@ add_task(async function test_stale_cache_candidate_is_not_published() {
   const resumeCacheRead = deferred();
   const newerEngine = { name: "newer" };
   const candidate = {
-    initFromCache() {},
+    async initFromCacheAsync() {},
   };
 
   MidoriBlockerService._initGeneration = 1;

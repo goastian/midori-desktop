@@ -42,45 +42,12 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 }
 
 /* ===== Keyframe animations ===== */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
   }
   to {
     opacity: 1;
-  }
-}
-
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.85);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(40px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -112,7 +79,6 @@ body {
   margin: 0;
   padding: 40px 20px;
   box-sizing: border-box;
-  animation: fadeIn 0.4s ease-out;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: var(--setup-text);
   background: var(--setup-bg);
@@ -130,7 +96,6 @@ body {
   left: 0;
   right: 0;
   z-index: 10;
-  animation: fadeIn 0.6s ease-out 0.3s backwards;
 }
 
 .step-dot {
@@ -170,7 +135,7 @@ body {
 
 .page.visible {
   display: flex;
-  animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeIn 160ms ease-out;
 }
 
 /* ===== Typography ===== */
@@ -181,7 +146,6 @@ h2 {
   text-align: center;
   letter-spacing: -0.02em;
   line-height: 1.2;
-  animation: fadeInUp 0.6s ease-out 0.1s backwards;
 }
 
 p {
@@ -191,13 +155,12 @@ p {
   max-width: 520px;
   line-height: 1.5;
   opacity: 0.8;
-  animation: fadeInUp 0.6s ease-out 0.2s backwards;
 }
 
 /* ===== Buttons ===== */
 .page button {
-  animation: fadeInUp 0.6s ease-out 0.35s backwards;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 150ms ease, border-color 150ms ease,
+    color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
   margin-top: 4px;
   min-width: 160px;
   font-size: 0.95em;
@@ -254,7 +217,6 @@ p {
   margin-bottom: 20px;
   justify-content: center;
   max-width: 100%;
-  animation: fadeIn 0.5s ease-out 0.25s backwards;
 }
 
 .cardGroup .card {
@@ -273,27 +235,7 @@ p {
   border-radius: 12px;
   cursor: pointer;
   position: relative;
-  animation: fadeInUp 0.5s ease-out backwards;
   user-select: none;
-}
-
-.cardGroup .card:nth-child(1) {
-  animation-delay: 0.3s;
-}
-.cardGroup .card:nth-child(2) {
-  animation-delay: 0.38s;
-}
-.cardGroup .card:nth-child(3) {
-  animation-delay: 0.46s;
-}
-.cardGroup .card:nth-child(4) {
-  animation-delay: 0.54s;
-}
-.cardGroup .card:nth-child(5) {
-  animation-delay: 0.62s;
-}
-.cardGroup .card:nth-child(6) {
-  animation-delay: 0.7s;
 }
 
 .cardGroup .card:hover {
@@ -367,7 +309,6 @@ p {
   height: 80px;
   width: 80px;
   margin-bottom: 12px;
-  animation: scaleIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ===== Import asset images ===== */
@@ -376,7 +317,6 @@ p {
   max-width: 400px;
   height: auto;
   margin-bottom: 16px;
-  animation: fadeInUp 0.6s ease-out 0.15s backwards;
 }
 
 .dark-only {
@@ -1399,7 +1339,6 @@ input[type='checkbox'] {
   gap: 10px;
   width: min(100%, 520px);
   margin: 8px 0 20px;
-  animation: fadeIn 0.5s ease-out 0.25s backwards;
 }
 
 .account-benefit {
@@ -1412,17 +1351,6 @@ input[type='checkbox'] {
   border-radius: 12px;
   background: color-mix(in srgb, var(--setup-surface) 92%, transparent);
   text-align: start;
-  animation: fadeInUp 0.5s ease-out backwards;
-}
-
-.account-benefit:nth-child(1) {
-  animation-delay: 0.3s;
-}
-.account-benefit:nth-child(2) {
-  animation-delay: 0.38s;
-}
-.account-benefit:nth-child(3) {
-  animation-delay: 0.46s;
 }
 
 .account-benefit-icon {
