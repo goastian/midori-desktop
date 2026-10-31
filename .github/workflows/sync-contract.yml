@@ -59,7 +59,6 @@ jobs:
       CACHE_STORE: array
       SESSION_DRIVER: array
       QUEUE_CONNECTION: sync
-      CARGO_TARGET_DIR: ${{ runner.temp }}/midori-sync-contract-target
     defaults:
       run:
         shell: bash
@@ -150,6 +149,8 @@ jobs:
 
       - name: Rust core and FFI
         id: rust
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/midori-sync-contract-target
         run: |
           cargo test --locked --manifest-path src/toolkit/components/midori-sync/midori_sync_core/Cargo.toml > artifacts/rust-core.log 2>&1
           cargo test --locked --manifest-path src/toolkit/components/midori-sync/midori_sync_ffi/Cargo.toml > artifacts/rust-ffi.log 2>&1

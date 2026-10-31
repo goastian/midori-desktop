@@ -835,8 +835,8 @@ add_task(async function h1_client_custody_survives_recovery_rotation_and_restart
     if (primaryToken) {
       await primaryToken.changePassword("public h1 integration primary password", "");
     }
-    if (!mainFailure && cleanupFailures.length) {
-      throw cleanupFailures[0];
-    }
+  }
+  if (!mainFailure && cleanupFailures.length) {
+    throw cleanupFailures[0];
   }
 });
