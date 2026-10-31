@@ -22,7 +22,6 @@ ENGINE_DIR="$REPO_ROOT/engine"
 MOZBUILD="$HOME/.mozbuild"
 WINSYSROOT="$MOZBUILD/vs"
 VS_YAML="build/vs/vs2026.yaml"
-REQUIRED_WINDOWS_SDK_VERSION="10.0.26100.0"
 
 # ── Parse arguments ──
 TARGET="${1:-windows}"
@@ -110,6 +109,28 @@ setup_windows() {
 
   ensure_engine
 
+  if [[ ! -f "$ENGINE_DIR/$VS_YAML" ]]; then
+    echo "Error: No se encontró $VS_YAML en engine/."
+    exit 1
+  fi
+  local REQUIRED_WINDOWS_SDK_VERSION
+  REQUIRED_WINDOWS_SDK_VERSION="$(python3 - "$ENGINE_DIR/$VS_YAML" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+versions = re.findall(
+    r"^- id: Win(?:10|11)SDK_(\d+\.\d+\.\d+)$",
+    Path(sys.argv[1]).read_text(),
+    re.MULTILINE,
+)
+if len(versions) != 1:
+    sys.exit(f"Expected one Windows SDK in {sys.argv[1]}, found {versions}")
+print(f"{versions[0]}.0")
+PY
+  )"
+  echo "Windows SDK requerido por $VS_YAML: $REQUIRED_WINDOWS_SDK_VERSION"
+
   # ── 3. Windows sysroot (MSVC + Windows SDK) ──
   if [[ -d "$WINSYSROOT/VC" &&
         -d "$WINSYSROOT/Windows Kits" &&
@@ -117,11 +138,6 @@ setup_windows() {
         "$FORCE" -eq 0 ]]; then
     echo "✔ Windows sysroot ya existe en $WINSYSROOT"
   else
-    if [[ ! -f "$ENGINE_DIR/$VS_YAML" ]]; then
-      echo "✘ Error: No se encontró $VS_YAML en engine/."
-      exit 1
-    fi
-
     echo "→ Descargando Windows sysroot (MSVC + Windows SDK)..."
     echo "  Esto puede tardar varios minutos (~2-3 GB)."
     echo ""
