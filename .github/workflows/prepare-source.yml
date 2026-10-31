@@ -88,12 +88,13 @@ jobs:
 
       - name: Compress prepared engine source
         run: |
+          test -s engine/third_party/node/node_modules/webpack/package.json
+          test -s engine/third_party/node/node_modules/sass/package.json
           tar \
             --exclude='./.git' \
             --exclude='./obj-*' \
             --exclude='./dist' \
             --exclude='./node_modules' \
-            --exclude='./*/node_modules' \
             --use-compress-program=zstd \
             -hcf midori.source.tar.zst \
             -C engine .
@@ -136,7 +137,6 @@ jobs:
             --exclude='./release-output' \
             --exclude='./all-artifacts' \
             --exclude='./node_modules' \
-            --exclude='./*/node_modules' \
             --exclude='./.cache' \
             --exclude='./.mozbuild' \
             --exclude='./.npm' \
