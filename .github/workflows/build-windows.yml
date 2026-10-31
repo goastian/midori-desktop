@@ -83,6 +83,7 @@ jobs:
       SURFER_COMPAT: ${{ matrix.arch }}
       MIDORI_CROSS_COMPILING: 'true'
       RUSTC_WRAPPER: ${{ inputs.use_sccache && 'sccache' || '' }}
+      SCCACHE_GHA_ENABLED: ${{ inputs.use_sccache && 'on' || 'false' }}
       CARGO_INCREMENTAL: 0
 
     steps:
@@ -176,14 +177,6 @@ jobs:
             wine64 \
             xvfb
 
-      - name: Restore Windows toolchains
-        uses: actions/cache@v6
-        with:
-          path: ~/.mozbuild
-          key: windows-toolchains-${{ runner.os }}-${{ hashFiles('amelia.json', 'scripts/setup-winsysroot.sh') }}
-          restore-keys: |
-            windows-toolchains-${{ runner.os }}-
-
       - name: Setup Rust
         run: |
           if [ -f .rust-toolchain ]; then
@@ -220,6 +213,17 @@ jobs:
           tar --use-compress-program=zstd -xf midori.source.tar.zst -C engine
           rm midori.source.tar.zst
 
+      - name: Restore Mozilla toolchains
+        id: toolchains-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.mozbuild/*
+            !~/.mozbuild/srcdirs
+            !~/.mozbuild/telemetry
+            !~/.mozbuild/toolchains
+          key: mozbuild-v1-${{ runner.os }}-${{ runner.arch }}-windows-${{ matrix.arch }}-${{ hashFiles('engine/taskcluster/kinds/toolchain/**', 'engine/build/vs/*.yaml', '.rust-toolchain', 'scripts/setup-winsysroot.sh') }}
+
       - name: Bootstrap
         run: |
           export AMELIA_PLATFORM="win32"
@@ -227,6 +231,7 @@ jobs:
           npm run bootstrap
 
       - name: Setup Windows cross-compilation toolchains
+        id: windows-toolchains
         run: npm run setup:windows
 
       - name: Build
@@ -245,6 +250,17 @@ jobs:
           else
             npm run build:win-x64 -- --skip-patch-check
           fi
+
+      - name: Save Mozilla toolchains
+        if: ${{ !cancelled() && steps.windows-toolchains.outcome == 'success' && steps.toolchains-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.mozbuild/*
+            !~/.mozbuild/srcdirs
+            !~/.mozbuild/telemetry
+            !~/.mozbuild/toolchains
+          key: ${{ steps.toolchains-cache.outputs.cache-primary-key }}
 
       - name: Report sccache statistics
         if: ${{ always() && inputs.use_sccache }}

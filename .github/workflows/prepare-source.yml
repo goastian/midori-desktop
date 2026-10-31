@@ -100,6 +100,8 @@ jobs:
 
       - name: Prepare Flatpak source bundle
         if: ${{ inputs.package_artifacts }}
+        env:
+          XZ_OPT: -T0 -1
         run: |
           source_bundle="midori-${{ inputs.display_version }}-src.tar.xz"
           stage_dir="$(mktemp -d)"
@@ -109,6 +111,8 @@ jobs:
             --exclude='./.tmp-addons' \
             --exclude='./artifacts' \
             --exclude='./artifacts.zip' \
+            --exclude='./midori.source.tar.zst' \
+            --exclude='./midori-*-src.tar.xz' \
             --exclude='./midori-sync' \
             --exclude='./.codex' \
             --exclude='./.agents' \
