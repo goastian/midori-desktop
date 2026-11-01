@@ -237,6 +237,17 @@ jobs:
       - name: Verify Rust and Clang compatibility
         run: bash scripts/check-build-toolchains.sh
 
+      - name: Save Mozilla toolchains
+        if: ${{ !cancelled() && steps.windows-toolchains.outcome == 'success' && steps.toolchains-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.mozbuild/*
+            !~/.mozbuild/srcdirs
+            !~/.mozbuild/telemetry
+            !~/.mozbuild/toolchains
+          key: ${{ steps.toolchains-cache.outputs.cache-primary-key }}
+
       - name: Build
         env:
           AMELIA_PLATFORM: win32
@@ -253,17 +264,6 @@ jobs:
           else
             npm run build:win-x64 -- --skip-patch-check
           fi
-
-      - name: Save Mozilla toolchains
-        if: ${{ !cancelled() && steps.windows-toolchains.outcome == 'success' && steps.toolchains-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ~/.mozbuild/*
-            !~/.mozbuild/srcdirs
-            !~/.mozbuild/telemetry
-            !~/.mozbuild/toolchains
-          key: ${{ steps.toolchains-cache.outputs.cache-primary-key }}
 
       - name: Report sccache statistics
         if: ${{ always() && inputs.use_sccache }}
