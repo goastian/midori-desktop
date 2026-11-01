@@ -141,7 +141,7 @@ jobs:
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             rustup target add aarch64-unknown-linux-gnu
           fi
-          rustc --version
+          rustc --version --verbose
 
       - name: Install system dependencies
         run: |
@@ -207,6 +207,9 @@ jobs:
       - name: Setup Linux aarch64 toolchain
         if: matrix.arch == 'aarch64'
         run: npm run setup:linux-arm64
+
+      - name: Verify Rust and Clang compatibility
+        run: bash scripts/check-build-toolchains.sh
 
       - name: Build
         env:

@@ -182,7 +182,7 @@ jobs:
           else
             rustup target add x86_64-apple-darwin
           fi
-          rustc --version
+          rustc --version --verbose
 
       - name: Install npm dependencies
         run: npm ci
@@ -223,6 +223,9 @@ jobs:
           export AMELIA_PLATFORM="darwin"
           ./mach --no-interactive bootstrap --application-choice browser --exclude macos-sdk
           cd ..
+
+      - name: Verify Rust and Clang compatibility
+        run: bash scripts/check-build-toolchains.sh
 
       - name: Build
         env:

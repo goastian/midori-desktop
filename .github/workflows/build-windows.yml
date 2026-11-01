@@ -191,7 +191,7 @@ jobs:
           else
             rustup target add x86_64-pc-windows-msvc
           fi
-          rustc --version
+          rustc --version --verbose
 
       - name: Install npm dependencies
         run: npm ci
@@ -233,6 +233,9 @@ jobs:
       - name: Setup Windows cross-compilation toolchains
         id: windows-toolchains
         run: npm run setup:windows
+
+      - name: Verify Rust and Clang compatibility
+        run: bash scripts/check-build-toolchains.sh
 
       - name: Build
         env:
