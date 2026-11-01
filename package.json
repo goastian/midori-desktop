@@ -11,7 +11,7 @@
     "build": "bash scripts/with-mach-python.sh amelia build",
     "build:ui": "bash scripts/with-mach-python.sh amelia build --ui",
     "start": "cd engine && python3 ./mach run --noprofile",
-    "import": "python3 scripts/prepare-import.py && amelia import && bash scripts/download-addons.sh && npm run check:rust && echo \"finish apply\"",
+    "import": "bash scripts/patch-amelia.sh && python3 scripts/prepare-import.py && amelia import && python3 scripts/prepare-import.py --record && bash scripts/download-addons.sh && npm run check:rust && echo \"finish apply\"",
     "export": "amelia export",
     "init": "npm run download && npm run import && npm run bootstrap",
     "download": "bash scripts/patch-amelia.sh && if [ -d engine ] && [ ! -f engine/toolkit/moz.build ]; then echo '[download] Incomplete engine detected, removing it before downloading Firefox source'; rm -rf engine; fi && amelia download",

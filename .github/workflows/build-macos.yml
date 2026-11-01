@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: true
+      use_pgo:
+        description: Enable PGO for macOS x86_64 (requires two builds)
+        required: false
+        type: boolean
+        default: true
       package_artifacts:
         required: false
         type: boolean
@@ -53,6 +58,11 @@ on:
         type: boolean
         default: true
       use_sccache:
+        required: true
+        type: boolean
+        default: true
+      use_pgo:
+        description: Enable PGO for macOS x86_64 (requires two builds)
         required: true
         type: boolean
         default: true
@@ -91,6 +101,7 @@ jobs:
       RUSTC_WRAPPER: ${{ inputs.use_sccache && 'sccache' || '' }}
       SCCACHE_GHA_ENABLED: ${{ inputs.use_sccache && 'on' || 'false' }}
       CARGO_INCREMENTAL: 0
+      MIDORI_GA_DISABLE_PGO: ${{ matrix.arch == 'x86_64' && !inputs.use_pgo && '1' || '' }}
 
     steps:
       - name: Report runner capacity
@@ -227,6 +238,17 @@ jobs:
       - name: Verify Rust and Clang compatibility
         run: bash scripts/check-build-toolchains.sh
 
+      - name: Save Mozilla toolchains
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' && steps.toolchains-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.mozbuild/*
+            !~/.mozbuild/srcdirs
+            !~/.mozbuild/telemetry
+            !~/.mozbuild/toolchains
+          key: ${{ steps.toolchains-cache.outputs.cache-primary-key }}
+
       - name: Build
         env:
           AMELIA_PLATFORM: darwin
@@ -242,20 +264,14 @@ jobs:
             npm run build:mac-x64 -- --skip-patch-check
           fi
 
-      - name: Save Mozilla toolchains
-        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' && steps.toolchains-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ~/.mozbuild/*
-            !~/.mozbuild/srcdirs
-            !~/.mozbuild/telemetry
-            !~/.mozbuild/toolchains
-          key: ${{ steps.toolchains-cache.outputs.cache-primary-key }}
-
       - name: Report sccache statistics
         if: ${{ always() && inputs.use_sccache }}
-        run: sccache --show-stats || true
+        run: |
+          if [ -x "$HOME/.mozbuild/sccache/sccache" ]; then
+            "$HOME/.mozbuild/sccache/sccache" --show-stats || true
+          else
+            sccache --show-stats || true
+          fi
 
       - name: Verify compiled output
         run: bash scripts/verify-build-output.sh macos "${{ matrix.arch }}"

@@ -72,6 +72,7 @@ jobs:
       display_version: ${{ needs.check-trigger.outputs.display_version }}
       build_type: ${{ needs.check-trigger.outputs.build_type }}
       use_sccache: true
+      use_pgo: false
       package_artifacts: true
     secrets: inherit
 

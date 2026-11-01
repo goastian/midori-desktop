@@ -240,7 +240,12 @@ jobs:
 
       - name: Report sccache statistics
         if: ${{ always() && inputs.use_sccache }}
-        run: sccache --show-stats || true
+        run: |
+          if [ -x "$HOME/.mozbuild/sccache/sccache" ]; then
+            "$HOME/.mozbuild/sccache/sccache" --show-stats || true
+          else
+            sccache --show-stats || true
+          fi
 
       - name: Verify compiled output
         run: bash scripts/verify-build-output.sh linux "${{ matrix.arch }}"

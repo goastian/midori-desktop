@@ -93,6 +93,7 @@ jobs:
       display_version: ${{ needs.prepare.outputs.display_version }}
       build_type: ${{ needs.prepare.outputs.build_type }}
       use_sccache: true
+      use_pgo: true
       package_artifacts: true
     secrets: inherit
 
