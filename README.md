@@ -3,6 +3,7 @@
 [![Downloads](https://img.shields.io/github/downloads/goastian/midori-desktop/total?label=downloads&logo=github&color=2e7d32)](https://github.com/goastian/midori-desktop/releases)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/T5V5269OIA)
 [![Telegram](https://img.shields.io/badge/Telegram-Join%20the%20community-26A5E4?style=flat-square&logo=telegram&logoColor=white)]([https://t.me/TU_GRUPO](https://t.me/midoriweb))
+[![CI](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/goastian/midori-desktop/actions/workflows/ci.yml)
 
 <div align="center">
   <a href="https://astian.org/midori-browser">
