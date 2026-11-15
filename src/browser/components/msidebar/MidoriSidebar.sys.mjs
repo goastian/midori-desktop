@@ -33,6 +33,7 @@ const TAB_CTX_MENU_ID = 'midori-msidebar-tab-menu';
 const TAB_CTX_OPEN_ID = 'midori-msidebar-tab-open';
 const TAB_CTX_TEMP_ID = 'midori-msidebar-tab-open-temp';
 const OBSERVED_PREFS = [
+  Prefs.PREF_PERFORMANCE_VISIBLE,
   Prefs.PREF_ENABLED,
   Prefs.PREF_POSITION,
   Prefs.PREF_WIDTH,

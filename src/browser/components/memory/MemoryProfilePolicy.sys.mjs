@@ -12,7 +12,7 @@ export const NETWORK_POLICY = 'network';
 export const JAVASCRIPT_POLICY = 'javascript';
 export const GRAPHICS_POLICY = 'graphics';
 
-const VALID_MEMORY_PROFILES = new Set([0, 1, 2, 3]);
+const VALID_MEMORY_PROFILES = new Set([0, 1, 2, 3, 4]);
 
 function mergeIntoPolicy(target, source) {
   for (const [policy, prefs] of Object.entries(source)) {
@@ -96,6 +96,7 @@ const LOW_MEMORY_NETWORK_POLICIES = {
 };
 
 const PROFILE_DEFINITIONS = {
+  4: { name: 'custom', policies: {} },
   0: {
     name: 'performance',
     policies: {},
@@ -280,6 +281,7 @@ export function getProfileDefinition(profileIndex) {
 export function getPreferencesByPolicy(profileIndex, platform = 'unknown') {
   if (
     profileIndex === DEFAULT_MEMORY_PROFILE ||
+    profileIndex === 4 ||
     !PROFILE_DEFINITIONS[profileIndex]
   ) {
     return {};

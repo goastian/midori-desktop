@@ -10,6 +10,7 @@
  * - 1: Balanced (moderate RAM savings, good for most users)
  * - 2: Low Memory (aggressive RAM savings for systems with limited RAM)
  * - 3: Gaming/AI (specialized graphics and throughput settings)
+ * - 4: Custom (resource budget with a selected base profile)
  */
 
 const lazy = {};
@@ -19,13 +20,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MemoryProfilePolicy: 'resource:///modules/MemoryProfilePolicy.sys.mjs',
 });
 
-const PROFILE_INDEXES = [0, 1, 2, 3];
+const PROFILE_INDEXES = [0, 1, 2, 3, 4];
 
 const PROFILE_NAMES = {
   0: 'performance',
   1: 'balanced',
   2: 'lowMemory',
   3: 'gaming',
+  4: 'custom',
 };
 
 // Union of every preference any opt-in profile may write. The snapshot captures
@@ -52,6 +54,10 @@ function getOwnedPrefs() {
 }
 
 function getProfileSettings(profileIndex) {
+  if (profileIndex === 4) {
+    const base = Services.prefs.getIntPref('midori.performance.custom.baseProfile', 0);
+    profileIndex = [0, 1, 2, 3].includes(base) ? base : 0;
+  }
   return lazy.MemoryProfilePolicy.getProfilePreferences(
     profileIndex,
     lazy.AppConstants.platform
@@ -72,13 +78,14 @@ function getAllProfileSettings() {
 
 export const MemoryProfileManager = {
   _initialized: false,
+  _updating: false,
   PREF_MEMORY_PROFILE: 'midori.memory.profile',
   PREF_MEMORY_PROFILE_APPLIED: 'midori.memory.profile.lastApplied',
   PREF_MEMORY_PROFILE_SCHEMA: 'midori.memory.profile.schemaVersion',
   PREF_SAVED_PREFS: 'midori.memory.profile.savedPrefs',
 
   /**
-   * Get the current memory profile (0, 1, 2, or 3)
+   * Get the current memory profile (0–4)
    * @returns {number} The current profile index
    */
   getCurrentProfile() {
@@ -92,7 +99,7 @@ export const MemoryProfileManager = {
 
   /**
    * Get profile configuration by index
-   * @param {number} profileIndex - The profile index (0, 1, 2, or 3)
+   * @param {number} profileIndex - The profile index (0–4)
    * @returns {object|null} The profile configuration or null if invalid
    */
   getProfile(profileIndex) {
@@ -114,9 +121,33 @@ export const MemoryProfileManager = {
     return getAllProfileSettings();
   },
 
+  setProfile(profileIndex, baseProfile = 0) {
+    if (!PROFILE_INDEXES.includes(profileIndex) || ![0, 1, 2, 3].includes(baseProfile)) {
+      throw new Error('invalid-profile');
+    }
+    const prefs = new Set([...getOwnedPrefs(), this.PREF_MEMORY_PROFILE,
+      this.PREF_MEMORY_PROFILE_APPLIED, this.PREF_SAVED_PREFS,
+      'midori.performance.custom.baseProfile']);
+    if ([...prefs].some(pref => Services.prefs.prefIsLocked(pref))) {
+      throw new Error('profile-preference-locked');
+    }
+    const previous = new Map([...prefs].map(pref => [pref, this._readPrefState(pref)]));
+    this._updating = true;
+    try {
+      Services.prefs.setIntPref('midori.performance.custom.baseProfile', baseProfile);
+      Services.prefs.setIntPref(this.PREF_MEMORY_PROFILE, profileIndex);
+      if (!this.applyProfile(profileIndex)) throw new Error('profile-application-failed');
+    } catch (error) {
+      for (const [pref, state] of previous) this._restorePrefState(pref, state);
+      throw error;
+    } finally {
+      this._updating = false;
+    }
+  },
+
   /**
    * Apply a memory profile
-   * @param {number} profileIndex - The profile index to apply (0, 1, 2, or 3)
+   * @param {number} profileIndex - The profile index to apply (0–4)
    * @returns {boolean} True if successful, false otherwise
    */
   applyProfile(profileIndex) {
@@ -136,19 +167,18 @@ export const MemoryProfileManager = {
       this.PREF_SAVED_PREFS
     );
 
-    if (profileIndex === lazy.MemoryProfilePolicy.DEFAULT_MEMORY_PROFILE) {
+    if (!Object.keys(profile.settings).length) {
       // The snapshot is the ownership record. If it is present, the user just
       // left an opt-in profile and their original values are restored. If it is
       // absent there is nothing Midori owns, so about:config edits are kept.
       if (hasSavedPrefs) {
         this._restoreSavedPrefs();
       }
-      this._clearLegacyManagedPrefs();
     } else {
       this._discardUntrackedPrefs(lastAppliedProfile, hasSavedPrefs);
       this._captureSavedPrefs(profile.settings);
       this._restoreUnusedPrefs(lastAppliedProfile, profile.settings);
-      this._applySettings(profile.settings, profile.name);
+      if (!this._applySettings(profile.settings, profile.name)) return false;
     }
 
     Services.prefs.setIntPref(
@@ -161,16 +191,25 @@ export const MemoryProfileManager = {
   },
 
   _applySettings(settings, groupName) {
+    let applied = true;
     for (const [pref, value] of Object.entries(settings)) {
       try {
         this._setPref(pref, value);
+        const actual = typeof value === 'boolean'
+          ? Services.prefs.getBoolPref(pref)
+          : typeof value === 'number'
+            ? Services.prefs.getIntPref(pref)
+            : Services.prefs.getStringPref(pref);
+        if (actual !== value) applied = false;
       } catch (e) {
+        applied = false;
         console.error(
           `MemoryProfileManager: Failed to set ${groupName} pref ${pref}:`,
           e
         );
       }
     }
+    return applied;
   },
 
   /**
@@ -218,9 +257,8 @@ export const MemoryProfileManager = {
     if (lastAppliedProfile === -1) {
       return;
     }
-    const previousSettings = getProfileSettings(lastAppliedProfile);
     const saved = this._readSavedPrefs();
-    for (const pref of Object.keys(previousSettings)) {
+    for (const pref of getOwnedPrefs()) {
       if (Object.prototype.hasOwnProperty.call(nextSettings, pref)) {
         continue;
       }
@@ -254,7 +292,7 @@ export const MemoryProfileManager = {
    * preference that has no recorded origin before the snapshot is taken.
    */
   _discardUntrackedPrefs(lastAppliedProfile, hasSavedPrefs) {
-    if (hasSavedPrefs || lastAppliedProfile <= 0) {
+    if (hasSavedPrefs || lastAppliedProfile <= 0 || lastAppliedProfile === 4) {
       return;
     }
     for (const pref of getOwnedPrefs()) {
@@ -421,6 +459,7 @@ export const MemoryProfileManager = {
 
     // Register preference observer
     Services.prefs.addObserver(this.PREF_MEMORY_PROFILE, this);
+    Services.prefs.addObserver('midori.performance.custom.baseProfile', this);
     this._initialized = true;
     this.applyProfile(currentProfile);
   },
@@ -429,7 +468,9 @@ export const MemoryProfileManager = {
    * Preference observer
    */
   observe(subject, topic, data) {
-    if (topic === 'nsPref:changed' && data === this.PREF_MEMORY_PROFILE) {
+    if (this._updating) return;
+    if (topic === 'nsPref:changed' && (data === this.PREF_MEMORY_PROFILE ||
+        (data === 'midori.performance.custom.baseProfile' && this.getCurrentProfile() === 4))) {
       const newProfile = this.getCurrentProfile();
       this.applyProfile(newProfile);
     }
@@ -445,6 +486,7 @@ export const MemoryProfileManager = {
       return;
     }
     Services.prefs.removeObserver(this.PREF_MEMORY_PROFILE, this);
+    Services.prefs.removeObserver('midori.performance.custom.baseProfile', this);
     this._initialized = false;
   },
 };
