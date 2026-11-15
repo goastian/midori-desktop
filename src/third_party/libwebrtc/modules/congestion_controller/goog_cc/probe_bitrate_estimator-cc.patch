@@ -1,0 +1,22 @@
+diff --git a/third_party/libwebrtc/modules/congestion_controller/goog_cc/probe_bitrate_estimator.cc b/third_party/libwebrtc/modules/congestion_controller/goog_cc/probe_bitrate_estimator.cc
+--- a/third_party/libwebrtc/modules/congestion_controller/goog_cc/probe_bitrate_estimator.cc
++++ b/third_party/libwebrtc/modules/congestion_controller/goog_cc/probe_bitrate_estimator.cc
+@@ -68,6 +68,18 @@
+     const PacketResult& packet_feedback) {
+   int cluster_id = packet_feedback.sent_packet.pacing_info.probe_cluster_id;
+   RTC_DCHECK_NE(cluster_id, PacedPacketInfo::kNotAProbe);
++  RTC_LOG(LS_INFO) << "Midori probe feedback id=" << cluster_id
++                   << " seq=" << packet_feedback.sent_packet.sequence_number
++                   << " send_us="
++                   << (packet_feedback.sent_packet.send_time.IsFinite()
++                           ? packet_feedback.sent_packet.send_time.us()
++                           : -1)
++                   << " receive_us="
++                   << (packet_feedback.receive_time.IsFinite()
++                           ? packet_feedback.receive_time.us()
++                           : -1)
++                   << " bytes=" << packet_feedback.sent_packet.size.bytes()
++                   << " estimator=" << this;
+ 
+   EraseOldClusters(packet_feedback.receive_time);
+ 

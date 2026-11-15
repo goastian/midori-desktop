@@ -1,0 +1,21 @@
+diff --git a/dom/ipc/PContent.ipdl b/dom/ipc/PContent.ipdl
+--- a/dom/ipc/PContent.ipdl
++++ b/dom/ipc/PContent.ipdl
+@@ -563,6 +563,8 @@
+     //
+     // Keep the last 3 attributes in sync with GetProcessAttributes!
+ parent:
++    async SetMidoriMediaSendingCallCount(uint32_t count);
++
+     async ConstructPopupBrowser(ManagedEndpoint<PBrowserParent> browserEp,
+                                 ManagedEndpoint<PWindowGlobalParent> windowEp,
+                                 TabId tabId, IPCTabContext context,
+@@ -582,6 +584,8 @@
+     async PExtensions();
+ 
+ child:
++    async UpdateMidoriMediaSendingCallCount(uint32_t count);
++
+     async ConstructBrowser(ManagedEndpoint<PBrowserChild> browserEp,
+                            ManagedEndpoint<PWindowGlobalChild> windowEp,
+                            TabId tabId,

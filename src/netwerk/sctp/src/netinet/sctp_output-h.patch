@@ -1,0 +1,21 @@
+diff --git a/netwerk/sctp/src/netinet/sctp_output.h b/netwerk/sctp/src/netinet/sctp_output.h
+index a51a92a85e..911bee2816 100644
+--- a/netwerk/sctp/src/netinet/sctp_output.h
++++ b/netwerk/sctp/src/netinet/sctp_output.h
+@@ -39,6 +39,16 @@
+ 
+ #if defined(_KERNEL) || defined(__Userspace__)
+ 
++uint32_t sctp_limit_advertised_rwnd(uint32_t available, uint32_t rtt_ms,
++                                    uint32_t fragment_size);
++int sctp_receive_window_is_limited(void);
++int sctp_receive_window_may_grow(void);
++
++#if defined(__Userspace__)
++void sctp_set_receive_window_callback(uint32_t (*receive_window_limit)(uint32_t),
++                                      int (*receive_window_may_grow)(void));
++#endif
++
+ struct mbuf *
+ sctp_add_addresses_to_i_ia(struct sctp_inpcb *inp,
+                            struct sctp_tcb *stcb,

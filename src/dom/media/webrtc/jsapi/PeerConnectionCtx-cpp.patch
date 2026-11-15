@@ -1,0 +1,22 @@
+diff --git a/dom/media/webrtc/jsapi/PeerConnectionCtx.cpp b/dom/media/webrtc/jsapi/PeerConnectionCtx.cpp
+--- a/dom/media/webrtc/jsapi/PeerConnectionCtx.cpp
++++ b/dom/media/webrtc/jsapi/PeerConnectionCtx.cpp
+@@ -22,6 +22,7 @@
+ #include "modules/audio_processing/include/aec_dump.h"
+ #include "modules/audio_processing/include/audio_processing.h"
+ #include "modules/rtp_rtcp/source/rtp_header_extensions.h"
++#include "mozilla/Preferences.h"
+ #include "mozilla/Services.h"
+ #include "mozilla/StaticPtr.h"
+ #include "mozilla/UniquePtr.h"
+@@ -566,6 +567,10 @@
+ }
+ 
+ nsresult PeerConnectionCtx::StartTelemetryTimer() {
++  if (!Preferences::GetBool("toolkit.telemetry.enabled", false) &&
++      !Preferences::GetBool("toolkit.telemetry.unified", false)) {
++    return NS_OK;
++  }
+   return NS_NewTimerWithFuncCallback(getter_AddRefs(mTelemetryTimer),
+                                      EverySecondTelemetryCallback_m, this, 1000,
+                                      nsITimer::TYPE_REPEATING_PRECISE_CAN_SKIP,

@@ -1,0 +1,27 @@
+diff --git a/dom/media/webrtc/transport/transportlayerice.cpp b/dom/media/webrtc/transport/transportlayerice.cpp
+--- a/dom/media/webrtc/transport/transportlayerice.cpp
++++ b/dom/media/webrtc/transport/transportlayerice.cpp
+@@ -40,6 +40,7 @@
+ 
+ #include <string>
+ 
++#include "mozilla/net/MidoriDatagram.h"
+ #include "nsComponentManagerUtils.h"
+ #include "nsError.h"
+ #include "nsNetCID.h"
+@@ -104,6 +105,7 @@
+ 
+ TransportResult TransportLayerIce::SendPacket(MediaPacket& packet) {
+   CheckThread();
++  net::AutoWebRTCAudioSend audioSend(packet.IsAudio(), packet.SendInfo());
+   nsresult res =
+       stream_->SendPacket(component_, packet.data(), packet.len(), dtls_id_);
+   int len = packet.len();
+@@ -114,6 +116,7 @@
+     return (res == NS_BASE_STREAM_WOULD_BLOCK) ? TE_WOULDBLOCK : TE_ERROR;
+   }
+ 
++  audioSend.NotifyFallback(TimeStamp::Now());
+   MOZ_MTLOG(ML_DEBUG,
+             LAYER_INFO << " SendPacket(" << packet.len() << ") succeeded");
+ 

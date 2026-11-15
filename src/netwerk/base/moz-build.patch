@@ -1,0 +1,18 @@
+diff --git a/netwerk/base/moz.build b/netwerk/base/moz.build
+--- a/netwerk/base/moz.build
++++ b/netwerk/base/moz.build
+@@ -169,6 +169,8 @@
+     "ExecuteIfOnMainThreadEventTarget.h",
+     "InterceptionInfo.h",
+     "IPv4Parser.h",
++    "MidoriDatagram.h",
++    "MidoriNetworkBudget.h",
+     "NetworkConnectivityService.h",
+     "NoVarySearchUtils.h",
+     "PrivateBrowsingChannel.h",
+@@ -336,3 +338,5 @@
+ GeneratedFile(
+     "ascii_pac_utils.inc", script="makecppstring.py", inputs=["ascii_pac_utils.js"]
+ )
++
++SOURCES += ["MidoriNetworkBudget.cpp"]

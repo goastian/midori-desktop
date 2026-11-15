@@ -1,0 +1,31 @@
+--- a/dom/chrome-webidl/ChromeUtils.webidl
++++ b/dom/chrome-webidl/ChromeUtils.webidl
+@@ -792,10 +792,26 @@
+   Promise<DOMString> collectPerfStats();
+ 
+   /**
+-  * Returns a Promise containing all processes info
++  * Returns process information, optionally excluding threads
+   */
+   [NewObject]
+-  Promise<ParentProcInfoDictionary> requestProcInfo();
++  Promise<ParentProcInfoDictionary> requestProcInfo(
++    optional boolean includeThreads = true);
++
++  [NewObject]
++  Promise<MidoriManagedSocketUsage> requestManagedSocketUsage(
++    optional boolean socketProcess = false);
++
++  [NewObject]
++  Promise<MidoriManagedCpuBudget> requestManagedCpuBudget(
++    [EnforceRange] unsigned long percentage);
++
++  [Throws]
++  unsigned long long beginManagedMediaObservation();
++
++  [Throws]
++  ManagedMediaObservationResult endManagedMediaObservation(
++    unsigned long long generation, HTMLVideoElement video);
+ 
+   /**
+    * Requests an XDG activation token from the Wayland compositor.

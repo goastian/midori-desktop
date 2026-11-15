@@ -1,0 +1,93 @@
+diff --git a/dom/media/webrtc/jsapi/MediaTransportHandler.cpp b/dom/media/webrtc/jsapi/MediaTransportHandler.cpp
+--- a/dom/media/webrtc/jsapi/MediaTransportHandler.cpp
++++ b/dom/media/webrtc/jsapi/MediaTransportHandler.cpp
+@@ -6,6 +6,7 @@
+ 
+ #include "MediaTransportHandlerIPC.h"
+ #include "nsITimer.h"
++#include "prtime.h"
+ #include "transport/dtlsidentity.h"
+ #include "transport/nricemediastream.h"
+ #include "transport/nriceresolver.h"
+@@ -17,6 +18,7 @@
+ 
+ // Config stuff
+ #include "mozilla/IceServerParser.h"
++#include "mozilla/Logging.h"
+ #include "mozilla/Preferences.h"
+ #include "mozilla/StaticPrefs_network.h"
+ #include "mozilla/dom/RTCConfigurationBinding.h"
+@@ -52,6 +54,8 @@
+                            MediaPacket::EnumValueToString((aPacket).type())));
+ 
+ namespace mozilla {
++
++static LazyLogModule sMidoriWebrtcSendLog("MidoriWebrtcSend");
+ 
+ static const char* mthLogTag = "MediaTransportHandler";
+ #ifdef LOGTAG
+@@ -1272,6 +1276,13 @@
+ 
+   MOZ_ASSERT(layer);
+ 
++  aPacket.SendInfo().observer = mEvents;
++  if (aPacket.SendInfo().packetId >= 0) {
++    MOZ_LOG_FMT(sMidoriWebrtcSendLog, LogLevel::Debug,
++                "queued source={} id={} wall_at={}",
++                aPacket.SendInfo().sourceId, aPacket.SendInfo().packetId,
++                PR_Now() / 1000);
++  }
+   if (int error = layer->SendPacket(aPacket); error < 0) {
+     CSFLogError(LOGTAG,
+                 "%s: Transport flow (%s) failed to send packet. error=%d",
+@@ -1330,6 +1341,7 @@
+ 
+ void MediaTransportEvents::OnPacketReceived(std::string&& aTransportId,
+                                             MediaPacket&& aPacket) {
++  FlushSentPackets();
+   switch (aPacket.type()) {
+     case MediaPacket::UNCLASSIFIED:
+     case MediaPacket::DTLS:
+@@ -1347,6 +1359,42 @@
+                                  std::forward<MediaPacket>(aPacket));
+       break;
+   }
++}
++
++void MediaTransportEvents::OnDatagramSent(uint64_t aSourceId, int64_t aPacketId,
++                                          const TimeStamp& aSentAt,
++                                          bool aSocketSent) {
++  MOZ_LOG_FMT(sMidoriWebrtcSendLog, LogLevel::Debug,
++              "sent source={} id={} age_ms={} socket={}", aSourceId, aPacketId,
++              (TimeStamp::Now() - aSentAt).ToMilliseconds(), aSocketSent);
++  mSentPackets.AppendElement(
++      dom::RTCSentPacket(aSourceId, aPacketId, aSentAt, aSocketSent));
++  if (mSentPackets.Length() >= 64) FlushSentPackets();
++  if (mSentFlushPending) return;
++  mSentFlushPending = true;
++  nsresult rv = NS_DispatchToCurrentThread(NS_NewRunnableFunction(
++      "MediaTransportEvents::FlushSentPackets", [self = RefPtr{this}] {
++        self->mSentFlushPending = false;
++        self->FlushSentPackets();
++      }));
++  if (NS_FAILED(rv)) {
++    mSentFlushPending = false;
++    mSentPackets.Clear();
++  }
++}
++
++void MediaTransportEvents::FlushSentPackets() {
++  if (mSentPackets.IsEmpty()) return;
++  nsTArray<dom::RTCSentPacket> packets;
++  packets.SwapElements(mSentPackets);
++  MOZ_LOG_FMT(sMidoriWebrtcSendLog, LogLevel::Debug,
++              "batch packets={}", packets.Length());
++  mPacketsSent.Notify(std::move(packets));
++}
++
++void MediaTransportEvents::OnPacketsSent(
++    nsTArray<dom::RTCSentPacket>&& aPackets) {
++  mPacketsSent.Notify(std::move(aPackets));
+ }
+ 
+ void MediaTransportEvents::OnEncryptedSending(const std::string& aTransportId,

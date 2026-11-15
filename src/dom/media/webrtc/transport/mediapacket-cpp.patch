@@ -1,0 +1,36 @@
+diff --git a/dom/media/webrtc/transport/mediapacket.cpp b/dom/media/webrtc/transport/mediapacket.cpp
+--- a/dom/media/webrtc/transport/mediapacket.cpp
++++ b/dom/media/webrtc/transport/mediapacket.cpp
+@@ -31,7 +31,10 @@
+ }
+ 
+ MediaPacket::MediaPacket(const MediaPacket& orig)
+-    : sdp_level_(orig.sdp_level_), type_(orig.type_) {
++    : sdp_level_(orig.sdp_level_),
++      type_(orig.type_),
++      is_audio_(orig.is_audio_),
++      sent_(orig.sent_) {
+   Copy(orig.data_.get(), orig.len_, orig.capacity_);
+ }
+ 
+@@ -43,6 +46,9 @@
+   WriteParam(aWriter, encrypted_len_);
+   WriteParam(aWriter, sdp_level_);
+   WriteParam(aWriter, type_);
++  WriteParam(aWriter, is_audio_);
++  WriteParam(aWriter, sent_.sourceId);
++  WriteParam(aWriter, sent_.packetId);
+ 
+   if (len_) {
+     aWriter->WriteBytes(data_.get(), len_);
+@@ -56,7 +62,9 @@
+   Reset();
+   if (!ReadParam(aReader, &len_) || !ReadParam(aReader, &capacity_) ||
+       !ReadParam(aReader, &encrypted_len_) ||
+-      !ReadParam(aReader, &sdp_level_) || !ReadParam(aReader, &type_)) {
++      !ReadParam(aReader, &sdp_level_) || !ReadParam(aReader, &type_) ||
++      !ReadParam(aReader, &is_audio_) || !ReadParam(aReader, &sent_.sourceId) ||
++      !ReadParam(aReader, &sent_.packetId)) {
+     return false;
+   }
+ 

@@ -1,0 +1,66 @@
+diff --git a/third_party/libwebrtc/modules/pacing/bitrate_prober.cc b/third_party/libwebrtc/modules/pacing/bitrate_prober.cc
+--- a/third_party/libwebrtc/modules/pacing/bitrate_prober.cc
++++ b/third_party/libwebrtc/modules/pacing/bitrate_prober.cc
+@@ -66,6 +66,10 @@
+ 
+ void BitrateProber::MaybeSetActiveState(DataSize packet_size) {
+   if (ReadyToSetActiveState(packet_size)) {
++    RTC_LOG(LS_INFO) << "Midori probe activate id="
++                     << clusters_.front().pace_info.probe_cluster_id
++                     << " packet_bytes=" << packet_size.bytes()
++                     << " pending=" << clusters_.size() << " prober=" << this;
+     next_probe_time_ = Timestamp::MinusInfinity();
+     probing_state_ = ProbingState::kActive;
+   }
+@@ -106,6 +110,11 @@
+          (cluster_config.at_time - clusters_.front().requested_at >
+               kProbeClusterTimeout ||
+           clusters_.size() > kMaxPendingProbeClusters)) {
++    RTC_LOG(LS_INFO)
++        << "Midori probe retire id="
++        << clusters_.front().pace_info.probe_cluster_id << " age_ms="
++        << (cluster_config.at_time - clusters_.front().requested_at).ms()
++        << " pending=" << clusters_.size() << " prober=" << this;
+     clusters_.pop();
+   }
+ 
+@@ -133,7 +142,8 @@
+                    << cluster.pace_info.probe_cluster_min_probes << ", "
+                    << (probing_state_ == ProbingState::kInactive ? "Inactive"
+                                                                  : "Active")
+-                   << ")";
++                   << ") id=" << cluster.pace_info.probe_cluster_id
++                   << " pending=" << clusters_.size() << " prober=" << this;
+ }
+ 
+ Timestamp BitrateProber::NextProbeTime(Timestamp /* now */) const {
+@@ -152,6 +162,12 @@
+ 
+   if (next_probe_time_.IsFinite() &&
+       now - next_probe_time_ > config_.max_probe_delay.Get()) {
++    RTC_LOG(LS_INFO) << "Midori probe late id="
++                     << clusters_.front().pace_info.probe_cluster_id
++                     << " late_us=" << (now - next_probe_time_).us()
++                     << " sent_bytes=" << clusters_.front().sent_bytes
++                     << " sent_probes=" << clusters_.front().sent_probes
++                     << " prober=" << this;
+     RTC_DLOG(LS_WARNING) << "Probe delay too high"
+                             " (next_ms:"
+                          << next_probe_time_.ms() << ", now_ms: " << now.ms()
+@@ -189,6 +205,16 @@
+     cluster->sent_bytes += size.bytes<int>();
+     cluster->sent_probes += 1;
+     next_probe_time_ = CalculateNextProbeTime(*cluster);
++    RTC_LOG(LS_INFO) << "Midori probe paced id="
++                     << cluster->pace_info.probe_cluster_id
++                     << " pacer_us=" << now.us() << " bytes=" << size.bytes()
++                     << " total_bytes=" << cluster->sent_bytes
++                     << " probes=" << cluster->sent_probes << " min_bytes="
++                     << cluster->pace_info.probe_cluster_min_bytes
++                     << " min_probes="
++                     << cluster->pace_info.probe_cluster_min_probes
++                     << " next_us=" << next_probe_time_.us()
++                     << " prober=" << this;
+     if (cluster->sent_bytes >= cluster->pace_info.probe_cluster_min_bytes &&
+         cluster->sent_probes >= cluster->pace_info.probe_cluster_min_probes) {
+       clusters_.pop();

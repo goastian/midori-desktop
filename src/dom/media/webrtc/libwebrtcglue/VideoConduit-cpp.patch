@@ -1,0 +1,56 @@
+diff --git a/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp b/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp
+--- a/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp
++++ b/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp
+@@ -1038,6 +1038,7 @@
+   }
+   mCall->Call()->DestroyVideoSendStream(mSendStream);
+   mEngineTransmitting = false;
++  mCall->SetMediaSending(this, false);
+   mSendStream = nullptr;
+ 
+   // Reset base_seqs in case ssrcs get re-used.
+@@ -1752,6 +1753,7 @@
+   }
+ 
+   mEngineTransmitting = false;
++  mCall->SetMediaSending(this, false);
+ }
+ 
+ void WebrtcVideoConduit::StartTransmitting() {
+@@ -1770,6 +1772,7 @@
+   mCall->Call()->SignalChannelNetworkState(webrtc::MediaType::VIDEO,
+                                            webrtc::kNetworkUp);
+   mEngineTransmitting = true;
++  mCall->SetMediaSending(this, true);
+ }
+ 
+ void WebrtcVideoConduit::StopReceiving() {
+@@ -1830,24 +1833,17 @@
+   MediaPacket packet;
+   packet.Copy(aData, aLength, aLength + SRTP_MAX_EXPANSION);
+   packet.SetType(MediaPacket::RTP);
++  packet.SendInfo().packetId = aOptions.packet_id;
++  packet.SendInfo().sourceId = mCall->mSendSourceId;
+   mSenderRtpSendEvent.Notify(std::move(packet));
+ 
+   // Parse the sequence number of the first rtp packet as base_seq.
+   const auto inserted = mRtpSendBaseSeqs_n.insert({ssrc, seqno}).second;
+ 
+-  if (inserted || aOptions.packet_id >= 0) {
+-    int64_t now_ms = PR_Now() / 1000;
++  if (inserted) {
+     MOZ_ALWAYS_SUCCEEDS(mCallThread->Dispatch(NS_NewRunnableFunction(
+-        __func__, [this, self = RefPtr<WebrtcVideoConduit>(this),
+-                   packet_id = aOptions.packet_id, now_ms, ssrc, seqno] {
++        __func__, [this, self = RefPtr<WebrtcVideoConduit>(this), ssrc, seqno] {
+           mRtpSendBaseSeqs.insert({ssrc, seqno});
+-          if (packet_id >= 0) {
+-            if (mCall->Call()) {
+-              // TODO: This notification should ideally happen after the
+-              // transport layer has sent the packet on the wire.
+-              mCall->Call()->OnSentPacket({packet_id, now_ms});
+-            }
+-          }
+         })));
+   }
+   return true;

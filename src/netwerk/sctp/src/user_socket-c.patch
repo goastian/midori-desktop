@@ -1,0 +1,48 @@
+diff --git a/netwerk/sctp/src/user_socket.c b/netwerk/sctp/src/user_socket.c
+index cde6ecc417..084c163534 100644
+--- a/netwerk/sctp/src/user_socket.c
++++ b/netwerk/sctp/src/user_socket.c
+@@ -38,6 +38,7 @@
+ #include <netinet/sctp_var.h>
+ #include <netinet/sctp_sysctl.h>
+ #include <netinet/sctp_input.h>
++#include <netinet/sctp_output.h>
+ #include <netinet/sctp_peeloff.h>
+ #include <netinet/sctp_callout.h>
+ #include <netinet/sctp_crc32.h>
+@@ -104,20 +105,32 @@ static void init_sync(void) {
+ }
+ 
+ void
+-usrsctp_init(uint16_t port,
+-             int (*conn_output)(void *addr, void *buffer, size_t length, uint8_t tos, uint8_t set_df),
+-             void (*debug_printf)(const char *format, ...))
++usrsctp_init_with_receive_window(uint16_t port,
++                                int (*conn_output)(void *addr, void *buffer, size_t length, uint8_t tos, uint8_t set_df),
++                                void (*debug_printf)(const char *format, ...),
++                                uint32_t (*receive_window_limit)(uint32_t),
++                                int (*receive_window_may_grow)(void))
+ {
++	sctp_set_receive_window_callback(receive_window_limit, receive_window_may_grow);
+ 	init_sync();
+ 	sctp_init(port, conn_output, debug_printf, 1);
+ }
+ 
+ 
++void
++usrsctp_init(uint16_t port,
++             int (*conn_output)(void *addr, void *buffer, size_t length, uint8_t tos, uint8_t set_df),
++             void (*debug_printf)(const char *format, ...))
++{
++	usrsctp_init_with_receive_window(port, conn_output, debug_printf, NULL, NULL);
++}
++
+ void
+ usrsctp_init_nothreads(uint16_t port,
+                        int (*conn_output)(void *addr, void *buffer, size_t length, uint8_t tos, uint8_t set_df),
+                        void (*debug_printf)(const char *format, ...))
+ {
++	sctp_set_receive_window_callback(NULL, NULL);
+ 	init_sync();
+ 	sctp_init(port, conn_output, debug_printf, 0);
+ }

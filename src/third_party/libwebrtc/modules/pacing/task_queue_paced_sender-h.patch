@@ -1,0 +1,11 @@
+diff --git a/third_party/libwebrtc/modules/pacing/task_queue_paced_sender.h b/third_party/libwebrtc/modules/pacing/task_queue_paced_sender.h
+--- a/third_party/libwebrtc/modules/pacing/task_queue_paced_sender.h
++++ b/third_party/libwebrtc/modules/pacing/task_queue_paced_sender.h
+@@ -74,6 +74,7 @@
+       std::vector<std::unique_ptr<RtpPacketToSend>> packets) override;
+   // Remove any pending packets matching this SSRC from the packet queue.
+   void RemovePacketsForSsrc(uint32_t ssrc) override;
++  void DiscardPacketsCapturedBefore(uint32_t ssrc, Timestamp time) override;
+ 
+   // Methods implementing RtpPacketPacer.
+ 

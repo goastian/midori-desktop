@@ -1,0 +1,25 @@
+diff --git a/dom/network/PUDPSocket.ipdl b/dom/network/PUDPSocket.ipdl
+--- a/dom/network/PUDPSocket.ipdl
++++ b/dom/network/PUDPSocket.ipdl
+@@ -14,7 +14,13 @@
+ include "mozilla/dom/network/UDPSocketChild.h";
+ 
+ using mozilla::net::NetAddr from "mozilla/net/DNS.h";
++using mozilla::TimeStamp from "mozilla/TimeStamp.h";
+ using struct mozilla::void_t from "mozilla/ipc/IPCCore.h";
++
++struct UDPDatagramResult {
++  uint32_t status;
++  TimeStamp sentAt;
++};
+ 
+ struct UDPAddressInfo {
+   nsCString addr;
+@@ -46,6 +52,7 @@
+   async Connect(UDPAddressInfo addressInfo);
+ 
+   async OutgoingData(UDPData data, UDPSocketAddr addr);
++  async OutgoingDataWithAck(uint8_t[] data, NetAddr addr, TimeStamp expires, bool audio) returns (UDPDatagramResult result);
+ 
+   async JoinMulticast(nsCString multicastAddress, nsCString iface);
+   async LeaveMulticast(nsCString multicastAddress, nsCString iface);

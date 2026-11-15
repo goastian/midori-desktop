@@ -1,0 +1,25 @@
+diff --git a/dom/network/UDPSocketParent.h b/dom/network/UDPSocketParent.h
+index db3324aa1f..7d5e38c8ae 100644
+--- a/dom/network/UDPSocketParent.h
++++ b/dom/network/UDPSocketParent.h
+@@ -46,6 +46,11 @@ class UDPSocketParent : public mozilla::net::PUDPSocketParent,
+   mozilla::ipc::IPCResult RecvOutgoingData(const UDPData& aData,
+                                            const UDPSocketAddr& aAddr) override;
+ 
++  mozilla::ipc::IPCResult RecvOutgoingDataWithAck(
++      nsTArray<uint8_t>&& aData, const NetAddr& aAddress,
++      const TimeStamp& aExpires, const bool& aAudio,
++      OutgoingDataWithAckResolver&& aResolve) override;
++
+   mozilla::ipc::IPCResult RecvClose() override;
+   mozilla::ipc::IPCResult RecvRequestDelete() override;
+   mozilla::ipc::IPCResult RecvJoinMulticast(
+@@ -59,6 +64,8 @@ class UDPSocketParent : public mozilla::net::PUDPSocketParent,
+   virtual ~UDPSocketParent();
+ 
+   virtual void ActorDestroy(ActorDestroyReason why) override;
++  mozilla::ipc::IPCResult FilterOutgoingPacket(const NetAddr& aAddress,
++                                               const nsTArray<uint8_t>& aData);
+   void Send(const nsTArray<uint8_t>& aData, const UDPSocketAddr& aAddr);
+   void Send(const IPCStream& aStream, const UDPSocketAddr& aAddr);
+   nsresult BindInternal(const nsCString& aHost, const uint16_t& aPort,

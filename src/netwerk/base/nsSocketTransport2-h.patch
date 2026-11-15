@@ -1,0 +1,26 @@
+--- a/netwerk/base/nsSocketTransport2.h
++++ b/netwerk/base/nsSocketTransport2.h
+@@ -285,18 +285,11 @@
+   nsresult InitiateSocket();
+   bool RecoverFromError();
+ 
+-  void OnMsgInputPending() {
+-    MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+-    if (mState == STATE_TRANSFERRING) {
+-      mPollFlags |= (PR_POLL_READ | PR_POLL_EXCEPT);
+-    }
+-  }
+-  void OnMsgOutputPending() {
+-    MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+-    if (mState == STATE_TRANSFERRING) {
+-      mPollFlags |= (PR_POLL_WRITE | PR_POLL_EXCEPT);
+-    }
+-  }
++  bool mInputQuotaPending = false;
++  bool mOutputQuotaPending = false;
++  bool WaitForResourceQuota(bool aInput);
++  void OnMsgInputPending();
++  void OnMsgOutputPending();
+   void OnMsgInputClosed(nsresult reason);
+   void OnMsgOutputClosed(nsresult reason);
+ 

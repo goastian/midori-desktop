@@ -1,0 +1,11 @@
+diff --git a/netwerk/protocol/http/ConnectionEntry.h b/netwerk/protocol/http/ConnectionEntry.h
+--- a/netwerk/protocol/http/ConnectionEntry.h
++++ b/netwerk/protocol/http/ConnectionEntry.h
+@@ -67,6 +67,7 @@
+   nsresult RemoveActiveConnection(HttpConnectionBase* conn);
+   nsresult RemovePendingConnection(HttpConnectionBase* conn);
+   void MakeAllDontReuseExcept(HttpConnectionBase* conn);
++  void UpdateMidoriReceiveBuffers(uint32_t aDownloadBps);
+   bool FindConnToClaim(PendingTransactionInfo* pendingTransInfo);
+   void CloseActiveConnections();
+   void CloseAllActiveConnsWithNullTransactcion(nsresult aCloseCode);

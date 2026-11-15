@@ -1,0 +1,27 @@
+diff --git a/third_party/libwebrtc/net/dcsctp/socket/transmission_control_block.h b/third_party/libwebrtc/net/dcsctp/socket/transmission_control_block.h
+index c79a03de96..6b9e3399d3 100644
+--- a/third_party/libwebrtc/net/dcsctp/socket/transmission_control_block.h
++++ b/third_party/libwebrtc/net/dcsctp/socket/transmission_control_block.h
+@@ -152,6 +152,12 @@ class TransmissionControlBlock : public Context {
+                         const DcSctpSocketHandoverState& handover_state);
+ 
+  private:
++  void MaybeProbeReceiveWindowRtt();
++  size_t AdvertisedReceiverWindow() {
++    return options_.AdvertisedReceiverWindow(reassembly_queue_.remaining_bytes(),
++                                            receive_window_rtt_ms_);
++  }
++
+   // Will be called when the retransmission timer (t3-rtx) expires.
+   webrtc::TimeDelta OnRtxTimerExpiry();
+   // Will be called when the delayed ack timer expires.
+@@ -179,6 +185,9 @@ class TransmissionControlBlock : public Context {
+   webrtc::Timestamp limit_forward_tsn_until_ = webrtc::Timestamp::Zero();
+ 
+   RetransmissionTimeout rto_;
++  uint32_t receive_window_rtt_ms_ = 0;
++  webrtc::Timestamp receive_window_rtt_updated_at_ = webrtc::Timestamp::Zero();
++  webrtc::Timestamp receive_window_probe_at_ = webrtc::Timestamp::Zero();
+   RetransmissionErrorCounter tx_error_counter_;
+   DataTracker data_tracker_;
+   ReassemblyQueue reassembly_queue_;

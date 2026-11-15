@@ -1,0 +1,36 @@
+diff --git a/third_party/libwebrtc/modules/pacing/prioritized_packet_queue.h b/third_party/libwebrtc/modules/pacing/prioritized_packet_queue.h
+--- a/third_party/libwebrtc/modules/pacing/prioritized_packet_queue.h
++++ b/third_party/libwebrtc/modules/pacing/prioritized_packet_queue.h
+@@ -19,6 +19,7 @@
+ #include <list>
+ #include <memory>
+ #include <unordered_map>
++#include <vector>
+ 
+ #include "absl/container/inlined_vector.h"
+ #include "api/units/data_size.h"
+@@ -62,6 +63,7 @@
+   // Sum of all payload bytes in the queue, where the payload is calculated
+   // as `packet->payload_size() + packet->padding_size()`.
+   DataSize SizeInPayloadBytes() const;
++  DataSize LargestLeadingPacketRtpSize() const;
+ 
+   // Convenience method for `SizeInPackets() == 0`.
+   bool Empty() const;
+@@ -97,6 +99,8 @@
+ 
+   // Remove any packets matching the given SSRC.
+   void RemovePacketsForSsrc(uint32_t ssrc);
++  std::vector<uint16_t> RemovePacketsCapturedBefore(uint32_t ssrc,
++                                                    Timestamp time);
+ 
+   // Checks if the queue for the given SSRC has original (retransmissions not
+   // counted) video packets containing keyframe data.
+@@ -134,6 +138,7 @@
+     bool HasPacketsAtPrio(int priority_level) const;
+     bool IsEmpty() const;
+     Timestamp LeadingPacketEnqueueTime(int priority_level) const;
++    DataSize LeadingPacketRtpSize(int priority_level) const;
+     Timestamp LastEnqueueTime() const;
+     bool has_keyframe_packets() const { return num_keyframe_packets_ > 0; }
+ 

@@ -1,0 +1,172 @@
+diff --git a/netwerk/base/nsUDPSocket.h b/netwerk/base/nsUDPSocket.h
+--- a/netwerk/base/nsUDPSocket.h
++++ b/netwerk/base/nsUDPSocket.h
+@@ -5,12 +5,16 @@
+ #ifndef nsUDPSocket_h_
+ #define nsUDPSocket_h_
+ 
++#include <deque>
++
++#include "MidoriDatagram.h"
+ #include "mozilla/Atomics.h"
+ #include "mozilla/Mutex.h"
++#include "mozilla/ThreadSafeWeakPtr.h"
+ #include "mozilla/net/DNS.h"
+ #include "nsASocketHandler.h"
+ #include "nsCycleCollectionParticipant.h"
+-#include "nsIOutputStream.h"
++#include "nsIAsyncOutputStream.h"
+ #include "nsIUDPSocket.h"
+ #include "nsSocketTransportService2.h"
+ 
+@@ -20,11 +24,32 @@
+ namespace net {
+ 
+ class nsSocketTransportService;
++class nsUDPSocket;
++class nsUDPOutputStream;
++
++class UDPDatagramReservation final {
++ public:
++  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(UDPDatagramReservation)
++
++  UDPDatagramReservation(nsUDPSocket* aSocket, uint32_t aBytes);
++  RefPtr<DatagramSendPromise> Completion();
++  void Complete(nsresult aResult, const TimeStamp& aSentAt = TimeStamp());
++
++ private:
++  ~UDPDatagramReservation();
++  RefPtr<nsUDPSocket> mSocket;
++  const uint32_t mBytes;
++  MozPromiseHolder<DatagramSendPromise> mCompletion;
++};
++
++#define NS_MIDORI_UDP_SOCKET_IID \
++  {0xd5eef2fa, 0x0828, 0x4272, {0x9d, 0x3c, 0x4b, 0x38, 0xf0, 0x6b, 0x62, 0x2d}}
+ 
+ class nsUDPSocket final : public nsASocketHandler, public nsIUDPSocket {
+  public:
+   NS_DECL_THREADSAFE_ISUPPORTS
+   NS_DECL_NSIUDPSOCKET
++  NS_INLINE_DECL_STATIC_IID(NS_MIDORI_UDP_SOCKET_IID)
+ 
+   // nsASocketHandler methods:
+   virtual void OnSocketReady(PRFileDesc* fd, int16_t outFlags) override;
+@@ -38,6 +63,16 @@
+   bool IsTRRConnection() override;
+ 
+   nsUDPSocket();
++  nsresult AsyncListenWithoutReplyStream(nsIUDPSocketListener* aListener);
++
++  nsresult ReserveQueuedOutput(uint32_t aLength,
++                               RefPtr<UDPDatagramReservation>& aReservation);
++  nsresult QueueDatagram(const NetAddr& aAddr, FallibleTArray<uint8_t>&& aData,
++                         RefPtr<UDPDatagramReservation> aReservation,
++                         DatagramSendOptions aOptions = {});
++  RefPtr<DatagramSendPromise> SendWithCompletion(
++      const NetAddr& aAddress, const nsTArray<uint8_t>& aData,
++      DatagramSendOptions aOptions);
+ 
+   PRFileDesc* GetFD() {
+     MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+@@ -64,14 +99,48 @@
+                                  const PRNetAddr& aIface);
+   nsresult LeaveMulticastInternal(const PRNetAddr& aAddr,
+                                   const PRNetAddr& aIface);
++  nsresult AsyncListenInternal(nsIUDPSocketListener* aListener,
++                               bool aCreateReplyStream);
+   nsresult SetMulticastInterfaceInternal(const PRNetAddr& aIface);
+ 
+   void CloseSocket();
++  friend class nsUDPOutputStream;
++  void AddOutputStreamWaiter(nsUDPOutputStream* aStream);
++  void RemoveOutputStreamWaiter(nsUDPOutputStream* aStream);
++  void WakeOutputStreams();
++  void ScheduleOutputStreams();
++  bool WaitForResourceQuota(bool aInput, bool aNewInput = false);
++  void EnsureReceiveHeadroom();
++  friend class UDPDatagramReservation;
++  void ReleaseQueuedOutput(uint32_t aBytes);
++  void FlushQueuedOutput();
++  void ClearQueuedOutput(nsresult aReason);
++  void ExpireQueuedMedia();
++  void ScheduleQueuedOutput(uint32_t aDelay);
++  nsresult SendDatagramNow(const NetAddr* aAddr, const uint8_t* aData,
++                           uint32_t aLength, uint32_t* aWritten,
++                           TimeStamp* aSentAt = nullptr);
++
++  struct QueuedDatagram {
++    NetAddr mAddr;
++    RefPtr<UDPDatagramReservation> mReservation;
++    DatagramSendOptions mOptions;
++    FallibleTArray<uint8_t> mData;
++  };
++  std::deque<QueuedDatagram> mQueuedDatagrams;
++  TimeStamp mNextMediaExpiry;
++  bool mQueueWakePending{false};
++  nsTArray<ThreadSafeWeakPtr<nsUDPOutputStream>> mOutputStreamWaiters;
++  bool mStreamWakePending{false};
+ 
+   // lock protects access to mListener;
+   // so mListener is not cleared while being used/locked.
+   Mutex mLock{"nsUDPSocket.mLock"};
++  uint32_t mQueuedOutputBytes MOZ_GUARDED_BY(mLock){0};
+   PRFileDesc* mFD{nullptr};
++  RefPtr<DatagramReceiveHeadroom> mReceiveHeadroom;
++  uint32_t mLastInputSize{0};
++  bool mReceiveBufferOverride{false};
+   NetAddr mAddr;
+   nsCOMPtr<nsIUDPSocketListener> mListener MOZ_GUARDED_BY(mLock);
+   nsCOMPtr<nsIUDPSocketSyncListener> mSyncListener;
+@@ -82,6 +151,9 @@
+   uint64_t mByteReadCount{0};
+   uint64_t mByteWriteCount{0};
+   bool mIsTRRServiceChannel{false};
++  Atomic<bool, Relaxed> mCreateReplyStream{true};
++  bool mInputQuotaPending{false};
++  bool mOutputQuotaPending{false};
+ };
+ 
+ inline bool nsUDPSocket::IsSocketClosed() {
+@@ -115,19 +187,32 @@
+ 
+ //-----------------------------------------------------------------------------
+ 
+-class nsUDPOutputStream : public nsIOutputStream {
+- public:
+-  NS_DECL_THREADSAFE_ISUPPORTS
++class nsUDPOutputStream final
++    : public SupportsThreadSafeWeakPtr<nsUDPOutputStream>,
++      public nsIAsyncOutputStream {
++ public:
++  MOZ_DECLARE_REFCOUNTED_TYPENAME(nsUDPOutputStream)
++  NS_DECL_ISUPPORTS_INHERITED
+   NS_DECL_NSIOUTPUTSTREAM
+-
+-  nsUDPOutputStream(nsUDPSocket* aSocket, PRNetAddr& aPrClientAddr);
+-
+- private:
++  NS_DECL_NSIASYNCOUTPUTSTREAM
++
++  nsUDPOutputStream(nsUDPSocket* aSocket, PRNetAddr& aPrClientAddr,
++                    nsIInputStream* aSource);
++
++ private:
++  friend class SupportsThreadSafeWeakPtr<nsUDPOutputStream>;
++  friend class nsUDPSocket;
+   virtual ~nsUDPOutputStream() = default;
++  bool NotifyReady(bool aRetry);
++  bool WaitingForOutput() const;
+ 
+   RefPtr<nsUDPSocket> mSocket;
+-  PRNetAddr mPrClientAddr;
+-  bool mIsClosed;
++  nsCOMPtr<nsIAsyncInputStream> mSource;
++  NetAddr mClientAddr;
++  Atomic<nsresult, Relaxed> mStatus{NS_OK};
++  nsCOMPtr<nsIOutputStreamCallback> mCallback;
++  uint32_t mCallbackFlags{0};
++  bool mRetryPending{false};
+ };
+ 
+ }  // namespace net

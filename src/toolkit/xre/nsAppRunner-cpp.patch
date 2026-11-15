@@ -1,0 +1,34 @@
+--- a/toolkit/xre/nsAppRunner.cpp
++++ b/toolkit/xre/nsAppRunner.cpp
+@@ -47,6 +47,7 @@
+ #include "nsAppRunner.h"
+ #include "mozilla/XREAppData.h"
+ #include "mozilla/Bootstrap.h"
++#include "mozilla/MidoriCpuBudget.h"
+ #if defined(MOZ_UPDATER) && !defined(MOZ_WIDGET_ANDROID)
+ #  include "nsUpdateDriver.h"
+ #  include "nsUpdateSyncManager.h"
+@@ -6823,6 +6824,10 @@
+   }
+ #endif
+ 
++#if defined(XP_LINUX) && !defined(ANDROID)
++  if (midori::RestoreManagedCpuBudget()) return 1;
++#endif
++
+   mozilla::AppShutdown::MaybeDoRestart();
+ 
+   XRE_DeinitCommandLine();
+@@ -6836,6 +6841,12 @@
+ void XRE_StopLateWriteChecks(void) { mozilla::StopLateWriteChecks(); }
+ 
+ int XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
++#if defined(XP_LINUX) && !defined(ANDROID)
++  midori::SetManagedCpuBudgetController(aConfig.midoriCpuBudget);
++  auto restoreCpuBudget = MakeScopeExit([] {
++    static_cast<void>(midori::RestoreManagedCpuBudget());
++  });
++#endif
+   XREMain main;
+ 
+   int result = main.XRE_main(argc, argv, aConfig);

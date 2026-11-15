@@ -1,0 +1,13 @@
+diff --git a/dom/chrome-webidl/SessionStoreUtils.webidl b/dom/chrome-webidl/SessionStoreUtils.webidl
+--- a/dom/chrome-webidl/SessionStoreUtils.webidl
++++ b/dom/chrome-webidl/SessionStoreUtils.webidl
+@@ -77,6 +77,9 @@
+    */
+   CollectedData? collectFormData(WindowProxy window);
+ 
++  [Throws]
++  undefined persistHistoryState(Document document);
++
+   boolean restoreFormData(Document document, optional CollectedData data = {});
+ 
+    nsISessionStoreRestoreData constructSessionStoreRestoreData();

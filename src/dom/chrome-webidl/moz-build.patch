@@ -1,0 +1,12 @@
+--- a/dom/chrome-webidl/moz.build
++++ b/dom/chrome-webidl/moz.build
+@@ -80,6 +80,9 @@
+     "MatchPattern.webidl",
+     "MediaController.webidl",
+     "MessageManager.webidl",
++    "MidoriMedia.webidl",
++    "MidoriNetwork.webidl",
++    "MidoriResource.webidl",
+     "MozDocumentObserver.webidl",
+     "MozSharedMap.webidl",
+     "MozStorageAsyncStatementParams.webidl",

@@ -1,0 +1,35 @@
+--- a/toolkit/components/processtools/ProcInfo_win.cpp
++++ b/toolkit/components/processtools/ProcInfo_win.cpp
+@@ -94,6 +94,7 @@
+   ProcInfoPromise::ResolveOrRejectValue result;
+ 
+   HashMap<base::ProcessId, ProcInfo> gathered;
++  HashSet<base::ProcessId> threadRequests;
+   if (!gathered.reserve(aRequests.Length())) {
+     result.SetReject(NS_ERROR_OUT_OF_MEMORY);
+     return result;
+@@ -160,6 +161,15 @@
+       result.SetReject(NS_ERROR_OUT_OF_MEMORY);
+       return result;
+     }
++    if (request.includeThreads && !threadRequests.put(request.pid)) {
++      result.SetReject(NS_ERROR_OUT_OF_MEMORY);
++      return result;
++    }
++  }
++
++  if (threadRequests.count() == 0) {
++    result.SetResolve(std::move(gathered));
++    return result;
+   }
+ 
+   // ---- Add thread data to already-copied processes.
+@@ -213,7 +223,7 @@
+     ULONG pid = HandleToUlong(processInfo->UniqueProcessId);
+     // Check if we are interested in this process.
+     auto processLookup = gathered.lookup(pid);
+-    if (processLookup) {
++    if (processLookup && threadRequests.has(pid)) {
+       for (ULONG i = 0; i < processInfo->NumberOfThreads; ++i) {
+         // The thread information structs are stored in the buffer right
+         // after the SYSTEM_PROCESS_INFORMATION struct.

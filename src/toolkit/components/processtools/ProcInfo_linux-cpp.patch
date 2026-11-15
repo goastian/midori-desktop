@@ -1,0 +1,147 @@
+--- a/toolkit/components/processtools/ProcInfo_linux.cpp
++++ b/toolkit/components/processtools/ProcInfo_linux.cpp
+@@ -276,76 +276,79 @@
+     info.windows = std::move(request.windowInfo);
+     info.utilityActors = std::move(request.utilityInfo);
+ 
+-    // Let's look at the threads
+-    nsCString taskPath;
+-    taskPath.AppendPrintf("/proc/%u/task", unsigned(request.pid));
+-    DIR* dirHandle = opendir(taskPath.get());
+-    if (!dirHandle) {
+-      // For some reason, we have no data on the threads for this process.
+-      // Most likely reason is that we have just lost a race condition and
+-      // the process is dead.
+-      // Let's stop here and ignore the entire process.
+-      continue;
+-    }
+-    auto cleanup = mozilla::MakeScopeExit([&] { closedir(dirHandle); });
+-
+-    // If we can't read some thread info, we ignore that thread.
+-    dirent* entry;
+-    while ((entry = readdir(dirHandle)) != nullptr) {
+-      if (entry->d_name[0] == '.') {
++    if (request.includeThreads) {
++      // Let's look at the threads
++      nsCString taskPath;
++      taskPath.AppendPrintf("/proc/%u/task", unsigned(request.pid));
++      DIR* dirHandle = opendir(taskPath.get());
++      if (!dirHandle) {
++        // For some reason, we have no data on the threads for this process.
++        // Most likely reason is that we have just lost a race condition and
++        // the process is dead.
++        // Let's stop here and ignore the entire process.
+         continue;
+       }
+-      nsAutoCString entryName(entry->d_name);
+-      nsresult rv;
+-      int32_t tid = entryName.ToInteger(&rv);
+-      if (NS_FAILED(rv)) {
+-        continue;
+-      }
+-
+-      ThreadInfo threadInfo;
+-      threadInfo.tid = tid;
+-
+-      timespec ts;
+-      if (clock_gettime(MAKE_THREAD_CPUCLOCK(tid, CPUCLOCK_SCHED), &ts) == 0) {
+-        threadInfo.cpuTime =
+-            uint64_t(ts.tv_sec) * 1'000'000'000u + uint64_t(ts.tv_nsec);
+-
+-        nsCString path;
+-        path.AppendPrintf("/proc/%u/task/%u/comm", unsigned(request.pid),
+-                          unsigned(tid));
+-        FILE* fstat = fopen(path.get(), "r");
+-        if (fstat) {
+-          // /proc is a virtual file system and all files are
+-          // of size 0, so GetFileSize() and related functions will
+-          // return 0 - so the way to read the file is to fill a buffer
+-          // of an arbitrary big size and look for the end of line char.
+-          // The size of the buffer needs to be as least 16, which is the
+-          // value of TASK_COMM_LEN in the Linux kernel.
+-          char buffer[32];
+-          char* start = fgets(buffer, sizeof(buffer), fstat);
+-          fclose(fstat);
+-          if (start) {
+-            // The thread name should always be smaller than our buffer,
+-            // so we should find a newline character.
+-            char* end = strchr(buffer, '\n');
+-            if (end) {
+-              threadInfo.name.AssignASCII(buffer, size_t(end - start));
+-              info.threads.AppendElement(threadInfo);
+-              continue;
++      auto cleanup = mozilla::MakeScopeExit([&] { closedir(dirHandle); });
++
++      // If we can't read some thread info, we ignore that thread.
++      dirent* entry;
++      while ((entry = readdir(dirHandle)) != nullptr) {
++        if (entry->d_name[0] == '.') {
++          continue;
++        }
++        nsAutoCString entryName(entry->d_name);
++        nsresult rv;
++        int32_t tid = entryName.ToInteger(&rv);
++        if (NS_FAILED(rv)) {
++          continue;
++        }
++
++        ThreadInfo threadInfo;
++        threadInfo.tid = tid;
++
++        timespec ts;
++        if (clock_gettime(MAKE_THREAD_CPUCLOCK(tid, CPUCLOCK_SCHED), &ts) ==
++            0) {
++          threadInfo.cpuTime =
++              uint64_t(ts.tv_sec) * 1'000'000'000u + uint64_t(ts.tv_nsec);
++
++          nsCString path;
++          path.AppendPrintf("/proc/%u/task/%u/comm", unsigned(request.pid),
++                            unsigned(tid));
++          FILE* fstat = fopen(path.get(), "r");
++          if (fstat) {
++            // /proc is a virtual file system and all files are
++            // of size 0, so GetFileSize() and related functions will
++            // return 0 - so the way to read the file is to fill a buffer
++            // of an arbitrary big size and look for the end of line char.
++            // The size of the buffer needs to be as least 16, which is the
++            // value of TASK_COMM_LEN in the Linux kernel.
++            char buffer[32];
++            char* start = fgets(buffer, sizeof(buffer), fstat);
++            fclose(fstat);
++            if (start) {
++              // The thread name should always be smaller than our buffer,
++              // so we should find a newline character.
++              char* end = strchr(buffer, '\n');
++              if (end) {
++                threadInfo.name.AssignASCII(buffer, size_t(end - start));
++                info.threads.AppendElement(threadInfo);
++                continue;
++              }
+             }
+           }
+         }
+-      }
+-
+-      // Fallback to parsing /proc/<pid>/task/<tid>/stat
+-      // This is needed for child processes, as access to the per-thread
+-      // CPU clock is restricted to the process owning the thread.
+-      ThreadInfoReader reader(request.pid, tid);
+-      rv = reader.ParseThread(threadInfo);
+-      if (NS_FAILED(rv)) {
+-        continue;
+-      }
+-      info.threads.AppendElement(threadInfo);
++
++        // Fallback to parsing /proc/<pid>/task/<tid>/stat
++        // This is needed for child processes, as access to the per-thread
++        // CPU clock is restricted to the process owning the thread.
++        ThreadInfoReader reader(request.pid, tid);
++        rv = reader.ParseThread(threadInfo);
++        if (NS_FAILED(rv)) {
++          continue;
++        }
++        info.threads.AppendElement(threadInfo);
++      }
+     }
+ 
+     if (!gathered.put(request.pid, std::move(info))) {

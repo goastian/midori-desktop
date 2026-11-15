@@ -1,0 +1,24 @@
+diff --git a/netwerk/protocol/http/nsHttpConnectionMgr.cpp b/netwerk/protocol/http/nsHttpConnectionMgr.cpp
+--- a/netwerk/protocol/http/nsHttpConnectionMgr.cpp
++++ b/netwerk/protocol/http/nsHttpConnectionMgr.cpp
+@@ -2946,6 +2946,20 @@
+   }
+ }
+ 
++nsresult nsHttpConnectionMgr::UpdateMidoriReceiveBuffers(
++    uint32_t aDownloadBps) {
++  return PostEvent(&nsHttpConnectionMgr::OnMsgUpdateMidoriReceiveBuffers,
++                   static_cast<int32_t>(aDownloadBps));
++}
++
++void nsHttpConnectionMgr::OnMsgUpdateMidoriReceiveBuffers(int32_t aDownloadBps,
++                                                          ARefBase*) {
++  MOZ_ASSERT(OnSocketThread());
++  for (const RefPtr<ConnectionEntry>& entry : mCT.Values()) {
++    entry->UpdateMidoriReceiveBuffers(static_cast<uint32_t>(aDownloadBps));
++  }
++}
++
+ void nsHttpConnectionMgr::OnMsgUpdateParam(int32_t inParam, ARefBase*) {
+   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+   uint32_t param = static_cast<uint32_t>(inParam);

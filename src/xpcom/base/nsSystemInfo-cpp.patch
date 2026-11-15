@@ -1,0 +1,58 @@
+diff --git a/xpcom/base/nsSystemInfo.cpp b/xpcom/base/nsSystemInfo.cpp
+--- a/xpcom/base/nsSystemInfo.cpp
++++ b/xpcom/base/nsSystemInfo.cpp
+@@ -9,6 +9,7 @@
+ #include "mozilla/Hal.h"
+ #include "mozilla/LazyIdleThread.h"
+ #include "mozilla/LookAndFeel.h"
++#include "mozilla/MidoriCpuCapacity_linux.h"
+ #include "mozilla/SSE.h"
+ #include "mozilla/Sprintf.h"
+ #include "mozilla/Try.h"
+@@ -1998,6 +1999,15 @@
+   JS::Rooted<JS::Value> valCountInfo(aCx, JS::Int32Value(info.cpuCount));
+   JS_SetProperty(aCx, jsInfo, "count", valCountInfo);
+ 
++  JS::Rooted<JS::Value> capacity(aCx, JS::DoubleValue(info.cpuCapacity));
++  JS_SetProperty(aCx, jsInfo, "cpuCapacity", capacity);
++  JS::Rooted<JS::Value> affinity(aCx, JS::NumberValue(info.cpuAffinityCpus));
++  JS_SetProperty(aCx, jsInfo, "cpuAffinityCpus", affinity);
++  JS::Rooted<JS::Value> quota(aCx, JS::DoubleValue(info.cpuQuotaCpus));
++  JS_SetProperty(aCx, jsInfo, "cpuQuotaCpus", quota);
++  JS::Rooted<JS::Value> sampled(aCx, JS::BooleanValue(info.cpuQuotaSampled));
++  JS_SetProperty(aCx, jsInfo, "cpuQuotaSampled", sampled);
++
+   JS::Rooted<JS::Value> valCoreInfo(
+       aCx, info.cpuCores ? JS::Int32Value(info.cpuCores) : JS::NullValue());
+   JS_SetProperty(aCx, jsInfo, "cores", valCoreInfo);
+@@ -2326,9 +2336,29 @@
+   auto requestHolder =
+       MakeRefPtr<dom::DOMMozPromiseRequestHolder<ProcessInfoPromise>>(global);
+ 
++  RefPtr<ProcessInfoPromise> current = mProcessInfoPromise;
++#if defined(XP_LINUX) && !defined(ANDROID)
++  RefPtr<nsISerialEventTarget> capacityTarget = GetBackgroundTarget();
++  current = current->Then(
++      capacityTarget, __func__,
++      [](const ProcessInfo& info) {
++        ProcessInfo snapshot = info;
++        const auto capacity = mozilla::midori::ReadCpuCapacity();
++        snapshot.cpuCapacity = capacity.effectiveCpus;
++        snapshot.cpuAffinityCpus = capacity.affinityCpus;
++        snapshot.cpuQuotaCpus = capacity.quotaCpus;
++        snapshot.cpuQuotaSampled = capacity.quotaSampled;
++        return ProcessInfoPromise::CreateAndResolve(std::move(snapshot),
++                                                   __func__);
++      },
++      [](nsresult error) {
++        return ProcessInfoPromise::CreateAndReject(error, __func__);
++      });
++#endif
++
+   // Chain the new promise to the extant mozpromise
+   RefPtr<Promise> capturedPromise = promise;
+-  mProcessInfoPromise
++  current
+       ->Then(
+           GetMainThreadSerialEventTarget(), __func__,
+           [requestHolder, capturedPromise](const ProcessInfo& info) {

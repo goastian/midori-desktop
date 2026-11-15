@@ -1,0 +1,14 @@
+diff --git a/toolkit/components/sessionstore/SessionStoreUtils.h b/toolkit/components/sessionstore/SessionStoreUtils.h
+--- a/toolkit/components/sessionstore/SessionStoreUtils.h
++++ b/toolkit/components/sessionstore/SessionStoreUtils.h
+@@ -92,6 +92,10 @@
+                               Nullable<CollectedData>& aRetVal);
+ 
+   MOZ_CAN_RUN_SCRIPT_BOUNDARY
++  static void PersistHistoryState(const GlobalObject& aGlobal,
++                                  Document& aDocument, ErrorResult& aError);
++
++  MOZ_CAN_RUN_SCRIPT_BOUNDARY
+   static bool RestoreFormData(const GlobalObject& aGlobal, Document& aDocument,
+                               const CollectedData& aData);
+   MOZ_CAN_RUN_SCRIPT static void RestoreFormData(

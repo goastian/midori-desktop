@@ -1,0 +1,42 @@
+diff --git a/dom/ipc/ContentParent.cpp b/dom/ipc/ContentParent.cpp
+--- a/dom/ipc/ContentParent.cpp
++++ b/dom/ipc/ContentParent.cpp
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "ContentParent.h"
++#include "mozilla/net/MidoriNetworkBudget.h"
+ 
+ #include <functional>
+ #include <map>
+@@ -441,6 +442,12 @@
+ 
+ namespace dom {
+ 
++mozilla::ipc::IPCResult ContentParent::RecvSetMidoriMediaSendingCallCount(
++    const uint32_t& aCount) {
++  net::MidoriNetworkBudget::SetProcessMediaSendingCallCount(this, aCount);
++  return IPC_OK();
++}
++
+ LazyLogModule gProcessLog("Process");
+ 
+ MOZ_RUNINIT static std::map<RemoteMediaIn, media::MediaCodecsSupported>
+@@ -1903,6 +1910,7 @@
+ 
+   // Make sure we always clean up.
+   ShutDownProcess(CLOSE_CHANNEL);
++  net::MidoriNetworkBudget::SetProcessMediaSendingCallCount(this, 0);
+ 
+   nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+   if (obs) {
+@@ -3071,6 +3079,9 @@
+     }
+   }
+ 
++  (void)SendUpdateMidoriMediaSendingCallCount(
++      net::MidoriNetworkBudget::GlobalMediaSendingCallCount());
++
+   // Send down { Parent, Window }ActorOptions at startup to content process.
+   RefPtr<JSActorService> actorSvc = JSActorService::GetSingleton();
+   if (actorSvc) {

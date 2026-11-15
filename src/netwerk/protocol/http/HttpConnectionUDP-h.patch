@@ -1,0 +1,11 @@
+diff --git a/netwerk/protocol/http/HttpConnectionUDP.h b/netwerk/protocol/http/HttpConnectionUDP.h
+--- a/netwerk/protocol/http/HttpConnectionUDP.h
++++ b/netwerk/protocol/http/HttpConnectionUDP.h
+@@ -103,6 +103,7 @@
+                               bool aIsExtendedCONNECT = false) override;
+ 
+   void OnConnected();
++  nsresult UpdateMidoriReceiveBuffer(uint32_t aDownloadBps);
+ 
+   void RekeyAfterHttp3OnlyHandOff(nsHttpConnectionInfo* aConnInfo);
+ 

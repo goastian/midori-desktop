@@ -1,0 +1,179 @@
+diff --git a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp b/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp
+--- a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp
++++ b/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp
+@@ -5,16 +5,61 @@
+ #include "WebrtcCallWrapper.h"
+ 
+ #include "MediaConduitInterface.h"
++#include "jsapi/MediaTransportHandler.h"
+ #include "jsapi/PeerConnectionCtx.h"
++#include "jsapi/RTCStatsReport.h"
+ #include "libwebrtcglue/WebrtcEnvironmentWrapper.h"
++#include "mozilla/Atomics.h"
++#include "mozilla/ClearOnShutdown.h"
++#include "mozilla/Logging.h"
++#include "mozilla/Preferences.h"
++#include "mozilla/StaticPtr.h"
++#include "mozilla/net/MidoriNetworkBudget.h"
++#include "prtime.h"
+ 
+ namespace mozilla {
++
++namespace {
++Atomic<uint64_t, Relaxed> sSendSourceId{0};
++LazyLogModule sSendCompletionLog("MidoriWebrtcSend");
++
++class NetworkBudgetChanges final : public MediaEventProducer<void> {
++ public:
++  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(NetworkBudgetChanges)
++
++ private:
++  ~NetworkBudgetChanges() = default;
++};
++
++StaticRefPtr<NetworkBudgetChanges> sNetworkBudgetChanges;
++
++void NotifyNetworkBudgetChanges(const char*, void*) {
++  RefPtr<NetworkBudgetChanges> changes = sNetworkBudgetChanges.get();
++  if (!changes) return;
++  NS_DispatchToMainThread(NS_NewRunnableFunction(
++      "WebrtcCallWrapper::NotifyNetworkBudgetChanges",
++      [changes] { changes->Notify(); }));
++}
++}  // namespace
+ 
+ /* static */ RefPtr<WebrtcCallWrapper> WebrtcCallWrapper::Create(
+     RefPtr<WebrtcEnvironmentWrapper> aEnvWrapper,
+     const dom::RTCStatsTimestampMaker& aTimestampMaker,
+     UniquePtr<media::ShutdownBlockingTicket> aShutdownTicket,
+     const RefPtr<SharedWebrtcState>& aSharedState) {
++  MOZ_ASSERT(NS_IsMainThread());
++  net::MidoriNetworkBudget::Init();
++  if (!sNetworkBudgetChanges) {
++    sNetworkBudgetChanges = new NetworkBudgetChanges();
++    ClearOnShutdown(&sNetworkBudgetChanges);
++    Preferences::RegisterCallback(
++        NotifyNetworkBudgetChanges,
++        "midori.performance.network.experimental.downloadBps");
++    Preferences::RegisterCallback(
++        NotifyNetworkBudgetChanges,
++        "midori.performance.network.experimental.uploadBps");
++  }
++  RefPtr<NetworkBudgetChanges> changes = sNetworkBudgetChanges.get();
+   auto videoBitrateAllocatorFactory =
+       WrapUnique(webrtc::CreateBuiltinVideoBitrateAllocatorFactory().release());
+   RefPtr<WebrtcCallWrapper> wrapper = new WebrtcCallWrapper(
+@@ -22,12 +67,28 @@
+       std::move(aEnvWrapper), aTimestampMaker, std::move(aShutdownTicket));
+ 
+   wrapper->mCallThread->Dispatch(
+-      NS_NewRunnableFunction(__func__, [wrapper, aSharedState] {
+-        webrtc::CallConfig config(wrapper->mEnvWrapper->Environment(), nullptr);
++      NS_NewRunnableFunction(__func__, [wrapper, aSharedState, changes] {
++        webrtc::CallConfig config =
++            webrtc::CallConfig::CreateWithJoinedWorkerAndNetworkQueue(
++                wrapper->mEnvWrapper->Environment(),
++                webrtc::TaskQueueBase::Current());
+         config.audio_state =
+             webrtc::AudioState::Create(aSharedState->mAudioStateConfig);
++        config.send_bitrate_limit_bps = []() -> int64_t {
++          return int64_t(net::MidoriNetworkBudget::UploadRate()) * 8 * 70 / 100;
++        };
++        config.receive_bitrate_limit_bps = []() -> int64_t {
++          return int64_t(net::MidoriNetworkBudget::DownloadRate()) * 8 * 3 / 4;
++        };
++        config.video_send_suspended = []() {
++          return net::MidoriNetworkBudget::VideoUploadSuspended(
++              net::MidoriNetworkBudget::UploadRate());
++        };
+         wrapper->SetCall(
+             WrapUnique(webrtc::Call::Create(std::move(config)).release()));
++        wrapper->mNetworkBudgetListener = changes->Connect(
++            wrapper->mCallThread.get(), wrapper.get(),
++            &WebrtcCallWrapper::UpdateNetworkBudget);
+       }));
+ 
+   return wrapper;
+@@ -37,6 +98,36 @@
+   MOZ_ASSERT(mCallThread->IsOnCurrentThread());
+   MOZ_ASSERT(!mCall);
+   mCall = std::move(aCall);
++  MOZ_LOG_FMT(sSendCompletionLog, LogLevel::Debug,
++              "call-create source={} transport={}", mSendSourceId,
++              static_cast<const void*>(mCall->GetTransportControllerSend()));
++}
++
++void WebrtcCallWrapper::ObservePacketsSent(MediaTransportHandler* aHandler) {
++  MOZ_ASSERT(NS_IsMainThread());
++  mPacketsSentListener = aHandler->GetPacketsSent().Connect(
++      mCallThread.get(), this, &WebrtcCallWrapper::OnPacketsSent);
++}
++
++void WebrtcCallWrapper::OnPacketsSent(
++    const nsTArray<dom::RTCSentPacket>& aPackets) {
++  MOZ_ASSERT(mCallThread->IsOnCurrentThread());
++  if (!mCall) return;
++  MOZ_LOG_FMT(sSendCompletionLog, LogLevel::Debug,
++              "call-batch packets={}", aPackets.Length());
++  for (const auto& packet : aPackets) {
++    if (packet.sourceId() != mSendSourceId || packet.sentAt().IsNull())
++      continue;
++    const int64_t sentAt = dom::RTCStatsTimestamp::FromMozTime(
++                               GetTimestampMaker(), packet.sentAt())
++                               .ToRealtime()
++                               .ms();
++    MOZ_LOG_FMT(sSendCompletionLog, LogLevel::Debug,
++                "call source={} id={} at={} age_ms={}", packet.sourceId(),
++                packet.packetId(), sentAt,
++                (TimeStamp::Now() - packet.sentAt()).ToMilliseconds());
++    mCall->OnSentPacket({packet.packetId(), sentAt});
++  }
+ }
+ 
+ webrtc::Call* WebrtcCallWrapper::Call() const {
+@@ -61,8 +152,37 @@
+   mConduits.erase(conduit);
+ }
+ 
++void WebrtcCallWrapper::SetMediaSending(MediaSessionConduit* aConduit,
++                                        bool aActive) {
++  MOZ_ASSERT(mCallThread->IsOnCurrentThread());
++  if (aActive && !mCall) return;
++  const bool wasSending = !mSendingConduits.empty();
++  if (aActive) {
++    mSendingConduits.insert(aConduit);
++  } else {
++    mSendingConduits.erase(aConduit);
++  }
++  const bool sending = !mSendingConduits.empty();
++  if (wasSending != sending) {
++    net::MidoriNetworkBudget::ReportMediaSending(mSendSourceId, sending);
++  }
++}
++
++void WebrtcCallWrapper::UpdateNetworkBudget() {
++  MOZ_ASSERT(mCallThread->IsOnCurrentThread());
++  if (mCall) mCall->UpdateExternalBitrateLimits();
++}
++
+ void WebrtcCallWrapper::Destroy() {
+   MOZ_ASSERT(mCallThread->IsOnCurrentThread());
++  MOZ_LOG_FMT(sSendCompletionLog, LogLevel::Debug, "destroy source={} wall_at={}",
++              mSendSourceId, PR_Now() / 1000);
++  mNetworkBudgetListener.DisconnectIfExists();
++  mPacketsSentListener.DisconnectIfExists();
++  if (!mSendingConduits.empty()) {
++    mSendingConduits.clear();
++    net::MidoriNetworkBudget::ReportMediaSending(mSendSourceId, false);
++  }
+   mCall = nullptr;
+   mShutdownTicket = nullptr;
+ }
+@@ -85,6 +205,7 @@
+       mClock(aTimestampMaker),
+       mShutdownTicket(std::move(aShutdownTicket)),
+       mCallThread(mSharedState->mCallWorkerThread),
++      mSendSourceId(++sSendSourceId),
+       mAudioDecoderFactory(mSharedState->mAudioDecoderFactory),
+       mVideoBitrateAllocatorFactory(std::move(aVideoBitrateAllocatorFactory)),
+       mEnvWrapper(std::move(aEnvWrapper)) {}

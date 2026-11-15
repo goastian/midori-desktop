@@ -1,0 +1,14 @@
+diff --git a/netwerk/sctp/src/netinet/sctp_structs.h b/netwerk/sctp/src/netinet/sctp_structs.h
+index 894137ae5d..22853304d0 100644
+--- a/netwerk/sctp/src/netinet/sctp_structs.h
++++ b/netwerk/sctp/src/netinet/sctp_structs.h
+@@ -1038,6 +1038,9 @@ struct sctp_association {
+ 	uint32_t peers_rwnd;
+ 	uint32_t my_rwnd;
+ 	uint32_t my_last_reported_rwnd;
++	uint32_t receive_window_rtt_ms;
++	uint64_t receive_window_rtt_update_ms;
++	uint64_t receive_window_probe_ms;
+ 	uint32_t sctp_frag_point;
+ 
+ 	uint32_t total_output_queue_size;

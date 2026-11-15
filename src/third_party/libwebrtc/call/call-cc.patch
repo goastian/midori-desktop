@@ -1,0 +1,128 @@
+diff --git a/third_party/libwebrtc/call/call.cc b/third_party/libwebrtc/call/call.cc
+--- a/third_party/libwebrtc/call/call.cc
++++ b/third_party/libwebrtc/call/call.cc
+@@ -13,6 +13,7 @@
+ #include <algorithm>
+ #include <cstdint>
+ #include <cstring>
++#include <limits>
+ #include <map>
+ #include <memory>
+ #include <optional>
+@@ -401,6 +402,10 @@
+   // Ensure that necessary process threads are started, and any required
+   // callbacks have been registered.
+   void EnsureStarted() RTC_RUN_ON(worker_thread_);
++  void UpdateExternalBitrateLimits() override RTC_RUN_ON(worker_thread_);
++  void ApplyClientBitratePreferences(
++      std::optional<int> start_bitrate_bps = std::nullopt)
++      RTC_RUN_ON(worker_thread_);
+ 
+   const Environment env_;
+   TaskQueueBase* const worker_thread_;
+@@ -415,6 +420,13 @@
+   const std::unique_ptr<CallStats> call_stats_;
+   const std::unique_ptr<BitrateAllocator> bitrate_allocator_;
+   const CallConfig config_ RTC_GUARDED_BY(worker_thread_);
++  std::optional<BitrateSettings> client_bitrate_preferences_
++      RTC_GUARDED_BY(worker_thread_);
++  int64_t external_send_bitrate_bps_ RTC_GUARDED_BY(worker_thread_) = 0;
++  int64_t external_receive_bitrate_bps_ RTC_GUARDED_BY(worker_thread_) = 0;
++  bool external_video_suspended_ RTC_GUARDED_BY(worker_thread_) = false;
++  Timestamp external_video_pause_started_ RTC_GUARDED_BY(worker_thread_) =
++      Timestamp::MinusInfinity();
+ 
+   NetworkState audio_network_state_ RTC_GUARDED_BY(worker_thread_);
+   NetworkState video_network_state_ RTC_GUARDED_BY(worker_thread_);
+@@ -738,13 +750,18 @@
+     return;
+   }
+   is_started_ = true;
++  UpdateExternalBitrateLimits();
+ 
+   call_stats_->RegisterStatsObserver(&receive_side_cc_);
+ 
+   ReceiveSideCongestionController* receive_side_cc = &receive_side_cc_;
+   receive_side_cc_periodic_task_ = RepeatingTaskHandle::Start(
+       worker_thread_,
+-      [receive_side_cc] { return receive_side_cc->MaybeProcess(); },
++      [this, receive_side_cc] {
++        RTC_DCHECK_RUN_ON(worker_thread_);
++        UpdateExternalBitrateLimits();
++        return receive_side_cc->MaybeProcess();
++      },
+       TaskQueueBase::DelayPrecision::kLow, &env_.clock());
+ 
+   // TODO(b/350555527): Remove after experiment
+@@ -774,7 +791,71 @@
+ 
+ void Call::SetClientBitratePreferences(const BitrateSettings& preferences) {
+   RTC_DCHECK_RUN_ON(worker_thread_);
++  client_bitrate_preferences_.emplace(preferences);
++  external_send_bitrate_bps_ =
++      config_.send_bitrate_limit_bps
++          ? std::max<int64_t>(0, config_.send_bitrate_limit_bps())
++          : 0;
++  ApplyClientBitratePreferences(preferences.start_bitrate_bps);
++}
++
++void Call::ApplyClientBitratePreferences(std::optional<int> start_bitrate_bps) {
++  RTC_DCHECK_RUN_ON(worker_thread_);
++  BitrateSettings preferences =
++      client_bitrate_preferences_.value_or(BitrateSettings{});
++  preferences.start_bitrate_bps = start_bitrate_bps;
++  if (external_send_bitrate_bps_ > 0) {
++    const int limit = static_cast<int>(std::min<int64_t>(
++        external_send_bitrate_bps_, std::numeric_limits<int>::max()));
++    const int maximum =
++        std::min(preferences.max_bitrate_bps.value_or(limit), limit);
++    preferences.max_bitrate_bps = maximum;
++    preferences.min_bitrate_bps =
++        std::min(preferences.min_bitrate_bps.value_or(0), maximum);
++    if (preferences.start_bitrate_bps) {
++      preferences.start_bitrate_bps =
++          std::min(*preferences.start_bitrate_bps, maximum);
++    }
++  }
+   GetTransportControllerSend()->SetClientBitratePreferences(preferences);
++}
++
++void Call::UpdateExternalBitrateLimits() {
++  RTC_DCHECK_RUN_ON(worker_thread_);
++  const bool suspended =
++      config_.video_send_suspended && config_.video_send_suspended();
++  if (suspended && !external_video_suspended_) {
++    external_video_pause_started_ =
++        Timestamp::Millis(env_.clock().CurrentTime().ms());
++  }
++  const bool resume_video = external_video_suspended_ && !suspended;
++  external_video_suspended_ = suspended;
++  if (config_.send_bitrate_limit_bps) {
++    const int64_t limit = std::max<int64_t>(0, config_.send_bitrate_limit_bps());
++    if (limit != external_send_bitrate_bps_) {
++      external_send_bitrate_bps_ = limit;
++      ApplyClientBitratePreferences();
++    }
++  }
++  if (config_.receive_bitrate_limit_bps) {
++    const int64_t limit = std::max<int64_t>(0, config_.receive_bitrate_limit_bps());
++    if (limit != external_receive_bitrate_bps_) {
++      external_receive_bitrate_bps_ = limit;
++      // Receive estimates use uint32_t, so this removes the external bound.
++      const int64_t maximum =
++          limit > 0 ? limit : std::numeric_limits<uint32_t>::max();
++      receive_side_cc_.SetMaxDesiredReceiveBitrate(DataRate::BitsPerSec(maximum));
++    }
++  }
++  if (resume_video) {
++    const Timestamp transition = external_video_pause_started_;
++    for (auto* stream : video_send_streams_) {
++      if (stream->started()) stream->DiscardPacketsCapturedBefore(transition);
++    }
++    for (auto* stream : video_send_streams_) {
++      if (stream->started()) stream->GenerateKeyFrame({});
++    }
++  }
+ }
+ 
+ PacketReceiver* Call::Receiver() {

@@ -1,0 +1,127 @@
+diff --git a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp b/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp
+--- a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp
++++ b/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp
+@@ -30,6 +30,7 @@
+ #include "libwebrtcglue/WebrtcEnvironmentWrapper.h"
+ #include "mozilla/IceServerParser.h"
+ #include "mozilla/IntegerPrintfMacros.h"
++#include "mozilla/Logging.h"
+ #include "mozilla/Sprintf.h"
+ #include "mozilla/glean/DomMediaWebrtcMetrics.h"
+ #include "mozilla/media/MediaUtils.h"
+@@ -149,6 +150,7 @@
+ #define LOGTAG pciLogTag
+ 
+ static mozilla::LazyLogModule logModuleInfo("signaling");
++static mozilla::LazyLogModule sMidoriStatsLog("MidoriWebrtcStats");
+ 
+ // Getting exceptions back down from PCObserver is generally not harmful.
+ namespace {
+@@ -3996,6 +3998,39 @@
+   }
+ 
+   nsTArray<RefPtr<dom::RTCStatsPromise>> promises;
++  static uint64_t statsQueries = 0;
++  const bool trace = MOZ_LOG_TEST(sMidoriStatsLog, LogLevel::Debug);
++  const uint64_t query = trace ? ++statsQueries : 0;
++  const TimeStamp started = trace ? TimeStamp::Now() : TimeStamp();
++  if (query) {
++    MOZ_LOG_FMT(sMidoriStatsLog, LogLevel::Debug, "stats begin id={} pc={}",
++                query, mHandle);
++  }
++  auto appendStats = [&](RefPtr<dom::RTCStatsPromise> promise,
++                         const char* component) {
++    if (query && promise) {
++      promise = promise->Then(
++          GetMainThreadSerialEventTarget(), __func__,
++          [query, started,
++           component](UniquePtr<dom::RTCStatsCollection> stats) {
++            MOZ_LOG_FMT(sMidoriStatsLog, LogLevel::Debug,
++                        "stats part id={} component={} ms={} status=ok", query,
++                        component,
++                        (TimeStamp::Now() - started).ToMilliseconds());
++            return dom::RTCStatsPromise::CreateAndResolve(std::move(stats),
++                                                          __func__);
++          },
++          [query, started, component](nsresult rv) {
++            MOZ_LOG_FMT(
++                sMidoriStatsLog, LogLevel::Debug,
++                "stats part id={} component={} ms={} status=error rv={}", query,
++                component, (TimeStamp::Now() - started).ToMilliseconds(),
++                static_cast<uint32_t>(rv));
++            return dom::RTCStatsPromise::CreateAndReject(rv, __func__);
++          });
++    }
++    promises.AppendElement(std::move(promise));
++  };
+   DOMHighResTimeStamp now = mTimestampMaker.GetNow().ToDom();
+ 
+   nsTArray<dom::RTCCodecStats> codecStats = GetCodecStats(now);
+@@ -4042,15 +4077,16 @@
+                                              rtpStreamPromises)));
+   }
+ 
+-  promises.AppendElement(RTCRtpTransceiver::ApplyCodecStats(
+-      std::move(codecStats), std::move(transceiverStatsPromises)));
++  appendStats(RTCRtpTransceiver::ApplyCodecStats(
++                  std::move(codecStats), std::move(transceiverStatsPromises)),
++              "rtp");
+ 
+   for (const auto& transportId : transportIds) {
+-    promises.AppendElement(mTransportHandler->GetIceStats(transportId, now));
++    appendStats(mTransportHandler->GetIceStats(transportId, now), "ice");
+   }
+ 
+   if (mDataConnection) {
+-    promises.AppendElement(GetDataChannelStats(now));
++    appendStats(GetDataChannelStats(now), "data");
+   }
+ 
+   auto pcStatsCollection = MakeUnique<dom::RTCStatsCollection>();
+@@ -4064,8 +4100,9 @@
+                                                              fallible)) {
+     mozalloc_handle_oom(0);
+   }
+-  promises.AppendElement(RTCStatsPromise::CreateAndResolve(
+-      std::move(pcStatsCollection), __func__));
++  appendStats(
++      RTCStatsPromise::CreateAndResolve(std::move(pcStatsCollection), __func__),
++      "connection");
+ 
+   // This is what we're going to return; all the stuff in |promises| will be
+   // accumulated here.
+@@ -4121,13 +4158,24 @@
+   return dom::RTCStatsPromise::All(GetMainThreadSerialEventTarget(), promises)
+       ->Then(
+           GetMainThreadSerialEventTarget(), __func__,
+-          [report = std::move(report), idGen = mIdGenerator](
++          [report = std::move(report), idGen = mIdGenerator, query, started](
+               nsTArray<UniquePtr<dom::RTCStatsCollection>> aStats) mutable {
+             idGen->RewriteIds(std::move(aStats), report.get());
++            if (query) {
++              MOZ_LOG_FMT(sMidoriStatsLog, LogLevel::Debug,
++                          "stats end id={} ms={} status=ok", query,
++                          (TimeStamp::Now() - started).ToMilliseconds());
++            }
+             return dom::RTCStatsReportPromise::CreateAndResolve(
+                 std::move(report), __func__);
+           },
+-          [](nsresult rv) {
++          [query, started](nsresult rv) {
++            if (query) {
++              MOZ_LOG_FMT(sMidoriStatsLog, LogLevel::Debug,
++                          "stats end id={} ms={} status=error rv={}", query,
++                          (TimeStamp::Now() - started).ToMilliseconds(),
++                          static_cast<uint32_t>(rv));
++            }
+             return dom::RTCStatsReportPromise::CreateAndReject(rv, __func__);
+           });
+ }
+@@ -4814,6 +4862,7 @@
+             u"WebrtcCallWrapper shutdown blocker"_ns,
+             NS_LITERAL_STRING_FROM_CSTRING(__FILE__), __LINE__),
+         ctx->GetSharedWebrtcState());
++    mCall->ObservePacketsSent(mTransportHandler);
+   }
+ 
+   if (aAddTrackMagic) {

@@ -1,0 +1,64 @@
+diff --git a/netwerk/protocol/http/HttpConnectionUDP.cpp b/netwerk/protocol/http/HttpConnectionUDP.cpp
+--- a/netwerk/protocol/http/HttpConnectionUDP.cpp
++++ b/netwerk/protocol/http/HttpConnectionUDP.cpp
+@@ -15,10 +15,13 @@
+ #define TLS_EARLY_DATA_AVAILABLE_BUT_NOT_USED 1
+ #define TLS_EARLY_DATA_AVAILABLE_AND_USED 2
+ 
++#include <algorithm>
++
+ #include "ASpdySession.h"
+ #include "ConnectionHandle.h"
+ #include "Http3Session.h"
+ #include "HttpConnectionUDP.h"
++#include "MidoriNetworkBudget.h"
+ #include "mozilla/StaticPrefs_network.h"
+ #include "mozilla/glean/NetwerkMetrics.h"
+ #include "nsComponentManagerUtils.h"
+@@ -37,6 +40,8 @@
+ namespace mozilla {
+ namespace net {
+ 
++static LazyLogModule sMidoriHttp3ReceiveResourceLog("MidoriHttp3Resource");
++
+ //-----------------------------------------------------------------------------
+ // ConnectUDPTransaction
+ //-----------------------------------------------------------------------------
+@@ -317,8 +322,7 @@
+     return rv;
+   }
+ 
+-  rv = mSocket->SetRecvBufferSize(
+-      StaticPrefs::network_http_http3_recvBufferSize());
++  rv = UpdateMidoriReceiveBuffer(MidoriNetworkBudget::DownloadRate());
+   if (NS_FAILED(rv)) {
+     LOG(("HttpConnectionUDP::InitCommon SetRecvBufferSize failed %d [this=%p]",
+          static_cast<uint32_t>(rv), this));
+@@ -533,11 +537,27 @@
+   return NS_OK;
+ }
+ 
++nsresult HttpConnectionUDP::UpdateMidoriReceiveBuffer(uint32_t aDownloadBps) {
++  MOZ_ASSERT(OnSocketThread());
++  if (!mSocket || mSocket->IsSocketClosed()) return NS_ERROR_NOT_AVAILABLE;
++  const uint32_t configured = StaticPrefs::network_http_http3_recvBufferSize();
++  const uint32_t requested =
++      aDownloadBps
++          ? std::min(configured, std::max(128u * 1024, aDownloadBps / 2))
++          : configured;
++  const nsresult rv = mSocket->SetRecvBufferSize(requested);
++  MOZ_LOG(sMidoriHttp3ReceiveResourceLog, LogLevel::Debug,
++          ("receive-capacity connection=%p rate=%u requested=%u rv=%" PRIx32,
++           this, aDownloadBps, requested, static_cast<uint32_t>(rv)));
++  return rv;
++}
++
+ void HttpConnectionUDP::OnConnected() {
+   LOG(("HttpConnectionUDP::OnConnected %p", this));
+   MOZ_ASSERT(!mConnected, "Called more than once");
+ 
+   mConnected = true;
++  (void)UpdateMidoriReceiveBuffer(MidoriNetworkBudget::DownloadRate());
+ 
+   // Deferred LNA check: now that the QUIC handshake has succeeded (and the
+   // peer presented a valid certificate for the requested name), check

@@ -1,0 +1,41 @@
+diff --git a/dom/media/webrtc/transport/mediapacket.h b/dom/media/webrtc/transport/mediapacket.h
+--- a/dom/media/webrtc/transport/mediapacket.h
++++ b/dom/media/webrtc/transport/mediapacket.h
+@@ -11,6 +11,7 @@
+ #include "mozilla/DefineEnum.h"
+ #include "mozilla/Maybe.h"
+ #include "mozilla/UniquePtr.h"
++#include "mozilla/net/MidoriDatagram.h"
+ 
+ class PickleIterator;
+ 
+@@ -50,6 +51,8 @@
+     encrypted_data_.reset();
+     encrypted_len_ = 0;
+     sdp_level_.reset();
++    is_audio_ = false;
++    sent_ = {};
+   }
+ 
+   // Copies the passed-in data
+@@ -84,6 +87,11 @@
+ 
+   Type type() const { return type_; }
+ 
++  void SetIsAudio(bool aIsAudio) { is_audio_ = aIsAudio; }
++  bool IsAudio() const { return is_audio_; }
++  net::DatagramSendInfo& SendInfo() { return sent_; }
++  const net::DatagramSendInfo& SendInfo() const { return sent_; }
++
+   void Serialize(IPC::MessageWriter* aWriter) const;
+   bool Deserialize(IPC::MessageReader* aReader);
+ 
+@@ -97,6 +105,8 @@
+   // SDP level that this packet belongs to, if known.
+   Maybe<size_t> sdp_level_;
+   Type type_ = UNCLASSIFIED;
++  bool is_audio_ = false;
++  net::DatagramSendInfo sent_;
+ };
+ }  // namespace mozilla
+ 

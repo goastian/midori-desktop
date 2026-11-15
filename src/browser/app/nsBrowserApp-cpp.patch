@@ -1,0 +1,82 @@
+--- a/browser/app/nsBrowserApp.cpp
++++ b/browser/app/nsBrowserApp.cpp
+@@ -8,6 +8,11 @@
+ #include "XREShellData.h"
+ #include "ApplicationData.h"
+ #include "mozilla/Bootstrap.h"
++#if defined(XP_LINUX) && !defined(ANDROID)
++#  include "mozilla/MidoriCpuBudget_linux.h"
++#  include <climits>
++#  include <cstdlib>
++#endif
+ #include "mozilla/ProcessType.h"
+ #include "mozilla/RuntimeExceptionModule.h"
+ #include "mozilla/ScopeExit.h"
+@@ -199,7 +204,29 @@
+ 
+ constinit Bootstrap::UniquePtr gBootstrap;
+ 
+-static int do_main(int argc, char* argv[], char* envp[]) {
++#if defined(XP_LINUX) && !defined(ANDROID)
++static bool PrepareMidoriCpuBudget(mozilla::midori::LinuxCpuBudget& aBudget) {
++  const char* text = getenv("MIDORI_CPU_BUDGET_FD");
++  if (!text) return false;
++  char* end = nullptr;
++  errno = 0;
++  long descriptor = strtol(text, &end, 10);
++  bool valid = !errno && end != text && !*end && descriptor >= 3 &&
++               descriptor <= INT_MAX;
++  unsetenv("MIDORI_CPU_BUDGET_FD");
++  if (!valid) return false;
++  int group = int(descriptor);
++  int flags = fcntl(group, F_GETFD);
++  if (flags < 0) return false;
++  auto closeGroup = mozilla::MakeScopeExit([group] { close(group); });
++  if (fcntl(group, F_SETFD, flags | FD_CLOEXEC) < 0) return false;
++  return aBudget.Initialize(group) == 0;
++}
++#endif
++
++static int do_main(
++    int argc, char* argv[], char* envp[],
++    [[maybe_unused]] mozilla::midori::LinuxCpuBudget* aCpuBudget = nullptr) {
+   // Allow firefox.exe to launch XULRunner apps via -app <application.ini>
+   // Note that -app must be the *first* argument.
+   const char* appDataFile = getenv("XUL_APP_FILE");
+@@ -241,6 +268,9 @@
+   }
+ 
+   BootstrapConfig config;
++#if defined(XP_LINUX) && !defined(ANDROID)
++  config.midoriCpuBudget = aCpuBudget;
++#endif
+ 
+   if (appDataFile && *appDataFile) {
+     config.appData = nullptr;
+@@ -388,6 +418,13 @@
+   ExpandFileDescriptorTable();
+ #endif
+ 
++#if defined(XP_LINUX) && !defined(ANDROID)
++  mozilla::midori::LinuxCpuBudget cpuBudget;
++  const bool cpuBudgetReady =
++      GetGeckoProcessType() == GeckoProcessType_Default &&
++      PrepareMidoriCpuBudget(cpuBudget);
++#endif
++
+   mozilla::TimeStamp start = mozilla::TimeStamp::Now();
+ 
+   AUTO_BASE_PROFILER_INIT;
+@@ -539,7 +576,11 @@
+   gBootstrap->XRE_EnableSameExecutableForContentProc();
+ #endif
+ 
+-  int result = do_main(argc, argv, envp);
++  int result = do_main(argc, argv, envp
++#if defined(XP_LINUX) && !defined(ANDROID)
++                       , cpuBudgetReady ? &cpuBudget : nullptr
++#endif
++  );
+ 
+ #if defined(XP_WIN)
+   CleanupProcessRuntime();

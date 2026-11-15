@@ -1,0 +1,24 @@
+diff --git a/third_party/libwebrtc/modules/rtp_rtcp/source/rtp_sender_video.cc b/third_party/libwebrtc/modules/rtp_rtcp/source/rtp_sender_video.cc
+--- a/third_party/libwebrtc/modules/rtp_rtcp/source/rtp_sender_video.cc
++++ b/third_party/libwebrtc/modules/rtp_rtcp/source/rtp_sender_video.cc
+@@ -67,6 +67,9 @@
+ #include "rtc_base/synchronization/mutex.h"
+ #include "system_wrappers/include/ntp_time.h"
+ 
++extern "C" bool MidoriMediaTraceEnabled();
++extern "C" void MidoriMediaTraceRtp(const void*, uint32_t, uint32_t, uint32_t);
++
+ namespace webrtc {
+ 
+ namespace {
+@@ -852,6 +855,10 @@
+                                       RTPVideoHeader video_header,
+                                       TimeDelta expected_retransmission_time,
+                                       const std::vector<uint32_t>& csrcs) {
++  if (MidoriMediaTraceEnabled()) {
++    MidoriMediaTraceRtp(encoded_image.data(), rtp_sender_->SSRC(),
++                        rtp_timestamp, encoded_image.RtpTimestamp());
++  }
+   if (frame_transformer_delegate_) {
+     // The frame will be sent async once transformed.
+     return frame_transformer_delegate_->TransformFrame(

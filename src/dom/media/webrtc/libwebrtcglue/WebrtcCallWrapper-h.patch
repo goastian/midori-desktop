@@ -1,0 +1,51 @@
+diff --git a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.h b/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.h
+--- a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.h
++++ b/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.h
+@@ -10,6 +10,7 @@
+ #include "SystemTime.h"
+ #include "domstubs.h"
+ #include "jsapi/RTCStatsReport.h"
++#include "MediaEventSource.h"
+ #include "nsISupportsImpl.h"
+ 
+ // libwebrtc includes
+@@ -20,6 +21,10 @@
+ namespace mozilla {
+ class AbstractThread;
+ class MediaSessionConduit;
++class MediaTransportHandler;
++namespace dom {
++class RTCSentPacket;
++}
+ class SharedWebrtcState;
+ class WebrtcEnvironmentWrapper;
+ 
+@@ -45,6 +50,8 @@
+   void operator=(const WebrtcCallWrapper&) = delete;
+ 
+   void SetCall(UniquePtr<webrtc::Call> aCall);
++  void ObservePacketsSent(MediaTransportHandler* aHandler);
++  void SetMediaSending(MediaSessionConduit* aConduit, bool aActive);
+ 
+   webrtc::Call* Call() const;
+ 
+@@ -97,6 +104,7 @@
+ 
+  public:
+   const RefPtr<AbstractThread> mCallThread;
++  const uint64_t mSendSourceId;
+   const RefPtr<webrtc::AudioDecoderFactory> mAudioDecoderFactory;
+   const UniquePtr<webrtc::VideoBitrateAllocatorFactory>
+       mVideoBitrateAllocatorFactory;
+@@ -104,6 +112,11 @@
+ 
+  protected:
+   // Call worker thread only.
++  void OnPacketsSent(const nsTArray<dom::RTCSentPacket>& aPackets);
++  MediaEventListener mPacketsSentListener;
++  void UpdateNetworkBudget();
++  MediaEventListener mNetworkBudgetListener;
++  std::set<MediaSessionConduit*> mSendingConduits;
+   UniquePtr<webrtc::Call> mCall;
+ };
+ 

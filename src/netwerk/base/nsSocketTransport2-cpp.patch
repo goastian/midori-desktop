@@ -1,0 +1,128 @@
+--- a/netwerk/base/nsSocketTransport2.cpp
++++ b/netwerk/base/nsSocketTransport2.cpp
+@@ -6,6 +6,7 @@
+ 
+ #include <algorithm>
+ 
++#include "MidoriNetworkBudget.h"
+ #include "MockNetworkLayer.h"
+ #include "MockNetworkLayerController.h"
+ #include "NSSErrorsService.h"
+@@ -406,7 +407,17 @@
+   // cannot hold lock while calling NSPR.  (worried about the fact that PSM
+   // synchronously proxies notifications over to the UI thread, which could
+   // mistakenly try to re-enter this code.)
+-  int32_t n = PR_Read(fd, buf, count);
++  const auto quota = MidoriNetworkBudget::Reserve(
++      MidoriNetworkBudget::Direction::Download, count, false, mTransport);
++  if (count && !quota.bytes) {
++    MutexAutoLock lock(mTransport->mLock);
++    mTransport->ReleaseFD_Locked(fd);
++    return NS_BASE_STREAM_WOULD_BLOCK;
++  }
++  int32_t n = PR_Read(fd, buf, quota.bytes);
++  const PRErrorCode socketError = n < 0 ? PR_GetError() : 0;
++  MidoriNetworkBudget::Refund(MidoriNetworkBudget::Direction::Download, quota,
++                              n > 0 ? uint32_t(n) : 0);
+ 
+   SOCKET_LOG(("  PR_Read returned [n=%d]\n", n));
+ 
+@@ -424,7 +435,7 @@
+       mByteCount += (*countRead = n);
+       profiler_count_bandwidth_read_bytes(n);
+     } else if (n < 0) {
+-      PRErrorCode code = PR_GetError();
++      PRErrorCode code = socketError;
+       if (code == PR_WOULD_BLOCK_ERROR) return NS_BASE_STREAM_WOULD_BLOCK;
+       mCondition = ErrorAccordingToNSPR(code);
+     }
+@@ -597,7 +608,17 @@
+   // cannot hold lock while calling NSPR.  (worried about the fact that PSM
+   // synchronously proxies notifications over to the UI thread, which could
+   // mistakenly try to re-enter this code.)
+-  int32_t n = PR_Write(fd, buf, count);
++  const auto quota = MidoriNetworkBudget::Reserve(
++      MidoriNetworkBudget::Direction::Upload, count, false, mTransport);
++  if (count && !quota.bytes) {
++    MutexAutoLock lock(mTransport->mLock);
++    mTransport->ReleaseFD_Locked(fd);
++    return NS_BASE_STREAM_WOULD_BLOCK;
++  }
++  int32_t n = PR_Write(fd, buf, quota.bytes);
++  const PRErrorCode socketError = n < 0 ? PR_GetError() : 0;
++  MidoriNetworkBudget::Refund(MidoriNetworkBudget::Direction::Upload, quota,
++                              n > 0 ? uint32_t(n) : 0);
+ 
+   SOCKET_LOG(("  PR_Write returned [n=%d]\n", n));
+ 
+@@ -615,7 +636,7 @@
+       mByteCount += (*countWritten = n);
+       profiler_count_bandwidth_written_bytes(n);
+     } else if (n < 0) {
+-      PRErrorCode code = PR_GetError();
++      PRErrorCode code = socketError;
+       if (code == PR_WOULD_BLOCK_ERROR) return NS_BASE_STREAM_WOULD_BLOCK;
+       mCondition = ErrorAccordingToNSPR(code);
+     }
+@@ -720,6 +741,10 @@
+ }
+ 
+ nsSocketTransport::~nsSocketTransport() {
++  MidoriNetworkBudget::ForgetDatagramFlow(
++      MidoriNetworkBudget::Direction::Download, this);
++  MidoriNetworkBudget::ForgetDatagramFlow(
++      MidoriNetworkBudget::Direction::Upload, this);
+   MOZ_RELEASE_ASSERT(!mAttached);
+   SOCKET_LOG(("destroying nsSocketTransport @%p\n", this));
+ }
+@@ -2245,6 +2270,50 @@
+ 
+ //-----------------------------------------------------------------------------
+ // socket handler impl
++
++bool nsSocketTransport::WaitForResourceQuota(bool aInput) {
++  const uint32_t delay = MidoriNetworkBudget::WaitMilliseconds(
++      aInput ? MidoriNetworkBudget::Direction::Download
++             : MidoriNetworkBudget::Direction::Upload, false, this);
++  if (!delay) return false;
++  bool& pending = aInput ? mInputQuotaPending : mOutputQuotaPending;
++  if (!pending) {
++    pending = true;
++    const nsresult rv = NS_DelayedDispatchToCurrentThread(
++        NS_NewRunnableFunction("nsSocketTransport::ResourceQuota",
++                               [self = RefPtr{this}, aInput]() {
++                                 if (aInput) {
++                                   self->mInputQuotaPending = false;
++                                   self->OnMsgInputPending();
++                                 } else {
++                                   self->mOutputQuotaPending = false;
++                                   self->OnMsgOutputPending();
++                                 }
++                               }),
++        delay);
++    if (NS_FAILED(rv)) {
++      pending = false;
++      return false;
++    }
++  }
++  mPollFlags &= ~(aInput ? PR_POLL_READ : PR_POLL_WRITE);
++  if (mPollFlags == PR_POLL_EXCEPT) mPollFlags = 0;
++  return true;
++}
++
++void nsSocketTransport::OnMsgInputPending() {
++  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
++  if (mState == STATE_TRANSFERRING && !WaitForResourceQuota(true)) {
++    mPollFlags |= (PR_POLL_READ | PR_POLL_EXCEPT);
++  }
++}
++
++void nsSocketTransport::OnMsgOutputPending() {
++  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
++  if (mState == STATE_TRANSFERRING && !WaitForResourceQuota(false)) {
++    mPollFlags |= (PR_POLL_WRITE | PR_POLL_EXCEPT);
++  }
++}
+ 
+ void nsSocketTransport::OnSocketReady(PRFileDesc* fd, int16_t outFlags) {
+   MOZ_ASSERT(OnSocketThread(), "not on socket thread");

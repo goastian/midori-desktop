@@ -1,0 +1,68 @@
+diff --git a/dom/media/webrtc/jsapi/MediaTransportHandler.h b/dom/media/webrtc/jsapi/MediaTransportHandler.h
+--- a/dom/media/webrtc/jsapi/MediaTransportHandler.h
++++ b/dom/media/webrtc/jsapi/MediaTransportHandler.h
+@@ -21,6 +21,7 @@
+ #include "mozilla/dom/RTCErrorBinding.h"
+ #include "mozilla/dom/RTCIceTransportBinding.h"  // RTCIceTransportState
+ #include "mozilla/dom/RTCPeerConnectionBinding.h"
++#include "mozilla/net/MidoriDatagram.h"
+ #include "nsISupportsImpl.h"
+ #include "nsString.h"
+ #include "transport/dtlsidentity.h"  // For DtlsDigest
+@@ -44,10 +45,8 @@
+ // reported. Shared between a MediaTransportHandler and whatever produces its
+ // events, so the producer never needs a reference to the handler itself, which
+ // allows the lifecycles of each side to be decoupled.
+-class MediaTransportEvents final {
++class MediaTransportEvents final : public net::DatagramSentObserver {
+  public:
+-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaTransportEvents)
+-
+   TransportLayer::State GetState(const std::string& aTransportId,
+                                  bool aRtcp) const;
+ 
+@@ -70,6 +69,13 @@
+   void OnRtcpStateChange(const std::string& aTransportId,
+                          TransportLayer::State aState,
+                          Maybe<dom::RTCErrorParams> aError = Nothing());
++
++  void OnDatagramSent(uint64_t aSourceId, int64_t aPacketId,
++                      const TimeStamp& aSentAt, bool aSocketSent) override;
++  void FlushSentPackets();
++  void OnPacketsSent(nsTArray<dom::RTCSentPacket>&& aPackets);
++
++  MediaEventProducer<nsTArray<dom::RTCSentPacket>> mPacketsSent;
+ 
+   // Just RTP/RTCP
+   MediaEventProducerOneCopyPerThread<std::string, MediaPacket>
+@@ -94,7 +100,9 @@
+       mRtcpStateChange;
+ 
+  private:
+-  ~MediaTransportEvents() = default;
++  ~MediaTransportEvents() override = default;
++  nsTArray<dom::RTCSentPacket> mSentPackets;
++  bool mSentFlushPending{false};
+ 
+   mutable Mutex mStateCacheMutex{"MediaTransportEvents::mStateCacheMutex"};
+   std::map<std::string, TransportLayer::State> mStateCache
+@@ -215,6 +223,9 @@
+   GetConnectionStateChange() {
+     return mEvents->mConnectionStateChange;
+   }
++  MediaEventSource<nsTArray<dom::RTCSentPacket>>& GetPacketsSent() {
++    return mEvents->mPacketsSent;
++  }
+   MediaEventSource<std::string, MediaPacket>& GetEncryptedSending() {
+     return mEvents->mEncryptedSending;
+   }
+@@ -251,6 +262,9 @@
+   }
+   void OnPacketReceived(std::string&& aTransportId, MediaPacket&& aPacket) {
+     mEvents->OnPacketReceived(std::move(aTransportId), std::move(aPacket));
++  }
++  void OnPacketsSent(nsTArray<dom::RTCSentPacket>&& aPackets) {
++    mEvents->OnPacketsSent(std::move(aPackets));
+   }
+   void OnEncryptedSending(const std::string& aTransportId,
+                           MediaPacket&& aPacket) {

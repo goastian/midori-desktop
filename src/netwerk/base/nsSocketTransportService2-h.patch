@@ -1,0 +1,10 @@
+--- a/netwerk/base/nsSocketTransportService2.h
++++ b/netwerk/base/nsSocketTransportService2.h
+@@ -117,6 +117,7 @@
+   // Called by the networking dashboard on the socket thread only
+   // Fills the passed array with socket information
+   void GetSocketConnections(nsTArray<SocketInfo>*);
++  void GetManagedSocketByteCounts(uint64_t& aSent, uint64_t& aReceived);
+   uint64_t GetSentBytes() { return mSentBytesCount; }
+   uint64_t GetReceivedBytes() { return mReceivedBytesCount; }
+ 

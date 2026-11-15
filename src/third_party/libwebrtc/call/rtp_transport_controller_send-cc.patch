@@ -1,0 +1,56 @@
+diff --git a/third_party/libwebrtc/call/rtp_transport_controller_send.cc b/third_party/libwebrtc/call/rtp_transport_controller_send.cc
+--- a/third_party/libwebrtc/call/rtp_transport_controller_send.cc
++++ b/third_party/libwebrtc/call/rtp_transport_controller_send.cc
+@@ -470,6 +470,18 @@
+   if (!packet_msg)
+     return;
+ 
++  RTC_LOG_IF(LS_INFO, packet_msg->pacing_info.probe_cluster_id !=
++                          PacedPacketInfo::kNotAProbe)
++      << "Midori probe sent id=" << packet_msg->pacing_info.probe_cluster_id
++      << " seq=" << packet_msg->sequence_number << " send_us="
++      << (packet_msg->send_time.IsFinite() ? packet_msg->send_time.us() : -1)
++      << " clock_us=" << env_.clock().CurrentTime().us()
++      << " bytes=" << packet_msg->size.bytes()
++      << " in_flight_bytes=" << packet_msg->data_in_flight.bytes()
++      << " transport="
++      << static_cast<RtpTransportControllerSendInterface*>(this)
++      << " network=" << controller_.get();
++
+   auto congestion_update = GetCongestedStateUpdate();
+   NetworkControlUpdate control_update;
+   if (controller_)
+@@ -530,6 +542,17 @@
+   RTC_DCHECK_RUN_ON(worker_thread_);
+   std::optional<BitrateConstraints> updated =
+       bitrate_configurator_.UpdateWithClientPreferences(preferences);
++  RTC_LOG(LS_INFO) << "Midori bitrate client transport="
++                   << static_cast<RtpTransportControllerSendInterface*>(this)
++                   << " min=" << preferences.min_bitrate_bps.value_or(-1)
++                   << " start=" << preferences.start_bitrate_bps.value_or(-1)
++                   << " max=" << preferences.max_bitrate_bps.value_or(-1)
++                   << " updated=" << updated.has_value() << " effective_min="
++                   << (updated ? updated->min_bitrate_bps : -1)
++                   << " effective_start="
++                   << (updated ? updated->start_bitrate_bps : -1)
++                   << " effective_max="
++                   << (updated ? updated->max_bitrate_bps : -1);
+   if (updated.has_value()) {
+     UpdateBitrateConstraints(*updated);
+   } else {
+@@ -860,6 +883,15 @@
+     pacer_.SetConfig(*update.pacer_config);
+   }
+   if (!update.probe_cluster_configs.empty()) {
++    RTC_LOG(LS_INFO) << "Midori probe request transport="
++                     << static_cast<RtpTransportControllerSendInterface*>(this)
++                     << " sender=" << &pacer_
++                     << " network=" << controller_.get()
++                     << " count=" << update.probe_cluster_configs.size()
++                     << " allow_without_media="
++                     << bwe_settings_.allow_probe_without_media
++                     << " rtx_padding="
++                     << packet_router_.SupportsRtxPayloadPadding();
+     pacer_.CreateProbeClusters(std::move(update.probe_cluster_configs));
+   }
+   if (update.target_rate) {

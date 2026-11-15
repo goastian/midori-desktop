@@ -1,0 +1,45 @@
+diff --git a/third_party/libwebrtc/net/dcsctp/socket/heartbeat_handler.cc b/third_party/libwebrtc/net/dcsctp/socket/heartbeat_handler.cc
+index 3162662b24..29b37237ac 100644
+--- a/third_party/libwebrtc/net/dcsctp/socket/heartbeat_handler.cc
++++ b/third_party/libwebrtc/net/dcsctp/socket/heartbeat_handler.cc
+@@ -138,6 +138,20 @@ void HeartbeatHandler::HandleHeartbeatRequest(HeartbeatRequestChunk chunk) {
+       HeartbeatAckChunk(std::move(chunk).extract_parameters())));
+ }
+ 
++void HeartbeatHandler::RequestSample() {
++  if (ctx_->is_connection_established() && !timeout_timer_->is_running())
++    SendHeartbeatRequest();
++}
++
++void HeartbeatHandler::SendHeartbeatRequest() {
++  HeartbeatInfo info(ctx_->callbacks().Now());
++  Parameters parameters = Parameters::Builder()
++                              .Add(HeartbeatInfoParameter(info.Serialize()))
++                              .Build();
++  ctx_->Send(ctx_->PacketBuilder().Add(
++      HeartbeatRequestChunk(std::move(parameters))));
++}
++
+ void HeartbeatHandler::HandleHeartbeatAck(HeartbeatAckChunk chunk) {
+   timeout_timer_->Stop();
+   std::optional<HeartbeatInfoParameter> info_param = chunk.info();
+@@ -169,18 +183,12 @@ void HeartbeatHandler::HandleHeartbeatAck(HeartbeatAckChunk chunk) {
+ 
+ TimeDelta HeartbeatHandler::OnIntervalTimerExpiry() {
+   if (ctx_->is_connection_established()) {
+-    HeartbeatInfo info(ctx_->callbacks().Now());
+     timeout_timer_->set_duration(ctx_->current_rto());
+     timeout_timer_->Start();
+     RTC_DLOG(LS_INFO) << log_prefix_ << "Sending HEARTBEAT with timeout "
+                       << webrtc::ToString(timeout_timer_->duration());
+ 
+-    Parameters parameters = Parameters::Builder()
+-                                .Add(HeartbeatInfoParameter(info.Serialize()))
+-                                .Build();
+-
+-    ctx_->Send(ctx_->PacketBuilder().Add(
+-        HeartbeatRequestChunk(std::move(parameters))));
++    SendHeartbeatRequest();
+   } else {
+     RTC_DLOG(LS_VERBOSE)
+         << log_prefix_

@@ -1,0 +1,56 @@
+diff --git a/dom/media/webrtc/libwebrtcglue/AudioConduit.cpp b/dom/media/webrtc/libwebrtcglue/AudioConduit.cpp
+--- a/dom/media/webrtc/libwebrtcglue/AudioConduit.cpp
++++ b/dom/media/webrtc/libwebrtcglue/AudioConduit.cpp
+@@ -761,6 +761,7 @@
+   }
+ 
+   mSendStreamRunning = false;
++  mCall->SetMediaSending(this, false);
+ }
+ 
+ void WebrtcAudioConduit::StartTransmitting() {
+@@ -778,6 +779,7 @@
+                                            webrtc::kNetworkUp);
+   mSendStream->Start();
+   mSendStreamRunning = true;
++  mCall->SetMediaSending(this, true);
+ }
+ 
+ void WebrtcAudioConduit::StopReceiving() {
+@@ -834,24 +836,17 @@
+   MediaPacket packet;
+   packet.Copy(aData, aLength, aLength + SRTP_MAX_EXPANSION);
+   packet.SetType(MediaPacket::RTP);
++  packet.SendInfo().packetId = aOptions.packet_id;
++  packet.SendInfo().sourceId = mCall->mSendSourceId;
+   mSenderRtpSendEvent.Notify(std::move(packet));
+ 
+   // Parse the sequence number of the first rtp packet as base_seq.
+   const auto inserted = mRtpSendBaseSeqs_n.insert({ssrc, seqno}).second;
+ 
+-  if (inserted || aOptions.packet_id >= 0) {
+-    int64_t now_ms = PR_Now() / 1000;
++  if (inserted) {
+     MOZ_ALWAYS_SUCCEEDS(mCallThread->Dispatch(NS_NewRunnableFunction(
+-        __func__, [this, self = RefPtr<WebrtcAudioConduit>(this),
+-                   packet_id = aOptions.packet_id, now_ms, ssrc, seqno] {
++        __func__, [this, self = RefPtr<WebrtcAudioConduit>(this), ssrc, seqno] {
+           mRtpSendBaseSeqs.insert({ssrc, seqno});
+-          if (packet_id >= 0) {
+-            if (mCall->Call()) {
+-              // TODO: This notification should ideally happen after the
+-              // transport layer has sent the packet on the wire.
+-              mCall->Call()->OnSentPacket({packet_id, now_ms});
+-            }
+-          }
+         })));
+   }
+   return true;
+@@ -1039,6 +1034,7 @@
+ 
+   mCall->Call()->DestroyAudioSendStream(mSendStream);
+   mSendStreamRunning = false;
++  mCall->SetMediaSending(this, false);
+   mSendStream = nullptr;
+ 
+   // Reset base_seqs in case ssrcs get re-used.

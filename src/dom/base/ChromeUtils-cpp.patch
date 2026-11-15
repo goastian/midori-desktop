@@ -1,0 +1,255 @@
+--- a/dom/base/ChromeUtils.cpp
++++ b/dom/base/ChromeUtils.cpp
+@@ -9,6 +9,7 @@
+ #include "ThirdPartyUtil.h"
+ #include "VsyncSource.h"
+ #include "WrapperFactory.h"
++#include "base/process_util.h"
+ #include "imgLoader.h"
+ #include "js/CallAndConstruct.h"  // JS::Call
+ #include "js/CharacterEncoding.h"
+@@ -34,6 +35,8 @@
+ #include "mozilla/FormAutofillNative.h"
+ #include "mozilla/IntentionalCrash.h"
+ #include "mozilla/KeySystemConfig.h"
++#include "mozilla/MidoriCpuBudget.h"
++#include "mozilla/MidoriMediaTrace.h"
+ #include "mozilla/PerfStats.h"
+ #include "mozilla/Preferences.h"
+ #include "mozilla/ProcInfo.h"
+@@ -48,11 +51,17 @@
+ #include "mozilla/WheelHandlingHelper.h"
+ #include "mozilla/dom/BlobURLProtocolHandler.h"
+ #include "mozilla/dom/ContentParent.h"
++#include "mozilla/dom/Document.h"
++#include "mozilla/dom/HTMLVideoElement.h"
+ #include "mozilla/dom/IdleDeadline.h"
+ #include "mozilla/dom/InProcessParent.h"
+ #include "mozilla/dom/JSActorService.h"
+ #include "mozilla/dom/MediaSessionBinding.h"
++#include "mozilla/dom/MidoriMediaBinding.h"
++#include "mozilla/dom/MidoriNetworkBinding.h"
++#include "mozilla/dom/MidoriResourceBinding.h"
+ #include "mozilla/dom/PBrowserParent.h"
++#include "mozilla/dom/Performance.h"
+ #include "mozilla/dom/PopupBlocker.h"
+ #include "mozilla/dom/ProcessIsolation.h"
+ #include "mozilla/dom/ProfilerCounter.h"
+@@ -75,6 +84,7 @@
+ #include "mozilla/layers/WebRenderBridgeChild.h"
+ #include "mozilla/layers/WebRenderLayerManager.h"
+ #include "mozilla/net/ChannelClassifierUtils.h"
++#include "mozilla/net/MidoriNetworkBudget.h"
+ #include "nsContentUtils.h"
+ #include "nsControllerCommandTable.h"
+ #include "nsDocShell.h"
+@@ -84,6 +94,7 @@
+ #include "nsIWidget.h"
+ #include "nsNativeTheme.h"
+ #include "nsPIDOMWindowInlines.h"
++#include "nsPrintfCString.h"
+ #include "nsRFPTargetSetIDL.h"
+ #include "nsString.h"
+ #include "nsThreadUtils.h"
+@@ -1924,8 +1935,158 @@
+ 
+ #undef PROCTYPE_TO_WEBIDL_CASE
+ 
+-/* static */
++already_AddRefed<Promise> ChromeUtils::RequestManagedCpuBudget(
++    GlobalObject& aGlobal, uint32_t aPercentage, ErrorResult& aRv) {
++  if (!NS_IsMainThread() || !XRE_IsParentProcess()) {
++    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
++    return nullptr;
++  }
++  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
++  RefPtr<Promise> promise = Promise::Create(global, aRv);
++  if (aRv.Failed()) return nullptr;
++  midori::RequestManagedCpuBudget(aPercentage)
++      ->Then(GetMainThreadSerialEventTarget(), __func__,
++             [promise](const midori::ManagedCpuBudgetState& aState) {
++               MidoriManagedCpuBudget value;
++               value.mBackendReady = aState.backendReady;
++               value.mApplied = aState.applied;
++               value.mNativeError = aState.nativeError;
++               value.mRequestedPercentage = aState.requestedPercentage;
++               value.mExternalCapacityCpus = aState.externalCapacityCpus;
++               value.mOwnQuotaCpus = aState.ownQuotaCpus;
++               value.mEffectiveCapacityCpus = aState.effectiveCapacityCpus;
++               promise->MaybeResolve(value);
++             },
++             [promise](nsresult aError) { promise->MaybeReject(aError); });
++  return promise.forget();
++}
++
++/* static */
++uint64_t ChromeUtils::BeginManagedMediaObservation(GlobalObject&,
++                                                   ErrorResult& aRv) {
++  uint64_t generation = 0;
++  const nsresult rv = MidoriMediaTrace::Begin(generation);
++  if (NS_FAILED(rv)) aRv.Throw(rv);
++  return generation;
++}
++
++void ChromeUtils::EndManagedMediaObservation(
++    GlobalObject&, uint64_t aGeneration, HTMLVideoElement& aVideo,
++    ManagedMediaObservationResult& aResult, ErrorResult& aRv) {
++  MidoriMediaTraceBatch batch;
++  const nsresult rv = MidoriMediaTrace::Finish(aGeneration, batch);
++  if (NS_FAILED(rv)) {
++    aRv.Throw(rv);
++    return;
++  }
++  auto* window = aVideo.OwnerDoc()->GetInnerWindow();
++  auto* performance = window ? window->GetPerformance() : nullptr;
++  if (!performance) {
++    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
++    return;
++  }
++  aResult.mProcessId = base::GetCurrentProcId();
++  aResult.mGeneration = batch.generation;
++  aResult.mCapacity = batch.capacity;
++  aResult.mStarted = batch.started;
++  aResult.mFinished = batch.finished;
++  aResult.mDocumentOrigin =
++      (performance->CreationTimeStamp() - TimeStamp::ProcessCreation())
++          .ToMilliseconds();
++  aResult.mContainer.Assign(nsPrintfCString(
++      "%p", static_cast<const void*>(aVideo.GetImageContainer())));
++  aResult.mTruncated = batch.truncated;
++  aResult.mExpired = batch.expired;
++  if (!aResult.mEntries.SetCapacity(batch.count, fallible)) {
++    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
++    return;
++  }
++  for (uint32_t i = 0; i < batch.count; ++i) {
++    const auto& entry = batch.entries[i];
++    auto* row = aResult.mEntries.AppendElement(fallible);
++    if (!row) {
++      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
++      return;
++    }
++    row->mOrdinal = i + 1;
++    row->mKind = entry.kind;
++    row->mContext.Assign(nsPrintfCString("%p", entry.context));
++    row->mRtp = entry.rtp;
++    row->mRawRtp = entry.rawRtp;
++    row->mSsrc = entry.ssrc;
++    row->mSourceCode = entry.sourceCode;
++    row->mProducer = entry.producer;
++    row->mFrame = entry.frame;
++    row->mPaint = entry.paint;
++    row->mObserved = entry.observed;
++    row->mPresented = entry.presented;
++    row->mValid = entry.valid;
++  }
++}
++
++already_AddRefed<Promise> ChromeUtils::RequestManagedSocketUsage(
++    GlobalObject& aGlobal, bool aSocketProcess, ErrorResult& aRv) {
++  if (!NS_IsMainThread() || !XRE_IsParentProcess()) {
++    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
++    return nullptr;
++  }
++  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
++  RefPtr<Promise> promise = Promise::Create(global, aRv);
++  if (aRv.Failed()) return nullptr;
++  net::MidoriNetworkBudget::SampleSocketUsage(aSocketProcess)
++      ->Then(
++          GetMainThreadSerialEventTarget(), __func__,
++          [promise](const net::MidoriNetworkBudget::SocketUsage& aUsage) {
++            MidoriManagedSocketUsage value;
++            value.mProcessId = aUsage.processId;
++            value.mSent = aUsage.sent;
++            value.mReceived = aUsage.received;
++            AutoJSAPI jsapi;
++            if (!jsapi.Init(promise->GetGlobalObject())) {
++              promise->MaybeReject(NS_ERROR_UNEXPECTED);
++              return;
++            }
++            JSContext* cx = jsapi.cx();
++            JS::Rooted<JS::Value> result(cx);
++            JS::Rooted<JSObject*> budget(cx, JS_NewPlainObject(cx));
++            if (!budget || !ToJSValue(cx, value, &result)) {
++              promise->MaybeRejectWithExceptionFromContext(cx);
++              return;
++            }
++            if (!JS_DefineProperty(cx, budget, "downloadBps",
++                                   double(aUsage.budget.downloadBps),
++                                   JSPROP_ENUMERATE) ||
++                !JS_DefineProperty(cx, budget, "uploadBps",
++                                   double(aUsage.budget.uploadBps),
++                                   JSPROP_ENUMERATE) ||
++                !JS_DefineProperty(cx, budget, "downloadGeneration",
++                                   double(aUsage.budget.downloadGeneration),
++                                   JSPROP_ENUMERATE) ||
++                !JS_DefineProperty(cx, budget, "uploadGeneration",
++                                   double(aUsage.budget.uploadGeneration),
++                                   JSPROP_ENUMERATE) ||
++                !JS_DefineProperty(cx, budget, "globalMediaSendingCalls",
++                                   double(net::MidoriNetworkBudget::
++                                              GlobalMediaSendingCallCount()),
++                                   JSPROP_ENUMERATE)) {
++              promise->MaybeRejectWithExceptionFromContext(cx);
++              return;
++            }
++            JS::Rooted<JSObject*> object(cx, &result.toObject());
++            JS::Rooted<JS::Value> budgetValue(cx, JS::ObjectValue(*budget));
++            if (!JS_DefineProperty(cx, object, "budget", budgetValue,
++                                   JSPROP_ENUMERATE)) {
++              promise->MaybeRejectWithExceptionFromContext(cx);
++              return;
++            }
++            promise->MaybeResolve(result);
++          },
++          [promise](nsresult aError) { promise->MaybeReject(aError); });
++  return promise.forget();
++}
++
+ already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
++                                                       bool aIncludeThreads,
+                                                        ErrorResult& aRv) {
+   // This function will use IPDL to enable threads info on macOS
+   // see https://bugzilla.mozilla.org/show_bug.cgi?id=1529023
+@@ -2140,13 +2301,19 @@
+     );
+   }
+ 
++  if (!aIncludeThreads) {
++    for (auto& request : requests) {
++      request.includeThreads = false;
++    }
++  }
++
+   // Now place background request.
+   RefPtr<nsISerialEventTarget> target = global->SerialEventTarget();
+   mozilla::GetProcInfo(std::move(requests))
+       ->Then(
+           target, __func__,
+-          [target,
+-           domPromise](const HashMap<base::ProcessId, ProcInfo>& aSysProcInfo) {
++          [target, domPromise, aIncludeThreads](
++              const HashMap<base::ProcessId, ProcInfo>& aSysProcInfo) {
+             ParentProcInfoDictionary parentInfo;
+             if (aSysProcInfo.count() == 0) {
+               // For some reason, we couldn't get *any* info.
+@@ -2160,7 +2327,8 @@
+               const auto& sysProcInfo = iter.get().value();
+               nsresult rv;
+               if (sysProcInfo.type == ProcType::Browser) {
+-                rv = mozilla::CopySysProcInfoToDOM(sysProcInfo, &parentInfo);
++                rv = mozilla::CopySysProcInfoToDOM(sysProcInfo, &parentInfo,
++                                                   aIncludeThreads);
+                 if (NS_FAILED(rv)) {
+                   // Failing to copy? That's probably not something from we can
+                   // (or should) try to recover gracefully.
+@@ -2176,7 +2344,8 @@
+                   domPromise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
+                   return;
+                 }
+-                rv = mozilla::CopySysProcInfoToDOM(sysProcInfo, childInfo);
++                rv = mozilla::CopySysProcInfoToDOM(sysProcInfo, childInfo,
++                                                   aIncludeThreads);
+                 if (NS_FAILED(rv)) {
+                   domPromise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
+                   return;

@@ -1,0 +1,12 @@
+diff --git a/netwerk/protocol/http/Http2StreamBase.h b/netwerk/protocol/http/Http2StreamBase.h
+--- a/netwerk/protocol/http/Http2StreamBase.h
++++ b/netwerk/protocol/http/Http2StreamBase.h
+@@ -137,6 +137,8 @@
+     mClientReceiveWindow += delta;
+     mLocalUnacked -= delta;
+   }
++
++  uint32_t UpdateClientReceiveWindow(uint32_t aTarget, uint32_t aMaximumAck);
+ 
+   uint64_t LocalUnAcked();
+   int64_t ClientReceiveWindow() { return mClientReceiveWindow; }

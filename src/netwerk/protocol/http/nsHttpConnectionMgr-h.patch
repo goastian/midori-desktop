@@ -1,0 +1,20 @@
+diff --git a/netwerk/protocol/http/nsHttpConnectionMgr.h b/netwerk/protocol/http/nsHttpConnectionMgr.h
+--- a/netwerk/protocol/http/nsHttpConnectionMgr.h
++++ b/netwerk/protocol/http/nsHttpConnectionMgr.h
+@@ -58,6 +58,8 @@
+ 
+   [[nodiscard]] nsresult CancelTransactions(nsHttpConnectionInfo*,
+                                             nsresult code);
++
++  [[nodiscard]] nsresult UpdateMidoriReceiveBuffers(uint32_t aDownloadBps);
+ 
+   // The connection manager needs to know the hashes used for a WebTransport
+   // connection authenticated with serverCertHashes
+@@ -358,6 +360,7 @@
+   void OnMsgSpeculativeConnect(int32_t, ARefBase*);
+   void OnMsgCompleteUpgrade(int32_t, ARefBase*);
+   void OnMsgUpdateParam(int32_t, ARefBase*);
++  void OnMsgUpdateMidoriReceiveBuffers(int32_t, ARefBase*);
+   void OnMsgDoShiftReloadConnectionCleanup(int32_t, ARefBase*);
+   void OnMsgDoSingleConnectionCleanup(int32_t, ARefBase*);
+   void OnMsgProcessFeedback(int32_t, ARefBase*);

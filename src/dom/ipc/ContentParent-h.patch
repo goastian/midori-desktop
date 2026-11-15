@@ -1,0 +1,12 @@
+diff --git a/dom/ipc/ContentParent.h b/dom/ipc/ContentParent.h
+--- a/dom/ipc/ContentParent.h
++++ b/dom/ipc/ContentParent.h
+@@ -367,6 +367,8 @@
+   mozilla::ipc::IPCResult RecvCreateClipboardContentAnalysis(
+       Endpoint<PClipboardContentAnalysisParent>&& aParentEndpoint);
+   mozilla::ipc::IPCResult RecvCreateGMPService();
++  mozilla::ipc::IPCResult RecvSetMidoriMediaSendingCallCount(
++      const uint32_t& aCount);
+ 
+   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(ContentParent, nsIObserver)
+ 

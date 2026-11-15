@@ -1,0 +1,404 @@
+diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/lib.rs
+--- a/netwerk/socket/neqo_glue/src/lib.rs
++++ b/netwerk/socket/neqo_glue/src/lib.rs
+@@ -14,6 +14,7 @@
+     ffi::c_void,
+     io,
+     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
++    num::NonZeroUsize,
+     path::PathBuf,
+     ptr,
+     rc::Rc,
+@@ -65,6 +66,76 @@
+ 
+ std::thread_local! {
+     static RECV_BUF: RefCell<neqo_udp::RecvBuf> = RefCell::new(neqo_udp::RecvBuf::default());
++    static QUOTA_RECV_BUF: RefCell<neqo_udp::RecvBuf> = RefCell::new(neqo_udp::RecvBuf::single());
++}
++
++extern "C" {
++    fn MidoriNetworkReserveDatagramForFlow(
++        upload: bool,
++        requested: u32,
++        generation: *mut u64,
++        process_share: *mut bool,
++        flow: *const c_void,
++    ) -> u32;
++    fn MidoriNetworkRefundDatagramForFlow(
++        upload: bool,
++        reserved: u32,
++        generation: u64,
++        process_share: bool,
++        used: u32,
++        flow: *const c_void,
++    );
++    fn MidoriNetworkCancelDatagramDemand(upload: bool, flow: *const c_void);
++}
++
++struct NetworkReservation {
++    upload: bool,
++    bytes: u32,
++    generation: u64,
++    process_share: bool,
++    used: u32,
++    flow: *const c_void,
++}
++
++impl NetworkReservation {
++    fn new(upload: bool, requested: u32, flow: *const c_void) -> Self {
++        let mut generation = 0;
++        let mut process_share = false;
++        let bytes = unsafe {
++            MidoriNetworkReserveDatagramForFlow(
++                upload,
++                requested,
++                &mut generation,
++                &mut process_share,
++                flow,
++            )
++        };
++        Self {
++            upload,
++            bytes,
++            generation,
++            process_share,
++            used: 0,
++            flow,
++        }
++    }
++}
++
++impl Drop for NetworkReservation {
++    fn drop(&mut self) {
++        if self.generation != 0 && self.bytes != 0 {
++            unsafe {
++                MidoriNetworkRefundDatagramForFlow(
++                    self.upload,
++                    self.bytes,
++                    self.generation,
++                    self.process_share,
++                    self.used,
++                    self.flow,
++                );
++            }
++        }
++    }
+ }
+ 
+ /// Upper bound on the bytes read from the socket in a single `neqo_http3conn_process_input` pass.
+@@ -129,9 +200,11 @@
+     // would close the file descriptor on `Drop`. The lifetime of the underlying
+     // OS socket is managed not by `neqo_glue` but `NSPR`.
+     socket: Option<neqo_udp::Socket<BorrowedSocket>>,
++    resource_flow: *const c_void,
+     /// Buffered outbound datagram from previous send that failed with
+     /// WouldBlock. To be sent once UDP socket has write-availability again.
+     buffered_outbound_datagram: Option<datagram::Batch>,
++    buffered_outbound_offset: usize,
+ 
+     datagram_segment_size_sent: LocalMemoryDistribution<'static>,
+     datagram_segment_size_received: LocalMemoryDistribution<'static>,
+@@ -153,6 +226,10 @@
+ 
+ impl Drop for NeqoHttp3Conn {
+     fn drop(&mut self) {
++        unsafe {
++            MidoriNetworkCancelDatagramDemand(false, self.resource_flow);
++            MidoriNetworkCancelDatagramDemand(true, self.resource_flow);
++        }
+         self.record_stats_in_glean();
+     }
+ }
+@@ -399,6 +476,7 @@
+         fast_pto: u32,
+         pmtud_enabled: bool,
+         socket: Option<i64>,
++        resource_flow: *const c_void,
+     ) -> Result<RefPtr<Self>, nsresult> {
+         // Nss init.
+         init().map_err(|_| NS_ERROR_UNEXPECTED)?;
+@@ -641,7 +719,9 @@
+             datagram_segments_sent: networking::http_3_udp_datagram_segments_sent.start_buffer(),
+             datagram_segments_received: networking::http_3_udp_datagram_segments_received
+                 .start_buffer(),
++            resource_flow,
+             buffered_outbound_datagram: None,
++            buffered_outbound_offset: 0,
+             would_block_counter: WouldBlockCounter::new(),
+             webtransport_send_groups: HashMap::new(),
+             #[cfg(not(target_os = "android"))]
+@@ -1119,6 +1199,7 @@
+     fast_pto: u32,
+     socket: i64,
+     pmtud_enabled: bool,
++    resource_flow: *const c_void,
+     result: &mut *const NeqoHttp3Conn,
+ ) -> nsresult {
+     *result = ptr::null_mut();
+@@ -1139,6 +1220,7 @@
+         fast_pto,
+         pmtud_enabled,
+         Some(socket),
++        resource_flow,
+     ) {
+         Ok(http3_conn) => {
+             http3_conn.forget(result);
+@@ -1164,6 +1246,7 @@
+     qlog_dir: &nsACString,
+     idle_timeout: u32,
+     fast_pto: u32,
++    pmtud_enabled: bool,
+     result: &mut *const NeqoHttp3Conn,
+ ) -> nsresult {
+     *result = ptr::null_mut();
+@@ -1182,8 +1265,9 @@
+         qlog_dir,
+         idle_timeout,
+         fast_pto,
+-        false,
++        pmtud_enabled,
+         None,
++        ptr::null(),
+     ) {
+         Ok(http3_conn) => {
+             http3_conn.forget(result);
+@@ -1239,27 +1323,18 @@
+ ) -> ProcessInputResult {
+     let mut bytes_read = 0;
+ 
+-    RECV_BUF.with_borrow_mut(|recv_buf| {
+-        loop {
+-            let dgrams = match conn
++    loop {
++        let mut reservation =
++            NetworkReservation::new(false, u32::from(u16::MAX), conn.resource_flow);
++        if reservation.bytes == 0 {
++            break;
++        }
++        let receive_batch = |recv_buf: &mut neqo_udp::RecvBuf| -> io::Result<usize> {
++            let dgrams = conn
+                 .socket
+                 .as_mut()
+                 .expect("non NSPR IO")
+-                .recv(conn.local_addr, recv_buf)
+-            {
+-                Ok(dgrams) => dgrams,
+-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+-                    conn.increment_would_block_rx();
+-                    break;
+-                }
+-                Err(e) => {
+-                    qwarn!("failed to receive datagrams: {}", e);
+-                    return ProcessInputResult {
+-                        result: into_nsresult(&e),
+-                        bytes_read: 0,
+-                    };
+-                }
+-            };
++                .recv(conn.local_addr, recv_buf)?;
+ 
+             // Attach metric instrumentation to `dgrams` iterator.
+             let mut sum = 0;
+@@ -1284,22 +1359,44 @@
+ 
+             conn.datagram_size_received.accumulate(sum as u64);
+             conn.datagram_segments_received.accumulate(segment_count);
+-            bytes_read += sum;
+-
+-            if bytes_read >= MAX_BYTES_READ_PER_PASS {
+-                qwarn!(
+-                    "reached the {MAX_BYTES_READ_PER_PASS} byte receive cap in a single pass; \
++            Ok(sum)
++        };
++        let received = if reservation.generation != 0 {
++            QUOTA_RECV_BUF.with_borrow_mut(receive_batch)
++        } else {
++            RECV_BUF.with_borrow_mut(receive_batch)
++        };
++        match received {
++            Ok(sum) => {
++                reservation.used = u32::try_from(sum).unwrap_or(u32::MAX);
++                bytes_read += sum;
++            }
++            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
++                conn.increment_would_block_rx();
++                break;
++            }
++            Err(e) => {
++                qwarn!("failed to receive datagrams: {}", e);
++                return ProcessInputResult {
++                    result: into_nsresult(&e),
++                    bytes_read: 0,
++                };
++            }
++        }
++
++        if bytes_read >= MAX_BYTES_READ_PER_PASS {
++            qwarn!(
++                "reached the {MAX_BYTES_READ_PER_PASS} byte receive cap in a single pass; \
+                      yielding to deliver buffered events, will continue on the next RecvData"
+-                );
+-                break;
+-            }
+-        }
+-
+-        ProcessInputResult {
+-            result: NS_OK,
+-            bytes_read: bytes_read.try_into().unwrap_or(u32::MAX),
+-        }
+-    })
++            );
++            break;
++        }
++    }
++
++    ProcessInputResult {
++        result: NS_OK,
++        bytes_read: bytes_read.try_into().unwrap_or(u32::MAX),
++    }
+ }
+ 
+ #[no_mangle]
+@@ -1376,6 +1473,14 @@
+ ) -> ProcessOutputAndSendResult {
+     let mut bytes_written: usize = 0;
+     loop {
++        let mut reservation =
++            NetworkReservation::new(true, u32::from(u16::MAX), conn.resource_flow);
++        if reservation.bytes == 0 {
++            return ProcessOutputAndSendResult {
++                result: NS_BASE_STREAM_WOULD_BLOCK,
++                bytes_written: bytes_written.try_into().unwrap_or(u32::MAX),
++            };
++        }
+         let Ok(max_gso_segments) = min(
+             static_prefs::pref!("network.http.http3.max_gso_segments")
+                 .try_into()
+@@ -1393,6 +1498,13 @@
+             };
+         };
+ 
++        let max_gso_segments = if reservation.generation != 0 {
++            NonZeroUsize::new(1).unwrap()
++        } else {
++            max_gso_segments
++        };
++
++        let offset = std::mem::take(&mut conn.buffered_outbound_offset);
+         let output = conn
+             .buffered_outbound_datagram
+             .take()
+@@ -1417,18 +1529,37 @@
+                     };
+                 }
+ 
+-                let send_result = if mock_udp_send_would_block(dg.destination()) {
++                let remaining = dg.data().len() - offset;
++                let size = if reservation.generation != 0 {
++                    min(remaining, dg.datagram_size().get())
++                } else {
++                    remaining
++                };
++                let part = (offset != 0 || size < dg.data().len()).then(|| {
++                    datagram::Batch::new(
++                        dg.source(),
++                        dg.destination(),
++                        dg.tos(),
++                        dg.datagram_size(),
++                        dg.data()[offset..offset + size].to_vec(),
++                    )
++                });
++                let data = part.as_ref().unwrap_or(&dg);
++                let send_result = if mock_udp_send_would_block(data.destination()) {
+                     Err(io::Error::from(io::ErrorKind::WouldBlock))
+                 } else {
+-                    conn.socket.as_mut().expect("non NSPR IO").send(&dg)
++                    conn.socket.as_mut().expect("non NSPR IO").send(data)
+                 };
+                 match send_result {
+-                    Ok(()) => {}
++                    Ok(()) => reservation.used = u32::try_from(size).unwrap_or(u32::MAX),
+                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                         conn.increment_would_block_tx();
+-                        if static_prefs::pref!("network.http.http3.pr_poll_write") {
++                        if reservation.generation != 0
++                            || static_prefs::pref!("network.http.http3.pr_poll_write")
++                        {
+                             qdebug!("Buffer outbound datagram to be sent once UDP socket has write-availability.");
+                             conn.buffered_outbound_datagram = Some(dg);
++                            conn.buffered_outbound_offset = offset;
+                             return ProcessOutputAndSendResult {
+                                 // Propagate WouldBlock error, thus indicating that
+                                 // the UDP socket should be polled for
+@@ -1441,7 +1572,7 @@
+                             break;
+                         }
+                     }
+-                    Err(e) if e.raw_os_error() == Some(libc::EIO) && dg.num_datagrams() > 1 => {
++                    Err(e) if e.raw_os_error() == Some(libc::EIO) && data.num_datagrams() > 1 => {
+                         // GSO is unsupported on this send path. quinn-udp has now
+                         // disabled GSO for subsequent sends, but the kernel
+                         // dropped the current batch. Resend it as individual
+@@ -1455,14 +1586,16 @@
+                         //
+                         // Long term this fallback belongs in quinn-udp, see
+                         // <https://github.com/quinn-rs/quinn/issues/2399>.
+-                        qdebug!("Failed to send datagram batch size {} with error {e}. Missing GSO support? Resending as individual datagrams.", dg.num_datagrams());
++                        qdebug!("Failed to send datagram batch size {} with error {e}. Missing GSO support? Resending as individual datagrams.", data.num_datagrams());
+                         let socket = conn.socket.as_mut().expect("non NSPR IO");
+-                        for single in dg.iter() {
++                        for single in data.iter() {
+                             let single = datagram::Batch::from(single.to_owned());
+                             if let Err(e) = socket.send(&single) {
+                                 qwarn!("failed to resend datagram without GSO: {e}");
+                                 break;
+                             }
++                            reservation.used +=
++                                u32::try_from(single.data().len()).unwrap_or(u32::MAX);
+                         }
+                     }
+                     Err(e) => {
+@@ -1473,24 +1606,27 @@
+                         };
+                     }
+                 }
+-                bytes_written += dg.data().len();
++                bytes_written += size;
+ 
+                 // Glean metrics
+-                conn.datagram_size_sent.accumulate(dg.data().len() as u64);
++                conn.datagram_size_sent.accumulate(size as u64);
+                 conn.datagram_segments_sent
+-                    .accumulate(dg.num_datagrams() as u64);
+-                for _ in 0..(dg.data().len() / dg.datagram_size()) {
++                    .accumulate(data.num_datagrams() as u64);
++                for _ in 0..(size / data.datagram_size()) {
+                     conn.datagram_segment_size_sent
+-                        .accumulate(dg.datagram_size().get() as u64);
++                        .accumulate(data.datagram_size().get() as u64);
+                 }
+                 conn.datagram_segment_size_sent.accumulate(
+-                    dg.data()
+-                        .len()
+-                        .checked_rem(dg.datagram_size().get())
++                    size.checked_rem(data.datagram_size().get())
+                         .expect("datagram_size is a NonZeroUsize") as u64,
+                 );
++                if offset + size < dg.data().len() {
++                    conn.buffered_outbound_offset = offset + size;
++                    conn.buffered_outbound_datagram = Some(dg);
++                }
+             }
+             OutputBatch::Callback(to) => {
++                unsafe { MidoriNetworkCancelDatagramDemand(true, conn.resource_flow) };
+                 let timeout = if to.is_zero() {
+                     Duration::from_millis(1)
+                 } else {
+@@ -1506,6 +1642,7 @@
+                 break;
+             }
+             OutputBatch::None => {
++                unsafe { MidoriNetworkCancelDatagramDemand(true, conn.resource_flow) };
+                 set_timer_func(context, u64::MAX);
+                 break;
+             }

@@ -1,0 +1,30 @@
+diff --git a/netwerk/protocol/http/nsHttpHandler.cpp b/netwerk/protocol/http/nsHttpHandler.cpp
+--- a/netwerk/protocol/http/nsHttpHandler.cpp
++++ b/netwerk/protocol/http/nsHttpHandler.cpp
+@@ -335,6 +335,7 @@
+     DOM_SECURITY_PREFIX,
+     "image.http.accept",
+     "image.jxl.enabled",
++    "midori.performance.network.experimental.downloadBps",
+     nullptr,
+ };
+ 
+@@ -1291,6 +1292,18 @@
+ #define MULTI_PREF_CHANGED(p) \
+   ((pref == nullptr) || !strncmp(pref, p, sizeof(p) - 1))
+ 
++  if (PREF_CHANGED("midori.performance.network.experimental.downloadBps") &&
++      mConnMgr && ConnMgr()) {
++    const uint32_t download = std::max(
++        0, Preferences::GetInt(
++               "midori.performance.network.experimental.downloadBps", 0));
++    rv = ConnMgr()->UpdateMidoriReceiveBuffers(download);
++    if (NS_FAILED(rv)) {
++      LOG(("nsHttpHandler::PrefsChanged receive capacity update failed (%08x)",
++           static_cast<uint32_t>(rv)));
++    }
++  }
++
+   // If a security pref changed, lets clear our connection pool reuse
+   if (MULTI_PREF_CHANGED(SECURITY_PREFIX)) {
+     LOG(("nsHttpHandler::PrefsChanged Security Pref Changed %s\n", pref));

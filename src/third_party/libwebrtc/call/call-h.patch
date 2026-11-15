@@ -1,0 +1,13 @@
+diff --git a/third_party/libwebrtc/call/call.h b/third_party/libwebrtc/call/call.h
+--- a/third_party/libwebrtc/call/call.h
++++ b/third_party/libwebrtc/call/call.h
+@@ -142,6 +142,9 @@
+   virtual void SetClientBitratePreferences(
+       const BitrateSettings& preferences) = 0;
+ 
++  // Called on the worker thread when the host's external limits change.
++  virtual void UpdateExternalBitrateLimits() {}
++
+   // Decides which RTCP feedback type to use for congestion control.
+   virtual void SetPreferredRtcpCcAckType(
+       RtcpFeedbackType preferred_rtcp_cc_ack_type) = 0;

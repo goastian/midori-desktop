@@ -1,0 +1,11 @@
+diff --git a/third_party/libwebrtc/video/video_send_stream_impl.h b/third_party/libwebrtc/video/video_send_stream_impl.h
+--- a/third_party/libwebrtc/video/video_send_stream_impl.h
++++ b/third_party/libwebrtc/video/video_send_stream_impl.h
+@@ -130,6 +130,7 @@
+   void StopPermanentlyAndGetRtpStates(RtpStateMap* rtp_state_map,
+                                       RtpPayloadStateMap* payload_state_map);
+   void GenerateKeyFrame(const std::vector<std::string>& rids) override;
++  void DiscardPacketsCapturedBefore(Timestamp time);
+ 
+   // TODO(holmer): Move these to RtpTransportControllerSend.
+   std::map<uint32_t, RtpState> GetRtpStates() const;

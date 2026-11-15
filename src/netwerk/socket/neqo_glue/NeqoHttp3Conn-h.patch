@@ -1,0 +1,32 @@
+diff --git a/netwerk/socket/neqo_glue/NeqoHttp3Conn.h b/netwerk/socket/neqo_glue/NeqoHttp3Conn.h
+--- a/netwerk/socket/neqo_glue/NeqoHttp3Conn.h
++++ b/netwerk/socket/neqo_glue/NeqoHttp3Conn.h
+@@ -21,11 +21,11 @@
+       uint32_t aMaxTableSize, uint16_t aMaxBlockedStreams, uint64_t aMaxData,
+       uint64_t aMaxStreamData, bool aVersionNegotiation, bool aWebTransport,
+       const nsACString& aQlogDir, uint32_t aIdleTimeout, uint32_t aFastPto,
+-      NeqoHttp3Conn** aConn) {
++      bool aPMTUDEnabled, NeqoHttp3Conn** aConn) {
+     return neqo_http3conn_new_use_nspr_for_io(
+         &aOrigin, &aAlpn, &aLocalAddr, &aRemoteAddr, aMaxTableSize,
+         aMaxBlockedStreams, aMaxData, aMaxStreamData, aVersionNegotiation,
+-        aWebTransport, &aQlogDir, aIdleTimeout, aFastPto,
++        aWebTransport, &aQlogDir, aIdleTimeout, aFastPto, aPMTUDEnabled,
+         (const mozilla::net::NeqoHttp3Conn**)aConn);
+   }
+ 
+@@ -36,12 +36,12 @@
+                        bool aVersionNegotiation, bool aWebTransport,
+                        const nsACString& aQlogDir, uint32_t aIdleTimeout,
+                        uint32_t aFastPto, int64_t socket, bool aPMTUDEnabled,
+-                       NeqoHttp3Conn** aConn) {
++                       const void* aResourceFlow, NeqoHttp3Conn** aConn) {
+     return neqo_http3conn_new(
+         &aOrigin, &aAlpn, &aLocalAddr, &aRemoteAddr, aMaxTableSize,
+         aMaxBlockedStreams, aMaxData, aMaxStreamData, aVersionNegotiation,
+         aWebTransport, &aQlogDir, aIdleTimeout, aFastPto, socket, aPMTUDEnabled,
+-        (const mozilla::net::NeqoHttp3Conn**)aConn);
++        aResourceFlow, (const mozilla::net::NeqoHttp3Conn**)aConn);
+   }
+ 
+   NeqoHttp3Conn() = delete;

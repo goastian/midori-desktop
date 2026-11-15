@@ -1,0 +1,97 @@
+diff --git a/dom/media/webrtc/transport/nr_socket_prsock.h b/dom/media/webrtc/transport/nr_socket_prsock.h
+--- a/dom/media/webrtc/transport/nr_socket_prsock.h
++++ b/dom/media/webrtc/transport/nr_socket_prsock.h
+@@ -43,6 +43,7 @@
+ #ifndef nr_socket_prsock_
+ #define nr_socket_prsock_
+ 
++#include <deque>
+ #include <memory>
+ #include <queue>
+ 
+@@ -52,6 +53,7 @@
+ #include "mozilla/ReentrantMonitor.h"
+ #include "mozilla/RefPtr.h"
+ #include "mozilla/TimeStamp.h"
++#include "mozilla/net/MidoriDatagram.h"
+ #include "nsASocketHandler.h"
+ #include "nsCOMPtr.h"
+ #include "nsIEventTarget.h"
+@@ -182,13 +184,50 @@
+ 
+  protected:
+   virtual ~NrSocket() {
+-    if (fd_) PR_Close(fd_);
++    ClearQueuedOutput();
++    if (fd_) {
++      if (receive_headroom_)
++        receive_headroom_->Close(fd_);
++      else
++        PR_Close(fd_);
++    }
+   }
+ 
+   DISALLOW_COPY_ASSIGN(NrSocket);
+ 
+   PRFileDesc* fd_;
+   nsCOMPtr<nsIEventTarget> ststhread_;
++
++ private:
++  void UpdatePollFlags();
++  void EnsureReceiveHeadroom();
++  bool WaitForResourceQuota(bool aInput);
++  int SendDatagramNow(const void* aData, uint32_t aLength, int aFlags,
++                      const PRNetAddr& aAddress,
++                      const net::DatagramSendInfo& aSent);
++  void ClearQueuedOutput();
++  void ExpireQueuedMedia();
++  void FlushQueuedOutput();
++  void ScheduleQueuedOutput();
++
++  struct QueuedDatagram {
++    PRNetAddr address;
++    FallibleTArray<uint8_t> data;
++    int flags;
++    uint32_t charge;
++    TimeStamp expires;
++    bool urgent;
++    net::DatagramSendInfo sent;
++  };
++  std::unique_ptr<std::deque<QueuedDatagram>> queued_output_;
++  RefPtr<net::DatagramReceiveHeadroom> receive_headroom_;
++  uint64_t input_read_count_{0};
++  uint32_t last_input_size_{0};
++  uint32_t queued_output_bytes_{0};
++  TimeStamp next_media_expiry_;
++  bool queue_wake_pending_{false};
++  bool input_quota_pending_{false};
++  bool output_quota_pending_{false};
+ };
+ 
+ struct nr_udp_message {
+@@ -270,7 +309,16 @@
+   // Main or private thread executors of the NrSocketBase APIs
+   void create_i(const nsACString& host, const uint16_t port);
+   void connect_i(const nsACString& host, const uint16_t port);
+-  void sendto_i(const net::NetAddr& addr, UniquePtr<MediaPacket> buf);
++  struct PendingOutput;
++  struct OutputState;
++  void ScheduleOutput();
++  void ExpireQueuedMedia();
++  void FlushOutput();
++  void ClearOutput();
++  void CompleteOutput(RefPtr<PendingOutput> aPacket, nsresult aResult,
++                      const TimeStamp& aSentAt);
++  void sendto_ack_i(RefPtr<PendingOutput> aPacket,
++                    RefPtr<net::DatagramSendPromise::Private> aCompletion);
+   void close_i();
+ #if defined(MOZILLA_INTERNAL_API) && !defined(MOZILLA_XPCOMRT_API)
+   void destroy_i();
+@@ -283,6 +331,7 @@
+   NrSocketIpcState state_;
+ 
+   std::queue<RefPtr<nr_udp_message>> received_msgs_;
++  std::unique_ptr<OutputState> output_;
+ 
+   // only accessed from the io_thread
+   RefPtr<dom::UDPSocketChild> socket_child_;

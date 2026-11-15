@@ -1,0 +1,19 @@
+diff --git a/xpcom/base/moz.build b/xpcom/base/moz.build
+--- a/xpcom/base/moz.build
++++ b/xpcom/base/moz.build
+@@ -140,6 +140,7 @@
+     "MemoryMapping.h",
+     "MemoryReportingProcess.h",
+     "MemoryTelemetry.h",
++    "MidoriMediaTrace.h",
+     "nsMemoryInfoDumper.h",
+     "NSPRLogModulesParser.h",
+     "OwningNonNull.h",
+@@ -185,6 +186,7 @@
+     "Logging.cpp",
+     "LogModulePrefWatcher.cpp",
+     "MemoryTelemetry.cpp",
++    "MidoriMediaTrace.cpp",
+     "nsClassInfoImpl.cpp",
+     "nsCOMPtr.cpp",
+     "nsConsoleMessage.cpp",

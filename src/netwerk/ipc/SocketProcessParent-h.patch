@@ -1,0 +1,13 @@
+--- a/netwerk/ipc/SocketProcessParent.h
++++ b/netwerk/ipc/SocketProcessParent.h
+@@ -36,6 +36,10 @@
+   explicit SocketProcessParent(SocketProcessHost* aHost);
+ 
+   static already_AddRefed<SocketProcessParent> GetSingleton();
++
++  mozilla::ipc::IPCResult RecvRequestMidoriNetworkQuota(
++      const bool& aUpload, const uint32_t& aRequested, const uint32_t& aFlows,
++      RequestMidoriNetworkQuotaResolver&& aResolve);
+ 
+   mozilla::ipc::IPCResult RecvAddMemoryReport(const MemoryReport& aReport);
+   mozilla::ipc::IPCResult RecvAccumulateChildHistograms(

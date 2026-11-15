@@ -1,0 +1,23 @@
+diff --git a/third_party/libwebrtc/call/call_config.h b/third_party/libwebrtc/call/call_config.h
+--- a/third_party/libwebrtc/call/call_config.h
++++ b/third_party/libwebrtc/call/call_config.h
+@@ -10,6 +10,7 @@
+ #ifndef CALL_CALL_CONFIG_H_
+ #define CALL_CALL_CONFIG_H_
+ 
++#include <cstdint>
+ #include <memory>
+ #include <optional>
+ 
+@@ -67,6 +68,11 @@
+   // used to cap total bitrate used. This comes from the remote connection.
+   BitrateConstraints bitrate_config;
+ 
++  // Optional host limits in bits/s; zero leaves controller defaults unchanged.
++  int64_t (*send_bitrate_limit_bps)() = nullptr;
++  int64_t (*receive_bitrate_limit_bps)() = nullptr;
++  bool (*video_send_suspended)() = nullptr;
++
+   // AudioState which is possibly shared between multiple calls.
+   scoped_refptr<AudioState> audio_state;
+ 

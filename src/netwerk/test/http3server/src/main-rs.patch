@@ -1,0 +1,217 @@
+diff --git a/netwerk/test/http3server/src/main.rs b/netwerk/test/http3server/src/main.rs
+--- a/netwerk/test/http3server/src/main.rs
++++ b/netwerk/test/http3server/src/main.rs
+@@ -12,7 +12,7 @@
+ use neqo_http3::{
+     connect_udp::{ServerEvent as ConnectUdpServerEvent, ServerSession as ConnectUdpRequest},
+     webtransport::{ServerEvent as WebTransportServerEvent, ServerSession as WebTransportRequest},
+-    Error, Http3OrWebTransportStream, Http3Parameters, Http3Server, Http3ServerEvent,
++    Error, Http3OrWebTransportStream, Http3Parameters, Http3Server, Http3ServerEvent, Http3State,
+     SessionAcceptAction, StreamId,
+ };
+ use neqo_transport::server::ConnectionRef;
+@@ -1199,8 +1199,30 @@
+                     mut data,
+                     fin,
+                 } => {
+-                    if let Some((_, body)) = self.requests.get_mut(&stream) {
++                    if let Some((headers, body)) = self.requests.get_mut(&stream) {
++                        let previous = body.len();
+                         body.append(&mut data);
++                        static OBSERVE_UPLOADS: std::sync::OnceLock<bool> =
++                            std::sync::OnceLock::new();
++                        if *OBSERVE_UPLOADS.get_or_init(|| {
++                            env::var_os("MIDORI_HTTP3_UPLOAD_OBSERVATIONS").is_some()
++                        }) && (fin
++                            || (body.len() <= 65536
++                                && (previous == 0 || previous / 4096 != body.len() / 4096)))
++                        {
++                            if let Some(path) = headers
++                                .iter()
++                                .find(|header| header.name() == ":path")
++                                .and_then(|header| header.value_utf8().ok())
++                                .filter(|path| path.starts_with("/bulk-upload?id=http3-upload-flow-"))
++                            {
++                                let at = std::time::SystemTime::now()
++                                    .duration_since(std::time::UNIX_EPOCH)
++                                    .unwrap()
++                                    .as_micros();
++                                eprintln!("MIDORI_H3_UPLOAD {at} {} {path}", body.len());
++                            }
++                        }
+                     }
+                     if fin {
+                         if let Some((headers, body)) = self.requests.remove(&stream) {
+@@ -1235,7 +1257,7 @@
+ 
+ struct Http3ConnectProxyServer {
+     server: Http3Server,
+-    tcp_streams: HashMap<StreamId, TcpStream>,
++    tcp_streams: HashMap<Http3OrWebTransportStream, TcpStream>,
+     udp_sockets: HashMap<StreamId, UdpSocket>,
+ }
+ 
+@@ -1246,11 +1268,38 @@
+ }
+ 
+ impl Http3ConnectProxyServer {
+-    pub fn new(server: Http3Server) -> Self {
++    pub fn new(mut server: Http3Server) -> Self {
++        if let Some(dir) = env::var_os("MIDORI_HTTP3_CONNECT_QLOG_DIR") {
++            server.set_qlog_dir(Some(PathBuf::from(dir)));
++        }
+         Self {
+             server,
+             tcp_streams: HashMap::new(),
+             udp_sockets: HashMap::new(),
++        }
++    }
++
++    fn remove_tcp_stream(&mut self, stream: &Http3OrWebTransportStream, reason: &str) -> bool {
++        if let Some(tcp) = self.tcp_streams.remove(stream) {
++            static OBSERVE_CLEANUP: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++            if *OBSERVE_CLEANUP
++                .get_or_init(|| env::var_os("MIDORI_HTTP3_CONNECT_OBSERVATIONS").is_some())
++            {
++                let mut connection = DefaultHasher::new();
++                stream.conn.hash(&mut connection);
++                let at = std::time::SystemTime::now()
++                    .duration_since(std::time::UNIX_EPOCH)
++                    .unwrap()
++                    .as_micros();
++                eprintln!(
++                    "MIDORI_H3_TCP_CLEANUP at={at} connection={:x} stream={} reason={reason} recv-buffer={} send-buffer={} remaining={}",
++                    connection.finish(), stream.stream_id(), tcp.recv_buffer.len(),
++                    tcp.send_buffer.len(), self.tcp_streams.len()
++                );
++            }
++            true
++        } else {
++            false
+         }
+     }
+ }
+@@ -1331,8 +1380,25 @@
+                             Header::new("cache-control", "no-cache"),
+                         ])
+                         .unwrap();
++                    static OBSERVE_CONNECTS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++                    if *OBSERVE_CONNECTS
++                        .get_or_init(|| env::var_os("MIDORI_HTTP3_CONNECT_OBSERVATIONS").is_some())
++                    {
++                        let mut current = DefaultHasher::new();
++                        stream.conn.hash(&mut current);
++                        let previous = self.tcp_streams.get(&stream);
++                        let mut previous_hash = DefaultHasher::new();
++                        if let Some(previous) = previous {
++                            previous.session.conn.hash(&mut previous_hash);
++                        }
++                        eprintln!(
++                            "MIDORI_H3_CONNECT connection={:x} stream={} previous={:x} replaced={} entries={}",
++                            current.finish(), stream.stream_id(), previous_hash.finish(),
++                            previous.is_some(), self.tcp_streams.len()
++                        );
++                    }
+                     self.tcp_streams.insert(
+-                        stream.stream_id(),
++                        stream.clone(),
+                         TcpStream {
+                             send_buffer: VecDeque::new(),
+                             recv_buffer: VecDeque::new(),
+@@ -1345,7 +1411,9 @@
+                 }
+                 Http3ServerEvent::Data { stream, data, fin } => {
+                     qtrace!("tcp_stream send to server len={}", data.len());
+-                    let tcp_stream = self.tcp_streams.get_mut(&stream.stream_id()).unwrap();
++                    let Some(tcp_stream) = self.tcp_streams.get_mut(&stream) else {
++                        continue;
++                    };
+                     // TODO: extend() effectively breaks backpressure.
+                     tcp_stream.send_buffer.extend(data);
+                     tcp_stream.send_fin |= fin;
+@@ -1355,7 +1423,9 @@
+                         "Http3ServerEvent::DataWritable streamid={}",
+                         stream.stream_id()
+                     );
+-                    let tcp_stream = self.tcp_streams.get_mut(&stream.stream_id()).unwrap();
++                    let Some(tcp_stream) = self.tcp_streams.get_mut(&stream) else {
++                        continue;
++                    };
+                     while !tcp_stream.recv_buffer.is_empty() {
+                         match stream.send_data(&tcp_stream.recv_buffer.make_contiguous(), now) {
+                             Ok(sent) => {
+@@ -1447,16 +1517,31 @@
+                     );
+                     self.udp_sockets.remove(&session.stream_id());
+                 }
+-                Http3ServerEvent::StateChange { .. } | Http3ServerEvent::PriorityUpdate { .. } => {}
++                Http3ServerEvent::StateChange { conn, state } => {
++                    if matches!(state, Http3State::Closing(_) | Http3State::Closed(_)) {
++                        let streams: Vec<_> = self
++                            .tcp_streams
++                            .keys()
++                            .filter(|stream| stream.conn == conn)
++                            .cloned()
++                            .collect();
++                        for stream in streams {
++                            self.remove_tcp_stream(&stream, "connection-closed");
++                        }
++                    }
++                }
++                Http3ServerEvent::PriorityUpdate { .. } => {}
+                 Http3ServerEvent::StreamReset { stream, error } => {
+-                    qtrace!("Http3ServerEvent::StreamReset {:?} {:?}", stream, error);
++                    if self.remove_tcp_stream(&stream, "reset") {
++                        let _ = stream.stream_reset_send(error);
++                        let _ = stream.stream_stop_sending(error);
++                    }
+                 }
+                 Http3ServerEvent::StreamStopSending { stream, error } => {
+-                    qtrace!(
+-                        "Http3ServerEvent::StreamStopSending {:?} {:?}",
+-                        stream,
+-                        error
+-                    );
++                    if self.remove_tcp_stream(&stream, "stop-sending") {
++                        let _ = stream.stream_reset_send(error);
++                        let _ = stream.stream_stop_sending(error);
++                    }
+                 }
+                 Http3ServerEvent::WebTransport(_) => {}
+             }
+@@ -1471,10 +1556,24 @@
+         let mut progressed = false;
+         let mut failed_udp_sockets: Vec<StreamId> = Vec::new();
+ 
++        static READ_BUFFER_LIMIT: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
++        let limit = *READ_BUFFER_LIMIT.get_or_init(|| {
++            let value = env::var("MIDORI_HTTP3_TCP_READ_BUFFER_LIMIT")
++                .ok()
++                .and_then(|value| value.parse::<usize>().ok())
++                .filter(|value| *value > 0)
++                .unwrap_or(usize::MAX);
++            eprintln!("MIDORI_H3_TCP_READ_BUFFER_LIMIT {value}");
++            value
++        });
+         for (_sessionid, stream) in &mut self.tcp_streams {
+             if let Poll::Ready(Ok(())) = stream.stream.poll_read_ready(cx) {
+                 loop {
+-                    let mut buf = vec![0; 1024];
++                    let remaining = limit.saturating_sub(stream.recv_buffer.len());
++                    if remaining == 0 {
++                        break;
++                    }
++                    let mut buf = vec![0; remaining.min(1024)];
+                     match stream.stream.try_read(&mut buf) {
+                         Ok(0) => {
+                             qdebug!("TCP: Received 0 bytes -FIN");
+@@ -1484,8 +1583,8 @@
+                         }
+                         Ok(n) => {
+                             qdebug!("TCP: Received {} bytes from origin", n);
+-                            // TODO: extend() effectively breaks backpressure.
+                             stream.recv_buffer.extend(&buf[0..n]);
++                            assert!(stream.recv_buffer.len() <= limit);
+                             while !stream.recv_buffer.is_empty() {
+                                 let sent = match stream.session.send_data(
+                                     &stream.recv_buffer.make_contiguous(),

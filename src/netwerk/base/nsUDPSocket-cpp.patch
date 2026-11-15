@@ -1,0 +1,929 @@
+diff --git a/netwerk/base/nsUDPSocket.cpp b/netwerk/base/nsUDPSocket.cpp
+--- a/netwerk/base/nsUDPSocket.cpp
++++ b/netwerk/base/nsUDPSocket.cpp
+@@ -4,10 +4,14 @@
+ 
+ #include "nsUDPSocket.h"
+ 
++#include <algorithm>
++
+ #include "HttpConnectionUDP.h"
++#include "MidoriNetworkBudget.h"
+ #include "MockNetworkLayer.h"
+ #include "mozilla/Components.h"
+ #include "mozilla/HoldDropJSObjects.h"
++#include "mozilla/Logging.h"
+ #include "mozilla/ProfilerBandwidthCounter.h"
+ #include "mozilla/StaticPrefs_network.h"
+ #include "mozilla/dom/TypedArray.h"
+@@ -42,7 +46,234 @@
+ namespace mozilla {
+ namespace net {
+ 
++static LazyLogModule sMidoriUdpResourceLog("MidoriUdpResource");
++
+ static const uint32_t UDP_PACKET_CHUNK_SIZE = 1400;
++static const uint32_t UDP_QUEUED_SOCKET_LIMIT = 1024 * 1024;
++static const uint32_t UDP_QUEUED_PACKET_OVERHEAD = 256;
++
++UDPDatagramReservation::UDPDatagramReservation(nsUDPSocket* aSocket,
++                                               uint32_t aBytes)
++    : mSocket(aSocket), mBytes(aBytes) {}
++
++UDPDatagramReservation::~UDPDatagramReservation() {
++  mSocket->ReleaseQueuedOutput(mBytes);
++  mCompletion.RejectIfExists(NS_BASE_STREAM_CLOSED, __func__);
++}
++
++RefPtr<DatagramSendPromise> UDPDatagramReservation::Completion() {
++  return mCompletion.Ensure(__func__);
++}
++
++void UDPDatagramReservation::Complete(nsresult aResult,
++                                      const TimeStamp& aSentAt) {
++  if (NS_FAILED(aResult))
++    mCompletion.RejectIfExists(aResult, __func__);
++  else
++    mCompletion.ResolveIfExists(aSentAt, __func__);
++}
++
++nsresult nsUDPSocket::ReserveQueuedOutput(
++    uint32_t aLength, RefPtr<UDPDatagramReservation>& aReservation) {
++  if (aLength > UINT16_MAX) return NS_ERROR_ILLEGAL_VALUE;
++  const uint32_t bytes = aLength + UDP_QUEUED_PACKET_OVERHEAD;
++  {
++    MutexAutoLock lock(mLock);
++    if (mQueuedOutputBytes > UDP_QUEUED_SOCKET_LIMIT - bytes) {
++      return NS_BASE_STREAM_WOULD_BLOCK;
++    }
++    if (!MidoriNetworkBudget::ReserveDatagramBytes(bytes)) {
++      return NS_BASE_STREAM_WOULD_BLOCK;
++    }
++    mQueuedOutputBytes += bytes;
++  }
++  aReservation = new UDPDatagramReservation(this, bytes);
++  return NS_OK;
++}
++
++void nsUDPSocket::ReleaseQueuedOutput(uint32_t aBytes) {
++  MutexAutoLock lock(mLock);
++  MOZ_ASSERT(mQueuedOutputBytes >= aBytes);
++  mQueuedOutputBytes -= aBytes;
++  MidoriNetworkBudget::ReleaseDatagramBytes(aBytes);
++}
++
++nsresult AsyncListenWithoutReplyStream(nsIUDPSocket* aSocket,
++                                       nsIUDPSocketListener* aListener) {
++  NS_ENSURE_ARG(aSocket);
++  NS_ENSURE_ARG(aListener);
++  nsCOMPtr<nsUDPSocket> socket = do_QueryObject(aSocket);
++  return socket ? socket->AsyncListenWithoutReplyStream(aListener)
++                : aSocket->AsyncListen(aListener);
++}
++
++RefPtr<DatagramSendPromise> SendDatagramWithCompletion(
++    nsIUDPSocket* aSocket, const NetAddr& aAddress,
++    const nsTArray<uint8_t>& aData, DatagramSendOptions aOptions) {
++  nsCOMPtr<nsUDPSocket> socket = do_QueryObject(aSocket);
++  if (!socket) {
++    return DatagramSendPromise::CreateAndReject(NS_ERROR_NOT_IMPLEMENTED,
++                                                __func__);
++  }
++  return socket->SendWithCompletion(aAddress, aData, aOptions);
++}
++
++RefPtr<DatagramSendPromise> nsUDPSocket::SendWithCompletion(
++    const NetAddr& aAddress, const nsTArray<uint8_t>& aData, DatagramSendOptions aOptions) {
++  RefPtr<UDPDatagramReservation> reservation;
++  nsresult rv = ReserveQueuedOutput(aData.Length(), reservation);
++  if (NS_FAILED(rv)) return DatagramSendPromise::CreateAndReject(rv, __func__);
++  FallibleTArray<uint8_t> data;
++  if (!data.AppendElements(aData.Elements(), aData.Length(), fallible)) {
++    return DatagramSendPromise::CreateAndReject(NS_ERROR_OUT_OF_MEMORY,
++                                                __func__);
++  }
++  RefPtr<DatagramSendPromise> completion = reservation->Completion();
++  QueueDatagram(aAddress, std::move(data), std::move(reservation), aOptions);
++  return completion;
++}
++
++nsresult nsUDPSocket::QueueDatagram(
++    const NetAddr& aAddr, FallibleTArray<uint8_t>&& aData,
++    RefPtr<UDPDatagramReservation> aReservation, DatagramSendOptions aOptions) {
++  MOZ_ASSERT(aReservation);
++  if (!OnSocketThread()) {
++    RefPtr<UDPDatagramReservation> reservation = aReservation;
++    nsresult rv = mSts->Dispatch(
++        NS_NewRunnableFunction("nsUDPSocket::QueueDatagram",
++                               [self = RefPtr{this}, addr = aAddr,
++                                reservation = std::move(aReservation),
++                                data = std::move(aData), aOptions]() mutable {
++                                 self->QueueDatagram(addr, std::move(data),
++                                                     std::move(reservation), aOptions);
++                               }),
++        NS_DISPATCH_NORMAL);
++    if (NS_FAILED(rv)) reservation->Complete(rv);
++    return rv;
++  }
++  if (!mFD || NS_FAILED(mCondition)) {
++    aReservation->Complete(NS_BASE_STREAM_CLOSED);
++    return NS_BASE_STREAM_CLOSED;
++  }
++  ExpireQueuedMedia();
++  if (!aOptions.expires.IsNull() &&
++      (mNextMediaExpiry.IsNull() || aOptions.expires < mNextMediaExpiry)) {
++    mNextMediaExpiry = aOptions.expires;
++  }
++  QueuedDatagram packet{aAddr, std::move(aReservation), aOptions, std::move(aData)};
++  if (aOptions.urgent) {
++    const auto position = std::find_if(
++        mQueuedDatagrams.begin(), mQueuedDatagrams.end(),
++        [](const QueuedDatagram& aPacket) { return !aPacket.mOptions.urgent; });
++    mQueuedDatagrams.insert(position, std::move(packet));
++  } else {
++    mQueuedDatagrams.push_back(std::move(packet));
++  }
++  FlushQueuedOutput();
++  return mCondition;
++}
++
++void nsUDPSocket::ExpireQueuedMedia() {
++  if (mNextMediaExpiry.IsNull()) return;
++  const TimeStamp now = TimeStamp::Now();
++  if (mNextMediaExpiry > now) return;
++  mNextMediaExpiry = TimeStamp();
++  for (auto packet = mQueuedDatagrams.begin(); packet != mQueuedDatagrams.end();) {
++    if (packet->mOptions.expires.IsNull() || packet->mOptions.expires > now) {
++      if (!packet->mOptions.expires.IsNull() &&
++          (mNextMediaExpiry.IsNull() ||
++           packet->mOptions.expires < mNextMediaExpiry)) {
++        mNextMediaExpiry = packet->mOptions.expires;
++      }
++      ++packet;
++    } else {
++      auto reservation = std::move(packet->mReservation);
++      packet = mQueuedDatagrams.erase(packet);
++      reservation->Complete(NS_OK);
++    }
++  }
++  if (mQueuedDatagrams.empty() && mOutputStreamWaiters.IsEmpty()) {
++    MidoriNetworkBudget::CancelDatagramDemand(
++        MidoriNetworkBudget::Direction::Upload,
++        static_cast<nsIUDPSocket*>(this));
++  }
++}
++
++void nsUDPSocket::ClearQueuedOutput(nsresult aReason) {
++  mNextMediaExpiry = TimeStamp();
++  while (!mQueuedDatagrams.empty()) {
++    auto reservation = std::move(mQueuedDatagrams.front().mReservation);
++    mQueuedDatagrams.pop_front();
++    reservation->Complete(aReason);
++  }
++  if (mOutputStreamWaiters.IsEmpty()) {
++    MidoriNetworkBudget::CancelDatagramDemand(
++        MidoriNetworkBudget::Direction::Upload,
++        static_cast<nsIUDPSocket*>(this));
++  }
++}
++
++void nsUDPSocket::ScheduleQueuedOutput(uint32_t aDelay) {
++  MOZ_ASSERT(OnSocketThread());
++  if (mQueueWakePending || mQueuedDatagrams.empty()) return;
++  mQueueWakePending = true;
++  nsCOMPtr<nsIRunnable> event = NS_NewRunnableFunction(
++      "nsUDPSocket::FlushQueuedOutput", [self = RefPtr{this}]() {
++        self->mQueueWakePending = false;
++        self->FlushQueuedOutput();
++      });
++  nsresult rv = aDelay
++                    ? NS_DelayedDispatchToCurrentThread(event.forget(), aDelay)
++                    : NS_DispatchToCurrentThread(event.forget());
++  if (NS_FAILED(rv)) {
++    mQueueWakePending = false;
++    mCondition = rv;
++    ClearQueuedOutput(rv);
++    if (!mAttached) OnSocketDetached(mFD);
++  }
++}
++
++void nsUDPSocket::FlushQueuedOutput() {
++  MOZ_ASSERT(OnSocketThread());
++  if (!mFD || NS_FAILED(mCondition)) {
++    ClearQueuedOutput(NS_BASE_STREAM_CLOSED);
++    return;
++  }
++  ExpireQueuedMedia();
++  uint32_t sent = 0;
++  while (!mQueuedDatagrams.empty() && sent < 64) {
++    auto& packet = mQueuedDatagrams.front();
++    uint32_t written = 0;
++    TimeStamp sentAt;
++    nsresult rv = SendDatagramNow(&packet.mAddr, packet.mData.Elements(),
++                                  packet.mData.Length(), &written, &sentAt);
++    if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
++      ScheduleQueuedOutput(
++          std::max(10U, MidoriNetworkBudget::WaitMilliseconds(
++                            MidoriNetworkBudget::Direction::Upload, true,
++                            static_cast<nsIUDPSocket*>(this))));
++      return;
++    }
++    if (NS_FAILED(rv)) {
++      mCondition = rv;
++      ClearQueuedOutput(rv);
++      if (!mAttached) OnSocketDetached(mFD);
++      return;
++    }
++    MOZ_ASSERT(written == packet.mData.Length());
++    auto reservation = std::move(packet.mReservation);
++    mQueuedDatagrams.pop_front();
++    reservation->Complete(NS_OK, sentAt);
++    ++sent;
++  }
++  if (!mQueuedDatagrams.empty()) {
++    ScheduleQueuedOutput(0);
++  } else if (mOutputStreamWaiters.IsEmpty()) {
++    MidoriNetworkBudget::CancelDatagramDemand(
++        MidoriNetworkBudget::Direction::Upload,
++        static_cast<nsIUDPSocket*>(this));
++  }
++}
+ 
+ //-----------------------------------------------------------------------------
+ 
+@@ -108,54 +339,163 @@
+ //-----------------------------------------------------------------------------
+ // nsUDPOutputStream impl
+ //-----------------------------------------------------------------------------
+-NS_IMPL_ISUPPORTS(nsUDPOutputStream, nsIOutputStream)
++NS_IMPL_QUERY_INTERFACE(nsUDPOutputStream, nsIOutputStream,
++                        nsIAsyncOutputStream)
++NS_IMPL_ADDREF_INHERITED(nsUDPOutputStream,
++                         SupportsThreadSafeWeakPtr<nsUDPOutputStream>)
++NS_IMPL_RELEASE_INHERITED(nsUDPOutputStream,
++                          SupportsThreadSafeWeakPtr<nsUDPOutputStream>)
+ 
+ nsUDPOutputStream::nsUDPOutputStream(nsUDPSocket* aSocket,
+-                                     PRNetAddr& aPrClientAddr)
+-    : mSocket(aSocket), mPrClientAddr(aPrClientAddr), mIsClosed(false) {}
++                                     PRNetAddr& aPrClientAddr,
++                                     nsIInputStream* aSource)
++    : mSocket(aSocket),
++      mSource(do_QueryInterface(aSource)),
++      mClientAddr(&aPrClientAddr) {}
+ 
+ NS_IMETHODIMP nsUDPOutputStream::Close() {
+-  if (mIsClosed) return NS_BASE_STREAM_CLOSED;
+-
+-  mIsClosed = true;
+-  if (mSocket->IsSocketClosed()) {
+-    return NS_BASE_STREAM_CLOSED;
+-  }
++  return CloseWithStatus(NS_BASE_STREAM_CLOSED);
++}
++
++NS_IMETHODIMP nsUDPOutputStream::CloseWithStatus(nsresult aReason) {
++  if (!OnSocketThread()) {
++    return mSocket->mSts->Dispatch(
++        NS_NewRunnableFunction("nsUDPOutputStream::CloseWithStatus",
++                               [self = RefPtr{this}, aReason]() {
++                                 self->CloseWithStatus(aReason);
++                               }),
++        NS_DISPATCH_NORMAL);
++  }
++  if (NS_SUCCEEDED(mStatus)) {
++    mStatus = NS_FAILED(aReason) ? aReason : NS_BASE_STREAM_CLOSED;
++  }
++  mSocket->RemoveOutputStreamWaiter(this);
++  if (mSocket->mQueuedDatagrams.empty() &&
++      mSocket->mOutputStreamWaiters.IsEmpty()) {
++    MidoriNetworkBudget::CancelDatagramDemand(
++        MidoriNetworkBudget::Direction::Upload,
++        static_cast<nsIUDPSocket*>(mSocket.get()));
++  }
++  nsCOMPtr<nsIAsyncInputStream> source = std::move(mSource);
++  if (source) source->CloseWithStatus(mStatus);
++  NotifyReady(false);
+   return NS_OK;
+ }
+ 
+ NS_IMETHODIMP nsUDPOutputStream::Flush() { return NS_OK; }
+ 
+ NS_IMETHODIMP nsUDPOutputStream::StreamStatus() {
+-  return mIsClosed ? NS_BASE_STREAM_CLOSED : NS_OK;
++  nsresult status = mStatus;
++  if (NS_FAILED(status)) return status;
++  MutexAutoLock lock(mSocket->mLock);
++  return mSocket->mFD ? NS_OK : NS_BASE_STREAM_CLOSED;
+ }
+ 
+ NS_IMETHODIMP nsUDPOutputStream::Write(const char* aBuf, uint32_t aCount,
+-                                       uint32_t* _retval) {
+-  if (mIsClosed) return NS_BASE_STREAM_CLOSED;
+-
+-  if (mSocket->IsSocketClosed()) {
+-    mIsClosed = true;
+-    return NS_BASE_STREAM_CLOSED;
+-  }
+-
+-  *_retval = 0;
+-  PRFileDesc* fd = mSocket->GetFD();
+-  if (!fd) {
+-    return NS_BASE_STREAM_CLOSED;
+-  }
+-  int32_t count =
+-      PR_SendTo(fd, aBuf, aCount, 0, &mPrClientAddr, PR_INTERVAL_NO_WAIT);
+-  if (count < 0) {
+-    PRErrorCode code = PR_GetError();
+-    return ErrorAccordingToNSPR(code);
+-  }
+-
+-  *_retval = count;
+-
+-  mSocket->AddOutputBytes(count);
+-
+-  return NS_OK;
++                                       uint32_t* aWritten) {
++  MOZ_ASSERT(OnSocketThread());
++  *aWritten = 0;
++  nsresult rv = StreamStatus();
++  NS_ENSURE_SUCCESS(rv, rv);
++  rv = mSocket->SendDatagramNow(
++      &mClientAddr, reinterpret_cast<const uint8_t*>(aBuf), aCount, aWritten);
++  mRetryPending = rv == NS_BASE_STREAM_WOULD_BLOCK;
++  if (NS_FAILED(rv) && !mRetryPending) mStatus = rv;
++  return rv;
++}
++
++bool nsUDPOutputStream::WaitingForOutput() const {
++  return mCallback && !(mCallbackFlags & WAIT_CLOSURE_ONLY);
++}
++
++bool nsUDPOutputStream::NotifyReady(bool aRetry) {
++  MOZ_ASSERT(OnSocketThread());
++  if (!mCallback) return false;
++  if (NS_SUCCEEDED(StreamStatus()) &&
++      (!WaitingForOutput() || (mRetryPending && !aRetry) ||
++       MidoriNetworkBudget::WaitMilliseconds(
++           MidoriNetworkBudget::Direction::Upload, true,
++           static_cast<nsIUDPSocket*>(mSocket.get())))) {
++    return true;
++  }
++  nsCOMPtr<nsIOutputStreamCallback> callback = std::move(mCallback);
++  mRetryPending = false;
++  callback->OnOutputStreamReady(this);
++  return false;
++}
++
++NS_IMETHODIMP nsUDPOutputStream::AsyncWait(nsIOutputStreamCallback* aCallback,
++                                           uint32_t aFlags,
++                                           uint32_t aRequestedCount,
++                                           nsIEventTarget* aEventTarget) {
++  nsCOMPtr<nsIOutputStreamCallback> callback;
++  if (aCallback) {
++    callback = NS_NewOutputStreamReadyEvent(
++        aCallback, aEventTarget ? aEventTarget : mSocket->mSts.get());
++  }
++  if (!OnSocketThread()) {
++    return mSocket->mSts->Dispatch(
++        NS_NewRunnableFunction(
++            "nsUDPOutputStream::AsyncWait",
++            [self = RefPtr{this}, callback = std::move(callback), aFlags]() {
++              self->AsyncWait(callback, aFlags, 0, nullptr);
++            }),
++        NS_DISPATCH_NORMAL);
++  }
++  mSocket->RemoveOutputStreamWaiter(this);
++  mCallback = std::move(callback);
++  mCallbackFlags = aFlags;
++  if (NotifyReady(false)) mSocket->AddOutputStreamWaiter(this);
++  return NS_OK;
++}
++
++void nsUDPSocket::AddOutputStreamWaiter(nsUDPOutputStream* aStream) {
++  MOZ_ASSERT(OnSocketThread());
++  mOutputStreamWaiters.AppendElement(aStream);
++  if (aStream->WaitingForOutput()) ScheduleOutputStreams();
++}
++
++void nsUDPSocket::RemoveOutputStreamWaiter(nsUDPOutputStream* aStream) {
++  MOZ_ASSERT(OnSocketThread());
++  mOutputStreamWaiters.RemoveElementsBy(
++      [&](const auto& weak) { return weak.IsDead() || weak == aStream; });
++}
++
++void nsUDPSocket::ScheduleOutputStreams() {
++  MOZ_ASSERT(OnSocketThread());
++  if (mStreamWakePending) return;
++  mStreamWakePending = true;
++  nsresult rv = NS_DelayedDispatchToCurrentThread(
++      NS_NewRunnableFunction("nsUDPSocket::WakeOutputStreams",
++                             [self = RefPtr{this}]() {
++                               self->mStreamWakePending = false;
++                               self->WakeOutputStreams();
++                             }),
++      std::max(10U, MidoriNetworkBudget::WaitMilliseconds(
++                        MidoriNetworkBudget::Direction::Upload, true,
++                        static_cast<nsIUDPSocket*>(this))));
++  if (NS_FAILED(rv)) {
++    mStreamWakePending = false;
++    mCondition = rv;
++    if (!mAttached) OnSocketDetached(mFD);
++  }
++}
++
++void nsUDPSocket::WakeOutputStreams() {
++  MOZ_ASSERT(OnSocketThread());
++  auto waiters = std::move(mOutputStreamWaiters);
++  bool pending = false;
++  for (const auto& weak : waiters) {
++    RefPtr<nsUDPOutputStream> stream(weak);
++    if (!stream) continue;
++    if (NS_FAILED(mCondition))
++      stream->CloseWithStatus(mCondition);
++    else if (stream->NotifyReady(true)) {
++      mOutputStreamWaiters.AppendElement(weak);
++      pending |= stream->WaitingForOutput();
++    }
++  }
++  if (pending) ScheduleOutputStreams();
+ }
+ 
+ NS_IMETHODIMP nsUDPOutputStream::WriteFrom(nsIInputStream* aFromStream,
+@@ -407,6 +747,61 @@
+ // nsUDPSocket::nsASocketHandler
+ //-----------------------------------------------------------------------------
+ 
++void nsUDPSocket::EnsureReceiveHeadroom() {
++  if (!mReceiveBufferOverride && mLastInputSize >= 512 &&
++      (!mReceiveHeadroom || !mReceiveHeadroom->Renew())) {
++    mReceiveHeadroom = DatagramReceiveHeadroom::Create(mFD);
++  }
++}
++
++bool nsUDPSocket::WaitForResourceQuota(bool aInput, bool aNewInput) {
++  MOZ_ASSERT(OnSocketThread());
++  if (!mFD || NS_FAILED(mCondition) || (!aInput && !mSyncListener))
++    return false;
++  if (aInput && MidoriNetworkBudget::DownloadRate()) {
++    PRPollDesc pendingRead{mFD, PR_POLL_READ, 0};
++    if (PR_Poll(&pendingRead, 1, PR_INTERVAL_NO_WAIT) <= 0 ||
++        !(pendingRead.out_flags & PR_POLL_READ)) {
++      MidoriNetworkBudget::CancelDatagramDemand(
++          MidoriNetworkBudget::Direction::Download,
++          static_cast<nsIUDPSocket*>(this));
++    }
++  }
++  const uint32_t delay = MidoriNetworkBudget::WaitMilliseconds(
++      aInput ? MidoriNetworkBudget::Direction::Download
++             : MidoriNetworkBudget::Direction::Upload,
++      true, static_cast<nsIUDPSocket*>(this));
++  if (!delay) return false;
++  if (aInput && aNewInput) EnsureReceiveHeadroom();
++  bool& pending = aInput ? mInputQuotaPending : mOutputQuotaPending;
++  if (!pending) {
++    pending = true;
++    const nsresult rv = NS_DelayedDispatchToCurrentThread(
++        NS_NewRunnableFunction(
++            "nsUDPSocket::ResourceQuota",
++            [self = RefPtr{this}, aInput]() {
++              bool& waiting =
++                  aInput ? self->mInputQuotaPending : self->mOutputQuotaPending;
++              waiting = false;
++              if (!self->mFD || NS_FAILED(self->mCondition) ||
++                  (!aInput && !self->mSyncListener))
++                return;
++              if (!self->WaitForResourceQuota(aInput)) {
++                self->mPollFlags |=
++                    (aInput ? PR_POLL_READ : PR_POLL_WRITE) | PR_POLL_EXCEPT;
++              }
++            }),
++        delay);
++    if (NS_FAILED(rv)) {
++      pending = false;
++      return false;
++    }
++  }
++  mPollFlags &= ~(aInput ? PR_POLL_READ : PR_POLL_WRITE);
++  if (mPollFlags == PR_POLL_EXCEPT) mPollFlags = 0;
++  return true;
++}
++
+ void nsUDPSocket::OnSocketReady(PRFileDesc* fd, int16_t outFlags) {
+   UDPSOCKET_LOG(
+       ("nsUDPSocket::OnSocketReady: flags=%d [this=%p]\n", outFlags, this));
+@@ -426,19 +821,36 @@
+       // call OnPacketReceived() to trigger the read code (which eventually
+       // calls SendData). We might consider splitting out a separate
+       // write-ready-only callback in the future.
+-      mPollFlags = (PR_POLL_READ | PR_POLL_EXCEPT);
++      mPollFlags &= ~PR_POLL_WRITE;
++      if (!mInputQuotaPending) mPollFlags |= PR_POLL_READ | PR_POLL_EXCEPT;
+     }
+     mSyncListener->OnPacketReceived(this);
++    WaitForResourceQuota(true);
++    if (mPollFlags & PR_POLL_WRITE) WaitForResourceQuota(false);
+     return;
+   }
+ 
++  if (mReceiveHeadroom && !mReceiveHeadroom->IsActive())
++    mReceiveHeadroom = nullptr;
+   PRNetAddr prClientAddr;
+   int32_t count;
+   // Bug 1252755 - use 9216 bytes to allign with nICEr and transportlayer to
+   // support the maximum size of jumbo frames
+   char buff[9216];
++  const auto reservation = MidoriNetworkBudget::Reserve(
++      MidoriNetworkBudget::Direction::Download, sizeof(buff), true,
++      static_cast<nsIUDPSocket*>(this));
++  if (!reservation.bytes) {
++    EnsureReceiveHeadroom();
++    WaitForResourceQuota(true);
++    return;
++  }
+   count = PR_RecvFrom(mFD, buff, sizeof(buff), 0, &prClientAddr,
+                       PR_INTERVAL_NO_WAIT);
++  MidoriNetworkBudget::Refund(MidoriNetworkBudget::Direction::Download,
++                              reservation, count > 0 ? count : 0);
++  if (count > 0) mLastInputSize = count;
++  WaitForResourceQuota(true, count > 0);
+   if (count < 0) {
+     UDPSOCKET_LOG(
+         ("nsUDPSocket::OnSocketReady: PR_RecvFrom failed [this=%p]\n", this));
+@@ -454,22 +866,26 @@
+     return;
+   }
+ 
+-  nsCOMPtr<nsIAsyncInputStream> pipeIn;
+   nsCOMPtr<nsIAsyncOutputStream> pipeOut;
+-
+-  uint32_t segsize = UDP_PACKET_CHUNK_SIZE;
+-  uint32_t segcount = 0;
+-  net_ResolveSegmentParams(segsize, segcount);
+-  NS_NewPipe2(getter_AddRefs(pipeIn), getter_AddRefs(pipeOut), true, true,
+-              segsize, segcount);
+-
+-  RefPtr<nsUDPOutputStream> os = new nsUDPOutputStream(this, prClientAddr);
+-  nsresult rv = NS_AsyncCopy(pipeIn, os, mSts, NS_ASYNCCOPY_VIA_READSEGMENTS,
+-                             UDP_PACKET_CHUNK_SIZE);
+-
+-  if (NS_FAILED(rv)) {
+-    return;
+-  }
++  if (mCreateReplyStream) {
++    nsCOMPtr<nsIAsyncInputStream> pipeIn;
++    uint32_t segsize = UDP_PACKET_CHUNK_SIZE;
++    uint32_t segcount = 0;
++    net_ResolveSegmentParams(segsize, segcount);
++    NS_NewPipe2(getter_AddRefs(pipeIn), getter_AddRefs(pipeOut), true, true,
++                segsize, segcount);
++
++    RefPtr<nsUDPOutputStream> os =
++        new nsUDPOutputStream(this, prClientAddr, pipeIn);
++    nsresult rv = NS_AsyncCopy(pipeIn, os, mSts, NS_ASYNCCOPY_VIA_READSEGMENTS,
++                               UDP_PACKET_CHUNK_SIZE);
++    if (NS_FAILED(rv)) {
++      return;
++    }
++  }
++  MOZ_LOG_FMT(sMidoriUdpResourceLog, LogLevel::Debug,
++              "delivery socket={} reply_stream={} bytes={}",
++              static_cast<const void*>(this), bool(pipeOut), count);
+ 
+   NetAddr netAddr(&prClientAddr);
+   nsCOMPtr<nsIUDPMessage> message =
+@@ -484,6 +900,8 @@
+   UDPSOCKET_LOG(("nsUDPSocket::OnSocketDetached [this=%p]\n", this));
+   // force a failure condition if none set; maybe the STS is shutting down :-/
+   if (NS_SUCCEEDED(mCondition)) mCondition = NS_ERROR_ABORT;
++  ClearQueuedOutput(mCondition);
++  WakeOutputStreams();
+ 
+   if (mFD) {
+     NS_ASSERTION(mFD == fd, "wrong file descriptor");
+@@ -541,7 +959,7 @@
+ // nsSocket::nsISupports
+ //-----------------------------------------------------------------------------
+ 
+-NS_IMPL_ISUPPORTS(nsUDPSocket, nsIUDPSocket)
++NS_IMPL_ISUPPORTS(nsUDPSocket, nsIUDPSocket, nsUDPSocket)
+ 
+ //-----------------------------------------------------------------------------
+ // nsSocket::nsISocket
+@@ -744,8 +1162,6 @@
+       // Here we want to go directly with closing the socket since some tests
+       // expects this happen synchronously.
+       CloseSocket();
+-
+-      return NS_OK;
+     }
+   }
+   return PostEvent(this, &nsUDPSocket::OnMsgClose);
+@@ -771,19 +1187,29 @@
+ }
+ 
+ void nsUDPSocket::CloseSocket() {
++  MidoriNetworkBudget::ForgetDatagramFlow(
++      MidoriNetworkBudget::Direction::Upload, static_cast<nsIUDPSocket*>(this));
++  MidoriNetworkBudget::ForgetDatagramFlow(
++      MidoriNetworkBudget::Direction::Download,
++      static_cast<nsIUDPSocket*>(this));
+   if (mFD) {
+     if (gIOService->IsNetTearingDown() &&
+         ((PR_IntervalNow() - gIOService->NetTearingDownStarted()) >
+          gSocketTransportService->MaxTimeForPrClosePref())) {
+       // If shutdown last to long, let the socket leak and do not close it.
+       UDPSOCKET_LOG(("Intentional leak"));
++      if (mReceiveHeadroom) mReceiveHeadroom->Relinquish();
+     } else {
+       PRIntervalTime closeStarted = 0;
+       if (gSocketTransportService->IsTelemetryEnabledAndNotSleepPhase()) {
+         closeStarted = PR_IntervalNow();
+       }
+ 
+-      PR_Close(mFD);
++      if (mReceiveHeadroom)
++        mReceiveHeadroom->Close(mFD);
++      else
++        PR_Close(mFD);
++      mReceiveHeadroom = nullptr;
+ 
+       if (gSocketTransportService->IsTelemetryEnabledAndNotSleepPhase()) {
+         PRIntervalTime now = PR_IntervalNow();
+@@ -1047,8 +1473,12 @@
+   NS_DECL_NSIDNSLISTENER
+ 
+   PendingSend(nsUDPSocket* aSocket, uint16_t aPort,
+-              FallibleTArray<uint8_t>&& aData)
+-      : mSocket(aSocket), mPort(aPort), mData(std::move(aData)) {}
++              FallibleTArray<uint8_t>&& aData,
++              RefPtr<UDPDatagramReservation> aReservation)
++      : mSocket(aSocket),
++        mPort(aPort),
++        mData(std::move(aData)),
++        mReservation(std::move(aReservation)) {}
+ 
+  private:
+   virtual ~PendingSend() = default;
+@@ -1056,6 +1486,7 @@
+   RefPtr<nsUDPSocket> mSocket;
+   uint16_t mPort;
+   FallibleTArray<uint8_t> mData;
++  RefPtr<UDPDatagramReservation> mReservation;
+ };
+ 
+ NS_IMPL_ISUPPORTS(PendingSend, nsIDNSListener)
+@@ -1072,9 +1503,8 @@
+   MOZ_ASSERT(rec);
+   NetAddr addr;
+   if (NS_SUCCEEDED(rec->GetNextAddr(mPort, &addr))) {
+-    uint32_t count;
+-    nsresult rv = mSocket->SendWithAddress(&addr, mData.Elements(),
+-                                           mData.Length(), &count);
++    nsresult rv =
++        mSocket->QueueDatagram(addr, std::move(mData), std::move(mReservation));
+     NS_ENSURE_SUCCESS(rv, rv);
+   }
+ 
+@@ -1119,40 +1549,27 @@
+   return NS_OK;
+ }
+ 
+-class SendRequestRunnable : public Runnable {
+- public:
+-  SendRequestRunnable(nsUDPSocket* aSocket, const NetAddr& aAddr,
+-                      FallibleTArray<uint8_t>&& aData)
+-      : Runnable("net::SendRequestRunnable"),
+-        mSocket(aSocket),
+-        mAddr(aAddr),
+-        mData(std::move(aData)) {}
+-
+-  NS_DECL_NSIRUNNABLE
+-
+- private:
+-  RefPtr<nsUDPSocket> mSocket;
+-  const NetAddr mAddr;
+-  FallibleTArray<uint8_t> mData;
+-};
+-
+-NS_IMETHODIMP
+-SendRequestRunnable::Run() {
+-  uint32_t count;
+-  mSocket->SendWithAddress(&mAddr, mData.Elements(), mData.Length(), &count);
+-  return NS_OK;
+-}
+-
+ }  // namespace
+ 
+ NS_IMETHODIMP
+ nsUDPSocket::AsyncListen(nsIUDPSocketListener* aListener) {
++  return AsyncListenInternal(aListener, true);
++}
++
++nsresult nsUDPSocket::AsyncListenWithoutReplyStream(
++    nsIUDPSocketListener* aListener) {
++  return AsyncListenInternal(aListener, false);
++}
++
++nsresult nsUDPSocket::AsyncListenInternal(nsIUDPSocketListener* aListener,
++                                          bool aCreateReplyStream) {
+   // ensuring mFD implies ensuring mLock
+   NS_ENSURE_TRUE(mFD, NS_ERROR_NOT_INITIALIZED);
+   NS_ENSURE_TRUE(mSyncListener == nullptr, NS_ERROR_IN_PROGRESS);
+   {
+     MutexAutoLock lock(mLock);
+     NS_ENSURE_TRUE(mListener == nullptr, NS_ERROR_IN_PROGRESS);
++    mCreateReplyStream = aCreateReplyStream;
+     mListenerTarget = GetCurrentSerialEventTarget();
+     if (NS_IsMainThread()) {
+       // PNecko usage
+@@ -1162,6 +1579,9 @@
+       mListener = new SocketListenerProxyBackground(aListener);
+     }
+   }
++  MOZ_LOG_FMT(sMidoriUdpResourceLog, LogLevel::Debug,
++              "listen socket={} reply_streams={}",
++              static_cast<const void*>(this), aCreateReplyStream);
+   return PostEvent(this, &nsUDPSocket::OnMsgAttach);
+ }
+ 
+@@ -1186,16 +1606,19 @@
+   NS_ENSURE_ARG_POINTER(_retval);
+ 
+   *_retval = 0;
++  RefPtr<UDPDatagramReservation> reservation;
++  nsresult rv = ReserveQueuedOutput(aData.Length(), reservation);
++  NS_ENSURE_SUCCESS(rv, rv);
+ 
+   FallibleTArray<uint8_t> fallibleArray;
+   if (!fallibleArray.InsertElementsAt(0, aData, fallible)) {
+     return NS_ERROR_OUT_OF_MEMORY;
+   }
+ 
+-  nsCOMPtr<nsIDNSListener> listener =
+-      new PendingSend(this, aPort, std::move(fallibleArray));
+-
+-  nsresult rv = ResolveHost(aHost, mOriginAttributes, listener);
++  nsCOMPtr<nsIDNSListener> listener = new PendingSend(
++      this, aPort, std::move(fallibleArray), std::move(reservation));
++
++  rv = ResolveHost(aHost, mOriginAttributes, listener);
+   NS_ENSURE_SUCCESS(rv, rv);
+ 
+   *_retval = aData.Length();
+@@ -1218,47 +1641,53 @@
+                              uint32_t aLength, uint32_t* _retval) {
+   NS_ENSURE_ARG(aAddr);
+   NS_ENSURE_ARG_POINTER(_retval);
+-
++  *_retval = 0;
+   if (StaticPrefs::network_http_http3_block_loopback_ipv6_addr() &&
+       aAddr->raw.family == AF_INET6 && aAddr->IsLoopbackAddr()) {
+     return NS_ERROR_CONNECTION_REFUSED;
+   }
+-
+-  *_retval = 0;
+-
++  if (OnSocketThread() && mSyncListener) {
++    return SendDatagramNow(aAddr, aData, aLength, _retval);
++  }
++  RefPtr<UDPDatagramReservation> reservation;
++  nsresult rv = ReserveQueuedOutput(aLength, reservation);
++  NS_ENSURE_SUCCESS(rv, rv);
++  FallibleTArray<uint8_t> data;
++  if (!data.AppendElements(aData, aLength, fallible)) {
++    return NS_ERROR_OUT_OF_MEMORY;
++  }
++  rv = QueueDatagram(*aAddr, std::move(data), std::move(reservation));
++  if (NS_SUCCEEDED(rv)) *_retval = aLength;
++  return rv;
++}
++
++nsresult nsUDPSocket::SendDatagramNow(const NetAddr* aAddr,
++                                      const uint8_t* aData, uint32_t aLength,
++                                      uint32_t* aWritten, TimeStamp* aSentAt) {
++  MOZ_ASSERT(OnSocketThread());
++  *aWritten = 0;
++  if (StaticPrefs::network_http_http3_block_loopback_ipv6_addr() &&
++      aAddr->raw.family == AF_INET6 && aAddr->IsLoopbackAddr()) {
++    return NS_ERROR_CONNECTION_REFUSED;
++  }
+   PRNetAddr prAddr;
+   NetAddrToPRNetAddr(aAddr, &prAddr);
+-
+-  bool onSTSThread = false;
+-  mSts->IsOnCurrentThread(&onSTSThread);
+-
+-  if (onSTSThread) {
+-    MutexAutoLock lock(mLock);
+-    if (!mFD) {
+-      // socket is not initialized or has been closed
+-      return NS_ERROR_FAILURE;
+-    }
+-    int32_t count =
+-        PR_SendTo(mFD, aData, aLength, 0, &prAddr, PR_INTERVAL_NO_WAIT);
+-    if (count < 0) {
+-      PRErrorCode code = PR_GetError();
+-      return ErrorAccordingToNSPR(code);
+-    }
+-    this->AddOutputBytes(count);
+-    *_retval = count;
+-  } else {
+-    FallibleTArray<uint8_t> fallibleArray;
+-    if (!fallibleArray.AppendElements(aData, aLength, fallible)) {
+-      return NS_ERROR_OUT_OF_MEMORY;
+-    }
+-
+-    nsresult rv = mSts->Dispatch(
+-        new SendRequestRunnable(this, *aAddr, std::move(fallibleArray)),
+-        NS_DISPATCH_NORMAL);
+-    NS_ENSURE_SUCCESS(rv, rv);
+-    *_retval = aLength;
+-  }
+-  return NS_OK;
++  MutexAutoLock lock(mLock);
++  if (!mFD) return NS_BASE_STREAM_CLOSED;
++  const auto reservation = MidoriNetworkBudget::Reserve(
++      MidoriNetworkBudget::Direction::Upload, aLength, true,
++      static_cast<nsIUDPSocket*>(this));
++  if (!reservation.bytes && aLength) return NS_BASE_STREAM_WOULD_BLOCK;
++  int32_t count =
++      PR_SendTo(mFD, aData, aLength, 0, &prAddr, PR_INTERVAL_NO_WAIT);
++  if (aSentAt) *aSentAt = count >= 0 ? TimeStamp::Now() : TimeStamp();
++  const PRErrorCode code = count < 0 ? PR_GetError() : 0;
++  MidoriNetworkBudget::Refund(MidoriNetworkBudget::Direction::Upload,
++                              reservation, count > 0 ? count : 0);
++  if (count < 0) return ErrorAccordingToNSPR(code);
++  AddOutputBytes(count);
++  *aWritten = count;
++  return uint32_t(count) == aLength ? NS_OK : NS_ERROR_UNEXPECTED;
+ }
+ 
+ int64_t nsUDPSocket::GetFileDescriptor() {
+@@ -1270,10 +1699,14 @@
+  * Request that the UDP socket polls for write-availability.
+  * Typically called after a non-blocking send returns WOULD_BLOCK.
+  *
+- * Note that the socket always polls for read-availability.
++ * Read availability is retained unless a resource wait is pending.
+  */
+ void nsUDPSocket::EnableWritePoll() {
+   mPollFlags = (PR_POLL_WRITE | PR_POLL_READ | PR_POLL_EXCEPT);
++  if (mSyncListener) {
++    if (mInputQuotaPending) mPollFlags &= ~PR_POLL_READ;
++    WaitForResourceQuota(false);
++  }
+ }
+ 
+ NS_IMETHODIMP
+@@ -1300,7 +1733,7 @@
+   if (!mFD) {
+     return NS_BASE_STREAM_CLOSED;
+   }
+-  RefPtr<nsUDPOutputStream> os = new nsUDPOutputStream(this, prAddr);
++  RefPtr<nsUDPOutputStream> os = new nsUDPOutputStream(this, prAddr, aStream);
+   return NS_AsyncCopy(aStream, os, mSts, NS_ASYNCCOPY_VIA_READSEGMENTS,
+                       UDP_PACKET_CHUNK_SIZE);
+ }
+@@ -1308,16 +1741,28 @@
+ NS_IMETHODIMP
+ nsUDPSocket::RecvWithAddr(NetAddr* addr, nsTArray<uint8_t>& aData) {
+   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
++  if (mReceiveHeadroom && !mReceiveHeadroom->IsActive())
++    mReceiveHeadroom = nullptr;
+   PRNetAddr prAddr;
+   int32_t count;
+-  char buff[9216];
++  char buff[UINT16_MAX];
++  const auto reservation = MidoriNetworkBudget::Reserve(
++      MidoriNetworkBudget::Direction::Download, sizeof(buff), true,
++      static_cast<nsIUDPSocket*>(this));
++  if (!reservation.bytes) {
++    EnsureReceiveHeadroom();
++    return NS_OK;
++  }
+   count = PR_RecvFrom(mFD, buff, sizeof(buff), 0, &prAddr, PR_INTERVAL_NO_WAIT);
++  MidoriNetworkBudget::Refund(MidoriNetworkBudget::Direction::Download,
++                              reservation, count > 0 ? count : 0);
+   if (count < 0) {
+     UDPSOCKET_LOG(
+         ("nsUDPSocket::RecvWithAddr: PR_RecvFrom failed [this=%p]\n", this));
+     return NS_OK;
+   }
+ 
++  mLastInputSize = count;
+   this->AddInputBytes(count);
+   PRNetAddrToNetAddr(&prAddr, addr);
+ 
+@@ -1357,6 +1802,11 @@
+     return NS_ERROR_FAILURE;
+   }
+ 
++  if (aOpt.option == PR_SockOpt_RecvBufferSize) {
++    mReceiveBufferOverride = true;
++    if (mReceiveHeadroom) mReceiveHeadroom->Relinquish();
++    mReceiveHeadroom = nullptr;
++  }
+   return NS_OK;
+ }
+ 

@@ -5720,7 +5720,6 @@ dependencies = [
 [[package]]
 name = "neqo-common"
 version = "0.32.0"
-source = "git+https://github.com/mozilla/neqo?tag=v0.32.0#28cacc8ea2b035779ae504d837e3e25331264347"
 dependencies = [
  "enum-map",
  "env_logger",
@@ -5794,7 +5793,6 @@ dependencies = [
 [[package]]
 name = "neqo-udp"
 version = "0.32.0"
-source = "git+https://github.com/mozilla/neqo?tag=v0.32.0#28cacc8ea2b035779ae504d837e3e25331264347"
 dependencies = [
  "cfg_aliases",
  "libc",

@@ -1,0 +1,41 @@
+diff --git a/third_party/libwebrtc/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc b/third_party/libwebrtc/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc
+--- a/third_party/libwebrtc/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc
++++ b/third_party/libwebrtc/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc
+@@ -71,6 +71,9 @@
+ #define MOBILE_ARM
+ #endif
+ 
++extern "C" bool MidoriMediaTraceEnabled();
++extern "C" void MidoriMediaTraceSource(const void*, uint32_t, uint32_t, bool);
++
+ namespace webrtc {
+ namespace {
+ #if defined(WEBRTC_IOS)
+@@ -1337,6 +1340,27 @@
+ 
+                 qp_128));
+ 
++        if (MidoriMediaTraceEnabled()) {
++          const auto& raw = raw_images_[encoder_idx];
++          uint32_t codes[3] = {};
++          if (raw.planes[VPX_PLANE_Y] && raw.d_w >= 64 && raw.d_h >= 24) {
++            for (unsigned row = 0; row < 3; ++row) {
++              const unsigned y = (6 + row * 6) * raw.d_h / 270;
++              for (unsigned bit = 0; bit < 32; ++bit) {
++                const unsigned x = (2 * bit + 1) * raw.d_w / 64;
++                codes[row] =
++                    (codes[row] << 1) |
++                    (raw.planes[VPX_PLANE_Y][y * raw.stride[VPX_PLANE_Y] + x] >
++                     128);
++              }
++            }
++          }
++          const bool valid = codes[0] == codes[1] && codes[1] == codes[2] &&
++                             (codes[0] >> 24) == 0xa5;
++          MidoriMediaTraceSource(encoded_images_[encoder_idx].data(),
++                                 encoded_images_[encoder_idx].RtpTimestamp(),
++                                 codes[0], valid);
++        }
+         encoded_complete_callback_->OnEncodedImage(encoded_images_[encoder_idx],
+                                                    &codec_specific);
+         const size_t steady_state_size = SteadyStateSize(

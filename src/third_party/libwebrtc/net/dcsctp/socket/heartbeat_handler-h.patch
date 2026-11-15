@@ -1,0 +1,20 @@
+diff --git a/third_party/libwebrtc/net/dcsctp/socket/heartbeat_handler.h b/third_party/libwebrtc/net/dcsctp/socket/heartbeat_handler.h
+index 51cdc619e8..f99bdd7a4c 100644
+--- a/third_party/libwebrtc/net/dcsctp/socket/heartbeat_handler.h
++++ b/third_party/libwebrtc/net/dcsctp/socket/heartbeat_handler.h
+@@ -40,6 +40,7 @@ class HeartbeatHandler {
+   // generally done every time data is sent, which makes the timer expire when
+   // the connection is idle.
+   void RestartTimer();
++  void RequestSample();
+ 
+   // Called on received HeartbeatRequestChunk chunks.
+   void HandleHeartbeatRequest(HeartbeatRequestChunk chunk);
+@@ -48,6 +49,7 @@ class HeartbeatHandler {
+   void HandleHeartbeatAck(HeartbeatAckChunk chunk);
+ 
+  private:
++  void SendHeartbeatRequest();
+   webrtc::TimeDelta OnIntervalTimerExpiry();
+   webrtc::TimeDelta OnTimeoutTimerExpiry();
+ 

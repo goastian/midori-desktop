@@ -1,0 +1,19 @@
+diff --git a/dom/media/webrtc/libwebrtcglue/moz.build b/dom/media/webrtc/libwebrtcglue/moz.build
+index 7948b77fb0..ad649ceb98 100644
+--- a/dom/media/webrtc/libwebrtcglue/moz.build
++++ b/dom/media/webrtc/libwebrtcglue/moz.build
+@@ -27,7 +27,6 @@ UNIFIED_SOURCES += [
+     "SystemTime.cpp",
+     "VideoConduit.cpp",
+     "VideoStreamFactory.cpp",
+-    "WebrtcCallWrapper.cpp",
+     "WebrtcEnvironmentWrapper.cpp",
+     "WebrtcGmpVideoCodec.cpp",
+     "WebrtcMediaDataDecoderCodec.cpp",
+@@ -36,4 +35,6 @@ UNIFIED_SOURCES += [
+     "WebrtcVideoCodecFactory.cpp",
+ ]
+ 
++SOURCES += ["WebrtcCallWrapper.cpp"]
++
+ FINAL_LIBRARY = "xul"

@@ -1,0 +1,34 @@
+--- a/dom/base/ChromeUtils.h
++++ b/dom/base/ChromeUtils.h
+@@ -29,6 +29,8 @@
+ class ArrayBufferViewOrArrayBuffer;
+ class BrowsingContext;
+ class Element;
++class HTMLVideoElement;
++struct ManagedMediaObservationResult;
+ class IdleRequestCallback;
+ struct IdleRequestOptions;
+ struct MediaMetadataInit;
+@@ -229,7 +231,22 @@
+                                                     ErrorResult& aRv);
+ 
+   static already_AddRefed<Promise> RequestProcInfo(GlobalObject& aGlobal,
++                                                   bool aIncludeThreads,
+                                                    ErrorResult& aRv);
++
++  static already_AddRefed<Promise> RequestManagedCpuBudget(
++      GlobalObject& aGlobal, uint32_t aPercentage, ErrorResult& aRv);
++
++  static already_AddRefed<Promise> RequestManagedSocketUsage(
++      GlobalObject& aGlobal, bool aSocketProcess, ErrorResult& aRv);
++
++  static uint64_t BeginManagedMediaObservation(GlobalObject& aGlobal,
++                                               ErrorResult& aRv);
++  static void EndManagedMediaObservation(GlobalObject& aGlobal,
++                                         uint64_t aGeneration,
++                                         HTMLVideoElement& aVideo,
++                                         ManagedMediaObservationResult& aResult,
++                                         ErrorResult& aRv);
+ 
+   static already_AddRefed<Promise> RequestXDGActivationToken(
+       GlobalObject& aGlobal, ErrorResult& aRv);

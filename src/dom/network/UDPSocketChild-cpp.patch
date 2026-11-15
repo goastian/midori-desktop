@@ -1,0 +1,35 @@
+diff --git a/dom/network/UDPSocketChild.cpp b/dom/network/UDPSocketChild.cpp
+--- a/dom/network/UDPSocketChild.cpp
++++ b/dom/network/UDPSocketChild.cpp
+@@ -81,6 +81,31 @@
+   return SendDataInternal(UDPSocketAddr(*aAddr), aData, aByteLength);
+ }
+ 
++RefPtr<net::DatagramSendPromise> UDPSocketChild::SendWithAddressAndAck(
++    const NetAddr& aAddress, const nsTArray<uint8_t>& aData,
++    const TimeStamp& aExpires, bool aAudio) {
++  RefPtr<net::DatagramSendPromise::Private> result =
++      new net::DatagramSendPromise::Private(__func__);
++  if (!CanSend()) {
++    result->Reject(NS_BASE_STREAM_CLOSED, __func__);
++    return result;
++  }
++  result->UseSynchronousTaskDispatch(__func__);
++  SendOutgoingDataWithAck(
++      aData, aAddress, aExpires, aAudio,
++      [result](const UDPDatagramResult& aReply) {
++        const auto status = static_cast<nsresult>(aReply.status());
++        if (NS_FAILED(status))
++          result->Reject(status, __func__);
++        else
++          result->Resolve(aReply.sentAt(), __func__);
++      },
++      [result](mozilla::ipc::ResponseRejectReason) {
++        result->Reject(NS_BASE_STREAM_CLOSED, __func__);
++      });
++  return result;
++}
++
+ nsresult UDPSocketChild::SendDataInternal(const UDPSocketAddr& aAddr,
+                                           const uint8_t* aData,
+                                           const uint32_t aByteLength) {

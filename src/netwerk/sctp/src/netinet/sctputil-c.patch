@@ -1,0 +1,54 @@
+diff --git a/netwerk/sctp/src/netinet/sctputil.c b/netwerk/sctp/src/netinet/sctputil.c
+index bd414141d2..8fbaeec310 100644
+--- a/netwerk/sctp/src/netinet/sctputil.c
++++ b/netwerk/sctp/src/netinet/sctputil.c
+@@ -3030,8 +3030,9 @@ sctp_calculate_rto(struct sctp_tcb *stcb,
+ {
+ 	struct timeval now;
+ 	uint64_t rtt_us;	/* RTT in us */
++	uint64_t observed_at_ms;
+ 	int32_t rtt;		/* RTT in ms */
+-	uint32_t new_rto;
++	uint32_t new_rto, sample_rtt;
+ 	int first_measure = 0;
+ 
+ 	/************************/
+@@ -3048,6 +3049,7 @@ sctp_calculate_rto(struct sctp_tcb *stcb,
+ 		/* The starting point is in the future. */
+ 		return (0);
+ 	}
++	observed_at_ms = (uint64_t)now.tv_sec * 1000 + now.tv_usec / 1000;
+ 	timevalsub(&now, old);
+ 	rtt_us = (uint64_t)1000000 * (uint64_t)now.tv_sec + (uint64_t)now.tv_usec;
+ 	if (rtt_us > SCTP_RTO_UPPER_BOUND * 1000) {
+@@ -3058,6 +3060,16 @@ sctp_calculate_rto(struct sctp_tcb *stcb,
+ 	net->rtt = rtt_us;
+ 	/* compute rtt in ms */
+ 	rtt = (int32_t)(net->rtt / 1000);
++	sample_rtt = rtt > 0 ? (uint32_t)rtt : 1;
++	if (!sctp_receive_window_is_limited() || !asoc->receive_window_rtt_ms ||
++	    sample_rtt < asoc->receive_window_rtt_ms ||
++	    (sctp_receive_window_may_grow() &&
++	     observed_at_ms >= asoc->receive_window_rtt_update_ms &&
++	     observed_at_ms - asoc->receive_window_rtt_update_ms >=
++	         2000 + 2 * (uint64_t)asoc->receive_window_rtt_ms)) {
++		asoc->receive_window_rtt_ms = sample_rtt;
++		asoc->receive_window_rtt_update_ms = observed_at_ms;
++	}
+ 	if ((asoc->cc_functions.sctp_rtt_calculated) && (rtt_from_sack == SCTP_RTT_FROM_DATA)) {
+ 		/* Tell the CC module that a new update has just occurred from a sack */
+ 		(*asoc->cc_functions.sctp_rtt_calculated)(stcb, net, &now);
+@@ -6016,7 +6028,12 @@ sctp_user_rcvd(struct sctp_tcb *stcb, uint32_t *freed_so_far, int hold_rlock,
+ 	/* Yep, its worth a look and the lock overhead */
+ 
+ 	/* Figure out what the rwnd would be */
+-	rwnd = sctp_calc_rwnd(stcb, &stcb->asoc);
++	rwnd = sctp_limit_advertised_rwnd(sctp_calc_rwnd(stcb, &stcb->asoc),
++	                                  stcb->asoc.receive_window_rtt_ms,
++	                                  stcb->asoc.sctp_frag_point);
++	rwnd_req = sctp_limit_advertised_rwnd(rwnd_req,
++	                                      stcb->asoc.receive_window_rtt_ms,
++	                                      stcb->asoc.sctp_frag_point);
+ 	if (rwnd >= stcb->asoc.my_last_reported_rwnd) {
+ 		dif = rwnd - stcb->asoc.my_last_reported_rwnd;
+ 	} else {

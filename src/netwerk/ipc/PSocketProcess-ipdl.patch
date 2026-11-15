@@ -1,0 +1,42 @@
+--- a/netwerk/ipc/PSocketProcess.ipdl
++++ b/netwerk/ipc/PSocketProcess.ipdl
+@@ -57,6 +57,21 @@
+ namespace mozilla {
+ namespace net {
+ 
++struct MidoriNetworkGrant {
++  uint32_t mBytes;
++  uint32_t mRate;
++};
++
++struct MidoriSocketUsage {
++  bool mAvailable;
++  uint64_t mSent;
++  uint64_t mReceived;
++  uint32_t mDownloadBps;
++  uint32_t mUploadBps;
++  uint64_t mDownloadGeneration;
++  uint64_t mUploadGeneration;
++};
++
+ struct HttpHandlerInitArgs {
+   nsCString mLegacyAppName;
+   nsCString mLegacyAppVersion;
+@@ -107,6 +122,9 @@
+   manages PNativeDNSResolverOverride;
+ 
+ parent:
++  async RequestMidoriNetworkQuota(bool aUpload, uint32_t aRequested,
++                                  uint32_t aFlows)
++    returns (MidoriNetworkGrant aGrant);
+   async InitCrashReporter(CrashReporterInitArgs aInitArgs);
+   async AddMemoryReport(MemoryReport aReport);
+   // Messages for sending telemetry to parent process.
+@@ -154,6 +172,7 @@
+ #endif  // defined(XP_WIN)
+ 
+ child:
++  async GetMidoriSocketUsage() returns (MidoriSocketUsage aUsage);
+   async Init(SocketProcessInitAttributes aAttributes);
+   async PreferenceUpdate(Pref pref);
+   async RequestMemoryReport(uint32_t generation,

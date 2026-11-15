@@ -1,0 +1,69 @@
+diff --git a/dom/media/VideoFrameConverter.h b/dom/media/VideoFrameConverter.h
+--- a/dom/media/VideoFrameConverter.h
++++ b/dom/media/VideoFrameConverter.h
+@@ -4,6 +4,9 @@
+ 
+ #ifndef VideoFrameConverter_h
+ #define VideoFrameConverter_h
++
++#include <algorithm>
++#include <cmath>
+ 
+ #include "ImageContainer.h"
+ #include "ImageConversion.h"
+@@ -17,6 +20,7 @@
+ #include "jsapi/RTCStatsReport.h"
+ #include "mozilla/dom/ImageBitmapBinding.h"
+ #include "mozilla/dom/ImageUtils.h"
++#include "mozilla/net/MidoriNetworkBudget.h"
+ #include "nsISupportsImpl.h"
+ #include "nsThreadUtils.h"
+ 
+@@ -443,6 +447,38 @@
+       crop_height = out_height = inSize.Height();
+     }
+ 
++    const uint32_t uploadRate = net::MidoriNetworkBudget::UploadRate();
++    uint32_t outputRate = uploadRate;
++    if (!mLockScaling) {
++      if (uploadRate) {
++        mLastUploadRate = uploadRate;
++        mBudgetReleasedAt = TimeStamp();
++      } else if (mLastUploadRate) {
++        const TimeStamp now = TimeStamp::Now();
++        if (mBudgetReleasedAt.IsNull()) mBudgetReleasedAt = now;
++        if ((now - mBudgetReleasedAt).ToMilliseconds() < 1000) {
++          outputRate = uint32_t(std::min<uint64_t>(
++              UINT32_MAX, std::max<uint64_t>(16 * 1024, uint64_t(mLastUploadRate) * 2)));
++        } else {
++          mLastUploadRate = 0;
++          mBudgetReleasedAt = TimeStamp();
++        }
++      }
++    }
++    if (outputRate && !mLockScaling) {
++      if (net::MidoriNetworkBudget::VideoUploadSuspended(uploadRate)) {
++        OnFrameDropped();
++        return;
++      }
++      const uint64_t maxPixels = uint64_t(outputRate) * 2 / 5;
++      const uint64_t pixels = uint64_t(out_width) * out_height;
++      if (pixels > maxPixels) {
++        const double scale = std::sqrt(double(maxPixels) / pixels);
++        out_width = std::max(2, int(out_width * scale) & ~1);
++        out_height = std::max(2, int(out_height * scale) & ~1);
++      }
++    }
++
+     if (out_width == 0 || out_height == 0) {
+       LOG(LogLevel::Verbose,
+           "VideoFrameConverterImpl {}: Skipping a frame because it has no "
+@@ -606,6 +642,8 @@
+   Maybe<FrameConverted> mLastFrameConverted;
+   bool mActive = false;
+   bool mTrackEnabled = true;
++  uint32_t mLastUploadRate = 0;
++  TimeStamp mBudgetReleasedAt;
+   Maybe<TrackingId> mTrackingId;
+ #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+   size_t mConversionFramesDropped = 0;

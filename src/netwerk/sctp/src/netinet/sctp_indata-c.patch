@@ -1,0 +1,19 @@
+diff --git a/netwerk/sctp/src/netinet/sctp_indata.c b/netwerk/sctp/src/netinet/sctp_indata.c
+index 89e85b29d2..a940609d8f 100644
+--- a/netwerk/sctp/src/netinet/sctp_indata.c
++++ b/netwerk/sctp/src/netinet/sctp_indata.c
+@@ -4231,6 +4231,14 @@ sctp_express_handle_sack(struct sctp_tcb *stcb, uint32_t cumack,
+ 	}
+ 	asoc->last_acked_seq = cumack;
+ 
++	/* RFC 9260, 6.3.2 R3: restart T3 after acknowledging outstanding DATA. */
++	TAILQ_FOREACH(net, &asoc->nets, sctp_next) {
++		if (net->new_pseudo_cumack) {
++			sctp_timer_stop(SCTP_TIMER_TYPE_SEND, stcb->sctp_ep, stcb, net,
++			                SCTP_FROM_SCTP_INDATA + SCTP_LOC_27);
++		}
++	}
++
+ 	if (TAILQ_EMPTY(&asoc->sent_queue)) {
+ 		/* nothing left in-flight */
+ 		TAILQ_FOREACH(net, &asoc->nets, sctp_next) {

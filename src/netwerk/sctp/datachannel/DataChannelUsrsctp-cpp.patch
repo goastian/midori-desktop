@@ -1,0 +1,25 @@
+diff --git a/netwerk/sctp/datachannel/DataChannelUsrsctp.cpp b/netwerk/sctp/datachannel/DataChannelUsrsctp.cpp
+index f42f9a1ab6..c37486429a 100644
+--- a/netwerk/sctp/datachannel/DataChannelUsrsctp.cpp
++++ b/netwerk/sctp/datachannel/DataChannelUsrsctp.cpp
+@@ -32,6 +32,7 @@
+ 
+ #include "DataChannelLog.h"
+ #include "DataChannelUsrsctp.h"
++#include "mozilla/net/MidoriNetworkBudget.h"
+ 
+ namespace mozilla {
+ 
+@@ -188,7 +189,11 @@ class DataChannelRegistry {
+     if (sInitted) {
+       return;
+     }
+-    usrsctp_init(0, DataChannelRegistry::SendSctpPacket, debug_printf);
++    net::MidoriNetworkBudget::Init();
++    usrsctp_init_with_receive_window(
++        0, DataChannelRegistry::SendSctpPacket, debug_printf,
++        net::MidoriNetworkBudget::DatagramReceiveWindow,
++        []() -> int { return net::MidoriNetworkBudget::DatagramReceiveWindowMayGrow(); });
+     sInitted = true;
+ 
+     // Set logging to SCTP:LogLevel::Debug to get SCTP debugs

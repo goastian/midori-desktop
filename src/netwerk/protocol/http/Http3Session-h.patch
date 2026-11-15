@@ -1,0 +1,12 @@
+diff --git a/netwerk/protocol/http/Http3Session.h b/netwerk/protocol/http/Http3Session.h
+--- a/netwerk/protocol/http/Http3Session.h
++++ b/netwerk/protocol/http/Http3Session.h
+@@ -532,6 +532,8 @@
+   // is only used in Http3Session::ProcessOutput. Using raw pointer here to
+   // improve performance.
+   nsIUDPSocket* mSocket;
++  nsTArray<uint8_t> mPendingNSPRDatagram;
++  NetAddr mPendingNSPRAddress{};
+   uint32_t mTrrStreams = 0;
+   bool mIsInTunnel = false;
+ };

@@ -1,0 +1,25 @@
+diff --git a/netwerk/protocol/http/ConnectionEntry.cpp b/netwerk/protocol/http/ConnectionEntry.cpp
+--- a/netwerk/protocol/http/ConnectionEntry.cpp
++++ b/netwerk/protocol/http/ConnectionEntry.cpp
+@@ -624,6 +624,21 @@
+   mExtendedCONNECTConns.RemoveElement(conn);
+ }
+ 
++void ConnectionEntry::UpdateMidoriReceiveBuffers(uint32_t aDownloadBps) {
++  MOZ_ASSERT(OnSocketThread());
++  const auto update = [aDownloadBps](const auto& connections) {
++    for (const auto& connection : connections) {
++      RefPtr<HttpConnectionUDP> udp = do_QueryObject(connection);
++      if (udp) {
++        (void)udp->UpdateMidoriReceiveBuffer(aDownloadBps);
++      }
++    }
++  };
++  update(mActiveConns);
++  update(mPendingConns);
++  update(mExtendedCONNECTConns);
++}
++
+ void ConnectionEntry::MakeAllDontReuseExcept(HttpConnectionBase* conn) {
+   for (uint32_t index = 0; index < mActiveConns.Length(); ++index) {
+     HttpConnectionBase* otherConn = mActiveConns[index];

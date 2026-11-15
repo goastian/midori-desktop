@@ -1,0 +1,172 @@
+diff --git a/netwerk/sctp/src/netinet/sctp_output.c b/netwerk/sctp/src/netinet/sctp_output.c
+index 33a6e169d8..333959384c 100644
+--- a/netwerk/sctp/src/netinet/sctp_output.c
++++ b/netwerk/sctp/src/netinet/sctp_output.c
+@@ -80,6 +80,64 @@
+ #endif
+ #endif
+ 
++#if defined(__Userspace__)
++static uint32_t (*sctp_receive_window_limit)(uint32_t);
++static int (*sctp_receive_window_may_grow_callback)(void);
++
++/* Configure before initializing the stack and starting its threads. */
++void
++sctp_set_receive_window_callback(uint32_t (*receive_window_limit)(uint32_t),
++                                 int (*receive_window_may_grow)(void))
++{
++	sctp_receive_window_limit = receive_window_limit;
++	sctp_receive_window_may_grow_callback = receive_window_may_grow;
++}
++#endif
++
++uint32_t
++sctp_limit_advertised_rwnd(uint32_t available, uint32_t rtt_ms, uint32_t fragment_size)
++{
++#if defined(__Userspace__)
++	if (sctp_receive_window_limit != NULL) {
++		uint32_t limit = sctp_receive_window_limit(rtt_ms);
++		uint64_t chunks, credit;
++
++		if (limit == UINT32_MAX) {
++			return (available);
++		}
++		if (fragment_size == 0) {
++			fragment_size = 1200;
++		}
++		chunks = ((uint64_t)limit + fragment_size - 1) / fragment_size;
++		credit = limit + chunks * SCTP_BASE_SYSCTL(sctp_peer_chunk_oh);
++		return (credit < available ? (uint32_t)credit : available);
++	}
++#endif
++	return (available);
++}
++
++int
++sctp_receive_window_is_limited(void)
++{
++#if defined(__Userspace__)
++	return (sctp_receive_window_limit != NULL &&
++	        sctp_receive_window_limit(0) < UINT32_MAX);
++#else
++	return (0);
++#endif
++}
++
++int
++sctp_receive_window_may_grow(void)
++{
++#if defined(__Userspace__)
++	return (sctp_receive_window_may_grow_callback != NULL &&
++	        sctp_receive_window_may_grow_callback());
++#else
++	return (0);
++#endif
++}
++
+ #define SCTP_MAX_GAPS_INARRAY 4
+ struct sack_track {
+ 	uint8_t right_edge;	/* mergable on the right edge */
+@@ -5133,8 +5191,10 @@ sctp_send_initiate(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int so_locked)
+ 	/* place in my tag */
+ 	init->init.initiate_tag = htonl(stcb->asoc.my_vtag);
+ 	/* set up some of the credits. */
+-	init->init.a_rwnd = htonl(max(inp->sctp_socket?SCTP_SB_LIMIT_RCV(inp->sctp_socket):0,
+-	                              SCTP_MINIMAL_RWND));
++	init->init.a_rwnd = htonl(sctp_limit_advertised_rwnd(
++	    max(inp->sctp_socket?SCTP_SB_LIMIT_RCV(inp->sctp_socket):0,
++	        SCTP_MINIMAL_RWND), stcb->asoc.receive_window_rtt_ms,
++	    stcb->asoc.sctp_frag_point));
+ 	init->init.num_outbound_streams = htons(stcb->asoc.pre_open_streams);
+ 	init->init.num_inbound_streams = htons(stcb->asoc.max_inbound_streams);
+ 	init->init.initial_tsn = htonl(stcb->asoc.init_seq_number);
+@@ -6448,7 +6508,10 @@ sctp_send_initiate_ack(struct sctp_inpcb *inp, struct sctp_tcb *stcb,
+ 		sctp_m_freem(m);
+ 		return;
+ 	} else {
+-		initack->init.a_rwnd = htonl(max(SCTP_SB_LIMIT_RCV(so), SCTP_MINIMAL_RWND));
++		initack->init.a_rwnd = htonl(sctp_limit_advertised_rwnd(
++		    max(SCTP_SB_LIMIT_RCV(so), SCTP_MINIMAL_RWND),
++		    asoc != NULL ? asoc->receive_window_rtt_ms : 0,
++		    asoc != NULL ? asoc->sctp_frag_point : 0));
+ 	}
+ 	/* set what I want */
+ 	his_limit = ntohs(init_chk->init.num_inbound_streams);
+@@ -11152,6 +11215,31 @@ sctp_fill_in_rest:
+ 	return;
+ }
+ 
++static void
++sctp_probe_receive_window_rtt(struct sctp_tcb *stcb, int so_locked)
++{
++	struct sctp_association *asoc = &stcb->asoc;
++	struct sctp_nets *net = asoc->primary_destination;
++	struct timeval now;
++	uint64_t now_ms;
++	uint8_t responded;
++
++	if (!sctp_receive_window_is_limited() || net == NULL ||
++	    (net->dest_state & SCTP_ADDR_UNCONFIRMED)) {
++		return;
++	}
++	(void)SCTP_GETTIME_TIMEVAL(&now);
++	now_ms = (uint64_t)now.tv_sec * 1000 + now.tv_usec / 1000;
++	if (now_ms < asoc->receive_window_probe_ms ||
++	    now_ms - asoc->receive_window_probe_ms < 1000) {
++		return;
++	}
++	asoc->receive_window_probe_ms = now_ms;
++	responded = net->hb_responded;
++	sctp_send_hb(stcb, net, so_locked);
++	net->hb_responded = responded;
++}
++
+ void
+ sctp_send_sack(struct sctp_tcb *stcb, int so_locked)
+ {
+@@ -11176,7 +11264,7 @@ sctp_send_sack(struct sctp_tcb *stcb, int so_locked)
+ 	unsigned int num_gap_blocks = 0, num_nr_gap_blocks = 0, space;
+ 	int num_dups = 0;
+ 	int space_req;
+-	uint32_t highest_tsn;
++	uint32_t highest_tsn, advertised_rwnd;
+ 	uint8_t flags;
+ 	uint8_t type;
+ 	uint8_t tsn_map;
+@@ -11508,13 +11596,17 @@ sctp_send_sack(struct sctp_tcb *stcb, int so_locked)
+ 	 * now that the chunk is prepared queue it to the control chunk
+ 	 * queue.
+ 	 */
++	advertised_rwnd = sctp_limit_advertised_rwnd(asoc->my_rwnd,
++	                                              asoc->receive_window_rtt_ms,
++	                                              asoc->sctp_frag_point);
++	sctp_probe_receive_window_rtt(stcb, so_locked);
+ 	if (type == SCTP_SELECTIVE_ACK) {
+ 		a_chk->send_size = (uint16_t)(sizeof(struct sctp_sack_chunk) +
+ 		                              (num_gap_blocks + num_nr_gap_blocks) * sizeof(struct sctp_gap_ack_block) +
+ 		                              num_dups * sizeof(int32_t));
+ 		SCTP_BUF_LEN(a_chk->data) = a_chk->send_size;
+ 		sack->sack.cum_tsn_ack = htonl(asoc->cumulative_tsn);
+-		sack->sack.a_rwnd = htonl(asoc->my_rwnd);
++		sack->sack.a_rwnd = htonl(advertised_rwnd);
+ 		sack->sack.num_gap_ack_blks = htons(num_gap_blocks);
+ 		sack->sack.num_dup_tsns = htons(num_dups);
+ 		sack->ch.chunk_type = type;
+@@ -11526,7 +11618,7 @@ sctp_send_sack(struct sctp_tcb *stcb, int so_locked)
+ 		                              num_dups * sizeof(int32_t));
+ 		SCTP_BUF_LEN(a_chk->data) = a_chk->send_size;
+ 		nr_sack->nr_sack.cum_tsn_ack = htonl(asoc->cumulative_tsn);
+-		nr_sack->nr_sack.a_rwnd = htonl(asoc->my_rwnd);
++		nr_sack->nr_sack.a_rwnd = htonl(advertised_rwnd);
+ 		nr_sack->nr_sack.num_gap_ack_blks = htons(num_gap_blocks);
+ 		nr_sack->nr_sack.num_nr_gap_ack_blks = htons(num_nr_gap_blocks);
+ 		nr_sack->nr_sack.num_dup_tsns = htons(num_dups);
+@@ -11536,7 +11628,7 @@ sctp_send_sack(struct sctp_tcb *stcb, int so_locked)
+ 		nr_sack->ch.chunk_length = htons(a_chk->send_size);
+ 	}
+ 	TAILQ_INSERT_TAIL(&asoc->control_send_queue, a_chk, sctp_next);
+-	asoc->my_last_reported_rwnd = asoc->my_rwnd;
++	asoc->my_last_reported_rwnd = advertised_rwnd;
+ 	asoc->ctrl_queue_cnt++;
+ 	asoc->send_sack = 0;
+ 	SCTP_STAT_INCR(sctps_sendsacks);

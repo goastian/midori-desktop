@@ -1,0 +1,42 @@
+--- a/netwerk/base/nsSocketTransportService2.cpp
++++ b/netwerk/base/nsSocketTransportService2.cpp
+@@ -3,6 +3,8 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "nsSocketTransportService2.h"
++
++#include "MidoriNetworkBudget.h"
+ 
+ #include "mozilla/Atomics.h"
+ #include "mozilla/ChaosMode.h"
+@@ -808,6 +810,8 @@
+     return NS_ERROR_UNEXPECTED;
+   }
+ 
++  MidoriNetworkBudget::Init();
++
+   nsCOMPtr<nsIThread> thread;
+ 
+   if (!XRE_IsContentProcess() ||
+@@ -1864,6 +1868,21 @@
+   }
+ }
+ 
++void nsSocketTransportService::GetManagedSocketByteCounts(uint64_t& aSent,
++                                                          uint64_t& aReceived) {
++  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
++  aSent = mSentBytesCount;
++  aReceived = mReceivedBytesCount;
++  for (const auto& context : mActiveList) {
++    aSent += context.mHandler->ByteCountSent();
++    aReceived += context.mHandler->ByteCountReceived();
++  }
++  for (const auto& context : mIdleList) {
++    aSent += context.mHandler->ByteCountSent();
++    aReceived += context.mHandler->ByteCountReceived();
++  }
++}
++
+ bool nsSocketTransportService::IsTelemetryEnabledAndNotSleepPhase() {
+   return Telemetry::CanRecordPrereleaseData() && !mSleepPhase;
+ }

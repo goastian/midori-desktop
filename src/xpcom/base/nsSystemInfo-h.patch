@@ -1,0 +1,14 @@
+diff --git a/xpcom/base/nsSystemInfo.h b/xpcom/base/nsSystemInfo.h
+--- a/xpcom/base/nsSystemInfo.h
++++ b/xpcom/base/nsSystemInfo.h
+@@ -53,6 +53,10 @@
+   // is unreliable on Windows versions prior to 1810.
+   bool isWindowsSMode = false;
+   int32_t cpuCount = 0;
++  double cpuCapacity = 0;
++  uint32_t cpuAffinityCpus = 0;
++  double cpuQuotaCpus = 0;
++  bool cpuQuotaSampled = false;
+   int32_t cpuCores = 0;
+   int32_t cpuPCount = 0;
+   int32_t cpuMCount = 0;

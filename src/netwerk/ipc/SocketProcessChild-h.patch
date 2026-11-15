@@ -1,0 +1,12 @@
+--- a/netwerk/ipc/SocketProcessChild.h
++++ b/netwerk/ipc/SocketProcessChild.h
+@@ -37,6 +37,9 @@
+   SocketProcessChild();
+ 
+   static SocketProcessChild* GetSingleton();
++
++  mozilla::ipc::IPCResult RecvGetMidoriSocketUsage(
++      GetMidoriSocketUsageResolver&& aResolve);
+ 
+   bool Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
+             const char* aParentBuildID);

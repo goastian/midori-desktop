@@ -1,0 +1,12 @@
+diff --git a/dom/media/webrtc/transportbridge/MediaPipeline.cpp b/dom/media/webrtc/transportbridge/MediaPipeline.cpp
+index 1a51b04bab..79b22a8c61 100644
+--- a/dom/media/webrtc/transportbridge/MediaPipeline.cpp
++++ b/dom/media/webrtc/transportbridge/MediaPipeline.cpp
+@@ -475,6 +475,7 @@ void MediaPipeline::SendPacket(MediaPacket&& aPacket) {
+   }
+ 
+   aPacket.sdp_level() = Some(Level());
++  aPacket.SetIsAudio(mConduit->type() == MediaSessionConduit::AUDIO);
+ 
+   if (RtpLogger::IsPacketLoggingOn()) {
+     RtpLogger::LogPacket(aPacket, false, mDescription);

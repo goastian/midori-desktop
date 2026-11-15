@@ -1,0 +1,48 @@
+diff --git a/gfx/layers/ImageContainer.cpp b/gfx/layers/ImageContainer.cpp
+--- a/gfx/layers/ImageContainer.cpp
++++ b/gfx/layers/ImageContainer.cpp
+@@ -15,6 +15,7 @@
+ #include "gfxUtils.h"     // for gfxUtils
+ #include "libyuv.h"
+ #include "mozilla/CheckedInt.h"
++#include "mozilla/MidoriMediaTrace.h"
+ #include "mozilla/ProfilerLabels.h"
+ #include "mozilla/RefPtr.h"  // for already_AddRefed
+ #include "mozilla/StaticPrefs_layers.h"
+@@ -400,6 +401,15 @@
+     img->mFrameID = aImages[i].mFrameID;
+     img->mProducerID = aImages[i].mProducerID;
+     img->mRotation = aImages[i].mRotation;
++    if (img->mRtpTimestamp && MidoriMediaTrace::Enabled()) {
++      MidoriMediaTraceEntry entry;
++      entry.kind = 3;
++      entry.context = this;
++      entry.rtp = *img->mRtpTimestamp;
++      entry.producer = img->mProducerID;
++      entry.frame = img->mFrameID;
++      MidoriMediaTrace::Add(entry);
++    }
+     for (const auto& oldImg : mCurrentImages) {
+       if (oldImg.mFrameID == img->mFrameID &&
+           oldImg.mProducerID == img->mProducerID) {
+@@ -534,6 +544,20 @@
+   // image is composited by an ImageHost. Thus, every time we receive such
+   // a notification, a new image has been painted.
+   ++mPaintCount;
++  if (MidoriMediaTrace::Enabled()) {
++    MidoriMediaTraceEntry entry;
++    entry.kind = 4;
++    entry.context = this;
++    entry.producer = aNotification.producerID();
++    entry.frame = aNotification.frameID();
++    entry.paint = mPaintCount;
++    entry.presented = aNotification.firstCompositeTimeStamp().IsNull()
++                          ? -1
++                          : (aNotification.firstCompositeTimeStamp() -
++                             TimeStamp::ProcessCreation())
++                                .ToMilliseconds();
++    MidoriMediaTrace::Add(entry);
++  }
+ 
+   if (aNotification.producerID() == mCurrentProducerID) {
+     for (auto& img : mCurrentImages) {

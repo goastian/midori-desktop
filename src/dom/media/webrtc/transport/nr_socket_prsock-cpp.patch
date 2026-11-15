@@ -1,0 +1,711 @@
+diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/transport/nr_socket_prsock.cpp
+--- a/dom/media/webrtc/transport/nr_socket_prsock.cpp
++++ b/dom/media/webrtc/transport/nr_socket_prsock.cpp
+@@ -88,10 +88,14 @@
+ #include <string.h>
+ #include <sys/types.h>
+ 
++#include <algorithm>
++
+ #include "mozilla/IceServerParser.h"
++#include "mozilla/Logging.h"
+ #include "mozilla/ProfilerBandwidthCounter.h"
+ #include "mozilla/SyncRunnable.h"
+ #include "mozilla/net/DNS.h"
++#include "mozilla/net/MidoriNetworkBudget.h"
+ #include "nsASocketHandler.h"
+ #include "nsCOMPtr.h"
+ #include "nsComponentManagerUtils.h"
+@@ -162,6 +166,8 @@
+ // Implement the nsISupports ref counting
+ namespace mozilla {
+ 
++static LazyLogModule sNrSendCompletionLog("MidoriWebrtcSend");
++
+ #if defined(MOZILLA_INTERNAL_API)
+ class SingletonThreadHolder final {
+  private:
+@@ -333,8 +339,26 @@
+ 
+ // The nsASocket callbacks
+ void NrSocket::OnSocketReady(PRFileDesc* fd, int16_t outflags) {
+-  if (outflags & PR_POLL_READ & poll_flags()) fire_callback(NR_ASYNC_WAIT_READ);
+-  if (outflags & PR_POLL_WRITE & poll_flags())
++  if (outflags & PR_POLL_READ) {
++    const uint32_t maxReads = my_addr_.protocol == IPPROTO_UDP ? 16 : 1;
++    const TimeStamp started = TimeStamp::Now();
++    for (uint32_t count = 0;
++         count < maxReads && fd_ == fd && NS_SUCCEEDED(mCondition) &&
++         (poll_flags() & PR_POLL_READ);
++         ++count) {
++      if (WaitForResourceQuota(true)) {
++        EnsureReceiveHeadroom();
++        break;
++      }
++      const uint64_t reads = input_read_count_;
++      fire_callback(NR_ASYNC_WAIT_READ);
++      if (input_read_count_ == reads ||
++          TimeStamp::Now() - started >= TimeDuration::FromMilliseconds(2)) {
++        break;
++      }
++    }
++  }
++  if ((outflags & PR_POLL_WRITE & poll_flags()) && !WaitForResourceQuota(false))
+     fire_callback(NR_ASYNC_WAIT_WRITE);
+   if (outflags & (PR_POLL_ERR | PR_POLL_NVAL | PR_POLL_HUP))
+     // TODO: Bug 946423: how do we notify the upper layers about this?
+@@ -343,6 +367,7 @@
+ 
+ void NrSocket::OnSocketDetached(PRFileDesc* fd) {
+   r_log(LOG_GENERIC, LOG_DEBUG, "Socket %p detached", fd);
++  close();
+ }
+ 
+ void NrSocket::IsLocal(bool* aIsLocal) {
+@@ -356,7 +381,8 @@
+   int r = NrSocketBase::async_wait(how, cb, cb_arg, function, line);
+ 
+   if (!r) {
+-    mPollFlags = poll_flags();
++    UpdatePollFlags();
++    WaitForResourceQuota(how == NR_ASYNC_WAIT_READ);
+   }
+ 
+   return r;
+@@ -366,10 +392,169 @@
+   int r = NrSocketBase::cancel(how);
+ 
+   if (!r) {
+-    mPollFlags = poll_flags();
++    UpdatePollFlags();
+   }
+ 
+   return r;
++}
++
++void NrSocket::UpdatePollFlags() {
++  mPollFlags = poll_flags();
++  if (input_quota_pending_) mPollFlags &= ~PR_POLL_READ;
++  if (output_quota_pending_) mPollFlags &= ~PR_POLL_WRITE;
++}
++
++void NrSocket::EnsureReceiveHeadroom() {
++  if (my_addr_.protocol == IPPROTO_UDP && last_input_size_ >= 512 &&
++      (!receive_headroom_ || !receive_headroom_->Renew())) {
++    receive_headroom_ = net::DatagramReceiveHeadroom::Create(fd_);
++  }
++}
++
++bool NrSocket::WaitForResourceQuota(bool aInput) {
++  const uint16_t flag = aInput ? PR_POLL_READ : PR_POLL_WRITE;
++  if (!fd_ || NS_FAILED(mCondition) || !(poll_flags() & flag)) return false;
++  const auto direction = aInput ? net::MidoriNetworkBudget::Direction::Download
++                                : net::MidoriNetworkBudget::Direction::Upload;
++  const uint32_t delay = net::MidoriNetworkBudget::WaitMilliseconds(
++      direction, my_addr_.protocol == IPPROTO_UDP);
++  if (!delay) return false;
++  bool& pending = aInput ? input_quota_pending_ : output_quota_pending_;
++  if (!pending) {
++    pending = true;
++    const nsresult rv = NS_DelayedDispatchToCurrentThread(
++        NS_NewRunnableFunction("NrSocket::ResourceQuota",
++                               [self = RefPtr{this}, aInput]() {
++                                 (aInput ? self->input_quota_pending_
++                                         : self->output_quota_pending_) = false;
++                                 if (!self->fd_ || NS_FAILED(self->mCondition))
++                                   return;
++                                 self->WaitForResourceQuota(aInput);
++                                 self->UpdatePollFlags();
++                               }),
++        delay);
++    if (NS_FAILED(rv)) {
++      pending = false;
++      close();
++      return false;
++    }
++  }
++  UpdatePollFlags();
++  return true;
++}
++
++int NrSocket::SendDatagramNow(const void* aData, uint32_t aLength, int aFlags,
++                              const PRNetAddr& aAddress,
++                              const net::DatagramSendInfo& aSent) {
++  if (!fd_ || NS_FAILED(mCondition)) return R_EOD;
++  const auto reservation = net::MidoriNetworkBudget::Reserve(
++      net::MidoriNetworkBudget::Direction::Upload, aLength, true);
++  if (aLength && !reservation.bytes) return R_WOULDBLOCK;
++  const int32_t sent =
++      PR_SendTo(fd_, aData, aLength, aFlags, &aAddress, PR_INTERVAL_NO_WAIT);
++  const TimeStamp sentAt = sent >= 0 ? TimeStamp::Now() : TimeStamp();
++  const PRErrorCode error = sent < 0 ? PR_GetError() : 0;
++  net::MidoriNetworkBudget::Refund(net::MidoriNetworkBudget::Direction::Upload,
++                                   reservation, sent > 0 ? sent : 0);
++  if (sent < 0)
++    return error == PR_WOULD_BLOCK_ERROR ? R_WOULDBLOCK : R_IO_ERROR;
++  if (uint32_t(sent) != aLength) return R_IO_ERROR;
++  profiler_count_bandwidth_written_bytes(sent);
++  aSent.Notify(sentAt);
++  return 0;
++}
++
++void NrSocket::ClearQueuedOutput() {
++  static_assert(sizeof(QueuedDatagram) <= 256);
++  next_media_expiry_ = TimeStamp();
++  if (!queued_output_) return;
++  while (!queued_output_->empty()) {
++    const auto& packet = queued_output_->front();
++    if (packet.sent.packetId >= 0) {
++      MOZ_LOG_FMT(sNrSendCompletionLog, LogLevel::Debug,
++                  "drop source={} id={} wall_at={} reason=close",
++                  packet.sent.sourceId, packet.sent.packetId, PR_Now() / 1000);
++    }
++    const uint32_t charge = queued_output_->front().charge;
++    queued_output_->pop_front();
++    net::MidoriNetworkBudget::ReleaseDatagramBytes(charge);
++  }
++  queued_output_.reset();
++  queued_output_bytes_ = 0;
++}
++
++void NrSocket::ExpireQueuedMedia() {
++  if (!queued_output_ || next_media_expiry_.IsNull()) return;
++  const TimeStamp now = TimeStamp::Now();
++  if (next_media_expiry_ > now) return;
++  next_media_expiry_ = TimeStamp();
++  for (auto packet = queued_output_->begin(); packet != queued_output_->end();) {
++    if (!packet->expires.IsNull() && packet->expires <= now) {
++      if (packet->sent.packetId >= 0) {
++        MOZ_LOG_FMT(sNrSendCompletionLog, LogLevel::Debug,
++                    "drop source={} id={} wall_at={} reason=expired",
++                    packet->sent.sourceId, packet->sent.packetId,
++                    PR_Now() / 1000);
++      }
++      const uint32_t charge = packet->charge;
++      packet = queued_output_->erase(packet);
++      queued_output_bytes_ -= charge;
++      net::MidoriNetworkBudget::ReleaseDatagramBytes(charge);
++    } else {
++      if (!packet->expires.IsNull() && (next_media_expiry_.IsNull() ||
++                                        packet->expires < next_media_expiry_)) {
++        next_media_expiry_ = packet->expires;
++      }
++      ++packet;
++    }
++  }
++}
++
++void NrSocket::ScheduleQueuedOutput() {
++  if (queue_wake_pending_ || !queued_output_ || queued_output_->empty()) return;
++  queue_wake_pending_ = true;
++  const uint32_t delay =
++      std::max(10U, net::MidoriNetworkBudget::WaitMilliseconds(
++                        net::MidoriNetworkBudget::Direction::Upload, true));
++  const nsresult rv = NS_DelayedDispatchToCurrentThread(
++      NS_NewRunnableFunction("NrSocket::FlushQueuedOutput",
++                             [self = RefPtr{this}]() {
++                               self->queue_wake_pending_ = false;
++                               self->FlushQueuedOutput();
++                             }),
++      delay);
++  if (NS_FAILED(rv)) {
++    queue_wake_pending_ = false;
++    close();
++  }
++}
++
++void NrSocket::FlushQueuedOutput() {
++  if (!queued_output_) return;
++  if (!fd_ || NS_FAILED(mCondition)) {
++    ClearQueuedOutput();
++    return;
++  }
++  uint32_t sent = 0;
++  while (sent < 64) {
++    ExpireQueuedMedia();
++    if (queued_output_->empty()) break;
++    const auto& packet = queued_output_->front();
++    const int result =
++        SendDatagramNow(packet.data.Elements(), packet.data.Length(),
++                        packet.flags, packet.address, packet.sent);
++    if (result == R_WOULDBLOCK) break;
++    if (result) {
++      close();
++      return;
++    }
++    const uint32_t charge = packet.charge;
++    queued_output_->pop_front();
++    queued_output_bytes_ -= charge;
++    net::MidoriNetworkBudget::ReleaseDatagramBytes(charge);
++    ++sent;
++  }
++  ScheduleQueuedOutput();
+ }
+ 
+ // Helper functions for addresses
+@@ -734,11 +919,14 @@
+   ASSERT_ON_THREAD(ststhread_);
+   int r, _status;
+   PRNetAddr naddr;
+-  int32_t status;
++  uint32_t charge;
++  FallibleTArray<uint8_t> data;
++  net::DatagramSendOptions options;
+ 
+   if ((r = nr_transport_addr_to_praddr(to, &naddr))) ABORT(r);
+ 
+-  if (fd_ == nullptr) ABORT(R_EOD);
++  if (fd_ == nullptr || NS_FAILED(mCondition)) ABORT(R_EOD);
++  if (len > UINT16_MAX) ABORT(R_BAD_ARGS);
+ 
+   if (nr_is_stun_request_message((UCHAR*)msg, len) && ShouldDrop(len)) {
+     ABORT(R_WOULDBLOCK);
+@@ -756,16 +944,58 @@
+   }
+ 
+   // TODO: Convert flags?
+-  status = PR_SendTo(fd_, msg, len, flags, &naddr, PR_INTERVAL_NO_WAIT);
+-  if (status < 0 || (size_t)status != len) {
+-    if (PR_GetError() == PR_WOULD_BLOCK_ERROR) ABORT(R_WOULDBLOCK);
+-
+-    r_log(LOG_GENERIC, LOG_INFO, "Error in sendto %s: %d", to->as_string,
+-          PR_GetError());
+-    ABORT(R_IO_ERROR);
+-  }
+-
+-  mozilla::profiler_count_bandwidth_written_bytes(status);
++  options = net::DatagramSendOptions::ForWebRTC(
++      msg, len, net::MidoriNetworkBudget::UploadRate() > 0,
++      net::AutoWebRTCAudioSend::IsAudio());
++  if (options.sent.packetId >= 0) {
++    MOZ_LOG_FMT(sNrSendCompletionLog, LogLevel::Debug,
++                "datagram source={} id={} wall_at={} ttl={} audio={} rate={}",
++                options.sent.sourceId, options.sent.packetId, PR_Now() / 1000,
++                options.expires.IsNull()
++                    ? -1.0
++                    : (options.expires - TimeStamp::Now()).ToMilliseconds(),
++                net::AutoWebRTCAudioSend::IsAudio(),
++                net::MidoriNetworkBudget::UploadRate());
++  }
++  ExpireQueuedMedia();
++  if (!queued_output_ || queued_output_->empty() ||
++      (options.urgent && !queued_output_->front().urgent)) {
++    r = SendDatagramNow(msg, len, flags, naddr, options.sent);
++    if (r != R_WOULDBLOCK) {
++      _status = r;
++      goto abort;
++    }
++  }
++  charge = uint32_t(len) + 256;
++  if (queued_output_bytes_ > 1024 * 1024 - charge ||
++      !net::MidoriNetworkBudget::ReserveDatagramBytes(charge)) {
++    ABORT(R_WOULDBLOCK);
++  }
++  if (!data.AppendElements(static_cast<const uint8_t*>(msg), len, fallible)) {
++    net::MidoriNetworkBudget::ReleaseDatagramBytes(charge);
++    ABORT(R_NO_MEMORY);
++  }
++  if (!queued_output_) {
++    queued_output_ = std::make_unique<std::deque<QueuedDatagram>>();
++  }
++  if (!options.expires.IsNull() &&
++      (next_media_expiry_.IsNull() || options.expires < next_media_expiry_)) {
++    next_media_expiry_ = options.expires;
++  }
++  if (options.urgent) {
++    const auto position = std::find_if(
++        queued_output_->begin(), queued_output_->end(),
++        [](const QueuedDatagram& aPacket) { return !aPacket.urgent; });
++    queued_output_->insert(
++        position,
++        QueuedDatagram{naddr, std::move(data), flags, charge, options.expires,
++                       options.urgent, options.sent});
++  } else {
++    queued_output_->push_back({naddr, std::move(data), flags, charge,
++                               options.expires, options.urgent, options.sent});
++  }
++  queued_output_bytes_ += charge;
++  ScheduleQueuedOutput();
+   _status = 0;
+ abort:
+   return (_status);
+@@ -777,12 +1007,36 @@
+   int r, _status;
+   PRNetAddr nfrom;
+   int32_t status;
+-
+-  status = PR_RecvFrom(fd_, buf, maxlen, flags, &nfrom, PR_INTERVAL_NO_WAIT);
++  PRErrorCode socket_error = 0;
++  net::MidoriNetworkBudget::Reservation reservation{};
++
++  *len = 0;
++  if (!fd_ || NS_FAILED(mCondition)) ABORT(R_EOD);
++  if (receive_headroom_ && !receive_headroom_->IsActive())
++    receive_headroom_ = nullptr;
++  reservation = net::MidoriNetworkBudget::Reserve(
++      net::MidoriNetworkBudget::Direction::Download,
++      std::min<size_t>(maxlen, UINT32_MAX), true);
++  if (maxlen && !reservation.bytes) {
++    EnsureReceiveHeadroom();
++    ABORT(R_WOULDBLOCK);
++  }
++  status = PR_RecvFrom(fd_, buf, reservation.bytes, flags, &nfrom,
++                       PR_INTERVAL_NO_WAIT);
++  socket_error = status < 0 ? PR_GetError() : 0;
++  net::MidoriNetworkBudget::Refund(
++      net::MidoriNetworkBudget::Direction::Download, reservation,
++      status > 0 ? status : 0);
+   if (status <= 0) {
+-    if (PR_GetError() == PR_WOULD_BLOCK_ERROR) ABORT(R_WOULDBLOCK);
+-    r_log(LOG_GENERIC, LOG_INFO, "Error in recvfrom: %d", (int)PR_GetError());
++    if (socket_error == PR_WOULD_BLOCK_ERROR) ABORT(R_WOULDBLOCK);
++    r_log(LOG_GENERIC, LOG_INFO, "Error in recvfrom: %d", (int)socket_error);
+     ABORT(R_IO_ERROR);
++  }
++  ++input_read_count_;
++  last_input_size_ = status;
++  if (net::MidoriNetworkBudget::WaitMilliseconds(
++          net::MidoriNetworkBudget::Direction::Download, true)) {
++    EnsureReceiveHeadroom();
+   }
+   *len = status;
+ 
+@@ -806,6 +1060,7 @@
+ void NrSocket::close() {
+   ASSERT_ON_THREAD(ststhread_);
+   mCondition = NS_BASE_STREAM_CLOSED;
++  ClearQueuedOutput();
+   cancel(NR_ASYNC_WAIT_READ);
+   cancel(NR_ASYNC_WAIT_WRITE);
+ }
+@@ -864,12 +1119,23 @@
+   ASSERT_ON_THREAD(ststhread_);
+   int _status;
+   int32_t status;
+-
++  PRErrorCode socket_error = 0;
++  net::MidoriNetworkBudget::Reservation reservation{};
++
++  *written = 0;
++  if (!fd_ || NS_FAILED(mCondition)) ABORT(R_EOD);
+   if (!connect_invoked_) ABORT(R_FAILED);
+ 
+-  status = PR_Write(fd_, msg, len);
++  reservation = net::MidoriNetworkBudget::Reserve(
++      net::MidoriNetworkBudget::Direction::Upload,
++      std::min<size_t>(len, UINT32_MAX));
++  if (len && !reservation.bytes) ABORT(R_WOULDBLOCK);
++  status = PR_Write(fd_, msg, reservation.bytes);
++  socket_error = status < 0 ? PR_GetError() : 0;
++  net::MidoriNetworkBudget::Refund(net::MidoriNetworkBudget::Direction::Upload,
++                                   reservation, status > 0 ? status : 0);
+   if (status < 0) {
+-    if (PR_GetError() == PR_WOULD_BLOCK_ERROR) ABORT(R_WOULDBLOCK);
++    if (socket_error == PR_WOULD_BLOCK_ERROR) ABORT(R_WOULDBLOCK);
+     r_log(LOG_GENERIC, LOG_INFO, "Error in write");
+     ABORT(R_IO_ERROR);
+   }
+@@ -885,12 +1151,24 @@
+   ASSERT_ON_THREAD(ststhread_);
+   int _status;
+   int32_t status;
+-
++  PRErrorCode socket_error = 0;
++  net::MidoriNetworkBudget::Reservation reservation{};
++
++  *len = 0;
++  if (!fd_ || NS_FAILED(mCondition)) ABORT(R_EOD);
+   if (!connect_invoked_) ABORT(R_FAILED);
+ 
+-  status = PR_Read(fd_, buf, maxlen);
++  reservation = net::MidoriNetworkBudget::Reserve(
++      net::MidoriNetworkBudget::Direction::Download,
++      std::min<size_t>(maxlen, UINT32_MAX));
++  if (maxlen && !reservation.bytes) ABORT(R_WOULDBLOCK);
++  status = PR_Read(fd_, buf, reservation.bytes);
++  socket_error = status < 0 ? PR_GetError() : 0;
++  net::MidoriNetworkBudget::Refund(
++      net::MidoriNetworkBudget::Direction::Download, reservation,
++      status > 0 ? status : 0);
+   if (status < 0) {
+-    if (PR_GetError() == PR_WOULD_BLOCK_ERROR) ABORT(R_WOULDBLOCK);
++    if (socket_error == PR_WOULD_BLOCK_ERROR) ABORT(R_WOULDBLOCK);
+     r_log(LOG_GENERIC, LOG_INFO, "Error in read");
+     ABORT(R_IO_ERROR);
+   }
+@@ -1055,7 +1333,193 @@
+       err_(false),
+       state_(NR_INIT) {}
+ 
+-NrUdpSocketIpc::~NrUdpSocketIpc() = default;
++struct NrUdpSocketIpc::PendingOutput final {
++  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(PendingOutput)
++
++  PendingOutput(const net::NetAddr& aAddress, uint32_t aCharge)
++      : address(aAddress), charge(aCharge) {}
++
++  void ReleaseData() {
++    data = FallibleTArray<uint8_t>();
++    if (charged) {
++      net::MidoriNetworkBudget::ReleaseDatagramBytes(charge);
++      charged = false;
++    }
++  }
++
++  net::NetAddr address;
++  FallibleTArray<uint8_t> data;
++  const uint32_t charge;
++  net::DatagramSendOptions options;
++  MozPromiseRequestHolder<net::DatagramSendPromise> request;
++  bool charged{true};
++  bool inFlight{false};
++  bool done{false};
++
++ private:
++  ~PendingOutput() { ReleaseData(); }
++};
++
++struct NrUdpSocketIpc::OutputState {
++  std::deque<RefPtr<PendingOutput>> packets;
++  uint32_t queuedBytes{0};
++  uint32_t inFlightBytes{0};
++  uint32_t inFlightCount{0};
++  TimeStamp nextMediaExpiry;
++  bool flushPending{false};
++  bool retryPending{false};
++};
++
++void NrUdpSocketIpc::ExpireQueuedMedia() {
++  if (!output_ || output_->nextMediaExpiry.IsNull()) return;
++  const TimeStamp now = TimeStamp::Now();
++  if (output_->nextMediaExpiry > now) return;
++  output_->nextMediaExpiry = TimeStamp();
++  for (auto packet = output_->packets.begin(); packet != output_->packets.end();) {
++    if ((*packet)->inFlight || (*packet)->options.expires.IsNull() ||
++        (*packet)->options.expires > now) {
++      if (!(*packet)->inFlight && !(*packet)->options.expires.IsNull() &&
++          (output_->nextMediaExpiry.IsNull() ||
++           (*packet)->options.expires < output_->nextMediaExpiry)) {
++        output_->nextMediaExpiry = (*packet)->options.expires;
++      }
++      ++packet;
++      continue;
++    }
++    output_->queuedBytes -= (*packet)->charge;
++    (*packet)->ReleaseData();
++    packet = output_->packets.erase(packet);
++  }
++}
++
++void NrUdpSocketIpc::ClearOutput() {
++  if (!output_) return;
++  for (auto& packet : output_->packets) packet->request.DisconnectIfExists();
++  output_.reset();
++}
++
++void NrUdpSocketIpc::ScheduleOutput() {
++  ASSERT_ON_THREAD(sts_thread_);
++  if (!output_ || output_->flushPending || output_->retryPending) return;
++  output_->flushPending = true;
++  nsresult rv = NS_DispatchToCurrentThread(NS_NewRunnableFunction(
++      "NrUdpSocketIpc::FlushOutput", [self = RefPtr{this}]() {
++        if (!self->output_) return;
++        self->output_->flushPending = false;
++        self->FlushOutput();
++      }));
++  if (NS_FAILED(rv)) {
++    err_ = true;
++    ClearOutput();
++  }
++}
++
++void NrUdpSocketIpc::FlushOutput() {
++  static_assert(sizeof(PendingOutput) <= 256);
++  ASSERT_ON_THREAD(sts_thread_);
++  ReentrantMonitorAutoEnter mon(monitor_);
++  if (!output_ || output_->retryPending || state_ != NR_CONNECTED || err_)
++    return;
++  ExpireQueuedMedia();
++  for (auto& packet : output_->packets) {
++    if (packet->done || packet->inFlight) continue;
++    if (output_->inFlightCount >= 32 ||
++        (output_->inFlightCount &&
++         output_->inFlightBytes + packet->charge > 64 * 1024))
++      break;
++    packet->inFlight = true;
++    ++output_->inFlightCount;
++    output_->inFlightBytes += packet->charge;
++    RefPtr<net::DatagramSendPromise::Private> completion =
++        new net::DatagramSendPromise::Private(__func__);
++    completion
++        ->Then(
++            GetCurrentSerialEventTarget(), __func__,
++            [self = RefPtr{this}, packet](
++                const net::DatagramSendPromise::ResolveOrRejectValue& value) {
++              self->CompleteOutput(
++                  packet, value.IsResolve() ? NS_OK : value.RejectValue(),
++                  value.IsResolve() ? value.ResolveValue() : TimeStamp());
++            })
++        ->Track(packet->request);
++    nsresult rv = io_thread_->Dispatch(
++        NS_NewRunnableFunction("NrUdpSocketIpc::sendto_ack_i",
++                               [self = RefPtr{this}, packet, completion]() {
++                                 self->sendto_ack_i(packet, completion);
++                               }),
++        NS_DISPATCH_NORMAL);
++    if (NS_FAILED(rv)) completion->Reject(rv, __func__);
++  }
++}
++
++void NrUdpSocketIpc::sendto_ack_i(
++    RefPtr<PendingOutput> aPacket,
++    RefPtr<net::DatagramSendPromise::Private> aCompletion) {
++  ASSERT_ON_THREAD(io_thread_);
++  ReentrantMonitorAutoEnter mon(monitor_);
++  if (!socket_child_ || state_ != NR_CONNECTED || err_) {
++    aCompletion->Reject(NS_BASE_STREAM_CLOSED, __func__);
++    return;
++  }
++  socket_child_->SendWithAddressAndAck(aPacket->address, aPacket->data,
++                                       aPacket->options.expires,
++                                       aPacket->options.audio)
++      ->Then(GetCurrentSerialEventTarget(), __func__,
++             [aCompletion](
++                 const net::DatagramSendPromise::ResolveOrRejectValue& value) {
++               if (value.IsResolve())
++                 aCompletion->Resolve(value.ResolveValue(), __func__);
++               else
++                 aCompletion->Reject(value.RejectValue(), __func__);
++             });
++}
++
++void NrUdpSocketIpc::CompleteOutput(RefPtr<PendingOutput> aPacket,
++                                    nsresult aResult,
++                                    const TimeStamp& aSentAt) {
++  ASSERT_ON_THREAD(sts_thread_);
++  ReentrantMonitorAutoEnter mon(monitor_);
++  if (!output_ || !aPacket->inFlight) return;
++  aPacket->request.Complete();
++  aPacket->inFlight = false;
++  --output_->inFlightCount;
++  output_->inFlightBytes -= aPacket->charge;
++  if (aResult == NS_BASE_STREAM_WOULD_BLOCK) {
++    if (!output_->retryPending) {
++      output_->retryPending = true;
++      nsresult rv = NS_DelayedDispatchToCurrentThread(
++          NS_NewRunnableFunction("NrUdpSocketIpc::RetryOutput",
++                                 [self = RefPtr{this}]() {
++                                   if (!self->output_) return;
++                                   self->output_->retryPending = false;
++                                   self->FlushOutput();
++                                 }),
++          50);
++      if (NS_FAILED(rv)) {
++        err_ = true;
++        close();
++      }
++    }
++    return;
++  }
++  if (NS_FAILED(aResult)) {
++    err_ = true;
++    close();
++    return;
++  }
++  aPacket->done = true;
++  aPacket->options.sent.Notify(aSentAt);
++  output_->queuedBytes -= aPacket->charge;
++  aPacket->ReleaseData();
++  auto position =
++      std::find(output_->packets.begin(), output_->packets.end(), aPacket);
++  MOZ_ASSERT(position != output_->packets.end());
++  if (position != output_->packets.end()) output_->packets.erase(position);
++  FlushOutput();
++  if (poll_flags() & PR_POLL_WRITE) fire_callback(NR_ASYNC_WAIT_WRITE);
++}
++
++NrUdpSocketIpc::~NrUdpSocketIpc() { ClearOutput(); }
+ 
+ void NrUdpSocketIpc::Destroy() {
+ #if defined(MOZILLA_INTERNAL_API)
+@@ -1301,15 +1765,39 @@
+     return R_WOULDBLOCK;
+   }
+ 
+-  auto buf = MakeUnique<MediaPacket>();
+-  buf->Copy(static_cast<const uint8_t*>(msg), len);
+-
+-  RUN_ON_THREAD(
+-      io_thread_,
+-      mozilla::WrapRunnable(RefPtr<NrUdpSocketIpc>(this),
+-                            &NrUdpSocketIpc::sendto_i, addr, std::move(buf)),
+-      NS_DISPATCH_NORMAL);
+-  return 0;
++  if (len > UINT16_MAX) return R_BAD_ARGS;
++  ExpireQueuedMedia();
++  const uint32_t charge = uint32_t(len) + 256;
++  if ((output_ && output_->queuedBytes > 1024 * 1024 - charge) ||
++      !net::MidoriNetworkBudget::ReserveDatagramBytes(charge))
++    return R_WOULDBLOCK;
++  RefPtr<PendingOutput> packet = new PendingOutput(addr, charge);
++  if (!packet->data.AppendElements(static_cast<const uint8_t*>(msg), len,
++                                   fallible)) {
++    return R_NO_MEMORY;
++  }
++  if (!output_) output_ = std::make_unique<OutputState>();
++  output_->queuedBytes += charge;
++  packet->options = net::DatagramSendOptions::ForWebRTC(
++      msg, len, net::MidoriNetworkBudget::UploadRate() > 0,
++      net::AutoWebRTCAudioSend::IsAudio());
++  if (!packet->options.expires.IsNull() &&
++      (output_->nextMediaExpiry.IsNull() ||
++       packet->options.expires < output_->nextMediaExpiry)) {
++    output_->nextMediaExpiry = packet->options.expires;
++  }
++  if (packet->options.urgent) {
++    const auto position = std::find_if(
++        output_->packets.begin(), output_->packets.end(),
++        [](const RefPtr<PendingOutput>& aPacket) {
++          return !aPacket->inFlight && !aPacket->options.urgent;
++        });
++    output_->packets.insert(position, std::move(packet));
++  } else {
++    output_->packets.push_back(std::move(packet));
++  }
++  ScheduleOutput();
++  return err_ ? R_IO_ERROR : 0;
+ }
+ 
+ void NrUdpSocketIpc::close() {
+@@ -1319,6 +1807,7 @@
+ 
+   ReentrantMonitorAutoEnter mon(monitor_);
+   state_ = NR_CLOSING;
++  ClearOutput();
+ 
+   RUN_ON_THREAD(io_thread_,
+                 mozilla::WrapRunnable(RefPtr<NrUdpSocketIpc>(this),
+@@ -1488,23 +1977,6 @@
+   }
+ 
+   socket_child_->Connect(proxy, host, port);
+-}
+-
+-void NrUdpSocketIpc::sendto_i(const net::NetAddr& addr,
+-                              UniquePtr<MediaPacket> buf) {
+-  ASSERT_ON_THREAD(io_thread_);
+-
+-  ReentrantMonitorAutoEnter mon(monitor_);
+-
+-  if (!socket_child_) {
+-    MOZ_ASSERT(false);
+-    err_ = true;
+-    return;
+-  }
+-  if (NS_FAILED(
+-          socket_child_->SendWithAddress(&addr, buf->data(), buf->len()))) {
+-    err_ = true;
+-  }
+ }
+ 
+ void NrUdpSocketIpc::close_i() {

@@ -1,0 +1,89 @@
+diff --git a/netwerk/protocol/http/Http2Session.cpp b/netwerk/protocol/http/Http2Session.cpp
+--- a/netwerk/protocol/http/Http2Session.cpp
++++ b/netwerk/protocol/http/Http2Session.cpp
+@@ -23,7 +23,9 @@
+ #include "Http2StreamTunnel.h"
+ #include "Http2WebTransportSession.h"
+ #include "LoadContextInfo.h"
++#include "MidoriNetworkBudget.h"
+ #include "mozilla/EndianUtils.h"
++#include "mozilla/Logging.h"
+ #include "mozilla/Preferences.h"
+ #include "mozilla/Sprintf.h"
+ #include "mozilla/StaticPrefs_network.h"
+@@ -47,6 +49,8 @@
+ 
+ namespace mozilla {
+ namespace net {
++
++static LazyLogModule sMidoriHttp2ResourceLog("MidoriHttp2Resource");
+ 
+ extern const nsCString& TRRProviderKey();
+ 
+@@ -1406,6 +1410,28 @@
+ 
+   RefPtr<Http2Session> self(this);
+ 
++  const uint32_t rate =
++      aResult == NS_BINDING_ABORTED ? MidoriNetworkBudget::DownloadRate() : 0;
++  if (rate) {
++    RefPtr<nsHttpConnectionInfo> info(ConnectionInfo());
++    if (info && info->ProxyInfo() && info->ProxyInfo()->IsHttp3Proxy()) {
++      const uint32_t target = std::max(mPushAllowance, rate / 2);
++      const bool unfinished =
++          !aStream->RecvdFin() && !aStream->RecvdReset() &&
++          aStream->StreamID() &&
++          !(mInputFrameFinal && aStream == mInputFrameDataStream);
++      const bool retire = unfinished && aStream->ClientReceiveWindow() > target;
++      MOZ_LOG(sMidoriHttp2ResourceLog, LogLevel::Debug,
++              ("cancel session=%p stream=%u credit=%" PRId64
++               " target=%u fin=%d reset=%d retire=%d",
++               this, aStream->StreamID(), aStream->ClientReceiveWindow(),
++               target, aStream->RecvdFin(), aStream->RecvdReset(), retire));
++      // Retire only when the peer still holds more credit than the quota
++      // target.
++      if (retire) mShouldGoAway = true;
++    }
++  }
++
+   // don't reset a stream that has recevied a fin or rst
+   if (!aStream->RecvdFin() && !aStream->RecvdReset() && aStream->StreamID() &&
+       !(mInputFrameFinal &&
+@@ -2797,6 +2823,8 @@
+   if (stream->BlockedOnRwin()) {
+     LOG3(("Http2Session %p will stream %p 0x%X suspended for flow control\n",
+           this, stream.get(), stream->StreamID()));
++    // Buffered frames must drain before the peer can extend its window.
++    SetWriteCallbacks();
+     return NS_BASE_STREAM_WOULD_BLOCK;
+   }
+ 
+@@ -3498,14 +3526,23 @@
+   // in order to avoid queue delays in getting the 'ACK' out.
+   uint32_t toack = (unacked <= 0x7fffffffU) ? unacked : 0x7fffffffU;
+ 
++  uint32_t target = mInitialRwin;
++  if (nsHttpTransaction* transaction = stream->HttpTransaction();
++      transaction && transaction->InitialRwin()) {
++    target = std::max(transaction->InitialRwin(), mPushAllowance);
++  }
++  if (const uint32_t rate = MidoriNetworkBudget::DownloadRate()) {
++    target = std::min(target, std::max(mPushAllowance, rate / 2));
++  }
++  toack = stream->UpdateClientReceiveWindow(target, toack);
++  if (toack == 0) {
++    // Ensure we never send an illegal 0 window update
++    return;
++  }
++
+   LOG3(
+       ("Http2Session::UpdateLocalStreamWindow Ack this=%p id=0x%X acksize=%d\n",
+        this, stream->StreamID(), toack));
+-  stream->IncrementClientReceiveWindow(toack);
+-  if (toack == 0) {
+-    // Ensure we never send an illegal 0 window update
+-    return;
+-  }
+ 
+   // room for this packet needs to be ensured before calling this function
+   char* packet = mOutputQueueBuffer.get() + mOutputQueueUsed;

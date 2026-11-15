@@ -1,0 +1,28 @@
+diff --git a/third_party/libwebrtc/net/dcsctp/public/dcsctp_options.h b/third_party/libwebrtc/net/dcsctp/public/dcsctp_options.h
+index d87196fc46..c44d549190 100644
+--- a/third_party/libwebrtc/net/dcsctp/public/dcsctp_options.h
++++ b/third_party/libwebrtc/net/dcsctp/public/dcsctp_options.h
+@@ -10,6 +10,7 @@
+ #ifndef NET_DCSCTP_PUBLIC_DCSCTP_OPTIONS_H_
+ #define NET_DCSCTP_PUBLIC_DCSCTP_OPTIONS_H_
+ 
++#include <algorithm>
+ #include <cstddef>
+ #include <cstdint>
+ #include <optional>
+@@ -85,6 +86,15 @@ struct DcSctpOptions {
+   // buffer is fully utilized.
+   size_t max_receiver_window_buffer_size = 5 * 1024 * 1024;
+ 
++  // Caps the advertised window without reducing message reassembly capacity.
++  size_t (*receive_window_limit)(uint32_t rtt_ms) = nullptr;
++  bool (*receive_window_may_grow)() = nullptr;
++
++  size_t AdvertisedReceiverWindow(size_t available, uint32_t rtt_ms = 0) const {
++    return receive_window_limit ? std::min(available, receive_window_limit(rtt_ms))
++                                : available;
++  }
++
+   // Enables receive pull mode - `DcSctpCallbacks::OnMessageReady` will be
+   // called when there are messages ready to be read instead of
+   // `DcSctpCallbacks::OnMessageReceived`.  It is up to the

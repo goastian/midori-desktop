@@ -1,0 +1,35 @@
+diff --git a/third_party/libwebrtc/net/dcsctp/socket/dcsctp_socket.cc b/third_party/libwebrtc/net/dcsctp/socket/dcsctp_socket.cc
+index 04e174ac64..156cad5ee3 100644
+--- a/third_party/libwebrtc/net/dcsctp/socket/dcsctp_socket.cc
++++ b/third_party/libwebrtc/net/dcsctp/socket/dcsctp_socket.cc
+@@ -292,7 +292,8 @@ void DcSctpSocket::SendInit() {
+           ZeroChecksumAlternateErrorDetectionMethod::None(),
+       params_builder);
+   InitChunk init(/*initiate_tag=*/connect_params_.verification_tag,
+-                 /*a_rwnd=*/options_.max_receiver_window_buffer_size,
++                 /*a_rwnd=*/options_.AdvertisedReceiverWindow(
++                     options_.max_receiver_window_buffer_size),
+                  options_.announced_maximum_outgoing_streams,
+                  options_.announced_maximum_incoming_streams,
+                  connect_params_.initial_tsn, params_builder.Build());
+@@ -346,7 +347,9 @@ std::vector<uint8_t> DcSctpSocket::GenerateConnectionToken(
+       options.zero_checksum_alternate_error_detection_method !=
+           ZeroChecksumAlternateErrorDetectionMethod::None(),
+       params_builder);
+-  InitChunk init(verification_tag, options.max_receiver_window_buffer_size,
++  InitChunk init(verification_tag,
++                 options.AdvertisedReceiverWindow(
++                     options.max_receiver_window_buffer_size),
+                  options.announced_maximum_outgoing_streams,
+                  options.announced_maximum_incoming_streams, initial_tsn,
+                  params_builder.Build());
+@@ -1318,7 +1321,8 @@ void DcSctpSocket::HandleInit(const CommonHeader& /* header */,
+                           params_builder);
+ 
+   InitAckChunk init_ack(/*initiate_tag=*/my_verification_tag,
+-                        options_.max_receiver_window_buffer_size,
++                        options_.AdvertisedReceiverWindow(
++                            options_.max_receiver_window_buffer_size),
+                         options_.announced_maximum_outgoing_streams,
+                         options_.announced_maximum_incoming_streams,
+                         my_initial_tsn, params_builder.Build());

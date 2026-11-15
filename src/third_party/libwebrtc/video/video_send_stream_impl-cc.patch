@@ -1,0 +1,33 @@
+diff --git a/third_party/libwebrtc/video/video_send_stream_impl.cc b/third_party/libwebrtc/video/video_send_stream_impl.cc
+--- a/third_party/libwebrtc/video/video_send_stream_impl.cc
++++ b/third_party/libwebrtc/video/video_send_stream_impl.cc
+@@ -8,6 +8,8 @@
+  *  be found in the AUTHORS file in the root of the source tree.
+  */
+ #include "video/video_send_stream_impl.h"
++
++#include "api/rtp_packet_sender.h"
+ 
+ #include <algorithm>
+ #include <cstdint>
+@@ -747,6 +749,20 @@
+   rtp_video_sender_->OnVideoLayersAllocationUpdated(allocation);
+ }
+ 
++void VideoSendStreamImpl::DiscardPacketsCapturedBefore(Timestamp time) {
++  RTC_DCHECK_RUN_ON(&thread_checker_);
++  auto* sender = transport_->packet_sender();
++  for (uint32_t ssrc : config_.rtp.ssrcs) {
++    sender->DiscardPacketsCapturedBefore(ssrc, time);
++  }
++  for (uint32_t ssrc : config_.rtp.rtx.ssrcs) {
++    sender->DiscardPacketsCapturedBefore(ssrc, time);
++  }
++  if (config_.rtp.flexfec.ssrc) {
++    sender->DiscardPacketsCapturedBefore(config_.rtp.flexfec.ssrc, time);
++  }
++}
++
+ void VideoSendStreamImpl::SignalEncoderActive() {
+   RTC_DCHECK_RUN_ON(&thread_checker_);
+   if (IsRunning()) {

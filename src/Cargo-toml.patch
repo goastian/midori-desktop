@@ -1,0 +1,11 @@
+diff --git a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -441,3 +441,7 @@
+ 
+ # Implement mach2 0.4 in terms of 0.6
+ mach2 = { path = "build/rust/mach2" }
++
++[patch."https://github.com/mozilla/neqo"]
++neqo-common = { path = "third_party/rust/neqo-common" }
++neqo-udp = { path = "third_party/rust/neqo-udp" }

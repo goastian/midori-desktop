@@ -1,0 +1,47 @@
+diff --git a/netwerk/protocol/http/Http2StreamBase.cpp b/netwerk/protocol/http/Http2StreamBase.cpp
+--- a/netwerk/protocol/http/Http2StreamBase.cpp
++++ b/netwerk/protocol/http/Http2StreamBase.cpp
+@@ -17,6 +17,7 @@
+ #include "Http2Session.h"
+ #include "Http2Stream.h"
+ #include "Http2StreamBase.h"
++#include "MidoriNetworkBudget.h"
+ #include "mozilla/BasePrincipal.h"
+ #include "mozilla/Components.h"
+ #include "mozilla/StaticPrefs_network.h"
+@@ -537,6 +538,21 @@
+   return NS_OK;
+ }
+ 
++uint32_t Http2StreamBase::UpdateClientReceiveWindow(uint32_t aTarget,
++                                                    uint32_t aMaximumAck) {
++  const uint32_t target = std::min(aTarget, 0x7fffffffU);
++  const uint64_t capacity = mClientReceiveWindow + int64_t(mLocalUnacked);
++  const uint32_t growth = capacity < target ? target - capacity : 0;
++  uint32_t ack =
++      mClientReceiveWindow < target
++          ? std::min<uint64_t>(aMaximumAck, target - mClientReceiveWindow)
++          : 0;
++  ack = std::min(ack, 0x7fffffffU - growth);
++  mClientReceiveWindow += growth;
++  IncrementClientReceiveWindow(ack);
++  return growth + ack;
++}
++
+ void Http2StreamBase::AdjustInitialWindow() {
+   // The default initial_window is sized for pushed streams. When we
+   // generate a client pulled stream we want to disable flow control for
+@@ -561,6 +577,13 @@
+   } else {
+     MOZ_ASSERT(session->InitialRwin() >= mClientReceiveWindow);
+     bump = session->InitialRwin() - mClientReceiveWindow;
++  }
++
++  if (const uint32_t rate = MidoriNetworkBudget::DownloadRate()) {
++    const uint32_t target = std::max(session->PushAllowance(), rate / 2);
++    bump = mClientReceiveWindow < target
++               ? std::min<uint64_t>(bump, target - mClientReceiveWindow)
++               : 0;
+   }
+ 
+   LOG3(("AdjustInitialwindow increased flow control window %p 0x%X %u\n", this,

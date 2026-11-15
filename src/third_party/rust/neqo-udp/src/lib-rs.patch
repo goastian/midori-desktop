@@ -1,0 +1,16 @@
+diff --git a/third_party/rust/neqo-udp/src/lib.rs b/third_party/rust/neqo-udp/src/lib.rs
+--- a/third_party/rust/neqo-udp/src/lib.rs
++++ b/third_party/rust/neqo-udp/src/lib.rs
+@@ -50,6 +50,12 @@
+ 
+ /// A UDP receive buffer.
+ pub struct RecvBuf(Vec<Vec<u8>>);
++
++impl RecvBuf {
++    pub fn single() -> Self {
++        Self(vec![vec![0; RECV_BUF_SIZE]])
++    }
++}
+ 
+ impl Default for RecvBuf {
+     fn default() -> Self {

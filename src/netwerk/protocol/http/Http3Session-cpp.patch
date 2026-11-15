@@ -1,0 +1,148 @@
+diff --git a/netwerk/protocol/http/Http3Session.cpp b/netwerk/protocol/http/Http3Session.cpp
+--- a/netwerk/protocol/http/Http3Session.cpp
++++ b/netwerk/protocol/http/Http3Session.cpp
+@@ -13,6 +13,8 @@
+ #include "Http3WebTransportStream.h"
+ #include "HttpConnectionUDP.h"
+ #include "HttpLog.h"
++#include "MidoriNetworkBudget.h"
++#include "mozilla/Logging.h"
+ #include "QuicSocketControl.h"
+ #include "SSLServerCertVerification.h"
+ #include "SSLTokensCache.h"
+@@ -39,6 +41,8 @@
+ 
+ namespace mozilla::net {
+ 
++static LazyLogModule sMidoriHttp3ResourceLog("MidoriHttp3Resource");
++
+ extern const nsCString& TRRProviderKey();
+ 
+ const uint64_t HTTP3_APP_ERROR_NO_ERROR = 0x100;
+@@ -168,6 +172,10 @@
+ 
+   nsresult rv;
+   if (mUseNSPRForIO) {
++    if (isOuterConnection) {
++      rv = socket->SetDontFragment(true);
++      if (NS_FAILED(rv)) return rv;
++    }
+     rv = NeqoHttp3Conn::InitUseNSPRForIO(
+         mSocketControl->GetHostName(), alpn, selfAddr, peerAddr,
+         gHttpHandler->DefaultQpackTableSize(),
+@@ -176,7 +184,7 @@
+         StaticPrefs::network_http_http3_max_stream_data(),
+         StaticPrefs::network_http_http3_version_negotiation_enabled(),
+         mConnInfo->GetWebTransport(), gHttpHandler->Http3QlogDir(), idleTimeout,
+-        fastPto, getter_AddRefs(mHttp3Connection));
++        fastPto, isOuterConnection, getter_AddRefs(mHttp3Connection));
+   } else {
+     rv = NeqoHttp3Conn::Init(
+         mSocketControl->GetHostName(), alpn, selfAddr, peerAddr,
+@@ -186,7 +194,7 @@
+         StaticPrefs::network_http_http3_max_stream_data(),
+         StaticPrefs::network_http_http3_version_negotiation_enabled(),
+         mConnInfo->GetWebTransport(), gHttpHandler->Http3QlogDir(), idleTimeout,
+-        fastPto, socket->GetFileDescriptor(), isOuterConnection,
++        fastPto, socket->GetFileDescriptor(), isOuterConnection, socket,
+         getter_AddRefs(mHttp3Connection));
+   }
+   if (NS_FAILED(rv)) {
+@@ -1225,6 +1233,25 @@
+   }
+ 
+   if (mUseNSPRForIO) {
++    if (!mPendingNSPRDatagram.IsEmpty()) {
++      uint32_t written = 0;
++      const nsresult rv = socket->SendWithAddress(
++          &mPendingNSPRAddress, mPendingNSPRDatagram.Elements(),
++          mPendingNSPRDatagram.Length(), &written);
++      if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
++        socket->EnableWritePoll();
++        return NS_OK;
++      }
++      if (NS_FAILED(rv) && rv != NS_ERROR_OUT_OF_MEMORY) {
++        mSocketError = rv;
++        return rv;
++      }
++      if (NS_SUCCEEDED(rv)) {
++        mTotalBytesWritten += mPendingNSPRDatagram.Length();
++        mLastWriteTime = PR_IntervalNow();
++      }
++      mPendingNSPRDatagram.Clear();
++    }
+     mSocket = socket;
+     nsresult rv = mHttp3Connection->ProcessOutputAndSendUseNSPRForIO(
+         this,
+@@ -1248,7 +1275,18 @@
+ 
+           LOG(("Http3Session::ProcessOutput sending packet rv=%d osError=%d",
+                static_cast<int32_t>(rv), NS_FAILED(rv) ? PR_GetOSError() : 0));
+-          if (NS_FAILED(rv) && (rv != NS_BASE_STREAM_WOULD_BLOCK)) {
++          if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
++            MOZ_ASSERT(self->mPendingNSPRDatagram.IsEmpty());
++            if (aLength > UINT16_MAX ||
++                !self->mPendingNSPRDatagram.AppendElements(aData, aLength,
++                                                           fallible)) {
++              self->mSocketError = NS_ERROR_OUT_OF_MEMORY;
++              return self->mSocketError;
++            }
++            self->mPendingNSPRAddress = addr;
++            return rv;
++          }
++          if (NS_FAILED(rv)) {
+             if (rv == NS_ERROR_OUT_OF_MEMORY) {
+               // NSPR maps ENOBUFS to PR_INSUFFICIENT_RESOURCES_ERROR, which
+               // becomes NS_ERROR_OUT_OF_MEMORY. On macOS/BSD, ENOBUFS means
+@@ -1273,6 +1311,12 @@
+           self->SetupTimer(timeout);
+         });
+     mSocket = nullptr;
++    if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
++      socket->EnableWritePoll();
++      return NS_OK;
++    }
++    MidoriNetworkBudget::CancelDatagramDemand(
++        MidoriNetworkBudget::Direction::Upload, socket);
+     return rv;
+   }
+ 
+@@ -2412,6 +2456,25 @@
+   mWebTransportSessions.RemoveElement(aStream);
+   mWebTransportStreams.RemoveElement(aStream);
+   mTunnelStreams.RemoveElement(aStream);
++  if (aResult == NS_ERROR_ABORT && aStream->GetHttp3StreamTunnel() &&
++      MidoriNetworkBudget::DownloadRate()) {
++    const bool idle = HasNoActiveStreams() && mQueuedStreams.GetSize() == 0;
++    const bool close = idle && mUdpConn && !IsClosing();
++    MOZ_LOG(
++        sMidoriHttp3ResourceLog, LogLevel::Debug,
++        ("tunnel-close session=%p stream=%" PRIu64
++         " transactions=%u tunnels=%zu wt-sessions=%zu wt-streams=%zu"
++         " queued=%zu idle=%d release=%d",
++         this, aStream->StreamId(), mStreamTransactionHash.Count(),
++         mTunnelStreams.Length(), mWebTransportSessions.Length(),
++         mWebTransportStreams.Length(), mQueuedStreams.GetSize(), idle, close));
++    if (close) {
++      RefPtr<Http3Session> self(this);
++      RefPtr<HttpConnectionUDP> connection(mUdpConn);
++      connection->Close(NS_ERROR_ABORT);
++      return;
++    }
++  }
+   // Close(NS_OK) implies that the NeqoHttp3Conn will be closed, so we can only
+   // do this when there is no Http3Steeam, WebTransportSession and
+   // WebTransportStream.
+@@ -3231,8 +3294,10 @@
+        this, aData.Length(), aTrackingId));
+   // Connect-UDP (MASQUE) doesn't use WebTransport send groups or send order,
+   // so pass 0 for both (0 = null sendGroup, 0 = default sendOrder).
+-  (void)mHttp3Connection->ConnectUdpSendDatagram(aStreamId, aData, aTrackingId,
+-                                                 0, 0);
++  const nsresult rv = mHttp3Connection->ConnectUdpSendDatagram(
++      aStreamId, aData, aTrackingId, 0, 0);
++  LOG(("Http3Session::SendHTTPDatagram status=%" PRIx32,
++       static_cast<uint32_t>(rv)));
+ }
+ 
+ void Http3Session::SetSendOrder(Http3StreamBase* aStream, int64_t aSendOrder) {

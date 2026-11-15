@@ -1,0 +1,62 @@
+diff --git a/third_party/libwebrtc/net/dcsctp/socket/transmission_control_block.cc b/third_party/libwebrtc/net/dcsctp/socket/transmission_control_block.cc
+--- a/third_party/libwebrtc/net/dcsctp/socket/transmission_control_block.cc
++++ b/third_party/libwebrtc/net/dcsctp/socket/transmission_control_block.cc
+@@ -125,6 +125,23 @@
+ void TransmissionControlBlock::ObserveRTT(TimeDelta rtt) {
+   TimeDelta prev_rto = rto_.rto();
+   rto_.ObserveRTT(rtt);
++  if (rtt >= TimeDelta::Zero() && rtt <= options_.rtt_max.ToTimeDelta()) {
++    const uint32_t sample =
++        static_cast<uint32_t>(std::clamp<int64_t>(rtt.ms(), 1, 60000));
++    const bool limited = options_.receive_window_limit &&
++                         options_.receive_window_limit(0) < UINT32_MAX;
++    const Timestamp now = callbacks_.Now();
++    const bool may_grow = options_.receive_window_may_grow &&
++                          options_.receive_window_may_grow() &&
++                          now - receive_window_rtt_updated_at_ >=
++                              TimeDelta::Millis(2000 +
++                                  2 * receive_window_rtt_ms_);
++    if (!limited || !receive_window_rtt_ms_ || sample < receive_window_rtt_ms_ ||
++        may_grow) {
++      receive_window_rtt_ms_ = sample;
++      receive_window_rtt_updated_at_ = now;
++    }
++  }
+   RTC_DLOG(LS_VERBOSE) << log_prefix_ << "new rtt=" << webrtc::ToString(rtt)
+                        << ", srtt=" << webrtc::ToString(rto_.srtt())
+                        << ", rto=" << webrtc::ToString(rto_.rto()) << " ("
+@@ -161,11 +178,21 @@
+ 
+ void TransmissionControlBlock::MaybeSendSack() {
+   if (data_tracker_.ShouldSendAck(/*also_if_delayed=*/false)) {
++    MaybeProbeReceiveWindowRtt();
+     SctpPacket::Builder builder = PacketBuilder();
+-    builder.Add(
+-        data_tracker_.CreateSelectiveAck(reassembly_queue_.remaining_bytes()));
++    builder.Add(data_tracker_.CreateSelectiveAck(
++        AdvertisedReceiverWindow()));
+     Send(builder);
+   }
++}
++
++void TransmissionControlBlock::MaybeProbeReceiveWindowRtt() {
++  if (!options_.receive_window_limit ||
++      options_.receive_window_limit(0) == UINT32_MAX) return;
++  const Timestamp now = callbacks_.Now();
++  if (now - receive_window_probe_at_ < TimeDelta::Millis(250)) return;
++  receive_window_probe_at_ = now;
++  heartbeat_handler_.RequestSample();
+ }
+ 
+ void TransmissionControlBlock::MaybeSendForwardTsn(SctpPacket::Builder& builder,
+@@ -236,8 +263,9 @@
+       // as long as the size of the final SCTP packet does not exceed the
+       // current MTU."
+       if (data_tracker_.ShouldSendAck(/*also_if_delayed=*/true)) {
++        MaybeProbeReceiveWindowRtt();
+         builder.Add(data_tracker_.CreateSelectiveAck(
+-            reassembly_queue_.remaining_bytes()));
++            AdvertisedReceiverWindow()));
+       }
+       MaybeSendForwardTsn(builder, now);
+       std::optional<ReConfigChunk> reconfig =

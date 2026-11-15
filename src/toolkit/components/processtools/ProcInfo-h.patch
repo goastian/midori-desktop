@@ -1,0 +1,30 @@
+--- a/toolkit/components/processtools/ProcInfo.h
++++ b/toolkit/components/processtools/ProcInfo.h
+@@ -200,6 +200,7 @@
+   const nsTArray<UtilityInfo> utilityInfo;
+   // If the process is a child, its child id, otherwise `0`.
+   const int32_t childId;
++  bool includeThreads = true;
+ #ifdef XP_MACOSX
+   const mach_port_t childTask;
+ #endif  // XP_DARWIN
+@@ -256,12 +257,18 @@
+  * `ParentProcInfoDictionary` or a `ChildProcInfoDictionary`.
+  */
+ template <typename T>
+-nsresult CopySysProcInfoToDOM(const ProcInfo& source, T* dest) {
++nsresult CopySysProcInfoToDOM(const ProcInfo& source, T* dest,
++                              bool aIncludeThreads = true) {
+   // Copy system info.
+   dest->mPid = source.pid;
+   dest->mMemory = source.memory;
+   dest->mCpuTime = source.cpuTime;
+   dest->mCpuCycleCount = source.cpuCycleCount;
++
++  if (!aIncludeThreads) {
++    dest->mThreads.Clear();
++    return NS_OK;
++  }
+ 
+   // Copy thread info.
+   mozilla::dom::Sequence<mozilla::dom::ThreadInfoDictionary> threads;

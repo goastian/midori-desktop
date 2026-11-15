@@ -1,0 +1,29 @@
+diff --git a/toolkit/components/sessionstore/SessionStoreUtils.cpp b/toolkit/components/sessionstore/SessionStoreUtils.cpp
+--- a/toolkit/components/sessionstore/SessionStoreUtils.cpp
++++ b/toolkit/components/sessionstore/SessionStoreUtils.cpp
+@@ -64,6 +64,25 @@
+ using namespace mozilla::dom;
+ using namespace mozilla::dom::sessionstore;
+ 
++void SessionStoreUtils::PersistHistoryState(const GlobalObject& aGlobal,
++                                          Document& aDocument,
++                                          ErrorResult& aError) {
++  nsCOMPtr<nsIDocShell> docShell = aDocument.GetDocShell();
++  if (!docShell) {
++    aError.Throw(NS_ERROR_NOT_AVAILABLE);
++    return;
++  }
++  for (nsIContent* child = aDocument.GetFirstChild(); child;
++       child = child->GetNextSibling()) {
++    child->SaveSubtreeState();
++  }
++  aError = docShell->PersistLayoutHistoryState();
++  if (aError.Failed()) {
++    return;
++  }
++  aError = docShell->SynchronizeLayoutHistoryState();
++}
++
+ /* static */
+ void SessionStoreUtils::ForEachNonDynamicChildFrame(
+     const GlobalObject& aGlobal, WindowProxyHolder& aWindow,
