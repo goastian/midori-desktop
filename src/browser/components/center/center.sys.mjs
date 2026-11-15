@@ -30,6 +30,7 @@ const ADDON_IDS = {
 
 // ---- Pref mapping: element ID → { pref, type } ----
 const PREF_MAP = {
+  "pref-performance-visible": { pref: "midori.msidebar.tools.performance.visible", type: "bool" },
   "pref-midori-blocker-enabled": { pref: "midori.blocker.enabled", type: "bool" },
   "pref-midori-blocker-show-badge": { pref: "midori.blocker.showBadge", type: "bool" },
   "pref-compact-mode":       { pref: "midori.compact.enabled",          type: "bool" },
@@ -2370,6 +2371,14 @@ function initNavigation() {
     document.title = `${document.querySelector(`#page-${targetPage} .page-title`)?.textContent || "Midori Center"} — Midori Center`;
     if (updateHistory && window.location.hash !== `#${targetPage}`) {
       window.history.pushState(null, "", `#${targetPage}`);
+    }
+    const performanceFrame = document.getElementById("performance-frame");
+    if (targetPage === "performance") {
+      if (!performanceFrame.hasAttribute("src")) {
+        performanceFrame.src = "chrome://browser/content/performance/performance.html";
+      }
+    } else {
+      performanceFrame.removeAttribute("src");
     }
     if (targetPage === "webapps") {
       ensureWebAppsInitialized();

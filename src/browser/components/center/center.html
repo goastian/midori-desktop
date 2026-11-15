@@ -8,6 +8,7 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src chrome: resource:; img-src chrome: resource: data: moz-icon: blob:; style-src chrome: 'unsafe-inline'; script-src chrome:; object-src 'none'">
   <title>Midori Center</title>
+  <link rel="localization" href="browser/midori/performance.ftl">
   <link rel="stylesheet" href="chrome://browser/content/center/center.css">
 </head>
 <body>
@@ -21,6 +22,10 @@
       </div>
 
       <div id="sidebar-nav">
+        <button class="nav-item" data-page="performance">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 14a7 7 0 1 1 14 0M10 12l4-5"/></svg>
+          <span data-l10n-id="midori-performance-title"></span>
+        </button>
         <button class="nav-item active" data-page="home">
           <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M3 7.5L10 2l7 5.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V7.5z"/>
@@ -105,6 +110,9 @@
         </div>
 
         <div class="cards-grid">
+          <button class="overview-card" data-navigate="performance">
+            <div class="card-text"><h3 data-l10n-id="midori-performance-title"></h3><p data-l10n-id="midori-performance-intro"></p></div>
+          </button>
           <button class="overview-card" data-navigate="tabs">
             <div class="card-icon-wrap card-icon-green">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -605,6 +613,7 @@
 
       <!-- SIDEBAR PAGE -->
       <section id="page-sidebar" class="page">
+        <label class="setting-row"><span data-l10n-id="midori-performance-sidebar-visible-text"></span><input type="checkbox" id="pref-performance-visible"></label>
         <div class="page-header">
           <h1 class="page-title">Sidebar</h1>
           <p class="page-subtitle">Configure the multi-panel sidebar for quick access to tools.</p>
@@ -834,6 +843,10 @@
         </div>
       </section>
 
+      <section id="page-performance" class="page" hidden>
+        <h1 class="page-title performance-accessible-title" data-l10n-id="midori-performance-title"></h1>
+        <iframe id="performance-frame" title="Performance" class="performance-frame"></iframe>
+      </section>
     </main>
   </div>
 

@@ -170,6 +170,10 @@ class Page {
   }
 
   show() {
+    for (const image of this.element.querySelectorAll('img[data-src]')) {
+      image.src = image.dataset.src;
+      image.removeAttribute('data-src');
+    }
     this.element.classList.add('visible');
   }
 }

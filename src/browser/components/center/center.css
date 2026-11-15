@@ -2878,3 +2878,7 @@ body::after {
     background: var(--mc-bg-subtle);
   }
 }
+
+.performance-frame { width: 100%; min-height: 1400px; border: 0; color-scheme: inherit; }
+
+.performance-accessible-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
