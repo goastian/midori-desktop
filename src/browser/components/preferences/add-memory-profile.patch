@@ -59,7 +59,7 @@ index 7dd5937b32..06e1a87be4 100644
 +  get: value => String(value ?? 0),
 +  set: value => {
 +    const profile = Number.parseInt(value, 10);
-+    return profile >= 0 && profile <= 3 ? profile : 0;
++    return profile >= 0 && profile <= 4 ? profile : 0;
 +  },
 +});
  Preferences.addSetting({
@@ -83,7 +83,7 @@ index 7dd5937b32..06e1a87be4 100644
              controlAttrs: {
                class: "setting-chooser-item",
                imagesrc:
-@@ -761,6 +771,29 @@ SettingGroupManager.registerGroups({
+@@ -761,6 +771,33 @@ SettingGroupManager.registerGroups({
          id: "allowHWAccel",
          l10nId: "performance-allow-hw-accel",
        },
@@ -107,6 +107,10 @@ index 7dd5937b32..06e1a87be4 100644
 +          {
 +            value: "3",
 +            l10nId: "performance-memory-profile-gaming-ai",
++          },
++          {
++            value: "4",
++            l10nId: "performance-memory-profile-custom",
 +          },
 +        ],
 +      },

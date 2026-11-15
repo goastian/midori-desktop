@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src chrome: resource:; script-src chrome:; style-src chrome:; object-src 'none'">
+  <title data-l10n-id="midori-performance-title">Performance</title>
+  <link rel="localization" href="browser/midori/performance.ftl">
+  <link rel="stylesheet" href="chrome://browser/content/center/center.css">
+  <link rel="stylesheet" href="chrome://browser/content/performance/performance.css">
+  <script type="module" src="chrome://browser/content/performance/performance.sys.mjs"></script>
+</head>
+<body>
+  <main id="performance-root">
+    <header>
+      <h1 data-l10n-id="midori-performance-title"></h1>
+      <p data-l10n-id="midori-performance-intro"></p>
+    </header>
+    <form id="resource-form">
+      <section class="resource-card resource-profile">
+        <label for="profile" data-l10n-id="midori-performance-profile"></label>
+        <select id="profile">
+          <option value="0" data-l10n-id="midori-performance-profile-0"></option>
+          <option value="1" data-l10n-id="midori-performance-profile-1"></option>
+          <option value="2" data-l10n-id="midori-performance-profile-2"></option>
+          <option value="3" data-l10n-id="midori-performance-profile-3"></option>
+          <option value="4" data-l10n-id="midori-performance-profile-4"></option>
+        </select>
+        <div id="custom-base-row" hidden>
+          <label for="base-profile" data-l10n-id="midori-performance-base"></label>
+          <select id="base-profile">
+            <option value="0" data-l10n-id="midori-performance-profile-0"></option>
+            <option value="1" data-l10n-id="midori-performance-profile-1"></option>
+            <option value="2" data-l10n-id="midori-performance-profile-2"></option>
+            <option value="3" data-l10n-id="midori-performance-profile-3"></option>
+          </select>
+        </div>
+        <p id="profile-description"></p>
+      </section>
+      <div class="resource-grid">
+        <section class="resource-card">
+          <div class="resource-card-heading"><h2 id="memory-heading" data-l10n-id="midori-performance-memory"></h2><span id="memory-enforcement" class="resource-badge"></span></div>
+          <output id="memory-used" class="resource-value">—</output>
+          <p id="memory-kind"></p>
+          <progress id="memory-pressure" aria-labelledby="memory-heading" max="1" value="0"></progress>
+          <label class="resource-toggle"><span data-l10n-id="midori-performance-memory-enable"></span><input id="memory-enabled" type="checkbox" role="switch"></label>
+          <label id="memory-budget-heading" for="memory-budget" data-l10n-id="midori-performance-budget"></label>
+          <div class="resource-budget">
+            <input id="memory-slider" type="range" min="0.5" max="64" step="0.5" aria-labelledby="memory-budget-heading memory-budget-label">
+            <input id="memory-budget" type="number" min="0.5" max="1024" step="0.5" required aria-labelledby="memory-budget-heading memory-budget-label">
+            <span id="memory-budget-label">GiB</span>
+          </div>
+          <label class="resource-toggle"><span data-l10n-id="midori-performance-memory-strict"></span><input id="memory-strict" type="checkbox" role="switch" aria-describedby="memory-strict-unavailable"></label>
+          <p id="memory-strict-unavailable" class="resource-unavailable" data-l10n-id="midori-performance-memory-strict-unavailable"></p>
+          <p data-l10n-id="midori-performance-memory-explanation"></p>
+          <p id="memory-state"></p>
+        </section>
+        <section class="resource-card">
+          <div class="resource-card-heading"><h2 id="cpu-heading" data-l10n-id="midori-performance-cpu"></h2><span id="cpu-enforcement" class="resource-badge"></span></div>
+          <output id="cpu-used" class="resource-value">—</output>
+          <p id="cpu-explanation" data-l10n-id="midori-performance-cpu-explanation"></p>
+          <div class="resource-editor">
+            <label class="resource-toggle"><span data-l10n-id="midori-performance-cpu-enable"></span><input id="cpu-enabled" type="checkbox" role="switch" aria-describedby="cpu-unavailable"></label>
+            <label id="cpu-budget-heading" for="cpu-budget" data-l10n-id="midori-performance-cpu-budget"></label>
+            <div class="resource-budget">
+              <input id="cpu-slider" type="range" min="1" max="100" step="1" aria-labelledby="cpu-budget-heading cpu-budget-unit">
+              <input id="cpu-budget" type="number" min="1" max="100" step="1" required aria-labelledby="cpu-budget-heading cpu-budget-unit">
+              <span id="cpu-budget-unit">%</span>
+            </div>
+            <p id="cpu-unavailable" class="resource-unavailable" data-l10n-id="midori-performance-cpu-unavailable"></p>
+          </div>
+        </section>
+        <section class="resource-card resource-network">
+          <div class="resource-card-heading"><h2 data-l10n-id="midori-performance-network"></h2><span id="network-enforcement" class="resource-badge"></span></div>
+          <p data-l10n-id="midori-performance-network-explanation"></p>
+          <label class="resource-toggle"><span data-l10n-id="midori-performance-network-enable"></span><input id="network-enabled" type="checkbox" role="switch" aria-describedby="network-unavailable"></label>
+          <div class="resource-preset">
+            <label id="network-preset-label" for="network-preset" data-l10n-id="midori-performance-network-preset"></label>
+            <select id="network-preset">
+              <option value="custom" data-l10n-id="midori-performance-network-preset-custom"></option>
+              <option value="26214400" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":25,"unit":"MiB/s"}'></option>
+              <option value="10485760" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":10,"unit":"MiB/s"}'></option>
+              <option value="7340032" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":7,"unit":"MiB/s"}'></option>
+              <option value="5242880" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":5,"unit":"MiB/s"}'></option>
+              <option value="3145728" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":3,"unit":"MiB/s"}'></option>
+              <option value="2097152" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":2,"unit":"MiB/s"}'></option>
+              <option value="1572864" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":1.5,"unit":"MiB/s"}'></option>
+              <option value="1048576" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":1,"unit":"MiB/s"}'></option>
+              <option value="786432" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":768,"unit":"KiB/s"}'></option>
+              <option value="524288" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":512,"unit":"KiB/s"}'></option>
+              <option value="393216" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":384,"unit":"KiB/s"}'></option>
+              <option value="262144" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":256,"unit":"KiB/s"}'></option>
+              <option value="131072" data-l10n-id="midori-performance-network-preset-rate" data-l10n-args='{"amount":128,"unit":"KiB/s"}'></option>
+            </select>
+          </div>
+          <div class="resource-rates">
+            <div class="resource-rate">
+              <label for="network-download"><span id="network-download-heading" data-l10n-id="midori-performance-network-download"></span><span id="network-download-unit" class="resource-unit">Mbit/s</span></label>
+              <input id="network-download" type="number" min="0.008192" max="34359.73836" step="any" required aria-labelledby="network-download-heading network-download-unit">
+            </div>
+            <div class="resource-rate">
+              <label for="network-upload"><span id="network-upload-heading" data-l10n-id="midori-performance-network-upload"></span><span id="network-upload-unit" class="resource-unit">Mbit/s</span></label>
+              <input id="network-upload" type="number" min="0.008192" max="34359.73836" step="any" required aria-labelledby="network-upload-heading network-upload-unit">
+            </div>
+          </div>
+          <p id="network-unavailable" class="resource-unavailable" data-l10n-id="midori-performance-network-unavailable"></p>
+        </section>
+      </div>
+      <p id="resource-status" role="status" aria-live="polite" data-l10n-id="midori-performance-autosave"></p>
+    </form>
+    <section class="resource-card">
+      <h2 data-l10n-id="midori-performance-tabs"></h2>
+      <p data-l10n-id="midori-performance-tabs-scope"></p>
+      <label for="tab-order" data-l10n-id="midori-performance-sort"></label>
+      <select id="tab-order"><option value="memory" data-l10n-id="midori-performance-memory"></option><option value="cpu" data-l10n-id="midori-performance-cpu"></option></select>
+      <p data-l10n-id="midori-performance-shared"></p>
+      <p id="tab-empty" data-l10n-id="midori-performance-tabs-empty"></p>
+      <div id="tab-list"></div>
+    </section>
+    <details class="resource-card" id="process-details">
+      <summary data-l10n-id="midori-performance-processes"></summary>
+      <div id="process-list"></div>
+    </details>
+    <a id="open-center" href="about:center#performance" target="_blank" data-l10n-id="midori-performance-open-center"></a>
+  </main>
+</body>
+</html>

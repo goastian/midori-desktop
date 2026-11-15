@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src chrome: resource:; script-src chrome:; style-src chrome:; object-src 'none'">
+  <title data-l10n-id="midori-performance-paused-title">Page paused</title>
+  <link rel="localization" href="browser/midori/performance.ftl">
+  <link rel="stylesheet" href="chrome://browser/content/center/center.css">
+  <link rel="stylesheet" href="chrome://browser/content/performance/performance.css">
+  <script type="module" src="chrome://browser/content/performance/paused.sys.mjs"></script>
+</head>
+<body>
+  <main id="performance-root">
+    <section class="resource-card">
+      <h1 data-l10n-id="midori-performance-paused-title"></h1>
+      <p id="paused-page"></p>
+      <p data-l10n-id="midori-performance-paused-explanation"></p>
+      <button id="resume" data-l10n-id="midori-performance-paused-resume" disabled></button>
+      <button id="settings" data-l10n-id="midori-performance-paused-settings"></button>
+      <p id="pause-status" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+</body>
+</html>

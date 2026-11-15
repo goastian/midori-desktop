@@ -1,0 +1,11 @@
+EXTRA_JS_MODULES += [
+    "MidoriResourcePolicy.sys.mjs",
+    "MidoriResourceService.sys.mjs",
+    "ResourceMemoryController.sys.mjs",
+    "ResourcePausedTab.sys.mjs",
+    "ResourceSampler.sys.mjs",
+    "ResourceTabChild.sys.mjs",
+    "ResourceTabCoordinator.sys.mjs",
+]
+
+JAR_MANIFESTS += ["jar.mn"]
