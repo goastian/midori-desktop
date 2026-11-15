@@ -1,0 +1,39 @@
+diff --git a/browser/components/sessionstore/TabState.sys.mjs b/browser/components/sessionstore/TabState.sys.mjs
+--- a/browser/components/sessionstore/TabState.sys.mjs
++++ b/browser/components/sessionstore/TabState.sys.mjs
+@@ -117,6 +117,24 @@
+  * Module that contains tab state collection methods.
+  */
+ class _TabState {
++  #resourcePausedStates = new WeakMap();
++
++  retainForResourcePause(permanentKey) {
++    if (this.#resourcePausedStates.has(permanentKey)) {
++      return false;
++    }
++    const data = lazy.TabStateCache.get(permanentKey);
++    if (!data?.history?.entries?.length) {
++      return false;
++    }
++    this.#resourcePausedStates.set(permanentKey, structuredClone(data));
++    return true;
++  }
++
++  releaseResourcePause(permanentKey) {
++    this.#resourcePausedStates.delete(permanentKey);
++  }
++
+   /**
+    * Processes a data update collected for a browser.
+    */
+@@ -298,7 +316,9 @@
+    *        {includePrivateData: true} to always include private data
+    */
+   copyFromCache(permanentKey, tabData, options = {}) {
+-    let data = lazy.TabStateCache.get(permanentKey);
++    let data =
++      this.#resourcePausedStates.get(permanentKey) ||
++      lazy.TabStateCache.get(permanentKey);
+     if (!data) {
+       return;
+     }

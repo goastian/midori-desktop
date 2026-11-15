@@ -86,22 +86,20 @@ export function validateFetchedList(response, text) {
 
   let hasRule = false;
   let lineStart = 0;
-  for (let i = 0; i <= text.length; i++) {
-    if (i !== text.length && text.charCodeAt(i) !== 0x0a) {
-      continue;
-    }
-
-    const lineLength = i - lineStart;
+  while (lineStart <= text.length) {
+    const newline = text.indexOf("\n", lineStart);
+    const lineEnd = newline === -1 ? text.length : newline;
+    const lineLength = lineEnd - lineStart;
     if (lineLength > MAX_LIST_LINE_LENGTH) {
       throw new Error(
         `Fetched list line exceeds ${MAX_LIST_LINE_LENGTH} characters`
       );
     }
     if (!hasRule) {
-      const line = text.slice(lineStart, i).trim();
+      const line = text.slice(lineStart, lineEnd).trim();
       hasRule = !!line && !line.startsWith("!") && !line.startsWith("[");
     }
-    lineStart = i + 1;
+    lineStart = lineEnd + 1;
   }
 
   if (!hasRule) {

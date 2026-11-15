@@ -184,7 +184,7 @@ export const PREF_METADATA = {
   'browser.cache.memory.capacity': { policy: 'memory', type: 'int', units: 'KiB (-1 = automatic)', platforms: ['all'], applies: 'restart', area: 'cache' },
   'browser.cache.memory.max_entry_size': { policy: 'memory', type: 'int', units: 'KiB', platforms: ['all'], applies: 'restart', area: 'cache' },
   'image.cache.size': { policy: 'memory', type: 'int', units: 'bytes', platforms: ['all'], applies: 'live', area: 'image' },
-  'image.mem.decode_bytes_at_a_time': { policy: 'memory', type: 'int', units: 'bytes', platforms: ['all'], applies: 'new-documents', area: 'image' },
+  'image.mem.decode_bytes_at_a_time': { policy: 'memory', type: 'int', units: 'bytes', platforms: ['all'], applies: 'restart', area: 'image' },
   'image.mem.discardable': { policy: 'memory', type: 'bool', platforms: ['all'], applies: 'new-documents', area: 'image' },
   'browser.sessionstore.restore_on_demand': { policy: 'memory', type: 'bool', platforms: ['all'], applies: 'restart', area: 'sessionstore' },
   'browser.sessionstore.restore_pinned_tabs_on_demand': { policy: 'memory', type: 'bool', platforms: ['all'], applies: 'restart', area: 'sessionstore' },

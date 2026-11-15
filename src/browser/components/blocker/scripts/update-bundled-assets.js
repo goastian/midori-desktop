@@ -4,7 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* global Buffer, require, __dirname, process */
-/* eslint-disable no-console */
+ 
 
 "use strict";
 
@@ -631,7 +631,7 @@ async function buildUblockRedirectResources(uBlockRoot) {
 
   const moduleUrl = pathToFileURL(redirectResourcesPath).href;
   // The module comes from a local uBlock Origin checkout managed by this script.
-  // eslint-disable-next-line no-unsanitized/method
+   
   const { default: redirectResources } = await import(moduleUrl);
 
   if (!(redirectResources instanceof Map)) {
@@ -764,7 +764,7 @@ async function updateScriptletResources(uBlockRoot) {
   const moduleUrl = pathToFileURL(uBlockScriptletsPath).href;
   // The module comes from a local uBlock Origin checkout managed by this
   // script; it never runs inside the browser.
-  // eslint-disable-next-line no-unsanitized/method
+   
   const { builtinScriptlets: scriptlets } = await import(moduleUrl);
 
   if (!Array.isArray(scriptlets)) {

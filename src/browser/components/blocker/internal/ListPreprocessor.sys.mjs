@@ -139,11 +139,19 @@ export function preprocessFilterListText(
   text,
   tokenValues = DEFAULT_PREPROCESSOR_TOKENS
 ) {
+  const source = String(text || "");
+  if (
+    !source.includes("!#if") &&
+    !source.includes("!#else") &&
+    !source.includes("!#endif")
+  ) {
+    return source.replace(/\r\n/g, "\n");
+  }
   const output = [];
   const stack = [];
   let active = true;
 
-  for (const line of String(text || "").split(/\r?\n/)) {
+  for (const line of source.split(/\r?\n/)) {
     const directive = DIRECTIVE_RE.exec(line);
     if (!directive) {
       if (active) {

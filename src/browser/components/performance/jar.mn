@@ -1,0 +1,7 @@
+browser.jar:
+  content/browser/performance/performance.html       (performance.html)
+  content/browser/performance/performance.css        (performance.css)
+  content/browser/performance/performance.sys.mjs    (performance.sys.mjs)
+  content/browser/performance/performance.svg        (performance.svg)
+  content/browser/performance/paused.html            (paused.html)
+  content/browser/performance/paused.sys.mjs         (paused.sys.mjs)
