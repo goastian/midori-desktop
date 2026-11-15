@@ -1,4 +1,5 @@
 import { createPanel, sanitizeUrl } from './SidebarModel.mjs';
+import { PERFORMANCE_PANEL_ID, createPerformanceBrowser } from './SidebarBuiltinHost.mjs';
 import { lifecyclePolicyForPanel } from './SidebarLifecycle.mjs';
 import {
   resolveSidebarActionPanelForExtensionId,
@@ -63,6 +64,8 @@ function ensureStyle(doc) {
   style.textContent = `
 :root{--midori-msidebar-width:320px;--midori-msidebar-main-width:44px;--midori-msidebar-rail-expanded-width:220px;--midori-msidebar-open:200ms;--midori-msidebar-close:160ms;--midori-msidebar-rail-open:180ms;--midori-msidebar-rail-close:140ms;--midori-msidebar-reorder:150ms;--midori-msidebar-surface:var(--sidebar-background-color,var(--toolbox-bgcolor,var(--toolbar-bgcolor)));--midori-msidebar-surface-text:var(--sidebar-text-color,var(--toolbar-color,var(--lwt-text-color)));--midori-msidebar-popup-surface:var(--arrowpanel-background,var(--panel-background,var(--midori-msidebar-surface)));--midori-msidebar-popup-text:var(--arrowpanel-color,var(--panel-color,var(--midori-msidebar-surface-text)));}
 #browser{position:relative;}
+#midori-msidebar-performance{list-style-image:url("chrome://browser/content/performance/performance.svg");}
+#midori-msidebar-box-toolbar[data-builtin=true] > :not(#midori-msidebar-close-panel){display:none;}
 #midori-msidebar-wrapper{position:relative;display:flex;flex-direction:row;height:100%;order:var(--midori-msidebar-edge-order,-1000000)!important;}
 #midori-msidebar-wrapper:dir(rtl){flex-direction:row-reverse;}
 #midori-msidebar-main{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:8px 5px;background:var(--midori-msidebar-surface);color:var(--midori-msidebar-surface-text);width:var(--midori-msidebar-main-width);min-width:var(--midori-msidebar-main-width);max-width:var(--midori-msidebar-main-width);box-sizing:border-box;overflow:hidden;transition:width var(--midori-msidebar-rail-close) cubic-bezier(.4,0,1,1),min-width var(--midori-msidebar-rail-close) cubic-bezier(.4,0,1,1),max-width var(--midori-msidebar-rail-close) cubic-bezier(.4,0,1,1),opacity var(--midori-msidebar-rail-close) ease;}
@@ -1002,6 +1005,14 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   btnAdd.setAttribute('aria-label', 'Agregar panel');
   btnAdd.setAttribute('tooltiptext', 'Agregar panel');
 
+  doc.l10n.addResourceIds(['browser/midori/performance.ftl']);
+  const btnPerformance = createXul(doc, 'toolbarbutton');
+  btnPerformance.id = 'midori-msidebar-performance';
+  btnPerformance.classList.add('toolbarbutton-1', 'midori-msidebar-icon');
+  doc.l10n.setAttributes(btnPerformance, 'midori-performance-sidebar-button');
+  main.appendChild(btnPerformance);
+  btnPerformance.hidden = !Services.prefs.getBoolPref(Prefs.PREF_PERFORMANCE_VISIBLE, true);
+
   const buttonsBox = createXul(doc, 'vbox');
   buttonsBox.id = 'midori-msidebar-buttons';
   buttonsBox.setAttribute('role', 'toolbar');
@@ -1145,6 +1156,7 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
 
   let store = { panels: [], last: {} };
   let activeBrowser = null;
+  let builtinCleanup = null;
   let activeBrowserPanelId = null;
   let activePanelId = null;
   let position = 'left';
@@ -2139,6 +2151,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function clearBrowser({ status = '' } = {}) {
+    builtinCleanup?.();
+    builtinCleanup = null;
+    toolbar.removeAttribute('data-builtin');
     teardownActivePanelBridges();
     if (activeBrowserPanelId) {
       panelAudioState.set(activeBrowserPanelId, false);
@@ -2229,9 +2244,53 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     } catch {}
   }
 
+  function openPerformance() {
+    cancelIdleSuspend();
+    clearBrowser();
+    clearFloatingChrome();
+    activePanelId = PERFORMANCE_PANEL_ID;
+    currentPanelFloating = false;
+    panelAreaHiddenByUser = false;
+    boxArea.removeAttribute('floating');
+    boxArea.removeAttribute('always-on-top');
+    for (const property of ['height', 'top', 'bottom', 'left', 'right', 'zIndex']) boxArea.style[property] = '';
+    const host = createPerformanceBrowser(win, boxArea);
+    builtinCleanup = host.destroy;
+    activeBrowser = host.browser;
+    stack.appendChild(host.browser);
+    statusBox.hidden = true;
+    setBoolAttr(toolbar, 'hidden', false);
+    toolbar.setAttribute('data-builtin', 'true');
+    boxArea.setAttribute('overlay', autohideEnabled && autohideMode === 'overlay' ? 'true' : 'false');
+    boxArea.style.display = '';
+    setBoolAttr(boxArea, 'collapsed', !visible);
+    if (autohideEnabled) applyAutohideCollapsedState(true);
+    applyDockWidth();
+    syncSplitterVisibility();
+    doc.l10n.formatValue('midori-performance-title').then(title => {
+      if (activePanelId === PERFORMANCE_PANEL_ID) titleLabel.setAttribute('value', title);
+    });
+  }
+
+  btnPerformance.addEventListener('command', () => {
+    if (activePanelId === PERFORMANCE_PANEL_ID && !panelAreaHiddenByUser) {
+      panelAreaHiddenByUser = true;
+      setBoolAttr(boxArea, 'collapsed', true);
+      syncSplitterVisibility();
+      btnPerformance.focus();
+    } else {
+      openPerformance();
+    }
+  });
+
   function setActivePanel(panelId) {
+    if (panelId === PERFORMANCE_PANEL_ID) {
+      openPerformance();
+      return;
+    }
     const sourcePanel = store.panels.find((p) => p.id === panelId);
     if (!sourcePanel) return;
+    statusBox.hidden = false;
     const panel = synchronizePanelWithSidebarAction(sourcePanel);
     const previousBrowserPanelId = activeBrowserPanelId;
     if (previousBrowserPanelId && previousBrowserPanelId !== panel.id) {
@@ -3734,6 +3793,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   const railExpandedSetting = checkboxRow(appearanceSection, 'Mostrar nombres de paneles', Prefs.PREF_RAIL_EXPANDED);
   const animationsSetting = checkboxRow(appearanceSection, 'Usar animaciones', Prefs.PREF_ANIMATIONS_ENABLED, true);
 
+  const performanceSetting = checkboxRow(appearanceSection, '', Prefs.PREF_PERFORMANCE_VISIBLE, true);
+  doc.l10n.setAttributes(performanceSetting, 'midori-performance-sidebar-visible');
+
   const behaviorSection = settingsSection('Comportamiento');
   const autohideSetting = checkboxRow(behaviorSection, 'Ocultar automáticamente', Prefs.PREF_AUTOHIDE_ENABLED);
   const autohideModeSetting = selectRow(
@@ -3868,6 +3930,12 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
       },
     }));
     entries.push(
+      {
+        id: 'performance',
+        label: btnPerformance.getAttribute('label') || 'Performance',
+        keywords: 'rendimiento performance memoria ram cpu red recursos',
+        run: openPerformance,
+      },
       {
         id: 'add',
         label: 'Añadir panel',
@@ -4365,6 +4433,10 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
     }
     syncToolbarPrefs();
     syncPanelShortcuts();
+    if (previousActivePanelId === PERFORMANCE_PANEL_ID) {
+      renderButtons();
+      return;
+    }
     const targetId = previousActivePanelId || (visible ? chooseVisiblePanelId() : null);
     if (targetId && store.panels.some((panel) => panel.id === targetId)) {
       setActivePanel(targetId);
@@ -5117,6 +5189,9 @@ export function createSidebarUI(win, { onStoreChanged } = {}) {
   }
 
   function refresh() {
+    const showPerformance = Services.prefs.getBoolPref(Prefs.PREF_PERFORMANCE_VISIBLE, true);
+    btnPerformance.hidden = !showPerformance;
+    if (!showPerformance && activePanelId === PERFORMANCE_PANEL_ID) hidePanelArea();
     syncToolbarPrefs();
     syncRailExpansion();
     syncNavButtons();

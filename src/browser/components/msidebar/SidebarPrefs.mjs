@@ -176,3 +176,5 @@ export function getPreset() {
 export function getPresetRestoreSnapshot() {
   return Services.prefs.getStringPref(PREF_PRESET_RESTORE_SNAPSHOT, '');
 }
+
+export const PREF_PERFORMANCE_VISIBLE = 'midori.msidebar.tools.performance.visible';
