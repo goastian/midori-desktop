@@ -12,7 +12,7 @@
    }
  #endif
  
-+#if defined(XP_LINUX) && !defined(ANDROID)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
 +  if (midori::RestoreManagedCpuBudget()) return 1;
 +#endif
 +
@@ -23,7 +23,7 @@
  void XRE_StopLateWriteChecks(void) { mozilla::StopLateWriteChecks(); }
  
  int XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
-+#if defined(XP_LINUX) && !defined(ANDROID)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
 +  midori::SetManagedCpuBudgetController(aConfig.midoriCpuBudget);
 +  auto restoreCpuBudget = MakeScopeExit([] {
 +    static_cast<void>(midori::RestoreManagedCpuBudget());

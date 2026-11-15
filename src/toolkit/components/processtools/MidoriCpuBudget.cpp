@@ -4,6 +4,7 @@
 
 #include "MidoriCpuBudget.h"
 #include "mozilla/MidoriCpuBudget_linux.h"
+#include "mozilla/MidoriCpuBudget_windows.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticBackgroundTaskQueue.h"
 #include "mozilla/StaticMutex.h"
@@ -11,14 +12,14 @@
 
 namespace mozilla::midori {
 
-#if defined(XP_LINUX) && !defined(ANDROID)
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
 static StaticMutex sMidoriCpuBudgetMutex;
-static LinuxCpuBudget* sMidoriCpuBudgetController = nullptr;
+static CpuBudgetController* sMidoriCpuBudgetController = nullptr;
 #endif
 
-void SetManagedCpuBudgetController(LinuxCpuBudget* aController) {
+void SetManagedCpuBudgetController(CpuBudgetController* aController) {
   MOZ_ASSERT(NS_IsMainThread());
-#if defined(XP_LINUX) && !defined(ANDROID)
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   MOZ_ASSERT(!sMidoriCpuBudgetController || !aController);
   sMidoriCpuBudgetController = aController;
@@ -35,18 +36,33 @@ ManagedCpuCapacity ReadManagedCpuCapacity() {
         result.externalCapacityCpus);
     if (result.nativeError) result.externalCapacityCpus = 0;
   }
+#elif defined(XP_WIN)
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  if (sMidoriCpuBudgetController) {
+    result.managed = true;
+    WindowsCpuCapacity capacity;
+    result.nativeError =
+        sMidoriCpuBudgetController->ReadExternalCapacity(capacity);
+    if (!result.nativeError)
+      result.externalCapacityCpus = capacity.externalCpus;
+  }
 #endif
   return result;
 }
 
 int RestoreManagedCpuBudget() {
-#if defined(XP_LINUX) && !defined(ANDROID)
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   if (sMidoriCpuBudgetController) {
     auto* controller = sMidoriCpuBudgetController;
     sMidoriCpuBudgetController = nullptr;
+#  ifdef XP_WIN
+    WindowsCpuBudgetState state;
+    return controller->SetNormalizedPercentage(0, state);
+#  else
     CpuBudgetState state;
     return controller->SetPercentage(0, state);
+#  endif
   }
 #endif
   return 0;
@@ -88,6 +104,22 @@ RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage) {
             result.externalCapacityCpus = state.externalCapacityCpus;
             result.ownQuotaCpus = state.ownQuotaCpus;
             result.effectiveCapacityCpus = state.effectiveCapacityCpus;
+            result.quotaQuantumCpus = state.quotaQuantumCpus;
+          }
+        }
+#elif defined(XP_WIN)
+        StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+        if (sMidoriCpuBudgetController) {
+          result.backendReady = true;
+          WindowsCpuBudgetState state;
+          result.nativeError =
+              sMidoriCpuBudgetController->SetNormalizedPercentage(aPercentage, state);
+          if (!result.nativeError) {
+            result.applied = true;
+            result.externalCapacityCpus = state.externalCapacityCpus;
+            result.ownQuotaCpus = state.ownQuotaCpus;
+            result.effectiveCapacityCpus = state.effectiveCapacityCpus;
+            result.quotaQuantumCpus = state.quotaQuantumCpus;
           }
         }
 #endif

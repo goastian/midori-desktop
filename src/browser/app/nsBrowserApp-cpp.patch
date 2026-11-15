@@ -1,6 +1,6 @@
 --- a/browser/app/nsBrowserApp.cpp
 +++ b/browser/app/nsBrowserApp.cpp
-@@ -8,6 +8,11 @@
+@@ -8,6 +8,15 @@
  #include "XREShellData.h"
  #include "ApplicationData.h"
  #include "mozilla/Bootstrap.h"
@@ -8,11 +8,29 @@
 +#  include "mozilla/MidoriCpuBudget_linux.h"
 +#  include <climits>
 +#  include <cstdlib>
++#elif defined(XP_WIN)
++#  include "mozilla/MidoriCpuBudget_windows.h"
++#  include <cstdlib>
++#  include <cstring>
 +#endif
  #include "mozilla/ProcessType.h"
  #include "mozilla/RuntimeExceptionModule.h"
  #include "mozilla/ScopeExit.h"
-@@ -199,7 +204,29 @@
+@@ -101,6 +110,13 @@
+ #endif
+ 
+ using namespace mozilla;
++
++#ifdef XP_WIN
++namespace mozilla::midori {
++constinit const volatile WindowsCpuParent gMidoriCpuParent =
++    WindowsCpuParent::Unknown;
++}
++#endif
+ 
+ #define kDesktopFolder "browser"
+ 
+@@ -199,7 +215,42 @@
  
  constinit Bootstrap::UniquePtr gBootstrap;
  
@@ -35,30 +53,43 @@
 +  if (fcntl(group, F_SETFD, flags | FD_CLOEXEC) < 0) return false;
 +  return aBudget.Initialize(group) == 0;
 +}
++#elif defined(XP_WIN)
++static bool PrepareMidoriCpuBudget(mozilla::midori::WindowsCpuBudget& aBudget) {
++  const char* text = getenv("MIDORI_CPU_BUDGET_WINDOWS");
++  if (!text) return false;
++  const bool requested = !strcmp(text, "1");
++  int crtError = _putenv_s("MIDORI_CPU_BUDGET_WINDOWS", "");
++  BOOL cleared = SetEnvironmentVariableW(L"MIDORI_CPU_BUDGET_WINDOWS", nullptr);
++  if (crtError || (!cleared && GetLastError() != ERROR_ENVVAR_NOT_FOUND))
++    return false;
++  return requested && aBudget.InitializeNormalized(
++                          GetCurrentProcess(),
++                          mozilla::midori::gMidoriCpuParent) == ERROR_SUCCESS;
++}
 +#endif
 +
-+static int do_main(
-+    int argc, char* argv[], char* envp[],
-+    [[maybe_unused]] mozilla::midori::LinuxCpuBudget* aCpuBudget = nullptr) {
++static int do_main(int argc, char* argv[], char* envp[],
++                   [[maybe_unused]] mozilla::midori::CpuBudgetController*
++                       aCpuBudget = nullptr) {
    // Allow firefox.exe to launch XULRunner apps via -app <application.ini>
    // Note that -app must be the *first* argument.
    const char* appDataFile = getenv("XUL_APP_FILE");
-@@ -241,6 +268,9 @@
+@@ -241,6 +292,9 @@
    }
  
    BootstrapConfig config;
-+#if defined(XP_LINUX) && !defined(ANDROID)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
 +  config.midoriCpuBudget = aCpuBudget;
 +#endif
  
    if (appDataFile && *appDataFile) {
      config.appData = nullptr;
-@@ -388,6 +418,13 @@
+@@ -388,6 +442,13 @@
    ExpandFileDescriptorTable();
  #endif
  
-+#if defined(XP_LINUX) && !defined(ANDROID)
-+  mozilla::midori::LinuxCpuBudget cpuBudget;
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++  mozilla::midori::CpuBudgetController cpuBudget;
 +  const bool cpuBudgetReady =
 +      GetGeckoProcessType() == GeckoProcessType_Default &&
 +      PrepareMidoriCpuBudget(cpuBudget);
@@ -67,14 +98,15 @@
    mozilla::TimeStamp start = mozilla::TimeStamp::Now();
  
    AUTO_BASE_PROFILER_INIT;
-@@ -539,7 +576,11 @@
+@@ -539,7 +600,12 @@
    gBootstrap->XRE_EnableSameExecutableForContentProc();
  #endif
  
 -  int result = do_main(argc, argv, envp);
 +  int result = do_main(argc, argv, envp
-+#if defined(XP_LINUX) && !defined(ANDROID)
-+                       , cpuBudgetReady ? &cpuBudget : nullptr
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++                       ,
++                       cpuBudgetReady ? &cpuBudget : nullptr
 +#endif
 +  );
  

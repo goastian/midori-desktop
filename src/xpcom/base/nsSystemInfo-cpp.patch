@@ -32,22 +32,24 @@
    JS::Rooted<JS::Value> valCoreInfo(
        aCx, info.cpuCores ? JS::Int32Value(info.cpuCores) : JS::NullValue());
    JS_SetProperty(aCx, jsInfo, "cores", valCoreInfo);
-@@ -2326,9 +2344,33 @@
+@@ -2326,9 +2344,35 @@
    auto requestHolder =
        MakeRefPtr<dom::DOMMozPromiseRequestHolder<ProcessInfoPromise>>(global);
  
 +  RefPtr<ProcessInfoPromise> current = mProcessInfoPromise;
-+#if defined(XP_LINUX) && !defined(ANDROID)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
 +  RefPtr<nsISerialEventTarget> capacityTarget = GetBackgroundTarget();
 +  current = current->Then(
 +      capacityTarget, __func__,
 +      [](const ProcessInfo& info) {
 +        ProcessInfo snapshot = info;
++#  if defined(XP_LINUX) && !defined(ANDROID)
 +        const auto capacity = mozilla::midori::ReadCpuCapacity();
 +        snapshot.cpuCapacity = capacity.effectiveCpus;
 +        snapshot.cpuAffinityCpus = capacity.affinityCpus;
 +        snapshot.cpuQuotaCpus = capacity.quotaCpus;
 +        snapshot.cpuQuotaSampled = capacity.quotaSampled;
++#  endif
 +        const auto managed = mozilla::midori::ReadManagedCpuCapacity();
 +        snapshot.cpuManagedQuota = managed.managed;
 +        snapshot.cpuExternalCapacity = managed.externalCapacityCpus;

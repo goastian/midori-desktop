@@ -10,4 +10,5 @@ dictionary MidoriManagedCpuBudget {
   double externalCapacityCpus = 0;
   double ownQuotaCpus = 0;
   double effectiveCapacityCpus = 0;
+  double quotaQuantumCpus = 0;
 };

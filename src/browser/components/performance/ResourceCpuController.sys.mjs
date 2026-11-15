@@ -149,12 +149,19 @@ export class ResourceCpuController {
       if (!ack.backendReady || !ack.applied || ack.nativeError || ack.requestedPercentage !== percentage) {
         throw new Error(`cpu-budget-not-confirmed:${ack.nativeError || 0}`);
       }
-      if (percentage && (!Number.isFinite(ack.externalCapacityCpus) || ack.externalCapacityCpus <= 0 ||
-          !Number.isFinite(ack.ownQuotaCpus) || ack.ownQuotaCpus <= 0 ||
-          !Number.isFinite(ack.effectiveCapacityCpus) || ack.effectiveCapacityCpus <= 0 ||
-          Math.abs(ack.ownQuotaCpus - ack.externalCapacityCpus * percentage / 100) > .000011 ||
-          Math.abs(ack.effectiveCapacityCpus - Math.min(ack.ownQuotaCpus, ack.externalCapacityCpus)) > .000011)) {
-        throw new Error('cpu-capacity-not-confirmed');
+      if (percentage) {
+        const desired = ack.externalCapacityCpus * (percentage / 100);
+        const epsilon = Math.max(1, desired, ack.ownQuotaCpus) * Number.EPSILON * 8;
+        if (!Number.isFinite(ack.externalCapacityCpus) || ack.externalCapacityCpus <= 0 ||
+            !Number.isFinite(ack.ownQuotaCpus) || ack.ownQuotaCpus <= 0 ||
+            !Number.isFinite(ack.effectiveCapacityCpus) || ack.effectiveCapacityCpus <= 0 ||
+            !Number.isFinite(ack.quotaQuantumCpus) || ack.quotaQuantumCpus <= 0 ||
+            ack.quotaQuantumCpus > ack.externalCapacityCpus / 100 + epsilon ||
+            ack.ownQuotaCpus > desired + epsilon ||
+            desired - ack.ownQuotaCpus >= ack.quotaQuantumCpus + epsilon ||
+            Math.abs(ack.effectiveCapacityCpus - Math.min(ack.ownQuotaCpus, ack.externalCapacityCpus)) > epsilon) {
+          throw new Error('cpu-capacity-not-confirmed');
+        }
       }
       if (!percentage && ack.ownQuotaCpus !== 0) throw new Error('cpu-removal-not-confirmed');
       this._possiblyLimited = percentage !== 0 || this._lastNonzeroToken > token;

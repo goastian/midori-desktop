@@ -6,10 +6,9 @@
 #define TOOLKIT_COMPONENTS_PROCESSTOOLS_MIDORICPUBUDGET_H_
 
 #include "mozilla/MozPromise.h"
+#include "mozilla/MidoriCpuBudgetController.h"
 
 namespace mozilla::midori {
-
-class LinuxCpuBudget;
 
 struct ManagedCpuBudgetState {
   bool backendReady = false;
@@ -19,6 +18,7 @@ struct ManagedCpuBudgetState {
   double externalCapacityCpus = 0;
   double ownQuotaCpus = 0;
   double effectiveCapacityCpus = 0;
+  double quotaQuantumCpus = 0;
 };
 
 struct ManagedCpuCapacity {
@@ -32,7 +32,7 @@ ManagedCpuCapacity ReadManagedCpuCapacity();
 using ManagedCpuBudgetPromise =
     MozPromise<ManagedCpuBudgetState, nsresult, true>;
 
-void SetManagedCpuBudgetController(LinuxCpuBudget* aController);
+void SetManagedCpuBudgetController(CpuBudgetController* aController);
 int RestoreManagedCpuBudget();
 RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage);
 

@@ -1,0 +1,72 @@
+--- a/browser/app/winlauncher/LauncherProcessWin.cpp
++++ b/browser/app/winlauncher/LauncherProcessWin.cpp
+@@ -9,6 +9,7 @@
+ #include "mozilla/glue/Debug.h"
+ #include "mozilla/GeckoArgs.h"
+ #include "mozilla/Maybe.h"
++#include "mozilla/MidoriCpuBootstrap_windows.h"
+ #include "mozilla/NativeNt.h"
+ #include "mozilla/SafeMode.h"
+ #include "mozilla/UniquePtr.h"
+@@ -64,7 +65,8 @@
+     const wchar_t* aFullImagePath, HANDLE aChildProcess,
+     HANDLE aChildMainThread, mozilla::DeelevationStatus aDStatus,
+     const bool aIsSafeMode, const bool aDisableDynamicBlocklist,
+-    mozilla::Maybe<std::wstring> aBlocklistFileName) {
++    mozilla::Maybe<std::wstring> aBlocklistFileName,
++    mozilla::midori::WindowsCpuParent aCpuParent) {
+   /* scope for txManager */ {
+     mozilla::nt::CrossExecTransferManager txManager(aChildProcess);
+     if (!txManager) {
+@@ -82,6 +84,15 @@
+         txManager.Transfer(targetAddress, &aDStatus, sizeof(aDStatus));
+     if (result.isErr()) {
+       return result;
++    }
++    if (aCpuParent ==
++        mozilla::midori::WindowsCpuParent::LauncherJobWithoutCpuLimit) {
++      void* cpuAddress = const_cast<mozilla::midori::WindowsCpuParent*>(
++          &mozilla::midori::gMidoriCpuParent);
++      auto cpuGuard =
++          txManager.Protect(cpuAddress, sizeof(aCpuParent), PAGE_READWRITE);
++      static_cast<void>(
++          txManager.Transfer(cpuAddress, &aCpuParent, sizeof(aCpuParent)));
+     }
+   }
+ 
+@@ -637,19 +648,32 @@
+   nsAutoHandle process(pi.hProcess);
+   nsAutoHandle mainThread(pi.hThread);
+ 
++  wchar_t cpuOptIn[2] = {};
++  const bool cpuRequested =
++      GetEnvironmentVariableW(L"MIDORI_CPU_BUDGET_WINDOWS", cpuOptIn, 2) == 1 &&
++      cpuOptIn[0] == L'1';
++  BOOL cpuInitialJob = TRUE;
++  const bool cpuParentKnown =
++      cpuRequested && IsProcessInJob(process.get(), nullptr, &cpuInitialJob) &&
++      !cpuInitialJob;
+   nsAutoHandle job;
+   if (flags & LauncherFlags::eWaitForBrowser) {
+     job = CreateJobAndAssignProcess(process.get());
+   }
++  const auto cpuParent =
++      cpuParentKnown && job.get()
++          ? mozilla::midori::WindowsCpuParent::LauncherJobWithoutCpuLimit
++          : mozilla::midori::WindowsCpuParent::Unknown;
+ 
+   bool disableDynamicBlocklist = IsDynamicBlocklistDisabled(
+       isSafeMode.value(),
+       mozilla::CheckArg(
+           argc, argv, mozilla::geckoargs::sDisableDynamicDllBlocklist.sMatch,
+           nullptr, mozilla::CheckArgFlag::None) == mozilla::ARG_FOUND);
+-  LauncherVoidResult setupResult = PostCreationSetup(
+-      argv[0], process.get(), mainThread.get(), deelevationStatus,
+-      isSafeMode.value(), disableDynamicBlocklist, blocklistFileName);
++  LauncherVoidResult setupResult =
++      PostCreationSetup(argv[0], process.get(), mainThread.get(),
++                        deelevationStatus, isSafeMode.value(),
++                        disableDynamicBlocklist, blocklistFileName, cpuParent);
+   if (setupResult.isErr()) {
+     HandleLauncherError(setupResult);
+     ::TerminateProcess(process.get(), 1);

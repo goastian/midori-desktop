@@ -8,6 +8,7 @@
 #ifdef _WIN32
 #  include <cstdint>
 #  include <windows.h>
+#  include "MidoriCpuBootstrap_windows.h"
 
 namespace mozilla::midori {
 
@@ -69,7 +70,29 @@ class WindowsCpuBudget final {
     mProcess = process;
     mOwner = GetCurrentProcessId();
     mHasExternalJob = external != FALSE;
+    mExternalCapacityKnown = !mHasExternalJob;
     return ERROR_SUCCESS;
+  }
+
+  DWORD InitializeNormalized(
+      HANDLE aProcess, WindowsCpuParent aParent = WindowsCpuParent::Unknown) {
+    if (mJob) return ERROR_ALREADY_INITIALIZED;
+    BOOL external = FALSE;
+    if (!IsProcessInJob(aProcess, nullptr, &external)) return GetLastError();
+    if (external) {
+      if (aParent != WindowsCpuParent::LauncherJobWithoutCpuLimit) {
+        return ERROR_NOT_SUPPORTED;
+      }
+      DWORD error = ValidateLauncherJob(aProcess);
+      if (error) return error;
+    }
+    WindowsCpuCapacity capacity;
+    DWORD error = ReadCapacity(aProcess, capacity);
+    if (error) return error;
+    error = Initialize(aProcess);
+    if (error) return error;
+    if (external || !mHasExternalJob) mExternalCapacityKnown = true;
+    return mExternalCapacityKnown ? ERROR_SUCCESS : ERROR_NOT_SUPPORTED;
   }
 
   DWORD SetPercentage(uint32_t aPercentage, WindowsCpuBudgetState& aState) {
@@ -112,39 +135,8 @@ class WindowsCpuBudget final {
     aCapacity = {};
     if (!mJob) return ERROR_NOT_READY;
     if (GetCurrentProcessId() != mOwner) return ERROR_ACCESS_DENIED;
-    if (mHasExternalJob || GetActiveProcessorGroupCount() != 1) {
-      return ERROR_NOT_SUPPORTED;
-    }
-    ULONG cpuSetCount = 0;
-    if (!GetProcessDefaultCpuSets(mProcess, nullptr, 0, &cpuSetCount)) {
-      DWORD error = GetLastError();
-      return cpuSetCount ? ERROR_NOT_SUPPORTED : error;
-    }
-    if (cpuSetCount) return ERROR_NOT_SUPPORTED;
-    using GetMasks = BOOL(WINAPI*)(HANDLE, PGROUP_AFFINITY, USHORT, PUSHORT);
-    static auto getMasks = reinterpret_cast<GetMasks>(GetProcAddress(
-        GetModuleHandleW(L"kernel32.dll"), "GetProcessDefaultCpuSetMasks"));
-    if (getMasks) {
-      USHORT count = 0;
-      if (!getMasks(mProcess, nullptr, 0, &count)) {
-        DWORD error = GetLastError();
-        return count ? ERROR_NOT_SUPPORTED : error;
-      }
-      if (count) return ERROR_NOT_SUPPORTED;
-    }
-    DWORD_PTR processMask = 0, systemMask = 0;
-    if (!GetProcessAffinityMask(mProcess, &processMask, &systemMask)) {
-      return GetLastError();
-    }
-    DWORD systemCpus = GetActiveProcessorCount(0);
-    if (!systemCpus) return GetLastError();
-    if (!processMask || (processMask & ~systemMask) ||
-        CountBits(systemMask) != systemCpus) {
-      return ERROR_NOT_SUPPORTED;
-    }
-    aCapacity.systemCpus = systemCpus;
-    aCapacity.externalCpus = CountBits(processMask);
-    return ERROR_SUCCESS;
+    if (!mExternalCapacityKnown) return ERROR_NOT_SUPPORTED;
+    return ReadCapacity(mProcess, aCapacity);
   }
 
   DWORD DuplicateQueryHandle(HANDLE& aHandle) const {
@@ -159,6 +151,77 @@ class WindowsCpuBudget final {
   }
 
  private:
+  static DWORD ValidateLauncherJob(HANDLE aProcess) {
+    if (GetProcessId(aProcess) != GetCurrentProcessId()) {
+      return ERROR_NOT_SUPPORTED;
+    }
+    JOBOBJECT_CPU_RATE_CONTROL_INFORMATION cpu = {};
+    if (!QueryInformationJobObject(nullptr, JobObjectCpuRateControlInformation,
+                                   &cpu, sizeof(cpu), nullptr)) {
+      return GetLastError();
+    }
+    if (cpu.ControlFlags) return ERROR_NOT_SUPPORTED;
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+    if (!QueryInformationJobObject(nullptr, JobObjectExtendedLimitInformation,
+                                   &limits, sizeof(limits), nullptr)) {
+      return GetLastError();
+    }
+    if (limits.BasicLimitInformation.LimitFlags !=
+        (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE |
+         JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK)) {
+      return ERROR_NOT_SUPPORTED;
+    }
+    JOBOBJECT_BASIC_UI_RESTRICTIONS ui = {};
+    if (!QueryInformationJobObject(nullptr, JobObjectBasicUIRestrictions, &ui,
+                                   sizeof(ui), nullptr)) {
+      return GetLastError();
+    }
+    if (ui.UIRestrictionsClass) return ERROR_NOT_SUPPORTED;
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+    if (!QueryInformationJobObject(nullptr, JobObjectBasicAccountingInformation,
+                                   &accounting, sizeof(accounting), nullptr)) {
+      return GetLastError();
+    }
+    return accounting.ActiveProcesses == 1 && accounting.TotalProcesses == 1
+               ? ERROR_SUCCESS
+               : ERROR_NOT_SUPPORTED;
+  }
+
+  static DWORD ReadCapacity(HANDLE aProcess, WindowsCpuCapacity& aCapacity) {
+    aCapacity = {};
+    if (GetActiveProcessorGroupCount() != 1) return ERROR_NOT_SUPPORTED;
+    ULONG cpuSetCount = 0;
+    if (!GetProcessDefaultCpuSets(aProcess, nullptr, 0, &cpuSetCount)) {
+      DWORD error = GetLastError();
+      return cpuSetCount ? ERROR_NOT_SUPPORTED : error;
+    }
+    if (cpuSetCount) return ERROR_NOT_SUPPORTED;
+    using GetMasks = BOOL(WINAPI*)(HANDLE, PGROUP_AFFINITY, USHORT, PUSHORT);
+    static auto getMasks = reinterpret_cast<GetMasks>(GetProcAddress(
+        GetModuleHandleW(L"kernel32.dll"), "GetProcessDefaultCpuSetMasks"));
+    if (getMasks) {
+      USHORT count = 0;
+      if (!getMasks(aProcess, nullptr, 0, &count)) {
+        DWORD error = GetLastError();
+        return count ? ERROR_NOT_SUPPORTED : error;
+      }
+      if (count) return ERROR_NOT_SUPPORTED;
+    }
+    DWORD_PTR processMask = 0, systemMask = 0;
+    if (!GetProcessAffinityMask(aProcess, &processMask, &systemMask)) {
+      return GetLastError();
+    }
+    DWORD systemCpus = GetActiveProcessorCount(0);
+    if (!systemCpus) return GetLastError();
+    if (!processMask || (processMask & ~systemMask) ||
+        CountBits(systemMask) != systemCpus) {
+      return ERROR_NOT_SUPPORTED;
+    }
+    aCapacity.systemCpus = systemCpus;
+    aCapacity.externalCpus = CountBits(processMask);
+    return ERROR_SUCCESS;
+  }
+
   static uint32_t CountBits(DWORD_PTR aMask) {
     uint32_t count = 0;
     while (aMask) {
@@ -238,6 +301,7 @@ class WindowsCpuBudget final {
   DWORD mOwner = 0;
   uint32_t mRate = 0;
   bool mHasExternalJob = false;
+  bool mExternalCapacityKnown = false;
 };
 
 }  // namespace mozilla::midori

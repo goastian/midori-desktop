@@ -31,7 +31,9 @@ export class ResourceSampler {
     const cpuCapacity = managedQuota ? externalCapacity ? cpuInfo.cpuExternalCapacity : null :
       nativeCapacity ? cpuInfo.cpuCapacity : cpuCount;
     const cpuCapacitySource = managedQuota
-      ? externalCapacity ? 'parent-affinity-external-cgroup' : 'managed-external-capacity-unavailable'
+      ? externalCapacity
+        ? Services.appinfo.OS === 'WINNT' ? 'parent-affinity-external-job' : 'parent-affinity-external-cgroup'
+        : 'managed-external-capacity-unavailable'
       : nativeCapacity
       ? cpuInfo.cpuQuotaSampled && cpuInfo.cpuQuotaCpus > 0 ? 'parent-affinity-visible-cgroup' : 'parent-affinity'
       : 'reported-logical-cpus';

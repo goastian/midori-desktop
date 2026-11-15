@@ -26,6 +26,7 @@ struct CpuBudgetState {
   double externalCapacityCpus = 0;
   double ownQuotaCpus = 0;
   double effectiveCapacityCpus = 0;
+  double quotaQuantumCpus = 0;
 };
 
 // The launcher supplies its exclusive, delegated leaf before creating children.
@@ -146,6 +147,7 @@ class LinuxCpuBudget final {
     aState.ownQuotaCpus = quota ? double(quota) / period : 0;
     aState.effectiveCapacityCpus =
         quota ? std::min(capacity, aState.ownQuotaCpus) : capacity;
+    aState.quotaQuantumCpus = quota ? 1.0 / period : 0;
     return 0;
   }
 

@@ -1,23 +1,20 @@
 --- a/toolkit/xre/Bootstrap.h
 +++ b/toolkit/xre/Bootstrap.h
-@@ -30,6 +30,10 @@
+@@ -11,6 +11,7 @@
+ #ifndef mozilla_Bootstrap_h
+ #define mozilla_Bootstrap_h
  
- namespace mozilla {
- 
-+namespace midori {
-+class LinuxCpuBudget;
-+}
-+
- struct StaticXREAppData;
- 
- struct BootstrapConfig {
-@@ -49,6 +53,9 @@
++#include "mozilla/MidoriCpuBudgetController.h"
+ #include "mozilla/ResultVariant.h"
+ #include "mozilla/UniquePtr.h"
+ #include "mozilla/UniquePtrExtensions.h"
+@@ -49,6 +50,9 @@
    int crashChildNotificationSocket;
    /* Crash socket used to communicate with the crash helper. */
    int crashHelperSocket;
 +#endif
-+#if defined(XP_LINUX) && !defined(ANDROID)
-+  midori::LinuxCpuBudget* midoriCpuBudget = nullptr;
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++  midori::CpuBudgetController* midoriCpuBudget = nullptr;
  #endif
  };
  
