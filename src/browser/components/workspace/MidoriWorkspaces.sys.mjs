@@ -92,6 +92,7 @@ const { WorkspaceCatalog } = ChromeUtils.importESModule(
 // Lazy import for setTimeout — MUST be before any usage
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  ResourceTabCoordinator: 'resource:///modules/ResourceTabCoordinator.sys.mjs',
   SessionStore: 'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs',
   PrivateBrowsingUtils: 'resource://gre/modules/PrivateBrowsingUtils.sys.mjs',
   clearTimeout: 'resource://gre/modules/Timer.sys.mjs',
@@ -1237,27 +1238,35 @@ export const MidoriWorkspaces = {
       busy: tab.getAttribute?.('busy') === 'true',
       soundPlaying: !!tab.soundPlaying,
       attention: !!tab.attention,
-      hasBeforeUnload: !!tab.linkedBrowser?.hasBeforeUnload,
+      hasBeforeUnload: !tab.linkedBrowser?.browsingContext || !!tab.linkedBrowser.hasBeforeUnload,
       hasLinkedPanel: !!tab.linkedPanel,
       autoDiscardable: tab.autoDiscardable !== false,
       uriSpec,
     });
   },
 
-  _unloadInactiveTabs(win, state) {
-    if (win.closed) return;
+  async _unloadInactiveTabs(win, state) {
+    if (win.closed || state._unloading) return;
     const gBrowser = win.gBrowser;
     if (!gBrowser) return;
-
-    for (const tab of Array.from(gBrowser.tabs)) {
-      if (!this._isUnloadCandidate(state, tab)) {
-        continue;
+    state._unloading = true;
+    try {
+      for (const tab of Array.from(gBrowser.tabs)) {
+        if (!this._isUnloadCandidate(state, tab)) {
+          continue;
+        }
+        try {
+          await lazy.ResourceTabCoordinator.discardTab(tab, () =>
+            !win.closed && this._initialized && this._windowStates.get(win) === state &&
+            Services.prefs.getBoolPref(PREF_UNLOAD_INACTIVE, false) &&
+            this._isUnloadCandidate(state, tab)
+          );
+        } catch (error) {
+          console.error('MidoriWorkspaces: Failed to discard tab', error);
+        }
       }
-      try {
-        gBrowser.discardBrowser(tab);
-      } catch (error) {
-        console.error('MidoriWorkspaces: Failed to discard tab', error);
-      }
+    } finally {
+      state._unloading = false;
     }
   },
 

@@ -8,6 +8,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   TabSleepLifecycle: 'resource:///modules/TabSleepLifecycle.sys.mjs',
+  ResourceTabCoordinator: 'resource:///modules/ResourceTabCoordinator.sys.mjs',
   clearTimeout: 'resource://gre/modules/Timer.sys.mjs',
   setTimeout: 'resource://gre/modules/Timer.sys.mjs',
 });
@@ -43,6 +44,7 @@ export const MidoriTabSleep = {
   _attachedWindowCount: 0,
   _lastActivity: new WeakMap(),
   _timer: null,
+  _evaluating: false,
 
   init() {
     if (this._initialized) {
@@ -262,7 +264,7 @@ export const MidoriTabSleep = {
       busy: tab.getAttribute?.('busy') === 'true',
       soundPlaying: !!tab.soundPlaying,
       attention: !!tab.attention,
-      hasBeforeUnload: !!tab.linkedBrowser?.hasBeforeUnload,
+      hasBeforeUnload: !tab.linkedBrowser?.browsingContext || !!tab.linkedBrowser.hasBeforeUnload,
       hasLinkedPanel: !!tab.linkedPanel,
       autoDiscardable: tab.autoDiscardable !== false,
       uriSpec,
@@ -309,33 +311,42 @@ export const MidoriTabSleep = {
     return candidates;
   },
 
-  _evaluateTabs() {
+  async _evaluateTabs() {
+    if (this._evaluating) return;
     if (!this._enabled) {
       this._clearTimer();
       return;
     }
 
-    const now = Date.now();
-    for (const win of Services.wm.getEnumerator('navigator:browser')) {
-      if (!isRegularBrowserWindow(win)) {
-        continue;
-      }
-
-      for (const tab of win.gBrowser.tabs) {
-        const state = this._getTabState(tab, now);
-        if (!lazy.TabSleepLifecycle.shouldDiscardTab(state)) {
+    this._evaluating = true;
+    try {
+      const now = Date.now();
+      for (const win of Services.wm.getEnumerator('navigator:browser')) {
+        if (!isRegularBrowserWindow(win)) {
           continue;
         }
 
-        try {
-          win.gBrowser.discardBrowser(tab);
-        } catch (error) {
-          console.error('MidoriTabSleep: Failed to discard tab', error);
+        for (const tab of [...win.gBrowser.tabs]) {
+          const state = this._getTabState(tab, now);
+          if (!lazy.TabSleepLifecycle.shouldDiscardTab(state)) {
+            continue;
+          }
+
+          try {
+            await lazy.ResourceTabCoordinator.discardTab(tab, () =>
+              this._enabled && this._windowState.has(win) &&
+              lazy.TabSleepLifecycle.shouldDiscardTab(this._getTabState(tab, Date.now()))
+            );
+          } catch (error) {
+            console.error('MidoriTabSleep: Failed to discard tab', error);
+          }
         }
       }
-    }
 
-    this._scheduleNextEvaluation();
+    } finally {
+      this._evaluating = false;
+      this._scheduleNextEvaluation();
+    }
   },
 
   _scheduleNextEvaluation() {
