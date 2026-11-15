@@ -208,6 +208,8 @@ pref('midori.workspaces.chromeTint', true);
 // Default: 0 (Performance) - Firefox-compatible process/cache behavior.
 // Profiles 1-3 remain available as explicit resource-saving/specialized modes.
 pref('midori.memory.profile', 0);
+pref('midori.performance.custom.baseProfile', 0);
+pref('midori.msidebar.tools.performance.visible', true);
 
 // Avoid surprise page reloads and form-state loss. Users can explicitly enable
 // Midori Tab Sleep or a memory-saving profile when they prefer RAM savings.
