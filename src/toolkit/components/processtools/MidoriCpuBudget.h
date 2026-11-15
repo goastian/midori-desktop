@@ -21,6 +21,14 @@ struct ManagedCpuBudgetState {
   double effectiveCapacityCpus = 0;
 };
 
+struct ManagedCpuCapacity {
+  bool managed = false;
+  double externalCapacityCpus = 0;
+  int nativeError = 0;
+};
+
+ManagedCpuCapacity ReadManagedCpuCapacity();
+
 using ManagedCpuBudgetPromise =
     MozPromise<ManagedCpuBudgetState, nsresult, true>;
 

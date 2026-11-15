@@ -1,15 +1,15 @@
-diff --git a/xpcom/base/nsSystemInfo.cpp b/xpcom/base/nsSystemInfo.cpp
 --- a/xpcom/base/nsSystemInfo.cpp
 +++ b/xpcom/base/nsSystemInfo.cpp
-@@ -9,6 +9,7 @@
+@@ -9,6 +9,8 @@
  #include "mozilla/Hal.h"
  #include "mozilla/LazyIdleThread.h"
  #include "mozilla/LookAndFeel.h"
++#include "mozilla/MidoriCpuBudget.h"
 +#include "mozilla/MidoriCpuCapacity_linux.h"
  #include "mozilla/SSE.h"
  #include "mozilla/Sprintf.h"
  #include "mozilla/Try.h"
-@@ -1998,6 +1999,15 @@
+@@ -1998,6 +2000,22 @@
    JS::Rooted<JS::Value> valCountInfo(aCx, JS::Int32Value(info.cpuCount));
    JS_SetProperty(aCx, jsInfo, "count", valCountInfo);
  
@@ -21,11 +21,18 @@ diff --git a/xpcom/base/nsSystemInfo.cpp b/xpcom/base/nsSystemInfo.cpp
 +  JS_SetProperty(aCx, jsInfo, "cpuQuotaCpus", quota);
 +  JS::Rooted<JS::Value> sampled(aCx, JS::BooleanValue(info.cpuQuotaSampled));
 +  JS_SetProperty(aCx, jsInfo, "cpuQuotaSampled", sampled);
++  JS::Rooted<JS::Value> managed(aCx, JS::BooleanValue(info.cpuManagedQuota));
++  JS_SetProperty(aCx, jsInfo, "cpuManagedQuota", managed);
++  JS::Rooted<JS::Value> external(aCx, JS::DoubleValue(info.cpuExternalCapacity));
++  JS_SetProperty(aCx, jsInfo, "cpuExternalCapacity", external);
++  JS::Rooted<JS::Value> externalError(
++      aCx, JS::Int32Value(info.cpuExternalCapacityError));
++  JS_SetProperty(aCx, jsInfo, "cpuExternalCapacityError", externalError);
 +
    JS::Rooted<JS::Value> valCoreInfo(
        aCx, info.cpuCores ? JS::Int32Value(info.cpuCores) : JS::NullValue());
    JS_SetProperty(aCx, jsInfo, "cores", valCoreInfo);
-@@ -2326,9 +2336,29 @@
+@@ -2326,9 +2344,33 @@
    auto requestHolder =
        MakeRefPtr<dom::DOMMozPromiseRequestHolder<ProcessInfoPromise>>(global);
  
@@ -41,6 +48,10 @@ diff --git a/xpcom/base/nsSystemInfo.cpp b/xpcom/base/nsSystemInfo.cpp
 +        snapshot.cpuAffinityCpus = capacity.affinityCpus;
 +        snapshot.cpuQuotaCpus = capacity.quotaCpus;
 +        snapshot.cpuQuotaSampled = capacity.quotaSampled;
++        const auto managed = mozilla::midori::ReadManagedCpuCapacity();
++        snapshot.cpuManagedQuota = managed.managed;
++        snapshot.cpuExternalCapacity = managed.externalCapacityCpus;
++        snapshot.cpuExternalCapacityError = managed.nativeError;
 +        return ProcessInfoPromise::CreateAndResolve(std::move(snapshot),
 +                                                   __func__);
 +      },

@@ -25,6 +25,20 @@ void SetManagedCpuBudgetController(LinuxCpuBudget* aController) {
 #endif
 }
 
+ManagedCpuCapacity ReadManagedCpuCapacity() {
+  ManagedCpuCapacity result;
+#if defined(XP_LINUX) && !defined(ANDROID)
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  if (sMidoriCpuBudgetController) {
+    result.managed = true;
+    result.nativeError = sMidoriCpuBudgetController->ReadExternalCapacity(
+        result.externalCapacityCpus);
+    if (result.nativeError) result.externalCapacityCpus = 0;
+  }
+#endif
+  return result;
+}
+
 int RestoreManagedCpuBudget() {
 #if defined(XP_LINUX) && !defined(ANDROID)
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);

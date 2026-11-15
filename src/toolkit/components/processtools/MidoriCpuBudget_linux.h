@@ -149,6 +149,13 @@ class LinuxCpuBudget final {
     return 0;
   }
 
+  int ReadExternalCapacity(double& aCapacity) const {
+    aCapacity = 0;
+    if (mGroup < 0) return ENODEV;
+    if (!IsOwner()) return EPERM;
+    return ExternalCapacity(mGroup, aCapacity);
+  }
+
   int Refresh(CpuBudgetState& aState) {
     return SetPercentage(mPercentage, aState);
   }
