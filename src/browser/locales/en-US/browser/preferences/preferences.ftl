@@ -3175,3 +3175,6 @@ referrals-section-header2 =
 
 referrals-link2 =
   .label = Share { -brand-product-name }
+
+performance-memory-profile-custom =
+    .label = Custom — manage resources in Midori Center
