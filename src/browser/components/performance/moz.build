@@ -1,6 +1,7 @@
 EXTRA_JS_MODULES += [
     "MidoriResourcePolicy.sys.mjs",
     "MidoriResourceService.sys.mjs",
+    "ResourceCpuController.sys.mjs",
     "ResourceMemoryController.sys.mjs",
     "ResourcePausedTab.sys.mjs",
     "ResourceSampler.sys.mjs",

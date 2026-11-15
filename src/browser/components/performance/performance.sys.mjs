@@ -152,6 +152,11 @@ function updateControls() {
   ]) {
     $(`${id}-unavailable`).hidden = available || !requested;
   }
+  const cpuState = snapshot.enforcement.cpu;
+  const cpuNotice = $('cpu-unavailable');
+  cpuNotice.hidden = cpuState === 'off' || cpuState === 'limited';
+  document.l10n.setAttributes(cpuNotice, ['checking', 'error'].includes(cpuState)
+    ? `midori-performance-enforcement-${cpuState}` : 'midori-performance-cpu-unavailable');
   const networkState = snapshot.enforcement.network;
   const networkNotice = $('network-unavailable');
   networkNotice.hidden = networkState === 'off' || networkState === 'limited';
