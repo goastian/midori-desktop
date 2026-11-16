@@ -2,26 +2,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { authorizeBrowserLogin, authorizeOidc, receiveOidcCallback } =
+const { authorizeBrowserLogin, authorizeOidc, browserConsentCode, receiveOidcCallback } =
   ChromeUtils.importESModule("resource://midori-sync-test/MidoriSyncOidc.sys.mjs");
 
 add_task(async function existing_web_login_returns_a_pkce_bound_authorization() {
   let authorization;
   let browserResponse;
+  let verificationCode;
   const result = await authorizeBrowserLogin("https://sync.example.invalid/", url => {
     authorization = new URL(url);
     Assert.equal(authorization.origin, "https://sync.example.invalid");
     Assert.equal(authorization.pathname, "/auth/desktop");
     Assert.ok(!authorization.searchParams.has("client_id"));
+    Assert.equal(authorization.searchParams.get("consent_version"), "2");
+    Assert.ok(/^[0-9A-F]{5}-[0-9A-F]{5}$/.test(verificationCode), "Midori publishes its code before opening the website");
     browserResponse = fetch(`${authorization.searchParams.get("redirect_uri")}?state=${
       authorization.searchParams.get("state")}&code=${"a".repeat(64)}`);
-  });
+  }, null, code => { verificationCode = code; });
   Assert.equal((await browserResponse).status, 200);
   Assert.equal(result.code, "a".repeat(64));
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256",
     new TextEncoder().encode(result.verifier)));
   const challenge = btoa(String.fromCharCode(...digest)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
   Assert.equal(challenge, authorization.searchParams.get("code_challenge"));
+  Assert.equal(verificationCode, await browserConsentCode(authorization.searchParams.get("state"), challenge,
+    authorization.searchParams.get("redirect_uri")));
 });
 
 function jsonResponse(data) {
@@ -38,6 +43,14 @@ function jsonResponse(data) {
     releaseLock() {},
   }) } };
 }
+
+add_task(async function browser_login_cancels_while_native_consent_is_pending() {
+  const controller = new AbortController();
+  await Assert.rejects(authorizeBrowserLogin("https://sync.example.invalid/", async () => {
+    controller.abort();
+    await new Promise(resolve => do_timeout(0, resolve));
+  }, controller.signal, () => {}), /cancelled/);
+});
 
 add_task(async function oidc_authorization_exchanges_the_loopback_code_with_pkce() {
   const issuer = "https://accounts.example.invalid/";

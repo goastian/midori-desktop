@@ -102,6 +102,7 @@ export class MidoriSyncAccount {
   #transportFactory;
   #oidcAuthorization;
   #browserAuthorization;
+  #authorizationCode = null;
   #prepareDisconnect;
   #now;
   #createId;
@@ -151,6 +152,7 @@ export class MidoriSyncAccount {
       status,
       busy: this.#busy, error: this.#error, revocationPending: this.#revocationPending,
       interactionBusy: this.#busy && this.#interactionBusy,
+      authorizationCode: this.#authorizationCode,
       generation: this.#generation,
       creditCardsSupported: this.#creditCardsSupported,
       formHistorySupported: this.#formHistorySupported,
@@ -245,7 +247,13 @@ export class MidoriSyncAccount {
           throw new SyncAccountError("oidc_unavailable");
         }
         const result = authentication.browserLogin ?
-          await this.#browserAuthorization(this.#connection.snapshot.server.baseURL, openURL, controller.signal) :
+          await this.#browserAuthorization(this.#connection.snapshot.server.baseURL, openURL, controller.signal, code => {
+            if (controller.signal.aborted) {
+              throw new SyncAccountError("cancelled");
+            }
+            this.#authorizationCode = code;
+            this.#notify();
+          }) :
           await this.#oidcAuthorization(authentication.oidc, openURL, controller.signal);
         if (controller.signal.aborted) {
           throw new SyncAccountError("cancelled");
@@ -262,12 +270,16 @@ export class MidoriSyncAccount {
     } finally {
       if (this.#authorization === controller) {
         this.#authorization = null;
+        this.#authorizationCode = null;
+        this.#notify();
       }
     }
   }
 
   cancelAuthorization() {
     this.#authorization?.abort();
+    this.#authorizationCode = null;
+    this.#notify();
   }
 
   async #connect(issue, { authorization = null } = {}) {
@@ -627,6 +639,7 @@ export class MidoriSyncAccount {
     this.#closed = true;
     this.#authorization?.abort();
     this.#authorization = null;
+    this.#authorizationCode = null;
     this.#session = null;
     this.#recoveryCandidate = null;
     ++this.#generation;

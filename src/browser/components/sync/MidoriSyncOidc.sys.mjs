@@ -260,11 +260,22 @@ export async function authorizeOidc(oidc, openURL, signal = null, requester = fe
   }
 }
 
-export async function authorizeBrowserLogin(serverURL, openURL, signal = null) {
+export async function browserConsentCode(state, challenge, redirectURI, deviceType = "desktop") {
+  const binding = JSON.stringify(["MidoriSync/browser-consent/v2", state, challenge, redirectURI, deviceType]);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(binding)));
+  const code = Array.from(digest.slice(0, 5), byte => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
+  return `${code.slice(0, 5)}-${code.slice(5)}`;
+}
+
+export async function authorizeBrowserLogin(serverURL, openURL, signal = null, onVerificationCode = null) {
+  if (typeof onVerificationCode !== "function") {
+    throw new SyncOidcError("invalid_oidc_request");
+  }
   const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
   const state = base64url(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
   const callback = receiveOidcCallback(state);
+  callback.promise.catch(() => {});
   const onAbort = () => callback.cancel();
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
@@ -273,12 +284,19 @@ export async function authorizeBrowserLogin(serverURL, openURL, signal = null) {
     }
     const url = new URL("auth/desktop", serverURL);
     url.search = new URLSearchParams({ state, code_challenge: challenge,
-      redirect_uri: callback.redirectURI, device_type: "desktop" }).toString();
-    openURL(url.href);
+      redirect_uri: callback.redirectURI, device_type: "desktop", consent_version: "2" }).toString();
+    const verificationCode = await browserConsentCode(state, challenge, callback.redirectURI);
+    if (signal?.aborted) {
+      throw new SyncOidcError("cancelled");
+    }
+    onVerificationCode(verificationCode);
+    await openURL(url.href, { verificationCode });
+    if (signal?.aborted) {
+      throw new SyncOidcError("cancelled");
+    }
     return { code: await callback.promise, verifier };
   } finally {
     signal?.removeEventListener("abort", onAbort);
-    callback.promise.catch(() => {});
     callback.cancel();
   }
 }

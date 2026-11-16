@@ -17,6 +17,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setL10n: "resource:///modules/MidoriSyncUi.sys.mjs",
   MIDORI_SYNC_LOCAL_SERVER: "resource:///modules/MidoriSyncServerConfig.sys.mjs",
   MIDORI_SYNC_OFFICIAL_SERVER: "resource:///modules/MidoriSyncServerConfig.sys.mjs",
+  confirmSyncBrowserLogin: "resource:///modules/MidoriSyncUi.sys.mjs",
 });
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
@@ -58,6 +59,9 @@ function build() {
   const message = el("p", null, "message");
   message.setAttribute("role", "status");
   message.setAttribute("aria-live", "polite");
+  const authorizationCode = el("p", null, "message");
+  authorizationCode.id = "midori-sync-authorization-code";
+  authorizationCode.hidden = true;
 
   const signIn = el("button", "midori-sync-connect-oidc", "primary");
   signIn.type = "button";
@@ -149,7 +153,7 @@ function build() {
   const encryption = el("details", null, "advanced");
   encryption.append(el("summary", "midori-sync-encryption-summary"), keys.section);
 
-  card.append(accountBar, message, signIn, pairForm, unlock, enrollment.section, modes, modeHelp, retention, data.section, conflicts.section, encryption,
+  card.append(accountBar, message, authorizationCode, signIn, pairForm, unlock, enrollment.section, modes, modeHelp, retention, data.section, conflicts.section, encryption,
     savedJournals.section, serverBox);
 
   let customize = false;
@@ -193,7 +197,14 @@ function build() {
     let connected = false;
     action(async account => {
       try {
-        await account.connectOidc(url => {
+        await account.connectOidc(async (url, { verificationCode } = {}) => {
+          if (verificationCode && !await lazy.confirmSyncBrowserLogin(chromeWindow(), url, verificationCode)) {
+            account.cancelAuthorization();
+            return;
+          }
+          if (verificationCode && account.snapshot.authorizationCode !== verificationCode) {
+            return;
+          }
           tab = chromeWindow().gBrowser.addTab(url, {
             triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}), inBackground: false,
           });
@@ -269,6 +280,14 @@ function build() {
   function render() {
     const owner = service.account;
     const account = owner.snapshot;
+    authorizationCode.hidden = !account.authorizationCode;
+    if (account.authorizationCode) {
+      lazy.setL10n(document.l10n, authorizationCode, "midori-sync-login-pending-code", { code: account.authorizationCode });
+    } else {
+      authorizationCode.textContent = "";
+      authorizationCode.removeAttribute("data-l10n-id");
+      authorizationCode.removeAttribute("data-l10n-args");
+    }
     const connection = service.connection.snapshot;
     if (actionError && (actionError.owner !== owner || actionError.generation !== account.generation || actionError.server !== connection.server)) {
       actionError = null;

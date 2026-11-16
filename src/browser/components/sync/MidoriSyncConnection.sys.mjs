@@ -42,10 +42,10 @@ export function validateSyncCapabilities(value) {
     if (Object.hasOwn(auth, "browser_login")) {
       if (auth.browser_login === null) {
         authentication.browserLogin = null;
-      } else if (auth.development || auth.browser_login?.version !== 1 || !auth.issuer) {
+      } else if (auth.development || auth.browser_login?.version !== 2 || !auth.issuer) {
         throw new SyncConnectionError("incompatible_server");
       } else {
-        authentication.browserLogin = Object.freeze({ version: 1 });
+        authentication.browserLogin = Object.freeze({ version: 2 });
       }
     }
     if (Object.hasOwn(auth, "oidc")) {

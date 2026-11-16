@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { MIDORI_SYNC_SETTINGS_URL, setL10n, syncAccountErrorId, syncDisplayName, syncSummary } from "./MidoriSyncUi.sys.mjs";
+import { MIDORI_SYNC_SETTINGS_URL, confirmSyncBrowserLogin, setL10n, syncAccountErrorId, syncDisplayName, syncSummary } from "./MidoriSyncUi.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -163,7 +163,14 @@ export const MidoriSyncPanel = {
       let connected = false;
       accountAction(async account => {
         try {
-          await account.connectOidc(authURL => {
+          await account.connectOidc(async (authURL, { verificationCode } = {}) => {
+            if (verificationCode && !await confirmSyncBrowserLogin(win, authURL, verificationCode)) {
+              account.cancelAuthorization();
+              return;
+            }
+            if (verificationCode && account.snapshot.authorizationCode !== verificationCode) {
+              return;
+            }
             authorizationTab = win.gBrowser.addTab(authURL, {
               triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}), inBackground: false,
             });
@@ -197,7 +204,10 @@ export const MidoriSyncPanel = {
     });
     settings.id = "midori-sync-open-settings-link";
     settings.className = "midori-sync-link";
-    actions.append(connectOidc, unlock, settings);
+    const authorizationCode = html(doc, "p");
+    authorizationCode.id = "midori-sync-authorization-code";
+    authorizationCode.hidden = true;
+    actions.append(authorizationCode, connectOidc, unlock, settings);
 
     let actionError = null;
     let accountActionVersion = 0;
@@ -239,6 +249,14 @@ export const MidoriSyncPanel = {
         const connection = lazy.MidoriSyncService.connection.snapshot;
         const owner = lazy.MidoriSyncService.account;
         const account = owner.snapshot;
+        authorizationCode.hidden = !account.authorizationCode;
+        if (account.authorizationCode) {
+          setL10n(doc.l10n, authorizationCode, "midori-sync-login-pending-code", { code: account.authorizationCode });
+        } else {
+          authorizationCode.textContent = "";
+          authorizationCode.removeAttribute("data-l10n-id");
+          authorizationCode.removeAttribute("data-l10n-args");
+        }
         if (actionError && (actionError.owner !== owner || actionError.generation !== account.generation || actionError.server !== connection.server)) {
           actionError = null;
         }

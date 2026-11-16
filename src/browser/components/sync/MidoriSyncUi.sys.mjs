@@ -4,6 +4,14 @@
 
 export const MIDORI_SYNC_SETTINGS_URL = "about:sync";
 
+export async function confirmSyncBrowserLogin(win, url, code) {
+  const [title, message] = await win.document.l10n.formatValues([
+    { id: "midori-sync-login-code-title" },
+    { id: "midori-sync-login-code-prompt", args: { code, server: new URL(url).origin } },
+  ]);
+  return !win.closed && Services.prompt.confirm(win, title, message);
+}
+
 /**
  * Sets a Fluent id only when it differs from the current one, so repeated
  * refreshes do not retranslate the node and make it flicker.

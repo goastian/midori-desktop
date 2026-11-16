@@ -31,7 +31,7 @@ add_task(async function public_oidc_server_offers_one_click_account_connection()
       authentication: { pairing: true, development, issuer: development ? "urn:midori:sync:local" : issuer,
         ...(advertiseOidc ? { oidc: { version: 1, issuer, client_id: "test-public-client",
           discovery_url: "https://accounts.example.invalid/application/o/test-desktop/.well-known/openid-configuration" } } : {}),
-        browser_login: advertiseBrowserLogin ? { version: 1 } : null,
+        browser_login: advertiseBrowserLogin ? { version: 2 } : null,
         refresh: { version: 1, request_bytes: 4096, lifetime_seconds: 2592000,
           receipts_per_session: 1024, sessions_per_account: 32 } },
       features: ["opaque_cursors", "snapshot_fence", "tombstones", "device_acknowledgements",
