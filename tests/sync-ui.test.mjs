@@ -78,6 +78,18 @@ test("a signed-in profile with a password capsule asks to unlock Sync", () => {
   assert.equal(syncSummary(current), "recovery");
 });
 
+test("old server recovery flags do not hide client recovery and backup controls", () => {
+  const current = service();
+  current.keys.snapshot = { status: "recovery-required", accountRecoverySupported: true, passwordUnlockAvailable: true };
+  assert.equal(syncSummary(current), "password");
+  current.keys.snapshot.passwordUnlockAvailable = false;
+  assert.equal(syncSummary(current), "recovery");
+  current.keys.snapshot = { status: "backup-required", accountRecoverySupported: true };
+  assert.equal(syncSummary(current), "backup");
+  current.keys.snapshot = { status: "ready", accountRecoverySupported: true, backupPending: true };
+  assert.equal(syncSummary(current), "backup-pending");
+});
+
 test("offline and paused accounts never report synchronized", () => {
   const current = service();
   current.backgroundSnapshot.offline = true;

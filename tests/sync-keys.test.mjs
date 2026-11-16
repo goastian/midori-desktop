@@ -75,6 +75,8 @@ function setup() {
             return { data: structuredClone(state.remote) };
           } else if (path.startsWith("api/v1/crypto/enrollments")) {
             return { data: state.enrollmentServer(path, options) };
+          } else if (path === "api/v1/crypto/account-recovery") {
+            assert.fail("Clients must never read or publish server recovery secrets");
           } else if (path === "api/v1/crypto/password") {
             if (options.method === "PUT") {
               assert.deepEqual(options.body.crypto, { epoch: state.remote.epoch, revision: state.remote.revision });
@@ -225,6 +227,92 @@ async function activate(keys) {
   await keys.refresh();
   return code;
 }
+
+function assertClientCustody(state) {
+  for (const { path, options } of state.requests) {
+    assert.notEqual(path, "api/v1/crypto/account-recovery");
+    const body = JSON.stringify(options.body ?? {});
+    assert.equal(body.includes('"account_recovery"'), false, path);
+    assert.equal(body.includes('"recovery_secret"'), false, path);
+    assert.equal(body.includes('"secret"'), false, path);
+    if (state.local) assert.equal(body.includes(state.local.secret), false, path);
+  }
+}
+
+test("old server recovery advertisements cannot restore a fresh profile or suppress recovery controls", async () => {
+  for (const advertised of [true, false]) {
+    const f = setup();
+    f.state.remote.account_recovery = advertised;
+    const code = await activate(f.keys);
+    const originalId = f.keys.snapshot.activeKeyId;
+    f.keys.close();
+    f.state.local = null;
+    const fresh = f.create();
+    await fresh.refresh();
+    assert.equal(fresh.snapshot.status, "recovery-required");
+    assert.equal(await fresh.bootstrap(), false);
+    assert.equal(f.state.local, null);
+    await fresh.recover(code);
+    await fresh.refresh();
+    assert.equal(fresh.snapshot.status, "ready");
+    assert.equal(fresh.snapshot.activeKeyId, originalId);
+    assertClientCustody(f.state);
+    fresh.close();
+  }
+});
+
+test("an unlocked profile never uploads its local secret to an old server", async () => {
+  const f = setup();
+  await activate(f.keys);
+  const before = structuredClone(f.state.remote);
+  f.state.remote.account_recovery = false;
+  await f.keys.refresh();
+  await f.keys.refresh();
+  assert.deepEqual(f.state.remote, { ...before, account_recovery: false });
+  assert.equal(f.keys.snapshot.status, "ready");
+  assertClientCustody(f.state);
+  f.keys.close();
+});
+
+test("bootstrap keeps its recovery backup pending even with old server recovery flags", async () => {
+  const f = setup();
+  f.state.remote.account_recovery = true;
+  await f.keys.refresh();
+  f.state.responseLost = true;
+  await f.keys.bootstrap();
+  assert.equal(f.keys.snapshot.status, "ready");
+  assert.equal(f.keys.snapshot.backupPending, true);
+  assert.equal(f.keys.snapshot.recoveryCodeAvailable, true);
+  assertClientCustody(f.state);
+  f.keys.close();
+});
+
+test("rotation retries and retirement never republish persisted recovery capsules", async () => {
+  const f = setup();
+  f.state.remote.account_recovery = true;
+  await activate(f.keys);
+  const code = await f.keys.prepareRotation();
+  f.state.activationError = true;
+  await assert.rejects(f.keys.confirmRotation({ recoveryCodeSaved: true }));
+  f.state.local.rotation.account_recovery = { secret: f.state.local.secret, keys: f.state.local.keys };
+  f.state.local.rotation.recovery_secret = f.state.local.secret;
+  f.state.activationError = false;
+  await f.keys.confirmRotation();
+  await f.keys.refresh();
+  f.state.remote.rotation.live_records = 0;
+  await f.keys.completeRotation(f.state.remote.rotation.operation_id);
+  await f.keys.retireUnusedKeys({ async assertOnlyKey() {} });
+  assert.equal(f.keys.snapshot.keyCount, 1);
+  assertClientCustody(f.state);
+  f.keys.close();
+  f.state.local = null;
+  const fresh = f.create();
+  await fresh.recover(code);
+  await fresh.refresh();
+  assert.equal(fresh.snapshot.status, "ready");
+  assertClientCustody(f.state);
+  fresh.close();
+});
 
 test("offline keys reopen only the last verified registry and can protect durable local work without HTTP", async () => {
   const f = setup();

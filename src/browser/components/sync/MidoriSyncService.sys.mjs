@@ -429,16 +429,13 @@ function resumeBackgroundAccount() {
     }
     if (backgroundStarted && startup === backgroundStartup &&
         owner.snapshot.status === "connected" &&
-        (keyManager.snapshot.localOnly || keyManager.snapshot.accountRecoverySupported && !keyManager.snapshot.accountRecoveryAvailable ||
+        (keyManager.snapshot.localOnly ||
           !["ready", "empty", "recovery-required", "migration-required"].includes(keyManager.snapshot.status))) {
       await keyManager.refresh();
     }
     if (backgroundStarted && startup === backgroundStartup &&
         owner.snapshot.status === "connected" && keyManager.snapshot.status === "empty") {
       await keyManager.bootstrap();
-    }
-    if (owner.snapshot.status === "connected" && keyManager.snapshot.status === "account-recovery-pending") {
-      throw new SyncStoreError("account_recovery_pending");
     }
     if (backgroundStarted && startup === backgroundStartup &&
         owner.snapshot.status === "connected" && keyManager.snapshot.status === "recovery-required" &&
@@ -459,7 +456,7 @@ function resumeBackgroundAccount() {
     if (!backgroundStarted || startup !== backgroundStartup) {
       return;
     }
-    if (["network_error", "timeout", "server_error", "rate_limited", "busy", "activation_unconfirmed", "account_recovery_pending"].includes(error.code)) {
+    if (["network_error", "timeout", "server_error", "rate_limited", "busy", "activation_unconfirmed"].includes(error.code)) {
       if (["network_error", "timeout", "server_error"].includes(error.code) &&
           ["locked", "error"].includes(owner.snapshot.status)) {
         try {
@@ -474,7 +471,7 @@ function resumeBackgroundAccount() {
         }
       }
       const { setTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
-      const backoff = error.code === "account_recovery_pending" ? 30000 : Math.min(15 * 60000, 30000 * 2 ** Math.min(backgroundResumeFailures++, 5));
+      const backoff = Math.min(15 * 60000, 30000 * 2 ** Math.min(backgroundResumeFailures++, 5));
       const retryAfter = Number.isFinite(error.retryAfter) ? Math.min(86400, Math.max(0, error.retryAfter)) * 1000 : 0;
       const delay = Math.max(backoff, retryAfter);
       backgroundResumeTimer = setTimeout(() => {
