@@ -393,3 +393,6 @@ midori-sync-extension-settings-help = Sync settings shared by compatible extensi
 midori-sync-collection-status-extension-settings-waiting = { $count } extension configurations waiting for complete data, permissions or available storage on this device
 midori-sync-conflict-field-settings-bytes = Configuration size (bytes)
 midori-sync-conflict-field-settings-digest = Content fingerprint
+midori-sync-login-code-title = Verify your Midori connection
+midori-sync-login-code-prompt = Your connection code is { $code }. Enter it only at { $server } to connect this Midori. The code stays available in Midori Sync while you sign in. Cancel if you did not start this connection.
+midori-sync-login-pending-code = Connection code: { $code }. Enter it on the account connection page you opened from Midori.
