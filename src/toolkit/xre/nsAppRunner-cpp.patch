@@ -19,11 +19,14 @@
    mozilla::AppShutdown::MaybeDoRestart();
  
    XRE_DeinitCommandLine();
-@@ -6836,6 +6841,12 @@
+@@ -6836,6 +6841,15 @@
  void XRE_StopLateWriteChecks(void) { mozilla::StopLateWriteChecks(); }
  
  int XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
 +#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#  ifdef XP_WIN
++  sHasCpuBudgetContextForRestart = midori::HasManagedCpuBudgetContext;
++#  endif
 +  midori::SetManagedCpuBudgetController(aConfig.midoriCpuBudget);
 +  auto restoreCpuBudget = MakeScopeExit([] {
 +    static_cast<void>(midori::RestoreManagedCpuBudget());

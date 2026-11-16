@@ -45,33 +45,7 @@ class WindowsCpuBudget final {
   }
 
   DWORD Initialize(HANDLE aProcess) {
-    if (mJob) return ERROR_ALREADY_INITIALIZED;
-    BOOL external = FALSE;
-    if (!IsProcessInJob(aProcess, nullptr, &external)) return GetLastError();
-    HANDLE job = CreateJobObjectW(nullptr, nullptr);
-    if (!job) return GetLastError();
-    HANDLE process = nullptr;
-    DWORD error = ERROR_SUCCESS;
-    if (!DuplicateHandle(GetCurrentProcess(), aProcess, GetCurrentProcess(),
-                         &process, PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
-                         0)) {
-      error = GetLastError();
-    }
-    if (!error) error = WriteAndVerify(job, 10000);
-    if (!error) error = WriteAndVerify(job, 0);
-    if (!error && !AssignProcessToJobObject(job, aProcess))
-      error = GetLastError();
-    if (error) {
-      CloseHandle(job);
-      if (process) CloseHandle(process);
-      return error;
-    }
-    mJob = job;
-    mProcess = process;
-    mOwner = GetCurrentProcessId();
-    mHasExternalJob = external != FALSE;
-    mExternalCapacityKnown = !mHasExternalJob;
-    return ERROR_SUCCESS;
+    return InitializeInternal(aProcess, false);
   }
 
   DWORD InitializeNormalized(
@@ -89,7 +63,7 @@ class WindowsCpuBudget final {
     WindowsCpuCapacity capacity;
     DWORD error = ReadCapacity(aProcess, capacity);
     if (error) return error;
-    error = Initialize(aProcess);
+    error = InitializeInternal(aProcess, true);
     if (error) return error;
     if (external || !mHasExternalJob) mExternalCapacityKnown = true;
     return mExternalCapacityKnown ? ERROR_SUCCESS : ERROR_NOT_SUPPORTED;
@@ -151,6 +125,44 @@ class WindowsCpuBudget final {
   }
 
  private:
+  DWORD InitializeInternal(HANDLE aProcess, bool aAllowIndependent) {
+    if (mJob) return ERROR_ALREADY_INITIALIZED;
+    BOOL external = FALSE;
+    if (!IsProcessInJob(aProcess, nullptr, &external)) return GetLastError();
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    if (!job) return GetLastError();
+    HANDLE process = nullptr;
+    DWORD error = ERROR_SUCCESS;
+    if (!DuplicateHandle(GetCurrentProcess(), aProcess, GetCurrentProcess(),
+                         &process, PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                         0)) {
+      error = GetLastError();
+    }
+    if (!error && aAllowIndependent) {
+      JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+      limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_BREAKAWAY_OK;
+      if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                   &limits, sizeof(limits))) {
+        error = GetLastError();
+      }
+    }
+    if (!error) error = WriteAndVerify(job, 10000);
+    if (!error) error = WriteAndVerify(job, 0);
+    if (!error && !AssignProcessToJobObject(job, aProcess))
+      error = GetLastError();
+    if (error) {
+      CloseHandle(job);
+      if (process) CloseHandle(process);
+      return error;
+    }
+    mJob = job;
+    mProcess = process;
+    mOwner = GetCurrentProcessId();
+    mHasExternalJob = external != FALSE;
+    mExternalCapacityKnown = !mHasExternalJob;
+    return ERROR_SUCCESS;
+  }
+
   static DWORD ValidateLauncherJob(HANDLE aProcess) {
     if (GetProcessId(aProcess) != GetCurrentProcessId()) {
       return ERROR_NOT_SUPPORTED;

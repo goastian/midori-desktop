@@ -5,6 +5,9 @@
 #include "MidoriCpuBudget.h"
 #include "mozilla/MidoriCpuBudget_linux.h"
 #include "mozilla/MidoriCpuBudget_windows.h"
+#ifdef XP_WIN
+#  include "mozilla/Atomics.h"
+#endif
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticBackgroundTaskQueue.h"
 #include "mozilla/StaticMutex.h"
@@ -15,6 +18,9 @@ namespace mozilla::midori {
 #if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
 static StaticMutex sMidoriCpuBudgetMutex;
 static CpuBudgetController* sMidoriCpuBudgetController = nullptr;
+#  ifdef XP_WIN
+static Atomic<bool, Relaxed> sMidoriCpuBudgetContext(false);
+#  endif
 #endif
 
 void SetManagedCpuBudgetController(CpuBudgetController* aController) {
@@ -23,8 +29,15 @@ void SetManagedCpuBudgetController(CpuBudgetController* aController) {
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   MOZ_ASSERT(!sMidoriCpuBudgetController || !aController);
   sMidoriCpuBudgetController = aController;
+#  ifdef XP_WIN
+  if (aController) sMidoriCpuBudgetContext = true;
+#  endif
 #endif
 }
+
+#ifdef XP_WIN
+bool HasManagedCpuBudgetContext() { return sMidoriCpuBudgetContext; }
+#endif
 
 ManagedCpuCapacity ReadManagedCpuCapacity() {
   ManagedCpuCapacity result;

@@ -1,0 +1,28 @@
+--- a/toolkit/components/satchel/FormHistoryStartup.sys.mjs
++++ b/toolkit/components/satchel/FormHistoryStartup.sys.mjs
+@@ -19,6 +19,8 @@
+   observe(_subject, topic, _data) {
+     switch (topic) {
+       case "idle-daily":
++        this._expireExistingEntries().catch(console.error);
++        break;
+       case "formhistory-expire-now":
+         lazy.FormHistory.expireOldEntries().catch(console.error);
+         break;
+@@ -26,6 +28,16 @@
+         this.init();
+         break;
+     }
++  }
++
++  async _expireExistingEntries() {
++    if (!Cu.isESModuleLoaded("resource://gre/modules/FormHistory.sys.mjs")) {
++      const path = PathUtils.join(PathUtils.profileDir, "formhistory.sqlite");
++      if (!(await IOUtils.exists(path))) {
++        return;
++      }
++    }
++    await lazy.FormHistory.expireOldEntries();
+   }
+ 
+   init() {

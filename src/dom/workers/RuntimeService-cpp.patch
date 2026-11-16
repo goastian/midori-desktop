@@ -1,0 +1,11 @@
+--- a/dom/workers/RuntimeService.cpp
++++ b/dom/workers/RuntimeService.cpp
+@@ -2513,7 +2513,7 @@
+ 
+   SafeRefPtr<WorkerThread> thread = std::move(mThread);
+   if (thread->ShutdownRequired()) {
+-    MOZ_ALWAYS_SUCCEEDS(thread->Shutdown());
++    MOZ_ALWAYS_SUCCEEDS(thread->AsyncShutdown());
+   }
+ 
+   return NS_OK;

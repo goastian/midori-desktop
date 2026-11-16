@@ -28,6 +28,9 @@ struct ManagedCpuCapacity {
 };
 
 ManagedCpuCapacity ReadManagedCpuCapacity();
+#ifdef XP_WIN
+bool HasManagedCpuBudgetContext();
+#endif
 
 using ManagedCpuBudgetPromise =
     MozPromise<ManagedCpuBudgetState, nsresult, true>;

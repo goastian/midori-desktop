@@ -1,0 +1,10 @@
+--- a/toolkit/components/places/moz.build
++++ b/toolkit/components/places/moz.build
+@@ -69,6 +69,7 @@
+         "History.sys.mjs",
+         "PlacesBackups.sys.mjs",
+         "PlacesDBUtils.sys.mjs",
++        "PlacesDBUtilsIdleMaintenance.sys.mjs",
+         "PlacesExpiration.sys.mjs",
+         "PlacesFrecencyRecalculator.sys.mjs",
+         "PlacesPreviews.sys.mjs",

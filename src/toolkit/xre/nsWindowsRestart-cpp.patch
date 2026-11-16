@@ -1,0 +1,27 @@
+--- a/toolkit/xre/nsWindowsRestart.cpp
++++ b/toolkit/xre/nsWindowsRestart.cpp
+@@ -63,6 +63,8 @@
+   }
+   return argvConverted;
+ }
++
++static bool (*sHasCpuBudgetContextForRestart)() = nullptr;
+ 
+ /**
+  * Return true if we are in a job with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE and
+@@ -91,10 +93,12 @@
+     return false;
+   }
+ 
+-  // If JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE is not set, no need to worry about
+-  // the job.
++  // A new instance must also leave Midori's managed CPU job.
++  const bool managedCpu =
++      sHasCpuBudgetContextForRestart && sHasCpuBudgetContextForRestart();
+   if (!(job_info.BasicLimitInformation.LimitFlags &
+-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)) {
++        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE) &&
++      !managedCpu) {
+     return false;
+   }
+ 

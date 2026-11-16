@@ -1,0 +1,41 @@
+--- a/toolkit/components/places/PlacesDBUtils.sys.mjs
++++ b/toolkit/components/places/PlacesDBUtils.sys.mjs
+@@ -7,9 +7,6 @@
+ // Threshold value for removeOldCorruptDBs.
+ // Corrupt DBs older than this value are removed.
+ const CORRUPT_DB_RETAIN_DAYS = 14;
+-
+-// Seconds between maintenance runs.
+-const MAINTENANCE_INTERVAL_SECONDS = 7 * 86400;
+ 
+ const lazy = {};
+ 
+@@ -1470,27 +1467,4 @@
+   }
+ }
+ 
+-export function PlacesDBUtilsIdleMaintenance() {}
+-
+-PlacesDBUtilsIdleMaintenance.prototype = {
+-  observe(subject, topic) {
+-    switch (topic) {
+-      case "idle-daily": {
+-        // Once a week run places.sqlite maintenance tasks.
+-        let lastMaintenance = Services.prefs.getIntPref(
+-          "places.database.lastMaintenance",
+-          0
+-        );
+-        let nowSeconds = Math.floor(Date.now() / 1000);
+-        if (lastMaintenance < nowSeconds - MAINTENANCE_INTERVAL_SECONDS) {
+-          PlacesDBUtils.maintenanceOnIdle();
+-        }
+-        break;
+-      }
+-      default:
+-        throw new Error("Trying to handle an unknown category.");
+-    }
+-  },
+-  classID: Components.ID("d38926e0-29c1-11eb-8588-0800200c9a66"),
+-  QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
+-};
++export { PlacesDBUtilsIdleMaintenance } from "resource://gre/modules/PlacesDBUtilsIdleMaintenance.sys.mjs";
