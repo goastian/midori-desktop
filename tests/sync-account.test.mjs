@@ -247,16 +247,18 @@ test("existing web login authorizes a native session without a public OIDC clien
     refresh_expires_at: "2026-10-29T12:00:00+00:00" };
   let openedURL;
   const { account, state } = setup({
-    browserAuthorization: async (serverURL, openURL, signal) => {
+    browserAuthorization: async (serverURL, openURL, signal, publishCode) => {
       assert.equal(serverURL, server.baseURL);
       assert.equal(signal.aborted, false);
+      publishCode("A34EA-FD972");
+      assert.equal(account.snapshot.authorizationCode, "A34EA-FD972");
       openURL(`${serverURL}auth/desktop`);
       return { code: "a".repeat(64), verifier: "b".repeat(43) };
     },
     request(path, options) {
       if (path === "api/v1/capabilities") {
         return { data: { ...capabilities, authentication: { pairing: true, development: false,
-          issuer, browser_login: { version: 1 }, oidc: null,
+          issuer, browser_login: { version: 2 }, oidc: null,
           refresh: { version: 1, request_bytes: 4096, lifetime_seconds: 2592000,
             receipts_per_session: 1024, sessions_per_account: 32 } } } };
       }
@@ -273,9 +275,44 @@ test("existing web login authorizes a native session without a public OIDC clien
   });
   await account.connectOidc(url => { openedURL = url; });
   assert.equal(openedURL, `${server.baseURL}auth/desktop`);
+  assert.equal(account.snapshot.authorizationCode, null);
   assert.equal(account.snapshot.status, "connected");
   assert.deepEqual(state.requests.map(value => value.path),
     ["api/v1/capabilities", "api/v1/auth/browser-token", "api/v1/account"]);
+});
+
+test("cancelling or closing browser consent clears its display code without issuing a session", async () => {
+  for (const close of [false, true]) {
+    let ready;
+    const displayed = new Promise(resolve => { ready = resolve; });
+    const { account, state } = setup({
+      browserAuthorization: async (_server, _open, signal, publishCode) => {
+        publishCode("A34EA-FD972");
+        ready();
+        await new Promise((_, reject) => signal.addEventListener("abort", () => reject({ code: "cancelled" }), { once: true }));
+      },
+      request(path) {
+        assert.equal(path, "api/v1/capabilities");
+        return { data: { ...capabilities, authentication: { pairing: true, development: false,
+          issuer: "https://accounts.example.invalid/", browser_login: { version: 2 }, oidc: null,
+          refresh: { version: 1, request_bytes: 4096, lifetime_seconds: 2592000,
+            receipts_per_session: 1024, sessions_per_account: 32 } } } };
+      },
+    });
+    const pending = account.connectOidc(() => {});
+    await displayed;
+    assert.equal(account.snapshot.authorizationCode, "A34EA-FD972");
+    if (close) {
+      account.close();
+    } else {
+      account.cancelAuthorization();
+    }
+    assert.equal(account.snapshot.authorizationCode, null);
+    await assert.rejects(pending, /cancelled/);
+    assert.equal(state.stored, null);
+    assert.deepEqual(state.requests.map(value => value.path), ["api/v1/capabilities"]);
+    account.close();
+  }
 });
 
 test("closing authorization cancels the login without saving an account", async () => {
@@ -333,7 +370,7 @@ test("a lost browser-token response leaves no local session and permits a fresh,
     request(path, options) {
       if (path === "api/v1/capabilities") {
         return { data: { ...capabilities, authentication: { pairing: true, development: false,
-          issuer, browser_login: { version: 1 }, oidc: null,
+          issuer, browser_login: { version: 2 }, oidc: null,
           refresh: { version: 1, request_bytes: 4096, lifetime_seconds: 2592000,
             receipts_per_session: 1024, sessions_per_account: 32 } } } };
       }
@@ -412,7 +449,7 @@ test("cancelling browser login during unlock, capabilities, exchange, verificati
         if (path === "api/v1/capabilities") {
           if (phase === "capabilities") { await pause(); }
           return { data: { ...capabilities, authentication: { pairing: true, development: false,
-            issuer, browser_login: { version: 1 }, oidc: null,
+            issuer, browser_login: { version: 2 }, oidc: null,
             refresh: { version: 1, request_bytes: 4096, lifetime_seconds: 2592000,
               receipts_per_session: 1024, sessions_per_account: 32 } } } };
         }

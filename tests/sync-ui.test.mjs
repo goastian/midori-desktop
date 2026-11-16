@@ -4,8 +4,30 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { syncSummary } from "../src/browser/components/sync/MidoriSyncUi.sys.mjs";
+import { confirmSyncBrowserLogin, syncSummary } from "../src/browser/components/sync/MidoriSyncUi.sys.mjs";
 import { syncConflictSummary } from "../src/browser/components/sync/MidoriSyncConflictSummary.sys.mjs";
+
+test("browser connection consent shows the native code and server, and respects cancellation", async t => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "Services");
+  t.after(() => previous ? Object.defineProperty(globalThis, "Services", previous) : delete globalThis.Services);
+  let prompts = 0;
+  const win = { closed: false, document: { l10n: { async formatValues(requests) {
+    assert.deepEqual(requests[1].args, { code: "A34EA-FD972", server: "https://sync.example.invalid" });
+    return ["Verify connection", "Connection code: A34EA-FD972"];
+  } } } };
+  globalThis.Services = { prompt: { confirm(parent, title, message) {
+    assert.equal(parent, win);
+    assert.equal(title, "Verify connection");
+    assert.ok(message.includes("A34EA-FD972"));
+    ++prompts;
+    return false;
+  } } };
+  const url = "https://sync.example.invalid/auth/desktop?state=request-state";
+  assert.equal(await confirmSyncBrowserLogin(win, url, "A34EA-FD972"), false);
+  win.closed = true;
+  assert.equal(await confirmSyncBrowserLogin(win, url, "A34EA-FD972"), false);
+  assert.equal(prompts, 1, "A closed window cannot start another authorization prompt");
+});
 
 test("conflict summaries redact credentials, card numbers, form values and URL credentials or queries", () => {
   const secret = "must never reach the summary";

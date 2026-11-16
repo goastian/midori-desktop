@@ -391,10 +391,10 @@ test("public OIDC metadata is bound to the advertised issuer and HTTPS discovery
 test("existing web login is advertised without a public OIDC client", () => {
   const auth = { pairing: true, development: false,
     issuer: "https://accounts.example.invalid/application/o/midori-sync/",
-    browser_login: { version: 1 }, oidc: null };
+    browser_login: { version: 2 }, oidc: null };
   const value = { ...capabilities, account_version: 1, authentication: auth };
-  assert.deepEqual(validateSyncCapabilities(value).authentication.browserLogin, { version: 1 });
-  for (const malformed of [{ ...auth, browser_login: { version: 2 } },
+  assert.deepEqual(validateSyncCapabilities(value).authentication.browserLogin, { version: 2 });
+  for (const malformed of [{ ...auth, browser_login: { version: 1 } }, { ...auth, browser_login: { version: 3 } },
     { ...auth, development: true }, { ...auth, issuer: null }]) {
     assert.throws(() => validateSyncCapabilities({ ...value, authentication: malformed }),
       /incompatible_server/);
