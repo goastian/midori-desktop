@@ -1,0 +1,12 @@
+--- a/ipc/chromium/src/base/process_util.h
++++ b/ipc/chromium/src/base/process_util.h
+@@ -145,6 +145,9 @@
+   // A mapping of (src fd -> dest fd) to propagate into the child
+   // process.  All other fds will be closed, except std{in,out,err}.
+   file_handle_mapping_vector fds_to_remap;
++#  if defined(XP_LINUX) && !defined(ANDROID)
++  mozilla::UniqueFileHandle midori_external_cgroup;
++#  endif
+ #endif
+ 
+ #if defined(XP_LINUX) && defined(MOZ_SANDBOX)

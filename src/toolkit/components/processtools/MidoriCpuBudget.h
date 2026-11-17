@@ -5,8 +5,8 @@
 #ifndef TOOLKIT_COMPONENTS_PROCESSTOOLS_MIDORICPUBUDGET_H_
 #define TOOLKIT_COMPONENTS_PROCESSTOOLS_MIDORICPUBUDGET_H_
 
-#include "mozilla/MozPromise.h"
 #include "mozilla/MidoriCpuBudgetController.h"
+#include "mozilla/MozPromise.h"
 
 namespace mozilla::midori {
 
@@ -28,6 +28,11 @@ struct ManagedCpuCapacity {
 };
 
 ManagedCpuCapacity ReadManagedCpuCapacity();
+#if defined(XP_LINUX) && !defined(ANDROID)
+int OpenManagedCpuExternalProcess(int& aFile);
+int OpenManagedCpuChildProcess(int& aFile);
+int OpenManagedCpuGioLaunchFiles(int& aExternal, int& aOwn);
+#endif
 #ifdef XP_WIN
 bool HasManagedCpuBudgetContext();
 #endif

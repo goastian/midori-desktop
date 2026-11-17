@@ -1,0 +1,132 @@
+--- a/toolkit/system/gnome/nsGIOService.cpp
++++ b/toolkit/system/gnome/nsGIOService.cpp
+@@ -24,6 +24,12 @@
+ #include <glib.h>
+ #include <gtk/gtk.h>
+ #include <gio/gdesktopappinfo.h>
++#if defined(XP_LINUX) && !defined(ANDROID)
++#  include "MidoriExternalGioLaunch.h"
++#  include "MidoriDefaultGioLaunch.h"
++#  include "mozilla/Maybe.h"
++#  include "mozilla/MidoriCpuBudget.h"
++#endif
+ #ifdef MOZ_ENABLE_DBUS
+ #  include <fcntl.h>
+ #  include <dlfcn.h>
+@@ -33,6 +39,35 @@
+ #endif
+ 
+ using namespace mozilla;
++
++#if defined(XP_LINUX) && !defined(ANDROID)
++static Maybe<gboolean> TryLaunchManagedGioApplication(
++    GAppInfo* aApp, GFile* aFile, const char* aUri, GAppLaunchContext* aContext,
++    GError** aError) {
++  int file = -1;
++  int error = midori::OpenManagedCpuExternalProcess(file);
++  if (error) {
++    g_set_error(aError, G_IO_ERROR, g_io_error_from_errno(error),
++                "Cannot prepare external application: %s", g_strerror(error));
++    return Some(FALSE);
++  }
++  if (file < 0) return Nothing();
++  auto closeFile = MakeScopeExit([&] { close(file); });
++  if (!G_IS_DESKTOP_APP_INFO(aApp)) {
++    g_set_error_literal(
++        aError, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++        "Managed application launch requires desktop application info");
++    return Some(FALSE);
++  }
++  GUniquePtr<char> uri;
++  if (aFile) {
++    uri.reset(g_file_get_uri(aFile));
++    aUri = uri.get();
++  }
++  return Some(midori::LaunchExternalGioApplication(
++      G_DESKTOP_APP_INFO(aApp), aUri, aContext, file, aError));
++}
++#endif
+ 
+ #ifdef MOZ_LOGGING
+ #  include "mozilla/Logging.h"
+@@ -300,7 +335,17 @@
+   GFile* gfile = g_file_new_for_path(PromiseFlatCString(aFileName).get());
+   GList* fileList = nullptr;
+   fileList = g_list_append(fileList, gfile);
+-  bool retval = g_app_info_launch(mApp, fileList, nullptr, nullptr);
++  bool retval;
++#if defined(XP_LINUX) && !defined(ANDROID)
++  auto managed =
++      TryLaunchManagedGioApplication(mApp, gfile, nullptr, nullptr, nullptr);
++  if (managed) {
++    retval = *managed;
++  } else
++#endif
++  {
++    retval = g_app_info_launch(mApp, fileList, nullptr, nullptr);
++  }
+   g_list_foreach(fileList, (GFunc)g_object_unref, nullptr);
+   g_list_free(fileList);
+   return retval ? NS_OK : NS_ERROR_FAILURE;
+@@ -506,6 +551,14 @@
+   gboolean result = g_app_info_launch_uris_openbsd(
+       aInfo, spec.get(), GetLaunchContext(aXDGToken).get(),
+       getter_Transfers(error));
++#elif defined(XP_LINUX) && !defined(ANDROID)
++  auto context = GetLaunchContext(aXDGToken);
++  auto managed = TryLaunchManagedGioApplication(
++      aInfo, nullptr, spec.get(), context.get(), getter_Transfers(error));
++  gboolean result = managed
++                        ? *managed
++                        : g_app_info_launch_uris(aInfo, &uris, context.get(),
++                                                 getter_Transfers(error));
+ #else
+   gboolean result = g_app_info_launch_uris(
+       aInfo, &uris, GetLaunchContext(aXDGToken).get(), getter_Transfers(error));
+@@ -925,11 +978,19 @@
+ #ifdef __OpenBSD__
+   if (!g_app_info_launch_default_for_uri_openbsd(
+           spec.get(), GetLaunchContext(aXDGToken).get(),
++          getter_Transfers(error))) {
++#elif defined(XP_LINUX) && !defined(ANDROID)
++  auto context = GetLaunchContext(aXDGToken);
++  auto managed = midori::TryLaunchManagedDefaultGio(
++      spec.get(), aXDGToken, context.get(), getter_Transfers(error));
++  if (!(managed ? *managed
++                : g_app_info_launch_default_for_uri(spec.get(), context.get(),
++                                                    getter_Transfers(error)))) {
+ #else
+   if (!g_app_info_launch_default_for_uri(spec.get(),
+                                          GetLaunchContext(aXDGToken).get(),
++                                         getter_Transfers(error))) {
+ #endif
+-          getter_Transfers(error))) {
+     g_warning("Could not launch default application for URI: %s",
+               error->message);
+     return NS_ERROR_FAILURE;
+@@ -968,13 +1029,20 @@
+       PromiseFlatCString(aPath).get(), aXDGToken ? aXDGToken : "none");
+   GUniquePtr<GError> error;
+ #ifdef __OpenBSD__
+-  g_app_info_launch_default_for_uri_openbsd(spec.get(),
+-                                            GetLaunchContext(aXDGToken).get(),
++  g_app_info_launch_default_for_uri_openbsd(
++      spec.get(), GetLaunchContext(aXDGToken).get(), getter_Transfers(error));
++#elif defined(XP_LINUX) && !defined(ANDROID)
++  auto context = GetLaunchContext(aXDGToken);
++  auto managed = midori::TryLaunchManagedDefaultGio(
++      spec.get(), aXDGToken, context.get(), getter_Transfers(error));
++  if (!managed) {
++    g_app_info_launch_default_for_uri(spec.get(), context.get(),
++                                      getter_Transfers(error));
++  }
+ #else
+-  g_app_info_launch_default_for_uri(spec.get(),
+-                                    GetLaunchContext(aXDGToken).get(),
++  g_app_info_launch_default_for_uri(
++      spec.get(), GetLaunchContext(aXDGToken).get(), getter_Transfers(error));
+ #endif
+-                                            getter_Transfers(error));
+   if (error) {
+     g_warning("Cannot launch default application: %s", error->message);
+     return NS_ERROR_FAILURE;

@@ -1,0 +1,16 @@
+--- a/xpcom/build/components.conf
++++ b/xpcom/build/components.conf
+@@ -85,6 +85,13 @@
+         'contract_ids': ['@mozilla.org/process/util;1'],
+         'type': 'nsProcess',
+         'headers': ['nsProcess.h'],
++    },
++    {
++        'cid': '{a953ac92-0db5-4072-b9b2-e689c1e913e6}',
++        'contract_ids': ['@midori.org/process/external-application;1'],
++        'type': 'nsProcess',
++        'headers': ['nsProcess.h'],
++        'constructor': 'nsProcess::CreateExternalApplication',
+     },
+     {
+         'cid': '{aaf68860-f849-40ee-bb7a-b229bce036a3}',

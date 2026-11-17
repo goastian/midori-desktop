@@ -1,0 +1,11 @@
+--- a/toolkit/components/viewsource/content/viewSourceUtils.js
++++ b/toolkit/components/viewsource/content/viewSourceUtils.js
+@@ -310,7 +310,7 @@
+         "view_source.editor.path",
+         Ci.nsIFile
+       );
+-      let editor = Cc["@mozilla.org/process/util;1"].createInstance(
++      let editor = Cc["@midori.org/process/external-application;1"].createInstance(
+         Ci.nsIProcess
+       );
+       editor.init(viewSourceAppPath);

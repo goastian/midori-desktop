@@ -63,6 +63,32 @@ ManagedCpuCapacity ReadManagedCpuCapacity() {
   return result;
 }
 
+#if defined(XP_LINUX) && !defined(ANDROID)
+int OpenManagedCpuChildProcess(int& aFile) {
+  aFile = -1;
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  return sMidoriCpuBudgetController
+             ? sMidoriCpuBudgetController->OpenChildProcessFile(aFile)
+             : 0;
+}
+
+int OpenManagedCpuExternalProcess(int& aFile) {
+  aFile = -1;
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  return sMidoriCpuBudgetController
+             ? sMidoriCpuBudgetController->OpenExternalProcessFile(aFile)
+             : 0;
+}
+
+int OpenManagedCpuGioLaunchFiles(int& aExternal, int& aOwn) {
+  aExternal = aOwn = -1;
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  return sMidoriCpuBudgetController
+             ? sMidoriCpuBudgetController->OpenGioLaunchFiles(aExternal, aOwn)
+             : 0;
+}
+#endif
+
 int RestoreManagedCpuBudget() {
 #if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);

@@ -1,0 +1,48 @@
+--- a/ipc/glue/GeckoChildProcessHost.cpp
++++ b/ipc/glue/GeckoChildProcessHost.cpp
+@@ -3,6 +3,11 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "GeckoChildProcessHost.h"
++#if defined(XP_LINUX) && !defined(ANDROID)
++#  include "mozilla/MidoriCpuBudget.h"
++#  include <cerrno>
++#  include <climits>
++#endif
+ 
+ #include "base/command_line.h"
+ #include "base/process.h"
+@@ -1527,6 +1532,33 @@
+   } else
+ #  endif
+   {
++#  if defined(XP_LINUX) && !defined(ANDROID)
++    int groupFile = -1;
++    int error = midori::OpenManagedCpuChildProcess(groupFile);
++    if (error) {
++      return ProcessLaunchPromise::CreateAndReject(
++          LaunchError("MidoriCpuChildGroup", error), __func__);
++    }
++    UniqueFileHandle cpuGroup(groupFile);
++    if (cpuGroup) {
++      if (mLaunchOptions->full_env) {
++        return ProcessLaunchPromise::CreateAndReject(
++            LaunchError("MidoriCpuChildEnvironment", ENOTSUP), __func__);
++      }
++      int target = 3;
++      for (const auto& mapping : mLaunchOptions->fds_to_remap) {
++        if (mapping.second >= target) {
++          if (mapping.second == INT_MAX) {
++            return ProcessLaunchPromise::CreateAndReject(
++                LaunchError("MidoriCpuChildDescriptor", EOVERFLOW), __func__);
++          }
++          target = mapping.second + 1;
++        }
++      }
++      mLaunchOptions->fds_to_remap.emplace_back(cpuGroup.get(), target);
++      mLaunchOptions->env_map["MIDORI_CPU_CHILD_FD"] = std::to_string(target);
++    }
++#  endif
+     result = base::LaunchApp(mChildArgs.mArgs, std::move(*mLaunchOptions),
+                              &mResults.mHandle);
+   }

@@ -1,0 +1,13 @@
+--- a/startupcache/StartupCache.h
++++ b/startupcache/StartupCache.h
+@@ -156,7 +156,9 @@
+   bool HasEntry(const char* id);
+ 
+   // Returns a buffer that was previously stored, caller does not take ownership
+-  nsresult GetBuffer(const char* id, const char** outbuf, uint32_t* length);
++  enum class ReadMode { WaitForWrite, NonBlocking };
++  nsresult GetBuffer(const char* id, const char** outbuf, uint32_t* length,
++                     ReadMode aMode = ReadMode::WaitForWrite);
+ 
+   // Stores a buffer. Caller yields ownership.
+   nsresult PutBuffer(const char* id, UniqueFreePtr<char[]>&& inbuf,

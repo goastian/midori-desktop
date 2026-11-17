@@ -37,13 +37,20 @@ class LinuxCpuBudget final {
   LinuxCpuBudget& operator=(const LinuxCpuBudget&) = delete;
 
   ~LinuxCpuBudget() {
+    if (mExternalGroup >= 0) close(mExternalGroup);
     if (mGroup >= 0) {
-      if (IsOwner()) WriteLimit(mGroup, mOriginalQuota, mOriginalPeriod);
+      if (IsOwner()) {
+        WriteLimit(mGroup, mOriginalQuota, mOriginalPeriod);
+        ReleaseRoles();
+      } else {
+        if (mUiGroup >= 0) close(mUiGroup);
+        if (mContentGroup >= 0) close(mContentGroup);
+      }
       close(mGroup);
     }
   }
 
-  int Initialize(int aGroup) {
+  int Initialize(int aGroup, int aExternalGroup = -1) {
     if (mGroup >= 0) return EALREADY;
     if (getuid() != geteuid() || !getuid()) return EPERM;
     struct statfs filesystem;
@@ -100,14 +107,33 @@ class LinuxCpuBudget final {
     if (error) return error;
     struct stat pidNamespace;
     if (stat("/proc/self/ns/pid", &pidNamespace)) return errno;
-    int group = fcntl(aGroup, F_DUPFD_CLOEXEC, 0);
-    if (group < 0) return errno;
+    int external = -1;
+    if (aExternalGroup >= 0) {
+      error = PrepareExternalGroup(aGroup, aExternalGroup, external);
+      if (error) return error;
+    }
+    int group = fcntl(aGroup, F_DUPFD_CLOEXEC, 3);
+    if (group < 0) {
+      error = errno;
+      if (external >= 0) close(external);
+      return error;
+    }
+    mExternalGroup = external;
     mGroup = group;
     mOwner = getpid();
     mPidNamespaceDevice = pidNamespace.st_dev;
     mPidNamespaceInode = pidNamespace.st_ino;
     mOriginalQuota = quota;
     mOriginalPeriod = period;
+    error = PrepareRoles();
+    if (error) {
+      int restored = ReleaseRoles();
+      close(mGroup);
+      mGroup = -1;
+      if (mExternalGroup >= 0) close(mExternalGroup);
+      mExternalGroup = -1;
+      return restored ? restored : error;
+    }
     return 0;
   }
 
@@ -131,14 +157,36 @@ class LinuxCpuBudget final {
     uint64_t previousQuota, previousPeriod;
     error = ReadLimit(mGroup, previousQuota, previousPeriod);
     if (error) return error;
+    bool previousDistribution;
+    error = ReadRoleDistribution(previousDistribution);
+    if (error) return error;
+    if (aPercentage) {
+      error = SetRoleDistribution(true);
+      if (error) return error;
+    }
+    auto rollback = [&] {
+      int restored = WriteLimit(mGroup, previousQuota, previousPeriod);
+      int roles = SetRoleDistribution(previousDistribution);
+      return restored ? restored : roles;
+    };
     if (quota != previousQuota || period != previousPeriod) {
       error = WriteLimit(mGroup, quota, period);
-      if (error) return error;
+      if (error) {
+        int restored = rollback();
+        return restored ? restored : error;
+      }
       uint64_t actualQuota, actualPeriod;
       error = ReadLimit(mGroup, actualQuota, actualPeriod);
       if (error || actualQuota != quota || actualPeriod != period) {
-        int restored = WriteLimit(mGroup, previousQuota, previousPeriod);
+        int restored = rollback();
         return restored ? restored : error ? error : EIO;
+      }
+    }
+    if (!aPercentage) {
+      error = SetRoleDistribution(false);
+      if (error) {
+        int restored = rollback();
+        return restored ? restored : error;
       }
     }
     mPercentage = aPercentage;
@@ -158,17 +206,242 @@ class LinuxCpuBudget final {
     return ExternalCapacity(mGroup, aCapacity);
   }
 
+  int OpenExternalProcessFile(int& aFile) const {
+    aFile = -1;
+    if (mGroup < 0) return ENODEV;
+    if (!IsOwner()) return EPERM;
+    if (mExternalGroup < 0) return ENOTSUP;
+    aFile = openat(mExternalGroup, "cgroup.procs",
+                   O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (aFile < 0) return errno;
+    if (aFile < 3) {
+      int original = aFile;
+      aFile = fcntl(original, F_DUPFD_CLOEXEC, 3);
+      int error = aFile < 0 ? errno : 0;
+      close(original);
+      return error;
+    }
+    return 0;
+  }
+
   int Refresh(CpuBudgetState& aState) {
     return SetPercentage(mPercentage, aState);
   }
 
+  int OpenGioLaunchFiles(int& aExternal, int& aOwn) const {
+    aOwn = -1;
+    int error = OpenExternalProcessFile(aExternal);
+    if (error) return error;
+    int file =
+        openat(mUiGroup, "cgroup.procs", O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (file >= 0) {
+      aOwn = fcntl(file, F_DUPFD_CLOEXEC, 3);
+      error = aOwn < 0 ? errno : 0;
+      close(file);
+    } else {
+      error = errno;
+    }
+    if (error) {
+      close(aExternal);
+      aExternal = -1;
+    }
+    return error;
+  }
+
+  int OpenChildProcessFile(int& aFile) const {
+    aFile = -1;
+    if (mGroup < 0 || mContentGroup < 0) return ENODEV;
+    if (!IsOwner()) return EPERM;
+    int file = openat(mContentGroup, "cgroup.procs",
+                      O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (file < 0) return errno;
+    aFile = fcntl(file, F_DUPFD_CLOEXEC, 3);
+    int error = aFile < 0 ? errno : 0;
+    close(file);
+    return error;
+  }
+
+  static int JoinChildProcessFile(int aFile) {
+    struct statfs filesystem;
+    struct stat file;
+    if (fstatfs(aFile, &filesystem) || fstat(aFile, &file)) return errno;
+    if (filesystem.f_type != 0x63677270 || !S_ISREG(file.st_mode)) return EPERM;
+    ssize_t count;
+    do {
+      count = write(aFile, "0", 1);
+    } while (count < 0 && errno == EINTR);
+    return count == 1 ? 0 : count < 0 ? errno : EIO;
+  }
+
  private:
+  static int WriteValue(int aDirectory, const char* aName, const char* aValue) {
+    int file = openat(aDirectory, aName, O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (file < 0) return errno;
+    size_t length = strlen(aValue);
+    ssize_t count;
+    do {
+      count = write(file, aValue, length);
+    } while (count < 0 && errno == EINTR);
+    int error = count == ssize_t(length) ? 0 : count < 0 ? errno : EIO;
+    close(file);
+    return error;
+  }
+
+  int ReadRoleDistribution(bool& aEnabled) const {
+    char value[4096];
+    int error = Read(mGroup, "cgroup.subtree_control", value, sizeof(value));
+    if (error) return error;
+    aEnabled = false;
+    char* saved;
+    for (char* item = strtok_r(value, " \n", &saved); item;
+         item = strtok_r(nullptr, " \n", &saved)) {
+      if (!strcmp(item, "cpu")) aEnabled = true;
+    }
+    return 0;
+  }
+
+  int SetRoleDistribution(bool aEnabled) const {
+    bool enabled;
+    int error = ReadRoleDistribution(enabled);
+    if (error) return error;
+    if (enabled != aEnabled) {
+      error = WriteValue(mGroup, "cgroup.subtree_control",
+                         aEnabled ? "+cpu" : "-cpu");
+      if (error) return error;
+      if (aEnabled) {
+        error = WriteValue(mUiGroup, "cpu.weight", "300");
+        if (!error) error = WriteValue(mContentGroup, "cpu.weight", "100");
+        if (error) {
+          int restored = WriteValue(mGroup, "cgroup.subtree_control", "-cpu");
+          return restored ? restored : error;
+        }
+      }
+    }
+    bool actual;
+    error = ReadRoleDistribution(actual);
+    if (error || actual != aEnabled) {
+      int failure = error ? error : EIO;
+      if (aEnabled && !enabled) {
+        int restored = WriteValue(mGroup, "cgroup.subtree_control", "-cpu");
+        return restored ? restored : failure;
+      }
+      return failure;
+    }
+    if (aEnabled) {
+      char ui[64], content[64];
+      error = Read(mUiGroup, "cpu.weight", ui, sizeof(ui));
+      if (!error)
+        error = Read(mContentGroup, "cpu.weight", content, sizeof(content));
+      if (!error && (strcmp(ui, "300\n") || strcmp(content, "100\n")))
+        error = EIO;
+      if (error && !enabled) {
+        int restored = WriteValue(mGroup, "cgroup.subtree_control", "-cpu");
+        return restored ? restored : error;
+      }
+    }
+    return error;
+  }
+
+  int PrepareRoles() {
+    bool enabled;
+    int error = ReadRoleDistribution(enabled);
+    if (error || enabled) return error ? error : EBUSY;
+    if (mkdirat(mGroup, "ui", 0700)) return errno;
+    mUiCreated = true;
+    mUiGroup =
+        openat(mGroup, "ui", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (mUiGroup < 0) return errno;
+    if (mkdirat(mGroup, "content", 0700)) return errno;
+    mContentCreated = true;
+    mContentGroup = openat(mGroup, "content",
+                           O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (mContentGroup < 0) return errno;
+    error = WriteValue(mUiGroup, "cgroup.procs", "0");
+    if (!error) mMovedToRole = true;
+    return error;
+  }
+
+  int ReleaseRoles() {
+    if (!mUiCreated && !mContentCreated && !mMovedToRole) return 0;
+    int error = SetRoleDistribution(false);
+    if (!error && mMovedToRole) {
+      error = WriteValue(mGroup, "cgroup.procs", "0");
+      if (!error) mMovedToRole = false;
+    }
+    if (mUiGroup >= 0) close(mUiGroup);
+    if (mContentGroup >= 0) close(mContentGroup);
+    mUiGroup = mContentGroup = -1;
+    if (mUiCreated && unlinkat(mGroup, "ui", AT_REMOVEDIR) && !error)
+      error = errno;
+    if (mContentCreated && unlinkat(mGroup, "content", AT_REMOVEDIR) && !error)
+      error = errno;
+    mUiCreated = mContentCreated = false;
+    return error;
+  }
+
   bool IsOwner() const {
     if (getpid() != mOwner) return false;
     struct stat pidNamespace;
     return !stat("/proc/self/ns/pid", &pidNamespace) &&
            pidNamespace.st_dev == mPidNamespaceDevice &&
            pidNamespace.st_ino == mPidNamespaceInode;
+  }
+
+  static int PrepareExternalGroup(int aGroup, int aExternalGroup,
+                                  int& aResult) {
+    aResult = -1;
+    struct statfs filesystem;
+    struct stat source, destination;
+    if (fstatfs(aExternalGroup, &filesystem) || fstat(aGroup, &source) ||
+        fstat(aExternalGroup, &destination))
+      return errno;
+    if (filesystem.f_type != 0x63677270 || !S_ISDIR(destination.st_mode) ||
+        destination.st_uid != geteuid() || source.st_dev != destination.st_dev)
+      return EPERM;
+    if (source.st_ino == destination.st_ino) return EINVAL;
+    char value[4096];
+    int error = Read(aExternalGroup, "cgroup.type", value, sizeof(value));
+    if (error) return error;
+    if (strcmp(value, "domain\n")) return ENOTSUP;
+    error =
+        Read(aExternalGroup, "cgroup.subtree_control", value, sizeof(value));
+    if (error) return error;
+    if (*value && strcmp(value, "\n")) return EBUSY;
+    uint64_t quota, period;
+    error = ReadLimit(aExternalGroup, quota, period);
+    if (error) return error;
+    if (quota) return EBUSY;
+    int parent = openat(aGroup, "..", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (parent < 0) return errno;
+    int externalParent =
+        openat(aExternalGroup, "..", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (externalParent < 0) {
+      error = errno;
+      close(parent);
+      return error;
+    }
+    if (fstat(parent, &source) || fstat(externalParent, &destination)) {
+      error = errno;
+    } else if (source.st_dev != destination.st_dev ||
+               source.st_ino != destination.st_ino) {
+      error = EPERM;
+    } else {
+      int control =
+          openat(parent, "cgroup.procs", O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+      if (control < 0)
+        error = errno;
+      else
+        close(control);
+    }
+    close(externalParent);
+    close(parent);
+    if (error) return error;
+    int control = openat(aExternalGroup, "cgroup.procs",
+                         O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (control < 0) return errno;
+    close(control);
+    aResult = fcntl(aExternalGroup, F_DUPFD_CLOEXEC, 3);
+    return aResult < 0 ? errno : 0;
   }
 
   static int Read(int aDirectory, const char* aName, char* aValue,
@@ -313,6 +586,12 @@ class LinuxCpuBudget final {
   }
 
   int mGroup = -1;
+  int mUiGroup = -1;
+  int mContentGroup = -1;
+  bool mUiCreated = false;
+  bool mContentCreated = false;
+  bool mMovedToRole = false;
+  int mExternalGroup = -1;
   pid_t mOwner = 0;
   dev_t mPidNamespaceDevice = 0;
   ino_t mPidNamespaceInode = 0;

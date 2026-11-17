@@ -1,0 +1,76 @@
+--- a/xpcom/threads/nsProcessCommon.cpp
++++ b/xpcom/threads/nsProcessCommon.cpp
+@@ -13,6 +13,9 @@
+ #include <stdlib.h>
+ 
+ #include "mozilla/Services.h"
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#  include "mozilla/MidoriCpuBudget.h"
++#endif
+ #include "nsCOMPtr.h"
+ #include "nsCRT.h"
+ #include "nsIFile.h"
+@@ -60,6 +63,7 @@
+       mBlocking(false),
+       mStartHidden(false),
+       mNoShell(false),
++      mExternalApplication(false),
+       mPid(-1),
+       mExitValue(-1)
+ #if !defined(XP_UNIX)
+@@ -67,6 +71,12 @@
+       mProcess(nullptr)
+ #endif
+ {
++}
++
++already_AddRefed<nsProcess> nsProcess::CreateExternalApplication() {
++  RefPtr<nsProcess> process = new nsProcess();
++  process->mExternalApplication = true;
++  return process.forget();
+ }
+ 
+ // Destructor
+@@ -325,6 +335,8 @@
+     mPid = -1;
+   }
+ 
++  [[maybe_unused]] const bool externalApplication = mExternalApplication;
++
+ #if defined(PROCESSMODEL_WINAPI)
+   BOOL retVal;
+   UniqueFreePtr<wchar_t> cmdLine;
+@@ -355,12 +367,16 @@
+     startupInfo.wShowWindow = mStartHidden ? SW_HIDE : SW_SHOWNORMAL;
+ 
+     PROCESS_INFORMATION processInfo;
++    DWORD creationFlags =
++        externalApplication && midori::HasManagedCpuBudgetContext()
++            ? CREATE_BREAKAWAY_FROM_JOB
++            : 0;
+     retVal = CreateProcess(/* lpApplicationName = */ wideFile.get(),
+                            /* lpCommandLine */ cmdLine.get(),
+                            /* lpProcessAttributes = */ NULL,
+                            /* lpThreadAttributes = */ NULL,
+                            /* bInheritHandles = */ FALSE,
+-                           /* dwCreationFlags = */ 0,
++                           /* dwCreationFlags = */ creationFlags,
+                            /* lpEnvironment = */ NULL,
+                            /* lpCurrentDirectory = */ NULL,
+                            /* lpStartupInfo = */ &startupInfo,
+@@ -419,6 +435,15 @@
+   }
+ #elif defined(XP_UNIX)
+   base::LaunchOptions options;
++#  if defined(XP_LINUX) && !defined(ANDROID)
++  if (externalApplication) {
++    int file = -1;
++    if (midori::OpenManagedCpuExternalProcess(file)) {
++      return NS_ERROR_FILE_EXECUTION_FAILED;
++    }
++    options.midori_external_cgroup.reset(file);
++  }
++#  endif
+   std::vector<std::string> argvVec;
+   for (char** arg = aMyArgv; *arg != nullptr; ++arg) {
+     argvVec.push_back(*arg);

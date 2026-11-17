@@ -1,0 +1,18 @@
+--- a/xpcom/threads/nsProcess.h
++++ b/xpcom/threads/nsProcess.h
+@@ -36,6 +36,7 @@
+   NS_DECL_NSIOBSERVER
+ 
+   nsProcess();
++  static already_AddRefed<nsProcess> CreateExternalApplication();
+ 
+  private:
+   ~nsProcess();
+@@ -58,6 +59,7 @@
+   bool mBlocking;
+   bool mStartHidden;
+   bool mNoShell;
++  bool mExternalApplication;
+ 
+   nsCOMPtr<nsIFile> mExecutable;
+   nsString mTargetPath;

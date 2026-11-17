@@ -1,0 +1,11 @@
+--- a/uriloader/exthandler/nsMIMEInfoImpl.cpp
++++ b/uriloader/exthandler/nsMIMEInfoImpl.cpp
+@@ -432,7 +432,7 @@
+   NS_ASSERTION(aApp, "Unexpected null pointer, fix caller");
+ 
+   nsCOMPtr<nsIProcess> process =
+-      do_CreateInstance(NS_PROCESS_CONTRACTID, aResult);
++      do_CreateInstance(NS_MIDORI_EXTERNAL_PROCESS_CONTRACTID, aResult);
+   if (NS_FAILED(*aResult)) return nullptr;
+ 
+   *aResult = process->Init(aApp);

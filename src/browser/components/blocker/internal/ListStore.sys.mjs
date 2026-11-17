@@ -104,6 +104,13 @@ function withListWriteLock(task) {
 }
 
 async function readText(path) {
+  try {
+    return await IOUtils.readUTF8(path);
+  } catch (err) {
+    if (err?.name !== "NotReadableError") {
+      throw err;
+    }
+  }
   const bytes = await IOUtils.read(path);
   return new TextDecoder().decode(bytes);
 }

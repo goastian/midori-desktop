@@ -1,0 +1,19 @@
+--- a/toolkit/components/url-classifier/UrlClassifierRemoteSettingsService.sys.mjs
++++ b/toolkit/components/url-classifier/UrlClassifierRemoteSettingsService.sys.mjs
+@@ -98,10 +98,13 @@
+         // files after SafeBrowsing processes the data.
+         let buffer = await rs.attachments.downloadAsBytes(entry);
+         let bytes = new Uint8Array(buffer);
+-        let strData = "";
+-        for (let i = 0; i < bytes.length; i++) {
+-          strData += String.fromCharCode(bytes[i]);
++        let chunks = [];
++        for (let i = 0; i < bytes.length; i += 8192) {
++          chunks.push(
++            String.fromCharCode.apply(null, bytes.subarray(i, i + 8192))
++          );
+         }
++        let strData = chunks.join("");
+ 
+         // Construct the payload
+         payload += "i:" + reqTableName + "\n";

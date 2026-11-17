@@ -1,0 +1,15 @@
+--- a/ipc/chromium/src/base/process_util_linux.cc
++++ b/ipc/chromium/src/base/process_util_linux.cc
+@@ -99,6 +99,12 @@
+ 
+   if (pid == 0) {
+     // In the child:
++#if defined(XP_LINUX) && !defined(ANDROID)
++    if (options.midori_external_cgroup.get() >= 0 &&
++        HANDLE_EINTR(write(options.midori_external_cgroup.get(), "0\n", 2)) != 2) {
++      _exit(127);
++    }
++#endif
+     if (!options.workdir.empty()) {
+       if (chdir(options.workdir.c_str()) != 0) {
+         // See under execve about logging unsafety.

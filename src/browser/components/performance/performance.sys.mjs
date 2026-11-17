@@ -28,7 +28,13 @@ let capabilities;
 const networkPresetValues = new Set(Array.from($('network-preset').options, option => option.value));
 
 function setText(element, value) {
-  if (element.textContent !== value) element.textContent = value;
+  if (element.textContent === value) return;
+  const text = element.firstChild;
+  if (value && text?.nodeType === Node.TEXT_NODE && !text.nextSibling) {
+    text.nodeValue = value;
+  } else {
+    element.textContent = value;
+  }
 }
 
 function renderTabs() {

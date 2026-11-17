@@ -1,0 +1,11 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+GeckoProgram("midori-gio-launcher", linkage=None)
+SOURCES += ["MidoriGioLauncher.cpp"]
+LOCAL_INCLUDES += [".."]
+CXXFLAGS += CONFIG["GLIB_CFLAGS"]
+OS_LIBS += ["gio-2.0"]
+OS_LIBS += CONFIG["GLIB_LIBS"]
+DisableStlWrapping()

@@ -1,0 +1,12 @@
+--- a/js/xpconnect/loader/mozJSLoaderUtils.cpp
++++ b/js/xpconnect/loader/mozJSLoaderUtils.cpp
+@@ -42,7 +42,8 @@
+   const char* buf;
+   uint32_t len;
+   nsresult rv =
+-      cache->GetBuffer(PromiseFlatCString(cachePath).get(), &buf, &len);
++      cache->GetBuffer(PromiseFlatCString(cachePath).get(), &buf, &len,
++                       StartupCache::ReadMode::NonBlocking);
+   if (NS_FAILED(rv)) {
+     return rv;  // don't warn since NOT_AVAILABLE is an ok error
+   }

@@ -1,0 +1,27 @@
+--- a/startupcache/StartupCache.cpp
++++ b/startupcache/StartupCache.cpp
+@@ -379,7 +379,7 @@
+ }
+ 
+ nsresult StartupCache::GetBuffer(const char* id, const char** outbuf,
+-                                 uint32_t* length)
++                                 uint32_t* length, ReadMode aMode)
+     MOZ_NO_THREAD_SAFETY_ANALYSIS {
+   AUTO_PROFILER_LABEL("StartupCache::GetBuffer", OTHER);
+ 
+@@ -390,7 +390,14 @@
+   auto telemetry = MakeScopeExit(
+       [&label] { glean::startup_cache::requests.EnumGet(label).Add(); });
+ 
+-  MutexAutoLock lock(mTableLock);
++  MutexAutoTryLock tryLock(mTableLock);
++  Maybe<MutexAutoLock> lock;
++  if (!tryLock) {
++    if (aMode == ReadMode::NonBlocking) {
++      return NS_ERROR_NOT_AVAILABLE;
++    }
++    lock.emplace(mTableLock);
++  }
+   decltype(mTable)::Ptr p = mTable.lookup(nsDependentCString(id));
+   if (!p) {
+     return NS_ERROR_NOT_AVAILABLE;

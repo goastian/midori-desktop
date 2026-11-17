@@ -1,0 +1,8 @@
+--- a/xpcom/threads/nsIProcess.idl
++++ b/xpcom/threads/nsIProcess.idl
+@@ -109,4 +109,5 @@
+ %{C++
+ 
+ #define NS_PROCESS_CONTRACTID "@mozilla.org/process/util;1"
++#define NS_MIDORI_EXTERNAL_PROCESS_CONTRACTID "@midori.org/process/external-application;1"
+ %}

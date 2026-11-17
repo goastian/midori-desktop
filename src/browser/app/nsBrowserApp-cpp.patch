@@ -30,28 +30,56 @@
  
  #define kDesktopFolder "browser"
  
-@@ -199,7 +215,42 @@
+@@ -199,7 +215,70 @@
  
  constinit Bootstrap::UniquePtr gBootstrap;
  
 -static int do_main(int argc, char* argv[], char* envp[]) {
 +#if defined(XP_LINUX) && !defined(ANDROID)
-+static bool PrepareMidoriCpuBudget(mozilla::midori::LinuxCpuBudget& aBudget) {
-+  const char* text = getenv("MIDORI_CPU_BUDGET_FD");
-+  if (!text) return false;
++static int ConsumeMidoriCpuDescriptor(const char* aName, bool& aPresent) {
++  const char* text = getenv(aName);
++  aPresent = text != nullptr;
++  if (!text) return -1;
 +  char* end = nullptr;
 +  errno = 0;
 +  long descriptor = strtol(text, &end, 10);
 +  bool valid = !errno && end != text && !*end && descriptor >= 3 &&
 +               descriptor <= INT_MAX;
-+  unsetenv("MIDORI_CPU_BUDGET_FD");
-+  if (!valid) return false;
-+  int group = int(descriptor);
-+  int flags = fcntl(group, F_GETFD);
-+  if (flags < 0) return false;
-+  auto closeGroup = mozilla::MakeScopeExit([group] { close(group); });
-+  if (fcntl(group, F_SETFD, flags | FD_CLOEXEC) < 0) return false;
-+  return aBudget.Initialize(group) == 0;
++  unsetenv(aName);
++  if (!valid) return -1;
++  int file = int(descriptor);
++  int flags = fcntl(file, F_GETFD);
++  if (flags < 0) return -1;
++  if (fcntl(file, F_SETFD, flags | FD_CLOEXEC) < 0) {
++    close(file);
++    return -1;
++  }
++  return file;
++}
++
++static bool PrepareMidoriCpuChild() {
++  bool present;
++  int file = ConsumeMidoriCpuDescriptor("MIDORI_CPU_CHILD_FD", present);
++  if (!present) return true;
++  if (file < 0) return false;
++  int error = mozilla::midori::LinuxCpuBudget::JoinChildProcessFile(file);
++  close(file);
++  return error == 0;
++}
++
++static bool PrepareMidoriCpuBudget(mozilla::midori::LinuxCpuBudget& aBudget) {
++  unsetenv("MIDORI_CPU_CHILD_FD");
++  bool groupPresent, externalPresent;
++  int group = ConsumeMidoriCpuDescriptor("MIDORI_CPU_BUDGET_FD", groupPresent);
++  int external =
++      ConsumeMidoriCpuDescriptor("MIDORI_CPU_EXTERNAL_FD", externalPresent);
++  auto closeGroups = mozilla::MakeScopeExit([group, external] {
++    if (group >= 0) close(group);
++    if (external >= 0 && external != group) close(external);
++  });
++  if (!groupPresent || group < 0 || (externalPresent && external < 0))
++    return false;
++  return aBudget.Initialize(group, external) == 0;
 +}
 +#elif defined(XP_WIN)
 +static bool PrepareMidoriCpuBudget(mozilla::midori::WindowsCpuBudget& aBudget) {
@@ -74,7 +102,7 @@
    // Allow firefox.exe to launch XULRunner apps via -app <application.ini>
    // Note that -app must be the *first* argument.
    const char* appDataFile = getenv("XUL_APP_FILE");
-@@ -241,6 +292,9 @@
+@@ -241,6 +320,9 @@
    }
  
    BootstrapConfig config;
@@ -84,7 +112,17 @@
  
    if (appDataFile && *appDataFile) {
      config.appData = nullptr;
-@@ -388,6 +442,13 @@
+@@ -353,6 +435,9 @@
+     // Set the process type and gecko child id.
+     SetGeckoProcessType(argv[--argc]);
+     SetGeckoChildID(argv[--argc]);
++#  if defined(XP_LINUX) && !defined(ANDROID)
++    if (!PrepareMidoriCpuChild()) return 255;
++#  endif
+ 
+ #  if defined(MOZ_ENABLE_FORKSERVER)
+     if (GetGeckoProcessType() == GeckoProcessType_ForkServer) {
+@@ -388,6 +473,13 @@
    ExpandFileDescriptorTable();
  #endif
  
@@ -98,7 +136,7 @@
    mozilla::TimeStamp start = mozilla::TimeStamp::Now();
  
    AUTO_BASE_PROFILER_INIT;
-@@ -539,7 +600,12 @@
+@@ -539,7 +631,12 @@
    gBootstrap->XRE_EnableSameExecutableForContentProc();
  #endif
  

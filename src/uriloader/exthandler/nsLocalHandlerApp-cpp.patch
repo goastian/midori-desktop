@@ -1,0 +1,12 @@
+--- a/uriloader/exthandler/nsLocalHandlerApp.cpp
++++ b/uriloader/exthandler/nsLocalHandlerApp.cpp
+@@ -196,7 +196,8 @@
+ 
+ nsresult nsLocalHandlerApp::LaunchWithIProcess(const nsCString& aArg) {
+   nsresult rv;
+-  nsCOMPtr<nsIProcess> process = do_CreateInstance(NS_PROCESS_CONTRACTID, &rv);
++  nsCOMPtr<nsIProcess> process =
++      do_CreateInstance(NS_MIDORI_EXTERNAL_PROCESS_CONTRACTID, &rv);
+   if (NS_FAILED(rv)) return rv;
+ 
+   if (NS_FAILED(rv = process->Init(mExecutable))) return rv;
