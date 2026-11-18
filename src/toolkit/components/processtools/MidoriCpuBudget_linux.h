@@ -14,9 +14,11 @@
 #  include <cstring>
 #  include <dirent.h>
 #  include <fcntl.h>
+#  include <poll.h>
 #  include <sched.h>
 #  include <sys/stat.h>
 #  include <sys/vfs.h>
+#  include <time.h>
 #  include <unistd.h>
 
 namespace mozilla::midori {
@@ -206,6 +208,20 @@ class LinuxCpuBudget final {
     return ExternalCapacity(mGroup, aCapacity);
   }
 
+  int Shutdown() {
+    if (mGroup < 0) return 0;
+    if (!IsOwner()) return EPERM;
+    int error = WriteLimit(mGroup, mOriginalQuota, mOriginalPeriod);
+    if (!error) error = ReleaseRoles();
+    if (error) return error;
+    if (mExternalGroup >= 0) close(mExternalGroup);
+    mExternalGroup = -1;
+    close(mGroup);
+    mGroup = -1;
+    mPercentage = 0;
+    return 0;
+  }
+
   int OpenExternalProcessFile(int& aFile) const {
     aFile = -1;
     if (mGroup < 0) return ENODEV;
@@ -261,6 +277,51 @@ class LinuxCpuBudget final {
     return error;
   }
 
+  int OpenRestartFiles(int& aGroup, int& aExternal) const {
+    aGroup = aExternal = -1;
+    if (mGroup < 0) return ENODEV;
+    if (!IsOwner()) return EPERM;
+    if (mExternalGroup < 0) return ENOTSUP;
+    int group = fcntl(mGroup, F_DUPFD_CLOEXEC, 5);
+    if (group < 0) return errno;
+    int external = fcntl(mExternalGroup, F_DUPFD_CLOEXEC, 5);
+    if (external < 0) {
+      int error = errno;
+      close(group);
+      return error;
+    }
+    aGroup = group;
+    aExternal = external;
+    return 0;
+  }
+
+  static int WaitAndJoinRestartGroup(int aGroup, int aExternal) {
+    if (!getuid() || getuid() != geteuid() || !SingleProcessAtStartup())
+      return EPERM;
+    struct statfs filesystem;
+    struct stat directory;
+    if (fstatfs(aGroup, &filesystem) || fstat(aGroup, &directory)) return errno;
+    if (filesystem.f_type != 0x63677270 || !S_ISDIR(directory.st_mode) ||
+        directory.st_uid != geteuid())
+      return EPERM;
+    int external = -1;
+    int error = PrepareExternalGroup(aGroup, aExternal, external);
+    if (error) return error;
+    close(external);
+    error = WriteValue(aExternal, "cgroup.procs", "0");
+    if (error) return error;
+    int events =
+        openat(aGroup, "cgroup.events", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (events < 0) return errno;
+    error = WaitForEmptyGroup(events);
+    close(events);
+    if (error) return error;
+    uint64_t quota, period;
+    error = ReadLimit(aGroup, quota, period);
+    if (error || quota) return error ? error : EBUSY;
+    return WriteValue(aGroup, "cgroup.procs", "0");
+  }
+
   static int JoinChildProcessFile(int aFile) {
     struct statfs filesystem;
     struct stat file;
@@ -274,6 +335,48 @@ class LinuxCpuBudget final {
   }
 
  private:
+  static int WaitForEmptyGroup(int aEvents) {
+    timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now)) return errno;
+    uint64_t deadline =
+        uint64_t(now.tv_sec) * 1000 + now.tv_nsec / 1000000 + 45000;
+    for (;;) {
+      char value[4096];
+      ssize_t count;
+      do {
+        count = pread(aEvents, value, sizeof(value) - 1, 0);
+      } while (count < 0 && errno == EINTR);
+      if (count < 0) return errno;
+      if (!count || count == ssize_t(sizeof(value) - 1)) return EIO;
+      value[count] = 0;
+      bool found = false, populated = true;
+      char* saved;
+      for (char* line = strtok_r(value, "\n", &saved); line;
+           line = strtok_r(nullptr, "\n", &saved)) {
+        unsigned number;
+        char extra;
+        if (sscanf(line, "populated %u%c", &number, &extra) == 1) {
+          if (number > 1) return EIO;
+          populated = number != 0;
+          found = true;
+        }
+      }
+      if (!found) return EIO;
+      if (!populated) return 0;
+      if (clock_gettime(CLOCK_MONOTONIC, &now)) return errno;
+      uint64_t current = uint64_t(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
+      if (current >= deadline) return ETIMEDOUT;
+      pollfd event{aEvents, POLLPRI, 0};
+      int result = poll(&event, 1, int(deadline - current));
+      if (result < 0) {
+        if (errno == EINTR) continue;
+        return errno;
+      }
+      if (!result) return ETIMEDOUT;
+      if (!(event.revents & POLLPRI)) return EIO;
+    }
+  }
+
   static int WriteValue(int aDirectory, const char* aName, const char* aValue) {
     int file = openat(aDirectory, aName, O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
     if (file < 0) return errno;
@@ -364,6 +467,11 @@ class LinuxCpuBudget final {
   int ReleaseRoles() {
     if (!mUiCreated && !mContentCreated && !mMovedToRole) return 0;
     int error = SetRoleDistribution(false);
+    if (!error) {
+      int ui = ReturnRoleMembers(mUiGroup);
+      int content = ReturnRoleMembers(mContentGroup);
+      error = ui ? ui : content;
+    }
     if (!error && mMovedToRole) {
       error = WriteValue(mGroup, "cgroup.procs", "0");
       if (!error) mMovedToRole = false;
@@ -376,6 +484,34 @@ class LinuxCpuBudget final {
     if (mContentCreated && unlinkat(mGroup, "content", AT_REMOVEDIR) && !error)
       error = errno;
     mUiCreated = mContentCreated = false;
+    return error;
+  }
+
+  int ReturnRoleMembers(int aRole) const {
+    if (aRole < 0) return 0;
+    int file = openat(aRole, "cgroup.procs", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (file < 0) return errno;
+    FILE* members = fdopen(file, "r");
+    if (!members) {
+      int error = errno;
+      close(file);
+      return error;
+    }
+    int error = 0;
+    long pid;
+    while (fscanf(members, "%ld", &pid) == 1) {
+      if (pid <= 0 || pid > INT32_MAX) {
+        error = EIO;
+        break;
+      }
+      char value[32];
+      snprintf(value, sizeof(value), "%ld", pid);
+      error = WriteValue(mGroup, "cgroup.procs", value);
+      if (error == ESRCH) error = 0;
+      if (error) break;
+    }
+    if (!error && ferror(members)) error = errno ? errno : EIO;
+    fclose(members);
     return error;
   }
 

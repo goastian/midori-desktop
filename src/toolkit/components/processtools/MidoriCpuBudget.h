@@ -32,6 +32,7 @@ ManagedCpuCapacity ReadManagedCpuCapacity();
 int OpenManagedCpuExternalProcess(int& aFile);
 int OpenManagedCpuChildProcess(int& aFile);
 int OpenManagedCpuGioLaunchFiles(int& aExternal, int& aOwn);
+int OpenManagedCpuRestartFiles(int& aGroup, int& aExternal);
 #endif
 #ifdef XP_WIN
 bool HasManagedCpuBudgetContext();
@@ -41,6 +42,7 @@ using ManagedCpuBudgetPromise =
     MozPromise<ManagedCpuBudgetState, nsresult, true>;
 
 void SetManagedCpuBudgetController(CpuBudgetController* aController);
+int BeginManagedCpuBudgetShutdown();
 int RestoreManagedCpuBudget();
 RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage);
 

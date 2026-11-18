@@ -18,6 +18,7 @@ namespace mozilla::midori {
 #if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
 static StaticMutex sMidoriCpuBudgetMutex;
 static CpuBudgetController* sMidoriCpuBudgetController = nullptr;
+static bool sMidoriCpuBudgetClosing = false;
 #  ifdef XP_WIN
 static Atomic<bool, Relaxed> sMidoriCpuBudgetContext(false);
 #  endif
@@ -29,6 +30,7 @@ void SetManagedCpuBudgetController(CpuBudgetController* aController) {
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   MOZ_ASSERT(!sMidoriCpuBudgetController || !aController);
   sMidoriCpuBudgetController = aController;
+  sMidoriCpuBudgetClosing = false;
 #  ifdef XP_WIN
   if (aController) sMidoriCpuBudgetContext = true;
 #  endif
@@ -87,11 +89,37 @@ int OpenManagedCpuGioLaunchFiles(int& aExternal, int& aOwn) {
              ? sMidoriCpuBudgetController->OpenGioLaunchFiles(aExternal, aOwn)
              : 0;
 }
+
+int OpenManagedCpuRestartFiles(int& aGroup, int& aExternal) {
+  aGroup = aExternal = -1;
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  return sMidoriCpuBudgetController
+             ? sMidoriCpuBudgetController->OpenRestartFiles(aGroup, aExternal)
+             : 0;
+}
 #endif
+
+int BeginManagedCpuBudgetShutdown() {
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  if (sMidoriCpuBudgetController) {
+    sMidoriCpuBudgetClosing = true;
+#  ifdef XP_WIN
+    WindowsCpuBudgetState state;
+    return sMidoriCpuBudgetController->SetNormalizedPercentage(0, state);
+#  else
+    CpuBudgetState state;
+    return sMidoriCpuBudgetController->SetPercentage(0, state);
+#  endif
+  }
+#endif
+  return 0;
+}
 
 int RestoreManagedCpuBudget() {
 #if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  sMidoriCpuBudgetClosing = true;
   if (sMidoriCpuBudgetController) {
     auto* controller = sMidoriCpuBudgetController;
     sMidoriCpuBudgetController = nullptr;
@@ -99,8 +127,7 @@ int RestoreManagedCpuBudget() {
     WindowsCpuBudgetState state;
     return controller->SetNormalizedPercentage(0, state);
 #  else
-    CpuBudgetState state;
-    return controller->SetPercentage(0, state);
+    return controller->Shutdown();
 #  endif
   }
 #endif
@@ -131,8 +158,14 @@ RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage) {
       "MidoriCpuBudget::SetPercentage", [promise, aPercentage] {
         ManagedCpuBudgetState result;
         result.requestedPercentage = aPercentage;
-#if defined(XP_LINUX) && !defined(ANDROID)
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
         StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+        if (sMidoriCpuBudgetClosing) {
+          promise->Reject(NS_ERROR_ABORT, __func__);
+          return;
+        }
+#endif
+#if defined(XP_LINUX) && !defined(ANDROID)
         if (sMidoriCpuBudgetController) {
           result.backendReady = true;
           CpuBudgetState state;
@@ -147,7 +180,6 @@ RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage) {
           }
         }
 #elif defined(XP_WIN)
-        StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
         if (sMidoriCpuBudgetController) {
           result.backendReady = true;
           WindowsCpuBudgetState state;
