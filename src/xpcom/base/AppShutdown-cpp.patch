@@ -1,0 +1,38 @@
+--- a/xpcom/base/AppShutdown.cpp
++++ b/xpcom/base/AppShutdown.cpp
+@@ -16,6 +16,9 @@
+ #include "mozilla/ClearOnShutdown.h"
+ #include "mozilla/CmdLineAndEnvUtils.h"
+ #include "mozilla/LateWriteChecks.h"
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#  include "mozilla/MidoriCpuBudget.h"
++#endif
+ #include "mozilla/PoisonIOInterposer.h"
+ #include "mozilla/Printf.h"
+ #include "mozilla/ProfilerMarkers.h"
+@@ -205,6 +208,9 @@
+   }
+   AppShutdown::AnnotateShutdownReason(aReason);
+   AppShutdown::SetImpendingShutdown();
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++  static_cast<void>(midori::BeginManagedCpuBudgetShutdown());
++#endif
+ 
+   sExitCode = aExitCode;
+ 
+@@ -255,6 +261,15 @@
+   }
+   if (aPhase == sFastShutdownPhase) {
+     StopLateWriteChecks();
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++    if (
++#  if defined(XP_LINUX) && !defined(ANDROID)
++        !IsRestarting() &&
++#  endif
++        midori::RestoreManagedCpuBudget()) {
++      DoImmediateExit(1);
++    }
++#endif
+     RecordShutdownEndTimeStamp();
+     MaybeDoRestart();
+ 

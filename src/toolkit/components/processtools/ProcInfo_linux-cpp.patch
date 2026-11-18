@@ -1,6 +1,15 @@
 --- a/toolkit/components/processtools/ProcInfo_linux.cpp
 +++ b/toolkit/components/processtools/ProcInfo_linux.cpp
-@@ -276,76 +276,79 @@
+@@ -253,6 +253,8 @@
+       }
+     }
+ 
++    info.cpuTimeSampledAt = TimeStamp::Now();
++
+     // The 'Memory' value displayed in the system monitor is resident -
+     // shared. statm contains more fields, but we're only interested in
+     // the first three.
+@@ -276,76 +278,79 @@
      info.windows = std::move(request.windowInfo);
      info.utilityActors = std::move(request.utilityInfo);
  

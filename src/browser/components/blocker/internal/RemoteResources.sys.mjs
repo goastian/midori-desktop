@@ -344,16 +344,16 @@ async function readBundledArray(bundledUrl) {
   try {
     const response = await fetch(bundledUrl, { cache: "no-store" });
     if (!response.ok) {
-      return [];
+      return null;
     }
     const parsed = JSON.parse(await response.text());
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed : null;
   } catch (err) {
     console.warn(
       `[MidoriBlocker] Failed reading bundled resource ${bundledUrl}:`,
       err
     );
-    return [];
+    return null;
   }
 }
 
@@ -413,8 +413,13 @@ export const RemoteResources = {
   },
 
   async readMergedResources() {
+    return (await RemoteResources.readResourceSnapshot()).resources;
+  },
+
+  async readResourceSnapshot() {
     const remoteEnabled = isRemoteEnabled();
     const merged = [];
+    let complete = true;
 
     for (const bundle of REMOTE_BUNDLES) {
       let entries = null;
@@ -424,11 +429,15 @@ export const RemoteResources = {
       if (!entries) {
         entries = await readBundledArray(bundle.bundledUrl);
       }
+      if (!entries) {
+        complete = false;
+        continue;
+      }
       if (entries.length) {
         merged.push(...entries);
       }
     }
 
-    return merged;
+    return { resources: merged, complete, remoteEnabled };
   },
 };

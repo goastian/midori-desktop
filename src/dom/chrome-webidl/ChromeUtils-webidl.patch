@@ -29,3 +29,23 @@
  
    /**
     * Requests an XDG activation token from the Wayland compositor.
+@@ -1135,6 +1151,9 @@
+   // Total CPU time spent by the process, in ns.
+   unsigned long long cpuTime = 0;
+ 
++  // Monotonic ms since browser process creation; 0 when unavailable.
++  double cpuTimeSampledAt = 0;
++
+   // Total CPU cycles used by this process.
+   // On Windows where the resolution of CPU timings is 16ms, this can
+   // be used to determine if a process is idle or slightly active.
+@@ -1179,6 +1198,9 @@
+ 
+   // Total CPU time spent by the process, in ns.
+   unsigned long long cpuTime = 0;
++
++  // Monotonic ms since browser process creation; 0 when unavailable.
++  double cpuTimeSampledAt = 0;
+ 
+   // Total CPU cycles used by this process.
+   // On Windows where the resolution of CPU timings is 16ms, this can

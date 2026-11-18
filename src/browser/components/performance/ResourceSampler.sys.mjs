@@ -4,7 +4,6 @@
 
 export class ResourceSampler {
   _previous = new Map();
-  _previousAt = null;
   _pending = null;
   _previousCpuCapacity = null;
   samples = 0;
@@ -16,7 +15,6 @@ export class ResourceSampler {
 
   reset() {
     this._previous.clear();
-    this._previousAt = null;
     this._previousCpuCapacity = null;
   }
 
@@ -37,43 +35,54 @@ export class ResourceSampler {
       : nativeCapacity
       ? cpuInfo.cpuQuotaSampled && cpuInfo.cpuQuotaCpus > 0 ? 'parent-affinity-visible-cgroup' : 'parent-affinity'
       : 'reported-logical-cpus';
-    const now = Services.telemetry.msSinceProcessStart();
-    const elapsed = this._previousAt === null ? 0 : now - this._previousAt;
-    const comparable = elapsed > 0 && cpuCapacity && cpuCapacity === this._previousCpuCapacity;
+    const comparable = cpuCapacity && cpuCapacity === this._previousCpuCapacity;
     const processes = [];
     const seen = new Set();
     const previous = new Map();
     let memoryBytes = 0;
-    let deltaCpuNs = 0;
+    let cpuPercent = 0;
+    let hasCpuDelta = false;
+    let unavailableCpuDelta = false;
     for (const process of [info, ...(info.children || [])]) {
       if (!process.pid || seen.has(process.pid)) continue;
       seen.add(process.pid);
       const identity = `${process.pid}:${process.childID || 0}:${process.type}`;
       const cpuTime = Number(process.cpuTime);
+      const cpuTimeSampledAt = Number(process.cpuTimeSampledAt);
       const memory = Number(process.memory);
       if (!Number.isFinite(cpuTime) || !Number.isFinite(memory) || cpuTime < 0 || memory < 0) {
         throw new Error('invalid-process-measurement');
       }
       const last = this._previous.get(identity);
-      const delta = last === undefined || cpuTime < last ? null : cpuTime - last;
-      previous.set(identity, cpuTime);
+      const delta = Number.isFinite(last?.cpuTime) && cpuTime >= last.cpuTime
+        ? cpuTime - last.cpuTime : null;
+      const elapsed = Number.isFinite(cpuTimeSampledAt) && cpuTimeSampledAt > 0 &&
+        Number.isFinite(last?.cpuTimeSampledAt) && last.cpuTimeSampledAt > 0
+        ? cpuTimeSampledAt - last.cpuTimeSampledAt : 0;
+      const processCpuPercent = comparable && delta !== null && elapsed > 0
+        ? delta / (elapsed * 10000 * cpuCapacity) : null;
+      previous.set(identity, { cpuTime, cpuTimeSampledAt });
       memoryBytes += memory;
-      if (delta !== null) deltaCpuNs += delta;
+      if (processCpuPercent !== null) {
+        cpuPercent += processCpuPercent;
+        hasCpuDelta = true;
+      } else if (comparable && delta !== null) {
+        unavailableCpuDelta = true;
+      }
       processes.push({
         pid: process.pid,
         type: process.type,
         memoryBytes: memory,
-        cpuPercent: comparable && delta !== null ? delta / (elapsed * 10000 * cpuCapacity) : null,
+        cpuPercent: processCpuPercent,
       });
     }
     this._previous = previous;
-    this._previousAt = now;
     this._previousCpuCapacity = cpuCapacity;
     this.samples++;
     return {
       sampledAt: Date.now(),
       memoryBytes,
-      cpuPercent: comparable ? deltaCpuNs / (elapsed * 10000 * cpuCapacity) : null,
+      cpuPercent: comparable && hasCpuDelta && !unavailableCpuDelta ? cpuPercent : null,
       cpuCount,
       cpuCapacity,
       cpuCapacitySource,

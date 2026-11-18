@@ -1,6 +1,6 @@
 --- a/browser/app/nsBrowserApp.cpp
 +++ b/browser/app/nsBrowserApp.cpp
-@@ -8,6 +8,15 @@
+@@ -8,6 +8,16 @@
  #include "XREShellData.h"
  #include "ApplicationData.h"
  #include "mozilla/Bootstrap.h"
@@ -8,6 +8,7 @@
 +#  include "mozilla/MidoriCpuBudget_linux.h"
 +#  include <climits>
 +#  include <cstdlib>
++#  include <cstring>
 +#elif defined(XP_WIN)
 +#  include "mozilla/MidoriCpuBudget_windows.h"
 +#  include <cstdlib>
@@ -16,21 +17,21 @@
  #include "mozilla/ProcessType.h"
  #include "mozilla/RuntimeExceptionModule.h"
  #include "mozilla/ScopeExit.h"
-@@ -101,6 +110,13 @@
- #endif
+@@ -102,6 +112,13 @@
  
  using namespace mozilla;
-+
+ 
 +#ifdef XP_WIN
 +namespace mozilla::midori {
 +constinit const volatile WindowsCpuParent gMidoriCpuParent =
 +    WindowsCpuParent::Unknown;
 +}
 +#endif
- 
++
  #define kDesktopFolder "browser"
  
-@@ -199,7 +215,70 @@
+ // Only `Output` below cares about this, and only on Windows, where it decides
+@@ -199,7 +216,98 @@
  
  constinit Bootstrap::UniquePtr gBootstrap;
  
@@ -67,7 +68,11 @@
 +  return error == 0;
 +}
 +
-+static bool PrepareMidoriCpuBudget(mozilla::midori::LinuxCpuBudget& aBudget) {
++static int PrepareMidoriCpuBudget(mozilla::midori::LinuxCpuBudget& aBudget) {
++  const char* wait = getenv("MIDORI_CPU_RESTART_WAIT");
++  const bool restarting = wait != nullptr;
++  const bool validRestart = wait && !strcmp(wait, "1");
++  unsetenv("MIDORI_CPU_RESTART_WAIT");
 +  unsetenv("MIDORI_CPU_CHILD_FD");
 +  bool groupPresent, externalPresent;
 +  int group = ConsumeMidoriCpuDescriptor("MIDORI_CPU_BUDGET_FD", groupPresent);
@@ -77,9 +82,33 @@
 +    if (group >= 0) close(group);
 +    if (external >= 0 && external != group) close(external);
 +  });
++  if (!groupPresent && !externalPresent && !restarting) {
++    bool restoreFailed = false;
++    int error = aBudget.InitializeDelegated(restoreFailed);
++    if (restoreFailed) {
++      fprintf(stderr, "Midori CPU startup restoration failed: %d\n", error);
++      return -1;
++    }
++    return error ? 0 : 1;
++  }
 +  if (!groupPresent || group < 0 || (externalPresent && external < 0))
-+    return false;
-+  return aBudget.Initialize(group, external) == 0;
++    return restarting ? -1 : 0;
++  if (restarting) {
++    int error = validRestart && externalPresent
++                    ? mozilla::midori::LinuxCpuBudget::WaitAndJoinRestartGroup(
++                          group, external)
++                    : EINVAL;
++    if (error) {
++      fprintf(stderr, "Midori CPU restart handoff failed: %d\n", error);
++      return -1;
++    }
++  }
++  int error = aBudget.Initialize(group, external);
++  if (error && restarting) {
++    fprintf(stderr, "Midori CPU restart initialization failed: %d\n", error);
++    return -1;
++  }
++  return error ? 0 : 1;
 +}
 +#elif defined(XP_WIN)
 +static bool PrepareMidoriCpuBudget(mozilla::midori::WindowsCpuBudget& aBudget) {
@@ -102,7 +131,7 @@
    // Allow firefox.exe to launch XULRunner apps via -app <application.ini>
    // Note that -app must be the *first* argument.
    const char* appDataFile = getenv("XUL_APP_FILE");
-@@ -241,6 +320,9 @@
+@@ -241,6 +349,9 @@
    }
  
    BootstrapConfig config;
@@ -112,7 +141,7 @@
  
    if (appDataFile && *appDataFile) {
      config.appData = nullptr;
-@@ -353,6 +435,9 @@
+@@ -353,6 +464,9 @@
      // Set the process type and gecko child id.
      SetGeckoProcessType(argv[--argc]);
      SetGeckoChildID(argv[--argc]);
@@ -122,21 +151,23 @@
  
  #  if defined(MOZ_ENABLE_FORKSERVER)
      if (GetGeckoProcessType() == GeckoProcessType_ForkServer) {
-@@ -388,6 +473,13 @@
+@@ -388,6 +502,15 @@
    ExpandFileDescriptorTable();
  #endif
  
 +#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
 +  mozilla::midori::CpuBudgetController cpuBudget;
-+  const bool cpuBudgetReady =
-+      GetGeckoProcessType() == GeckoProcessType_Default &&
-+      PrepareMidoriCpuBudget(cpuBudget);
++  const int cpuBudgetStatus = GetGeckoProcessType() == GeckoProcessType_Default
++                                  ? PrepareMidoriCpuBudget(cpuBudget)
++                                  : 0;
++  if (cpuBudgetStatus < 0) return 255;
++  const bool cpuBudgetReady = cpuBudgetStatus > 0;
 +#endif
 +
    mozilla::TimeStamp start = mozilla::TimeStamp::Now();
  
    AUTO_BASE_PROFILER_INIT;
-@@ -539,7 +631,12 @@
+@@ -539,7 +662,12 @@
    gBootstrap->XRE_EnableSameExecutableForContentProc();
  #endif
  

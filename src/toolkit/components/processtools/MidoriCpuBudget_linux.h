@@ -18,6 +18,7 @@
 #  include <sched.h>
 #  include <sys/stat.h>
 #  include <sys/vfs.h>
+#  include <sys/xattr.h>
 #  include <time.h>
 #  include <unistd.h>
 
@@ -54,45 +55,9 @@ class LinuxCpuBudget final {
 
   int Initialize(int aGroup, int aExternalGroup = -1) {
     if (mGroup >= 0) return EALREADY;
-    if (getuid() != geteuid() || !getuid()) return EPERM;
-    struct statfs filesystem;
-    struct stat directory;
-    if (fstatfs(aGroup, &filesystem) || fstat(aGroup, &directory)) return errno;
-    if (filesystem.f_type != 0x63677270 || !S_ISDIR(directory.st_mode) ||
-        directory.st_uid != geteuid())
-      return EPERM;
+    int error = ValidateExclusiveGroup(aGroup);
+    if (error) return error;
     char value[4096];
-    int error = Read(aGroup, "cgroup.type", value, sizeof(value));
-    if (error) return error;
-    if (strcmp(value, "domain\n")) return ENOTSUP;
-    error = Read(aGroup, "cgroup.procs", value, sizeof(value));
-    if (error) return error;
-    char self[32];
-    snprintf(self, sizeof(self), "%ld\n", long(getpid()));
-    if (strcmp(value, self)) return EBUSY;
-    int duplicate = openat(aGroup, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (duplicate < 0) return errno;
-    DIR* contents = fdopendir(duplicate);
-    if (!contents) {
-      error = errno;
-      close(duplicate);
-      return error;
-    }
-    dirent* entry;
-    errno = 0;
-    while ((entry = readdir(contents))) {
-      if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
-      struct stat child;
-      if (fstatat(aGroup, entry->d_name, &child, AT_SYMLINK_NOFOLLOW)) break;
-      if (S_ISDIR(child.st_mode)) {
-        errno = EBUSY;
-        break;
-      }
-    }
-    error = errno;
-    closedir(contents);
-    if (error) return error;
-    if (!SingleProcessAtStartup()) return EBUSY;
     uint64_t quota, period;
     error = ReadLimit(aGroup, quota, period);
     if (error) return error;
@@ -137,6 +102,79 @@ class LinuxCpuBudget final {
       return restored ? restored : error;
     }
     return 0;
+  }
+
+  int InitializeDelegated(bool& aRestoreFailed) {
+    aRestoreFailed = false;
+    if (mGroup >= 0) return EALREADY;
+    int root;
+    int error = OpenCurrentGroup(root);
+    if (error) return error;
+    int group = -1, external = -1;
+    bool groupCreated = false, externalCreated = false;
+    bool moved = false, cpuChanged = false;
+    auto finish = [&](int aError) {
+      int restored = 0;
+      if (aError) {
+        if (cpuChanged)
+          restored = WriteValue(root, "cgroup.subtree_control", "-cpu");
+        if (!restored && moved)
+          restored = WriteValue(root, "cgroup.procs", "0");
+        if (groupCreated && unlinkat(root, "midori-instance", AT_REMOVEDIR) &&
+            !restored)
+          restored = errno;
+        if (externalCreated &&
+            unlinkat(root, "midori-external", AT_REMOVEDIR) && !restored)
+          restored = errno;
+      }
+      if (group >= 0) close(group);
+      if (external >= 0) close(external);
+      close(root);
+      aRestoreFailed = restored != 0;
+      return restored ? restored : aError;
+    };
+    error = ValidateExclusiveGroup(root);
+    if (error) return finish(error);
+    char delegated[2];
+    ssize_t size =
+        fgetxattr(root, "user.delegate", delegated, sizeof(delegated));
+    if (size < 0) return finish(errno);
+    if (size != 1 || delegated[0] != '1') return finish(EPERM);
+    char value[4096];
+    error = Read(root, "cgroup.controllers", value, sizeof(value));
+    if (error) return finish(error);
+    bool available = false;
+    char* saved;
+    for (char* name = strtok_r(value, " \n", &saved); name;
+         name = strtok_r(nullptr, " \n", &saved)) {
+      if (!strcmp(name, "cpu")) available = true;
+    }
+    if (!available) return finish(ENOTSUP);
+    error = Read(root, "cgroup.subtree_control", value, sizeof(value));
+    if (error) return finish(error);
+    for (char* name = strtok_r(value, " \n", &saved); name;
+         name = strtok_r(nullptr, " \n", &saved)) {
+      if (!strcmp(name, "cpu")) return finish(EBUSY);
+    }
+    if (mkdirat(root, "midori-external", 0755)) return finish(errno);
+    externalCreated = true;
+    external = openat(root, "midori-external",
+                      O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (external < 0) return finish(errno);
+    if (mkdirat(root, "midori-instance", 0755)) return finish(errno);
+    groupCreated = true;
+    group = openat(root, "midori-instance",
+                   O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (group < 0) return finish(errno);
+    error = WriteValue(external, "cgroup.procs", "0");
+    if (error) return finish(error);
+    moved = true;
+    error = WriteValue(root, "cgroup.subtree_control", "+cpu");
+    if (error) return finish(error);
+    cpuChanged = true;
+    error = WriteValue(group, "cgroup.procs", "0");
+    if (error) return finish(error);
+    return finish(Initialize(group, external));
   }
 
   int SetPercentage(uint32_t aPercentage, CpuBudgetState& aState) {
@@ -335,6 +373,89 @@ class LinuxCpuBudget final {
   }
 
  private:
+  static int ValidateExclusiveGroup(int aGroup) {
+    if (getuid() != geteuid() || !getuid()) return EPERM;
+    struct statfs filesystem;
+    struct stat directory;
+    if (fstatfs(aGroup, &filesystem) || fstat(aGroup, &directory)) return errno;
+    if (filesystem.f_type != 0x63677270 || !S_ISDIR(directory.st_mode) ||
+        directory.st_uid != geteuid())
+      return EPERM;
+    char value[4096];
+    int error = Read(aGroup, "cgroup.type", value, sizeof(value));
+    if (error) return error;
+    if (strcmp(value, "domain\n")) return ENOTSUP;
+    error = Read(aGroup, "cgroup.procs", value, sizeof(value));
+    if (error) return error;
+    char self[32];
+    snprintf(self, sizeof(self), "%ld\n", long(getpid()));
+    if (strcmp(value, self)) return EBUSY;
+    int duplicate = openat(aGroup, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (duplicate < 0) return errno;
+    DIR* contents = fdopendir(duplicate);
+    if (!contents) {
+      error = errno;
+      close(duplicate);
+      return error;
+    }
+    dirent* entry;
+    errno = 0;
+    while ((entry = readdir(contents))) {
+      if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+      struct stat child;
+      if (fstatat(aGroup, entry->d_name, &child, AT_SYMLINK_NOFOLLOW)) break;
+      if (S_ISDIR(child.st_mode)) {
+        errno = EBUSY;
+        break;
+      }
+    }
+    error = errno;
+    closedir(contents);
+    if (error) return error;
+    if (!SingleProcessAtStartup()) return EBUSY;
+    return 0;
+  }
+
+  static int OpenCurrentGroup(int& aGroup) {
+    aGroup = -1;
+    char value[4096];
+    int error = Read(AT_FDCWD, "/proc/self/cgroup", value, sizeof(value));
+    if (error) return error;
+    char* path = nullptr;
+    char* saved;
+    for (char* line = strtok_r(value, "\n", &saved); line;
+         line = strtok_r(nullptr, "\n", &saved)) {
+      if (strncmp(line, "0::/", 4)) continue;
+      if (path) return EINVAL;
+      path = line + 3;
+    }
+    if (!path) return ENOTSUP;
+    int directory =
+        open("/sys/fs/cgroup", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (directory < 0) return errno;
+    unsigned depth = 0;
+    char* part = path + 1;
+    while (*part) {
+      char* end = strchr(part, '/');
+      if (end) *end = 0;
+      if (!strcmp(part, ".") || !strcmp(part, "..") || !*part ||
+          ++depth > 1024 || (end && !end[1])) {
+        close(directory);
+        return EINVAL;
+      }
+      int next = openat(directory, part,
+                        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+      error = errno;
+      close(directory);
+      if (next < 0) return error;
+      directory = next;
+      if (!end) break;
+      part = end + 1;
+    }
+    aGroup = directory;
+    return 0;
+  }
+
   static int WaitForEmptyGroup(int aEvents) {
     timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now)) return errno;

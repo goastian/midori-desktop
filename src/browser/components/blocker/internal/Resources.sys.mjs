@@ -10,7 +10,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 function useResources(engine, resourcesJsonOrObject) {
   if (!engine) {
-    return;
+    return false;
   }
 
   try {
@@ -19,20 +19,25 @@ function useResources(engine, resourcesJsonOrObject) {
         ? resourcesJsonOrObject
         : JSON.stringify(resourcesJsonOrObject ?? []);
     engine.useResources(payload);
+    return true;
   } catch (err) {
     console.error("[MidoriBlocker] useResources failed:", err);
+    return false;
   }
 }
 
 export const Resources = {
   async load(engine) {
     if (!engine) {
-      return;
+      return false;
     }
 
-    const merged = await lazy.RemoteResources.readMergedResources();
-    if (merged.length) {
-      useResources(engine, merged);
-    }
+    const snapshot = await lazy.RemoteResources.readResourceSnapshot();
+    return (
+      snapshot.resources.length > 0 &&
+      useResources(engine, snapshot.resources) &&
+      snapshot.complete &&
+      !snapshot.remoteEnabled
+    );
   },
 };

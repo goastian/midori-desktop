@@ -8,7 +8,24 @@
    if (!gathered.reserve(aRequests.Length())) {
      result.SetReject(NS_ERROR_OUT_OF_MEMORY);
      return result;
-@@ -160,6 +161,15 @@
+@@ -130,6 +131,8 @@
+       }
+       cpuTime = ToNanoSeconds(kernelTime) + ToNanoSeconds(userTime);
+     }
++
++    const TimeStamp cpuTimeSampledAt = TimeStamp::Now();
+ 
+     PROCESS_MEMORY_COUNTERS_EX memoryCounters;
+     if (!GetProcessMemoryInfo(handle.get(),
+@@ -153,6 +156,7 @@
+     info.windows = std::move(request.windowInfo);
+     info.utilityActors = std::move(request.utilityInfo);
+     info.cpuTime = cpuTime;
++    info.cpuTimeSampledAt = cpuTimeSampledAt;
+     info.cpuCycleCount = cpuCycleTime;
+     info.memory = memoryCounters.PrivateUsage;
+ 
+@@ -160,6 +164,15 @@
        result.SetReject(NS_ERROR_OUT_OF_MEMORY);
        return result;
      }
@@ -24,7 +41,7 @@
    }
  
    // ---- Add thread data to already-copied processes.
-@@ -213,7 +223,7 @@
+@@ -213,7 +226,7 @@
      ULONG pid = HandleToUlong(processInfo->UniqueProcessId);
      // Check if we are interested in this process.
      auto processLookup = gathered.lookup(pid);

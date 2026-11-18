@@ -1,6 +1,14 @@
 --- a/toolkit/components/processtools/ProcInfo.mm
 +++ b/toolkit/components/processtools/ProcInfo.mm
-@@ -126,67 +126,70 @@
+@@ -117,6 +117,7 @@
+     }
+     info.cpuTime = (task_power_info.total_user + task_power_info.total_system) *
+                    timebase.numer / timebase.denom;
++    info.cpuTimeSampledAt = TimeStamp::Now();
+ 
+     // The phys_footprint value (introduced in 10.11) of the TASK_VM_INFO data
+     // matches the value in the 'Memory' column of the Activity Monitor.
+@@ -126,67 +127,70 @@
                     &count);
      info.memory = kr == KERN_SUCCESS ? task_vm_info.phys_footprint : 0;
  

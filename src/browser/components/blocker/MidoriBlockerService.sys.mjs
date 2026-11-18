@@ -65,6 +65,7 @@ const PREF_DOMAIN_EXCEPTIONS = "midori.blocker.domainExceptions";
 const PREF_BRANCH = "midori.blocker.";
 let gCustomFiltersWriteChain = Promise.resolve();
 const gCustomFiltersObservers = new Set();
+const gBundledResourcesLoaded = new WeakSet();
 
 function withCustomFiltersWrite(task) {
   const update = gCustomFiltersWriteChain.then(task);
@@ -1995,11 +1996,20 @@ export const MidoriBlockerService = {
   },
 
   async _loadResourcesAndBumpGeneration() {
-    if (!this._engine) {
+    const engine = this._engine;
+    if (!engine) {
       return;
     }
 
-    await lazy.Resources.load(this._engine);
+    gBundledResourcesLoaded.delete(engine);
+    if (
+      (await lazy.Resources.load(engine)) &&
+      !Services.prefs.getBoolPref(PREF_REMOTE_RESOURCES_ENABLED, false)
+    ) {
+      gBundledResourcesLoaded.add(engine);
+    } else {
+      gBundledResourcesLoaded.delete(engine);
+    }
     this._cosmeticResourceGeneration++;
   },
 
@@ -3103,7 +3113,11 @@ export const MidoriBlockerService = {
       return true;
     }
 
-    if (this._engine) {
+    if (
+      this._engine &&
+      (Services.prefs.getBoolPref(PREF_REMOTE_RESOURCES_ENABLED, false) ||
+        !gBundledResourcesLoaded.has(this._engine))
+    ) {
       await this._loadResourcesAndBumpGeneration();
     }
     return this._isCurrentListUpdate(generation);
