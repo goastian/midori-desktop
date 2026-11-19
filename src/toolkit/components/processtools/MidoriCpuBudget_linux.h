@@ -10,12 +10,15 @@
 #  include <cerrno>
 #  include <cmath>
 #  include <cstdint>
+#  include <cstdlib>
 #  include <cstdio>
 #  include <cstring>
 #  include <dirent.h>
+#  include <dlfcn.h>
 #  include <fcntl.h>
 #  include <poll.h>
 #  include <sched.h>
+#  include <sys/socket.h>
 #  include <sys/stat.h>
 #  include <sys/vfs.h>
 #  include <sys/xattr.h>
@@ -104,6 +107,7 @@ class LinuxCpuBudget final {
     return 0;
   }
 
+  // A failed rollback must stop startup in the changed cgroup.
   int InitializeDelegated(bool& aRestoreFailed) {
     aRestoreFailed = false;
     if (mGroup >= 0) return EALREADY;
@@ -138,8 +142,15 @@ class LinuxCpuBudget final {
     char delegated[2];
     ssize_t size =
         fgetxattr(root, "user.delegate", delegated, sizeof(delegated));
-    if (size < 0) return finish(errno);
-    if (size != 1 || delegated[0] != '1') return finish(EPERM);
+    if (size < 0) {
+      if (errno != ENODATA && errno != EOPNOTSUPP) return finish(errno);
+      error = VerifyManagerDelegation(root);
+      if (error) return finish(error);
+      error = ValidateExclusiveGroup(root);
+      if (error) return finish(error);
+    } else if (size != 1 || delegated[0] != '1') {
+      return finish(EPERM);
+    }
     char value[4096];
     error = Read(root, "cgroup.controllers", value, sizeof(value));
     if (error) return finish(error);
@@ -373,6 +384,160 @@ class LinuxCpuBudget final {
   }
 
  private:
+  static int VerifyManagerDelegation(int aGroup) {
+    char socketPath[96], address[112];
+    snprintf(socketPath, sizeof(socketPath), "/run/user/%lu/systemd/private",
+             (unsigned long)getuid());
+    struct stat socket;
+    if (lstat(socketPath, &socket)) return errno == ENOENT ? ENODATA : errno;
+    if (!S_ISSOCK(socket.st_mode) || socket.st_uid != getuid()) return EPERM;
+    void* library = dlopen("libsystemd.so.0", RTLD_NOW | RTLD_LOCAL);
+    if (!library) return ENOSYS;
+    struct Bus;
+    struct Message;
+    auto create =
+        reinterpret_cast<int (*)(Bus**)>(dlsym(library, "sd_bus_new"));
+    auto setAddress = reinterpret_cast<int (*)(Bus*, const char*)>(
+        dlsym(library, "sd_bus_set_address"));
+    auto setTimeout = reinterpret_cast<int (*)(Bus*, uint64_t)>(
+        dlsym(library, "sd_bus_set_method_call_timeout"));
+    auto start =
+        reinterpret_cast<int (*)(Bus*)>(dlsym(library, "sd_bus_start"));
+    auto getFile =
+        reinterpret_cast<int (*)(Bus*)>(dlsym(library, "sd_bus_get_fd"));
+    auto ready =
+        reinterpret_cast<int (*)(Bus*)>(dlsym(library, "sd_bus_is_ready"));
+    auto process = reinterpret_cast<int (*)(Bus*, Message**)>(
+        dlsym(library, "sd_bus_process"));
+    auto wait = reinterpret_cast<int (*)(Bus*, uint64_t)>(
+        dlsym(library, "sd_bus_wait"));
+    auto call = reinterpret_cast<int (*)(
+        Bus*, const char*, const char*, const char*, const char*, void*,
+        Message**, const char*, ...)>(dlsym(library, "sd_bus_call_method"));
+    auto read = reinterpret_cast<int (*)(Message*, const char*, ...)>(
+        dlsym(library, "sd_bus_message_read"));
+    auto boolean =
+        reinterpret_cast<int (*)(Bus*, const char*, const char*, const char*,
+                                 const char*, void*, char, void*)>(
+            dlsym(library, "sd_bus_get_property_trivial"));
+    auto string =
+        reinterpret_cast<int (*)(Bus*, const char*, const char*, const char*,
+                                 const char*, void*, char**)>(
+            dlsym(library, "sd_bus_get_property_string"));
+    auto releaseMessage = reinterpret_cast<Message* (*)(Message*)>(
+        dlsym(library, "sd_bus_message_unref"));
+    auto releaseBus =
+        reinterpret_cast<Bus* (*)(Bus*)>(dlsym(library, "sd_bus_unref"));
+    if (!create || !setAddress || !setTimeout || !start || !getFile || !ready ||
+        !process || !wait || !call || !read || !boolean || !string ||
+        !releaseMessage || !releaseBus) {
+      dlclose(library);
+      return ENOSYS;
+    }
+    Bus* bus = nullptr;
+    Message* reply = nullptr;
+    char* controlGroup = nullptr;
+    auto finish = [&](int aError) {
+      free(controlGroup);
+      if (reply) releaseMessage(reply);
+      if (bus) releaseBus(bus);
+      dlclose(library);
+      return aError;
+    };
+    timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now)) return finish(errno);
+    uint64_t deadline =
+        uint64_t(now.tv_sec) * 1000000 + now.tv_nsec / 1000 + 500000;
+    auto budget = [&]() -> int64_t {
+      if (clock_gettime(CLOCK_MONOTONIC, &now)) return -errno;
+      uint64_t current = uint64_t(now.tv_sec) * 1000000 + now.tv_nsec / 1000;
+      return current >= deadline ? -ETIMEDOUT : int64_t(deadline - current);
+    };
+    auto remaining = [&] {
+      int64_t left = budget();
+      return left < 0 ? int(left) : setTimeout(bus, uint64_t(left));
+    };
+    int result = create(&bus);
+    if (result < 0) return finish(-result);
+    snprintf(address, sizeof(address), "unix:path=%s", socketPath);
+    result = setAddress(bus, address);
+    if (result < 0) return finish(-result);
+    result = start(bus);
+    if (result < 0) return finish(-result);
+    int file = getFile(bus);
+    if (file < 0) return finish(-file);
+    ucred peer;
+    socklen_t length = sizeof(peer);
+    if (getsockopt(file, SOL_SOCKET, SO_PEERCRED, &peer, &length))
+      return finish(errno);
+    if (length != sizeof(peer) || peer.uid != getuid() || peer.pid <= 0)
+      return finish(EPERM);
+    for (;;) {
+      int64_t left = budget();
+      if (left < 0) return finish(int(-left));
+      result = ready(bus);
+      if (result < 0) return finish(-result);
+      if (result) break;
+      result = process(bus, nullptr);
+      if (result < 0) return finish(-result);
+      if (result) continue;
+      left = budget();
+      if (left < 0) return finish(int(-left));
+      result = wait(bus, uint64_t(left));
+      if (result < 0) return finish(-result);
+    }
+    result = remaining();
+    if (result < 0) return finish(-result);
+    const char* destination = "org.freedesktop.systemd1";
+    result = call(bus, destination, "/org/freedesktop/systemd1",
+                  "org.freedesktop.systemd1.Manager", "GetUnitByPID", nullptr,
+                  &reply, "u", uint32_t(getpid()));
+    if (result < 0) return finish(-result);
+    const char* unit = nullptr;
+    result = read(reply, "o", &unit);
+    if (result <= 0 || !unit) return finish(result < 0 ? -result : EIO);
+    const char* interface = nullptr;
+    size_t size = strlen(unit);
+    if (size >= 8 && !strcmp(unit + size - 8, "_2escope"))
+      interface = "org.freedesktop.systemd1.Scope";
+    else if (size >= 10 && !strcmp(unit + size - 10, "_2eservice"))
+      interface = "org.freedesktop.systemd1.Service";
+    else
+      return finish(ENOTSUP);
+    result = remaining();
+    if (result < 0) return finish(-result);
+    int delegated = 0;
+    result = boolean(bus, destination, unit, interface, "Delegate", nullptr,
+                     'b', &delegated);
+    if (result < 0 || !delegated) return finish(result < 0 ? -result : EPERM);
+    result = remaining();
+    if (result < 0) return finish(-result);
+    result = string(bus, destination, unit, interface, "ControlGroup", nullptr,
+                    &controlGroup);
+    if (result < 0) return finish(-result);
+    if (!controlGroup || controlGroup[0] != '/' || strlen(controlGroup) > 4089)
+      return finish(EINVAL);
+    char expected[4096], current[4096];
+    snprintf(expected, sizeof(expected), "0::%s\n", controlGroup);
+    int error = Read(AT_FDCWD, "/proc/self/cgroup", current, sizeof(current));
+    if (error || strcmp(current, expected))
+      return finish(error ? error : EPERM);
+    int actual;
+    error = OpenCurrentGroup(actual);
+    if (error) return finish(error);
+    struct stat original, verified;
+    error = fstat(aGroup, &original) || fstat(actual, &verified) ? errno : 0;
+    close(actual);
+    if (!error && (original.st_dev != verified.st_dev ||
+                   original.st_ino != verified.st_ino))
+      error = EPERM;
+    if (!error) {
+      result = remaining();
+      if (result < 0) error = -result;
+    }
+    return finish(error);
+  }
+
   static int ValidateExclusiveGroup(int aGroup) {
     if (getuid() != geteuid() || !getuid()) return EPERM;
     struct statfs filesystem;

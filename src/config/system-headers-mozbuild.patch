@@ -1,0 +1,10 @@
+--- a/config/system-headers.mozbuild
++++ b/config/system-headers.mozbuild
+@@ -888,6 +888,7 @@
+     "sys/utsname.h",
+     "sys/vfs.h",
+     "sys/wait.h",
++    "sys/xattr.h",
+     "t1tables.h",
+     "tables.h",
+     "TArray.h",
