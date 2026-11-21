@@ -1,5 +1,5 @@
 diff --git a/browser/extensions/moz.build b/browser/extensions/moz.build
-index 780cf23b9c50fdde933a8825c495b3cf9a1e9b53..0b0d087f120280a6ebdec334e9b67ad6ce47628d 100644
+index 780cf23b9c50fdde933a8825c495b3cf9a1e9b53..f3ef8eb9e1963a731836c480897c45987e6659c7 100644
 --- a/browser/extensions/moz.build
 +++ b/browser/extensions/moz.build
 @@ -12,3 +12,5 @@ DIRS += [
@@ -7,5 +7,5 @@ index 780cf23b9c50fdde933a8825c495b3cf9a1e9b53..0b0d087f120280a6ebdec334e9b67ad6
  
  JAR_MANIFESTS += ["jar.mn"]
 +
-+DIRS += ["midori-newtab"]
++DIRS += ["midori-newtab","midorivpn-extension"]
 \ No newline at end of file

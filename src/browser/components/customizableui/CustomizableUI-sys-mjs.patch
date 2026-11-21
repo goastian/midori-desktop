@@ -1,0 +1,51 @@
+diff --git a/browser/components/customizableui/CustomizableUI.sys.mjs b/browser/components/customizableui/CustomizableUI.sys.mjs
+index 76cab7f8e4630119c8f166f14bfc5a781f49f5fd..8ccb537c5cd0da44bdc57ec5c687b4859957cbe8 100644
+--- a/browser/components/customizableui/CustomizableUI.sys.mjs
++++ b/browser/components/customizableui/CustomizableUI.sys.mjs
+@@ -27,6 +27,7 @@ ChromeUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
+ });
+ 
+ const kDefaultThemeID = "default-theme@mozilla.org";
++const kMidoriVPNButtonId = "midorivpn_astian_org-browser-action";
+ 
+ const kSpecialWidgetPfx = "customizableui-special-";
+ 
+@@ -68,7 +69,7 @@ const kSubviewEvents = ["ViewShowing", "ViewHiding"];
+  * The current version. We can use this to auto-add new default widgets as necessary.
+  * (would be const but isn't because of testing purposes)
+  */
+-var kVersion = 28;
++var kVersion = 29;
+ 
+ /**
+  * Buttons removed from built-ins by version they were removed. kVersion must be
+@@ -368,6 +369,7 @@ var CustomizableUIInternal = {
+       "spring",
+       "vertical-spacer",
+       "urlbar-container",
++      kMidoriVPNButtonId,
+       "spring",
+       "downloads-button",
+       AppConstants.MOZ_DEV_EDITION ? "developer-button" : null,
+@@ -1045,6 +1047,21 @@ var CustomizableUIInternal = {
+         CustomizableUIInternal.saveHorizontalTabStripState(horizontalSnapshot);
+       }
+     }
++
++    if (
++      currentVersion < 29 &&
++      !Object.values(gSavedState.placements).some(
++        placements =>
++          Array.isArray(placements) && placements.includes(kMidoriVPNButtonId)
++      )
++    ) {
++      const navbarPlacements =
++        gSavedState.placements[CustomizableUI.AREA_NAVBAR];
++      const urlbarIndex = navbarPlacements?.indexOf("urlbar-container");
++      if (urlbarIndex >= 0) {
++        navbarPlacements.splice(urlbarIndex + 1, 0, kMidoriVPNButtonId);
++      }
++    }
+   },
+ 
+   /**

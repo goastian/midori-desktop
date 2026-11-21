@@ -1,8 +1,8 @@
 diff --git a/browser/themes/shared/addons/unified-extensions.css b/browser/themes/shared/addons/unified-extensions.css
-index cf1ec0083a4c3ccb4125592ee99b54de29d76b79..d766340bcafefa24c8dcacf56fff325fc5cec8b5 100644
+index 756325bbad44f085d93ca66936f48cd585659fe7..505581c2e571b4f09d536f3d0a3738fb3b860b80 100644
 --- a/browser/themes/shared/addons/unified-extensions.css
 +++ b/browser/themes/shared/addons/unified-extensions.css
-@@ -1,3 +1,25 @@
+@@ -1,3 +1,40 @@
 +/* Midori native blocker: compact icon in nav-bar */
 +#nav-bar #midori-protection_astian_org-browser-action {
 +  max-width: 28px;
@@ -25,6 +25,21 @@ index cf1ec0083a4c3ccb4125592ee99b54de29d76b79..d766340bcafefa24c8dcacf56fff325f
 +#nav-bar #midori-protection_astian_org-browser-action .unified-extensions-item-name {
 +  display: none !important;
 +}
++
++#nav-bar toolbaritem[data-extensionid="midorivpn@astian.org"] {
++  .unified-extensions-item-action-button.toolbarbutton-1 {
++    > .toolbarbutton-text,
++    > .unified-extensions-item-contents {
++      display: none;
++    }
++
++    > .toolbarbutton-badge-stack > .toolbarbutton-icon {
++      width: 18px;
++      height: 18px;
++    }
++  }
++}
++
  /* This Source Code Form is subject to the terms of the Mozilla Public
   * License, v. 2.0. If a copy of the MPL was not distributed with this
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
