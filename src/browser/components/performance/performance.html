@@ -39,9 +39,11 @@
       <div class="resource-grid">
         <section class="resource-card">
           <div class="resource-card-heading"><h2 id="memory-heading" data-l10n-id="midori-performance-memory"></h2><span id="memory-enforcement" class="resource-badge"></span></div>
-          <output id="memory-used" class="resource-value">—</output>
+          <output id="memory-used" class="resource-value"><span role="none">—</span></output>
           <p id="memory-kind"></p>
-          <progress id="memory-pressure" aria-labelledby="memory-heading" max="1" value="0"></progress>
+          <div id="memory-pressure" class="resource-pressure" role="progressbar" aria-labelledby="memory-heading" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0">
+            <span id="memory-pressure-fill" aria-hidden="true"></span>
+          </div>
           <label class="resource-toggle"><span data-l10n-id="midori-performance-memory-enable"></span><input id="memory-enabled" type="checkbox" role="switch"></label>
           <label id="memory-budget-heading" for="memory-budget" data-l10n-id="midori-performance-budget"></label>
           <div class="resource-budget">
@@ -56,7 +58,7 @@
         </section>
         <section class="resource-card">
           <div class="resource-card-heading"><h2 id="cpu-heading" data-l10n-id="midori-performance-cpu"></h2><span id="cpu-enforcement" class="resource-badge"></span></div>
-          <output id="cpu-used" class="resource-value">—</output>
+          <output id="cpu-used" class="resource-value"><span role="none">—</span></output>
           <p id="cpu-explanation" data-l10n-id="midori-performance-cpu-explanation"></p>
           <div class="resource-editor">
             <label class="resource-toggle"><span data-l10n-id="midori-performance-cpu-enable"></span><input id="cpu-enabled" type="checkbox" role="switch" aria-describedby="cpu-unavailable"></label>

@@ -9,11 +9,12 @@
  class IdleRequestCallback;
  struct IdleRequestOptions;
  struct MediaMetadataInit;
-@@ -229,7 +231,22 @@
+@@ -229,7 +231,23 @@
                                                      ErrorResult& aRv);
  
    static already_AddRefed<Promise> RequestProcInfo(GlobalObject& aGlobal,
 +                                                   bool aIncludeThreads,
++                                                   bool aIncludeWindows,
                                                     ErrorResult& aRv);
 +
 +  static already_AddRefed<Promise> RequestManagedCpuBudget(

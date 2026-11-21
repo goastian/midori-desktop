@@ -51,7 +51,7 @@
  #include "nsRFPTargetSetIDL.h"
  #include "nsString.h"
  #include "nsThreadUtils.h"
-@@ -1924,8 +1935,159 @@
+@@ -1924,8 +1935,160 @@
  
  #undef PROCTYPE_TO_WEBIDL_CASE
  
@@ -209,10 +209,61 @@
 +
  already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
 +                                                       bool aIncludeThreads,
++                                                       bool aIncludeWindows,
                                                         ErrorResult& aRv) {
    // This function will use IPDL to enable threads info on macOS
    // see https://bugzilla.mozilla.org/show_bug.cgi?id=1529023
-@@ -2140,13 +2302,19 @@
+@@ -2102,26 +2265,28 @@
+     // Attach DOM window information to the process.
+     nsTArray<WindowInfo> windows;
+-    for (const auto& browserParentWrapperKey :
+-         contentParent->ManagedPBrowserParent()) {
+-      for (const auto& windowGlobalParentWrapperKey :
+-           browserParentWrapperKey->ManagedPWindowGlobalParent()) {
+-        // WindowGlobalParent is the only immediate subclass of
+-        // PWindowGlobalParent.
+-        auto* windowGlobalParent =
+-            static_cast<WindowGlobalParent*>(windowGlobalParentWrapperKey);
+-
+-        nsString documentTitle;
+-        windowGlobalParent->GetDocumentTitle(documentTitle);
+-        WindowInfo* window = windows.EmplaceBack(
+-            fallible,
+-            /* aOuterWindowId = */ windowGlobalParent->OuterWindowId(),
+-            /* aDocumentURI = */ windowGlobalParent->GetDocumentURI(),
+-            /* aDocumentTitle = */ std::move(documentTitle),
+-            /* aIsProcessRoot = */ windowGlobalParent->IsProcessRoot(),
+-            /* aIsInProcess = */ windowGlobalParent->IsInProcess());
+-        if (!window) {
+-          aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+-          return nullptr;
++    if (aIncludeWindows) {
++      for (const auto& browserParentWrapperKey :
++           contentParent->ManagedPBrowserParent()) {
++        for (const auto& windowGlobalParentWrapperKey :
++             browserParentWrapperKey->ManagedPWindowGlobalParent()) {
++          // WindowGlobalParent is the only immediate subclass of
++          // PWindowGlobalParent.
++          auto* windowGlobalParent =
++              static_cast<WindowGlobalParent*>(windowGlobalParentWrapperKey);
++
++          nsString documentTitle;
++          windowGlobalParent->GetDocumentTitle(documentTitle);
++          WindowInfo* window = windows.EmplaceBack(
++              fallible,
++              /* aOuterWindowId = */ windowGlobalParent->OuterWindowId(),
++              /* aDocumentURI = */ windowGlobalParent->GetDocumentURI(),
++              /* aDocumentTitle = */ std::move(documentTitle),
++              /* aIsProcessRoot = */ windowGlobalParent->IsProcessRoot(),
++              /* aIsInProcess = */ windowGlobalParent->IsInProcess());
++          if (!window) {
++            aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
++            return nullptr;
++          }
+         }
+       }
+     }
+@@ -2140,13 +2305,19 @@
      );
    }
  
@@ -234,7 +285,7 @@
              ParentProcInfoDictionary parentInfo;
              if (aSysProcInfo.count() == 0) {
                // For some reason, we couldn't get *any* info.
-@@ -2160,7 +2328,8 @@
+@@ -2160,7 +2331,8 @@
                const auto& sysProcInfo = iter.get().value();
                nsresult rv;
                if (sysProcInfo.type == ProcType::Browser) {
@@ -244,7 +295,7 @@
                  if (NS_FAILED(rv)) {
                    // Failing to copy? That's probably not something from we can
                    // (or should) try to recover gracefully.
-@@ -2176,7 +2345,8 @@
+@@ -2176,7 +2348,8 @@
                    domPromise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
                    return;
                  }

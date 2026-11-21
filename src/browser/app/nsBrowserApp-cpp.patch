@@ -31,7 +31,7 @@
  #define kDesktopFolder "browser"
  
  // Only `Output` below cares about this, and only on Windows, where it decides
-@@ -199,7 +216,98 @@
+@@ -199,7 +216,106 @@
  
  constinit Bootstrap::UniquePtr gBootstrap;
  
@@ -68,7 +68,20 @@
 +  return error == 0;
 +}
 +
-+static int PrepareMidoriCpuBudget(mozilla::midori::LinuxCpuBudget& aBudget) {
++static int PrepareDelegatedMidoriCpuBudget(
++    mozilla::midori::LinuxCpuBudget& aBudget) {
++  bool restoreFailed = false;
++  int error = aBudget.InitializeDelegated(restoreFailed);
++  if (restoreFailed) {
++    fprintf(stderr, "Midori CPU startup restoration failed: %d\n", error);
++    return -1;
++  }
++  return error ? 0 : 1;
++}
++
++static int PrepareMidoriCpuBudget(mozilla::midori::LinuxCpuBudget& aBudget,
++                                  bool& aDeferred) {
++  aDeferred = false;
 +  const char* wait = getenv("MIDORI_CPU_RESTART_WAIT");
 +  const bool restarting = wait != nullptr;
 +  const bool validRestart = wait && !strcmp(wait, "1");
@@ -83,13 +96,8 @@
 +    if (external >= 0 && external != group) close(external);
 +  });
 +  if (!groupPresent && !externalPresent && !restarting) {
-+    bool restoreFailed = false;
-+    int error = aBudget.InitializeDelegated(restoreFailed);
-+    if (restoreFailed) {
-+      fprintf(stderr, "Midori CPU startup restoration failed: %d\n", error);
-+      return -1;
-+    }
-+    return error ? 0 : 1;
++    aDeferred = true;
++    return 0;
 +  }
 +  if (!groupPresent || group < 0 || (externalPresent && external < 0))
 +    return restarting ? -1 : 0;
@@ -131,7 +139,7 @@
    // Allow firefox.exe to launch XULRunner apps via -app <application.ini>
    // Note that -app must be the *first* argument.
    const char* appDataFile = getenv("XUL_APP_FILE");
-@@ -241,6 +349,9 @@
+@@ -241,6 +357,9 @@
    }
  
    BootstrapConfig config;
@@ -141,7 +149,7 @@
  
    if (appDataFile && *appDataFile) {
      config.appData = nullptr;
-@@ -353,6 +464,9 @@
+@@ -353,6 +472,9 @@
      // Set the process type and gecko child id.
      SetGeckoProcessType(argv[--argc]);
      SetGeckoChildID(argv[--argc]);
@@ -151,11 +159,20 @@
  
  #  if defined(MOZ_ENABLE_FORKSERVER)
      if (GetGeckoProcessType() == GeckoProcessType_ForkServer) {
-@@ -388,6 +502,15 @@
+@@ -388,6 +510,24 @@
    ExpandFileDescriptorTable();
  #endif
  
-+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#if defined(XP_LINUX) && !defined(ANDROID)
++  mozilla::midori::CpuBudgetController cpuBudget;
++  bool cpuBudgetDeferred = false;
++  const int cpuBudgetStatus =
++      GetGeckoProcessType() == GeckoProcessType_Default
++          ? PrepareMidoriCpuBudget(cpuBudget, cpuBudgetDeferred)
++          : 0;
++  if (cpuBudgetStatus < 0) return 255;
++  bool cpuBudgetReady = cpuBudgetStatus > 0;
++#elif defined(XP_WIN)
 +  mozilla::midori::CpuBudgetController cpuBudget;
 +  const int cpuBudgetStatus = GetGeckoProcessType() == GeckoProcessType_Default
 +                                  ? PrepareMidoriCpuBudget(cpuBudget)
@@ -167,11 +184,22 @@
    mozilla::TimeStamp start = mozilla::TimeStamp::Now();
  
    AUTO_BASE_PROFILER_INIT;
-@@ -539,7 +662,12 @@
+@@ -539,7 +679,23 @@
    gBootstrap->XRE_EnableSameExecutableForContentProc();
  #endif
  
 -  int result = do_main(argc, argv, envp);
++#if defined(XP_LINUX) && !defined(ANDROID)
++  if (cpuBudgetDeferred) {
++    const int status = PrepareDelegatedMidoriCpuBudget(cpuBudget);
++    if (status < 0) {
++      gBootstrap->NS_LogTerm();
++      return 255;
++    }
++    cpuBudgetReady = status > 0;
++  }
++#endif
++
 +  int result = do_main(argc, argv, envp
 +#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
 +                       ,

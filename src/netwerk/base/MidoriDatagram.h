@@ -10,7 +10,7 @@
 #include "mozilla/Mutex.h"
 #include "mozilla/TimeStamp.h"
 #include "nsCOMPtr.h"
-#include "mozilla/net/DNS.h"
+#include "nsISupportsImpl.h"
 #include "nsTArray.h"
 
 class nsIUDPSocket;
@@ -19,6 +19,8 @@ class nsITimer;
 struct PRFileDesc;
 
 namespace mozilla::net {
+
+union NetAddr;
 
 class DatagramReceiveHeadroom final {
  public:

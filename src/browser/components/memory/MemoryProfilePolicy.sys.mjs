@@ -353,9 +353,13 @@ export function getPreferenceInventory(profileIndex, platform = 'unknown') {
 }
 
 export function getPrefsNeedingRestart(profileIndex, platform = 'unknown') {
-  return getPreferenceInventory(profileIndex, platform)
-    .filter(entry => (entry.applies || '').startsWith('restart'))
-    .map(entry => entry.pref);
+  const preferences = [];
+  for (const prefs of Object.values(getPreferencesByPolicy(profileIndex, platform))) {
+    for (const pref of Object.keys(prefs)) {
+      if ((PREF_METADATA[pref]?.applies || '').startsWith('restart')) preferences.push(pref);
+    }
+  }
+  return preferences.sort();
 }
 
 /**

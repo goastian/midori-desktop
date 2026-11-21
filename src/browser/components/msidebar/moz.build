@@ -15,6 +15,7 @@ EXTRA_JS_MODULES.msidebar += [
     "SidebarExtensions.mjs",
     "SidebarLifecycle.mjs",
     "SidebarModel.mjs",
+    "SidebarPanelEditor.mjs",
     "SidebarPanelHost.mjs",
     "SidebarPrefs.mjs",
     "SidebarSites.mjs",

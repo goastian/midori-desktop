@@ -32,6 +32,7 @@ export const MidoriResourceService = {
   _sampler: new ResourceSampler(),
   _timer: null,
   _pending: null,
+  _snapshotRequested: false,
   _sample: null,
   _sampleError: null,
   _memoryState: 'off',
@@ -181,7 +182,7 @@ export const MidoriResourceService = {
     this.init();
     this._subscribers.add(listener);
     this._publish();
-    this.sampleNow();
+    this._sampleNow();
     let active = true;
     return () => {
       if (!active) return;
@@ -291,7 +292,7 @@ export const MidoriResourceService = {
       if (token !== this._networkToken) return;
       this._networkChecks++;
       try {
-        const processes = await ChromeUtils.requestProcInfo(false);
+        const processes = await ChromeUtils.requestProcInfo(false, false);
         if (token !== this._networkToken) return;
         const requests = [ChromeUtils.requestManagedSocketUsage(false)];
         if (processes.children.some(process => process.type === 'socket')) {
@@ -317,8 +318,14 @@ export const MidoriResourceService = {
   },
 
   sampleNow() {
+    this._snapshotRequested = true;
+    return this._sampleNow();
+  },
+
+  _sampleNow() {
     this._pending ||= this._takeSample().finally(() => {
       this._pending = null;
+      this._snapshotRequested = false;
       this._schedule();
     });
     return this._pending;
@@ -357,7 +364,7 @@ export const MidoriResourceService = {
       this._memoryState = 'error';
     }
     this._publish();
-    return this.getSnapshot();
+    return this._snapshotRequested ? this.getSnapshot() : undefined;
   },
 
   _publish() {
@@ -380,7 +387,7 @@ export const MidoriResourceService = {
     if ((!enabled && !cpu && !this._subscribers.size) || this._pending) return;
     this._timer = lazy.setTimeout(() => {
       this._timer = null;
-      if (enabled || this._subscribers.size) this.sampleNow();
+      if (enabled || this._subscribers.size) this._sampleNow();
       else this._cpuController.refresh();
     }, this._subscribers.size ? 1000 : !cpu && this._memoryState === 'blocked' ? 10000 : 3000);
   },

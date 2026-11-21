@@ -26,6 +26,16 @@ const budgetFields = [
 ];
 let capabilities;
 const networkPresetValues = new Set(Array.from($('network-preset').options, option => option.value));
+const readoutObserver = new ResizeObserver(entries => {
+  for (const entry of entries) {
+    const height = entry.borderBoxSize[0]?.blockSize;
+    const readout = entry.target.parentElement;
+    if (readout && Number.isFinite(height) && height > 0) {
+      const value = `${height}px`;
+      if (readout.style.blockSize !== value) readout.style.blockSize = value;
+    }
+  }
+});
 
 function setText(element, value) {
   if (element.textContent === value) return;
@@ -307,8 +317,8 @@ function render(state) {
   else snapshot = state;
   const sample = state.sample;
   latestSample = sample;
-  setText($('memory-used'), sample ? `${(sample.memoryBytes / GiB).toFixed(2)} GiB` : '—');
-  setText($('cpu-used'), sample?.cpuPercent === null || !sample ? '—' : `${sample.cpuPercent.toFixed(1)} %`);
+  setText($('memory-used').firstElementChild, sample ? `${(sample.memoryBytes / GiB).toFixed(2)} GiB` : '—');
+  setText($('cpu-used').firstElementChild, sample?.cpuPercent === null || !sample ? '—' : `${sample.cpuPercent.toFixed(1)} %`);
   if (sample?.cpuCapacitySource?.startsWith('parent-') && Number.isFinite(sample.cpuCapacity)) {
     const explanation = sample.cpuCapacitySource === 'parent-affinity-visible-cgroup'
       ? 'midori-performance-cpu-quota-explanation' : 'midori-performance-cpu-available-explanation';
@@ -317,7 +327,12 @@ function render(state) {
     document.l10n.setAttributes($('cpu-explanation'), 'midori-performance-cpu-explanation');
   }
   const pressure = sample ? Math.round(Math.min(1, sample.memoryBytes / state.configuration.memory.budgetBytes) * 1000) / 1000 : 0;
-  if ($('memory-pressure').value !== pressure) $('memory-pressure').value = pressure;
+  const meter = $('memory-pressure');
+  const pressureValue = String(pressure);
+  if (meter.getAttribute('aria-valuenow') !== pressureValue) {
+    meter.setAttribute('aria-valuenow', pressureValue);
+    $('memory-pressure-fill').style.transform = `scaleX(${pressure})`;
+  }
   document.l10n.setAttributes($('memory-kind'), `midori-performance-measurement-${state.measurementKind}`);
   document.l10n.setAttributes($('memory-state'), `midori-performance-state-${state.memoryState}`);
   renderProcesses(sample);
@@ -328,9 +343,12 @@ function render(state) {
 function connect() {
   if (!hostVisible || document.visibilityState === 'hidden' || unsubscribe) return;
   unsubscribe = service.subscribe(render);
+  readoutObserver.observe($('memory-used').firstElementChild);
+  readoutObserver.observe($('cpu-used').firstElementChild);
 }
 
 function disconnect() {
+  readoutObserver.disconnect();
   unsubscribe?.();
   unsubscribe = null;
 }

@@ -1,15 +1,16 @@
 diff --git a/dom/media/webrtc/transport/transportlayerice.cpp b/dom/media/webrtc/transport/transportlayerice.cpp
 --- a/dom/media/webrtc/transport/transportlayerice.cpp
 +++ b/dom/media/webrtc/transport/transportlayerice.cpp
-@@ -40,6 +40,7 @@
- 
- #include <string>
+@@ -54,6 +54,8 @@
+ #include "nricemediastream.h"
+ #include "transportlayerice.h"
  
 +#include "mozilla/net/MidoriDatagram.h"
- #include "nsComponentManagerUtils.h"
- #include "nsError.h"
- #include "nsNetCID.h"
-@@ -104,6 +105,7 @@
++
+ namespace mozilla {
+ 
+ #ifdef ERROR
+@@ -104,6 +106,7 @@
  
  TransportResult TransportLayerIce::SendPacket(MediaPacket& packet) {
    CheckThread();
@@ -17,7 +18,7 @@ diff --git a/dom/media/webrtc/transport/transportlayerice.cpp b/dom/media/webrtc
    nsresult res =
        stream_->SendPacket(component_, packet.data(), packet.len(), dtls_id_);
    int len = packet.len();
-@@ -114,6 +116,7 @@
+@@ -114,6 +117,7 @@
      return (res == NS_BASE_STREAM_WOULD_BLOCK) ? TE_WOULDBLOCK : TE_ERROR;
    }
  
