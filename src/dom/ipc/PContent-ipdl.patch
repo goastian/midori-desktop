@@ -10,11 +10,12 @@ diff --git a/dom/ipc/PContent.ipdl b/dom/ipc/PContent.ipdl
      async ConstructPopupBrowser(ManagedEndpoint<PBrowserParent> browserEp,
                                  ManagedEndpoint<PWindowGlobalParent> windowEp,
                                  TabId tabId, IPCTabContext context,
-@@ -582,6 +584,8 @@
+@@ -582,6 +584,9 @@
      async PExtensions();
  
  child:
 +    async UpdateMidoriMediaSendingCallCount(uint32_t count);
++    async UpdateMidoriWorkerCpuRate(uint32_t rateNanocpus);
 +
      async ConstructBrowser(ManagedEndpoint<PBrowserChild> browserEp,
                             ManagedEndpoint<PWindowGlobalChild> windowEp,

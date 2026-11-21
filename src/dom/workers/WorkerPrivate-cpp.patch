@@ -1,0 +1,120 @@
+diff --git a/dom/workers/WorkerPrivate.cpp b/dom/workers/WorkerPrivate.cpp
+--- a/dom/workers/WorkerPrivate.cpp
++++ b/dom/workers/WorkerPrivate.cpp
+@@ -3,6 +3,8 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "WorkerPrivate.h"
++#include "mozilla/dom/MidoriWorkerCpuBudget.h"
++#include "base/platform_thread.h"
+ 
+ #include <utility>
+ 
+@@ -716,6 +718,18 @@
+   workerPrivate->CancelGCTimers();
+ }
+ 
++class UpdateMidoriCpuBudgetRunnable final : public WorkerControlRunnable {
++ public:
++  UpdateMidoriCpuBudgetRunnable()
++      : WorkerControlRunnable("UpdateMidoriCpuBudgetRunnable") {}
++
++ private:
++  bool WorkerRun(JSContext*, WorkerPrivate* aWorker) override {
++    aWorker->UpdateCpuBudgetRateInternal();
++    return true;
++  }
++};
++
+ class UpdateContextOptionsRunnable final : public WorkerControlRunnable {
+   JS::ContextOptions mContextOptions;
+ 
+@@ -4225,6 +4239,7 @@
+ 
+ void WorkerPrivate::OnProcessNextEvent() {
+   AssertIsOnWorkerThread();
++  if (mMidoriCpuGovernor) mMidoriCpuGovernor->BeforeEvent();
+ 
+   uint32_t recursionDepth = GetEffectiveEventLoopRecursionDepth();
+   MOZ_ASSERT(recursionDepth);
+@@ -4242,6 +4257,8 @@
+ 
+ void WorkerPrivate::AfterProcessNextEvent() {
+   AssertIsOnWorkerThread();
++  if (mMidoriCpuGovernor && GetEffectiveEventLoopRecursionDepth() == 1)
++    mMidoriCpuGovernor->AfterEvent();
+   MOZ_ASSERT(GetEffectiveEventLoopRecursionDepth());
+ }
+ 
+@@ -5065,9 +5082,55 @@
+   return true;
+ }
+ 
++void WorkerPrivate::UpdateCpuBudgetRate() {
++  AssertIsOnParentThread();
++  RefPtr<UpdateMidoriCpuBudgetRunnable> runnable =
++      new UpdateMidoriCpuBudgetRunnable();
++  static_cast<void>(runnable->Dispatch(this));
++}
++
++void WorkerPrivate::UpdateCpuBudgetRateInternal() {
++  AssertIsOnWorkerThread();
++  const bool background =
++      mIsInBackground && !IsPlayingAudio() && !HasActivePeerConnections();
++  if (!mMidoriCpuGovernor && background && CurrentManagedWorkerCpuRate())
++    mMidoriCpuGovernor = MakeUnique<MidoriWorkerCpuBudget>(this);
++  if (mMidoriCpuGovernor) mMidoriCpuGovernor->Refresh(background);
++  auto data = mWorkerThreadAccessible.Access();
++  for (auto& child : data->mChildWorkers) child->UpdateCpuBudgetRate();
++}
++
++void WorkerPrivate::UpdateCpuBudgetRole(bool aAlive) {
++  AssertIsOnWorkerThread();
++  if (aAlive) {
++    const bool background =
++        mIsInBackground && !IsPlayingAudio() && !HasActivePeerConnections();
++    if (!mMidoriCpuGovernor && background && CurrentManagedWorkerCpuRate())
++      mMidoriCpuGovernor = MakeUnique<MidoriWorkerCpuBudget>(this);
++    if (mMidoriCpuGovernor) mMidoriCpuGovernor->Refresh(background);
++  } else if (mMidoriCpuGovernor) {
++    mMidoriCpuGovernor->Stop();
++  }
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || defined(XP_MACOSX)
++  if (!aAlive && !mMidoriCpuRoleRegistered) return;
++  auto* actor = BackgroundChild::GetForCurrentThread();
++  if (!actor) return;
++  bool background =
++      mIsInBackground && !IsPlayingAudio() && !HasActivePeerConnections();
++  if (actor->SendMidoriWorkerCpuRole(
++          static_cast<uint64_t>(PlatformThread::CurrentId()), background,
++          aAlive)) {
++    mMidoriCpuRoleRegistered = aAlive;
++  }
++#else
++  static_cast<void>(aAlive);
++#endif
++}
++
+ bool WorkerPrivate::ChangeBackgroundStateInternal(bool aIsBackground) {
+   AssertIsOnWorkerThread();
+   mIsInBackground = aIsBackground;
++  UpdateCpuBudgetRole(true);
+   auto data = mWorkerThreadAccessible.Access();
+   if (StaticPrefs::dom_workers_throttling_enabled_AtStartup()) {
+     auto* timeoutManager =
+@@ -5090,6 +5153,7 @@
+ bool WorkerPrivate::ChangePlaybackStateInternal(bool aIsPlayingAudio) {
+   AssertIsOnWorkerThread();
+   mIsPlayingAudio = aIsPlayingAudio;
++  UpdateCpuBudgetRole(true);
+   auto data = mWorkerThreadAccessible.Access();
+ 
+   for (uint32_t index = 0; index < data->mChildWorkers.Length(); index++) {
+@@ -5101,6 +5165,7 @@
+ bool WorkerPrivate::ChangePeerConnectionsInternal(bool aHasPeerConnections) {
+   AssertIsOnWorkerThread();
+   mHasActivePeerConnections = aHasPeerConnections;
++  UpdateCpuBudgetRole(true);
+   auto data = mWorkerThreadAccessible.Access();
+ 
+   for (uint32_t index = 0; index < data->mChildWorkers.Length(); index++) {

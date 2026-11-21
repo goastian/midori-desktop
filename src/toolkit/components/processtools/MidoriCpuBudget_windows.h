@@ -6,9 +6,10 @@
 #define TOOLKIT_COMPONENTS_PROCESSTOOLS_MIDORICPUBUDGET_WINDOWS_H_
 
 #ifdef _WIN32
+#  include "MidoriCpuBootstrap_windows.h"
+#  include "MidoriWorkerCpuRoles_windows.h"
 #  include <cstdint>
 #  include <windows.h>
-#  include "MidoriCpuBootstrap_windows.h"
 
 namespace mozilla::midori {
 
@@ -124,6 +125,13 @@ class WindowsCpuBudget final {
     return ERROR_SUCCESS;
   }
 
+  DWORD SetWorkerRole(uintptr_t aOwner, uint32_t aPid, uint64_t aTid,
+                      bool aBackground, bool aAlive) {
+    if (!mJob) return ERROR_NOT_READY;
+    if (mOwner != GetCurrentProcessId()) return ERROR_ACCESS_DENIED;
+    return mWorkerRoles.SetWorker(aOwner, aPid, aTid, aBackground, aAlive);
+  }
+
  private:
   DWORD InitializeInternal(HANDLE aProcess, bool aAllowIndependent) {
     if (mJob) return ERROR_ALREADY_INITIALIZED;
@@ -156,6 +164,7 @@ class WindowsCpuBudget final {
       return error;
     }
     mJob = job;
+    mWorkerRoles.Prepare(job);
     mProcess = process;
     mOwner = GetCurrentProcessId();
     mHasExternalJob = external != FALSE;
@@ -251,25 +260,26 @@ class WindowsCpuBudget final {
 
   DWORD SetRate(uint32_t aRate) {
     if (!mJob) return ERROR_NOT_READY;
-    if (GetCurrentProcessId() != mOwner) return ERROR_ACCESS_DENIED;
-    if (aRate > 10000) return ERROR_INVALID_PARAMETER;
+    if (mOwner != GetCurrentProcessId()) return ERROR_ACCESS_DENIED;
     JOBOBJECT_CPU_RATE_CONTROL_INFORMATION previous = {};
     DWORD error = Read(mJob, previous);
-    if (error && aRate) return error;
+    if (aRate && error) return error;
     if (aRate && (previous.ControlFlags != Flags(mRate) ||
                   (mRate && previous.CpuRate != mRate))) {
-      return ERROR_INVALID_DATA;
+      return ERROR_BUSY;
     }
-    if (error || previous.ControlFlags != Flags(aRate) ||
-        (aRate && previous.CpuRate != aRate)) {
-      error = WriteAndVerify(mJob, aRate);
+    if (!aRate) {
+      error = WriteAndVerify(mJob, 0);
+      if (error) return error;
+      mRate = 0;
+      return mWorkerRoles.SetEnabled(false);
     }
+    error = mWorkerRoles.SetEnabled(true);
+    if (!error && aRate != mRate) error = WriteAndVerify(mJob, aRate);
     if (error) {
-      if (aRate) {
-        DWORD restoreError = WriteAndVerify(mJob, mRate);
-        if (restoreError) return restoreError;
-      }
-      return error;
+      DWORD restored = WriteAndVerify(mJob, mRate);
+      DWORD roles = mWorkerRoles.SetEnabled(mRate != 0);
+      return restored ? restored : roles ? roles : error;
     }
     mRate = aRate;
     return ERROR_SUCCESS;
@@ -308,6 +318,7 @@ class WindowsCpuBudget final {
     return ERROR_SUCCESS;
   }
 
+  WindowsWorkerCpuRoles mWorkerRoles;
   HANDLE mJob = nullptr;
   HANDLE mProcess = nullptr;
   DWORD mOwner = 0;

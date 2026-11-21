@@ -1,18 +1,26 @@
 diff --git a/dom/ipc/ContentChild.cpp b/dom/ipc/ContentChild.cpp
 --- a/dom/ipc/ContentChild.cpp
 +++ b/dom/ipc/ContentChild.cpp
-@@ -7,6 +7,7 @@
+@@ -7,6 +7,8 @@
  #endif
  
  #include "BrowserChild.h"
 +#include "mozilla/net/MidoriNetworkBudget.h"
++#include "mozilla/dom/MidoriWorkerCpuBudget.h"
  #include "ChildProfilerController.h"
  #include "ContentChild.h"
  #include "GMPServiceChild.h"
-@@ -365,6 +366,12 @@
+@@ -365,6 +367,19 @@
  namespace mozilla {
  namespace dom {
  
++mozilla::ipc::IPCResult ContentChild::RecvUpdateMidoriWorkerCpuRate(
++    const uint32_t& aRateNanocpus) {
++  if (aRateNanocpus > 1000000000) return IPC_FAIL(this, "Invalid worker CPU rate");
++  ReceiveManagedWorkerCpuRate(aRateNanocpus);
++  return IPC_OK();
++}
++
 +mozilla::ipc::IPCResult ContentChild::RecvUpdateMidoriMediaSendingCallCount(
 +    const uint32_t& aCount) {
 +  net::MidoriNetworkBudget::SetGlobalMediaSendingCallCount(aCount);

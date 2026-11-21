@@ -1,0 +1,54 @@
+diff --git a/ipc/glue/BackgroundParentImpl.cpp b/ipc/glue/BackgroundParentImpl.cpp
+--- a/ipc/glue/BackgroundParentImpl.cpp
++++ b/ipc/glue/BackgroundParentImpl.cpp
+@@ -3,6 +3,9 @@
+  * You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "BackgroundParentImpl.h"
++#include "base/process_util.h"
++#include "mozilla/MidoriCpuBudget.h"
++#include "mozilla/dom/MidoriWorkerCpuBudget.h"
+ 
+ #include "BroadcastChannelParent.h"
+ #ifdef MOZ_WEBRTC
+@@ -161,6 +164,40 @@
+ void BackgroundParentImpl::ActorDestroy(ActorDestroyReason aWhy) {
+   AssertIsInMainProcess();
+   AssertIsOnBackgroundThread();
++  dom::ChangeManagedBackgroundWorkerCount(mMidoriWorkerBackground, false);
++  mMidoriWorkerBackground = false;
++  if (mMidoriWorkerTid) {
++    static_cast<void>(midori::SetManagedWorkerCpuRole(
++        reinterpret_cast<uintptr_t>(this), mMidoriWorkerPid, mMidoriWorkerTid,
++        false, false));
++  }
++}
++
++mozilla::ipc::IPCResult BackgroundParentImpl::RecvMidoriWorkerCpuRole(
++    const uint64_t& aTid, const bool& aBackground, const bool& aAlive) {
++  AssertIsInMainProcess();
++  AssertIsOnBackgroundThread();
++  if (!aTid ||
++#if !defined(XP_MACOSX)
++      aTid > UINT32_MAX ||
++#endif
++      (mMidoriWorkerTid && mMidoriWorkerTid != aTid)) {
++    return IPC_FAIL(this, "Invalid worker thread identity");
++  }
++  auto pid = BackgroundParent::IsOtherProcessActor(this)
++                 ? OtherPid()
++                 : base::GetCurrentProcId();
++  mMidoriWorkerPid = static_cast<uint32_t>(pid);
++  mMidoriWorkerTid = aTid;
++  int error = midori::SetManagedWorkerCpuRole(reinterpret_cast<uintptr_t>(this),
++                                              mMidoriWorkerPid, aTid,
++                                              aBackground, aAlive);
++  NS_WARNING_ASSERTION(!error, "Midori worker CPU class could not be applied");
++  dom::ChangeManagedBackgroundWorkerCount(mMidoriWorkerBackground,
++                                          aAlive && aBackground);
++  mMidoriWorkerBackground = aAlive && aBackground;
++  if (!aAlive && !error) mMidoriWorkerTid = 0;
++  return IPC_OK();
+ }
+ 
+ BackgroundParentImpl::PBackgroundTestParent*

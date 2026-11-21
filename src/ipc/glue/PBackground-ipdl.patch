@@ -1,0 +1,12 @@
+diff --git a/ipc/glue/PBackground.ipdl b/ipc/glue/PBackground.ipdl
+--- a/ipc/glue/PBackground.ipdl
++++ b/ipc/glue/PBackground.ipdl
+@@ -122,6 +122,8 @@
+   manages PFetch;
+ 
+ parent:
++  async MidoriWorkerCpuRole(uint64_t tid, bool background, bool alive);
++
+   // Only called at startup during mochitests to check the basic infrastructure.
+   async PBackgroundTest(nsCString testArg);
+ 

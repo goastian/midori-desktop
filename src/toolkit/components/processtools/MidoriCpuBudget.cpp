@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "MidoriCpuBudget.h"
+#include "mozilla/dom/MidoriWorkerCpuBudget.h"
 #include "mozilla/MidoriCpuBudget_linux.h"
 #include "mozilla/MidoriCpuBudget_windows.h"
 #ifdef XP_WIN
@@ -35,6 +36,18 @@ void SetManagedCpuBudgetController(CpuBudgetController* aController) {
   if (aController) sMidoriCpuBudgetContext = true;
 #  endif
 #endif
+}
+
+int SetManagedWorkerCpuRole(uintptr_t aOwner, uint32_t aPid, uint64_t aTid,
+                            bool aBackground, bool aAlive) {
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  if (sMidoriCpuBudgetController && !sMidoriCpuBudgetClosing) {
+    return sMidoriCpuBudgetController->SetWorkerRole(aOwner, aPid, aTid,
+                                                     aBackground, aAlive);
+  }
+#endif
+  return 0;
 }
 
 #ifdef XP_WIN
@@ -100,6 +113,7 @@ int OpenManagedCpuRestartFiles(int& aGroup, int& aExternal) {
 #endif
 
 int BeginManagedCpuBudgetShutdown() {
+  dom::NotifyManagedWorkerCpuQuota(0);
 #if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   if (sMidoriCpuBudgetController) {
@@ -117,6 +131,7 @@ int BeginManagedCpuBudgetShutdown() {
 }
 
 int RestoreManagedCpuBudget() {
+  dom::NotifyManagedWorkerCpuQuota(0);
 #if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   sMidoriCpuBudgetClosing = true;
@@ -194,6 +209,8 @@ RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage) {
           }
         }
 #endif
+        if (result.applied)
+          dom::NotifyManagedWorkerCpuQuota(result.ownQuotaCpus);
         promise->Resolve(result, __func__);
       }));
   if (NS_FAILED(rv)) promise->Reject(rv, __func__);

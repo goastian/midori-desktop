@@ -1,0 +1,18 @@
+diff --git a/ipc/glue/BackgroundParentImpl.h b/ipc/glue/BackgroundParentImpl.h
+--- a/ipc/glue/BackgroundParentImpl.h
++++ b/ipc/glue/BackgroundParentImpl.h
+@@ -19,6 +19,14 @@
+   void ProcessingError(Result aCode, const char* aReason) override;
+ 
+   void ActorDestroy(ActorDestroyReason aWhy) override;
++
++  mozilla::ipc::IPCResult RecvMidoriWorkerCpuRole(const uint64_t& aTid,
++                                                  const bool& aBackground,
++                                                  const bool& aAlive) override;
++
++  bool mMidoriWorkerBackground = false;
++  uint64_t mMidoriWorkerTid = 0;
++  uint32_t mMidoriWorkerPid = 0;
+ 
+   PBackgroundTestParent* AllocPBackgroundTestParent(
+       const nsACString& aTestArg) override;

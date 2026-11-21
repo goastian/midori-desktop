@@ -1,0 +1,34 @@
+diff --git a/dom/workers/WorkerPrivate.h b/dom/workers/WorkerPrivate.h
+--- a/dom/workers/WorkerPrivate.h
++++ b/dom/workers/WorkerPrivate.h
+@@ -83,6 +83,7 @@
+ class ClientSource;
+ class Function;
+ class JSExecutionManager;
++class MidoriWorkerCpuBudget;
+ class MessagePort;
+ class UniqueMessagePortId;
+ class PerformanceStorage;
+@@ -330,6 +331,10 @@
+ 
+   void SetIsRunningInForeground();
+ 
++  void UpdateCpuBudgetRole(bool aAlive);
++  void UpdateCpuBudgetRate();
++  void UpdateCpuBudgetRateInternal();
++
+   bool ChangeBackgroundStateInternal(bool aIsBackground);
+   bool ChangePlaybackStateInternal(bool aIsPlayingAudio);
+   bool ChangePeerConnectionsInternal(bool aHasPeerConnections);
+@@ -1766,6 +1771,11 @@
+ 
+   bool mDebuggerRegistered MOZ_GUARDED_BY(mMutex);
+   mozilla::Atomic<bool> mIsInBackground;
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || defined(XP_MACOSX)
++  bool mMidoriCpuRoleRegistered = false;
++#endif
++  friend class MidoriWorkerCpuBudget;
++  UniquePtr<MidoriWorkerCpuBudget> mMidoriCpuGovernor;
+   bool mIsPlayingAudio{};
+   bool mHasActivePeerConnections{};
+ 

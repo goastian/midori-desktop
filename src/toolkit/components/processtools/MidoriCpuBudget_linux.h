@@ -6,12 +6,13 @@
 #define TOOLKIT_COMPONENTS_PROCESSTOOLS_MIDORICPUBUDGET_LINUX_H_
 
 #if defined(XP_LINUX) && !defined(ANDROID)
+#  include "MidoriWorkerCpuRoles_linux.h"
 #  include <algorithm>
 #  include <cerrno>
 #  include <cmath>
 #  include <cstdint>
-#  include <cstdlib>
 #  include <cstdio>
+#  include <cstdlib>
 #  include <cstring>
 #  include <dirent.h>
 #  include <dlfcn.h>
@@ -255,6 +256,15 @@ class LinuxCpuBudget final {
     if (mGroup < 0) return ENODEV;
     if (!IsOwner()) return EPERM;
     return ExternalCapacity(mGroup, aCapacity);
+  }
+
+  int SetWorkerRole(uintptr_t aOwner, uint32_t aPid, uint64_t aTid,
+                    bool aBackground, bool aAlive) {
+    if (mGroup < 0) return ENODEV;
+    if (!IsOwner()) return EPERM;
+    if (!aOwner || !aPid || aPid > INT32_MAX) return EINVAL;
+    return mWorkerRoles.SetWorker(aOwner, pid_t(aPid), aTid, aBackground,
+                                  aAlive);
   }
 
   int Shutdown() {
@@ -686,36 +696,44 @@ class LinuxCpuBudget final {
          item = strtok_r(nullptr, " \n", &saved)) {
       if (!strcmp(item, "cpu")) aEnabled = true;
     }
+    if (mWorkerRoles.IsPrepared()) {
+      bool workers;
+      int error = mWorkerRoles.ReadEnabled(workers);
+      if (error || workers != aEnabled) return error ? error : EIO;
+    }
     return 0;
+  }
+
+  int WriteRoleDistribution(bool aEnabled) const {
+    if (!aEnabled) {
+      int error = mWorkerRoles.SetEnabled(false);
+      return error ? error
+                   : WriteValue(mGroup, "cgroup.subtree_control", "-cpu");
+    }
+    int error = WriteValue(mGroup, "cgroup.subtree_control", "+cpu");
+    if (!error) error = mWorkerRoles.SetEnabled(true);
+    if (!error) error = WriteValue(mUiGroup, "cpu.weight", "300");
+    if (!error) error = WriteValue(mContentGroup, "cpu.weight", "100");
+    return error;
   }
 
   int SetRoleDistribution(bool aEnabled) const {
     bool enabled;
     int error = ReadRoleDistribution(enabled);
     if (error) return error;
-    if (enabled != aEnabled) {
-      error = WriteValue(mGroup, "cgroup.subtree_control",
-                         aEnabled ? "+cpu" : "-cpu");
-      if (error) return error;
-      if (aEnabled) {
-        error = WriteValue(mUiGroup, "cpu.weight", "300");
-        if (!error) error = WriteValue(mContentGroup, "cpu.weight", "100");
-        if (error) {
-          int restored = WriteValue(mGroup, "cgroup.subtree_control", "-cpu");
-          return restored ? restored : error;
-        }
-      }
+    bool changed = enabled != aEnabled;
+    auto restore = [&](int aError) {
+      if (!changed) return aError;
+      int restored = WriteRoleDistribution(enabled);
+      return restored ? restored : aError;
+    };
+    if (changed) {
+      error = WriteRoleDistribution(aEnabled);
+      if (error) return restore(error);
     }
     bool actual;
     error = ReadRoleDistribution(actual);
-    if (error || actual != aEnabled) {
-      int failure = error ? error : EIO;
-      if (aEnabled && !enabled) {
-        int restored = WriteValue(mGroup, "cgroup.subtree_control", "-cpu");
-        return restored ? restored : failure;
-      }
-      return failure;
-    }
+    if (error || actual != aEnabled) return restore(error ? error : EIO);
     if (aEnabled) {
       char ui[64], content[64];
       error = Read(mUiGroup, "cpu.weight", ui, sizeof(ui));
@@ -723,12 +741,10 @@ class LinuxCpuBudget final {
         error = Read(mContentGroup, "cpu.weight", content, sizeof(content));
       if (!error && (strcmp(ui, "300\n") || strcmp(content, "100\n")))
         error = EIO;
-      if (error && !enabled) {
-        int restored = WriteValue(mGroup, "cgroup.subtree_control", "-cpu");
-        return restored ? restored : error;
-      }
+      if (!error) error = mWorkerRoles.VerifyWeights();
+      if (error) return restore(error);
     }
-    return error;
+    return 0;
   }
 
   int PrepareRoles() {
@@ -747,30 +763,37 @@ class LinuxCpuBudget final {
     if (mContentGroup < 0) return errno;
     error = WriteValue(mUiGroup, "cgroup.procs", "0");
     if (!error) mMovedToRole = true;
+    if (!error) error = mWorkerRoles.Prepare(mUiGroup, mContentGroup);
     return error;
   }
 
   int ReleaseRoles() {
     if (!mUiCreated && !mContentCreated && !mMovedToRole) return 0;
     int error = SetRoleDistribution(false);
-    if (!error) {
-      int ui = ReturnRoleMembers(mUiGroup);
-      int content = ReturnRoleMembers(mContentGroup);
-      error = ui ? ui : content;
-    }
-    if (!error && mMovedToRole) {
+    if (error) return error;
+    error = ReturnRoleMembers(mUiGroup);
+    if (!error) error = ReturnRoleMembers(mContentGroup);
+    if (error) return error;
+    if (mMovedToRole) {
       error = WriteValue(mGroup, "cgroup.procs", "0");
-      if (!error) mMovedToRole = false;
+      if (error) return error;
+      mMovedToRole = false;
     }
-    if (mUiGroup >= 0) close(mUiGroup);
-    if (mContentGroup >= 0) close(mContentGroup);
-    mUiGroup = mContentGroup = -1;
-    if (mUiCreated && unlinkat(mGroup, "ui", AT_REMOVEDIR) && !error)
-      error = errno;
-    if (mContentCreated && unlinkat(mGroup, "content", AT_REMOVEDIR) && !error)
-      error = errno;
-    mUiCreated = mContentCreated = false;
-    return error;
+    error = mWorkerRoles.Release();
+    if (error) return error;
+    if (mUiCreated) {
+      if (unlinkat(mGroup, "ui", AT_REMOVEDIR)) return errno;
+      mUiCreated = false;
+      close(mUiGroup);
+      mUiGroup = -1;
+    }
+    if (mContentCreated) {
+      if (unlinkat(mGroup, "content", AT_REMOVEDIR)) return errno;
+      mContentCreated = false;
+      close(mContentGroup);
+      mContentGroup = -1;
+    }
+    return 0;
   }
 
   int ReturnRoleMembers(int aRole) const {
@@ -1007,6 +1030,7 @@ class LinuxCpuBudget final {
     return result;
   }
 
+  LinuxWorkerCpuRoles mWorkerRoles;
   int mGroup = -1;
   int mUiGroup = -1;
   int mContentGroup = -1;

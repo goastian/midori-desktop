@@ -1,10 +1,12 @@
 diff --git a/dom/ipc/ContentChild.h b/dom/ipc/ContentChild.h
 --- a/dom/ipc/ContentChild.h
 +++ b/dom/ipc/ContentChild.h
-@@ -376,6 +376,8 @@
+@@ -376,6 +376,10 @@
    void NotifyMemoryPressure(const char* aTopic, const char16_t* aReason);
  
   public:
++  mozilla::ipc::IPCResult RecvUpdateMidoriWorkerCpuRate(
++      const uint32_t& aRateNanocpus);
 +  mozilla::ipc::IPCResult RecvUpdateMidoriMediaSendingCallCount(
 +      const uint32_t& aCount);
    mozilla::ipc::IPCResult RecvMemoryPressure(const nsString& reason);

@@ -1,0 +1,20 @@
+diff --git a/dom/workers/moz.build b/dom/workers/moz.build
+--- a/dom/workers/moz.build
++++ b/dom/workers/moz.build
+@@ -12,6 +12,7 @@
+     "ChromeWorker.h",
+     "EventWithOptionsRunnable.h",
+     "JSExecutionManager.h",
++    "MidoriWorkerCpuBudget.h",
+     "Worker.h",
+     "WorkerChannelInfo.h",
+     "WorkerCommon.h",
+@@ -30,6 +31,8 @@
+     "WorkerStatus.h",
+     "WorkerTestUtils.h",
+ ]
++
++SOURCES += ["MidoriWorkerCpuBudget.cpp"]
+ 
+ # Private stuff.
+ EXPORTS.mozilla.dom.workerinternals += [

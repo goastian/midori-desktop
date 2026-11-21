@@ -28,6 +28,8 @@ struct ManagedCpuCapacity {
 };
 
 ManagedCpuCapacity ReadManagedCpuCapacity();
+int SetManagedWorkerCpuRole(uintptr_t aOwner, uint32_t aPid, uint64_t aTid,
+                            bool aBackground, bool aAlive);
 #if defined(XP_LINUX) && !defined(ANDROID)
 int OpenManagedCpuExternalProcess(int& aFile);
 int OpenManagedCpuChildProcess(int& aFile);

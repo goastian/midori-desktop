@@ -1,0 +1,39 @@
+diff --git a/gfx/thebes/SoftwareVsyncSource.cpp b/gfx/thebes/SoftwareVsyncSource.cpp
+--- a/gfx/thebes/SoftwareVsyncSource.cpp
++++ b/gfx/thebes/SoftwareVsyncSource.cpp
+@@ -83,22 +83,29 @@
+                                       const TimeStamp& aOutputTimestamp) {
+   MOZ_ASSERT(IsInSoftwareVsyncThread());
+ 
+-  TimeStamp displayVsyncTime = aVsyncTimestamp;
++  TimeStamp scheduledVsyncTime = aVsyncTimestamp;
++  TimeStamp outputTime = aOutputTimestamp;
+   TimeStamp now = TimeStamp::Now();
++  TimeDuration vsyncRate = GetVsyncRate();
++  TimeDuration lateness = now - scheduledVsyncTime;
++  if (vsyncRate > TimeDuration::Zero() && lateness >= vsyncRate) {
++    scheduledVsyncTime = now - (lateness % vsyncRate);
++    outputTime = scheduledVsyncTime + vsyncRate;
++  }
++  TimeStamp displayVsyncTime = scheduledVsyncTime;
+   // Posted tasks can only have integer millisecond delays
+   // whereas TimeDurations can have floating point delays.
+   // Thus the vsync timestamp can be in the future, which large parts
+   // of the system can't handle, including animations. Force the timestamp to be
+   // now.
+-  if (aVsyncTimestamp > now) {
++  if (scheduledVsyncTime > now) {
+     displayVsyncTime = now;
+   }
+ 
+-  VsyncSource::NotifyVsync(displayVsyncTime, aOutputTimestamp);
++  VsyncSource::NotifyVsync(displayVsyncTime, outputTime);
+ 
+-  // Prevent skew by still scheduling based on the original
+-  // vsync timestamp
+-  ScheduleNextVsync(aVsyncTimestamp);
++  // Preserve the scheduled phase while skipping missed pulses.
++  ScheduleNextVsync(scheduledVsyncTime);
+ }
+ 
+ TimeDuration SoftwareVsyncSource::GetVsyncRate() {

@@ -1,6 +1,6 @@
 --- a/toolkit/components/processtools/moz.build
 +++ b/toolkit/components/processtools/moz.build
-@@ -16,6 +16,12 @@
+@@ -16,6 +16,14 @@
  ]
  
  EXPORTS.mozilla += [
@@ -10,10 +10,12 @@
 +    "MidoriCpuBudget_windows.h",
 +    "MidoriCpuBudgetController.h",
 +    "MidoriCpuCapacity_linux.h",
++    "MidoriWorkerCpuRoles_linux.h",
++    "MidoriWorkerCpuRoles_windows.h",
      "ProcInfo.h",
      "ProcInfo_linux.h",
  ]
-@@ -25,6 +31,7 @@
+@@ -25,6 +33,7 @@
  ]
  
  UNIFIED_SOURCES += [
