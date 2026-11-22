@@ -30,6 +30,10 @@ struct ManagedCpuCapacity {
 ManagedCpuCapacity ReadManagedCpuCapacity();
 int SetManagedWorkerCpuRole(uintptr_t aOwner, uint32_t aPid, uint64_t aTid,
                             bool aBackground, bool aAlive);
+#ifdef XP_MACOSX
+int RegisterManagedCpuTask(uintptr_t aOwner, uint32_t aPid, uint32_t aTask);
+int UnregisterManagedCpuTask(uintptr_t aOwner);
+#endif
 #if defined(XP_LINUX) && !defined(ANDROID)
 int OpenManagedCpuExternalProcess(int& aFile);
 int OpenManagedCpuChildProcess(int& aFile);

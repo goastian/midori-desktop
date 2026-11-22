@@ -6,15 +6,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "JSExecutionManager.h"
-#include "RuntimeService.h"
 #include "WorkerPrivate.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/AutoRestore.h"
-#include "mozilla/Unused.h"
+#include "mozilla/StaticMutex.h"
+#include "mozilla/StaticPtr.h"
 #include "mozilla/dom/ContentParent.h"
 #include "nsITimer.h"
+#include "nsTArray.h"
 #include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
 
@@ -35,16 +37,41 @@ static Atomic<uint32_t> sWorkerCpuRate(0);
 static Atomic<uint32_t> sBackgroundWorkers(0);
 static Atomic<bool> sQuotaActive(false);
 static Atomic<bool> sUpdatePending(false);
+static Atomic<uint64_t> sQuotaRevision(0);
 static double sOwnQuotaCpus = 0;
+static StaticMutex sWorkerCpuTargetsMutex;
+static StaticAutoPtr<nsTArray<nsCOMPtr<nsISerialEventTarget>>> sWorkerCpuTargets
+    MOZ_GUARDED_BY(sWorkerCpuTargetsMutex);
 
 uint32_t CurrentManagedWorkerCpuRate() { return sWorkerCpuRate; }
 
 void ReceiveManagedWorkerCpuRate(uint32_t aRateNanocpus) {
-  MOZ_ASSERT(NS_IsMainThread());
   MOZ_RELEASE_ASSERT(aRateNanocpus <= kNanocpusPerCpu);
-  sWorkerCpuRate = aRateNanocpus;
-  if (auto* service = workerinternals::RuntimeService::GetService()) {
-    service->UpdateAllWorkerCpuBudgets();
+  nsTArray<nsCOMPtr<nsISerialEventTarget>> targets;
+  {
+    StaticMutexAutoLock lock(sWorkerCpuTargetsMutex);
+    sWorkerCpuRate = aRateNanocpus;
+    if (sWorkerCpuTargets) targets.Assign(*sWorkerCpuTargets);
+  }
+  for (const auto& target : targets) {
+    static_cast<void>(target->Dispatch(
+        NS_NewRunnableFunction("MidoriWorkerCpuBudget::RateChanged", [] {
+          if (auto* worker = GetCurrentThreadWorkerPrivate())
+            worker->UpdateCpuBudgetRateInternal();
+        })));
+  }
+}
+
+void SetManagedWorkerCpuTarget(nsISerialEventTarget* aTarget, bool aAlive) {
+  StaticMutexAutoLock lock(sWorkerCpuTargetsMutex);
+  if (aAlive) {
+    if (!sWorkerCpuTargets)
+      sWorkerCpuTargets = new nsTArray<nsCOMPtr<nsISerialEventTarget>>();
+    if (!sWorkerCpuTargets->Contains(aTarget))
+      sWorkerCpuTargets->AppendElement(aTarget);
+  } else if (sWorkerCpuTargets) {
+    sWorkerCpuTargets->RemoveElement(aTarget);
+    if (sWorkerCpuTargets->IsEmpty()) sWorkerCpuTargets = nullptr;
   }
 }
 
@@ -60,16 +87,17 @@ static void PublishWorkerCpuRate() {
   if (rate == sWorkerCpuRate) return;
   ReceiveManagedWorkerCpuRate(rate);
   for (auto* process : ContentParent::AllProcesses(ContentParent::eLive)) {
-    Unused << process->SendUpdateMidoriWorkerCpuRate(rate);
+    process->UpdateMidoriWorkerCpuRate(rate);
   }
 }
 
 void NotifyManagedWorkerCpuQuota(double aOwnQuotaCpus) {
   MOZ_ASSERT(XRE_IsParentProcess());
-  auto update = [aOwnQuotaCpus] {
-    sOwnQuotaCpus = std::isfinite(aOwnQuotaCpus) && aOwnQuotaCpus > 0
-                        ? aOwnQuotaCpus
-                        : 0;
+  const uint64_t revision = ++sQuotaRevision;
+  auto update = [aOwnQuotaCpus, revision] {
+    if (revision != sQuotaRevision) return;
+    sOwnQuotaCpus =
+        std::isfinite(aOwnQuotaCpus) && aOwnQuotaCpus > 0 ? aOwnQuotaCpus : 0;
     sQuotaActive = sOwnQuotaCpus > 0;
     PublishWorkerCpuRate();
   };
@@ -82,7 +110,7 @@ void NotifyManagedWorkerCpuQuota(double aOwnQuotaCpus) {
 }
 
 void ChangeManagedBackgroundWorkerCount(bool aWasBackground,
-                                       bool aIsBackground) {
+                                        bool aIsBackground) {
   MOZ_ASSERT(XRE_IsParentProcess());
   if (aWasBackground == aIsBackground) return;
   if (aIsBackground) {
@@ -92,8 +120,8 @@ void ChangeManagedBackgroundWorkerCount(bool aWasBackground,
     --sBackgroundWorkers;
   }
   if (!sQuotaActive || sUpdatePending.exchange(true)) return;
-  nsresult rv = NS_DispatchToMainThread(NS_NewRunnableFunction(
-      "MidoriWorkerCpuBudget::WorkersChanged", [] {
+  nsresult rv = NS_DispatchToMainThread(
+      NS_NewRunnableFunction("MidoriWorkerCpuBudget::WorkersChanged", [] {
         sUpdatePending = false;
         PublishWorkerCpuRate();
       }));
@@ -116,7 +144,8 @@ static bool ReadCurrentCpuNs(uint64_t& aValue) {
   thread_extended_info_data_t info;
   mach_msg_type_number_t count = THREAD_EXTENDED_INFO_COUNT;
   if (thread_info(pthread_mach_thread_np(pthread_self()), THREAD_EXTENDED_INFO,
-                  reinterpret_cast<thread_info_t>(&info), &count) != KERN_SUCCESS)
+                  reinterpret_cast<thread_info_t>(&info),
+                  &count) != KERN_SUCCESS)
     return false;
   aValue = info.pth_user_time + info.pth_system_time;
   return true;
@@ -188,11 +217,19 @@ void MidoriWorkerCpuBudget::Arm() {
   }
   if (!mTimer) {
     mTimer = NS_NewTimer();
-    if (!mTimer || NS_FAILED(mTimer->SetTarget(mWorker->ControlEventTarget()))) {
+    if (!mTimer ||
+        NS_FAILED(mTimer->SetTarget(mWorker->ControlEventTarget()))) {
       Reset();
       return;
     }
   }
+  ArmTimer();
+}
+
+void MidoriWorkerCpuBudget::ArmTimer() {
+  if (!mWorker || mWorker->mMidoriInAtomicsWait || !mRateNanocpus || !mTimer ||
+      mTimerArmed || mWaiting)
+    return;
   mTimerArmed = NS_SUCCEEDED(mTimer->InitWithNamedFuncCallback(
       [](nsITimer*, void* aClosure) {
         auto* budget = static_cast<MidoriWorkerCpuBudget*>(aClosure);
@@ -226,10 +263,23 @@ void MidoriWorkerCpuBudget::Enforce() {
       if (!mWorker || !mRateNanocpus || worker->mStatus >= Canceling) break;
       if (!worker->mControlQueue.IsEmpty()) continue;
       worker->mCondVar.Wait(
-          TimeDuration::FromSeconds(-mCreditNs / mRateNanocpus));
+          TimeDuration::FromSeconds((kCpuBurstNs - mCreditNs) / mRateNanocpus));
     }
   }
   Arm();
+}
+
+void MidoriWorkerCpuBudget::SetAtomicsWaitState(bool aWaiting) {
+  if (auto* worker = GetCurrentThreadWorkerPrivate()) {
+    worker->mMidoriInAtomicsWait = aWaiting;
+    if (auto* budget = worker->mMidoriCpuGovernor.get()) {
+      if (aWaiting) {
+        budget->AfterEvent();
+      } else if (budget->mRateNanocpus && budget->Account()) {
+        budget->ArmTimer();
+      }
+    }
+  }
 }
 
 void MidoriWorkerCpuBudget::BeforeEvent() {

@@ -1,0 +1,18 @@
+--- a/netwerk/ipc/moz.build
++++ b/netwerk/ipc/moz.build
+@@ -10,6 +10,7 @@
+     "DocumentLoadListener.h",
+     "InputChannelThrottleQueueChild.h",
+     "InputChannelThrottleQueueParent.h",
++    "ManagedMemoryAdmission.h",
+     "NeckoChild.h",
+     "NeckoCommon.h",
+     "NeckoMessageUtils.h",
+@@ -40,6 +41,7 @@
+     "DocumentLoadListener.cpp",
+     "InputChannelThrottleQueueChild.cpp",
+     "InputChannelThrottleQueueParent.cpp",
++    "ManagedMemoryAdmission.cpp",
+     "NeckoChild.cpp",
+     "NeckoCommon.cpp",
+     "NeckoParent.cpp",

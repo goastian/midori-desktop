@@ -9,14 +9,17 @@
 #include "nsCOMPtr.h"
 
 class nsITimer;
+class nsISerialEventTarget;
 
 namespace mozilla::dom {
 
 class WorkerPrivate;
 
 void NotifyManagedWorkerCpuQuota(double aOwnQuotaCpus);
-void ChangeManagedBackgroundWorkerCount(bool aWasBackground, bool aIsBackground);
+void ChangeManagedBackgroundWorkerCount(bool aWasBackground,
+                                        bool aIsBackground);
 void ReceiveManagedWorkerCpuRate(uint32_t aRateNanocpus);
+void SetManagedWorkerCpuTarget(nsISerialEventTarget* aTarget, bool aAlive);
 uint32_t CurrentManagedWorkerCpuRate();
 
 class MidoriWorkerCpuBudget final {
@@ -27,6 +30,7 @@ class MidoriWorkerCpuBudget final {
   MidoriWorkerCpuBudget& operator=(const MidoriWorkerCpuBudget&) = delete;
 
   void Refresh(bool aBackground);
+  static void SetAtomicsWaitState(bool aWaiting);
   void BeforeEvent();
   void AfterEvent();
   void Stop();
@@ -35,6 +39,7 @@ class MidoriWorkerCpuBudget final {
   bool Account();
   void Enforce();
   void Arm();
+  void ArmTimer();
   void Reset();
 
   WorkerPrivate* mWorker;

@@ -9,9 +9,12 @@ namespace mozilla::midori {
 
 class LinuxCpuBudget;
 class WindowsCpuBudget;
+class MacCpuBudget;
 
 #ifdef XP_WIN
 using CpuBudgetController = WindowsCpuBudget;
+#elif defined(XP_MACOSX)
+using CpuBudgetController = MacCpuBudget;
 #else
 using CpuBudgetController = LinuxCpuBudget;
 #endif

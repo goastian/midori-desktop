@@ -6,6 +6,9 @@
 #include "mozilla/dom/MidoriWorkerCpuBudget.h"
 #include "mozilla/MidoriCpuBudget_linux.h"
 #include "mozilla/MidoriCpuBudget_windows.h"
+#ifdef XP_MACOSX
+#  include "mozilla/MidoriCpuBudget_macos.h"
+#endif
 #ifdef XP_WIN
 #  include "mozilla/Atomics.h"
 #endif
@@ -16,7 +19,8 @@
 
 namespace mozilla::midori {
 
-#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
+    defined(XP_MACOSX)
 static StaticMutex sMidoriCpuBudgetMutex;
 static CpuBudgetController* sMidoriCpuBudgetController = nullptr;
 static bool sMidoriCpuBudgetClosing = false;
@@ -27,7 +31,8 @@ static Atomic<bool, Relaxed> sMidoriCpuBudgetContext(false);
 
 void SetManagedCpuBudgetController(CpuBudgetController* aController) {
   MOZ_ASSERT(NS_IsMainThread());
-#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
+    defined(XP_MACOSX)
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   MOZ_ASSERT(!sMidoriCpuBudgetController || !aController);
   sMidoriCpuBudgetController = aController;
@@ -40,7 +45,8 @@ void SetManagedCpuBudgetController(CpuBudgetController* aController) {
 
 int SetManagedWorkerCpuRole(uintptr_t aOwner, uint32_t aPid, uint64_t aTid,
                             bool aBackground, bool aAlive) {
-#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
+    defined(XP_MACOSX)
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   if (sMidoriCpuBudgetController && !sMidoriCpuBudgetClosing) {
     return sMidoriCpuBudgetController->SetWorkerRole(aOwner, aPid, aTid,
@@ -74,9 +80,46 @@ ManagedCpuCapacity ReadManagedCpuCapacity() {
     if (!result.nativeError)
       result.externalCapacityCpus = capacity.externalCpus;
   }
+#elif defined(XP_MACOSX)
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  if (sMidoriCpuBudgetController) {
+    result.managed = true;
+    result.nativeError = sMidoriCpuBudgetController->ReadExternalCapacity(
+        result.externalCapacityCpus);
+    if (result.nativeError) result.externalCapacityCpus = 0;
+  }
 #endif
   return result;
 }
+
+#ifdef XP_MACOSX
+int RegisterManagedCpuTask(uintptr_t aOwner, uint32_t aPid, uint32_t aTask) {
+  int error = 0;
+  {
+    StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+    if (sMidoriCpuBudgetController && !sMidoriCpuBudgetClosing) {
+      error = sMidoriCpuBudgetController->Attach(aOwner, aPid, aTask);
+      if (error) {
+        MacCpuBudgetState state;
+        static_cast<void>(sMidoriCpuBudgetController->SetPercentage(0, state));
+      }
+    }
+  }
+  if (error) dom::NotifyManagedWorkerCpuQuota(0);
+  return error;
+}
+
+int UnregisterManagedCpuTask(uintptr_t aOwner) {
+  int error = 0;
+  {
+    StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+    if (sMidoriCpuBudgetController && !sMidoriCpuBudgetClosing)
+      error = sMidoriCpuBudgetController->Detach(aOwner);
+  }
+  if (error) dom::NotifyManagedWorkerCpuQuota(0);
+  return error;
+}
+#endif
 
 #if defined(XP_LINUX) && !defined(ANDROID)
 int OpenManagedCpuChildProcess(int& aFile) {
@@ -113,40 +156,51 @@ int OpenManagedCpuRestartFiles(int& aGroup, int& aExternal) {
 #endif
 
 int BeginManagedCpuBudgetShutdown() {
-  dom::NotifyManagedWorkerCpuQuota(0);
-#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
-  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
-  if (sMidoriCpuBudgetController) {
-    sMidoriCpuBudgetClosing = true;
+  int error = 0;
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
+    defined(XP_MACOSX)
+  {
+    StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+    if (sMidoriCpuBudgetController) {
+      sMidoriCpuBudgetClosing = true;
 #  ifdef XP_WIN
-    WindowsCpuBudgetState state;
-    return sMidoriCpuBudgetController->SetNormalizedPercentage(0, state);
+      WindowsCpuBudgetState state;
+      error = sMidoriCpuBudgetController->SetNormalizedPercentage(0, state);
+#  elif defined(XP_MACOSX)
+      MacCpuBudgetState state;
+      error = sMidoriCpuBudgetController->SetPercentage(0, state);
 #  else
-    CpuBudgetState state;
-    return sMidoriCpuBudgetController->SetPercentage(0, state);
+      CpuBudgetState state;
+      error = sMidoriCpuBudgetController->SetPercentage(0, state);
 #  endif
+    }
   }
 #endif
-  return 0;
+  dom::NotifyManagedWorkerCpuQuota(0);
+  return error;
 }
 
 int RestoreManagedCpuBudget() {
-  dom::NotifyManagedWorkerCpuQuota(0);
-#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
-  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
-  sMidoriCpuBudgetClosing = true;
-  if (sMidoriCpuBudgetController) {
-    auto* controller = sMidoriCpuBudgetController;
-    sMidoriCpuBudgetController = nullptr;
+  int error = 0;
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
+    defined(XP_MACOSX)
+  {
+    StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+    sMidoriCpuBudgetClosing = true;
+    if (sMidoriCpuBudgetController) {
+      auto* controller = sMidoriCpuBudgetController;
+      sMidoriCpuBudgetController = nullptr;
 #  ifdef XP_WIN
-    WindowsCpuBudgetState state;
-    return controller->SetNormalizedPercentage(0, state);
+      WindowsCpuBudgetState state;
+      error = controller->SetNormalizedPercentage(0, state);
 #  else
-    return controller->Shutdown();
+      error = controller->Shutdown();
 #  endif
+    }
   }
 #endif
-  return 0;
+  dom::NotifyManagedWorkerCpuQuota(0);
+  return error;
 }
 
 RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage) {
@@ -173,7 +227,8 @@ RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage) {
       "MidoriCpuBudget::SetPercentage", [promise, aPercentage] {
         ManagedCpuBudgetState result;
         result.requestedPercentage = aPercentage;
-#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
+    defined(XP_MACOSX)
         StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
         if (sMidoriCpuBudgetClosing) {
           promise->Reject(NS_ERROR_ABORT, __func__);
@@ -206,6 +261,21 @@ RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage) {
             result.ownQuotaCpus = state.ownQuotaCpus;
             result.effectiveCapacityCpus = state.effectiveCapacityCpus;
             result.quotaQuantumCpus = state.quotaQuantumCpus;
+          }
+        }
+#elif defined(XP_MACOSX)
+        if (sMidoriCpuBudgetController) {
+          result.backendReady = true;
+          MacCpuBudgetState state;
+          result.nativeError = sMidoriCpuBudgetController->SetPercentage(aPercentage, state);
+          if (!result.nativeError) {
+            result.applied = true;
+            result.externalCapacityCpus = state.externalCapacityCpus;
+            result.ownQuotaCpus = state.ownQuotaCpus;
+            result.effectiveCapacityCpus = state.effectiveCapacityCpus;
+            result.quotaQuantumCpus = state.quotaQuantumCpus;
+          } else {
+            dom::NotifyManagedWorkerCpuQuota(0);
           }
         }
 #endif
