@@ -51,11 +51,13 @@
  #include "nsRFPTargetSetIDL.h"
  #include "nsString.h"
  #include "nsThreadUtils.h"
-@@ -1924,8 +1935,160 @@
+@@ -1924,9 +1935,160 @@
  
  #undef PROCTYPE_TO_WEBIDL_CASE
  
 -/* static */
+-already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
+-                                                       ErrorResult& aRv) {
 +already_AddRefed<Promise> ChromeUtils::RequestManagedCpuBudget(
 +    GlobalObject& aGlobal, uint32_t aPercentage, ErrorResult& aRv) {
 +  if (!NS_IsMainThread() || !XRE_IsParentProcess()) {
@@ -207,13 +209,14 @@
 +  return promise.forget();
 +}
 +
- already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
-+                                                       bool aIncludeThreads,
-+                                                       bool aIncludeWindows,
-                                                        ErrorResult& aRv) {
++already_AddRefed<Promise> ChromeUtils::RequestProcInfo(
++    GlobalObject& aGlobal, bool aIncludeThreads, bool aIncludeWindows,
++    bool aRequireCompleteMemory, ErrorResult& aRv) {
    // This function will use IPDL to enable threads info on macOS
    // see https://bugzilla.mozilla.org/show_bug.cgi?id=1529023
-@@ -2102,26 +2265,28 @@
+   if (!XRE_IsParentProcess()) {
+@@ -2102,27 +2264,29 @@
+ 
      // Attach DOM window information to the process.
      nsTArray<WindowInfo> windows;
 -    for (const auto& browserParentWrapperKey :
@@ -263,7 +266,7 @@
          }
        }
      }
-@@ -2140,13 +2305,19 @@
+@@ -2140,13 +2304,26 @@
      );
    }
  
@@ -274,19 +277,32 @@
 +  }
 +
    // Now place background request.
++  const uint32_t expectedProcesses = requests.Length();
    RefPtr<nsISerialEventTarget> target = global->SerialEventTarget();
    mozilla::GetProcInfo(std::move(requests))
        ->Then(
            target, __func__,
 -          [target,
 -           domPromise](const HashMap<base::ProcessId, ProcInfo>& aSysProcInfo) {
-+          [target, domPromise, aIncludeThreads](
++          [target, domPromise, aIncludeThreads, aRequireCompleteMemory,
++           expectedProcesses](
 +              const HashMap<base::ProcessId, ProcInfo>& aSysProcInfo) {
++            if (aRequireCompleteMemory &&
++                aSysProcInfo.count() != expectedProcesses) {
++              domPromise->MaybeReject(NS_ERROR_NOT_AVAILABLE);
++              return;
++            }
              ParentProcInfoDictionary parentInfo;
              if (aSysProcInfo.count() == 0) {
                // For some reason, we couldn't get *any* info.
-@@ -2160,7 +2331,8 @@
+@@ -2158,9 +2335,14 @@
+                 aSysProcInfo.count() - 1);
+             for (auto iter = aSysProcInfo.iter(); !iter.done(); iter.next()) {
                const auto& sysProcInfo = iter.get().value();
++              if (aRequireCompleteMemory && !sysProcInfo.memoryIsAvailable) {
++                domPromise->MaybeReject(NS_ERROR_NOT_AVAILABLE);
++                return;
++              }
                nsresult rv;
                if (sysProcInfo.type == ProcType::Browser) {
 -                rv = mozilla::CopySysProcInfoToDOM(sysProcInfo, &parentInfo);
@@ -295,7 +311,7 @@
                  if (NS_FAILED(rv)) {
                    // Failing to copy? That's probably not something from we can
                    // (or should) try to recover gracefully.
-@@ -2176,7 +2348,8 @@
+@@ -2176,7 +2358,8 @@
                    domPromise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
                    return;
                  }

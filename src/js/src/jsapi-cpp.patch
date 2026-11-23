@@ -1,0 +1,15 @@
+diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
+--- a/js/src/jsapi.cpp
++++ b/js/src/jsapi.cpp
+@@ -2838,6 +2838,11 @@
+   rt->scriptPrivateReleaseHook = releaseHook;
+ }
+ 
++JS_PUBLIC_API void JS::SetAtomicsWaitCallback(JSRuntime* rt,
++                                              AtomicsWaitCallback callback) {
++  rt->atomicsWaitCallback = callback;
++}
++
+ JS_PUBLIC_API void JS::SetWaitCallback(JSRuntime* rt,
+                                        BeforeWaitCallback beforeWait,
+                                        AfterWaitCallback afterWait,

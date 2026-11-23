@@ -1,9 +1,12 @@
 --- a/ipc/glue/GeckoChildProcessHost.cpp
 +++ b/ipc/glue/GeckoChildProcessHost.cpp
-@@ -3,6 +3,11 @@
+@@ -3,6 +3,14 @@
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
  
  #include "GeckoChildProcessHost.h"
++#ifdef XP_MACOSX
++#  include "mozilla/MidoriCpuBudget.h"
++#endif
 +#if defined(XP_LINUX) && !defined(ANDROID)
 +#  include "mozilla/MidoriCpuBudget.h"
 +#  include <cerrno>
@@ -12,7 +15,39 @@
  
  #include "base/command_line.h"
  #include "base/process.h"
-@@ -1527,6 +1532,33 @@
+@@ -425,6 +433,10 @@
+   MOZ_RELEASE_ASSERT(mDestroying);
+ 
+   MOZ_COUNT_DTOR(GeckoChildProcessHost);
++#ifdef XP_MACOSX
++  static_cast<void>(
++      midori::UnregisterManagedCpuTask(reinterpret_cast<uintptr_t>(this)));
++#endif
+ 
+   {
+     mozilla::AutoWriteLock hLock(mHandleLock);
+@@ -963,6 +975,11 @@
+ #endif
+                     }
+                   }
++#ifdef XP_MACOSX
++                  static_cast<void>(midori::RegisterManagedCpuTask(
++                      reinterpret_cast<uintptr_t>(this), GetChildProcessId(),
++                      mChildTask));
++#endif
+ #if defined(XP_WIN) && defined(MOZ_SANDBOX)
+                   this->mSandboxBroker = std::move(aResults.mSandboxBroker);
+ #endif
+@@ -1003,7 +1020,7 @@
+ #if defined(XP_WIN)
+                     "%s,0x%lx,%s",
+ #else
+-                    "%s,%ld,%s",
++        "%s,%ld,%s",
+ #endif
+                     aError.FunctionName().get(), aError.ErrorCode(),
+                     XRE_GeckoProcessTypeToString(mProcessType));
+@@ -1527,6 +1544,33 @@
    } else
  #  endif
    {

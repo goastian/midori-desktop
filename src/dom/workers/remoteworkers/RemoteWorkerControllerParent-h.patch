@@ -1,0 +1,11 @@
+--- a/dom/workers/remoteworkers/RemoteWorkerControllerParent.h
++++ b/dom/workers/remoteworkers/RemoteWorkerControllerParent.h
+@@ -53,6 +53,8 @@
+ 
+   mozilla::ipc::IPCResult RecvShutdown(ShutdownResolver&& aResolve);
+ 
++  mozilla::ipc::IPCResult RecvUpdateCpuBudget(bool aBackground);
++
+   mozilla::ipc::IPCResult Recv__delete__() override;
+ 
+   void ActorDestroy(ActorDestroyReason aReason) override;

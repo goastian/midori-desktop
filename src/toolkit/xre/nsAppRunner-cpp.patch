@@ -49,11 +49,12 @@
  #      if defined(XP_UNIX)
    if (aTryExec) {
      execv(exePath.get(), gRestartArgv);
-@@ -6823,6 +6851,15 @@
+@@ -6823,6 +6851,16 @@
    }
  #endif
  
-+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
++    defined(XP_MACOSX)
 +  if (
 +#  if defined(XP_LINUX) && !defined(ANDROID)
 +      !mozilla::AppShutdown::IsRestarting() &&
@@ -65,11 +66,12 @@
    mozilla::AppShutdown::MaybeDoRestart();
  
    XRE_DeinitCommandLine();
-@@ -6836,6 +6873,14 @@
+@@ -6836,6 +6874,15 @@
  void XRE_StopLateWriteChecks(void) { mozilla::StopLateWriteChecks(); }
  
  int XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
-+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
++    defined(XP_MACOSX)
 +#  ifdef XP_WIN
 +  sHasCpuBudgetContextForRestart = midori::HasManagedCpuBudgetContext;
 +#  endif

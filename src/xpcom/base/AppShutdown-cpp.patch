@@ -4,7 +4,7 @@
  #include "mozilla/ClearOnShutdown.h"
  #include "mozilla/CmdLineAndEnvUtils.h"
  #include "mozilla/LateWriteChecks.h"
-+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || defined(XP_MACOSX)
 +#  include "mozilla/MidoriCpuBudget.h"
 +#endif
  #include "mozilla/PoisonIOInterposer.h"
@@ -14,7 +14,7 @@
    }
    AppShutdown::AnnotateShutdownReason(aReason);
    AppShutdown::SetImpendingShutdown();
-+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || defined(XP_MACOSX)
 +  static_cast<void>(midori::BeginManagedCpuBudgetShutdown());
 +#endif
  
@@ -24,7 +24,7 @@
    }
    if (aPhase == sFastShutdownPhase) {
      StopLateWriteChecks();
-+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || defined(XP_MACOSX)
 +    if (
 +#  if defined(XP_LINUX) && !defined(ANDROID)
 +        !IsRestarting() &&

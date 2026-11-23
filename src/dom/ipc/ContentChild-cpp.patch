@@ -6,7 +6,7 @@ diff --git a/dom/ipc/ContentChild.cpp b/dom/ipc/ContentChild.cpp
  
  #include "BrowserChild.h"
 +#include "mozilla/net/MidoriNetworkBudget.h"
-+#include "mozilla/dom/MidoriWorkerCpuBudget.h"
++#include "mozilla/dom/MidoriWorkerCpuControl.h"
  #include "ChildProfilerController.h"
  #include "ContentChild.h"
  #include "GMPServiceChild.h"
@@ -14,10 +14,10 @@ diff --git a/dom/ipc/ContentChild.cpp b/dom/ipc/ContentChild.cpp
  namespace mozilla {
  namespace dom {
  
-+mozilla::ipc::IPCResult ContentChild::RecvUpdateMidoriWorkerCpuRate(
-+    const uint32_t& aRateNanocpus) {
-+  if (aRateNanocpus > 1000000000) return IPC_FAIL(this, "Invalid worker CPU rate");
-+  ReceiveManagedWorkerCpuRate(aRateNanocpus);
++mozilla::ipc::IPCResult ContentChild::RecvInitMidoriWorkerCpuControl(
++    mozilla::ipc::Endpoint<PMidoriWorkerCpuControlChild>&& aEndpoint) {
++  if (NS_FAILED(MidoriWorkerCpuControlChild::Create(std::move(aEndpoint))))
++    return IPC_FAIL(this, "Failed to initialize worker CPU control");
 +  return IPC_OK();
 +}
 +

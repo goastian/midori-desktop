@@ -1,0 +1,11 @@
+--- a/dom/workers/remoteworkers/RemoteWorkerChild.h
++++ b/dom/workers/remoteworkers/RemoteWorkerChild.h
+@@ -101,6 +101,8 @@
+   void ActorDestroy(ActorDestroyReason) override;
+ 
+   mozilla::ipc::IPCResult RecvExecOp(SharedWorkerOpArgs&& aOpArgs);
++
++  mozilla::ipc::IPCResult RecvUpdateCpuBudget(bool aBackground);
+ 
+   mozilla::ipc::IPCResult RecvExecServiceWorkerOp(
+       ServiceWorkerOpArgs&& aArgs, ExecServiceWorkerOpResolver&& aResolve);

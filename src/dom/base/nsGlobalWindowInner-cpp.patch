@@ -1,0 +1,50 @@
+--- a/dom/base/nsGlobalWindowInner.cpp
++++ b/dom/base/nsGlobalWindowInner.cpp
+@@ -1893,6 +1893,7 @@
+              "this point.");
+ 
+   UpdatePermissions();
++  UpdateSharedWorkersCpuBudget();
+ 
+   RefPtr<PermissionDelegateHandler> permDelegateHandler =
+       mDoc->GetPermissionDelegateHandler();
+@@ -3184,6 +3185,7 @@
+ void nsGlobalWindowInner::AudioPlaybackChanged(bool aIsPlayingAudio) {
+   AUTO_PROFILER_MARKER_UNTYPED("AudioPlaybackChanged", DOM, {});
+   UpdateWorkersPlaybackState(*this, aIsPlayingAudio);
++  UpdateSharedWorkersCpuBudget(aIsPlayingAudio);
+ }
+ 
+ bool nsPIDOMWindowInner::IsCurrentInnerWindow() const {
+@@ -6043,6 +6045,7 @@
+   mTimeoutManager->UpdateBackgroundState();
+ 
+   UpdateWorkersBackgroundState(*this, IsBackgroundInternal());
++  UpdateSharedWorkersCpuBudget();
+ }
+ 
+ template <typename Method, typename... Args>
+@@ -7782,6 +7785,23 @@
+   mSharedWorkers.RemoveElement(aSharedWorker);
+ }
+ 
++void nsGlobalWindowInner::UpdateSharedWorkersCpuBudget() {
++  UpdateSharedWorkersCpuBudget(IsPlayingAudio());
++}
++
++void nsGlobalWindowInner::UpdateSharedWorkersCpuBudget(bool aIsPlayingAudio) {
++  const bool background =
++      IsBackgroundInternal() && !aIsPlayingAudio && !HasActivePeerConnections();
++  if (mWindowGlobalChild && mWindowGlobalChild->CanSend() &&
++      mMidoriWindowCpuBackground != Some(background) &&
++      mWindowGlobalChild->SendUpdateCpuBudget(background)) {
++    mMidoriWindowCpuBackground = Some(background);
++  }
++  for (RefPtr<SharedWorker> worker : mSharedWorkers.ForwardRange()) {
++    worker->UpdateCpuBudget(background);
++  }
++}
++
+ void nsGlobalWindowInner::UpdateSharedWorkersLanguageOverride(
+     const nsCString& aLanguageOverride) {
+   nsTArray<nsString> resolvedLanguages;

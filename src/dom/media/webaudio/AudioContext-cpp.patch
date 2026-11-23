@@ -1,0 +1,14 @@
+--- a/dom/media/webaudio/AudioContext.cpp
++++ b/dom/media/webaudio/AudioContext.cpp
+@@ -886,6 +886,11 @@
+ 
+   mAudioContextState = aNewState;
+   Destination()->NotifyAudioContextStateChanged();
++  if (!mIsOffline) {
++    if (nsGlobalWindowInner* window = GetOwnerWindow()) {
++      window->UpdateSharedWorkersCpuBudget();
++    }
++  }
+   MaybeUpdatePageAwakeRequest();
+ }
+ 

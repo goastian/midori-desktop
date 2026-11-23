@@ -1,0 +1,16 @@
+--- a/dom/workers/remoteworkers/RemoteWorkerControllerParent.cpp
++++ b/dom/workers/remoteworkers/RemoteWorkerControllerParent.cpp
+@@ -129,6 +129,13 @@
+   return IPC_OK();
+ }
+ 
++IPCResult RemoteWorkerControllerParent::RecvUpdateCpuBudget(bool aBackground) {
++  AssertIsOnBackgroundThread();
++  if (mIPCActive && mRemoteWorkerController)
++    mRemoteWorkerController->UpdateCpuBudget(aBackground);
++  return IPC_OK();
++}
++
+ IPCResult RemoteWorkerControllerParent::RecvShutdown(
+     ShutdownResolver&& aResolve) {
+   AssertIsOnBackgroundThread();

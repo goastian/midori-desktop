@@ -1,7 +1,15 @@
 diff --git a/dom/ipc/PContent.ipdl b/dom/ipc/PContent.ipdl
 --- a/dom/ipc/PContent.ipdl
 +++ b/dom/ipc/PContent.ipdl
-@@ -563,6 +563,8 @@
+@@ -21,6 +21,7 @@
+ include protocol PImageBridge;
+ include protocol PRemotePrintJob;
+ include protocol PMedia;
++include protocol PMidoriWorkerCpuControl;
+ include protocol PNecko;
+ include protocol PStreamFilter;
+ include protocol PGMPContent;
+@@ -563,6 +564,8 @@
      //
      // Keep the last 3 attributes in sync with GetProcessAttributes!
  parent:
@@ -10,12 +18,12 @@ diff --git a/dom/ipc/PContent.ipdl b/dom/ipc/PContent.ipdl
      async ConstructPopupBrowser(ManagedEndpoint<PBrowserParent> browserEp,
                                  ManagedEndpoint<PWindowGlobalParent> windowEp,
                                  TabId tabId, IPCTabContext context,
-@@ -582,6 +584,9 @@
+@@ -582,6 +585,9 @@
      async PExtensions();
  
  child:
 +    async UpdateMidoriMediaSendingCallCount(uint32_t count);
-+    async UpdateMidoriWorkerCpuRate(uint32_t rateNanocpus);
++    async InitMidoriWorkerCpuControl(Endpoint<PMidoriWorkerCpuControlChild> endpoint);
 +
      async ConstructBrowser(ManagedEndpoint<PBrowserChild> browserEp,
                             ManagedEndpoint<PWindowGlobalChild> windowEp,

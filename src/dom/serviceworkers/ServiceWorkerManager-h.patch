@@ -1,0 +1,17 @@
+--- a/dom/serviceworkers/ServiceWorkerManager.h
++++ b/dom/serviceworkers/ServiceWorkerManager.h
+@@ -159,6 +159,14 @@
+ 
+   void DispatchFetchEvent(nsIInterceptedChannel* aChannel, ErrorResult& aRv);
+ 
++  static void NotifyClientCpuBudgetChanged(const ClientInfo& aClientInfo);
++
++  static bool IsClientControlledByWorker(const nsID& aClientId,
++                                         const ServiceWorkerInfo* aWorker);
++
++  void UpdateRegistrationCpuBudget(
++      ServiceWorkerRegistrationInfo* aRegistration);
++
+   void Update(const ClientInfo& aClientInfo, nsIPrincipal* aPrincipal,
+               const nsACString& aScope, nsCString aNewestWorkerScriptUrl,
+               ServiceWorkerUpdateFinishCallback* aCallback);

@@ -1,0 +1,19 @@
+--- a/dom/workers/sharedworkers/SharedWorkerManager.h
++++ b/dom/workers/sharedworkers/SharedWorkerManager.h
+@@ -111,6 +111,8 @@
+ 
+   void RemoveActor(SharedWorkerParent* aParent);
+ 
++  void UpdateCpuBudget();
++
+   void UpdateSuspend();
+ 
+   void UpdateFrozen();
+@@ -148,6 +150,7 @@
+   const bool mIsSecureContext;
+   bool mSuspended;
+   bool mFrozen;
++  bool mMidoriCpuBackground = false;
+   uint32_t mLockCount = 0;
+   uint32_t mWebTransportCount = 0;
+ 

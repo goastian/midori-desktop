@@ -1,0 +1,32 @@
+--- a/dom/workers/sharedworkers/SharedWorkerOp.cpp
++++ b/dom/workers/sharedworkers/SharedWorkerOp.cpp
+@@ -104,6 +104,16 @@
+ 
+   MOZ_ASSERT(aState.is<Running>() || IsTerminationOp());
+ 
++  if (mOpArgs.type() ==
++      SharedWorkerOpArgs::TSharedWorkerUpdateCpuBudgetOpArgs) {
++    aState.as<Running>().mWorkerPrivate->SetCpuBudgetBackground(
++        mOpArgs.get_SharedWorkerUpdateCpuBudgetOpArgs().background());
++#ifdef DEBUG
++    mStarted = true;
++#endif
++    return true;
++  }
++
+   if (mOpArgs.type() == SharedWorkerOpArgs::TSharedWorkerThawOpArgs) {
+     aOwner->SetIsThawing(true);
+   }
+@@ -158,7 +168,11 @@
+ 
+   MOZ_ASSERT(workerPrivate);
+ 
+-  if (mOpArgs.type() == SharedWorkerOpArgs::TSharedWorkerSuspendOpArgs) {
++  if (mOpArgs.type() ==
++      SharedWorkerOpArgs::TSharedWorkerUpdateCpuBudgetOpArgs) {
++    workerPrivate->SetCpuBudgetBackground(
++        mOpArgs.get_SharedWorkerUpdateCpuBudgetOpArgs().background());
++  } else if (mOpArgs.type() == SharedWorkerOpArgs::TSharedWorkerSuspendOpArgs) {
+     workerPrivate->ParentWindowPaused();
+   } else if (mOpArgs.type() == SharedWorkerOpArgs::TSharedWorkerResumeOpArgs) {
+     workerPrivate->ParentWindowResumed();

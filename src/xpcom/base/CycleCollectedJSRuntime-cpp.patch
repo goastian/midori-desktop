@@ -1,0 +1,20 @@
+diff --git a/xpcom/base/CycleCollectedJSRuntime.cpp b/xpcom/base/CycleCollectedJSRuntime.cpp
+--- a/xpcom/base/CycleCollectedJSRuntime.cpp
++++ b/xpcom/base/CycleCollectedJSRuntime.cpp
+@@ -80,6 +80,7 @@
+ #include "mozilla/dom/AutoEntryScript.h"
+ #include "mozilla/dom/DOMJSClass.h"
+ #include "mozilla/dom/JSExecutionManager.h"
++#include "mozilla/dom/MidoriWorkerCpuBudget.h"
+ #include "mozilla/dom/Promise.h"
+ #include "mozilla/dom/PromiseBinding.h"
+ #include "mozilla/dom/PromiseDebugging.h"
+@@ -879,6 +880,8 @@
+   JS::SetOutOfMemoryCallback(aCx, OutOfMemoryCallback, this);
+   JS::SetWaitCallback(mJSRuntime, BeforeWaitCallback, AfterWaitCallback,
+                       sizeof(dom::AutoYieldJSThreadExecution));
++  JS::SetAtomicsWaitCallback(
++      mJSRuntime, dom::MidoriWorkerCpuBudget::SetAtomicsWaitState);
+   JS::SetWarningReporter(aCx, MozCrashWarningReporter);
+ 
+   js::AutoEnterOOMUnsafeRegion::setAnnotateOOMAllocationSizeCallback(

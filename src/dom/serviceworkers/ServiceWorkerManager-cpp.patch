@@ -1,0 +1,99 @@
+--- a/dom/serviceworkers/ServiceWorkerManager.cpp
++++ b/dom/serviceworkers/ServiceWorkerManager.cpp
+@@ -39,6 +39,7 @@
+ #include "mozilla/dom/BindingUtils.h"
+ #include "mozilla/dom/ClientHandle.h"
+ #include "mozilla/dom/ClientManager.h"
++#include "mozilla/dom/WindowGlobalParent.h"
+ #include "mozilla/dom/ClientPrincipalUtils.h"
+ #include "mozilla/dom/ClientSource.h"
+ #include "mozilla/dom/ConsoleUtils.h"
+@@ -585,7 +586,8 @@
+   // XXX We can't use a generic lambda (accepting auto&& entry) like elsewhere
+   // with WithEntryHandle, since we get linker errors then using clang+lld. This
+   // might be a toolchain issue?
+-  return mControlledClients.WithEntryHandle(
++  RefPtr<ServiceWorkerRegistrationInfo> previousRegistration;
++  auto result = mControlledClients.WithEntryHandle(
+       aClientInfo.Id(),
+       [&](decltype(mControlledClients)::EntryHandle&& entry)
+           -> RefPtr<GenericErrorResultPromise> {
+@@ -608,6 +610,7 @@
+ 
+           if (old != aRegistrationInfo) {
+             StopControllingRegistration(old);
++            previousRegistration = old;
+             aRegistrationInfo->StartControllingClient();
+           }
+ 
+@@ -660,21 +663,60 @@
+               return GenericErrorResultPromise::CreateAndReject(aRv, __func__);
+             });
+       });
++  if (previousRegistration) UpdateRegistrationCpuBudget(previousRegistration);
++  UpdateRegistrationCpuBudget(aRegistrationInfo);
++  return result;
+ }
+ 
+ void ServiceWorkerManager::StopControllingClient(
+     const ClientInfo& aClientInfo) {
+-  auto entry = mControlledClients.Lookup(aClientInfo.Id());
+-  if (!entry) {
+-    return;
+-  }
+-
+-  RefPtr<ServiceWorkerRegistrationInfo> reg =
+-      std::move(entry.Data()->mRegistrationInfo);
+-
+-  entry.Remove();
+-
++  RefPtr<ServiceWorkerRegistrationInfo> reg;
++  {
++    auto entry = mControlledClients.Lookup(aClientInfo.Id());
++    if (!entry) return;
++    reg = std::move(entry.Data()->mRegistrationInfo);
++    entry.Remove();
++  }
+   StopControllingRegistration(reg);
++  UpdateRegistrationCpuBudget(reg);
++}
++
++bool ServiceWorkerManager::IsClientControlledByWorker(
++    const nsID& aClientId, const ServiceWorkerInfo* aWorker) {
++  MOZ_ASSERT(NS_IsMainThread());
++  if (!gInstance || !aWorker) return false;
++  auto entry = gInstance->mControlledClients.Lookup(aClientId);
++  return entry && entry.Data()->mRegistrationInfo->GetActive() == aWorker;
++}
++
++void ServiceWorkerManager::NotifyClientCpuBudgetChanged(
++    const ClientInfo& aClientInfo) {
++  MOZ_ASSERT(NS_IsMainThread());
++  if (!gInstance || gInstance->mShuttingDown) return;
++  RefPtr<ServiceWorkerRegistrationInfo> registration;
++  {
++    auto entry = gInstance->mControlledClients.Lookup(aClientInfo.Id());
++    if (entry) registration = entry.Data()->mRegistrationInfo;
++  }
++  if (registration) gInstance->UpdateRegistrationCpuBudget(registration);
++}
++
++void ServiceWorkerManager::UpdateRegistrationCpuBudget(
++    ServiceWorkerRegistrationInfo* aRegistration) {
++  MOZ_ASSERT(NS_IsMainThread());
++  if (mShuttingDown || !aRegistration || !aRegistration->GetActive()) return;
++  bool background = true;
++  for (const auto& client : mControlledClients.Values()) {
++    if (client->mRegistrationInfo != aRegistration) continue;
++    RefPtr<WindowGlobalParent> window =
++        WindowGlobalParent::GetByClientId(client->mClientHandle->Info().Id());
++    if (!window || !window->IsCpuBudgetBackground()) {
++      background = false;
++      break;
++    }
++  }
++  aRegistration->GetActive()->WorkerPrivate()->SetCpuBudgetBackground(
++      background);
+ }
+ 
+ void ServiceWorkerManager::MaybeStartShutdown() {

@@ -8,10 +8,11 @@
  
      // The phys_footprint value (introduced in 10.11) of the TASK_VM_INFO data
      // matches the value in the 'Memory' column of the Activity Monitor.
-@@ -126,67 +127,70 @@
+@@ -125,68 +126,74 @@
+     kr = task_info(selectedTask, TASK_VM_INFO, (task_info_t)&task_vm_info,
                     &count);
      info.memory = kr == KERN_SUCCESS ? task_vm_info.phys_footprint : 0;
- 
+-
 -    // Now getting threads info
 -
 -    // task_threads() gives us a snapshot of the process threads
@@ -50,6 +51,10 @@
 -      count = THREAD_EXTENDED_INFO_COUNT;
 -      kret = thread_info(threadList[i], THREAD_EXTENDED_INFO,
 -                         (thread_info_t)&threadInfoData, &count);
++    info.memoryIsAvailable =
++        kr == KERN_SUCCESS &&
++        (request.childTask != MACH_PORT_NULL || request.pid == getpid());
++
 +    if (request.includeThreads) {
 +      // Now getting threads info
 +

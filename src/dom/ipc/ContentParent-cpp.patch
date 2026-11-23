@@ -1,15 +1,17 @@
 diff --git a/dom/ipc/ContentParent.cpp b/dom/ipc/ContentParent.cpp
 --- a/dom/ipc/ContentParent.cpp
 +++ b/dom/ipc/ContentParent.cpp
-@@ -3,6 +3,7 @@
+@@ -3,6 +3,9 @@
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
  
  #include "ContentParent.h"
 +#include "mozilla/net/MidoriNetworkBudget.h"
++#include "mozilla/dom/MidoriWorkerCpuControl.h"
++#include "mozilla/dom/MidoriWorkerCpuBudget.h"
  
  #include <functional>
  #include <map>
-@@ -441,6 +442,12 @@
+@@ -441,6 +444,18 @@
  
  namespace dom {
  
@@ -19,21 +21,44 @@ diff --git a/dom/ipc/ContentParent.cpp b/dom/ipc/ContentParent.cpp
 +  return IPC_OK();
 +}
 +
++void ContentParent::UpdateMidoriWorkerCpuRate(uint32_t aRateNanocpus) {
++  MOZ_ASSERT(NS_IsMainThread());
++  if (mMidoriWorkerCpuControl && mMidoriWorkerCpuControl->CanSend())
++    static_cast<void>(mMidoriWorkerCpuControl->SendUpdateRate(aRateNanocpus));
++}
++
  LazyLogModule gProcessLog("Process");
  
  MOZ_RUNINIT static std::map<RemoteMediaIn, media::MediaCodecsSupported>
-@@ -1903,6 +1910,7 @@
+@@ -1903,6 +1918,10 @@
  
    // Make sure we always clean up.
    ShutDownProcess(CLOSE_CHANNEL);
 +  net::MidoriNetworkBudget::SetProcessMediaSendingCallCount(this, 0);
++  if (mMidoriWorkerCpuControl && mMidoriWorkerCpuControl->CanSend())
++    mMidoriWorkerCpuControl->Close();
++  mMidoriWorkerCpuControl = nullptr;
  
    nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
    if (obs) {
-@@ -3071,6 +3079,9 @@
+@@ -3071,6 +3090,23 @@
      }
    }
  
++  {
++    mozilla::ipc::Endpoint<PMidoriWorkerCpuControlParent> parentEndpoint;
++    mozilla::ipc::Endpoint<PMidoriWorkerCpuControlChild> childEndpoint;
++    if (NS_FAILED(PMidoriWorkerCpuControl::CreateEndpoints(
++            mozilla::ipc::EndpointProcInfo::Current(), OtherEndpointProcInfo(),
++            &parentEndpoint, &childEndpoint)))
++      return false;
++    auto actor = MakeRefPtr<MidoriWorkerCpuControlParent>();
++    if (!parentEndpoint.Bind(actor)) return false;
++    mMidoriWorkerCpuControl = actor;
++    if (!SendInitMidoriWorkerCpuControl(std::move(childEndpoint))) return false;
++    UpdateMidoriWorkerCpuRate(CurrentManagedWorkerCpuRate());
++  }
++
 +  (void)SendUpdateMidoriMediaSendingCallCount(
 +      net::MidoriNetworkBudget::GlobalMediaSendingCallCount());
 +

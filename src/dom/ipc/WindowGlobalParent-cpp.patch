@@ -1,0 +1,93 @@
+--- a/dom/ipc/WindowGlobalParent.cpp
++++ b/dom/ipc/WindowGlobalParent.cpp
+@@ -27,6 +27,7 @@
+ #include "mozilla/ScopeExit.h"
+ #include "mozilla/ServoCSSParser.h"
+ #include "mozilla/ServoStyleSet.h"
++#include "mozilla/StaticPtr.h"
+ #include "mozilla/StaticPrefs_dom.h"
+ #include "mozilla/StaticPrefs_network.h"
+ #include "mozilla/StoragePrincipalHelper.h"
+@@ -63,6 +64,7 @@
+ #include "mozilla/dom/UseCounterMetrics.h"
+ #include "mozilla/dom/WebAuthnTransactionParent.h"
+ #include "mozilla/dom/WebIdentityParent.h"
++#include "mozilla/dom/ServiceWorkerManager.h"
+ #include "mozilla/dom/WindowGlobalChild.h"
+ #include "mozilla/dom/ipc/IdType.h"
+ #include "mozilla/dom/ipc/StructuredCloneData.h"
+@@ -78,6 +80,7 @@
+ #include "mozilla/net/NeckoParent.h"
+ #include "mozilla/net/PCookieServiceParent.h"
+ #include "nsContentUtils.h"
++#include "nsHashKeys.h"
+ #include "nsDocShell.h"
+ #include "nsDocShellLoadState.h"
+ #include "nsError.h"
+@@ -115,6 +118,8 @@
+ 
+ namespace mozilla::dom {
+ 
++static StaticAutoPtr<nsTHashMap<nsIDHashKey, uint64_t>> sCpuBudgetClientWindows;
++
+ /**
+  * Accumulated page use counter data for a given top-level content document.
+  */
+@@ -661,7 +666,42 @@
+           GetContentParent() ? GetContentParent()->LoadedOrigins() : nullptr)) {
+     return IPC_FAIL(this, "SetClientInfo principal not valid for remote type");
+   }
++  if (!sCpuBudgetClientWindows) {
++    sCpuBudgetClientWindows = new nsTHashMap<nsIDHashKey, uint64_t>();
++    ClearOnShutdown(&sCpuBudgetClientWindows);
++  }
++  if (mClientInfo && mClientInfo->Id() != aIPCClientInfo.id()) {
++    {
++      auto entry = sCpuBudgetClientWindows->Lookup(mClientInfo->Id());
++      if (entry && entry.Data() == InnerWindowId()) entry.Remove();
++    }
++    ServiceWorkerManager::NotifyClientCpuBudgetChanged(mClientInfo.ref());
++  }
+   mClientInfo = Some(ClientInfo(aIPCClientInfo));
++  sCpuBudgetClientWindows->InsertOrUpdate(mClientInfo->Id(), InnerWindowId());
++  ServiceWorkerManager::NotifyClientCpuBudgetChanged(mClientInfo.ref());
++  return IPC_OK();
++}
++
++already_AddRefed<WindowGlobalParent> WindowGlobalParent::GetByClientId(
++    const nsID& aClientId) {
++  MOZ_ASSERT(NS_IsMainThread());
++  if (!sCpuBudgetClientWindows) return nullptr;
++  auto entry = sCpuBudgetClientWindows->Lookup(aClientId);
++  if (!entry) return nullptr;
++  RefPtr<WindowGlobalParent> window = GetByInnerWindowId(entry.Data());
++  if (!window || window->IsClosed() || !window->mClientInfo ||
++      window->mClientInfo->Id() != aClientId)
++    return nullptr;
++  return window.forget();
++}
++
++IPCResult WindowGlobalParent::RecvUpdateCpuBudget(bool aBackground) {
++  if (mMidoriCpuBackground != Some(aBackground)) {
++    mMidoriCpuBackground = Some(aBackground);
++    if (mClientInfo)
++      ServiceWorkerManager::NotifyClientCpuBudgetChanged(mClientInfo.ref());
++  }
+   return IPC_OK();
+ }
+ 
+@@ -1890,6 +1930,14 @@
+ }
+ 
+ void WindowGlobalParent::ActorDestroy(ActorDestroyReason aWhy) {
++  if (mClientInfo && sCpuBudgetClientWindows) {
++    {
++      auto entry = sCpuBudgetClientWindows->Lookup(mClientInfo->Id());
++      if (entry && entry.Data() == InnerWindowId()) entry.Remove();
++    }
++    ServiceWorkerManager::NotifyClientCpuBudgetChanged(mClientInfo.ref());
++  }
++
+   if (GetBrowsingContext()->IsTopContent()) {
+     glean::orb::did_ever_block_response
+         .EnumGet(mShouldReportHasBlockedOpaqueResponse

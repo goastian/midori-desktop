@@ -1,6 +1,6 @@
 --- a/dom/chrome-webidl/ChromeUtils.webidl
 +++ b/dom/chrome-webidl/ChromeUtils.webidl
-@@ -792,10 +792,27 @@
+@@ -792,10 +792,28 @@
    Promise<DOMString> collectPerfStats();
  
    /**
@@ -11,7 +11,8 @@
 -  Promise<ParentProcInfoDictionary> requestProcInfo();
 +  Promise<ParentProcInfoDictionary> requestProcInfo(
 +    optional boolean includeThreads = true,
-+    optional boolean includeWindows = true);
++    optional boolean includeWindows = true,
++    optional boolean requireCompleteMemory = false);
 +
 +  [NewObject]
 +  Promise<MidoriManagedSocketUsage> requestManagedSocketUsage(
@@ -30,7 +31,7 @@
  
    /**
     * Requests an XDG activation token from the Wayland compositor.
-@@ -1135,6 +1152,9 @@
+@@ -1135,6 +1153,9 @@
    // Total CPU time spent by the process, in ns.
    unsigned long long cpuTime = 0;
  
@@ -40,7 +41,7 @@
    // Total CPU cycles used by this process.
    // On Windows where the resolution of CPU timings is 16ms, this can
    // be used to determine if a process is idle or slightly active.
-@@ -1179,6 +1199,9 @@
+@@ -1179,6 +1200,9 @@
  
    // Total CPU time spent by the process, in ns.
    unsigned long long cpuTime = 0;

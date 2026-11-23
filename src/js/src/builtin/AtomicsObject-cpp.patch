@@ -1,0 +1,20 @@
+diff --git a/js/src/builtin/AtomicsObject.cpp b/js/src/builtin/AtomicsObject.cpp
+--- a/js/src/builtin/AtomicsObject.cpp
++++ b/js/src/builtin/AtomicsObject.cpp
+@@ -1712,7 +1712,15 @@
+   }
+ 
+   // Go back to Idle after returning.
+-  auto onFinish = mozilla::MakeScopeExit([&] { state_ = Idle; });
++  auto onFinish = mozilla::MakeScopeExit([&] {
++    state_ = Idle;
++    if (cx->runtime()->atomicsWaitCallback) {
++      (*cx->runtime()->atomicsWaitCallback)(false);
++    }
++  });
++  if (cx->runtime()->atomicsWaitCallback) {
++    (*cx->runtime()->atomicsWaitCallback)(true);
++  }
+ 
+   const bool isTimed = timeout.isSome();
+ 

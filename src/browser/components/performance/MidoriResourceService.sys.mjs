@@ -12,6 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MemoryProfileManager: 'resource:///modules/MemoryProfileManager.sys.mjs',
   MemoryProfilePolicy: 'resource:///modules/MemoryProfilePolicy.sys.mjs',
   ResourceCpuController: 'resource:///modules/ResourceCpuController.sys.mjs',
+  ResourceMemoryAdmission: 'resource:///modules/ResourceMemoryAdmission.sys.mjs',
   ResourceMemoryController: 'resource:///modules/ResourceMemoryController.sys.mjs',
   ResourceTabCoordinator: 'resource:///modules/ResourceTabCoordinator.sys.mjs',
   setTimeout: 'resource://gre/modules/Timer.sys.mjs',
@@ -37,6 +38,7 @@ export const MidoriResourceService = {
   _sampleError: null,
   _memoryState: 'off',
   _memoryController: null,
+  _memoryAdmission: null,
   _reclaimedTabs: 0,
   _cpuController: null,
   _networkKey: null,
@@ -58,6 +60,7 @@ export const MidoriResourceService = {
     for (const pref of NETWORK_PREFS) Services.prefs.addObserver(pref, this);
     try { this._syncNetwork(this.getConfiguration().network); }
     catch (error) { this._networkState = 'error'; this._networkError = String(error); }
+    this._syncMemoryAdmission();
     this._syncCpu(this.getConfiguration().cpu);
     this._schedule();
   },
@@ -69,6 +72,7 @@ export const MidoriResourceService = {
         (config.network.enabled && this.getCapabilities().network)) return;
     if (!this._initialized) return;
     this._initialized = false;
+    this._memoryAdmission?.configure(false);
     for (const pref of [CONFIG_PREF, PROFILE_PREF, CUSTOM_BASE_PREF, CPU_READY_PREF, NETWORK_READY_PREF, ...NETWORK_PREFS]) {
       Services.prefs.removeObserver(pref, this);
     }
@@ -166,6 +170,7 @@ export const MidoriResourceService = {
     } finally {
       this._applying = false;
     }
+    this._syncMemoryAdmission();
     this._syncCpu(next.cpu);
     const memoryChanged = current.memory.enabled !== next.memory.enabled ||
       current.memory.budgetBytes !== next.memory.budgetBytes;
@@ -214,9 +219,31 @@ export const MidoriResourceService = {
     }
     try { this._syncNetwork(this.getConfiguration().network); }
     catch (error) { this._networkState = 'error'; this._networkError = String(error); }
+    this._syncMemoryAdmission();
     this._syncCpu(this.getConfiguration().cpu);
     this._publish();
     this._schedule();
+  },
+
+  _syncMemoryAdmission() {
+    const enabled = this.getConfiguration().memory.enabled;
+    if (!this._memoryAdmission && !enabled) return;
+    this._memoryAdmission ||= new lazy.ResourceMemoryAdmission(
+      options => this._prepareMemoryForLoad(options),
+      () => !this._sample || this._sampleError ? null : {
+        memoryBytes: this._sample.memoryBytes,
+        budgetBytes: this.getConfiguration().memory.budgetBytes,
+      });
+    this._memoryAdmission.configure(enabled);
+  },
+
+  _prepareMemoryForLoad({ reservedBytes = 0, forceSample = false } = {}) {
+    const memory = this.getConfiguration().memory;
+    if (!memory.enabled) return null;
+    const age = this._sample ? Date.now() - this._sample.sampledAt : -1;
+    if (!forceSample && !this._pending && !this._sampleError && age >= 0 && age <= 1000 &&
+        this._sample.memoryBytes + reservedBytes <= memory.budgetBytes * 0.85) return null;
+    return this._sampleNow();
   },
 
   _syncCpu(cpu) {
@@ -333,9 +360,9 @@ export const MidoriResourceService = {
 
   async _takeSample() {
     try {
+      this._cpuController?.refresh();
       this._sample = await this._sampler.sample();
       this._sampleError = null;
-      this._cpuController?.refresh();
       const config = this.getConfiguration();
       if (config.memory.enabled) {
         this._memoryController ||= new lazy.ResourceMemoryController(this._sampler);

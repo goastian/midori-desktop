@@ -1,0 +1,32 @@
+--- a/dom/ipc/WindowGlobalParent.h
++++ b/dom/ipc/WindowGlobalParent.h
+@@ -165,6 +165,13 @@
+   }
+ 
+   Maybe<ClientInfo> GetClientInfo() { return mClientInfo; }
++
++  static already_AddRefed<WindowGlobalParent> GetByClientId(
++      const nsID& aClientId);
++
++  bool IsCpuBudgetBackground() const {
++    return mMidoriCpuBackground.valueOr(false);
++  }
+ 
+   uint64_t ContentParentId();
+ 
+@@ -359,6 +366,7 @@
+       ParentProcessChannelHandle* aFailedHandle);
+   mozilla::ipc::IPCResult RecvSetClientInfo(
+       const IPCClientInfo& aIPCClientInfo);
++  mozilla::ipc::IPCResult RecvUpdateCpuBudget(bool aBackground);
+   mozilla::ipc::IPCResult RecvDestroy();
+   mozilla::ipc::IPCResult RecvRawMessage(const JSActorMessageMeta& aMeta,
+                                          JSIPCValue&& aData,
+@@ -550,6 +558,7 @@
+   uint32_t mSecurityState = 0;
+ 
+   Maybe<ClientInfo> mClientInfo;
++  Maybe<bool> mMidoriCpuBackground;
+   // Fields being mirrored from the corresponding document
+   nsCOMPtr<nsICookieJarSettings> mCookieJarSettings;
+ 

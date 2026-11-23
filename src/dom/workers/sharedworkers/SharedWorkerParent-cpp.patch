@@ -1,0 +1,29 @@
+--- a/dom/workers/sharedworkers/SharedWorkerParent.cpp
++++ b/dom/workers/sharedworkers/SharedWorkerParent.cpp
+@@ -65,6 +65,18 @@
+   return IPC_OK();
+ }
+ 
++IPCResult SharedWorkerParent::RecvUpdateCpuBudget(bool aBackground) {
++  AssertIsOnBackgroundThread();
++  if (mStatus == eClosed) {
++    return IPC_OK();
++  }
++  mMidoriCpuBackground = aBackground;
++  if (mStatus == eActive) {
++    mWorkerManagerWrapper->Manager()->UpdateCpuBudget();
++  }
++  return IPC_OK();
++}
++
+ IPCResult SharedWorkerParent::RecvSuspend() {
+   AssertIsOnBackgroundThread();
+   MOZ_ASSERT(!mSuspended);
+@@ -169,6 +181,7 @@
+ 
+   mWorkerManagerWrapper->Manager()->UpdateFrozen();
+   mWorkerManagerWrapper->Manager()->UpdateSuspend();
++  mWorkerManagerWrapper->Manager()->UpdateCpuBudget();
+ }
+ 
+ void SharedWorkerParent::ErrorPropagation(nsresult aError) {

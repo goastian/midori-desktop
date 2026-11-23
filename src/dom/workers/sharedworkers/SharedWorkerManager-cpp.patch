@@ -1,0 +1,40 @@
+--- a/dom/workers/sharedworkers/SharedWorkerManager.cpp
++++ b/dom/workers/sharedworkers/SharedWorkerManager.cpp
+@@ -130,6 +130,7 @@
+   MOZ_ASSERT(!mActors.Contains(aParent));
+ 
+   mActors.AppendElement(aParent);
++  UpdateCpuBudget();
+ 
+   if (mLockCount) {
+     (void)aParent->SendNotifyLock(true);
+@@ -156,6 +157,7 @@
+   }
+ 
+   mActors.RemoveElement(aParent);
++  UpdateCpuBudget();
+ 
+   if (!mActors.IsEmpty()) {
+     // Our remaining actors could be all suspended or frozen.
+@@ -178,6 +180,21 @@
+ 
+   mRemoteWorkerController->Terminate();
+   mRemoteWorkerController = nullptr;
++}
++
++void SharedWorkerManager::UpdateCpuBudget() {
++  ::mozilla::ipc::AssertIsOnBackgroundThread();
++  if (!mRemoteWorkerController) {
++    return;
++  }
++  bool background = !mActors.IsEmpty();
++  for (SharedWorkerParent* actor : mActors) {
++    background = background && actor->IsCpuBudgetBackground();
++  }
++  if (mMidoriCpuBackground != background) {
++    mMidoriCpuBackground = background;
++    mRemoteWorkerController->UpdateCpuBudget(background);
++  }
+ }
+ 
+ void SharedWorkerManager::UpdateSuspend() {

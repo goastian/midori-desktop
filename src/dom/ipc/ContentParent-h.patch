@@ -1,12 +1,31 @@
 diff --git a/dom/ipc/ContentParent.h b/dom/ipc/ContentParent.h
 --- a/dom/ipc/ContentParent.h
 +++ b/dom/ipc/ContentParent.h
-@@ -367,6 +367,8 @@
+@@ -101,6 +101,7 @@
+ 
+ namespace dom {
+ 
++class MidoriWorkerCpuControlParent;
+ class BrowsingContextGroup;
+ class Element;
+ class BrowserParent;
+@@ -367,6 +368,10 @@
    mozilla::ipc::IPCResult RecvCreateClipboardContentAnalysis(
        Endpoint<PClipboardContentAnalysisParent>&& aParentEndpoint);
    mozilla::ipc::IPCResult RecvCreateGMPService();
 +  mozilla::ipc::IPCResult RecvSetMidoriMediaSendingCallCount(
 +      const uint32_t& aCount);
++
++  void UpdateMidoriWorkerCpuRate(uint32_t aRateNanocpus);
  
    NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(ContentParent, nsIObserver)
  
+@@ -1600,6 +1605,8 @@
+ 
+   RefPtr<PProcessHangMonitorParent> mHangMonitorActor;
+ 
++  RefPtr<MidoriWorkerCpuControlParent> mMidoriWorkerCpuControl;
++
+   RefPtr<RemoteWorkerServiceParent> mRemoteWorkerServiceActor;
+ 
+   RefPtr<RemoteWorkerDebuggerManagerParent> mRemoteWorkerDebuggerManagerActor;

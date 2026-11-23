@@ -20,7 +20,7 @@ export class ResourceSampler {
 
   async _sample() {
     const cpuInfo = await Promise.resolve().then(() => Services.sysinfo.processInfo).catch(() => null);
-    const info = await ChromeUtils.requestProcInfo(false, false);
+    const info = await ChromeUtils.requestProcInfo(false, false, true);
     const cpuCount = Number.isInteger(cpuInfo?.count) && cpuInfo.count > 0 ? cpuInfo.count : null;
     const nativeCapacity = Number.isFinite(cpuInfo?.cpuCapacity) && cpuInfo.cpuCapacity > 0;
     const managedQuota = cpuInfo?.cpuManagedQuota === true;

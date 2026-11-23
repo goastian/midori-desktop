@@ -1,0 +1,11 @@
+diff --git a/js/src/vm/Runtime.cpp b/js/src/vm/Runtime.cpp
+--- a/js/src/vm/Runtime.cpp
++++ b/js/src/vm/Runtime.cpp
+@@ -134,6 +134,7 @@
+       liveSABs(0),
+       beforeWaitCallback(nullptr),
+       afterWaitCallback(nullptr),
++      atomicsWaitCallback(nullptr),
+       offthreadBaselineCompilationEnabled_(false),
+       offthreadIonCompilationEnabled_(true),
+       autoWritableJitCodeActive_(false),

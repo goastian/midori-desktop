@@ -1,0 +1,20 @@
+--- a/dom/workers/sharedworkers/SharedWorker.h
++++ b/dom/workers/sharedworkers/SharedWorker.h
+@@ -41,6 +41,8 @@
+   RefPtr<MessagePort> mMessagePort;
+   nsTArray<RefPtr<Event>> mFrozenEvents;
+   bool mFrozen;
++  bool mMidoriCpuBackground = false;
++  bool mMidoriCpuStateSent = false;
+ 
+  public:
+   // TODO(bug 1749042): Mark as MOZ_CAN_RUN_SCRIPT when IDL constructors can be.
+@@ -72,6 +74,8 @@
+   // Methods called from the window.
+ 
+   void Close();
++
++  void UpdateCpuBudget(bool aBackground);
+ 
+   void Suspend();
+ 

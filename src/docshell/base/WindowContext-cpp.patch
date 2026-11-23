@@ -1,0 +1,24 @@
+--- a/docshell/base/WindowContext.cpp
++++ b/docshell/base/WindowContext.cpp
+@@ -303,6 +303,7 @@
+       if (win && (aOldValue != win->HasActivePeerConnections())) {
+         dom::UpdateWorkersPeerConnections(*win,
+                                           win->HasActivePeerConnections());
++        win->UpdateSharedWorkersCpuBudget();
+       }
+     }
+   });
+@@ -618,11 +619,12 @@
+ }
+ 
+ void WindowContext::TransientSetHasActivePeerConnections() {
+-  if (!IsTop()) {
++  if (!IsTop() || GetHasActivePeerConnections()) {
+     return;
+   }
+ 
+   mFields.SetWithoutSyncing<IDX_HasActivePeerConnections>(true);
++  DidSet(FieldIndex<IDX_HasActivePeerConnections>{}, false);
+ }
+ 
+ WindowContext::IPCInitializer WindowContext::GetIPCInitializer() {

@@ -1,4 +1,3 @@
-diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/transport/nr_socket_prsock.cpp
 --- a/dom/media/webrtc/transport/nr_socket_prsock.cpp
 +++ b/dom/media/webrtc/transport/nr_socket_prsock.cpp
 @@ -88,10 +88,14 @@
@@ -72,15 +71,30 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
    }
  
    return r;
-@@ -366,10 +392,169 @@
+@@ -366,10 +392,207 @@
    int r = NrSocketBase::cancel(how);
  
    if (!r) {
 -    mPollFlags = poll_flags();
 +    UpdatePollFlags();
++    if (how == NR_ASYNC_WAIT_READ || !queued_output_ ||
++        queued_output_->empty()) {
++      net::MidoriNetworkBudget::CancelDatagramDemand(
++          how == NR_ASYNC_WAIT_READ
++              ? net::MidoriNetworkBudget::Direction::Download
++              : net::MidoriNetworkBudget::Direction::Upload,
++          this);
++    }
    }
  
    return r;
++}
++
++void NrSocket::ForgetResourceQuota() {
++  net::MidoriNetworkBudget::ForgetDatagramFlow(
++      net::MidoriNetworkBudget::Direction::Download, this);
++  net::MidoriNetworkBudget::ForgetDatagramFlow(
++      net::MidoriNetworkBudget::Direction::Upload, this);
 +}
 +
 +void NrSocket::UpdatePollFlags() {
@@ -101,8 +115,16 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +  if (!fd_ || NS_FAILED(mCondition) || !(poll_flags() & flag)) return false;
 +  const auto direction = aInput ? net::MidoriNetworkBudget::Direction::Download
 +                                : net::MidoriNetworkBudget::Direction::Upload;
++  if (aInput && my_addr_.protocol == IPPROTO_UDP &&
++      net::MidoriNetworkBudget::DownloadRate()) {
++    PRPollDesc pendingRead{fd_, PR_POLL_READ, 0};
++    if (PR_Poll(&pendingRead, 1, PR_INTERVAL_NO_WAIT) <= 0 ||
++        !(pendingRead.out_flags & PR_POLL_READ)) {
++      net::MidoriNetworkBudget::CancelDatagramDemand(direction, this);
++    }
++  }
 +  const uint32_t delay = net::MidoriNetworkBudget::WaitMilliseconds(
-+      direction, my_addr_.protocol == IPPROTO_UDP);
++      direction, my_addr_.protocol == IPPROTO_UDP, this);
 +  if (!delay) return false;
 +  bool& pending = aInput ? input_quota_pending_ : output_quota_pending_;
 +  if (!pending) {
@@ -133,7 +155,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +                              const net::DatagramSendInfo& aSent) {
 +  if (!fd_ || NS_FAILED(mCondition)) return R_EOD;
 +  const auto reservation = net::MidoriNetworkBudget::Reserve(
-+      net::MidoriNetworkBudget::Direction::Upload, aLength, true);
++      net::MidoriNetworkBudget::Direction::Upload, aLength, true, this);
 +  if (aLength && !reservation.bytes) return R_WOULDBLOCK;
 +  const int32_t sent =
 +      PR_SendTo(fd_, aData, aLength, aFlags, &aAddress, PR_INTERVAL_NO_WAIT);
@@ -146,10 +168,16 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +  if (uint32_t(sent) != aLength) return R_IO_ERROR;
 +  profiler_count_bandwidth_written_bytes(sent);
 +  aSent.Notify(sentAt);
++  if (!queued_output_ || queued_output_->empty()) {
++    net::MidoriNetworkBudget::CancelDatagramDemand(
++        net::MidoriNetworkBudget::Direction::Upload, this);
++  }
 +  return 0;
 +}
 +
 +void NrSocket::ClearQueuedOutput() {
++  net::MidoriNetworkBudget::CancelDatagramDemand(
++      net::MidoriNetworkBudget::Direction::Upload, this);
 +  static_assert(sizeof(QueuedDatagram) <= 256);
 +  next_media_expiry_ = TimeStamp();
 +  if (!queued_output_) return;
@@ -173,7 +201,8 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +  const TimeStamp now = TimeStamp::Now();
 +  if (next_media_expiry_ > now) return;
 +  next_media_expiry_ = TimeStamp();
-+  for (auto packet = queued_output_->begin(); packet != queued_output_->end();) {
++  for (auto packet = queued_output_->begin();
++       packet != queued_output_->end();) {
 +    if (!packet->expires.IsNull() && packet->expires <= now) {
 +      if (packet->sent.packetId >= 0) {
 +        MOZ_LOG_FMT(sNrSendCompletionLog, LogLevel::Debug,
@@ -193,14 +222,18 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +      ++packet;
 +    }
 +  }
++  if (queued_output_->empty()) {
++    net::MidoriNetworkBudget::CancelDatagramDemand(
++        net::MidoriNetworkBudget::Direction::Upload, this);
++  }
 +}
 +
 +void NrSocket::ScheduleQueuedOutput() {
 +  if (queue_wake_pending_ || !queued_output_ || queued_output_->empty()) return;
 +  queue_wake_pending_ = true;
-+  const uint32_t delay =
-+      std::max(10U, net::MidoriNetworkBudget::WaitMilliseconds(
-+                        net::MidoriNetworkBudget::Direction::Upload, true));
++  const uint32_t delay = std::max(
++      10U, net::MidoriNetworkBudget::WaitMilliseconds(
++               net::MidoriNetworkBudget::Direction::Upload, true, this));
 +  const nsresult rv = NS_DelayedDispatchToCurrentThread(
 +      NS_NewRunnableFunction("NrSocket::FlushQueuedOutput",
 +                             [self = RefPtr{this}]() {
@@ -239,11 +272,15 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +    net::MidoriNetworkBudget::ReleaseDatagramBytes(charge);
 +    ++sent;
 +  }
++  if (queued_output_->empty()) {
++    net::MidoriNetworkBudget::CancelDatagramDemand(
++        net::MidoriNetworkBudget::Direction::Upload, this);
++  }
 +  ScheduleQueuedOutput();
  }
  
  // Helper functions for addresses
-@@ -734,11 +919,14 @@
+@@ -734,11 +957,14 @@
    ASSERT_ON_THREAD(ststhread_);
    int r, _status;
    PRNetAddr naddr;
@@ -260,7 +297,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
  
    if (nr_is_stun_request_message((UCHAR*)msg, len) && ShouldDrop(len)) {
      ABORT(R_WOULDBLOCK);
-@@ -756,16 +944,58 @@
+@@ -756,16 +982,58 @@
    }
  
    // TODO: Convert flags?
@@ -329,7 +366,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
    _status = 0;
  abort:
    return (_status);
-@@ -777,12 +1007,36 @@
+@@ -777,12 +1045,36 @@
    int r, _status;
    PRNetAddr nfrom;
    int32_t status;
@@ -344,7 +381,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +    receive_headroom_ = nullptr;
 +  reservation = net::MidoriNetworkBudget::Reserve(
 +      net::MidoriNetworkBudget::Direction::Download,
-+      std::min<size_t>(maxlen, UINT32_MAX), true);
++      std::min<size_t>(maxlen, UINT32_MAX), true, this);
 +  if (maxlen && !reservation.bytes) {
 +    EnsureReceiveHeadroom();
 +    ABORT(R_WOULDBLOCK);
@@ -365,20 +402,22 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +  ++input_read_count_;
 +  last_input_size_ = status;
 +  if (net::MidoriNetworkBudget::WaitMilliseconds(
-+          net::MidoriNetworkBudget::Direction::Download, true)) {
++          net::MidoriNetworkBudget::Direction::Download, true, this)) {
 +    EnsureReceiveHeadroom();
    }
    *len = status;
  
-@@ -806,6 +1060,7 @@
+@@ -805,7 +1097,9 @@
+ // Close the socket so that the STS will detach and then kill it
  void NrSocket::close() {
    ASSERT_ON_THREAD(ststhread_);
++  ForgetResourceQuota();
    mCondition = NS_BASE_STREAM_CLOSED;
 +  ClearQueuedOutput();
    cancel(NR_ASYNC_WAIT_READ);
    cancel(NR_ASYNC_WAIT_WRITE);
  }
-@@ -864,12 +1119,23 @@
+@@ -864,12 +1158,23 @@
    ASSERT_ON_THREAD(ststhread_);
    int _status;
    int32_t status;
@@ -393,7 +432,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 -  status = PR_Write(fd_, msg, len);
 +  reservation = net::MidoriNetworkBudget::Reserve(
 +      net::MidoriNetworkBudget::Direction::Upload,
-+      std::min<size_t>(len, UINT32_MAX));
++      std::min<size_t>(len, UINT32_MAX), false, this);
 +  if (len && !reservation.bytes) ABORT(R_WOULDBLOCK);
 +  status = PR_Write(fd_, msg, reservation.bytes);
 +  socket_error = status < 0 ? PR_GetError() : 0;
@@ -405,7 +444,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
      r_log(LOG_GENERIC, LOG_INFO, "Error in write");
      ABORT(R_IO_ERROR);
    }
-@@ -885,12 +1151,24 @@
+@@ -885,12 +1190,24 @@
    ASSERT_ON_THREAD(ststhread_);
    int _status;
    int32_t status;
@@ -420,7 +459,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 -  status = PR_Read(fd_, buf, maxlen);
 +  reservation = net::MidoriNetworkBudget::Reserve(
 +      net::MidoriNetworkBudget::Direction::Download,
-+      std::min<size_t>(maxlen, UINT32_MAX));
++      std::min<size_t>(maxlen, UINT32_MAX), false, this);
 +  if (maxlen && !reservation.bytes) ABORT(R_WOULDBLOCK);
 +  status = PR_Read(fd_, buf, reservation.bytes);
 +  socket_error = status < 0 ? PR_GetError() : 0;
@@ -433,7 +472,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
      r_log(LOG_GENERIC, LOG_INFO, "Error in read");
      ABORT(R_IO_ERROR);
    }
-@@ -1055,7 +1333,193 @@
+@@ -1055,7 +1372,194 @@
        err_(false),
        state_(NR_INIT) {}
  
@@ -480,7 +519,8 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +  const TimeStamp now = TimeStamp::Now();
 +  if (output_->nextMediaExpiry > now) return;
 +  output_->nextMediaExpiry = TimeStamp();
-+  for (auto packet = output_->packets.begin(); packet != output_->packets.end();) {
++  for (auto packet = output_->packets.begin();
++       packet != output_->packets.end();) {
 +    if ((*packet)->inFlight || (*packet)->options.expires.IsNull() ||
 +        (*packet)->options.expires > now) {
 +      if (!(*packet)->inFlight && !(*packet)->options.expires.IsNull() &&
@@ -566,9 +606,9 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +    aCompletion->Reject(NS_BASE_STREAM_CLOSED, __func__);
 +    return;
 +  }
-+  socket_child_->SendWithAddressAndAck(aPacket->address, aPacket->data,
-+                                       aPacket->options.expires,
-+                                       aPacket->options.audio)
++  socket_child_
++      ->SendWithAddressAndAck(aPacket->address, aPacket->data,
++                              aPacket->options.expires, aPacket->options.audio)
 +      ->Then(GetCurrentSerialEventTarget(), __func__,
 +             [aCompletion](
 +                 const net::DatagramSendPromise::ResolveOrRejectValue& value) {
@@ -628,7 +668,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
  
  void NrUdpSocketIpc::Destroy() {
  #if defined(MOZILLA_INTERNAL_API)
-@@ -1301,15 +1765,39 @@
+@@ -1301,15 +1805,39 @@
      return R_WOULDBLOCK;
    }
  
@@ -663,11 +703,11 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
 +    output_->nextMediaExpiry = packet->options.expires;
 +  }
 +  if (packet->options.urgent) {
-+    const auto position = std::find_if(
-+        output_->packets.begin(), output_->packets.end(),
-+        [](const RefPtr<PendingOutput>& aPacket) {
-+          return !aPacket->inFlight && !aPacket->options.urgent;
-+        });
++    const auto position =
++        std::find_if(output_->packets.begin(), output_->packets.end(),
++                     [](const RefPtr<PendingOutput>& aPacket) {
++                       return !aPacket->inFlight && !aPacket->options.urgent;
++                     });
 +    output_->packets.insert(position, std::move(packet));
 +  } else {
 +    output_->packets.push_back(std::move(packet));
@@ -677,7 +717,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
  }
  
  void NrUdpSocketIpc::close() {
-@@ -1319,6 +1807,7 @@
+@@ -1319,6 +1847,7 @@
  
    ReentrantMonitorAutoEnter mon(monitor_);
    state_ = NR_CLOSING;
@@ -685,7 +725,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.cpp b/dom/media/webrtc/
  
    RUN_ON_THREAD(io_thread_,
                  mozilla::WrapRunnable(RefPtr<NrUdpSocketIpc>(this),
-@@ -1488,23 +1977,6 @@
+@@ -1488,23 +2017,6 @@
    }
  
    socket_child_->Connect(proxy, host, port);

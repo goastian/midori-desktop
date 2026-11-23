@@ -1,0 +1,52 @@
+--- a/dom/workers/remoteworkers/RemoteWorkerController.h
++++ b/dom/workers/remoteworkers/RemoteWorkerController.h
+@@ -6,6 +6,7 @@
+ #define mozilla_dom_RemoteWorkerController_h
+ 
+ #include "mozilla/RefPtr.h"
++#include "mozilla/Maybe.h"
+ #include "mozilla/UniquePtr.h"
+ #include "mozilla/dom/DOMTypes.h"
+ #include "mozilla/dom/ServiceWorkerOpArgs.h"
+@@ -140,6 +141,8 @@
+ 
+   void Terminate();
+ 
++  void UpdateCpuBudget(bool aBackground);
++
+   void Suspend();
+ 
+   void Resume();
+@@ -197,6 +200,7 @@
+ 
+   RefPtr<RemoteWorkerObserver> mObserver;
+   RefPtr<RemoteWorkerParent> mActor;
++  Maybe<bool> mMidoriServiceCpuBackground;
+   RefPtr<RemoteWorkerNonLifeCycleOpControllerParent> mNonLifeCycleOpController;
+ 
+   enum {
+@@ -257,6 +261,7 @@
+       eRemoveWindowID,
+       eSetLocaleOverride,
+       eUpdateTimezoneOverride,
++      eUpdateCpuBudget,
+     };
+ 
+     explicit PendingSharedWorkerOp(Type aType, uint64_t aWindowID = 0);
+@@ -268,6 +273,8 @@
+                           const nsTArray<nsString>& aLanguages);
+ 
+     PendingSharedWorkerOp(Type aType, const nsAString& aTimezoneOverride);
++
++    explicit PendingSharedWorkerOp(bool aBackground);
+ 
+     ~PendingSharedWorkerOp();
+ 
+@@ -282,6 +289,7 @@
+     const nsCString mLanguageOverride;
+     const CopyableTArray<nsString> mLanguages;
+     const nsString mTimezoneOverride;
++    const bool mBackground = false;
+     bool mCompleted = false;
+   };
+ 

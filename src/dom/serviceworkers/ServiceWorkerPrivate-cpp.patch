@@ -1,0 +1,169 @@
+--- a/dom/serviceworkers/ServiceWorkerPrivate.cpp
++++ b/dom/serviceworkers/ServiceWorkerPrivate.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include "MainThreadUtils.h"
+ #include "ServiceWorkerManager.h"
++#include "mozilla/dom/WindowGlobalParent.h"
+ #include "ServiceWorkerRegistrationInfo.h"
+ #include "ServiceWorkerUtils.h"
+ #include "js/ErrorReport.h"
+@@ -115,16 +116,16 @@
+ /**
+  * KeepAliveToken
+  */
+-KeepAliveToken::KeepAliveToken(ServiceWorkerPrivate* aPrivate)
+-    : mPrivate(aPrivate) {
++KeepAliveToken::KeepAliveToken(ServiceWorkerPrivate* aPrivate, bool aProtectCpu)
++    : mPrivate(aPrivate), mProtectCpu(aProtectCpu) {
+   MOZ_ASSERT(NS_IsMainThread());
+   MOZ_ASSERT(aPrivate);
+-  mPrivate->AddToken();
++  mPrivate->AddToken(mProtectCpu);
+ }
+ 
+ KeepAliveToken::~KeepAliveToken() {
+   MOZ_ASSERT(NS_IsMainThread());
+-  mPrivate->ReleaseToken();
++  mPrivate->ReleaseToken(mProtectCpu);
+ }
+ 
+ NS_IMPL_ISUPPORTS0(KeepAliveToken)
+@@ -1461,6 +1462,8 @@
+   mPendingSpawnLifetime = aLifetimeExtension;
+ 
+   mControllerChild = new RAIIActorPtrHolder(controllerChild.forget());
++  mMidoriCpuLastSent = Nothing();
++  UpdateCpuBudget();
+ 
+   // Update Running count here because we may Terminate before we get
+   // CreationSucceeded().  We'll update if it handles Fetch if that changes
+@@ -1535,6 +1538,23 @@
+   mPendingFunctionalEvents.Clear();
+ }
+ 
++void ServiceWorkerPrivate::SetCpuBudgetBackground(bool aBackground) {
++  MOZ_ASSERT(NS_IsMainThread());
++  mMidoriCpuBackground = aBackground;
++  UpdateCpuBudget();
++}
++
++void ServiceWorkerPrivate::UpdateCpuBudget() {
++  MOZ_ASSERT(NS_IsMainThread());
++  const bool background =
++      mMidoriCpuBackground && !mMidoriCpuProtectedEvents && !mDebuggerCount;
++  if (mControllerChild && mControllerChild->get()->CanSend() &&
++      mMidoriCpuLastSent != Some(background) &&
++      mControllerChild->get()->SendUpdateCpuBudget(background)) {
++    mMidoriCpuLastSent = Some(background);
++  }
++}
++
+ void ServiceWorkerPrivate::UpdateIsOnContentBlockingAllowList(
+     bool aOnContentBlockingAllowList) {
+   AssertIsOnMainThread();
+@@ -1593,6 +1613,7 @@
+   }
+ 
+   ++mDebuggerCount;
++  UpdateCpuBudget();
+ 
+   return NS_OK;
+ }
+@@ -1605,6 +1626,7 @@
+   }
+ 
+   --mDebuggerCount;
++  UpdateCpuBudget();
+ 
+   // When the last debugger detaches from a worker, we either reset the idle
+   // timeout, or terminate the worker if there are no more active tokens.
+@@ -1786,16 +1808,25 @@
+   MOZ_ASSERT(NS_SUCCEEDED(rv));
+ }
+ 
+-void ServiceWorkerPrivate::AddToken() {
++void ServiceWorkerPrivate::AddToken(bool aProtectCpu) {
+   MOZ_ASSERT(NS_IsMainThread());
+   ++mTokenCount;
+-}
+-
+-void ServiceWorkerPrivate::ReleaseToken() {
++  if (aProtectCpu) {
++    ++mMidoriCpuProtectedEvents;
++    UpdateCpuBudget();
++  }
++}
++
++void ServiceWorkerPrivate::ReleaseToken(bool aProtectCpu) {
+   MOZ_ASSERT(NS_IsMainThread());
+ 
+   MOZ_ASSERT(mTokenCount > 0);
+   --mTokenCount;
++  if (aProtectCpu) {
++    MOZ_RELEASE_ASSERT(mMidoriCpuProtectedEvents > 0);
++    --mMidoriCpuProtectedEvents;
++    UpdateCpuBudget();
++  }
+ 
+   if (IsIdle()) {
+     mIdlePromiseHolder.ResolveIfExists(true, __func__);
+@@ -1816,7 +1847,7 @@
+ }
+ 
+ already_AddRefed<KeepAliveToken>
+-ServiceWorkerPrivate::CreateEventKeepAliveToken() {
++ServiceWorkerPrivate::CreateEventKeepAliveToken(bool aProtectCpu) {
+   MOZ_ASSERT(NS_IsMainThread());
+ 
+   // When the WorkerPrivate is in a separate process, we first hold a normal
+@@ -1824,7 +1855,7 @@
+   // create the idle KeepAliveToken.
+   MOZ_ASSERT(mIdleKeepAliveToken || mControllerChild);
+ 
+-  RefPtr<KeepAliveToken> ref = new KeepAliveToken(this);
++  RefPtr<KeepAliveToken> ref = new KeepAliveToken(this, aProtectCpu);
+   return ref.forget();
+ }
+ 
+@@ -1939,6 +1970,8 @@
+   RefPtr<ServiceWorkerRegistrationInfo> regInfo =
+       swm->GetRegistration(principal, mInfo->Scope());
+   if (regInfo) {
++    if (regInfo->GetActive() == mInfo)
++      swm->UpdateRegistrationCpuBudget(regInfo);
+     // If it's already set, we're done and the running count is already set
+     if (mHandlesFetch == Unknown) {
+       if (regInfo->GetActive()) {
+@@ -2122,6 +2155,7 @@
+    * invoked we will spawn a new worker, creating a new mControllerChild.
+    */
+   mControllerChild = nullptr;
++  mMidoriCpuLastSent = Nothing();
+   // Create a new ClientInfo for the next time we potentially spawn this
+   // ServiceWorker.  We do this now rather than immediately before spawning the
+   // ServiceWorker so it's possible to know what the client id will be before
+@@ -2154,10 +2188,22 @@
+ 
+   RefPtr<ServiceWorkerPrivate> self = this;
+   RefPtr<RAIIActorPtrHolder> holder = mControllerChild;
++  bool protectCpu = true;
++  if (aArgs.type() == ServiceWorkerOpArgs::TServiceWorkerMessageEventOpArgs) {
++    const auto& source = aArgs.get_ServiceWorkerMessageEventOpArgs().source();
++    if (source.type() == PostMessageSource::TClientInfoAndState) {
++      const nsID& clientId = source.get_ClientInfoAndState().info().id();
++      RefPtr<WindowGlobalParent> window =
++          WindowGlobalParent::GetByClientId(clientId);
++      protectCpu =
++          !window || !window->IsCpuBudgetBackground() ||
++          !ServiceWorkerManager::IsClientControlledByWorker(clientId, mInfo);
++    }
++  }
+   RefPtr<KeepAliveToken> token =
+       aArgs.type() == ServiceWorkerOpArgs::TServiceWorkerTerminateWorkerOpArgs
+           ? nullptr
+-          : CreateEventKeepAliveToken();
++          : CreateEventKeepAliveToken(protectCpu);
+ 
+   /**
+    * NOTE: moving `aArgs` won't do anything until IPDL `SendMethod()` methods

@@ -8,15 +8,18 @@
  
  namespace mozilla {
  
-@@ -150,6 +151,7 @@
+@@ -148,8 +149,10 @@
+   nsCString origin;
+   // Memory size in bytes.
    uint64_t memory = 0;
++  bool memoryIsAvailable = false;
    // CPU time in ns.
    uint64_t cpuTime = 0;
 +  TimeStamp cpuTimeSampledAt;
    uint64_t cpuCycleCount = 0;
    // Threads owned by this process.
    CopyableTArray<ThreadInfo> threads;
-@@ -200,6 +202,7 @@
+@@ -200,6 +203,7 @@
    const nsTArray<UtilityInfo> utilityInfo;
    // If the process is a child, its child id, otherwise `0`.
    const int32_t childId;
@@ -24,7 +27,7 @@
  #ifdef XP_MACOSX
    const mach_port_t childTask;
  #endif  // XP_DARWIN
-@@ -256,12 +259,23 @@
+@@ -256,12 +260,23 @@
   * `ParentProcInfoDictionary` or a `ChildProcInfoDictionary`.
   */
  template <typename T>

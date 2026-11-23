@@ -1,0 +1,192 @@
+--- a/dom/media/mediaelement/HTMLMediaElement.cpp
++++ b/dom/media/mediaelement/HTMLMediaElement.cpp
+@@ -891,6 +891,7 @@
+   }
+ 
+   void Shutdown() {
++    SetProgressingCurrentTime(false);
+     for (const auto& t : mAudioTracks.Clone()) {
+       if (t) {
+         RemoveTrack(t->AsAudioStreamTrack());
+@@ -904,9 +905,13 @@
+     mVideoOutput = nullptr;
+   }
+ 
+-  void UpdateGraphTime() {
+-    mGraphTime =
+-        mGraphTimeDummy->mTrack->Graph()->CurrentTime() - *mGraphTimeOffset;
++  void UpdatePlaybackPosition() {
++    if (!mProgressingCurrentTime) {
++      return;
++    }
++    mCurrentTime =
++        (mElapsedPlaybackTime + (TimeStamp::Now() - mPlaybackStartTime))
++            .ToSeconds();
+   }
+ 
+   void SetFirstFrameRendered() {
+@@ -928,17 +933,21 @@
+     if (aProgress == mProgressingCurrentTime) {
+       return;
+     }
+-
+     MOZ_DIAGNOSTIC_ASSERT(mGraphTimeDummy);
++    const TimeStamp now = TimeStamp::Now();
++    if (mProgressingCurrentTime) {
++      mElapsedPlaybackTime += now - mPlaybackStartTime;
++    }
+     mProgressingCurrentTime = aProgress;
++    mPlaybackStartTime = aProgress ? now : TimeStamp();
++    mCurrentTime = mElapsedPlaybackTime.ToSeconds();
+     MediaTrackGraph* graph = mGraphTimeDummy->mTrack->Graph();
+-    if (mProgressingCurrentTime) {
+-      mGraphTimeOffset = Some(graph->CurrentTime().Ref() - mGraphTime);
++    if (aProgress) {
+       mWatchManager.Watch(graph->CurrentTime(),
+-                          &MediaStreamRenderer::UpdateGraphTime);
++                          &MediaStreamRenderer::UpdatePlaybackPosition);
+     } else {
+       mWatchManager.Unwatch(graph->CurrentTime(),
+-                            &MediaStreamRenderer::UpdateGraphTime);
++                            &MediaStreamRenderer::UpdatePlaybackPosition);
+     }
+   }
+ 
+@@ -1122,15 +1131,9 @@
+     mVideoTrack = nullptr;
+   }
+ 
+-  double CurrentTime() const {
+-    if (!mGraphTimeDummy) {
+-      return 0.0;
+-    }
+-
+-    return mGraphTimeDummy->mTrack->GraphImpl()->MediaTimeToSeconds(mGraphTime);
+-  }
+-
+-  Watchable<GraphTime>& CurrentGraphTime() { return mGraphTime; }
++  double CurrentTime() const { return mCurrentTime.Ref(); }
++
++  Watchable<double>& CurrentPlaybackPosition() { return mCurrentTime; }
+ 
+   // Set if we're rendering video.
+   const RefPtr<VideoFrameContainer> mVideoContainer;
+@@ -1218,7 +1221,7 @@
+   // playing.
+   Watchable<bool> mRendering = {false, "MediaStreamRenderer::mRendering"};
+ 
+-  // True while we're progressing mGraphTime. False otherwise.
++  // True while we're progressing mCurrentTime. False otherwise.
+   bool mProgressingCurrentTime = false;
+ 
+   // The audio output volume for all audio tracks.
+@@ -1241,14 +1244,11 @@
+   // when the first track is added, never unset.
+   RefPtr<SharedDummyTrack> mGraphTimeDummy;
+ 
+-  // Watchable that relays the graph's currentTime updates to the media element
+-  // only while we're rendering. This is the current time of the rendering in
+-  // GraphTime units.
+-  Watchable<GraphTime> mGraphTime = {0, "MediaStreamRenderer::mGraphTime"};
+-
+-  // Nothing until a track has been added. Then, the current GraphTime at the
+-  // time when we were last Start()ed.
+-  Maybe<GraphTime> mGraphTimeOffset;
++  // Publish on the main thread to keep the position stable during scripts.
++  Watchable<double> mCurrentTime = {0.0, "MediaStreamRenderer::mCurrentTime"};
++
++  TimeDuration mElapsedPlaybackTime;
++  TimeStamp mPlaybackStartTime;
+ 
+   // Currently enabled (and rendered) audio tracks.
+   nsTArray<WeakPtr<MediaStreamTrack>> mAudioTracks;
+@@ -2706,6 +2706,7 @@
+     // indirectly which depends on mPaused. So we need to update mPaused first.
+     if (!mPaused) {
+       mPaused = true;
++      UpdateSrcStreamPotentiallyPlaying();
+       UpdatePlaybackPseudoClasses();
+       PlayPromise::RejectPromises(TakePendingPlayPromises(),
+                                   NS_ERROR_DOM_MEDIA_ABORT_ERR);
+@@ -3808,6 +3809,7 @@
+   }
+   bool oldPaused = mPaused;
+   mPaused = true;
++  UpdateSrcStreamPotentiallyPlaying();
+   UpdatePlaybackPseudoClasses();
+   // Step 1,
+   // https://html.spec.whatwg.org/multipage/media.html#internal-pause-steps
+@@ -5300,6 +5302,7 @@
+ 
+   const bool oldPaused = mPaused;
+   mPaused = false;
++  UpdateSrcStreamPotentiallyPlaying();
+   UpdatePlaybackPseudoClasses();
+   // Step 5,
+   // https://html.spec.whatwg.org/multipage/media.html#internal-play-steps
+@@ -6047,6 +6050,7 @@
+ 
+   if (shouldPlay) {
+     mSrcStreamPlaybackEnded = false;
++    UpdateSrcStreamPotentiallyPlaying();
+     mSrcStreamReportPlaybackEnded = false;
+ 
+     if (mMediaStreamRenderer) {
+@@ -6113,7 +6117,7 @@
+                       &HTMLMediaElement::UpdateSrcStreamPotentiallyPlaying);
+   mWatchManager.Watch(mSrcStreamPlaybackEnded,
+                       &HTMLMediaElement::UpdateSrcStreamReportPlaybackEnded);
+-  mWatchManager.Watch(mMediaStreamRenderer->CurrentGraphTime(),
++  mWatchManager.Watch(mMediaStreamRenderer->CurrentPlaybackPosition(),
+                       &HTMLMediaElement::UpdateSrcStreamTime);
+   SetVolumeInternal();
+   if (mSink.second) {
+@@ -6164,7 +6168,7 @@
+     mWatchManager.Unwatch(
+         mSrcStreamPlaybackEnded,
+         &HTMLMediaElement::UpdateSrcStreamReportPlaybackEnded);
+-    mWatchManager.Unwatch(mMediaStreamRenderer->CurrentGraphTime(),
++    mWatchManager.Unwatch(mMediaStreamRenderer->CurrentPlaybackPosition(),
+                           &HTMLMediaElement::UpdateSrcStreamTime);
+     mMediaStreamRenderer->Shutdown();
+     mMediaStreamRenderer = nullptr;
+@@ -6177,6 +6181,7 @@
+   mSrcStream->UnregisterTrackListener(mMediaStreamTrackListener.get());
+   mMediaStreamTrackListener = nullptr;
+   mSrcStreamPlaybackEnded = false;
++  UpdateSrcStreamPotentiallyPlaying();
+   mSrcStreamReportPlaybackEnded = false;
+   mSrcStreamVideoPrincipal = nullptr;
+ 
+@@ -6470,6 +6475,7 @@
+         ("{}, got duration by reaching the end of the resource",
+          fmt::ptr(this)));
+     mSrcStreamPlaybackEnded = true;
++    UpdateSrcStreamPotentiallyPlaying();
+     QueueEvent(u"durationchange"_ns);
+   } else {
+     // mediacapture-main:
+@@ -6921,6 +6927,7 @@
+ 
+   nsMediaReadyState oldState = mReadyState;
+   mReadyState = aState;
++  UpdateSrcStreamPotentiallyPlaying();
+   LOG(LogLevel::Debug, ("{} Ready state changed to {}", fmt::ptr(this),
+                         gReadyStateToString[aState]));
+ 
+@@ -7138,6 +7145,7 @@
+ void HTMLMediaElement::RunAutoplay() {
+   mAllowedToPlayPromise.ResolveIfExists(true, __func__);
+   mPaused = false;
++  UpdateSrcStreamPotentiallyPlaying();
+   UpdatePlaybackPseudoClasses();
+ 
+   // We changed mPaused which can affect AddRemoveSelfReference
+@@ -8539,6 +8547,7 @@
+ void HTMLMediaElement::AsyncRejectPendingPlayPromises(nsresult aError) {
+   if (!mPaused) {
+     mPaused = true;
++    UpdateSrcStreamPotentiallyPlaying();
+     UpdatePlaybackPseudoClasses();
+     QueueEvent(u"pause"_ns);
+   }

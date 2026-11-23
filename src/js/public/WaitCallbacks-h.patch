@@ -1,0 +1,17 @@
+diff --git a/js/public/WaitCallbacks.h b/js/public/WaitCallbacks.h
+--- a/js/public/WaitCallbacks.h
++++ b/js/public/WaitCallbacks.h
+@@ -47,6 +47,13 @@
+                                           AfterWaitCallback afterWait,
+                                           size_t requiredMemory);
+ 
++// Called once around the complete futex wait, including interrupt handling.
++// Callbacks hold the JS futex lock and must not reenter JS. Register before use.
++using AtomicsWaitCallback = void (*)(bool waiting);
++
++extern JS_PUBLIC_API void SetAtomicsWaitCallback(JSRuntime* rt,
++                                                AtomicsWaitCallback callback);
++
+ }  // namespace JS
+ 
+ #endif  // js_WaitCallbacks_h

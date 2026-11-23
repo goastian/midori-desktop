@@ -9,7 +9,18 @@
      // The 'Memory' value displayed in the system monitor is resident -
      // shared. statm contains more fields, but we're only interested in
      // the first three.
-@@ -276,76 +278,79 @@
+@@ -263,8 +265,9 @@
+     if (f) {
+       int nread = fscanf(f, "%zu %zu %zu", &VmSize, &resident, &shared);
+       fclose(f);
+-      if (nread == MAX_FIELD) {
++      if (nread == MAX_FIELD && resident >= shared) {
+         info.memory = (resident - shared) * getpagesize();
++        info.memoryIsAvailable = true;
+       }
+     }
+ 
+@@ -276,76 +279,79 @@
      info.windows = std::move(request.windowInfo);
      info.utilityActors = std::move(request.utilityInfo);
  

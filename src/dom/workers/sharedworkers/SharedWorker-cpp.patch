@@ -1,0 +1,26 @@
+--- a/dom/workers/sharedworkers/SharedWorker.cpp
++++ b/dom/workers/sharedworkers/SharedWorker.cpp
+@@ -295,6 +295,7 @@
+   // Let's inform the window about this SharedWorker.
+   nsGlobalWindowInner::Cast(window)->StoreSharedWorker(sharedWorker);
+   actor->SetParent(sharedWorker);
++  nsGlobalWindowInner::Cast(window)->UpdateSharedWorkersCpuBudget();
+ 
+   if (nsGlobalWindowInner::Cast(window)->IsSuspended()) {
+     sharedWorker->Suspend();
+@@ -381,6 +382,15 @@
+   }
+ }
+ 
++void SharedWorker::UpdateCpuBudget(bool aBackground) {
++  AssertIsOnMainThread();
++  if (mActor && (!mMidoriCpuStateSent || mMidoriCpuBackground != aBackground) &&
++      mActor->SendUpdateCpuBudget(aBackground)) {
++    mMidoriCpuStateSent = true;
++    mMidoriCpuBackground = aBackground;
++  }
++}
++
+ void SharedWorker::Suspend() {
+   if (mActor) {
+     mActor->SendSuspend();

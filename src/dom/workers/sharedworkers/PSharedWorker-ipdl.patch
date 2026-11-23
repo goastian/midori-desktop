@@ -1,0 +1,10 @@
+--- a/dom/workers/sharedworkers/PSharedWorker.ipdl
++++ b/dom/workers/sharedworkers/PSharedWorker.ipdl
+@@ -22,6 +22,7 @@
+ 
+ parent:
+   async Close();
++  async UpdateCpuBudget(bool background);
+   async Suspend();
+   async Resume();
+   async Freeze();

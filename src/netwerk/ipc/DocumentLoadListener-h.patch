@@ -1,0 +1,19 @@
+--- a/netwerk/ipc/DocumentLoadListener.h
++++ b/netwerk/ipc/DocumentLoadListener.h
+@@ -87,6 +87,8 @@
+ 
+ // TODO: We currently don't implement nsIProgressEventSink and forward those
+ // to the child. Should we? We get the interface requested.
++class ManagedMemoryAdmissionRequest;
++
+ class DocumentLoadListener : public nsIInterfaceRequestor,
+                              public nsIAsyncVerifyRedirectReadyCallback,
+                              public nsIParentChannel,
+@@ -628,6 +630,7 @@
+   }
+   RefPtr<OpenPromise::Private> mOpenPromise;
+   bool mOpenPromiseResolved = false;
++  RefPtr<ManagedMemoryAdmissionRequest> mMemoryAdmission;
+ 
+   const bool mIsDocumentLoad;
+ 

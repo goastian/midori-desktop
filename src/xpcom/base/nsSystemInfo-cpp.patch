@@ -37,7 +37,7 @@
        MakeRefPtr<dom::DOMMozPromiseRequestHolder<ProcessInfoPromise>>(global);
  
 +  RefPtr<ProcessInfoPromise> current = mProcessInfoPromise;
-+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || defined(XP_MACOSX)
 +#  ifdef XP_WIN
 +  if (mozilla::midori::HasManagedCpuBudgetContext()) {
 +#  endif

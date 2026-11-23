@@ -1,0 +1,28 @@
+--- a/dom/workers/sharedworkers/SharedWorkerParent.h
++++ b/dom/workers/sharedworkers/SharedWorkerParent.h
+@@ -41,6 +41,8 @@
+ 
+   mozilla::ipc::IPCResult RecvClose();
+ 
++  mozilla::ipc::IPCResult RecvUpdateCpuBudget(bool aBackground);
++
+   mozilla::ipc::IPCResult RecvSuspend();
+ 
+   mozilla::ipc::IPCResult RecvResume();
+@@ -54,6 +56,8 @@
+ 
+   mozilla::ipc::IPCResult RecvUpdateTimezoneOverride(
+       const nsString& aTimezoneOverride);
++
++  bool IsCpuBudgetBackground() const { return mMidoriCpuBackground; }
+ 
+   bool IsSuspended() const { return mSuspended; }
+ 
+@@ -80,6 +84,7 @@
+ 
+   bool mSuspended;
+   bool mFrozen;
++  bool mMidoriCpuBackground = false;
+ };
+ 
+ }  // namespace mozilla::dom

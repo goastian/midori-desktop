@@ -8,12 +8,13 @@
  #include "mozilla/ResultVariant.h"
  #include "mozilla/UniquePtr.h"
  #include "mozilla/UniquePtrExtensions.h"
-@@ -49,6 +50,9 @@
+@@ -49,6 +50,10 @@
    int crashChildNotificationSocket;
    /* Crash socket used to communicate with the crash helper. */
    int crashHelperSocket;
 +#endif
-+#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN)
++#if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
++    defined(XP_MACOSX)
 +  midori::CpuBudgetController* midoriCpuBudget = nullptr;
  #endif
  };

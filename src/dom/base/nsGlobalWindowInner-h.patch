@@ -1,0 +1,21 @@
+--- a/dom/base/nsGlobalWindowInner.h
++++ b/dom/base/nsGlobalWindowInner.h
+@@ -696,6 +696,10 @@
+ 
+   void ForgetSharedWorker(mozilla::dom::SharedWorker* aSharedWorker);
+ 
++  void UpdateSharedWorkersCpuBudget();
++
++  void UpdateSharedWorkersCpuBudget(bool aIsPlayingAudio);
++
+   void UpdateSharedWorkersLanguageOverride(const nsCString& aLanguageOverride);
+ 
+   void UpdateSharedWorkerTimezoneOverride(const nsAString& aTimezoneOverride);
+@@ -1437,6 +1441,7 @@
+   RefPtr<mozilla::dom::CustomElementRegistry> mCustomElements;
+ 
+   nsTObserverArray<RefPtr<mozilla::dom::SharedWorker>> mSharedWorkers;
++  mozilla::Maybe<bool> mMidoriWindowCpuBackground;
+ 
+   RefPtr<mozilla::dom::VisualViewport> mVisualViewport;
+ 

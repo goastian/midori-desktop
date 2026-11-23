@@ -1,0 +1,11 @@
+--- a/dom/ipc/PWindowGlobal.ipdl
++++ b/dom/ipc/PWindowGlobal.ipdl
+@@ -188,6 +188,8 @@
+   // Send the ClientInfo associated with a top-level document load.
+   [LazySend] async SetClientInfo(IPCClientInfo aClientInfo);
+ 
++  async UpdateCpuBudget(bool aBackground);
++
+   // Checks whether any "beforeunload" event listener in the document subtree
+   // wants to block unload, and prompts the user to allow if any does (depending
+   // on the action specified, using nsIDocumentViewer::PermitUnloadAction

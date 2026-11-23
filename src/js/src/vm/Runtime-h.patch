@@ -1,0 +1,11 @@
+diff --git a/js/src/vm/Runtime.h b/js/src/vm/Runtime.h
+--- a/js/src/vm/Runtime.h
++++ b/js/src/vm/Runtime.h
+@@ -950,6 +950,7 @@
+  public:
+   js::MainThreadData<JS::BeforeWaitCallback> beforeWaitCallback;
+   js::MainThreadData<JS::AfterWaitCallback> afterWaitCallback;
++  js::MainThreadData<JS::AtomicsWaitCallback> atomicsWaitCallback;
+ 
+  public:
+   void reportAllocOverflow() {

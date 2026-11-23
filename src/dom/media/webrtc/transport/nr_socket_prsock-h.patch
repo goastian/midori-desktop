@@ -1,4 +1,3 @@
-diff --git a/dom/media/webrtc/transport/nr_socket_prsock.h b/dom/media/webrtc/transport/nr_socket_prsock.h
 --- a/dom/media/webrtc/transport/nr_socket_prsock.h
 +++ b/dom/media/webrtc/transport/nr_socket_prsock.h
 @@ -43,6 +43,7 @@
@@ -17,11 +16,12 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.h b/dom/media/webrtc/tr
  #include "nsASocketHandler.h"
  #include "nsCOMPtr.h"
  #include "nsIEventTarget.h"
-@@ -182,13 +184,50 @@
+@@ -182,13 +184,52 @@
  
   protected:
    virtual ~NrSocket() {
 -    if (fd_) PR_Close(fd_);
++    ForgetResourceQuota();
 +    ClearQueuedOutput();
 +    if (fd_) {
 +      if (receive_headroom_)
@@ -37,6 +37,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.h b/dom/media/webrtc/tr
    nsCOMPtr<nsIEventTarget> ststhread_;
 +
 + private:
++  void ForgetResourceQuota();
 +  void UpdatePollFlags();
 +  void EnsureReceiveHeadroom();
 +  bool WaitForResourceQuota(bool aInput);
@@ -69,7 +70,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.h b/dom/media/webrtc/tr
  };
  
  struct nr_udp_message {
-@@ -270,7 +309,16 @@
+@@ -270,7 +311,16 @@
    // Main or private thread executors of the NrSocketBase APIs
    void create_i(const nsACString& host, const uint16_t port);
    void connect_i(const nsACString& host, const uint16_t port);
@@ -87,7 +88,7 @@ diff --git a/dom/media/webrtc/transport/nr_socket_prsock.h b/dom/media/webrtc/tr
    void close_i();
  #if defined(MOZILLA_INTERNAL_API) && !defined(MOZILLA_XPCOMRT_API)
    void destroy_i();
-@@ -283,6 +331,7 @@
+@@ -283,6 +333,7 @@
    NrSocketIpcState state_;
  
    std::queue<RefPtr<nr_udp_message>> received_msgs_;

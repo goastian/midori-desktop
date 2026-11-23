@@ -1,0 +1,11 @@
+--- a/dom/workers/remoteworkers/PRemoteWorkerController.ipdl
++++ b/dom/workers/remoteworkers/PRemoteWorkerController.ipdl
+@@ -34,6 +34,8 @@
+   async SetServiceWorkerSkipWaitingFlag() returns (bool aOk);
+ 
+  parent:
++  async UpdateCpuBudget(bool aBackground);
++
+   async PFetchEventOp(ParentToParentServiceWorkerFetchEventOpArgs aArgs);
+ 
+   async __delete__();

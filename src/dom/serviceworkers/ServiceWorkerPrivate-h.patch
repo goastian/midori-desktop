@@ -1,0 +1,57 @@
+--- a/dom/serviceworkers/ServiceWorkerPrivate.h
++++ b/dom/serviceworkers/ServiceWorkerPrivate.h
+@@ -67,12 +67,14 @@
+  public:
+   NS_DECL_ISUPPORTS
+ 
+-  explicit KeepAliveToken(ServiceWorkerPrivate* aPrivate);
++  explicit KeepAliveToken(ServiceWorkerPrivate* aPrivate,
++                          bool aProtectCpu = false);
+ 
+  private:
+   ~KeepAliveToken();
+ 
+   RefPtr<ServiceWorkerPrivate> mPrivate;
++  const bool mProtectCpu;
+ };
+ 
+ class ServiceWorkerPrivate final : public RemoteWorkerObserver {
+@@ -143,6 +145,8 @@
+   void NoteStoppedControllingDocuments();
+ 
+   void UpdateState(ServiceWorkerState aState);
++
++  void SetCpuBudgetBackground(bool aBackground);
+ 
+   void UpdateIsOnContentBlockingAllowList(bool aOnContentBlockingAllowList);
+ 
+@@ -204,11 +208,14 @@
+   void ResetIdleTimeout(
+       const ServiceWorkerLifetimeExtension& aLifetimeExtension);
+ 
+-  void AddToken();
+-
+-  void ReleaseToken();
+-
+-  already_AddRefed<KeepAliveToken> CreateEventKeepAliveToken();
++  void AddToken(bool aProtectCpu);
++
++  void ReleaseToken(bool aProtectCpu);
++
++  already_AddRefed<KeepAliveToken> CreateEventKeepAliveToken(
++      bool aProtectCpu = true);
++
++  void UpdateCpuBudget();
+ 
+   nsresult SpawnWorkerIfNeeded(
+       const ServiceWorkerLifetimeExtension& aLifetimeExtension);
+@@ -389,6 +396,9 @@
+   };
+ 
+   RefPtr<RAIIActorPtrHolder> mControllerChild;
++  uint32_t mMidoriCpuProtectedEvents = 0;
++  bool mMidoriCpuBackground = false;
++  Maybe<bool> mMidoriCpuLastSent;
+ 
+   RemoteWorkerData mRemoteWorkerData;
+   Maybe<ClientInfo> mClientInfo;

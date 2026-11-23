@@ -1,0 +1,87 @@
+--- a/netwerk/ipc/DocumentLoadListener.cpp
++++ b/netwerk/ipc/DocumentLoadListener.cpp
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "DocumentLoadListener.h"
++#include "ManagedMemoryAdmission.h"
+ 
+ #include "NeckoCommon.h"
+ #include "imgLoader.h"
+@@ -1170,22 +1171,55 @@
+   } else
+ #endif /* ANDROID */
+   {
+-    *aRv = mChannel->AsyncOpen(openInfo);
+-    if (NS_FAILED(*aRv)) {
+-      LOG(("DocumentLoadListener::Open failed AsyncOpen [this=%p rv=%" PRIx32
+-           "]",
+-           this, static_cast<uint32_t>(*aRv)));
+-      if (documentContext) {
+-        documentContext->EndDocumentLoad(false);
++    if (mIsDocumentLoad && documentContext && documentContext->IsTop()) {
++      mMemoryAdmission = ManagedMemoryAdmissionRequest::MaybeCreate(
++          documentContext, aLoadState->URI(), mChannel);
++    }
++    if (mMemoryAdmission) {
++      RefPtr<DocumentLoadListener> self = this;
++      mMemoryAdmission->Promise()->Then(
++          GetCurrentSerialEventTarget(), __func__,
++          [self, openInfo](
++              const MemoryAdmissionPromise::ResolveOrRejectValue& aValue) {
++            self->mMemoryAdmission = nullptr;
++            if (self->mOpenPromiseResolved) {
++              self->mParentChannelListener = nullptr;
++              return;
++            }
++            if (aValue.IsReject()) {
++              nsresult status = aValue.RejectValue();
++              self->DisconnectListeners(status, status);
++              self->mParentChannelListener = nullptr;
++              return;
++            }
++            nsresult status = self->mChannel->AsyncOpen(openInfo);
++            if (NS_FAILED(status)) {
++              self->DisconnectListeners(status, status);
++              self->mParentChannelListener = nullptr;
++              return;
++            }
++            nsHTTPSOnlyUtils::PotentiallyFireHttpRequestToShortenTimout(self);
++          });
++    } else {
++      *aRv = mChannel->AsyncOpen(openInfo);
++      if (NS_FAILED(*aRv)) {
++        LOG(("DocumentLoadListener::Open failed AsyncOpen [this=%p rv=%" PRIx32
++             "]",
++             this, static_cast<uint32_t>(*aRv)));
++        if (documentContext) {
++          documentContext->EndDocumentLoad(false);
++        }
++        mParentChannelListener = nullptr;
++        return nullptr;
+       }
+-      mParentChannelListener = nullptr;
+-      return nullptr;
+     }
+   }
+ 
+   // HTTPS-Only Mode fights potential timeouts caused by upgrades. Instantly
+   // after opening the document channel we have to kick off countermeasures.
+-  nsHTTPSOnlyUtils::PotentiallyFireHttpRequestToShortenTimout(this);
++  if (!mMemoryAdmission) {
++    nsHTTPSOnlyUtils::PotentiallyFireHttpRequestToShortenTimout(this);
++  }
+ 
+   nsCOMPtr<nsILoadInfo> loadInfo = mChannel->LoadInfo();
+   loadInfo->SetChannelCreationOriginalURI(aLoadState->URI());
+@@ -1566,6 +1600,10 @@
+        this, static_cast<uint32_t>(aStatus),
+        static_cast<uint32_t>(aLoadGroupStatus), aContinueNavigating));
+ 
++  if (mMemoryAdmission) {
++    mMemoryAdmission->Cancel();
++    mMemoryAdmission = nullptr;
++  }
+   RejectOpenPromise(aStatus, aLoadGroupStatus, aContinueNavigating, __func__);
+ 
+   Disconnect(aContinueNavigating);

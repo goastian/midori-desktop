@@ -1,0 +1,15 @@
+--- a/dom/workers/remoteworkers/RemoteWorkerChild.cpp
++++ b/dom/workers/remoteworkers/RemoteWorkerChild.cpp
+@@ -909,6 +909,12 @@
+   }
+ }
+ 
++IPCResult RemoteWorkerChild::RecvUpdateCpuBudget(bool aBackground) {
++  MaybeStartOp(
++      new SharedWorkerOp(SharedWorkerUpdateCpuBudgetOpArgs(aBackground)));
++  return IPC_OK();
++}
++
+ IPCResult RemoteWorkerChild::RecvExecOp(SharedWorkerOpArgs&& aOpArgs) {
+   MOZ_ASSERT(!mIsServiceWorker);
+ 

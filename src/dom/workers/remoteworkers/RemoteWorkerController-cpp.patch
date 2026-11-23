@@ -1,0 +1,53 @@
+--- a/dom/workers/remoteworkers/RemoteWorkerController.cpp
++++ b/dom/workers/remoteworkers/RemoteWorkerController.cpp
+@@ -69,6 +69,8 @@
+   MOZ_ASSERT(aActor);
+ 
+   mActor = aActor;
++  if (mMidoriServiceCpuBackground)
++    (void)mActor->SendUpdateCpuBudget(mMidoriServiceCpuBackground.value());
+ }
+ 
+ void RemoteWorkerController::NoteDeadWorkerActor() {
+@@ -263,6 +265,17 @@
+   MaybeStartSharedWorkerOp(PendingSharedWorkerOp::eTerminate);
+ }
+ 
++void RemoteWorkerController::UpdateCpuBudget(bool aBackground) {
++  AssertIsOnBackgroundThread();
++  if (IsTerminated()) return;
++  if (mIsServiceWorker) {
++    mMidoriServiceCpuBackground = Some(aBackground);
++    if (mActor) (void)mActor->SendUpdateCpuBudget(aBackground);
++    return;
++  }
++  MaybeStartSharedWorkerOp(aBackground);
++}
++
+ void RemoteWorkerController::Suspend() {
+   AssertIsOnBackgroundThread();
+ 
+@@ -390,6 +403,12 @@
+   MOZ_ASSERT(aType == eUpdateTimezoneOverride);
+ }
+ 
++RemoteWorkerController::PendingSharedWorkerOp::PendingSharedWorkerOp(
++    bool aBackground)
++    : mType(eUpdateCpuBudget), mBackground(aBackground) {
++  AssertIsOnBackgroundThread();
++}
++
+ RemoteWorkerController::PendingSharedWorkerOp::~PendingSharedWorkerOp() {
+   AssertIsOnBackgroundThread();
+   MOZ_DIAGNOSTIC_ASSERT(mCompleted);
+@@ -414,6 +433,10 @@
+   switch (mType) {
+     case eTerminate:
+       aOwner->Shutdown();
++      break;
++    case eUpdateCpuBudget:
++      (void)aOwner->mActor->SendExecOp(
++          SharedWorkerUpdateCpuBudgetOpArgs(mBackground));
+       break;
+     case eSuspend:
+       (void)aOwner->mActor->SendExecOp(SharedWorkerSuspendOpArgs());
