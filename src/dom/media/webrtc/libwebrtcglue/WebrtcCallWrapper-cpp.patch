@@ -1,9 +1,12 @@
 diff --git a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp b/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp
 --- a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp
 +++ b/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp
-@@ -5,16 +5,61 @@
+@@ -4,17 +4,64 @@
+ 
  #include "WebrtcCallWrapper.h"
  
++#include <algorithm>
++
  #include "MediaConduitInterface.h"
 +#include "jsapi/MediaTransportHandler.h"
  #include "jsapi/PeerConnectionCtx.h"
@@ -63,7 +66,7 @@ diff --git a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp b/dom/media/we
    auto videoBitrateAllocatorFactory =
        WrapUnique(webrtc::CreateBuiltinVideoBitrateAllocatorFactory().release());
    RefPtr<WebrtcCallWrapper> wrapper = new WebrtcCallWrapper(
-@@ -22,12 +67,28 @@
+@@ -22,12 +69,32 @@
        std::move(aEnvWrapper), aTimestampMaker, std::move(aShutdownTicket));
  
    wrapper->mCallThread->Dispatch(
@@ -77,7 +80,11 @@ diff --git a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp b/dom/media/we
          config.audio_state =
              webrtc::AudioState::Create(aSharedState->mAudioStateConfig);
 +        config.send_bitrate_limit_bps = []() -> int64_t {
-+          return int64_t(net::MidoriNetworkBudget::UploadRate()) * 8 * 70 / 100;
++          const uint32_t rate = net::MidoriNetworkBudget::UploadRate();
++          if (!rate) return 0;
++          const uint32_t calls = std::max<uint32_t>(
++              1, net::MidoriNetworkBudget::GlobalMediaSendingCallCount());
++          return std::max<int64_t>(1, int64_t(rate) * 8 * 70 / 100 / calls);
 +        };
 +        config.receive_bitrate_limit_bps = []() -> int64_t {
 +          return int64_t(net::MidoriNetworkBudget::DownloadRate()) * 8 * 3 / 4;
@@ -94,7 +101,7 @@ diff --git a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp b/dom/media/we
        }));
  
    return wrapper;
-@@ -37,6 +98,36 @@
+@@ -37,6 +104,36 @@
    MOZ_ASSERT(mCallThread->IsOnCurrentThread());
    MOZ_ASSERT(!mCall);
    mCall = std::move(aCall);
@@ -131,7 +138,7 @@ diff --git a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp b/dom/media/we
  }
  
  webrtc::Call* WebrtcCallWrapper::Call() const {
-@@ -61,8 +152,37 @@
+@@ -61,8 +158,37 @@
    mConduits.erase(conduit);
  }
  
@@ -169,7 +176,7 @@ diff --git a/dom/media/webrtc/libwebrtcglue/WebrtcCallWrapper.cpp b/dom/media/we
    mCall = nullptr;
    mShutdownTicket = nullptr;
  }
-@@ -85,6 +205,7 @@
+@@ -85,6 +211,7 @@
        mClock(aTimestampMaker),
        mShutdownTicket(std::move(aShutdownTicket)),
        mCallThread(mSharedState->mCallWorkerThread),

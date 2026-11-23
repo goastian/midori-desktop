@@ -6,6 +6,8 @@
 #define TOOLKIT_COMPONENTS_PROCESSTOOLS_MIDORICPUBUDGET_MACOS_H_
 
 #ifdef XP_MACOSX
+#  include "mozilla/Sprintf.h"
+
 #  include <algorithm>
 #  include <array>
 #  include <cerrno>
@@ -409,9 +411,9 @@ class MacCpuBudget final {
     char service[96];
     uint64_t random[2];
     arc4random_buf(random, sizeof(random));
-    snprintf(service, sizeof(service), "org.astian.midori.cpu.%016llx%016llx",
-             static_cast<unsigned long long>(random[0]),
-             static_cast<unsigned long long>(random[1]));
+    SprintfLiteral(service, "org.astian.midori.cpu.%016llx%016llx",
+                   static_cast<unsigned long long>(random[0]),
+                   static_cast<unsigned long long>(random[1]));
     error = RegisterService(service, mReceive);
     if (error) {
       StopHelper();
