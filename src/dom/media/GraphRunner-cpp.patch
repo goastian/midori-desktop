@@ -1,0 +1,19 @@
+--- a/dom/media/GraphRunner.cpp
++++ b/dom/media/GraphRunner.cpp
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ #include "GraphRunner.h"
++#include "mozilla/MidoriCpuThreadPlacement.h"
+ 
+ #include "GraphDriver.h"
+ #include "MediaTrackGraph.h"
+@@ -118,6 +119,8 @@
+ #endif  // MOZ_WIDGET_ANDROID
+ 
+ NS_IMETHODIMP GraphRunner::Run() {
++  if (!mGraph->IsNonRealtime())
++    mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
+ #ifndef XP_LINUX
+   atp_handle* handle =
+       atp_promote_current_thread_to_real_time(0, mGraph->GraphRate());

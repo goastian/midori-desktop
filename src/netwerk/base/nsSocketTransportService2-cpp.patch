@@ -1,15 +1,16 @@
 --- a/netwerk/base/nsSocketTransportService2.cpp
 +++ b/netwerk/base/nsSocketTransportService2.cpp
-@@ -3,6 +3,8 @@
+@@ -3,6 +3,9 @@
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
  
  #include "nsSocketTransportService2.h"
++#include "mozilla/MidoriCpuThreadPlacement.h"
 +
 +#include "MidoriNetworkBudget.h"
  
  #include "mozilla/Atomics.h"
  #include "mozilla/ChaosMode.h"
-@@ -808,6 +810,8 @@
+@@ -808,6 +811,8 @@
      return NS_ERROR_UNEXPECTED;
    }
  
@@ -18,7 +19,33 @@
    nsCOMPtr<nsIThread> thread;
  
    if (!XRE_IsContentProcess() ||
-@@ -1864,6 +1868,21 @@
+@@ -821,10 +826,13 @@
+     // In the child process, we just want a regular nsThread with no socket
+     // polling. So we don't want to run the nsSocketTransportService runnable on
+     // it.
+-    nsresult rv =
+-        NS_NewNamedThread("Socket Thread", getter_AddRefs(thread), nullptr,
+-                          {nsIThreadManager::DEFAULT_STACK_SIZE, false, false,
+-                           Some(SOCKET_THREAD_LONGTASK_MS)});
++    nsresult rv = NS_NewNamedThread(
++        "Socket Thread", getter_AddRefs(thread),
++        NS_NewRunnableFunction(
++            "MidoriContentSocketCpuThread",
++            [] { mozilla::midori::EnsureCurrentManagedRealtimeCpuThread(); }),
++        {nsIThreadManager::DEFAULT_STACK_SIZE, false, false,
++         Some(SOCKET_THREAD_LONGTASK_MS)});
+     NS_ENSURE_SUCCESS(rv, rv);
+ 
+     // Set up some of the state that nsSocketTransportService::Run would set.
+@@ -1121,6 +1129,7 @@
+ 
+ NS_IMETHODIMP
+ nsSocketTransportService::Run() {
++  mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
+   SOCKET_LOG(("STS thread init %d sockets\n", gMaxCount));
+ 
+ #if defined(XP_WIN)
+@@ -1864,6 +1873,21 @@
    }
  }
  

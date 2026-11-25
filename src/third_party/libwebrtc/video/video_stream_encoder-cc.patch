@@ -1,0 +1,96 @@
+--- a/third_party/libwebrtc/video/video_stream_encoder.cc
++++ b/third_party/libwebrtc/video/video_stream_encoder.cc
+@@ -95,6 +95,10 @@
+ #include "video/frame_dumping_encoder.h"
+ #include "video/video_stream_encoder_observer.h"
+ 
++extern "C" bool MidoriMediaTraceEnabled();
++extern "C" void MidoriMediaTraceEncode(uint32_t, const void*, uint32_t,
++                                       const void*, uint32_t);
++
+ namespace webrtc {
+ 
+ namespace {
+@@ -1669,6 +1673,9 @@
+ }
+ 
+ void VideoStreamEncoder::OnDiscardedFrame() {
++  if (MidoriMediaTraceEnabled()) {
++    MidoriMediaTraceEncode(18, this, 0, nullptr, 0);
++  }
+   encoder_stats_observer_->OnFrameDropped(
+       VideoStreamEncoderObserver::DropReason::kSource);
+ }
+@@ -1870,6 +1877,9 @@
+ void VideoStreamEncoder::MaybeEncodeVideoFrame(const VideoFrame& video_frame,
+                                                int64_t time_when_posted_us) {
+   RTC_DCHECK_RUN_ON(encoder_queue_.get());
++  if (MidoriMediaTraceEnabled()) {
++    MidoriMediaTraceEncode(15, this, video_frame.rtp_timestamp(), nullptr, 0);
++  }
+   input_state_provider_.OnFrameSizeObserved(video_frame.size());
+ 
+   if (!last_frame_info_ || video_frame.width() != last_frame_info_->width ||
+@@ -1935,6 +1945,9 @@
+   }
+ 
+   if (DropDueToSize(video_frame.size())) {
++    if (MidoriMediaTraceEnabled()) {
++      MidoriMediaTraceEncode(17, this, video_frame.rtp_timestamp(), nullptr, 0);
++    }
+     RTC_LOG(LS_INFO) << "Dropping frame. Too large for target bitrate.";
+     stream_resource_manager_.OnFrameDroppedDueToSize();
+     // Storing references to a native buffer risks blocking frame capture.
+@@ -1953,6 +1966,9 @@
+   stream_resource_manager_.OnMaybeEncodeFrame();
+ 
+   if (EncoderPaused()) {
++    if (MidoriMediaTraceEnabled()) {
++      MidoriMediaTraceEncode(16, this, video_frame.rtp_timestamp(), nullptr, 0);
++    }
+     // Storing references to a native buffer risks blocking frame capture.
+     if (video_frame.video_frame_buffer()->type() !=
+         VideoFrameBuffer::Type::kNative) {
+@@ -2164,6 +2180,9 @@
+     frame_instrumentation_generator_->OnCapturedFrame(out_frame);
+   }
+ 
++  if (MidoriMediaTraceEnabled()) {
++    MidoriMediaTraceEncode(11, this, out_frame.rtp_timestamp(), nullptr, 0);
++  }
+   const int32_t encode_status = encoder_->Encode(out_frame, &next_frame_types_);
+   was_encode_called_since_last_initialization_ = true;
+ 
+@@ -2278,6 +2297,10 @@
+ EncodedImageCallback::Result VideoStreamEncoder::OnEncodedImage(
+     const EncodedImage& encoded_image,
+     const CodecSpecificInfo* codec_specific_info) {
++  if (MidoriMediaTraceEnabled()) {
++    MidoriMediaTraceEncode(14, this, encoded_image.RtpTimestamp(),
++                           encoded_image.data(), 0);
++  }
+   TRACE_EVENT_INSTANT1("webrtc", "VCMEncodedFrameCallback::Encoded",
+                        TRACE_EVENT_SCOPE_GLOBAL, "timestamp",
+                        encoded_image.RtpTimestamp());
+@@ -2399,6 +2422,10 @@
+ void VideoStreamEncoder::OnFrameDropped(uint32_t rtp_timestamp,
+                                         int spatial_id,
+                                         bool is_end_of_temporal_unit) {
++  if (MidoriMediaTraceEnabled()) {
++    MidoriMediaTraceEncode(13, this, rtp_timestamp, nullptr,
++                           static_cast<uint32_t>(spatial_id));
++  }
+   sink_->OnFrameDropped(rtp_timestamp, spatial_id, is_end_of_temporal_unit);
+   encoder_queue_->PostTask([this, rtp_timestamp, is_end_of_temporal_unit] {
+     RTC_DCHECK_RUN_ON(encoder_queue_.get());
+@@ -2703,6 +2730,10 @@
+ void VideoStreamEncoder::ProcessDroppedFrame(
+     const VideoFrame& frame,
+     VideoStreamEncoderObserver::DropReason reason) {
++  if (MidoriMediaTraceEnabled()) {
++    MidoriMediaTraceEncode(12, this, frame.rtp_timestamp(), nullptr,
++                           static_cast<uint32_t>(reason));
++  }
+   accumulated_update_rect_.Union(frame.update_rect());
+   accumulated_update_rect_is_valid_ &= frame.has_update_rect();
+   stream_resource_manager_.OnFrameDropped(reason);

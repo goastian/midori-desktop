@@ -1,20 +1,66 @@
 diff --git a/third_party/libwebrtc/modules/pacing/prioritized_packet_queue.cc b/third_party/libwebrtc/modules/pacing/prioritized_packet_queue.cc
 --- a/third_party/libwebrtc/modules/pacing/prioritized_packet_queue.cc
 +++ b/third_party/libwebrtc/modules/pacing/prioritized_packet_queue.cc
-@@ -128,6 +128,12 @@
-   return packets_[priority_level].begin()->enqueue_time;
+@@ -32,6 +32,7 @@
+ namespace {
+ 
+ constexpr int kAudioPrioLevel = 0;
++constexpr int kManagedFecPrioLevel = 4;
+ 
+ int GetPriorityForType(
+     RtpPacketMediaType type,
+@@ -57,7 +58,7 @@
+     case RtpPacketMediaType::kPadding:
+       // Packets that are in themselves likely useless, only sent to keep the
+       // BWE high.
+-      return kAudioPrioLevel + 4;
++      return kAudioPrioLevel + 5;
+   }
+   RTC_CHECK_NOTREACHED();
+ }
+@@ -76,6 +77,7 @@
+       packet_queue_ttl.video_retransmission;
+   ttl_per_prio[GetPriorityForType(RtpPacketMediaType::kVideo, std::nullopt)] =
+       packet_queue_ttl.video;
++  ttl_per_prio[kManagedFecPrioLevel] = packet_queue_ttl.video;
+   return ttl_per_prio;
  }
  
+@@ -126,6 +128,12 @@
+     int priority_level) const {
+   RTC_DCHECK(!packets_[priority_level].empty());
+   return packets_[priority_level].begin()->enqueue_time;
++}
++
 +DataSize PrioritizedPacketQueue::StreamQueue::LeadingPacketRtpSize(
 +    int priority_level) const {
 +  RTC_DCHECK(!packets_[priority_level].empty());
 +  return DataSize::Bytes(packets_[priority_level].front().packet->size());
-+}
-+
- Timestamp PrioritizedPacketQueue::StreamQueue::LastEnqueueTime() const {
-   return last_enqueue_time_;
  }
-@@ -246,9 +252,17 @@
+ 
+ Timestamp PrioritizedPacketQueue::StreamQueue::LastEnqueueTime() const {
+@@ -160,7 +168,8 @@
+       top_active_prio_level_(-1) {}
+ 
+ void PrioritizedPacketQueue::Push(Timestamp enqueue_time,
+-                                  std::unique_ptr<RtpPacketToSend> packet) {
++                                  std::unique_ptr<RtpPacketToSend> packet,
++                                  bool prioritize_video) {
+   StreamQueue* stream_queue;
+   auto [it, inserted] = streams_.emplace(packet->Ssrc(), nullptr);
+   if (inserted) {
+@@ -176,6 +185,10 @@
+       GetPriorityForType(packet_type, prioritize_audio_retransmission_
+                                           ? packet->original_packet_type()
+                                           : std::nullopt);
++  if (prioritize_video &&
++      packet_type == RtpPacketMediaType::kForwardErrorCorrection) {
++    prio_level = kManagedFecPrioLevel;
++  }
+   PurgeOldPacketsAtPriorityLevel(prio_level, enqueue_time);
+   RTC_DCHECK_GE(prio_level, 0);
+   RTC_DCHECK_LT(prio_level, kNumPriorityLevels);
+@@ -246,9 +259,17 @@
    return size_payload_;
  }
  
@@ -35,7 +81,33 @@ diff --git a/third_party/libwebrtc/modules/pacing/prioritized_packet_queue.cc b/
  
  const std::array<int, kNumMediaTypes>&
  PrioritizedPacketQueue::SizeInPacketsPerRtpPacketMediaType() const {
-@@ -331,6 +345,33 @@
+@@ -259,11 +280,20 @@
+     RtpPacketMediaType type) const {
+   RTC_DCHECK(type != RtpPacketMediaType::kRetransmission);
+   const int priority_level = GetPriorityForType(type, std::nullopt);
+-  if (streams_by_prio_[priority_level].empty()) {
+-    return Timestamp::MinusInfinity();
+-  }
+-  return streams_by_prio_[priority_level].front()->LeadingPacketEnqueueTime(
+-      priority_level);
++  Timestamp leading =
++      streams_by_prio_[priority_level].empty()
++          ? Timestamp::MinusInfinity()
++          : streams_by_prio_[priority_level].front()->LeadingPacketEnqueueTime(
++                priority_level);
++  if (type == RtpPacketMediaType::kForwardErrorCorrection &&
++      !streams_by_prio_[kManagedFecPrioLevel].empty()) {
++    const Timestamp managed =
++        streams_by_prio_[kManagedFecPrioLevel]
++            .front()
++            ->LeadingPacketEnqueueTime(kManagedFecPrioLevel);
++    leading = leading.IsFinite() ? std::min(leading, managed) : managed;
++  }
++  return leading;
+ }
+ 
+ Timestamp PrioritizedPacketQueue::LeadingPacketEnqueueTimeForRetransmission()
+@@ -331,6 +361,33 @@
  void PrioritizedPacketQueue::SetPauseState(bool paused, Timestamp now) {
    UpdateAverageQueueTime(now);
    paused_ = paused;

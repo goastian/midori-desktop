@@ -1,0 +1,17 @@
+--- a/xpcom/threads/moz.build
++++ b/xpcom/threads/moz.build
+@@ -58,6 +58,7 @@
+     "LazyIdleThread.h",
+     "MainThreadIdlePeriod.h",
+     "MaybeLeakRefPtr.h",
++    "MidoriCpuThreadPlacement.h",
+     "Monitor.h",
+     "MozPromise.h",
+     "Mutex.h",
+@@ -155,3 +156,6 @@
+ FINAL_LIBRARY = "xul"
+ 
+ include("/ipc/chromium/chromium-config.mozbuild")
++
++if CONFIG["OS_TARGET"] == "Linux":
++    SOURCES += ["MidoriCpuThreadPlacement.cpp"]

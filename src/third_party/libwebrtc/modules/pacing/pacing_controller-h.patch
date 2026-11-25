@@ -9,15 +9,29 @@ diff --git a/third_party/libwebrtc/modules/pacing/pacing_controller.h b/third_pa
  #include <memory>
  #include <optional>
  #include <span>
-@@ -207,6 +208,7 @@
+@@ -207,8 +208,10 @@
  
    // Remove any pending packets matching this SSRC from the packet queue.
    void RemovePacketsForSsrc(uint32_t ssrc);
 +  void DiscardPacketsCapturedBefore(uint32_t ssrc, Timestamp time);
  
   private:
++  TimeDelta EffectiveSendBurstInterval() const;
    TimeDelta UpdateTimeAndGetElapsed(Timestamp now);
-@@ -275,6 +277,7 @@
+   bool ShouldSendKeepalive(Timestamp now) const;
+ 
+@@ -247,6 +250,10 @@
+   const bool fast_retransmissions_;
+   DataSize transport_overhead_per_packet_;
+   TimeDelta send_burst_interval_;
++#if defined(WEBRTC_LINUX) && !defined(WEBRTC_ANDROID)
++  mutable TimeDelta midori_observed_burst_interval_ =
++      TimeDelta::MinusInfinity();
++#endif
+ 
+   // TODO(webrtc:9716): Remove this when we are certain clocks are monotonic.
+   // The last millisecond timestamp returned by `clock_`.
+@@ -275,6 +282,7 @@
    bool seen_first_packet_;
  
    PrioritizedPacketQueue packet_queue_;

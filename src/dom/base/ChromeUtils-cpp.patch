@@ -8,7 +8,7 @@
  #include "imgLoader.h"
  #include "js/CallAndConstruct.h"  // JS::Call
  #include "js/CharacterEncoding.h"
-@@ -34,6 +35,8 @@
+@@ -34,8 +35,13 @@
  #include "mozilla/FormAutofillNative.h"
  #include "mozilla/IntentionalCrash.h"
  #include "mozilla/KeySystemConfig.h"
@@ -16,8 +16,13 @@
 +#include "mozilla/MidoriMediaTrace.h"
  #include "mozilla/PerfStats.h"
  #include "mozilla/Preferences.h"
++#if defined(XP_LINUX) && !defined(ANDROID)
++#  include "mozilla/PreallocatedProcessManager.h"
++#endif
  #include "mozilla/ProcInfo.h"
-@@ -48,11 +51,17 @@
+ #include "mozilla/ProfilerLabels.h"
+ #include "mozilla/ProfilerMarkers.h"
+@@ -48,11 +54,17 @@
  #include "mozilla/WheelHandlingHelper.h"
  #include "mozilla/dom/BlobURLProtocolHandler.h"
  #include "mozilla/dom/ContentParent.h"
@@ -35,7 +40,7 @@
  #include "mozilla/dom/PopupBlocker.h"
  #include "mozilla/dom/ProcessIsolation.h"
  #include "mozilla/dom/ProfilerCounter.h"
-@@ -75,6 +84,7 @@
+@@ -75,6 +87,7 @@
  #include "mozilla/layers/WebRenderBridgeChild.h"
  #include "mozilla/layers/WebRenderLayerManager.h"
  #include "mozilla/net/ChannelClassifierUtils.h"
@@ -43,7 +48,7 @@
  #include "nsContentUtils.h"
  #include "nsControllerCommandTable.h"
  #include "nsDocShell.h"
-@@ -84,6 +94,7 @@
+@@ -84,6 +97,7 @@
  #include "nsIWidget.h"
  #include "nsNativeTheme.h"
  #include "nsPIDOMWindowInlines.h"
@@ -51,13 +56,80 @@
  #include "nsRFPTargetSetIDL.h"
  #include "nsString.h"
  #include "nsThreadUtils.h"
-@@ -1924,9 +1935,160 @@
+@@ -1924,9 +1938,229 @@
  
  #undef PROCTYPE_TO_WEBIDL_CASE
  
 -/* static */
 -already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
 -                                                       ErrorResult& aRv) {
++uint32_t ChromeUtils::SetMemoryBudgetPressure(GlobalObject&, bool aPressure,
++                                              ErrorResult& aRv) {
++#if defined(XP_LINUX) && !defined(ANDROID)
++  if (NS_IsMainThread() && XRE_IsParentProcess()) {
++    return PreallocatedProcessManager::SetMemoryBudgetPressure(aPressure);
++  }
++#endif
++  aRv.Throw(NS_ERROR_NOT_AVAILABLE);
++  return 0;
++}
++
++static already_AddRefed<Promise> RequestManagedMemory(GlobalObject& aGlobal,
++                                                      uint64_t aBytes,
++                                                      bool aUpdate,
++                                                      ErrorResult& aRv) {
++  if (!NS_IsMainThread() || !XRE_IsParentProcess()) {
++    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
++    return nullptr;
++  }
++  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
++  RefPtr<Promise> promise = Promise::Create(global, aRv);
++  if (aRv.Failed()) return nullptr;
++  midori::RequestManagedMemoryBudget(aBytes, aUpdate)
++      ->Then(
++          GetMainThreadSerialEventTarget(), __func__,
++          [promise](const midori::ManagedMemoryBudgetState& aState) {
++            MidoriManagedMemoryBudget value;
++            value.mBackendReady = aState.backendReady;
++            value.mApplied = aState.applied;
++            value.mOwnedLimit = aState.ownedLimit;
++            value.mHasLimit = aState.hasLimit;
++            value.mHasExternalLimit = aState.hasExternalLimit;
++            value.mHasEffectiveLimit = aState.hasEffectiveLimit;
++            value.mSwapMeasured = aState.swapMeasured;
++            value.mRoleAccountingMeasured = aState.roleAccountingMeasured;
++            value.mRoleAccountingError = aState.roleAccountingError;
++            value.mNativeError = aState.nativeError;
++            value.mRequestedBytes = aState.requestedBytes;
++            value.mCurrentBytes = aState.currentBytes;
++            value.mUiBytes = aState.uiBytes;
++            value.mContentBytes = aState.contentBytes;
++            value.mUnattributedBytes = aState.unattributedBytes;
++            value.mLimitBytes = aState.limitBytes;
++            value.mExternalLimitBytes = aState.externalLimitBytes;
++            value.mEffectiveLimitBytes = aState.effectiveLimitBytes;
++            value.mSwapBytes = aState.swapBytes;
++            value.mRecoveryHeadroomBytes = aState.recoveryHeadroomBytes;
++            value.mMinimumBytes = aState.minimumBytes;
++            value.mOomEvents = aState.oomEvents;
++            value.mOomKills = aState.oomKills;
++            value.mMaxEvents = aState.maxEvents;
++            promise->MaybeResolve(value);
++          },
++          [promise](nsresult aStatus) { promise->MaybeReject(aStatus); });
++  return promise.forget();
++}
++
++already_AddRefed<Promise> ChromeUtils::RequestManagedMemoryUsage(
++    GlobalObject& aGlobal, ErrorResult& aRv) {
++  return RequestManagedMemory(aGlobal, 0, false, aRv);
++}
++
++already_AddRefed<Promise> ChromeUtils::RequestManagedMemoryBudget(
++    GlobalObject& aGlobal, uint64_t aBytes, ErrorResult& aRv) {
++  return RequestManagedMemory(aGlobal, aBytes, true, aRv);
++}
++
 +already_AddRefed<Promise> ChromeUtils::RequestManagedCpuBudget(
 +    GlobalObject& aGlobal, uint32_t aPercentage, ErrorResult& aRv) {
 +  if (!NS_IsMainThread() || !XRE_IsParentProcess()) {
@@ -144,6 +216,8 @@
 +    row->mPaint = entry.paint;
 +    row->mObserved = entry.observed;
 +    row->mPresented = entry.presented;
++    row->mDecodeWaitMs = entry.decodeWaitMs;
++    row->mRenderWaitMs = entry.renderWaitMs;
 +    row->mValid = entry.valid;
 +  }
 +}
@@ -215,7 +289,7 @@
    // This function will use IPDL to enable threads info on macOS
    // see https://bugzilla.mozilla.org/show_bug.cgi?id=1529023
    if (!XRE_IsParentProcess()) {
-@@ -2102,27 +2264,29 @@
+@@ -2102,27 +2336,29 @@
  
      // Attach DOM window information to the process.
      nsTArray<WindowInfo> windows;
@@ -266,7 +340,7 @@
          }
        }
      }
-@@ -2140,13 +2304,26 @@
+@@ -2140,13 +2376,26 @@
      );
    }
  
@@ -295,7 +369,7 @@
              ParentProcInfoDictionary parentInfo;
              if (aSysProcInfo.count() == 0) {
                // For some reason, we couldn't get *any* info.
-@@ -2158,9 +2335,14 @@
+@@ -2158,9 +2407,14 @@
                  aSysProcInfo.count() - 1);
              for (auto iter = aSysProcInfo.iter(); !iter.done(); iter.next()) {
                const auto& sysProcInfo = iter.get().value();
@@ -311,7 +385,7 @@
                  if (NS_FAILED(rv)) {
                    // Failing to copy? That's probably not something from we can
                    // (or should) try to recover gracefully.
-@@ -2176,7 +2358,8 @@
+@@ -2176,7 +2430,8 @@
                    domPromise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
                    return;
                  }

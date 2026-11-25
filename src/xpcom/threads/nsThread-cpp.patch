@@ -1,0 +1,18 @@
+--- a/xpcom/threads/nsThread.cpp
++++ b/xpcom/threads/nsThread.cpp
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "nsThread.h"
++#include "mozilla/MidoriCpuThreadPlacement.h"
+ 
+ #include "base/message_loop.h"
+ #include "base/platform_thread.h"
+@@ -380,6 +381,7 @@
+ 
+ /*static*/
+ void nsThread::ThreadFunc(void* aArg) {
++  static_cast<void>(mozilla::midori::SetCurrentManagedCpuThreadRole(false));
+   using mozilla::ipc::BackgroundChild;
+ 
+   UniquePtr<ThreadInitData> initData(static_cast<ThreadInitData*>(aArg));

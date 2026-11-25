@@ -1,7 +1,28 @@
-diff --git a/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp b/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp
 --- a/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp
 +++ b/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp
-@@ -1038,6 +1038,7 @@
+@@ -22,6 +22,7 @@
+ #include "libwebrtcglue/FrameTransformerProxy.h"
+ #include "mozilla/ErrorResult.h"
+ #include "mozilla/Maybe.h"
++#include "mozilla/MidoriMediaTrace.h"
+ #include "mozilla/RefPtr.h"
+ #include "mozilla/StateMirroring.h"
+ #include "mozilla/gfx/gfxVars.h"
+@@ -314,6 +315,13 @@
+ }  // namespace
+ 
+ void RecvSinkProxy::OnFrame(const webrtc::VideoFrame& aFrame) {
++  if (MidoriMediaTrace::Enabled()) {
++    MidoriMediaTraceEntry entry;
++    entry.kind = 5;
++    entry.context = mOwner;
++    entry.rtp = aFrame.rtp_timestamp();
++    MidoriMediaTrace::Add(entry);
++  }
+   MOZ_ALWAYS_SUCCEEDS(mOwner->mFrameRecvThread->Dispatch(NS_NewRunnableFunction(
+       __FUNCTION__,
+       [owner = RefPtr(mOwner), aFrame] { owner->OnRecvFrame(aFrame); })));
+@@ -1038,6 +1046,7 @@
    }
    mCall->Call()->DestroyVideoSendStream(mSendStream);
    mEngineTransmitting = false;
@@ -9,7 +30,7 @@ diff --git a/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp b/dom/media/webrtc/
    mSendStream = nullptr;
  
    // Reset base_seqs in case ssrcs get re-used.
-@@ -1752,6 +1753,7 @@
+@@ -1752,6 +1761,7 @@
    }
  
    mEngineTransmitting = false;
@@ -17,7 +38,7 @@ diff --git a/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp b/dom/media/webrtc/
  }
  
  void WebrtcVideoConduit::StartTransmitting() {
-@@ -1770,6 +1772,7 @@
+@@ -1770,6 +1780,7 @@
    mCall->Call()->SignalChannelNetworkState(webrtc::MediaType::VIDEO,
                                             webrtc::kNetworkUp);
    mEngineTransmitting = true;
@@ -25,7 +46,7 @@ diff --git a/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp b/dom/media/webrtc/
  }
  
  void WebrtcVideoConduit::StopReceiving() {
-@@ -1830,24 +1833,17 @@
+@@ -1830,24 +1841,17 @@
    MediaPacket packet;
    packet.Copy(aData, aLength, aLength + SRTP_MAX_EXPANSION);
    packet.SetType(MediaPacket::RTP);
@@ -54,3 +75,18 @@ diff --git a/dom/media/webrtc/libwebrtcglue/VideoConduit.cpp b/dom/media/webrtc/
          })));
    }
    return true;
+@@ -1896,6 +1900,14 @@
+   MOZ_ASSERT(mFrameRecvThread->IsOnCurrentThread());
+   const uint32_t localRecvSsrc = mRecvSSRC;
+   const uint32_t remoteSendSsrc = mRemoteSendSSRC;
++  if (MidoriMediaTrace::Enabled()) {
++    MidoriMediaTraceEntry entry;
++    entry.kind = 6;
++    entry.context = this;
++    entry.rtp = aFrame.rtp_timestamp();
++    entry.ssrc = remoteSendSsrc;
++    MidoriMediaTrace::Add(entry);
++  }
+ 
+   CSFLogVerbose(
+       LOGTAG,

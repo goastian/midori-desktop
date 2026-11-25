@@ -1,0 +1,47 @@
+--- a/third_party/libwebrtc/video/video_stream_buffer_controller.cc
++++ b/third_party/libwebrtc/video/video_stream_buffer_controller.cc
+@@ -38,6 +38,10 @@
+ #include "video/frame_decode_scheduler.h"
+ #include "video/frame_decode_timing.h"
+ #include "video/video_receive_stream_timeout_tracker.h"
++
++extern "C" bool MidoriMediaTraceEnabled();
++extern "C" void MidoriMediaTraceDecode(uint32_t, const void*, uint32_t, double,
++                                       double, bool);
+ 
+ namespace webrtc {
+ 
+@@ -225,11 +229,15 @@
+   bool superframe_delayed_by_retransmission = false;
+   DataSize superframe_size = DataSize::Zero();
+   const EncodedFrame& first_frame = *frames.front();
++  if (MidoriMediaTraceEnabled()) {
++    const bool valid = render_time.IsFinite();
++    MidoriMediaTraceDecode(9, receiver_, first_frame.RtpTimestamp(), 0,
++                           valid ? (render_time - now).ms<double>() : 0, valid);
++  }
+   Timestamp min_receive_time = MinReceiveTime(first_frame);
+   Timestamp max_receive_time = ReceiveTime(first_frame);
+ 
+-  if (first_frame.is_keyframe())
+-    keyframe_required_ = false;
++  if (first_frame.is_keyframe()) keyframe_required_ = false;
+ 
+   // Gracefully handle bad RTP timestamps and render time issues.
+   if (FrameHasBadRenderTiming(render_time, now) ||
+@@ -428,6 +436,15 @@
+       if (frame_decode_scheduler_->ScheduledRtpTimestamp() !=
+           decodable_tu_info->next_rtp_timestamp) {
+         frame_decode_scheduler_->CancelOutstanding();
++        if (MidoriMediaTraceEnabled()) {
++          const Timestamp now = clock_->CurrentTime();
++          const bool valid = schedule->latest_decode_time.IsFinite() &&
++                             schedule->render_time.IsFinite();
++          MidoriMediaTraceDecode(
++              8, receiver_, decodable_tu_info->next_rtp_timestamp,
++              valid ? (schedule->latest_decode_time - now).ms<double>() : 0,
++              valid ? (schedule->render_time - now).ms<double>() : 0, valid);
++        }
+         frame_decode_scheduler_->ScheduleFrame(
+             decodable_tu_info->next_rtp_timestamp, *schedule,
+             absl::bind_front(&VideoStreamBufferController::FrameReadyForDecode,

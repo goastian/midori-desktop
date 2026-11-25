@@ -46,6 +46,7 @@ class ManagedMemoryAdmissionRequest final : public SupportsWeakPtr {
   bool mSettled = false;
   bool mAdmitted = false;
   bool mRequired = false;
+  bool mWaitForBudget = false;
 };
 
 }  // namespace mozilla::net

@@ -1,6 +1,6 @@
 --- a/ipc/glue/GeckoChildProcessHost.cpp
 +++ b/ipc/glue/GeckoChildProcessHost.cpp
-@@ -3,6 +3,14 @@
+@@ -3,6 +3,13 @@
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
  
  #include "GeckoChildProcessHost.h"
@@ -9,13 +9,12 @@
 +#endif
 +#if defined(XP_LINUX) && !defined(ANDROID)
 +#  include "mozilla/MidoriCpuBudget.h"
-+#  include <cerrno>
-+#  include <climits>
++#  include "mozilla/MidoriProcessBudgetArgs.h"
 +#endif
  
  #include "base/command_line.h"
  #include "base/process.h"
-@@ -425,6 +433,10 @@
+@@ -425,6 +432,10 @@
    MOZ_RELEASE_ASSERT(mDestroying);
  
    MOZ_COUNT_DTOR(GeckoChildProcessHost);
@@ -26,7 +25,7 @@
  
    {
      mozilla::AutoWriteLock hLock(mHandleLock);
-@@ -963,6 +975,11 @@
+@@ -963,6 +974,11 @@
  #endif
                      }
                    }
@@ -38,7 +37,7 @@
  #if defined(XP_WIN) && defined(MOZ_SANDBOX)
                    this->mSandboxBroker = std::move(aResults.mSandboxBroker);
  #endif
-@@ -1003,7 +1020,7 @@
+@@ -1003,7 +1019,7 @@
  #if defined(XP_WIN)
                      "%s,0x%lx,%s",
  #else
@@ -47,37 +46,49 @@
  #endif
                      aError.FunctionName().get(), aError.ErrorCode(),
                      XRE_GeckoProcessTypeToString(mProcessType));
-@@ -1527,6 +1544,33 @@
-   } else
- #  endif
-   {
-+#  if defined(XP_LINUX) && !defined(ANDROID)
-+    int groupFile = -1;
-+    int error = midori::OpenManagedCpuChildProcess(groupFile);
-+    if (error) {
-+      return ProcessLaunchPromise::CreateAndReject(
-+          LaunchError("MidoriCpuChildGroup", error), __func__);
-+    }
-+    UniqueFileHandle cpuGroup(groupFile);
-+    if (cpuGroup) {
-+      if (mLaunchOptions->full_env) {
-+        return ProcessLaunchPromise::CreateAndReject(
-+            LaunchError("MidoriCpuChildEnvironment", ENOTSUP), __func__);
-+      }
-+      int target = 3;
-+      for (const auto& mapping : mLaunchOptions->fds_to_remap) {
-+        if (mapping.second >= target) {
-+          if (mapping.second == INT_MAX) {
-+            return ProcessLaunchPromise::CreateAndReject(
-+                LaunchError("MidoriCpuChildDescriptor", EOVERFLOW), __func__);
-+          }
-+          target = mapping.second + 1;
-+        }
-+      }
-+      mLaunchOptions->fds_to_remap.emplace_back(cpuGroup.get(), target);
-+      mLaunchOptions->env_map["MIDORI_CPU_CHILD_FD"] = std::to_string(target);
-+    }
-+#  endif
-     result = base::LaunchApp(mChildArgs.mArgs, std::move(*mLaunchOptions),
-                              &mResults.mHandle);
+@@ -1478,10 +1494,6 @@
    }
+ #  endif  // MOZ_WIDGET_COCOA
+ 
+-  mChildArgs.mArgs.push_back(mChildIDString);
+-
+-  mChildArgs.mArgs.push_back(ChildProcessType());
+-
+ #  ifdef MOZ_ENABLE_FORKSERVER
+   // Any unexpected fds given to the fork server could be leaked into
+   // child processes if they aren't closed properly; this assertion is
+@@ -1490,6 +1502,34 @@
+                  mChildArgs.mFiles.size() == 2,
+              "wrong number of FDs for the fork server");
+ #  endif
++
++#  if defined(XP_LINUX) && !defined(ANDROID)
++  int groupFile = -1;
++  int error = midori::OpenManagedCpuChildProcess(
++      mProcessType == GeckoProcessType_Content, groupFile);
++  if (error) return Err(LaunchError("MidoriCpuChildGroup", error));
++  if (groupFile >= 0) {
++    if (mLaunchOptions->full_env) {
++      close(groupFile);
++      return Err(LaunchError("MidoriCpuChildEnvironment", ENOTSUP));
++    }
++    UniqueFileHandle group(groupFile);
++    if (mProcessType != GeckoProcessType_ForkServer) {
++      int normalFile = -1, realtimeFile = -1;
++      error = midori::OpenManagedCpuChildThreadFiles(
++          mProcessType == GeckoProcessType_Content, normalFile, realtimeFile);
++      if (error) return Err(LaunchError("MidoriCpuThreadFiles", error));
++      midori::sProcessCpuNormal.Put(UniqueFileHandle(normalFile), mChildArgs);
++      midori::sProcessCpuRealtime.Put(UniqueFileHandle(realtimeFile),
++                                      mChildArgs);
++    }
++    midori::sProcessBudgetGroup.Put(std::move(group), mChildArgs);
++  }
++#  endif
++
++  mChildArgs.mArgs.push_back(mChildIDString);
++
++  mChildArgs.mArgs.push_back(ChildProcessType());
+ 
+ #  if !defined(MOZ_WIDGET_ANDROID)
+   // Add any files which need to be transferred to fds_to_remap.

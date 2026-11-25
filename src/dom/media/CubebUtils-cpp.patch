@@ -1,0 +1,50 @@
+--- a/dom/media/CubebUtils.cpp
++++ b/dom/media/CubebUtils.cpp
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "CubebUtils.h"
++#include "mozilla/MidoriCpuThreadPlacement.h"
+ 
+ #include "audio_thread_priority.h"
+ #include "base/process_util.h"
+@@ -173,8 +174,12 @@
+     audioipc2::AudioIpcServerInitParams initParams{};
+     initParams.mThreadCreateCallback = [](const char* aName) {
+       PROFILER_REGISTER_THREAD(aName);
++      mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
+     };
+-    initParams.mThreadDestroyCallback = []() { PROFILER_UNREGISTER_THREAD(); };
++    initParams.mThreadDestroyCallback = []() {
++      static_cast<void>(mozilla::midori::SetCurrentManagedCpuThreadRole(false));
++      PROFILER_UNREGISTER_THREAD();
++    };
+ 
+     sServerHandle = audioipc2::audioipc2_server_start(
+         sBrandName, sCubebBackendName, &initParams);
+@@ -685,8 +690,12 @@
+         sIPCConnection->ClonePlatformHandle().release();
+     initParams.mThreadCreateCallback = [](const char* aName) {
+       PROFILER_REGISTER_THREAD(aName);
++      mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
+     };
+-    initParams.mThreadDestroyCallback = []() { PROFILER_UNREGISTER_THREAD(); };
++    initParams.mThreadDestroyCallback = []() {
++      static_cast<void>(mozilla::midori::SetCurrentManagedCpuThreadRole(false));
++      PROFILER_UNREGISTER_THREAD();
++    };
+ 
+     cubeb* temp = nullptr;
+     rv = audioipc2::audioipc2_client_init(&temp, &initParams);
+@@ -908,6 +917,11 @@
+ 
+ already_AddRefed<SharedThreadPool> GetCubebOperationThread() {
+   RefPtr<SharedThreadPool> pool = SharedThreadPool::Get("CubebOperation", 1);
++#if defined(XP_LINUX) && !defined(ANDROID)
++  RefPtr<nsIThreadPoolListener> listener =
++      mozilla::midori::CreateManagedRealtimeCpuThreadPoolListener();
++  pool->SetListener(listener);
++#endif
+   const uint32_t kIdleThreadTimeoutMs = 2000;
+   pool->SetIdleThreadMaximumTimeout(
+       PR_MillisecondsToInterval(kIdleThreadTimeoutMs));

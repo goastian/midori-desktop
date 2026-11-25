@@ -1,21 +1,106 @@
 diff --git a/third_party/libwebrtc/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc b/third_party/libwebrtc/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc
 --- a/third_party/libwebrtc/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc
 +++ b/third_party/libwebrtc/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc
-@@ -71,6 +71,9 @@
+@@ -71,6 +71,15 @@
  #define MOBILE_ARM
  #endif
  
++#if defined(WEBRTC_LINUX) && !defined(WEBRTC_ANDROID)
++extern "C" uint32_t MidoriWebRTCVideoBudgetState();
++#endif
++
 +extern "C" bool MidoriMediaTraceEnabled();
 +extern "C" void MidoriMediaTraceSource(const void*, uint32_t, uint32_t, bool);
++extern "C" void MidoriMediaTraceEncode(uint32_t, const void*, uint32_t,
++                                       const void*, uint32_t);
 +
  namespace webrtc {
  namespace {
  #if defined(WEBRTC_IOS)
-@@ -1337,6 +1340,27 @@
+@@ -1026,6 +1035,10 @@
+   if (encoded_complete_callback_ == nullptr)
+     return WEBRTC_VIDEO_CODEC_UNINITIALIZED;
+ 
++  if (MidoriMediaTraceEnabled()) {
++    MidoriMediaTraceEncode(19, this, frame.rtp_timestamp(), nullptr,
++                           codec_.maxFramerate);
++  }
+   // A keyframe request on any stream triggers a keyframe on all streams
+   // in order to keep the temporal layering structure aligned.
+   bool key_frame_requested = false;
+@@ -1051,10 +1064,26 @@
+   std::vector<FrameDropConfigOverride> frame_drop_overrides_;
+   if (max_frame_drop_interval_.has_value()) {
+     Timestamp now = Timestamp::Micros(frame.timestamp_us());
++    TimeDelta frame_drop_interval = *max_frame_drop_interval_;
++#if defined(WEBRTC_LINUX) && !defined(WEBRTC_ANDROID)
++    const uint32_t budget_state = MidoriWebRTCVideoBudgetState();
++    if (budget_state == 1 || budget_state == 3) {
++      frame_drop_interval =
++          std::min(frame_drop_interval, TimeDelta::Millis(250));
++    }
++    if (MidoriMediaTraceEnabled()) {
++      MidoriMediaTraceEncode(26, this, frame.rtp_timestamp(), nullptr,
++                             frame_drop_interval.ms<uint32_t>());
++    }
++#endif
+     for (size_t i = 0; i < send_stream_.size(); ++i) {
+       if (send_stream_[i] && FrameDropThreshold(i) > 0 &&
+           last_encoder_output_time_[i].IsFinite() &&
+-          (now - last_encoder_output_time_[i]) >= *max_frame_drop_interval_) {
++          (now - last_encoder_output_time_[i]) >= frame_drop_interval) {
++        if (MidoriMediaTraceEnabled()) {
++          MidoriMediaTraceEncode(25, this, frame.rtp_timestamp(), nullptr,
++                                 frame_drop_interval.ms<uint32_t>());
++        }
+         RTC_LOG(LS_INFO) << "Forcing frame to avoid timeout for stream " << i;
+         size_t encoder_idx = encoders_.size() - 1 - i;
+         frame_drop_overrides_.emplace_back(libvpx_.get(),
+@@ -1069,6 +1098,9 @@
+     if (framerate_controller_.DropFrame(frame.rtp_timestamp() /
+                                         kRtpTicksPerMs) &&
+         frame_drop_overrides_.empty()) {
++      if (MidoriMediaTraceEnabled()) {
++        MidoriMediaTraceEncode(20, this, frame.rtp_timestamp(), nullptr, 0);
++      }
+       return WEBRTC_VIDEO_CODEC_OK;
+     }
+     framerate_controller_.AddFrame(frame.rtp_timestamp() / kRtpTicksPerMs);
+@@ -1089,6 +1121,9 @@
+   }
+ 
+   if (drop_frame && !send_key_frame) {
++    if (MidoriMediaTraceEnabled()) {
++      MidoriMediaTraceEncode(21, this, frame.rtp_timestamp(), nullptr, 0);
++    }
+     return WEBRTC_VIDEO_CODEC_OK;
+   }
+ 
+@@ -1265,6 +1300,10 @@
+       }
+     }
+ 
++    if (encoded_size == 0 && MidoriMediaTraceEnabled()) {
++      MidoriMediaTraceEncode(22, this, input_image.rtp_timestamp(), nullptr,
++                             vpx_configs_[encoder_idx].rc_target_bitrate);
++    }
+     auto buffer = EncodedImageBuffer::Create(encoded_size);
+ 
+     iter = nullptr;
+@@ -1337,6 +1376,36 @@
  
                  qp_128));
  
 +        if (MidoriMediaTraceEnabled()) {
++          MidoriMediaTraceEncode(
++              encoded_images_[encoder_idx].IsKey() ? 31 : 30, this,
++              encoded_images_[encoder_idx].RtpTimestamp(),
++              encoded_images_[encoder_idx].data(),
++              static_cast<uint32_t>(encoded_images_[encoder_idx].size()));
++          MidoriMediaTraceEncode(24, this,
++                                 encoded_images_[encoder_idx].RtpTimestamp(),
++                                 encoded_images_[encoder_idx].data(),
++                                 static_cast<uint32_t>(qp_128));
 +          const auto& raw = raw_images_[encoder_idx];
 +          uint32_t codes[3] = {};
 +          if (raw.planes[VPX_PLANE_Y] && raw.d_w >= 64 && raw.d_h >= 24) {

@@ -1,0 +1,26 @@
+--- a/ipc/glue/IOThread.cpp
++++ b/ipc/glue/IOThread.cpp
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "mozilla/ipc/IOThread.h"
++#include "mozilla/MidoriCpuThreadPlacement.h"
+ #include "mozilla/ipc/NodeController.h"
+ #include "mozilla/Preferences.h"
+ 
+@@ -97,6 +98,7 @@
+ IOThreadParent::~IOThreadParent() { StopThread(); }
+ 
+ void IOThreadParent::Init() {
++  mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
+ #if defined(XP_WIN)
+   // Initializes the COM library on the current thread.
+   CoInitialize(nullptr);
+@@ -131,6 +133,7 @@
+ IOThreadChild::~IOThreadChild() { StopThread(); }
+ 
+ void IOThreadChild::Init() {
++  mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
+   mInitialPort =
+       NodeController::InitChildProcess(std::move(mClientHandle), mParentPid);
+ }

@@ -1,0 +1,73 @@
+--- a/dom/media/AudioStream.cpp
++++ b/dom/media/AudioStream.cpp
+@@ -2,6 +2,7 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ #include "AudioStream.h"
++#include "mozilla/MidoriCpuThreadPlacement.h"
+ 
+ #include <math.h>
+ 
+@@ -390,7 +391,9 @@
+     promise = mEndedPromise.Ensure(__func__);
+     mPlaybackComplete = false;
+ 
++    mMidoriCpuActivity.SetActive(true);
+     if (InvokeCubeb(cubeb_stream_start) != CUBEB_OK) {
++      mMidoriCpuActivity.SetActive(false);
+       mState = ERRORED;
+       mEndedPromise.RejectIfExists(NS_ERROR_FAILURE, __func__);
+     } else {
+@@ -432,10 +435,13 @@
+   mCubebStarted = false;
+   if (InvokeCubeb(cubeb_stream_stop) != CUBEB_OK) {
+     mState = ERRORED;
+-  } else if (mState != DRAINED && mState != ERRORED) {
+-    // Don't transition to other states if we are already
+-    // drained or errored.
+-    mState = STOPPED;
++  } else {
++    mMidoriCpuActivity.SetActive(false);
++    if (mState != DRAINED && mState != ERRORED) {
++      // Don't transition to other states if we are already
++      // drained or errored.
++      mState = STOPPED;
++    }
+   }
+ }
+ 
+@@ -467,7 +473,9 @@
+   MOZ_ASSERT(mState != STARTED, "Already Start()ed.");
+ 
+   MonitorAutoLock mon(mMonitor);
++  mMidoriCpuActivity.SetActive(true);
+   if (InvokeCubeb(cubeb_stream_start) != CUBEB_OK) {
++    mMidoriCpuActivity.SetActive(false);
+     mState = ERRORED;
+   } else if (mState != DRAINED && mState != ERRORED) {
+     // Don't transition to other states if we are already
+@@ -508,6 +516,7 @@
+     mTimeStretcher = nullptr;
+   }
+ 
++  mMidoriCpuActivity.SetActive(false);
+   mState = SHUTDOWN;
+   mEndedPromise.ResolveIfExists(true, __func__);
+ }
+@@ -738,6 +747,7 @@
+ }
+ 
+ long AudioStream::DataCallback(void* aBuffer, long aFrames) {
++  midori::EnsureCurrentManagedRealtimeCpuThread();
+   if (CheckThreadIdChanged() && !mSandboxed) {
+     CallbackThreadRegistry::Get()->Register(mAudioThreadId,
+                                             "NativeAudioCallback");
+@@ -809,6 +819,8 @@
+ }
+ 
+ void AudioStream::StateCallback(cubeb_state aState) {
++  if (aState == CUBEB_STATE_DRAINED || aState == CUBEB_STATE_ERROR)
++    mMidoriCpuActivity.SetActive(false);
+   MOZ_ASSERT(mState != SHUTDOWN, "No state callback after shutdown");
+   LOG("StateCallback, mState={} cubeb_state={}",
+       static_cast<int>(mState.load()), static_cast<int>(aState));

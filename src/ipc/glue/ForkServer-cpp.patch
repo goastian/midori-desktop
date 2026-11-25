@@ -1,0 +1,24 @@
+--- a/ipc/glue/ForkServer.cpp
++++ b/ipc/glue/ForkServer.cpp
+@@ -3,6 +3,9 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "mozilla/ipc/ForkServer.h"
++#if defined(XP_LINUX) && !defined(ANDROID)
++#  include "mozilla/MidoriProcessBudgetArgs.h"
++#endif
+ 
+ #include "base/eintr_wrapper.h"
+ #include "chrome/common/chrome_switches.h"
+@@ -47,6 +50,11 @@
+ }
+ 
+ ForkServer::ForkServer(int* aArgc, char*** aArgv) : mArgc(aArgc), mArgv(aArgv) {
++#if defined(XP_LINUX) && !defined(ANDROID)
++  if (!midori::JoinProcessBudgetGroup(*aArgc, *aArgv)) {
++    MOZ_CRASH("Midori fork server budget handoff failed");
++  }
++#endif
+   SetThisProcessName("forkserver");
+ 
+   Maybe<UniqueFileHandle> ipcHandle = geckoargs::sIPCHandle.Get(*aArgc, *aArgv);

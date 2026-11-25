@@ -1,0 +1,45 @@
+--- a/dom/media/GraphDriver.cpp
++++ b/dom/media/GraphDriver.cpp
+@@ -3,6 +3,7 @@
+  * You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "GraphDriver.h"
++#include "mozilla/MidoriCpuThreadPlacement.h"
+ 
+ #include "AudioNodeEngine.h"
+ #include "CallbackThreadRegistry.h"
+@@ -727,7 +728,9 @@
+   // mAudioStreamState would otherwise be set.
+   mAudioStreamState = AudioStreamState::Starting;
+   auto streamLocked = mAudioStream.Lock();
++  mMidoriCpuActivity.SetActive(true);
+   if (cubeb_stream_start(streamLocked.ref()) != CUBEB_OK) {
++    mMidoriCpuActivity.SetActive(false);
+     NS_WARNING("Could not start cubeb stream for MTG.");
+     return false;
+   }
+@@ -746,6 +749,7 @@
+     NS_WARNING("Could not stop cubeb stream for MTG.");
+   } else {
+     mAudioStreamState = AudioStreamState::None;
++    mMidoriCpuActivity.SetActive(false);
+   }
+ }
+ 
+@@ -848,6 +852,7 @@
+ long AudioCallbackDriver::DataCallback(const AudioDataValue* aInputBuffer,
+                                        AudioDataValue* aOutputBuffer,
+                                        long aFrames) {
++  mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
+   TimeStamp iterationStartTimeStamp = TimeStamp::Now();
+ 
+   if (!mSandboxed && CheckThreadIdChanged()) {
+@@ -1080,6 +1085,8 @@
+     return;
+   }
+ 
++  mMidoriCpuActivity.SetActive(false);
++
+   // Reset for DRAINED or ERROR.
+   streamState = mAudioStreamState.exchange(AudioStreamState::None);
+ 

@@ -16,6 +16,8 @@ dictionary ManagedMediaObservation {
   unsigned long long paint = 0;
   double observed = 0;
   double presented = -1;
+  double decodeWaitMs = 0;
+  double renderWaitMs = 0;
   boolean valid = true;
 };
 

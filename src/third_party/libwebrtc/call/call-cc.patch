@@ -1,4 +1,3 @@
-diff --git a/third_party/libwebrtc/call/call.cc b/third_party/libwebrtc/call/call.cc
 --- a/third_party/libwebrtc/call/call.cc
 +++ b/third_party/libwebrtc/call/call.cc
 @@ -13,6 +13,7 @@
@@ -9,22 +8,27 @@ diff --git a/third_party/libwebrtc/call/call.cc b/third_party/libwebrtc/call/cal
  #include <map>
  #include <memory>
  #include <optional>
-@@ -401,6 +402,10 @@
+@@ -401,6 +402,11 @@
    // Ensure that necessary process threads are started, and any required
    // callbacks have been registered.
    void EnsureStarted() RTC_RUN_ON(worker_thread_);
 +  void UpdateExternalBitrateLimits() override RTC_RUN_ON(worker_thread_);
++  void ApplyAllocationLimits() RTC_RUN_ON(worker_thread_);
 +  void ApplyClientBitratePreferences(
 +      std::optional<int> start_bitrate_bps = std::nullopt)
 +      RTC_RUN_ON(worker_thread_);
  
    const Environment env_;
    TaskQueueBase* const worker_thread_;
-@@ -415,6 +420,13 @@
+@@ -415,6 +421,17 @@
    const std::unique_ptr<CallStats> call_stats_;
    const std::unique_ptr<BitrateAllocator> bitrate_allocator_;
    const CallConfig config_ RTC_GUARDED_BY(worker_thread_);
 +  std::optional<BitrateSettings> client_bitrate_preferences_
++      RTC_GUARDED_BY(worker_thread_);
++  std::optional<BitrateAllocationLimits> allocation_limits_
++      RTC_GUARDED_BY(worker_thread_);
++  std::optional<BitrateAllocationLimits> applied_allocation_limits_
 +      RTC_GUARDED_BY(worker_thread_);
 +  int64_t external_send_bitrate_bps_ RTC_GUARDED_BY(worker_thread_) = 0;
 +  int64_t external_receive_bitrate_bps_ RTC_GUARDED_BY(worker_thread_) = 0;
@@ -34,7 +38,7 @@ diff --git a/third_party/libwebrtc/call/call.cc b/third_party/libwebrtc/call/cal
  
    NetworkState audio_network_state_ RTC_GUARDED_BY(worker_thread_);
    NetworkState video_network_state_ RTC_GUARDED_BY(worker_thread_);
-@@ -738,13 +750,18 @@
+@@ -738,13 +755,18 @@
      return;
    }
    is_started_ = true;
@@ -54,7 +58,7 @@ diff --git a/third_party/libwebrtc/call/call.cc b/third_party/libwebrtc/call/cal
        TaskQueueBase::DelayPrecision::kLow, &env_.clock());
  
    // TODO(b/350555527): Remove after experiment
-@@ -774,7 +791,71 @@
+@@ -774,7 +796,110 @@
  
  void Call::SetClientBitratePreferences(const BitrateSettings& preferences) {
    RTC_DCHECK_RUN_ON(worker_thread_);
@@ -84,7 +88,45 @@ diff --git a/third_party/libwebrtc/call/call.cc b/third_party/libwebrtc/call/cal
 +          std::min(*preferences.start_bitrate_bps, maximum);
 +    }
 +  }
++  if (external_send_bitrate_bps_ > 0 && !external_video_suspended_ &&
++      preferences.max_bitrate_bps && applied_allocation_limits_ &&
++      applied_allocation_limits_->min_allocatable_rate >
++          DataRate::BitsPerSec(*preferences.max_bitrate_bps)) {
++    ApplyAllocationLimits();
++  }
    GetTransportControllerSend()->SetClientBitratePreferences(preferences);
++  ApplyAllocationLimits();
++}
++
++void Call::ApplyAllocationLimits() {
++  RTC_DCHECK_RUN_ON(worker_thread_);
++  if (!allocation_limits_) return;
++  BitrateAllocationLimits limits = *allocation_limits_;
++  if (external_send_bitrate_bps_ > 0 && !external_video_suspended_) {
++    int64_t maximum = std::min<int64_t>(external_send_bitrate_bps_,
++                                        std::numeric_limits<int>::max());
++    if (client_bitrate_preferences_ &&
++        client_bitrate_preferences_->max_bitrate_bps) {
++      maximum = std::min<int64_t>(
++          maximum, *client_bitrate_preferences_->max_bitrate_bps);
++    }
++    const DataRate cap = DataRate::BitsPerSec(maximum);
++    limits.min_allocatable_rate = std::min(limits.min_allocatable_rate, cap);
++    limits.max_allocatable_rate = std::min(limits.max_allocatable_rate, cap);
++    limits.max_padding_rate = std::min(limits.max_padding_rate, cap);
++  }
++  if (applied_allocation_limits_ &&
++      applied_allocation_limits_->min_allocatable_rate ==
++          limits.min_allocatable_rate &&
++      applied_allocation_limits_->max_allocatable_rate ==
++          limits.max_allocatable_rate &&
++      applied_allocation_limits_->max_padding_rate == limits.max_padding_rate) {
++    return;
++  }
++  transport_send_->SetAllocatedSendBitrateLimits(limits);
++  send_stats_.SetMinAllocatableRate(limits);
++  configured_max_padding_bitrate_bps_ = limits.max_padding_rate.bps();
++  applied_allocation_limits_ = limits;
 +}
 +
 +void Call::UpdateExternalBitrateLimits() {
@@ -95,11 +137,12 @@ diff --git a/third_party/libwebrtc/call/call.cc b/third_party/libwebrtc/call/cal
 +    external_video_pause_started_ =
 +        Timestamp::Millis(env_.clock().CurrentTime().ms());
 +  }
++  const bool video_suspend_changed = external_video_suspended_ != suspended;
 +  const bool resume_video = external_video_suspended_ && !suspended;
 +  external_video_suspended_ = suspended;
 +  if (config_.send_bitrate_limit_bps) {
 +    const int64_t limit = std::max<int64_t>(0, config_.send_bitrate_limit_bps());
-+    if (limit != external_send_bitrate_bps_) {
++    if (limit != external_send_bitrate_bps_ || video_suspend_changed) {
 +      external_send_bitrate_bps_ = limit;
 +      ApplyClientBitratePreferences();
 +    }
@@ -126,3 +169,15 @@ diff --git a/third_party/libwebrtc/call/call.cc b/third_party/libwebrtc/call/cal
  }
  
  PacketReceiver* Call::Receiver() {
+@@ -1296,9 +1421,8 @@
+ void Call::OnAllocationLimitsChanged(BitrateAllocationLimits limits) {
+   RTC_DCHECK_RUN_ON(worker_thread_);
+ 
+-  transport_send_->SetAllocatedSendBitrateLimits(limits);
+-  send_stats_.SetMinAllocatableRate(limits);
+-  configured_max_padding_bitrate_bps_ = limits.max_padding_rate.bps();
++  allocation_limits_ = limits;
++  ApplyAllocationLimits();
+ }
+ 
+ AudioReceiveStreamImpl* Call::FindAudioStreamForSyncGroup(

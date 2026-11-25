@@ -6,13 +6,13 @@
 
 #include "mozilla/Services.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
+#include "nsError.h"
 #include "nsHashPropertyBag.h"
 #include "nsIChannel.h"
 #include "nsIObserverService.h"
 #include "nsISimpleEnumerator.h"
 #include "nsITimer.h"
 #include "nsIURI.h"
-#include "nsError.h"
 #include "nsThreadUtils.h"
 
 namespace mozilla::net {
@@ -64,6 +64,7 @@ ManagedMemoryAdmissionRequest::MaybeCreate(
   subject->SetPropertyAsUint64(u"channelId"_ns,
                                identified ? identified->ChannelId() : 0);
   subject->SetPropertyAsBool(u"required"_ns, false);
+  subject->SetPropertyAsBool(u"waitForBudget"_ns, false);
   nsCOMPtr<nsIRunnable> allow =
       NS_NewRunnableFunction("ManagedMemoryAdmission::Allow", [weak] {
         if (weak) weak->Finish(NS_OK);
@@ -78,6 +79,7 @@ ManagedMemoryAdmissionRequest::MaybeCreate(
       observers->NotifyObservers(subject, kMemoryAdmissionTopic, u"request");
   if (!request->mSettled) {
     subject->GetPropertyAsBool(u"required"_ns, &request->mRequired);
+    subject->GetPropertyAsBool(u"waitForBudget"_ns, &request->mWaitForBudget);
     if (NS_FAILED(rv)) {
       request->Finish(request->mRequired ? NS_ERROR_NOT_AVAILABLE : NS_OK);
     } else {
@@ -89,6 +91,7 @@ ManagedMemoryAdmissionRequest::MaybeCreate(
 }
 
 void ManagedMemoryAdmissionRequest::ArmDeadline() {
+  if (mWaitForBudget) return;
   mTimer = NS_NewTimer();
   if (!mTimer ||
       NS_FAILED(mTimer->InitWithNamedFuncCallback(

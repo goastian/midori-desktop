@@ -35,6 +35,16 @@ LazyLogModule sBudgetLog("MidoriNetworkBudget");
 Atomic<bool, Relaxed> sEnabled(false);
 Atomic<uint32_t, Relaxed> sDownloadRate(0);
 Atomic<uint32_t, Relaxed> sUploadRate(0);
+#if defined(XP_LINUX) && !defined(ANDROID)
+Atomic<uint64_t, ReleaseAcquire> sVideoRecoveryUntilMs(0);
+TimeStamp sVideoRecoveryClockOrigin;
+
+uint64_t VideoBudgetElapsedMilliseconds() {
+  MOZ_ASSERT(!sVideoRecoveryClockOrigin.IsNull());
+  return static_cast<uint64_t>(
+      (TimeStamp::Now() - sVideoRecoveryClockOrigin).ToMilliseconds());
+}
+#endif
 Atomic<uint32_t, Relaxed> sGlobalMediaSendingCallCount(0);
 nsTArray<uint64_t> sLocalMediaSendingCalls;
 struct ProcessMediaSendingCalls {
@@ -49,6 +59,9 @@ bool sUseBroker = false;
 thread_local AutoWebRTCAudioSend* sWebRTCAudioSend = nullptr;
 
 struct Bucket {
+  explicit Bucket(bool aUpload = false) : upload(aUpload) {}
+
+  const bool upload;
   struct DatagramFlow {
     const void* owner;
     uint64_t served;
@@ -128,7 +141,15 @@ struct Bucket {
     }
   }
 
-  double Capacity() const { return std::max(1.0, rate * 0.05); }
+  double Capacity() const {
+    double capacity = std::max(1.0, rate * 0.05);
+#if defined(XP_LINUX) && !defined(ANDROID)
+    if (upload && !sUseBroker && rate >= 8 * 1024) {
+      capacity = std::max(capacity, std::min(rate * 0.15, 64.0 * 1024));
+    }
+#endif
+    return capacity;
+  }
 
   uint32_t FlowCount(bool aAtomic, TimeStamp aNow) const {
     uint32_t count = 0;
@@ -226,7 +247,7 @@ struct Bucket {
 };
 
 Bucket sDownload;
-Bucket sUpload;
+Bucket sUpload(true);
 
 constexpr char kDownloadUnderusedPref[] =
     "midori.performance.network.experimental.downloadUnderused";
@@ -322,6 +343,11 @@ void UpdateBudget(const char*, void*) {
   StaticMutexAutoLock lock(sBudgetMutex);
   if (sDownload.rate != download) SetDownloadUnderused(false);
   sDownload.SetRate(download);
+#if defined(XP_LINUX) && !defined(ANDROID)
+  if (sUpload.rate != upload) {
+    sVideoRecoveryUntilMs = upload ? 0 : VideoBudgetElapsedMilliseconds() + 2000;
+  }
+#endif
   sUpload.SetRate(upload);
   sDownloadRate = download;
   sUploadRate = upload;
@@ -682,6 +708,9 @@ void MidoriNetworkBudget::Init() {
   if (initialized) return;
   initialized = true;
   sUseBroker = XRE_IsSocketProcess();
+#if defined(XP_LINUX) && !defined(ANDROID)
+  sVideoRecoveryClockOrigin = TimeStamp::Now();
+#endif
   Preferences::RegisterCallbackAndCall(
       UpdateBudget, "midori.performance.network.experimental.downloadBps");
   Preferences::RegisterCallbackAndCall(
@@ -871,5 +900,17 @@ extern "C" void MidoriNetworkCancelDatagramDemand(bool aUpload,
         aFlow);
   }
 }
+
+#if defined(XP_LINUX) && !defined(ANDROID)
+extern "C" uint32_t MidoriWebRTCVideoBudgetState() {
+  const uint32_t rate = MidoriNetworkBudget::UploadRate();
+  if (rate) return MidoriNetworkBudget::VideoUploadSuspended(rate) ? 2 : 1;
+  const uint64_t until = sVideoRecoveryUntilMs;
+  if (!until) return 0;
+  if (VideoBudgetElapsedMilliseconds() < until) return 3;
+  (void)sVideoRecoveryUntilMs.compareExchange(until, 0);
+  return 0;
+}
+#endif
 
 }  // namespace mozilla::net

@@ -1,0 +1,39 @@
+--- a/dom/ipc/PreallocatedProcessManager.cpp
++++ b/dom/ipc/PreallocatedProcessManager.cpp
+@@ -71,9 +71,12 @@
+   static bool IsShutdown() {
+     return AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownConfirmed);
+   }
+-  bool IsEnabled() { return mEnabled && !IsShutdown(); }
++  bool IsEnabled() {
++    return mEnabled && !mMemoryBudgetPressure && !IsShutdown();
++  }
+ 
+   bool mEnabled;
++  bool mMemoryBudgetPressure = false;
+   uint32_t mNumberPreallocs;
+   AutoTArray<UniqueContentParentKeepAlive, 3> mPreallocatedProcesses;
+   // Even if we have multiple PreallocatedProcessManagerImpls, we'll have
+@@ -374,6 +377,22 @@
+   return PreallocatedProcessManagerImpl::Singleton();
+ }
+ 
++uint32_t PreallocatedProcessManager::SetMemoryBudgetPressure(bool aPressure) {
++  if (auto impl = GetPPMImpl()) {
++    if (impl->mMemoryBudgetPressure == aPressure) {
++      return 0;
++    }
++    impl->mMemoryBudgetPressure = aPressure;
++    if (aPressure) {
++      uint32_t count = impl->mPreallocatedProcesses.Length();
++      impl->CloseProcesses();
++      return count;
++    }
++    impl->AllocateAfterDelay();
++  }
++  return 0;
++}
++
+ /* static */
+ bool PreallocatedProcessManager::Enabled() {
+   if (auto impl = GetPPMImpl()) {

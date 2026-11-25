@@ -1,0 +1,26 @@
+--- a/dom/media/VideoUtils.cpp
++++ b/dom/media/VideoUtils.cpp
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "VideoUtils.h"
++#include "mozilla/MidoriCpuThreadPlacement.h"
+ 
+ #include <stdint.h>
+ 
+@@ -293,6 +294,15 @@
+       pool = SharedThreadPool::Get("MediaSupervisor", 4);
+       break;
+   }
++
++#if defined(XP_LINUX) && !defined(ANDROID)
++  if (aType == MediaThreadType::WEBRTC_CALL_THREAD ||
++      aType == MediaThreadType::WEBRTC_WORKER) {
++    RefPtr<nsIThreadPoolListener> listener =
++        mozilla::midori::CreateManagedRealtimeCpuThreadPoolListener();
++    pool->SetListener(listener);
++  }
++#endif
+ 
+   // Ensure a larger stack for platform decoder threads
+   bool needsLargerStacks = aType == MediaThreadType::PLATFORM_DECODER;

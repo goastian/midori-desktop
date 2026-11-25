@@ -1,0 +1,35 @@
+--- a/third_party/libwebrtc/video/video_receive_stream2.cc
++++ b/third_party/libwebrtc/video/video_receive_stream2.cc
+@@ -97,6 +97,10 @@
+ #include "video/task_queue_frame_decode_scheduler.h"
+ #include "video/video_stream_buffer_controller.h"
+ #include "video/video_stream_decoder2.h"
++
++extern "C" bool MidoriMediaTraceEnabled();
++extern "C" void MidoriMediaTraceDecode(uint32_t, const void*, uint32_t, double,
++                                       double, bool);
+ 
+ namespace webrtc {
+ 
+@@ -904,6 +908,10 @@
+ 
+ void VideoReceiveStream2::OnCompleteFrame(std::unique_ptr<EncodedFrame> frame) {
+   RTC_DCHECK_RUN_ON(&worker_sequence_checker_);
++  if (MidoriMediaTraceEnabled()) {
++    MidoriMediaTraceDecode(7, static_cast<FrameSchedulingReceiver*>(this),
++                           frame->RtpTimestamp(), 0, 0, true);
++  }
+ 
+   if (std::optional<VideoPlayoutDelay> playout_delay =
+           frame->EncodedImage().PlayoutDelay()) {
+@@ -986,6 +994,10 @@
+     if (decoder_stopped_)
+       return;
+     uint32_t rtp_timestamp = frame->RtpTimestamp();
++    if (MidoriMediaTraceEnabled()) {
++      MidoriMediaTraceDecode(10, static_cast<FrameSchedulingReceiver*>(this),
++                             rtp_timestamp, 0, 0, true);
++    }
+     DecodeFrameResult result = HandleEncodedFrameOnDecodeQueue(
+         std::move(frame), keyframe_request_is_due, keyframe_required);
+ 

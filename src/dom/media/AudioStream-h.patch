@@ -1,0 +1,18 @@
+--- a/dom/media/AudioStream.h
++++ b/dom/media/AudioStream.h
+@@ -10,6 +10,7 @@
+ #  include "MediaSink.h"
+ #  include "WavDumper.h"
+ #  include "mozilla/Atomics.h"
++#  include "mozilla/MidoriCpuThreadPlacement.h"
+ #  include "mozilla/Monitor.h"
+ #  include "mozilla/MozPromise.h"
+ #  include "mozilla/ProfilerUtils.h"
+@@ -491,6 +492,7 @@
+   // Whether the cubeb stream is currently physically running, i.e. started and
+   // not yet stopped. Only read and written on the owner thread, so it needs no
+   // synchronization.
++  midori::ManagedAudioCpuActivity mMidoriCpuActivity;
+   bool mCubebStarted = false;
+ 
+   // Whether the last Resume() found the cubeb stream still running, so the

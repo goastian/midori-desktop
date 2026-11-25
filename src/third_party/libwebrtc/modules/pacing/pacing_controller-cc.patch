@@ -1,7 +1,21 @@
 diff --git a/third_party/libwebrtc/modules/pacing/pacing_controller.cc b/third_party/libwebrtc/modules/pacing/pacing_controller.cc
 --- a/third_party/libwebrtc/modules/pacing/pacing_controller.cc
 +++ b/third_party/libwebrtc/modules/pacing/pacing_controller.cc
-@@ -111,6 +111,19 @@
+@@ -34,6 +34,13 @@
+ #include "rtc_base/logging.h"
+ #include "rtc_base/numerics/safe_conversions.h"
+ #include "system_wrappers/include/clock.h"
++
++#if defined(WEBRTC_LINUX) && !defined(WEBRTC_ANDROID)
++extern "C" uint32_t MidoriWebRTCVideoBudgetState();
++extern "C" bool MidoriMediaTraceEnabled();
++extern "C" void MidoriMediaTraceEncode(uint32_t, const void*, uint32_t,
++                                       const void*, uint32_t);
++#endif
+ 
+ namespace webrtc {
+ namespace {
+@@ -111,6 +118,19 @@
    for (const ProbeClusterConfig probe_cluster_config : probe_cluster_configs) {
      prober_.CreateProbeCluster(probe_cluster_config);
    }
@@ -21,7 +35,7 @@ diff --git a/third_party/libwebrtc/modules/pacing/pacing_controller.cc b/third_p
  }
  
  void PacingController::Pause() {
-@@ -132,6 +145,15 @@
+@@ -132,6 +152,15 @@
  }
  
  void PacingController::SetCongested(bool congested) {
@@ -37,7 +51,7 @@ diff --git a/third_party/libwebrtc/modules/pacing/pacing_controller.cc b/third_p
    if (congested_ && !congested) {
      UpdateBudgetWithElapsedTime(UpdateTimeAndGetElapsed(CurrentTime()));
    }
-@@ -143,7 +165,16 @@
+@@ -143,7 +172,16 @@
    circuit_breaker_threshold_ = num_iterations;
  }
  
@@ -54,7 +68,7 @@ diff --git a/third_party/libwebrtc/modules/pacing/pacing_controller.cc b/third_p
    packet_queue_.RemovePacketsForSsrc(ssrc);
  }
  
-@@ -199,6 +230,17 @@
+@@ -199,6 +237,17 @@
    RTC_DCHECK(pacing_rate_ > DataRate::Zero())
        << "SetPacingRate must be called before InsertPacket.";
    RTC_CHECK(packet->packet_type());
@@ -72,10 +86,11 @@ diff --git a/third_party/libwebrtc/modules/pacing/pacing_controller.cc b/third_p
  
    if (packet->packet_type() == RtpPacketMediaType::kVideo &&
        packet->is_key_frame() && packet->is_first_packet_of_frame() &&
-@@ -230,6 +272,20 @@
+@@ -230,7 +279,26 @@
      }
      UpdateBudgetWithElapsedTime(UpdateTimeAndGetElapsed(target_process_time));
    }
+-  packet_queue_.Push(now, std::move(packet));
 +  RTC_LOG_IF(LS_INFO, packet->packet_type() == RtpPacketMediaType::kVideo &&
 +                          packet->Marker())
 +      << "Midori frame enqueue pacer=" << this << " ssrc=" << packet->Ssrc()
@@ -90,10 +105,54 @@ diff --git a/third_party/libwebrtc/modules/pacing/pacing_controller.cc b/third_p
 +      << " debt_bytes=" << media_debt_.bytes()
 +      << " congested=" << congested_ << " paused=" << paused_
 +      << " queue_limit_ms=" << queue_time_limit_.ms();
-   packet_queue_.Push(now, std::move(packet));
++  bool prioritize_video = false;
++#if defined(WEBRTC_LINUX) && !defined(WEBRTC_ANDROID)
++  const uint32_t budget_state = MidoriWebRTCVideoBudgetState();
++  prioritize_video = budget_state == 1 || budget_state == 3;
++#endif
++  packet_queue_.Push(now, std::move(packet), prioritize_video);
    seen_first_packet_ = true;
  
-@@ -503,6 +559,25 @@
+   // Queue length has increased, check if we need to change the pacing rate.
+@@ -322,8 +390,28 @@
+   return false;
+ }
+ 
++TimeDelta PacingController::EffectiveSendBurstInterval() const {
++  TimeDelta interval = send_burst_interval_;
++#if defined(WEBRTC_LINUX) && !defined(WEBRTC_ANDROID)
++  const uint32_t state = MidoriWebRTCVideoBudgetState();
++  if (state == 1) {
++    interval = std::max(interval, TimeDelta::Millis(250));
++  } else if (state == 3) {
++    interval = std::max(interval, kMaxDebtInTime - TimeDelta::Millis(10));
++  }
++  if (midori_observed_burst_interval_ != interval) {
++    midori_observed_burst_interval_ = interval;
++    if (MidoriMediaTraceEnabled()) {
++      MidoriMediaTraceEncode(32, this, 0, nullptr, interval.ms<uint32_t>());
++    }
++  }
++#endif
++  return interval;
++}
++
+ Timestamp PacingController::NextSendTime() const {
+   const Timestamp now = CurrentTime();
++  const TimeDelta burst_interval = EffectiveSendBurstInterval();
+   Timestamp next_send_time = Timestamp::PlusInfinity();
+ 
+   if (paused_) {
+@@ -358,7 +446,7 @@
+     // Ensure that a burst of sent packet is not larger than kMaxBurstSize in
+     // order to not risk overfilling socket buffers at high bitrate.
+     TimeDelta send_burst_interval =
+-        std::min(send_burst_interval_, kMaxBurstSize / adjusted_media_rate_);
++        std::min(burst_interval, kMaxBurstSize / adjusted_media_rate_);
+     next_send_time =
+         last_process_time_ +
+         ((send_burst_interval > drain_time) ? TimeDelta::Zero() : drain_time);
+@@ -503,6 +591,25 @@
                         transport_overhead_per_packet_;
        }
  
@@ -119,3 +178,12 @@ diff --git a/third_party/libwebrtc/modules/pacing/pacing_controller.cc b/third_p
        packet_sender_->SendPacket(std::move(rtp_packet), pacing_info);
        for (auto& packet : packet_sender_->FetchFec()) {
          EnqueuePacket(std::move(packet));
+@@ -635,7 +742,7 @@
+       return nullptr;
+     }
+ 
+-    if (now <= target_send_time && send_burst_interval_.IsZero()) {
++    if (now <= target_send_time && EffectiveSendBurstInterval().IsZero()) {
+       // We allow sending slightly early if we think that we would actually
+       // had been able to, had we been right on time - i.e. the current debt
+       // is not more than would be reduced to zero at the target sent time.

@@ -1,0 +1,10 @@
+--- a/dom/ipc/PreallocatedProcessManager.h
++++ b/dom/ipc/PreallocatedProcessManager.h
+@@ -37,6 +37,7 @@
+   static PreallocatedProcessManagerImpl* GetPPMImpl();
+ 
+   static bool Enabled();
++  static uint32_t SetMemoryBudgetPressure(bool aPressure);
+ 
+   /**
+    * Before first paint we don't want to allocate any processes in the

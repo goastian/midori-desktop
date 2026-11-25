@@ -1,0 +1,18 @@
+--- a/xpcom/threads/TimerThread.cpp
++++ b/xpcom/threads/TimerThread.cpp
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "TimerThread.h"
++#include "mozilla/MidoriCpuThreadPlacement.h"
+ 
+ #include "GeckoProfiler.h"
+ #include "mozilla/ArenaAllocator.h"
+@@ -750,6 +751,7 @@
+ 
+ NS_IMETHODIMP
+ TimerThread::Run() {
++  mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
+   TimerThreadMonitorAutoLock lock(mMonitor);
+ 
+   mProfilerThreadId = profiler_current_thread_id();
