@@ -6,6 +6,7 @@
 #define TOOLKIT_COMPONENTS_PROCESSTOOLS_MIDORICPUBUDGET_LINUX_H_
 
 #if defined(XP_LINUX) && !defined(ANDROID)
+#  include "MidoriMemoryBudget_linux.h"
 #  include "MidoriWorkerCpuRoles_linux.h"
 #  include <algorithm>
 #  include <cerrno>
@@ -19,12 +20,14 @@
 #  include <fcntl.h>
 #  include <poll.h>
 #  include <sched.h>
+#  include <set>
 #  include <sys/socket.h>
 #  include <sys/stat.h>
 #  include <sys/vfs.h>
 #  include <sys/xattr.h>
 #  include <time.h>
 #  include <unistd.h>
+#  include <utility>
 
 namespace mozilla::midori {
 
@@ -47,6 +50,7 @@ class LinuxCpuBudget final {
     if (mExternalGroup >= 0) close(mExternalGroup);
     if (mGroup >= 0) {
       if (IsOwner()) {
+        RestoreMemoryBudget();
         WriteLimit(mGroup, mOriginalQuota, mOriginalPeriod);
         ReleaseRoles();
       } else {
@@ -55,9 +59,10 @@ class LinuxCpuBudget final {
       }
       close(mGroup);
     }
+    if (mMemoryGroup >= 0) close(mMemoryGroup);
   }
 
-  int Initialize(int aGroup, int aExternalGroup = -1) {
+  int Initialize(int aGroup, int aExternalGroup = -1, int aMemoryGroup = -1) {
     if (mGroup >= 0) return EALREADY;
     int error = ValidateExclusiveGroup(aGroup);
     if (error) return error;
@@ -89,6 +94,14 @@ class LinuxCpuBudget final {
       if (external >= 0) close(external);
       return error;
     }
+    int memory = -1;
+    error = PrepareMemoryGroup(aGroup, aExternalGroup, aMemoryGroup, memory);
+    if (error) {
+      close(group);
+      if (external >= 0) close(external);
+      return error;
+    }
+    mMemoryGroup = memory;
     mExternalGroup = external;
     mGroup = group;
     mOwner = getpid();
@@ -101,6 +114,8 @@ class LinuxCpuBudget final {
       int restored = ReleaseRoles();
       close(mGroup);
       mGroup = -1;
+      close(mMemoryGroup);
+      mMemoryGroup = -1;
       if (mExternalGroup >= 0) close(mExternalGroup);
       mExternalGroup = -1;
       return restored ? restored : error;
@@ -117,12 +132,13 @@ class LinuxCpuBudget final {
     if (error) return error;
     int group = -1, external = -1;
     bool groupCreated = false, externalCreated = false;
-    bool moved = false, cpuChanged = false;
+    bool moved = false, cpuChanged = false, memoryChanged = false;
     auto finish = [&](int aError) {
       int restored = 0;
       if (aError) {
         if (cpuChanged)
-          restored = WriteValue(root, "cgroup.subtree_control", "-cpu");
+          restored = WriteValue(root, "cgroup.subtree_control",
+                                memoryChanged ? "-cpu -memory" : "-cpu");
         if (!restored && moved)
           restored = WriteValue(root, "cgroup.procs", "0");
         if (groupCreated && unlinkat(root, "midori-instance", AT_REMOVEDIR) &&
@@ -155,18 +171,19 @@ class LinuxCpuBudget final {
     char value[4096];
     error = Read(root, "cgroup.controllers", value, sizeof(value));
     if (error) return finish(error);
-    bool available = false;
+    bool available = false, memoryAvailable = false;
     char* saved;
     for (char* name = strtok_r(value, " \n", &saved); name;
          name = strtok_r(nullptr, " \n", &saved)) {
       if (!strcmp(name, "cpu")) available = true;
+      if (!strcmp(name, "memory")) memoryAvailable = true;
     }
     if (!available) return finish(ENOTSUP);
     error = Read(root, "cgroup.subtree_control", value, sizeof(value));
     if (error) return finish(error);
     for (char* name = strtok_r(value, " \n", &saved); name;
          name = strtok_r(nullptr, " \n", &saved)) {
-      if (!strcmp(name, "cpu")) return finish(EBUSY);
+      if (!strcmp(name, "cpu") || !strcmp(name, "memory")) return finish(EBUSY);
     }
     if (mkdirat(root, "midori-external", 0755)) return finish(errno);
     externalCreated = true;
@@ -184,9 +201,11 @@ class LinuxCpuBudget final {
     error = WriteValue(root, "cgroup.subtree_control", "+cpu");
     if (error) return finish(error);
     cpuChanged = true;
+    if (memoryAvailable)
+      memoryChanged = !WriteValue(root, "cgroup.subtree_control", "+memory");
     error = WriteValue(group, "cgroup.procs", "0");
     if (error) return finish(error);
-    return finish(Initialize(group, external));
+    return finish(Initialize(group, external, root));
   }
 
   int SetPercentage(uint32_t aPercentage, CpuBudgetState& aState) {
@@ -212,6 +231,7 @@ class LinuxCpuBudget final {
     bool previousDistribution;
     error = ReadRoleDistribution(previousDistribution);
     if (error) return error;
+    double previousReservation = mReservationCpus;
     if (aPercentage) {
       error = SetRoleDistribution(true);
       if (error) return error;
@@ -219,7 +239,10 @@ class LinuxCpuBudget final {
     auto rollback = [&] {
       int restored = WriteLimit(mGroup, previousQuota, previousPeriod);
       int roles = SetRoleDistribution(previousDistribution);
-      return restored ? restored : roles;
+      int reservation = previousDistribution
+                            ? mWorkerRoles.SetReservation(previousReservation)
+                            : 0;
+      return restored ? restored : roles ? roles : reservation;
     };
     if (quota != previousQuota || period != previousPeriod) {
       error = WriteLimit(mGroup, quota, period);
@@ -234,7 +257,15 @@ class LinuxCpuBudget final {
         return restored ? restored : error ? error : EIO;
       }
     }
-    if (!aPercentage) {
+    double reservation =
+        aPercentage && !mAudioOwners.empty() ? double(quota) / period : 0;
+    if (aPercentage) {
+      error = mWorkerRoles.SetReservation(reservation);
+      if (error) {
+        int restored = rollback();
+        return restored ? restored : error;
+      }
+    } else {
       error = SetRoleDistribution(false);
       if (error) {
         int restored = rollback();
@@ -242,6 +273,7 @@ class LinuxCpuBudget final {
       }
     }
     mPercentage = aPercentage;
+    mReservationCpus = reservation;
     aState.requestedPercentage = aPercentage;
     aState.externalCapacityCpus = capacity;
     aState.ownQuotaCpus = quota ? double(quota) / period : 0;
@@ -258,6 +290,27 @@ class LinuxCpuBudget final {
     return ExternalCapacity(mGroup, aCapacity);
   }
 
+  int MemoryBudget(uint64_t aBytes, bool aUpdate,
+                   ManagedMemoryBudgetState& aState) {
+    if (mGroup < 0) return ENODEV;
+    if (!IsOwner()) return EPERM;
+    int error = aUpdate
+                    ? mMemoryBudget.Set(mMemoryGroup, aBytes, aState, mGroup)
+                    : mMemoryBudget.Read(mMemoryGroup, aState, mGroup);
+    if (error && aUpdate) {
+      ManagedMemoryBudgetState current;
+      int sampled = mMemoryBudget.Read(mMemoryGroup, current, mGroup);
+      aState = sampled ? ManagedMemoryBudgetState{} : current;
+    }
+    return error;
+  }
+
+  int RestoreMemoryBudget() {
+    if (mGroup < 0) return 0;
+    if (!IsOwner()) return EPERM;
+    return mMemoryBudget.Restore(mMemoryGroup);
+  }
+
   int SetWorkerRole(uintptr_t aOwner, uint32_t aPid, uint64_t aTid,
                     bool aBackground, bool aAlive) {
     if (mGroup < 0) return ENODEV;
@@ -267,14 +320,47 @@ class LinuxCpuBudget final {
                                   aAlive);
   }
 
+  int OpenThreadFiles(bool aContent, int& aNormal, int& aRealtime) const {
+    aNormal = aRealtime = -1;
+    if (mGroup < 0) return ENODEV;
+    if (!IsOwner()) return EPERM;
+    return mWorkerRoles.OpenThreadFiles(aContent, aNormal, aRealtime);
+  }
+
+  int SetAudioActivity(uintptr_t aOwner, bool aActive) {
+    if (!aOwner || !IsOwner()) return EPERM;
+    bool previous = mAudioOwners.count(aOwner);
+    if (previous == aActive) return 0;
+    if (aActive)
+      mAudioOwners.insert(aOwner);
+    else
+      mAudioOwners.erase(aOwner);
+    if (!mPercentage) return 0;
+    uint64_t quota, period;
+    int error = ReadLimit(mGroup, quota, period);
+    double reservation =
+        !error && !mAudioOwners.empty() ? double(quota) / period : 0;
+    if (!error) error = mWorkerRoles.SetReservation(reservation);
+    if (error) {
+      int restored = mWorkerRoles.SetReservation(mReservationCpus);
+      return restored ? restored : error;
+    }
+    mReservationCpus = reservation;
+    return 0;
+  }
+
   int Shutdown() {
     if (mGroup < 0) return 0;
     if (!IsOwner()) return EPERM;
-    int error = WriteLimit(mGroup, mOriginalQuota, mOriginalPeriod);
+    int error = RestoreMemoryBudget();
+    int cpuError = WriteLimit(mGroup, mOriginalQuota, mOriginalPeriod);
+    if (!error) error = cpuError;
     if (!error) error = ReleaseRoles();
     if (error) return error;
     if (mExternalGroup >= 0) close(mExternalGroup);
     mExternalGroup = -1;
+    close(mMemoryGroup);
+    mMemoryGroup = -1;
     close(mGroup);
     mGroup = -1;
     mPercentage = 0;
@@ -323,11 +409,11 @@ class LinuxCpuBudget final {
     return error;
   }
 
-  int OpenChildProcessFile(int& aFile) const {
+  int OpenChildProcessFile(bool aContent, int& aFile) const {
     aFile = -1;
     if (mGroup < 0 || mContentGroup < 0) return ENODEV;
     if (!IsOwner()) return EPERM;
-    int file = openat(mContentGroup, "cgroup.procs",
+    int file = openat(aContent ? mContentGroup : mUiGroup, "cgroup.procs",
                       O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
     if (file < 0) return errno;
     aFile = fcntl(file, F_DUPFD_CLOEXEC, 3);
@@ -336,21 +422,29 @@ class LinuxCpuBudget final {
     return error;
   }
 
-  int OpenRestartFiles(int& aGroup, int& aExternal) const {
-    aGroup = aExternal = -1;
+  int OpenRestartFiles(int& aGroup, int& aExternal, int& aMemory) const {
+    aGroup = aExternal = aMemory = -1;
     if (mGroup < 0) return ENODEV;
     if (!IsOwner()) return EPERM;
     if (mExternalGroup < 0) return ENOTSUP;
-    int group = fcntl(mGroup, F_DUPFD_CLOEXEC, 5);
+    int group = fcntl(mGroup, F_DUPFD_CLOEXEC, 6);
     if (group < 0) return errno;
-    int external = fcntl(mExternalGroup, F_DUPFD_CLOEXEC, 5);
+    int external = fcntl(mExternalGroup, F_DUPFD_CLOEXEC, 6);
     if (external < 0) {
       int error = errno;
       close(group);
       return error;
     }
+    int memory = fcntl(mMemoryGroup, F_DUPFD_CLOEXEC, 6);
+    if (memory < 0) {
+      int error = errno;
+      close(external);
+      close(group);
+      return error;
+    }
     aGroup = group;
     aExternal = external;
+    aMemory = memory;
     return 0;
   }
 
@@ -747,10 +841,26 @@ class LinuxCpuBudget final {
     return 0;
   }
 
+  int ReadMemoryController(const char* aFile, bool& aPresent) const {
+    char value[4096];
+    int error = Read(mGroup, aFile, value, sizeof(value));
+    if (error) return error;
+    aPresent = false;
+    char* saved;
+    for (char* name = strtok_r(value, " \n", &saved); name;
+         name = strtok_r(nullptr, " \n", &saved)) {
+      if (!strcmp(name, "memory")) aPresent = true;
+    }
+    return 0;
+  }
+
   int PrepareRoles() {
     bool enabled;
     int error = ReadRoleDistribution(enabled);
     if (error || enabled) return error ? error : EBUSY;
+    bool memory;
+    error = ReadMemoryController("cgroup.subtree_control", memory);
+    if (error || memory) return error ? error : EBUSY;
     if (mkdirat(mGroup, "ui", 0700)) return errno;
     mUiCreated = true;
     mUiGroup =
@@ -764,6 +874,11 @@ class LinuxCpuBudget final {
     error = WriteValue(mUiGroup, "cgroup.procs", "0");
     if (!error) mMovedToRole = true;
     if (!error) error = mWorkerRoles.Prepare(mUiGroup, mContentGroup);
+    if (!error && !ReadMemoryController("cgroup.controllers", memory) &&
+        memory) {
+      mMemoryRolesOwned =
+          !WriteValue(mGroup, "cgroup.subtree_control", "+memory");
+    }
     return error;
   }
 
@@ -771,6 +886,15 @@ class LinuxCpuBudget final {
     if (!mUiCreated && !mContentCreated && !mMovedToRole) return 0;
     int error = SetRoleDistribution(false);
     if (error) return error;
+    if (mMemoryRolesOwned) {
+      error = WriteValue(mGroup, "cgroup.subtree_control", "-memory");
+      bool enabled;
+      if (!error)
+        error = ReadMemoryController("cgroup.subtree_control", enabled);
+      if (!error && enabled) error = EBUSY;
+      if (error) return error;
+      mMemoryRolesOwned = false;
+    }
     error = ReturnRoleMembers(mUiGroup);
     if (!error) error = ReturnRoleMembers(mContentGroup);
     if (error) return error;
@@ -830,6 +954,64 @@ class LinuxCpuBudget final {
     return !stat("/proc/self/ns/pid", &pidNamespace) &&
            pidNamespace.st_dev == mPidNamespaceDevice &&
            pidNamespace.st_ino == mPidNamespaceInode;
+  }
+
+  static int PrepareMemoryGroup(int aGroup, int aExternal, int aMemory,
+                                int& aResult) {
+    aResult = -1;
+    if (aMemory < 0) aMemory = aGroup;
+    struct stat group, memory;
+    if (fstat(aGroup, &group) || fstat(aMemory, &memory)) return errno;
+    if (!S_ISDIR(memory.st_mode) || memory.st_uid != geteuid() ||
+        group.st_dev != memory.st_dev)
+      return EPERM;
+    if (group.st_ino != memory.st_ino) {
+      if (aExternal < 0) return EINVAL;
+      for (const auto& entry : {std::pair{"midori-instance", aGroup},
+                                std::pair{"midori-external", aExternal}}) {
+        struct stat actual, expected;
+        if (fstat(entry.second, &expected) ||
+            fstatat(aMemory, entry.first, &actual, AT_SYMLINK_NOFOLLOW))
+          return errno;
+        if (!S_ISDIR(actual.st_mode) || actual.st_dev != expected.st_dev ||
+            actual.st_ino != expected.st_ino)
+          return EPERM;
+      }
+      char value[4096];
+      int error = Read(aMemory, "cgroup.procs", value, sizeof(value));
+      if (error || (*value && strcmp(value, "\n")))
+        return error ? error : EBUSY;
+      int duplicate = fcntl(aMemory, F_DUPFD_CLOEXEC, 3);
+      if (duplicate < 0) return errno;
+      DIR* directory = fdopendir(duplicate);
+      if (!directory) {
+        error = errno;
+        close(duplicate);
+        return error;
+      }
+      errno = 0;
+      while (dirent* entry = readdir(directory)) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+          continue;
+        struct stat child;
+        if (fstatat(aMemory, entry->d_name, &child, AT_SYMLINK_NOFOLLOW)) {
+          error = errno;
+          break;
+        }
+        if (S_ISDIR(child.st_mode) &&
+            strcmp(entry->d_name, "midori-instance") &&
+            strcmp(entry->d_name, "midori-external")) {
+          error = EBUSY;
+          break;
+        }
+        errno = 0;
+      }
+      if (!error && errno) error = errno;
+      closedir(directory);
+      if (error) return error;
+    }
+    aResult = fcntl(aMemory, F_DUPFD_CLOEXEC, 3);
+    return aResult < 0 ? errno : 0;
   }
 
   static int PrepareExternalGroup(int aGroup, int aExternalGroup,
@@ -1030,18 +1212,23 @@ class LinuxCpuBudget final {
     return result;
   }
 
+  LinuxMemoryBudget mMemoryBudget;
   LinuxWorkerCpuRoles mWorkerRoles;
   int mGroup = -1;
+  int mMemoryGroup = -1;
   int mUiGroup = -1;
   int mContentGroup = -1;
   bool mUiCreated = false;
   bool mContentCreated = false;
   bool mMovedToRole = false;
+  bool mMemoryRolesOwned = false;
   int mExternalGroup = -1;
   pid_t mOwner = 0;
   dev_t mPidNamespaceDevice = 0;
   ino_t mPidNamespaceInode = 0;
   uint32_t mPercentage = 0;
+  std::set<uintptr_t> mAudioOwners;
+  double mReservationCpus = 0;
   uint64_t mOriginalQuota = 0;
   uint64_t mOriginalPeriod = 100000;
 };

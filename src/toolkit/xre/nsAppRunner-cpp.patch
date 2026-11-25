@@ -11,14 +11,16 @@
  #if defined(MOZ_UPDATER) && !defined(MOZ_WIDGET_ANDROID)
  #  include "nsUpdateDriver.h"
  #  include "nsUpdateSyncManager.h"
-@@ -2671,6 +2675,15 @@
+@@ -2671,6 +2675,17 @@
  }
  
  nsresult LaunchChild(bool aBlankCommandLine, bool aTryExec) {
 +#if defined(XP_LINUX) && !defined(ANDROID)
-+  int groupFile = -1, externalFile = -1;
-+  int cpuError = midori::OpenManagedCpuRestartFiles(groupFile, externalFile);
-+  UniqueFileHandle cpuGroup(groupFile), cpuExternal(externalFile);
++  int groupFile = -1, externalFile = -1, memoryFile = -1;
++  int cpuError =
++      midori::OpenManagedCpuRestartFiles(groupFile, externalFile, memoryFile);
++  UniqueFileHandle cpuGroup(groupFile), cpuExternal(externalFile),
++      memoryGroup(memoryFile);
 +  if (groupFile >= 0 || cpuError) {
 +    int restored = midori::RestoreManagedCpuBudget();
 +    if (cpuError || restored) return NS_ERROR_FAILURE;
@@ -27,7 +29,7 @@
    // Restart this process by exec'ing it into the current process
    // if supported by the platform.  Otherwise, use NSPR.
  
-@@ -2714,6 +2727,21 @@
+@@ -2714,6 +2729,23 @@
    rv = lf->GetNativePath(exePath);
    if (NS_FAILED(rv)) return rv;
  
@@ -36,9 +38,11 @@
 +    base::LaunchOptions options;
 +    options.env_map["MIDORI_CPU_BUDGET_FD"] = "3";
 +    options.env_map["MIDORI_CPU_EXTERNAL_FD"] = "4";
++    options.env_map["MIDORI_MEMORY_BUDGET_FD"] = "5";
 +    options.env_map["MIDORI_CPU_RESTART_WAIT"] = "1";
 +    options.fds_to_remap.emplace_back(cpuGroup.get(), 3);
 +    options.fds_to_remap.emplace_back(cpuExternal.get(), 4);
++    options.fds_to_remap.emplace_back(memoryGroup.get(), 5);
 +    std::vector<std::string> arguments{exePath.get()};
 +    for (int i = 1; i < gRestartArgc; ++i)
 +      arguments.emplace_back(gRestartArgv[i]);
@@ -49,7 +53,7 @@
  #      if defined(XP_UNIX)
    if (aTryExec) {
      execv(exePath.get(), gRestartArgv);
-@@ -6823,6 +6851,16 @@
+@@ -6823,6 +6855,16 @@
    }
  #endif
  
@@ -66,7 +70,7 @@
    mozilla::AppShutdown::MaybeDoRestart();
  
    XRE_DeinitCommandLine();
-@@ -6836,6 +6874,15 @@
+@@ -6836,6 +6878,17 @@
  void XRE_StopLateWriteChecks(void) { mozilla::StopLateWriteChecks(); }
  
  int XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
@@ -75,9 +79,11 @@
 +#  ifdef XP_WIN
 +  sHasCpuBudgetContextForRestart = midori::HasManagedCpuBudgetContext;
 +#  endif
-+  midori::SetManagedCpuBudgetController(aConfig.midoriCpuBudget);
++  int cpuBudgetError =
++      midori::SetManagedCpuBudgetController(aConfig.midoriCpuBudget);
 +  auto restoreCpuBudget = MakeScopeExit(
 +      [] { static_cast<void>(midori::RestoreManagedCpuBudget()); });
++  if (cpuBudgetError) return 1;
 +#endif
    XREMain main;
  

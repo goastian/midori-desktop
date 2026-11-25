@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "MidoriCpuBudget.h"
+#include "mozilla/MidoriCpuThreadPlacement.h"
 #include "mozilla/dom/MidoriWorkerCpuBudget.h"
 #include "mozilla/MidoriCpuBudget_linux.h"
 #include "mozilla/MidoriCpuBudget_windows.h"
@@ -29,7 +30,12 @@ static Atomic<bool, Relaxed> sMidoriCpuBudgetContext(false);
 #  endif
 #endif
 
-void SetManagedCpuBudgetController(CpuBudgetController* aController) {
+static already_AddRefed<nsISerialEventTarget> ManagedBudgetTarget() {
+  static StaticBackgroundTaskQueue queue("MidoriCpuBudget");
+  return queue.Get();
+}
+
+int SetManagedCpuBudgetController(CpuBudgetController* aController) {
   MOZ_ASSERT(NS_IsMainThread());
 #if (defined(XP_LINUX) && !defined(ANDROID)) || defined(XP_WIN) || \
     defined(XP_MACOSX)
@@ -40,7 +46,27 @@ void SetManagedCpuBudgetController(CpuBudgetController* aController) {
 #  ifdef XP_WIN
   if (aController) sMidoriCpuBudgetContext = true;
 #  endif
+#  if defined(XP_LINUX) && !defined(ANDROID)
+  if (aController) {
+    int normal, realtime;
+    int error = aController->OpenThreadFiles(false, normal, realtime);
+    if (!error) error = InstallManagedCpuThreadPlacement(normal, realtime);
+    if (!error && HasManagedAudioCpuActivity())
+      error = aController->SetAudioActivity(1, true);
+    if (error) return error;
+  }
+#  endif
 #endif
+  return 0;
+}
+
+int SetManagedAudioCpuActivity(uintptr_t aOwner, bool aActive) {
+#if defined(XP_LINUX) && !defined(ANDROID)
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  if (sMidoriCpuBudgetController && !sMidoriCpuBudgetClosing)
+    return sMidoriCpuBudgetController->SetAudioActivity(aOwner, aActive);
+#endif
+  return 0;
 }
 
 int SetManagedWorkerCpuRole(uintptr_t aOwner, uint32_t aPid, uint64_t aTid,
@@ -122,11 +148,21 @@ int UnregisterManagedCpuTask(uintptr_t aOwner) {
 #endif
 
 #if defined(XP_LINUX) && !defined(ANDROID)
-int OpenManagedCpuChildProcess(int& aFile) {
+int OpenManagedCpuChildProcess(bool aContent, int& aFile) {
   aFile = -1;
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   return sMidoriCpuBudgetController
-             ? sMidoriCpuBudgetController->OpenChildProcessFile(aFile)
+             ? sMidoriCpuBudgetController->OpenChildProcessFile(aContent, aFile)
+             : 0;
+}
+
+int OpenManagedCpuChildThreadFiles(bool aContent, int& aNormal,
+                                   int& aRealtime) {
+  aNormal = aRealtime = -1;
+  StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+  return sMidoriCpuBudgetController
+             ? sMidoriCpuBudgetController->OpenThreadFiles(aContent, aNormal,
+                                                           aRealtime)
              : 0;
 }
 
@@ -146,11 +182,12 @@ int OpenManagedCpuGioLaunchFiles(int& aExternal, int& aOwn) {
              : 0;
 }
 
-int OpenManagedCpuRestartFiles(int& aGroup, int& aExternal) {
-  aGroup = aExternal = -1;
+int OpenManagedCpuRestartFiles(int& aGroup, int& aExternal, int& aMemory) {
+  aGroup = aExternal = aMemory = -1;
   StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
   return sMidoriCpuBudgetController
-             ? sMidoriCpuBudgetController->OpenRestartFiles(aGroup, aExternal)
+             ? sMidoriCpuBudgetController->OpenRestartFiles(aGroup, aExternal,
+                                                            aMemory)
              : 0;
 }
 #endif
@@ -170,8 +207,10 @@ int BeginManagedCpuBudgetShutdown() {
       MacCpuBudgetState state;
       error = sMidoriCpuBudgetController->SetPercentage(0, state);
 #  else
+      int memoryError = sMidoriCpuBudgetController->RestoreMemoryBudget();
       CpuBudgetState state;
       error = sMidoriCpuBudgetController->SetPercentage(0, state);
+      if (!error) error = memoryError;
 #  endif
     }
   }
@@ -190,6 +229,9 @@ int RestoreManagedCpuBudget() {
     if (sMidoriCpuBudgetController) {
       auto* controller = sMidoriCpuBudgetController;
       sMidoriCpuBudgetController = nullptr;
+#  if defined(XP_LINUX) && !defined(ANDROID)
+      ClearManagedCpuThreadPlacement();
+#  endif
 #  ifdef XP_WIN
       WindowsCpuBudgetState state;
       error = controller->SetNormalizedPercentage(0, state);
@@ -215,8 +257,7 @@ RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage) {
     return ManagedCpuBudgetPromise::CreateAndResolve(ManagedCpuBudgetState{},
                                                      __func__);
   }
-  static StaticBackgroundTaskQueue queue("MidoriCpuBudget");
-  nsCOMPtr<nsISerialEventTarget> target = queue.Get();
+  nsCOMPtr<nsISerialEventTarget> target = ManagedBudgetTarget();
   if (!target) {
     return ManagedCpuBudgetPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE,
                                                     __func__);
@@ -282,6 +323,43 @@ RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage) {
         if (result.applied)
           dom::NotifyManagedWorkerCpuQuota(result.ownQuotaCpus);
         promise->Resolve(result, __func__);
+      }));
+  if (NS_FAILED(rv)) promise->Reject(rv, __func__);
+  return promise;
+}
+
+RefPtr<ManagedMemoryBudgetPromise> RequestManagedMemoryBudget(uint64_t aBytes,
+                                                              bool aUpdate) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (aUpdate && aBytes &&
+      !Preferences::GetBool("midori.performance.memory.experimental.enabled",
+                            false)) {
+    return ManagedMemoryBudgetPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE,
+                                                       __func__);
+  }
+  nsCOMPtr<nsISerialEventTarget> target = ManagedBudgetTarget();
+  if (!target) {
+    return ManagedMemoryBudgetPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE,
+                                                       __func__);
+  }
+  RefPtr<ManagedMemoryBudgetPromise::Private> promise =
+      new ManagedMemoryBudgetPromise::Private(__func__);
+  nsresult rv = target->Dispatch(NS_NewRunnableFunction(
+      "MidoriMemoryBudget::Request", [promise, aBytes, aUpdate] {
+        ManagedMemoryBudgetState state;
+#if defined(XP_LINUX) && !defined(ANDROID)
+        StaticMutexAutoLock lock(sMidoriCpuBudgetMutex);
+        if (sMidoriCpuBudgetClosing) {
+          promise->Reject(NS_ERROR_ABORT, __func__);
+          return;
+        }
+        if (sMidoriCpuBudgetController) {
+          state.nativeError =
+              sMidoriCpuBudgetController->MemoryBudget(aBytes, aUpdate, state);
+        }
+#endif
+        state.requestedBytes = aBytes;
+        promise->Resolve(state, __func__);
       }));
   if (NS_FAILED(rv)) promise->Reject(rv, __func__);
   return promise;

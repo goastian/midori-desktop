@@ -6,7 +6,9 @@
 #define TOOLKIT_COMPONENTS_PROCESSTOOLS_MIDORIWORKERCPUROLES_LINUX_H_
 
 #if defined(XP_LINUX) && !defined(ANDROID)
+#  include <algorithm>
 #  include <cerrno>
+#  include <cmath>
 #  include <cstdint>
 #  include <cstdio>
 #  include <cstdlib>
@@ -28,6 +30,8 @@ class LinuxWorkerCpuRoles final {
   ~LinuxWorkerCpuRoles() {
     for (auto& role : mRoles) {
       if (role.background >= 0) close(role.background);
+      if (role.foreground >= 0) close(role.foreground);
+      if (role.realtime >= 0) close(role.realtime);
     }
   }
 
@@ -41,6 +45,12 @@ class LinuxWorkerCpuRoles final {
                                O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
       if (role.background < 0) return errno;
       int error = Write(role.background, "cgroup.type", "threaded");
+      if (error) return error;
+      error = PrepareThreadGroup(role.normal, "foreground", role.foreground,
+                                 role.foregroundCreated);
+      if (!error)
+        error = PrepareThreadGroup(role.normal, "audio-priority", role.realtime,
+                                   role.realtimeCreated);
       if (error) return error;
     }
     return 0;
@@ -78,6 +88,8 @@ class LinuxWorkerCpuRoles final {
                          aEnabled ? "+cpu" : "-cpu");
       if (!result && aEnabled) {
         result = Write(role.background, "cpu.weight", "1");
+        if (!result) result = Write(role.foreground, "cpu.weight", "100");
+        if (!result) result = Write(role.realtime, "cpu.weight", "100");
       }
       if (!error) error = result;
     }
@@ -89,6 +101,32 @@ class LinuxWorkerCpuRoles final {
       char value[64];
       int error = Read(role.background, "cpu.weight", value, sizeof(value));
       if (error || strcmp(value, "1\n")) return error ? error : EIO;
+    }
+    return 0;
+  }
+
+  int OpenThreadFiles(bool aContent, int& aNormal, int& aRealtime) const {
+    aNormal = aRealtime = -1;
+    const auto& role = mRoles[aContent ? 1 : 0];
+    int error = OpenThreadFile(role.foreground, aNormal);
+    if (!error) error = OpenThreadFile(role.realtime, aRealtime);
+    if (error && aNormal >= 0) {
+      close(aNormal);
+      aNormal = -1;
+    }
+    return error;
+  }
+
+  int SetReservation(double aCpus) const {
+    if (!std::isfinite(aCpus) || aCpus < 0) return EINVAL;
+    for (unsigned i = 0; i < 2; ++i) {
+      const auto& role = mRoles[i];
+      int error = SetLimit(role.foreground, aCpus * (i ? .45 : .30), 10000);
+      if (!error) error = SetLimit(role.background, aCpus * .025, 100000);
+      if (!error)
+        error =
+            SetValue(role.realtime, "cpu.weight", aCpus ? "10000\n" : "100\n");
+      if (error) return error;
     }
     return 0;
   }
@@ -117,7 +155,7 @@ class LinuxWorkerCpuRoles final {
       int error = FindThread(worker);
       if (error == ENOENT || error == ESRCH) return 0;
       if (error) return error;
-      error = FindRole(worker.tid, worker.role);
+      error = FindProcessRole(worker.pid, worker.role);
       if (error) return error;
       for (auto item = mWorkers.begin(); item != mWorkers.end();) {
         if (item->second.pid == worker.pid && item->second.tid == worker.tid) {
@@ -132,7 +170,7 @@ class LinuxWorkerCpuRoles final {
     const auto& role = mRoles[worker.role];
     char value[32];
     snprintf(value, sizeof(value), "%ld", static_cast<long>(worker.tid));
-    int destination = aAlive && aBackground ? role.background : role.normal;
+    int destination = aAlive && aBackground ? role.background : role.foreground;
     int error = Write(destination, "cgroup.threads", value);
     if (!error) error = VerifyIdentity(worker);
     if (error == ENOENT || error == ESRCH) {
@@ -141,7 +179,7 @@ class LinuxWorkerCpuRoles final {
     }
     if (!error) {
       bool member;
-      error = ContainsThread(destination, worker.tid, member);
+      error = ContainsMember(destination, "cgroup.threads", worker.tid, member);
       if (!error && !member) error = EIO;
     }
     if (!aAlive) mWorkers.erase(found);
@@ -152,6 +190,15 @@ class LinuxWorkerCpuRoles final {
     mWorkers.clear();
     int error = 0;
     for (auto& role : mRoles) {
+      int result = ReleaseThreadGroup(role.normal, "audio-priority",
+                                      role.realtime, role.realtimeCreated);
+      if (!result)
+        result = ReleaseThreadGroup(role.normal, "foreground", role.foreground,
+                                    role.foregroundCreated);
+      if (result) {
+        if (!error) error = result;
+        continue;
+      }
       if (role.created &&
           unlinkat(role.normal, "background-workers", AT_REMOVEDIR)) {
         if (!error) error = errno;
@@ -169,7 +216,11 @@ class LinuxWorkerCpuRoles final {
   struct Role {
     int normal = -1;
     int background = -1;
+    int foreground = -1;
+    int realtime = -1;
     bool created = false;
+    bool foregroundCreated = false;
+    bool realtimeCreated = false;
   };
   struct Worker {
     pid_t pid = 0;
@@ -179,6 +230,56 @@ class LinuxWorkerCpuRoles final {
     uint64_t threadStart = 0;
     unsigned role = 0;
   };
+
+  static int PrepareThreadGroup(int aParent, const char* aName, int& aGroup,
+                                bool& aCreated) {
+    if (mkdirat(aParent, aName, 0700)) return errno;
+    aCreated = true;
+    aGroup =
+        openat(aParent, aName, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    return aGroup < 0 ? errno : Write(aGroup, "cgroup.type", "threaded");
+  }
+
+  static int ReleaseThreadGroup(int aParent, const char* aName, int& aGroup,
+                                bool& aCreated) {
+    if (aCreated && unlinkat(aParent, aName, AT_REMOVEDIR)) return errno;
+    if (aGroup >= 0) close(aGroup);
+    aGroup = -1;
+    aCreated = false;
+    return 0;
+  }
+
+  static int OpenThreadFile(int aGroup, int& aFile) {
+    if (aGroup < 0) return ENODEV;
+    int file =
+        openat(aGroup, "cgroup.threads", O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (file < 0) return errno;
+    aFile = fcntl(file, F_DUPFD_CLOEXEC, 3);
+    int error = aFile < 0 ? errno : 0;
+    close(file);
+    return error;
+  }
+
+  static int SetValue(int aGroup, const char* aName, const char* aValue) {
+    char value[128];
+    int error = Read(aGroup, aName, value, sizeof(value));
+    if (error || !strcmp(value, aValue)) return error;
+    error = Write(aGroup, aName, aValue);
+    if (!error) error = Read(aGroup, aName, value, sizeof(value));
+    return error ? error : strcmp(value, aValue) ? EIO : 0;
+  }
+
+  static int SetLimit(int aGroup, double aCpus, uint64_t aPeriod) {
+    char value[128];
+    if (!aCpus) return SetValue(aGroup, "cpu.max", "max 100000\n");
+    while (aCpus * aPeriod < 1000 && aPeriod < 1000000) aPeriod += 10000;
+    double quota = std::max(1000.0, std::floor(aCpus * aPeriod));
+    if (quota >= double(UINT64_MAX)) return ERANGE;
+    snprintf(value, sizeof(value), "%llu %llu\n",
+             static_cast<unsigned long long>(quota),
+             static_cast<unsigned long long>(aPeriod));
+    return SetValue(aGroup, "cpu.max", value);
+  }
 
   static int Read(int aGroup, const char* aName, char* aValue, size_t aSize) {
     int file = openat(aGroup, aName, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
@@ -290,10 +391,10 @@ class LinuxWorkerCpuRoles final {
     return error ? error : VerifyIdentity(aWorker);
   }
 
-  static int ContainsThread(int aGroup, pid_t aTid, bool& aFound) {
+  static int ContainsMember(int aGroup, const char* aFile, pid_t aId,
+                            bool& aFound) {
     aFound = false;
-    int file =
-        openat(aGroup, "cgroup.threads", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    int file = openat(aGroup, aFile, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if (file < 0) return errno;
     FILE* stream = fdopen(file, "r");
     if (!stream) {
@@ -303,7 +404,7 @@ class LinuxWorkerCpuRoles final {
     }
     long tid;
     while (fscanf(stream, "%ld", &tid) == 1) {
-      if (tid == aTid) {
+      if (tid == aId) {
         aFound = true;
         break;
       }
@@ -313,16 +414,14 @@ class LinuxWorkerCpuRoles final {
     return error;
   }
 
-  int FindRole(pid_t aTid, unsigned& aRole) const {
+  int FindProcessRole(pid_t aPid, unsigned& aRole) const {
     for (unsigned i = 0; i < 2; ++i) {
-      for (int group : {mRoles[i].normal, mRoles[i].background}) {
-        bool found;
-        int error = ContainsThread(group, aTid, found);
-        if (error) return error;
-        if (found) {
-          aRole = i;
-          return 0;
-        }
+      bool found;
+      int error = ContainsMember(mRoles[i].normal, "cgroup.procs", aPid, found);
+      if (error) return error;
+      if (found) {
+        aRole = i;
+        return 0;
       }
     }
     return EPERM;

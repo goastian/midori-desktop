@@ -3,12 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifndef mozilla_MidoriMediaTrace_h
-#define mozilla_MidoriMediaTrace_h
+#  define mozilla_MidoriMediaTrace_h
 
-#include "mozilla/Atomics.h"
-#include "mozilla/UniquePtr.h"
-#include "nsError.h"
-#include <stdint.h>
+#  include <stdint.h>
+
+#  include "mozilla/Atomics.h"
+#  include "mozilla/UniquePtr.h"
+#  include "nsError.h"
 
 namespace mozilla {
 
@@ -24,6 +25,8 @@ struct MidoriMediaTraceEntry {
   uint64_t paint = 0;
   double observed = 0;
   double presented = -1;
+  double decodeWaitMs = 0;
+  double renderWaitMs = 0;
   bool valid = true;
 };
 
@@ -55,5 +58,13 @@ extern "C" void MidoriMediaTraceSource(const void* aContext, uint32_t aRawRtp,
                                        uint32_t aCode, bool aValid);
 extern "C" void MidoriMediaTraceRtp(const void* aContext, uint32_t aSsrc,
                                     uint32_t aRtp, uint32_t aRawRtp);
+
+extern "C" void MidoriMediaTraceDecode(uint32_t aKind, const void* aContext,
+                                       uint32_t aRtp, double aDecodeWaitMs,
+                                       double aRenderWaitMs, bool aValid);
+
+extern "C" void MidoriMediaTraceEncode(uint32_t aKind, const void* aContext,
+                                       uint32_t aRawRtp, const void* aBuffer,
+                                       uint32_t aReason);
 
 #endif

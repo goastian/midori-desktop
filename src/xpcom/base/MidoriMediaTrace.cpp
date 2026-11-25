@@ -4,11 +4,12 @@
 
 #include "mozilla/MidoriMediaTrace.h"
 
+#include <new>
+
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/TimeStamp.h"
 #include "nsThreadUtils.h"
-#include <new>
 
 namespace mozilla {
 
@@ -127,5 +128,30 @@ extern "C" void MidoriMediaTraceRtp(const void* aContext, uint32_t aSsrc,
   entry.ssrc = aSsrc;
   entry.rtp = aRtp;
   entry.rawRtp = aRawRtp;
+  mozilla::MidoriMediaTrace::Add(entry);
+}
+
+extern "C" void MidoriMediaTraceDecode(uint32_t aKind, const void* aContext,
+                                       uint32_t aRtp, double aDecodeWaitMs,
+                                       double aRenderWaitMs, bool aValid) {
+  mozilla::MidoriMediaTraceEntry entry;
+  entry.kind = aKind;
+  entry.context = aContext;
+  entry.rtp = aRtp;
+  entry.decodeWaitMs = aDecodeWaitMs;
+  entry.renderWaitMs = aRenderWaitMs;
+  entry.valid = aValid;
+  mozilla::MidoriMediaTrace::Add(entry);
+}
+
+extern "C" void MidoriMediaTraceEncode(uint32_t aKind, const void* aContext,
+                                       uint32_t aRawRtp, const void* aBuffer,
+                                       uint32_t aReason) {
+  mozilla::MidoriMediaTraceEntry entry;
+  entry.kind = aKind;
+  entry.context = aContext;
+  entry.rawRtp = aRawRtp;
+  entry.paint = reinterpret_cast<uintptr_t>(aBuffer);
+  entry.frame = aReason;
   mozilla::MidoriMediaTrace::Add(entry);
 }

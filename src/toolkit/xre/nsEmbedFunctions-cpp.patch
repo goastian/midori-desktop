@@ -1,0 +1,22 @@
+--- a/toolkit/xre/nsEmbedFunctions.cpp
++++ b/toolkit/xre/nsEmbedFunctions.cpp
+@@ -3,6 +3,9 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "mozilla/DebugOnly.h"
++#if defined(XP_LINUX) && !defined(ANDROID)
++#  include "mozilla/MidoriProcessBudgetArgs.h"
++#endif
+ 
+ #include "nsXULAppAPI.h"
+ 
+@@ -239,6 +242,9 @@
+   NS_ENSURE_ARG_POINTER(aArgv);
+   NS_ENSURE_ARG_POINTER(aArgv[0]);
+   MOZ_ASSERT(aChildData);
++#if defined(XP_LINUX) && !defined(ANDROID)
++  if (!midori::JoinProcessBudgetGroup(aArgc, aArgv)) return NS_ERROR_FAILURE;
++#endif
+ 
+   NS_SetCurrentThreadName("MainThread");
+ 

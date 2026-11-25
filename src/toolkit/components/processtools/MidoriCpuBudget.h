@@ -30,15 +30,17 @@ struct ManagedCpuCapacity {
 ManagedCpuCapacity ReadManagedCpuCapacity();
 int SetManagedWorkerCpuRole(uintptr_t aOwner, uint32_t aPid, uint64_t aTid,
                             bool aBackground, bool aAlive);
+int SetManagedAudioCpuActivity(uintptr_t aOwner, bool aActive);
 #ifdef XP_MACOSX
 int RegisterManagedCpuTask(uintptr_t aOwner, uint32_t aPid, uint32_t aTask);
 int UnregisterManagedCpuTask(uintptr_t aOwner);
 #endif
 #if defined(XP_LINUX) && !defined(ANDROID)
 int OpenManagedCpuExternalProcess(int& aFile);
-int OpenManagedCpuChildProcess(int& aFile);
+int OpenManagedCpuChildProcess(bool aContent, int& aFile);
+int OpenManagedCpuChildThreadFiles(bool aContent, int& aNormal, int& aRealtime);
 int OpenManagedCpuGioLaunchFiles(int& aExternal, int& aOwn);
-int OpenManagedCpuRestartFiles(int& aGroup, int& aExternal);
+int OpenManagedCpuRestartFiles(int& aGroup, int& aExternal, int& aMemory);
 #endif
 #ifdef XP_WIN
 bool HasManagedCpuBudgetContext();
@@ -46,11 +48,15 @@ bool HasManagedCpuBudgetContext();
 
 using ManagedCpuBudgetPromise =
     MozPromise<ManagedCpuBudgetState, nsresult, true>;
+using ManagedMemoryBudgetPromise =
+    MozPromise<ManagedMemoryBudgetState, nsresult, true>;
 
-void SetManagedCpuBudgetController(CpuBudgetController* aController);
+int SetManagedCpuBudgetController(CpuBudgetController* aController);
 int BeginManagedCpuBudgetShutdown();
 int RestoreManagedCpuBudget();
 RefPtr<ManagedCpuBudgetPromise> RequestManagedCpuBudget(uint32_t aPercentage);
+RefPtr<ManagedMemoryBudgetPromise> RequestManagedMemoryBudget(uint64_t aBytes,
+                                                              bool aUpdate);
 
 }  // namespace mozilla::midori
 

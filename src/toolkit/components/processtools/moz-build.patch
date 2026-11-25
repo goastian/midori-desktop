@@ -1,6 +1,6 @@
 --- a/toolkit/components/processtools/moz.build
 +++ b/toolkit/components/processtools/moz.build
-@@ -16,6 +16,15 @@
+@@ -16,6 +16,17 @@
  ]
  
  EXPORTS.mozilla += [
@@ -11,12 +11,14 @@
 +    "MidoriCpuBudget_windows.h",
 +    "MidoriCpuBudgetController.h",
 +    "MidoriCpuCapacity_linux.h",
++    "MidoriMemoryBudget_linux.h",
++    "MidoriProcessBudgetArgs.h",
 +    "MidoriWorkerCpuRoles_linux.h",
 +    "MidoriWorkerCpuRoles_windows.h",
      "ProcInfo.h",
      "ProcInfo_linux.h",
  ]
-@@ -25,6 +34,7 @@
+@@ -25,6 +36,7 @@
  ]
  
  UNIFIED_SOURCES += [
@@ -24,7 +26,7 @@
      "ProcessToolsService.cpp",
      "ProcInfo_common.cpp",
  ]
-@@ -56,3 +66,6 @@
+@@ -56,3 +68,6 @@
      UNIFIED_SOURCES += ["ProcInfo.mm"]
  
  include("/ipc/chromium/chromium-config.mozbuild")
