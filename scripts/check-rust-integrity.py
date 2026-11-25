@@ -43,7 +43,7 @@ def verify_vendor_overlays(metadata, engine, source):
         if not directory.is_relative_to(vendor):
             continue
         relative = directory.relative_to(vendor)
-        if not (source / "third_party/rust" / relative / "Cargo.toml").is_file():
+        if not (source / "third_party/rust" / relative).is_dir():
             continue
         checksums = json.loads((directory / ".cargo-checksum.json").read_text())
         for name, expected in checksums["files"].items():

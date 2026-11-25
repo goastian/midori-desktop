@@ -4,6 +4,8 @@
 
 #include "MidoriBlockerXPCOM.h"
 
+#include <memory>
+
 #include "mozilla/JSONStringWriteFuncs.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
@@ -220,7 +222,7 @@ nsresult MidoriBlockerXPCOM::InitAsync(nsTArray<nsCString>&& aFilterLists,
   nsresult rv = NS_DispatchBackgroundTask(NS_NewRunnableFunction(
       "MidoriBlockerXPCOM::InitAsync",
       [task, lists = std::move(aFilterLists), cache = std::move(aCacheData)]() {
-        auto result = mozilla::MakeUnique<AsyncEngineResult>();
+        auto result = std::make_unique<AsyncEngineResult>();
         nsresult rv;
         if (lists.IsEmpty()) {
           rv = midori_blocker_engine_deserialize(&result->mEngine, &cache);

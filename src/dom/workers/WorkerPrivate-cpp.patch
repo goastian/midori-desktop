@@ -32,7 +32,7 @@
  class ChangePlaybackStateRunnable final : public WorkerControlRunnable {
   public:
    ChangePlaybackStateRunnable() = delete;
-@@ -2967,6 +2985,7 @@
+@@ -2975,6 +2993,7 @@
        Freeze(nullptr);
      }
  
@@ -40,7 +40,7 @@
      if (aParent->IsRunningInBackground()) {
        mIsInBackground = true;
      }
-@@ -4225,6 +4244,7 @@
+@@ -4249,6 +4268,7 @@
  
  void WorkerPrivate::OnProcessNextEvent() {
    AssertIsOnWorkerThread();
@@ -48,7 +48,7 @@
  
    uint32_t recursionDepth = GetEffectiveEventLoopRecursionDepth();
    MOZ_ASSERT(recursionDepth);
-@@ -4242,6 +4262,8 @@
+@@ -4266,6 +4286,8 @@
  
  void WorkerPrivate::AfterProcessNextEvent() {
    AssertIsOnWorkerThread();
@@ -57,7 +57,7 @@
    MOZ_ASSERT(GetEffectiveEventLoopRecursionDepth());
  }
  
-@@ -5065,9 +5087,70 @@
+@@ -5089,9 +5111,70 @@
    return true;
  }
  
@@ -90,7 +90,7 @@
 +  AssertIsOnWorkerThread();
 +  const bool background = IsCpuBudgetBackground();
 +  if (!mMidoriCpuGovernor && background && CurrentManagedWorkerCpuRate())
-+    mMidoriCpuGovernor = MakeUnique<MidoriWorkerCpuBudget>(this);
++    mMidoriCpuGovernor = std::make_unique<MidoriWorkerCpuBudget>(this);
 +  if (mMidoriCpuGovernor) mMidoriCpuGovernor->Refresh(background);
 +}
 +
@@ -100,7 +100,7 @@
 +  if (aAlive) {
 +    const bool background = IsCpuBudgetBackground();
 +    if (!mMidoriCpuGovernor && background && CurrentManagedWorkerCpuRate())
-+      mMidoriCpuGovernor = MakeUnique<MidoriWorkerCpuBudget>(this);
++      mMidoriCpuGovernor = std::make_unique<MidoriWorkerCpuBudget>(this);
 +    if (mMidoriCpuGovernor) mMidoriCpuGovernor->Refresh(background);
 +  } else if (mMidoriCpuGovernor) {
 +    mMidoriCpuGovernor->Stop();
@@ -128,7 +128,7 @@
    auto data = mWorkerThreadAccessible.Access();
    if (StaticPrefs::dom_workers_throttling_enabled_AtStartup()) {
      auto* timeoutManager =
-@@ -5090,6 +5173,7 @@
+@@ -5114,6 +5197,7 @@
  bool WorkerPrivate::ChangePlaybackStateInternal(bool aIsPlayingAudio) {
    AssertIsOnWorkerThread();
    mIsPlayingAudio = aIsPlayingAudio;
@@ -136,7 +136,7 @@
    auto data = mWorkerThreadAccessible.Access();
  
    for (uint32_t index = 0; index < data->mChildWorkers.Length(); index++) {
-@@ -5101,6 +5185,7 @@
+@@ -5125,6 +5209,7 @@
  bool WorkerPrivate::ChangePeerConnectionsInternal(bool aHasPeerConnections) {
    AssertIsOnWorkerThread();
    mHasActivePeerConnections = aHasPeerConnections;
