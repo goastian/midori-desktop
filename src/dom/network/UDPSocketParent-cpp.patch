@@ -1,4 +1,3 @@
-diff --git a/dom/network/UDPSocketParent.cpp b/dom/network/UDPSocketParent.cpp
 --- a/dom/network/UDPSocketParent.cpp
 +++ b/dom/network/UDPSocketParent.cpp
 @@ -1,6 +1,8 @@
@@ -19,7 +18,7 @@ diff --git a/dom/network/UDPSocketParent.cpp b/dom/network/UDPSocketParent.cpp
  #include "mozilla/net/NeckoCommon.h"
  #include "mozilla/net/PNeckoParent.h"
  #include "nsComponentManagerUtils.h"
-@@ -184,7 +188,7 @@
+@@ -186,7 +190,7 @@
    }
  
    // register listener
@@ -28,7 +27,7 @@ diff --git a/dom/network/UDPSocketParent.cpp b/dom/network/UDPSocketParent.cpp
    if (NS_WARN_IF(NS_FAILED(rv))) {
      return rv;
    }
-@@ -311,7 +315,6 @@
+@@ -319,7 +323,6 @@
      return IPC_FAIL(this, "IPCStream payload requires a filter");
    }
  
@@ -36,7 +35,7 @@ diff --git a/dom/network/UDPSocketParent.cpp b/dom/network/UDPSocketParent.cpp
    if (mFilter) {
      if (aAddr.type() != UDPSocketAddr::TNetAddr) {
        return IPC_OK();
-@@ -322,19 +325,9 @@
+@@ -330,19 +333,9 @@
        return IPC_OK();
      }
  
@@ -49,7 +48,7 @@ diff --git a/dom/network/UDPSocketParent.cpp b/dom/network/UDPSocketParent.cpp
 -                               data.Length(), nsISocketFilter::SF_OUTGOING,
 -                               &allowed);
 -
--    // Sending unallowed data, kill content or socket process at the other end.
+-    // Sending unallowed data, kill content process at the other end.
 -    if (NS_WARN_IF(NS_FAILED(rv)) || !allowed) {
 -      return IPC_FAIL(this, "Content tried to send non STUN packet");
 -    }
@@ -59,7 +58,7 @@ diff --git a/dom/network/UDPSocketParent.cpp b/dom/network/UDPSocketParent.cpp
    }
  
    switch (aData.type()) {
-@@ -352,6 +345,57 @@
+@@ -360,6 +353,57 @@
    return IPC_OK();
  }
  
@@ -117,7 +116,7 @@ diff --git a/dom/network/UDPSocketParent.cpp b/dom/network/UDPSocketParent.cpp
  void UDPSocketParent::Send(const nsTArray<uint8_t>& aData,
                             const UDPSocketAddr& aAddr) {
    nsresult rv;
-@@ -374,6 +418,8 @@
+@@ -382,6 +426,8 @@
    }
  
    if (NS_WARN_IF(NS_FAILED(rv)) || count == 0) {

@@ -1,14 +1,13 @@
-diff --git a/dom/media/webrtc/jsapi/MediaTransportHandler.h b/dom/media/webrtc/jsapi/MediaTransportHandler.h
 --- a/dom/media/webrtc/jsapi/MediaTransportHandler.h
 +++ b/dom/media/webrtc/jsapi/MediaTransportHandler.h
-@@ -21,6 +21,7 @@
+@@ -20,6 +20,7 @@
  #include "mozilla/dom/RTCErrorBinding.h"
  #include "mozilla/dom/RTCIceTransportBinding.h"  // RTCIceTransportState
  #include "mozilla/dom/RTCPeerConnectionBinding.h"
 +#include "mozilla/net/MidoriDatagram.h"
  #include "nsISupportsImpl.h"
  #include "nsString.h"
- #include "transport/dtlsidentity.h"  // For DtlsDigest
+ #include "transport/MediaTransportTypes.h"
 @@ -44,10 +45,8 @@
  // reported. Shared between a MediaTransportHandler and whatever produces its
  // events, so the producer never needs a reference to the handler itself, which
@@ -46,7 +45,7 @@ diff --git a/dom/media/webrtc/jsapi/MediaTransportHandler.h b/dom/media/webrtc/j
  
    mutable Mutex mStateCacheMutex{"MediaTransportEvents::mStateCacheMutex"};
    std::map<std::string, TransportLayer::State> mStateCache
-@@ -215,6 +223,9 @@
+@@ -214,6 +222,9 @@
    GetConnectionStateChange() {
      return mEvents->mConnectionStateChange;
    }
@@ -56,7 +55,7 @@ diff --git a/dom/media/webrtc/jsapi/MediaTransportHandler.h b/dom/media/webrtc/j
    MediaEventSource<std::string, MediaPacket>& GetEncryptedSending() {
      return mEvents->mEncryptedSending;
    }
-@@ -251,6 +262,9 @@
+@@ -250,6 +261,9 @@
    }
    void OnPacketReceived(std::string&& aTransportId, MediaPacket&& aPacket) {
      mEvents->OnPacketReceived(std::move(aTransportId), std::move(aPacket));

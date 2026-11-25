@@ -1,16 +1,14 @@
-diff --git a/netwerk/sctp/datachannel/DataChannelDcSctp.cpp b/netwerk/sctp/datachannel/DataChannelDcSctp.cpp
-index e7a9d9fb91..7aaac00010 100644
 --- a/netwerk/sctp/datachannel/DataChannelDcSctp.cpp
 +++ b/netwerk/sctp/datachannel/DataChannelDcSctp.cpp
-@@ -11,6 +11,7 @@
+@@ -12,6 +12,7 @@
  #include "mozilla/Maybe.h"
  #include "mozilla/RandomNum.h"
  #include "mozilla/TimeStamp.h"
 +#include "mozilla/net/MidoriNetworkBudget.h"
- #include "mozilla/dom/PMediaTransport.h"
  #include "mozilla/dom/RTCErrorBinding.h"
+ #include "transport/MediaTransportTypes.h"
  #include "transport/runnable_utils.h"
-@@ -29,6 +30,7 @@ DataChannelConnectionDcSctp::DataChannelConnectionDcSctp(
+@@ -30,6 +31,7 @@
    // We do not second-guess dcsctp's limit here. This is tightened to the
    // negotiated value in OnConnected().
    mNegotiatedIdLimit = kDcSctpMaxStreams;
@@ -18,7 +16,7 @@ index e7a9d9fb91..7aaac00010 100644
  }
  
  uint16_t DataChannelConnectionDcSctp::GetStreamIdCeiling() const {
-@@ -77,6 +79,11 @@ void DataChannelConnectionDcSctp::OnTransportReady() {
+@@ -78,6 +80,11 @@
      options.max_send_buffer_size =
          std::numeric_limits<decltype(options.max_send_buffer_size)>::max();
      options.max_receiver_window_buffer_size = 16 * 1024 * 1024;

@@ -1,7 +1,6 @@
-diff --git a/browser/components/urlbar/content/UrlbarInputBase.mjs b/browser/components/urlbar/content/UrlbarInputBase.mjs
 --- a/browser/components/urlbar/content/UrlbarInputBase.mjs
 +++ b/browser/components/urlbar/content/UrlbarInputBase.mjs
-@@ -1071,11 +1071,20 @@ ${
+@@ -1121,11 +1121,20 @@
        // If we update the URI while restoring a session, set the proxyState to
        // invalid, because we don't have a valid security state to show via site
        // identity yet. See Bug 1746383.
@@ -25,5 +24,5 @@ diff --git a/browser/components/urlbar/content/UrlbarInputBase.mjs b/browser/com
 +            isInitialPageControlledByWebContent);
 +      }
      } else if (
-       this.window.isInitialPage(value) &&
+       this.browserWindow.isInitialPage(value) &&
        lazy.BrowserUIUtils.checkEmptyPageOrigin(

@@ -21,10 +21,6 @@ class MidoriNetworkBudget final {
     bool atomic{false};
     const void* flow{nullptr};
   };
-  struct Grant {
-    uint32_t bytes;
-    uint32_t rate;
-  };
 
   struct BudgetState {
     uint32_t downloadBps;
@@ -65,8 +61,6 @@ class MidoriNetworkBudget final {
   static void ForgetDatagramFlow(Direction aDirection, const void* aFlow);
   static uint32_t WaitMilliseconds(Direction aDirection, bool aAtomic = false,
                                    const void* aFlow = nullptr);
-  static Grant GrantToSocketProcess(Direction aDirection, uint32_t aRequested,
-                                   uint32_t aFlows);
 };
 
 extern "C" uint32_t MidoriNetworkReserveDatagram(bool aUpload,

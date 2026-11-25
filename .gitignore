@@ -46,3 +46,6 @@ build-*/
 build-*/dist/
 flatpak-node/
 /docs/
+!/src/xpcom/build/
+/src/xpcom/build/*
+!/src/xpcom/build/components-conf.patch

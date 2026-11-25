@@ -1,23 +1,22 @@
-diff --git a/dom/media/webrtc/jsapi/MediaTransportHandler.cpp b/dom/media/webrtc/jsapi/MediaTransportHandler.cpp
 --- a/dom/media/webrtc/jsapi/MediaTransportHandler.cpp
 +++ b/dom/media/webrtc/jsapi/MediaTransportHandler.cpp
-@@ -6,6 +6,7 @@
+@@ -5,6 +5,7 @@
+ #include "MediaTransportHandler.h"
  
- #include "MediaTransportHandlerIPC.h"
  #include "nsITimer.h"
 +#include "prtime.h"
  #include "transport/dtlsidentity.h"
  #include "transport/nricemediastream.h"
  #include "transport/nriceresolver.h"
-@@ -17,6 +18,7 @@
+@@ -16,6 +17,7 @@
  
  // Config stuff
  #include "mozilla/IceServerParser.h"
 +#include "mozilla/Logging.h"
  #include "mozilla/Preferences.h"
- #include "mozilla/StaticPrefs_network.h"
  #include "mozilla/dom/RTCConfigurationBinding.h"
-@@ -52,6 +54,8 @@
+ 
+@@ -50,6 +52,8 @@
                             MediaPacket::EnumValueToString((aPacket).type())));
  
  namespace mozilla {
@@ -26,7 +25,7 @@ diff --git a/dom/media/webrtc/jsapi/MediaTransportHandler.cpp b/dom/media/webrtc
  
  static const char* mthLogTag = "MediaTransportHandler";
  #ifdef LOGTAG
-@@ -1272,6 +1276,13 @@
+@@ -1265,6 +1269,13 @@
  
    MOZ_ASSERT(layer);
  
@@ -40,7 +39,7 @@ diff --git a/dom/media/webrtc/jsapi/MediaTransportHandler.cpp b/dom/media/webrtc
    if (int error = layer->SendPacket(aPacket); error < 0) {
      CSFLogError(LOGTAG,
                  "%s: Transport flow (%s) failed to send packet. error=%d",
-@@ -1330,6 +1341,7 @@
+@@ -1323,6 +1334,7 @@
  
  void MediaTransportEvents::OnPacketReceived(std::string&& aTransportId,
                                              MediaPacket&& aPacket) {
@@ -48,8 +47,8 @@ diff --git a/dom/media/webrtc/jsapi/MediaTransportHandler.cpp b/dom/media/webrtc
    switch (aPacket.type()) {
      case MediaPacket::UNCLASSIFIED:
      case MediaPacket::DTLS:
-@@ -1347,6 +1359,42 @@
-                                  std::forward<MediaPacket>(aPacket));
+@@ -1338,6 +1350,42 @@
+       mSctpPacketReceived.Notify(std::move(aTransportId), std::move(aPacket));
        break;
    }
 +}

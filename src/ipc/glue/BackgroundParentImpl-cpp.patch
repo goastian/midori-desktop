@@ -10,8 +10,8 @@
  
  #include "BroadcastChannelParent.h"
  #ifdef MOZ_WEBRTC
-@@ -161,6 +164,56 @@
- void BackgroundParentImpl::ActorDestroy(ActorDestroyReason aWhy) {
+@@ -160,6 +163,56 @@
+ void BackgroundParentImpl::ActorDestroy(ActorDestroyReason /*aWhy*/) {
    AssertIsInMainProcess();
    AssertIsOnBackgroundThread();
 +  if (mMidoriAudioCpuActive)

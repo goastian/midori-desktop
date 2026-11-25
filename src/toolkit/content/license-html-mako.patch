@@ -1,10 +1,9 @@
-diff --git a/toolkit/content/license.html.mako b/toolkit/content/license.html.mako
 --- a/toolkit/content/license.html.mako
 +++ b/toolkit/content/license.html.mako
-@@ -152,6 +152,11 @@
-           (D. Richard Hipp and team)</li>
-       <li>The <a href="http://nsis.sourceforge.net/">Nullsoft Scriptable Install System</a>
-           (Amir Szekely and team)</li>
+@@ -146,6 +146,11 @@
+     people and projects for their contributions:</p>
+ 
+     <ul>
 +      <li>The Midori blocker includes Peter Lowe's Ad and Tracking Server
 +          List in <code>browser/components/blocker/assets/filters/peter-lowe-adservers.txt</code>.
 +          The list credits Peter Lowe (<a href="mailto:pgl@yoyo.org">pgl@yoyo.org</a>)

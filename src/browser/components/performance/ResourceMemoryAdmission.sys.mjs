@@ -14,10 +14,24 @@ export class ResourceMemoryAdmission {
   _draining = false;
   _drainAgain = false;
   _refreshAfterLoad = 0;
+  _windows = new Set();
 
-  constructor(prepareLoad, readBudget = null) {
+  constructor(prepareLoad, readBudget = null, { required = false, allowOverBudget = null, waitForBudget = false } = {}) {
+    if (required && typeof readBudget !== 'function') throw new TypeError('required-memory-budget-reader');
     this._prepareLoad = prepareLoad;
     this._readBudget = readBudget;
+    this._required = required;
+    this._allowOverBudget = allowOverBudget;
+    this._waitForBudget = waitForBudget;
+  }
+
+  static forNativeBudget(prepareLoad = () => {}) {
+    return new ResourceMemoryAdmission(prepareLoad, async () => {
+      const state = await ChromeUtils.requestManagedMemoryUsage();
+      if (!state.backendReady || state.nativeError || !state.ownedLimit ||
+          !state.hasLimit || !state.hasEffectiveLimit) return null;
+      return { memoryBytes: state.currentBytes, budgetBytes: state.effectiveLimitBytes };
+    }, { required: true });
   }
 
   get reservedBytes() {
@@ -37,10 +51,22 @@ export class ResourceMemoryAdmission {
       Services.obs.addObserver(this, TOPIC);
       Services.obs.addObserver(this, 'xpcom-will-shutdown');
       if (this._readBudget) Services.obs.addObserver(this, 'browsing-context-discarded');
+      if (this._allowOverBudget) {
+        Services.obs.addObserver(this, 'browser-delayed-startup-finished');
+        for (const win of Services.wm.getEnumerator('navigator:browser')) this._watchWindow(win);
+      }
     } else {
       Services.obs.removeObserver(this, TOPIC);
       Services.obs.removeObserver(this, 'xpcom-will-shutdown');
       if (this._readBudget) Services.obs.removeObserver(this, 'browsing-context-discarded');
+      if (this._allowOverBudget) {
+        Services.obs.removeObserver(this, 'browser-delayed-startup-finished');
+        for (const win of this._windows) {
+          win.removeEventListener('TabSelect', this);
+          win.removeEventListener('unload', this);
+        }
+        this._windows.clear();
+      }
       const pending = [...this._pending.values()];
       this._pending.clear();
       for (const entry of this._loads.values()) this._releaseLoad(entry, false);
@@ -48,7 +74,35 @@ export class ResourceMemoryAdmission {
     }
   }
 
+  recheck() {
+    if (!this._active || !this._readBudget) return;
+    this._generation++;
+    this._draining = false;
+    this._drainAgain = false;
+    this._drain();
+  }
+
+  _watchWindow(win) {
+    if (this._windows.has(win) || !win.gBrowser) return;
+    this._windows.add(win);
+    win.addEventListener('TabSelect', this);
+    win.addEventListener('unload', this);
+  }
+
+  handleEvent(event) {
+    if (event.type === 'TabSelect') this.recheck();
+    else if (event.type === 'unload') {
+      event.currentTarget.removeEventListener('TabSelect', this);
+      event.currentTarget.removeEventListener('unload', this);
+      this._windows.delete(event.currentTarget);
+    }
+  }
+
   observe(subject, topic, data) {
+    if (topic === 'browser-delayed-startup-finished') {
+      this._watchWindow(subject);
+      return;
+    }
     if (topic === 'browsing-context-discarded') {
       if (data === 'replace') return;
       for (const entry of this._loads.values()) {
@@ -77,6 +131,8 @@ export class ResourceMemoryAdmission {
     }
     const entry = { id, allow: bag.getPropertyAsInterface('allow', Ci.nsIRunnable),
       deny: bag.getPropertyAsInterface('deny', Ci.nsIRunnable) };
+    if (this._required) subject.QueryInterface(Ci.nsIWritablePropertyBag2).setPropertyAsBool('required', true);
+    if (this._waitForBudget) subject.QueryInterface(Ci.nsIWritablePropertyBag2).setPropertyAsBool('waitForBudget', true);
     this._pending.set(id, entry);
     if (this._readBudget) {
       entry.contextId = bag.getPropertyAsUint64('browsingContextId');
@@ -111,18 +167,37 @@ export class ResourceMemoryAdmission {
       do {
         this._drainAgain = false;
         while (this._active && this._pending.size) {
-          const entry = this._pending.values().next().value;
+          const entry = this._allowOverBudget && [...this._pending.values()].find(value => this._allowOverBudget(value)) ||
+            this._pending.values().next().value;
+          if (this._allowOverBudget?.(entry)) {
+            this._reserve(entry);
+            entry.releasing = true;
+            entry.allow.run();
+            continue;
+          }
           const refresh = this._refreshAfterLoad;
           try {
             await this._prepareLoad({ reservedBytes: this.reservedBytes + LOAD_RESERVE_BYTES,
               forceSample: !!refresh });
-          } catch {}
+          } catch {
+            if (this._required && !this._waitForBudget && this._pending.get(entry.id) === entry) entry.deny.run();
+          }
           if (!this._active || generation !== this._generation) return;
           if (this._refreshAfterLoad === refresh) this._refreshAfterLoad = 0;
           if (this._pending.get(entry.id) !== entry) continue;
-          const budget = this._readBudget();
-          if (this._loads.size && budget &&
-              budget.memoryBytes + this.reservedBytes + LOAD_RESERVE_BYTES > budget.budgetBytes * 0.85) break;
+          let budget, budgetError = false;
+          try { budget = await this._readBudget(); }
+          catch { budgetError = true; }
+          if (!this._active || generation !== this._generation) return;
+          if (this._pending.get(entry.id) !== entry) continue;
+          if (this._required && (budgetError || !budget || !Number.isSafeInteger(budget.memoryBytes) || budget.memoryBytes < 0 ||
+              !Number.isSafeInteger(budget.budgetBytes) || budget.budgetBytes <= 0)) {
+            if (this._waitForBudget) return;
+            entry.deny.run();
+            continue;
+          }
+          if ((this._required || this._loads.size) && budget &&
+              budget.memoryBytes + this.reservedBytes + LOAD_RESERVE_BYTES > budget.budgetBytes * 0.85) return;
           this._reserve(entry);
           entry.releasing = true;
           entry.allow.run();

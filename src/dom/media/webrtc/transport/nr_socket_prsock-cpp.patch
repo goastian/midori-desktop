@@ -301,7 +301,7 @@
  }
  
  // Helper functions for addresses
-@@ -734,11 +962,14 @@
+@@ -732,11 +960,14 @@
    ASSERT_ON_THREAD(ststhread_);
    int r, _status;
    PRNetAddr naddr;
@@ -318,7 +318,7 @@
  
    if (nr_is_stun_request_message((UCHAR*)msg, len) && ShouldDrop(len)) {
      ABORT(R_WOULDBLOCK);
-@@ -756,16 +987,58 @@
+@@ -753,16 +984,58 @@
    }
  
    // TODO: Convert flags?
@@ -387,7 +387,7 @@
    _status = 0;
  abort:
    return (_status);
-@@ -777,12 +1050,36 @@
+@@ -774,12 +1047,36 @@
    int r, _status;
    PRNetAddr nfrom;
    int32_t status;
@@ -428,7 +428,7 @@
    }
    *len = status;
  
-@@ -805,7 +1102,9 @@
+@@ -802,7 +1099,9 @@
  // Close the socket so that the STS will detach and then kill it
  void NrSocket::close() {
    ASSERT_ON_THREAD(ststhread_);
@@ -438,7 +438,7 @@
    cancel(NR_ASYNC_WAIT_READ);
    cancel(NR_ASYNC_WAIT_WRITE);
  }
-@@ -864,12 +1163,23 @@
+@@ -861,12 +1160,23 @@
    ASSERT_ON_THREAD(ststhread_);
    int _status;
    int32_t status;
@@ -465,7 +465,7 @@
      r_log(LOG_GENERIC, LOG_INFO, "Error in write");
      ABORT(R_IO_ERROR);
    }
-@@ -885,12 +1195,24 @@
+@@ -882,12 +1192,24 @@
    ASSERT_ON_THREAD(ststhread_);
    int _status;
    int32_t status;
@@ -493,7 +493,7 @@
      r_log(LOG_GENERIC, LOG_INFO, "Error in read");
      ABORT(R_IO_ERROR);
    }
-@@ -1055,7 +1377,194 @@
+@@ -1052,7 +1374,194 @@
        err_(false),
        state_(NR_INIT) {}
  
@@ -689,11 +689,11 @@
  
  void NrUdpSocketIpc::Destroy() {
  #if defined(MOZILLA_INTERNAL_API)
-@@ -1301,15 +1810,39 @@
+@@ -1298,15 +1807,39 @@
      return R_WOULDBLOCK;
    }
  
--  auto buf = MakeUnique<MediaPacket>();
+-  auto buf = std::make_unique<MediaPacket>();
 -  buf->Copy(static_cast<const uint8_t*>(msg), len);
 -
 -  RUN_ON_THREAD(
@@ -738,7 +738,7 @@
  }
  
  void NrUdpSocketIpc::close() {
-@@ -1319,6 +1852,7 @@
+@@ -1316,6 +1849,7 @@
  
    ReentrantMonitorAutoEnter mon(monitor_);
    state_ = NR_CLOSING;
@@ -746,7 +746,7 @@
  
    RUN_ON_THREAD(io_thread_,
                  mozilla::WrapRunnable(RefPtr<NrUdpSocketIpc>(this),
-@@ -1488,23 +2022,6 @@
+@@ -1485,23 +2019,6 @@
    }
  
    socket_child_->Connect(proxy, host, port);

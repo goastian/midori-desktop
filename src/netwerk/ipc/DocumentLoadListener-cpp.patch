@@ -8,17 +8,11 @@
  
  #include "NeckoCommon.h"
  #include "imgLoader.h"
-@@ -1170,22 +1171,55 @@
+@@ -1245,7 +1246,40 @@
    } else
  #endif /* ANDROID */
    {
--    *aRv = mChannel->AsyncOpen(openInfo);
--    if (NS_FAILED(*aRv)) {
--      LOG(("DocumentLoadListener::Open failed AsyncOpen [this=%p rv=%" PRIx32
--           "]",
--           this, static_cast<uint32_t>(*aRv)));
--      if (documentContext) {
--        documentContext->EndDocumentLoad(false);
+-    if (prefetchPromise) {
 +    if (mIsDocumentLoad && documentContext && documentContext->IsTop()) {
 +      mMemoryAdmission = ManagedMemoryAdmissionRequest::MaybeCreate(
 +          documentContext, aLoadState->URI(), mChannel);
@@ -27,7 +21,7 @@
 +      RefPtr<DocumentLoadListener> self = this;
 +      mMemoryAdmission->Promise()->Then(
 +          GetCurrentSerialEventTarget(), __func__,
-+          [self, openInfo](
++          [self, openInfo, prefetchPromise](
 +              const MemoryAdmissionPromise::ResolveOrRejectValue& aValue) {
 +            self->mMemoryAdmission = nullptr;
 +            if (self->mOpenPromiseResolved) {
@@ -40,30 +34,23 @@
 +              self->mParentChannelListener = nullptr;
 +              return;
 +            }
-+            nsresult status = self->mChannel->AsyncOpen(openInfo);
-+            if (NS_FAILED(status)) {
-+              self->DisconnectListeners(status, status);
-+              self->mParentChannelListener = nullptr;
-+              return;
++            if (prefetchPromise) {
++              self->AsyncOpenAfterPrefetchWait(prefetchPromise, openInfo);
++            } else {
++              nsresult status = self->mChannel->AsyncOpen(openInfo);
++              if (NS_FAILED(status)) {
++                self->DisconnectListeners(status, status);
++                self->mParentChannelListener = nullptr;
++                return;
++              }
 +            }
 +            nsHTTPSOnlyUtils::PotentiallyFireHttpRequestToShortenTimout(self);
 +          });
-+    } else {
-+      *aRv = mChannel->AsyncOpen(openInfo);
-+      if (NS_FAILED(*aRv)) {
-+        LOG(("DocumentLoadListener::Open failed AsyncOpen [this=%p rv=%" PRIx32
-+             "]",
-+             this, static_cast<uint32_t>(*aRv)));
-+        if (documentContext) {
-+          documentContext->EndDocumentLoad(false);
-+        }
-+        mParentChannelListener = nullptr;
-+        return nullptr;
-       }
--      mParentChannelListener = nullptr;
--      return nullptr;
-     }
-   }
++    } else if (prefetchPromise) {
+       AsyncOpenAfterPrefetchWait(prefetchPromise, openInfo);
+     } else {
+       *aRv = mChannel->AsyncOpen(openInfo);
+@@ -1264,7 +1298,9 @@
  
    // HTTPS-Only Mode fights potential timeouts caused by upgrades. Instantly
    // after opening the document channel we have to kick off countermeasures.
@@ -74,7 +61,7 @@
  
    nsCOMPtr<nsILoadInfo> loadInfo = mChannel->LoadInfo();
    loadInfo->SetChannelCreationOriginalURI(aLoadState->URI());
-@@ -1566,6 +1600,10 @@
+@@ -1636,6 +1672,10 @@
         this, static_cast<uint32_t>(aStatus),
         static_cast<uint32_t>(aLoadGroupStatus), aContinueNavigating));
  

@@ -21,11 +21,11 @@ function canPause(tab) {
   const global = browser?.browsingContext?.currentWindowGlobal;
   return !!(tab?.isConnected && browser?.isConnected && browser.isRemoteBrowser &&
     ['http', 'https'].includes(browser.currentURI?.scheme) && !tab.closing &&
-    !tab.pinned && !tab.multiselected && !tab.splitview && !tab.undiscardable &&
+    !tab.selected && !tab.pinned && !tab.multiselected && !tab.splitview && !tab.undiscardable &&
     tab.autoDiscardable !== false && !tab.soundPlaying && !tab.pictureinpicture &&
     !tab.attention && !tab.hasAttribute('pending') && !tab.hasAttribute('busy') &&
     !tab.hasAttribute('sharing') && !browser.hasBeforeUnload && global &&
-    !global.hasActivePeerConnections());
+    !global.hasActivePeerConnections() && lazy.ResourceTabCoordinator.isEligible(tab));
 }
 
 function finish(state, result) {

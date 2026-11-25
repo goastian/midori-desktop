@@ -47,6 +47,8 @@ export class ResourceMemoryController {
   _blockedRetry = null;
   _lastAttempt = new WeakMap();
   _attemptSequence = 0;
+  _sparesSuppressed = false;
+  _spareReserveBytes = 0;
 
   constructor(sampler = new ResourceSampler()) {
     this._sampler = sampler;
@@ -56,29 +58,62 @@ export class ResourceMemoryController {
     this._generation++;
     this._reclaiming = false;
     this._blockedRetry = null;
+    this._releaseSparePressure();
   }
 
-  recover(memory, { sample = null, canContinue = () => true, onReclaim = () => {} } = {}) {
+  _releaseSparePressure() {
+    if (this._sparesSuppressed) ChromeUtils.setMemoryBudgetPressure(false);
+    this._sparesSuppressed = false;
+    this._spareReserveBytes = 0;
+  }
+
+  _updateSparePressure(sample, budgetBytes) {
+    if (Services.appinfo.OS !== 'Linux' || typeof ChromeUtils.setMemoryBudgetPressure !== 'function') return 0;
+    if (this._sparesSuppressed) {
+      if (sample.memoryBytes + this._spareReserveBytes < budgetBytes * 0.8) this._releaseSparePressure();
+      return 0;
+    }
+    if (sample.memoryBytes <= budgetBytes * 0.9) return 0;
+    const spareBytes = (sample.processes || []).filter(process => process.type === 'preallocated')
+      .reduce((total, process) => total + process.memoryBytes, 0);
+    const closed = ChromeUtils.setMemoryBudgetPressure(true);
+    this._sparesSuppressed = true;
+    this._spareReserveBytes = Math.max(spareBytes, closed * 32 * 1024 ** 2);
+    return closed;
+  }
+
+  recover(memory, { sample = null, resample = () => this._sampler.sample(),
+    canContinue = () => true, onReclaim = () => {} } = {}) {
     if (this._pending) throw new Error('memory-recovery-in-progress');
     const generation = this._generation;
     this._pending = this._recover(memory, sample,
-      () => generation === this._generation && canContinue(), onReclaim)
+      () => generation === this._generation && canContinue(), onReclaim, resample)
       .finally(() => { this._pending = null; });
     return this._pending;
   }
 
-  async _recover(memory, sample, canContinue, onReclaim) {
+  async _recover(memory, sample, canContinue, onReclaim, resample) {
     if (!memory?.enabled) {
       this._reclaiming = false;
       this._blockedRetry = null;
+      this._releaseSparePressure();
       return { state: 'off', reclaimedTabs: 0, sample };
     }
     if (!Number.isSafeInteger(memory.budgetBytes) || memory.budgetBytes <= 0) {
       throw new RangeError('memory-budget');
     }
-    sample ||= await this._sampler.sample();
+    sample ||= await resample();
     const result = (state, reclaimedTabs = 0) => ({ state, reclaimedTabs, sample });
     if (!canContinue()) return result('cancelled');
+    if (this._updateSparePressure(sample, memory.budgetBytes)) {
+      this._reclaiming = true;
+      this._blockedRetry = null;
+      onReclaim();
+      if (!memory.strict) return result('reclaiming');
+      await new Promise(resolve => lazy.setTimeout(resolve, 200));
+      if (!canContinue()) return result('cancelled');
+      sample = await resample();
+    }
     this._reclaiming = sample.memoryBytes > memory.budgetBytes * (this._reclaiming ? 0.85 : 0.9);
     if (!this._reclaiming) {
       this._blockedRetry = null;
@@ -125,7 +160,7 @@ export class ResourceMemoryController {
         reclaimed++;
         await new Promise(resolve => lazy.setTimeout(resolve, 200));
         if (!canContinue()) return result('cancelled', reclaimed);
-        sample = await this._sampler.sample();
+        sample = await resample();
       }
     }
     if (!canContinue()) return result('cancelled', reclaimed);

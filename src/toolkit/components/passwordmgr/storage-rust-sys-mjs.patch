@@ -1,6 +1,6 @@
 --- a/toolkit/components/passwordmgr/storage-rust.sys.mjs
 +++ b/toolkit/components/passwordmgr/storage-rust.sys.mjs
-@@ -62,16 +62,22 @@
+@@ -67,16 +67,22 @@
  
  // Convert a LoginInfo to a LoginEntryWithMeta, to be used for migrating
  // records between legacy and Rust storage.
@@ -12,23 +12,23 @@
      meta: new LoginMeta({
        id: loginInfo.guid || Services.uuid.generateUUID().toString(),
 -      timesUsed: loginInfo.timesUsed || 1,
--      timeCreated: loginInfo.timeCreated || now,
--      timeLastUsed: loginInfo.timeLastUsed || now,
--      timePasswordChanged: loginInfo.timePasswordChanged || now,
+-      timeCreated: validTimestamp(loginInfo.timeCreated) || now,
+-      timeLastUsed: validTimestamp(loginInfo.timeLastUsed) || now,
+-      timePasswordChanged: validTimestamp(loginInfo.timePasswordChanged) || now,
 +      timesUsed: forUpdate ? loginInfo.timesUsed : loginInfo.timesUsed || 1,
-+      timeCreated: forUpdate
-+        ? loginInfo.timeCreated
-+        : loginInfo.timeCreated || now,
-+      timeLastUsed: forUpdate
-+        ? loginInfo.timeLastUsed
-+        : loginInfo.timeLastUsed || now,
-+      timePasswordChanged: forUpdate
-+        ? loginInfo.timePasswordChanged
-+        : loginInfo.timePasswordChanged || now,
++      timeCreated: forUpdate && loginInfo.timeCreated === 0
++        ? 0
++        : validTimestamp(loginInfo.timeCreated) || now,
++      timeLastUsed: forUpdate && loginInfo.timeLastUsed === 0
++        ? 0
++        : validTimestamp(loginInfo.timeLastUsed) || now,
++      timePasswordChanged: forUpdate && loginInfo.timePasswordChanged === 0
++        ? 0
++        : validTimestamp(loginInfo.timePasswordChanged) || now,
        timeLastBreachAlertDismissed:
-         loginInfo.timeLastBreachAlertDismissed || null,
+         validTimestamp(loginInfo.timeLastBreachAlertDismissed) || null,
      }),
-@@ -183,9 +189,22 @@
+@@ -300,9 +306,22 @@
      return logins.map(loginToLoginInfo);
    }
  
@@ -54,7 +54,7 @@
      return loginToLoginInfo(login);
    }
  
-@@ -231,7 +250,20 @@
+@@ -348,7 +367,20 @@
        .map(({ login }) => loginToLoginInfo(login));
    }
  
@@ -76,7 +76,7 @@
      return await this.#store.delete(id);
    }
  
-@@ -701,12 +733,16 @@
+@@ -818,12 +850,16 @@
      return storedLogin;
    }
  
@@ -95,7 +95,7 @@
        }
  
        const idToModify = oldStoredLogin.guid;
-@@ -719,6 +755,7 @@
+@@ -836,6 +872,7 @@
        // Check if the new GUID is duplicate.
        if (
          newLogin.guid != idToModify &&
@@ -103,7 +103,7 @@
          (await this.#storageAdapter.get(newLogin.guid))
        ) {
          throw new Error("specified GUID already exists");
-@@ -746,7 +783,9 @@
+@@ -863,7 +900,9 @@
  
        const updatedLogin = await this.#storageAdapter.update(
          idToModify,
@@ -114,7 +114,7 @@
        );
  
        // The Rust `update` deliberately treats an edit as "not a use" and leaves
-@@ -1024,13 +1063,20 @@
+@@ -1082,13 +1121,20 @@
      return [foundLogins, foundIds];
    }
  

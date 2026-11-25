@@ -8,18 +8,18 @@
  #include "mozilla/ipc/NodeController.h"
  #include "mozilla/Preferences.h"
  
-@@ -97,6 +98,7 @@
- IOThreadParent::~IOThreadParent() { StopThread(); }
- 
+@@ -103,6 +104,7 @@
  void IOThreadParent::Init() {
+   IOThread::Init();
+ 
 +  mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
  #if defined(XP_WIN)
    // Initializes the COM library on the current thread.
    CoInitialize(nullptr);
-@@ -131,6 +133,7 @@
- IOThreadChild::~IOThreadChild() { StopThread(); }
- 
+@@ -139,6 +141,7 @@
  void IOThreadChild::Init() {
+   IOThread::Init();
+ 
 +  mozilla::midori::EnsureCurrentManagedRealtimeCpuThread();
    mInitialPort =
        NodeController::InitChildProcess(std::move(mClientHandle), mParentPid);

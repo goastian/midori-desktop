@@ -53,6 +53,11 @@
           </div>
           <label class="resource-toggle"><span data-l10n-id="midori-performance-memory-strict"></span><input id="memory-strict" type="checkbox" role="switch" aria-describedby="memory-strict-unavailable"></label>
           <p id="memory-strict-unavailable" class="resource-unavailable" data-l10n-id="midori-performance-memory-strict-unavailable"></p>
+          <p id="memory-applied" hidden></p>
+          <div id="memory-setup" hidden>
+            <p id="memory-setup-status" role="status" data-l10n-id="midori-performance-memory-setup-idle"></p>
+            <button id="memory-setup-button" type="button" aria-describedby="memory-setup-status" data-l10n-id="midori-performance-memory-setup-button"></button>
+          </div>
           <p data-l10n-id="midori-performance-memory-explanation"></p>
           <p id="memory-state"></p>
         </section>
@@ -69,6 +74,10 @@
               <span id="cpu-budget-unit">%</span>
             </div>
             <p id="cpu-unavailable" class="resource-unavailable" data-l10n-id="midori-performance-cpu-unavailable"></p>
+            <div id="cpu-setup" hidden>
+              <p id="cpu-setup-status" role="status" data-l10n-id="midori-performance-cpu-setup-idle"></p>
+              <button id="cpu-setup-button" type="button" aria-describedby="cpu-setup-status" data-l10n-id="midori-performance-cpu-setup-button"></button>
+            </div>
           </div>
         </section>
         <section class="resource-card resource-network">

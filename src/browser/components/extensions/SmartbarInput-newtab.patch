@@ -1,14 +1,12 @@
-diff --git a/browser/components/urlbar/content/SmartbarInput.mjs b/browser/components/urlbar/content/SmartbarInput.mjs
-index 089dc6f71bc9577b2fcbea6376d955c7f780ef91..3533c447fa66f6a7521691d3ccc4f957cf27dcc7 100644
 --- a/browser/components/urlbar/content/SmartbarInput.mjs
 +++ b/browser/components/urlbar/content/SmartbarInput.mjs
-@@ -1173,11 +1173,20 @@ ${
+@@ -1419,11 +1419,20 @@
        // If we update the URI while restoring a session, set the proxyState to
        // invalid, because we don't have a valid security state to show via site
        // identity yet. See Bug 1746383.
 -      valid =
 -        !dueToSessionRestore &&
--        (!this.window.isBlankPageURL(uri.spec) ||
+-        (!this.browserWindow.isBlankPageURL(uri.spec) ||
 -          lazy.ExtensionUtils.isExtensionUrl(uri) ||
 -          isInitialPageControlledByWebContent);
 +      try {
@@ -21,10 +19,10 @@ index 089dc6f71bc9577b2fcbea6376d955c7f780ef91..3533c447fa66f6a7521691d3ccc4f957
 +      if (valid !== false) {
 +        valid =
 +          !dueToSessionRestore &&
-+          (!this.window.isBlankPageURL(uri.spec) ||
++          (!this.browserWindow.isBlankPageURL(uri.spec) ||
 +            lazy.ExtensionUtils.isExtensionUrl(uri) ||
 +            isInitialPageControlledByWebContent);
 +      }
      } else if (
-       this.window.isInitialPage(value) &&
+       this.browserWindow.isInitialPage(value) &&
        lazy.BrowserUIUtils.checkEmptyPageOrigin(

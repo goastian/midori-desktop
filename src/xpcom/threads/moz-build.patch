@@ -8,10 +8,10 @@
      "Monitor.h",
      "MozPromise.h",
      "Mutex.h",
-@@ -155,3 +156,6 @@
- FINAL_LIBRARY = "xul"
- 
- include("/ipc/chromium/chromium-config.mozbuild")
+@@ -165,3 +166,6 @@
+     "TimerThread.h",
+     "TimerThreadMonitor.h",
+ ]
 +
 +if CONFIG["OS_TARGET"] == "Linux":
 +    SOURCES += ["MidoriCpuThreadPlacement.cpp"]

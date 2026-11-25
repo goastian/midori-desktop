@@ -1,0 +1,37 @@
+--- a/dom/media/webrtc/transport/MediaTransportTypes.h
++++ b/dom/media/webrtc/transport/MediaTransportTypes.h
+@@ -5,12 +5,34 @@
+ #ifndef mozilla_dom_MediaTransportTypes_h
+ #define mozilla_dom_MediaTransportTypes_h
+ 
++#include <cstdint>
+ #include <string>
+ 
++#include "mozilla/TimeStamp.h"
+ #include "mozilla/dom/RTCErrorBinding.h"
+ #include "nsString.h"
+ 
+ namespace mozilla::dom {
++
++class RTCSentPacket final {
++ public:
++  RTCSentPacket() = default;
++  RTCSentPacket(uint64_t aSourceId, int64_t aPacketId,
++                const TimeStamp& aSentAt, bool aSocketSent)
++      : mSourceId(aSourceId), mPacketId(aPacketId),
++        mSentAt(aSentAt), mSocketSent(aSocketSent) {}
++
++  uint64_t sourceId() const { return mSourceId; }
++  int64_t packetId() const { return mPacketId; }
++  const TimeStamp& sentAt() const { return mSentAt; }
++  bool socketSent() const { return mSocketSent; }
++
++ private:
++  uint64_t mSourceId{0};
++  int64_t mPacketId{-1};
++  TimeStamp mSentAt;
++  bool mSocketSent{false};
++};
+ 
+ struct RTCErrorParams {
+   RTCErrorInit errorInit;

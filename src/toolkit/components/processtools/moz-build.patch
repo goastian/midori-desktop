@@ -26,8 +26,8 @@
      "ProcessToolsService.cpp",
      "ProcInfo_common.cpp",
  ]
-@@ -56,3 +68,6 @@
-     UNIFIED_SOURCES += ["ProcInfo.mm"]
+@@ -71,3 +83,6 @@
+     IPDL_SOURCES += ["PProcInfo.ipdl"]
  
  include("/ipc/chromium/chromium-config.mozbuild")
 +

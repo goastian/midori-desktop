@@ -1,10 +1,9 @@
-diff --git a/netwerk/protocol/http/Http2Session.cpp b/netwerk/protocol/http/Http2Session.cpp
 --- a/netwerk/protocol/http/Http2Session.cpp
 +++ b/netwerk/protocol/http/Http2Session.cpp
 @@ -23,7 +23,9 @@
- #include "Http2StreamTunnel.h"
  #include "Http2WebTransportSession.h"
  #include "LoadContextInfo.h"
+ #include "mozilla/CheckedInt.h"
 +#include "MidoriNetworkBudget.h"
  #include "mozilla/EndianUtils.h"
 +#include "mozilla/Logging.h"
@@ -20,7 +19,7 @@ diff --git a/netwerk/protocol/http/Http2Session.cpp b/netwerk/protocol/http/Http
  
  extern const nsCString& TRRProviderKey();
  
-@@ -1406,6 +1410,28 @@
+@@ -1411,6 +1415,28 @@
  
    RefPtr<Http2Session> self(this);
  
@@ -49,7 +48,7 @@ diff --git a/netwerk/protocol/http/Http2Session.cpp b/netwerk/protocol/http/Http
    // don't reset a stream that has recevied a fin or rst
    if (!aStream->RecvdFin() && !aStream->RecvdReset() && aStream->StreamID() &&
        !(mInputFrameFinal &&
-@@ -2797,6 +2823,8 @@
+@@ -2794,6 +2820,8 @@
    if (stream->BlockedOnRwin()) {
      LOG3(("Http2Session %p will stream %p 0x%X suspended for flow control\n",
            this, stream.get(), stream->StreamID()));
@@ -58,7 +57,7 @@ diff --git a/netwerk/protocol/http/Http2Session.cpp b/netwerk/protocol/http/Http
      return NS_BASE_STREAM_WOULD_BLOCK;
    }
  
-@@ -3498,14 +3526,23 @@
+@@ -3495,14 +3523,23 @@
    // in order to avoid queue delays in getting the 'ACK' out.
    uint32_t toack = (unacked <= 0x7fffffffU) ? unacked : 0x7fffffffU;
  

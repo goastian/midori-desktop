@@ -26,6 +26,15 @@ const budgetFields = [
 ];
 let capabilities;
 const networkPresetValues = new Set(Array.from($('network-preset').options, option => option.value));
+const visibleReadouts = new Set(['memory-used', 'cpu-used']);
+const viewportObserver = new IntersectionObserver(entries => {
+  if (!unsubscribe) return;
+  for (const entry of entries) {
+    if (entry.isIntersecting) visibleReadouts.add(entry.target.id);
+    else visibleReadouts.delete(entry.target.id);
+  }
+  if (snapshot) renderReadouts(snapshot);
+}, { root: document, rootMargin: '128px 0px' });
 const readoutObserver = new ResizeObserver(entries => {
   for (const entry of entries) {
     const height = entry.borderBoxSize[0]?.blockSize;
@@ -135,7 +144,7 @@ function status(id) {
 
 function reset(state) {
   snapshot = state;
-  renderedSettings = JSON.stringify([state.profile, state.baseProfile, state.configuration, state.capabilities, state.enforcement]);
+  renderedSettings = JSON.stringify([state.profile, state.baseProfile, state.configuration, state.capabilities, state.enforcement, state.cpuSetup, state.memorySetup]);
   capabilities = state.capabilities;
   const value = path => pending.has(path) ? pending.get(path) :
     path.includes('.') ? state.configuration[path.split('.')[0]][path.split('.')[1]] : state[path];
@@ -173,6 +182,21 @@ function updateControls() {
   cpuNotice.hidden = cpuState === 'off' || cpuState === 'limited';
   document.l10n.setAttributes(cpuNotice, ['checking', 'error'].includes(cpuState)
     ? `midori-performance-enforcement-${cpuState}` : 'midori-performance-cpu-unavailable');
+  const memoryState = snapshot.enforcement.memory;
+  const memoryNotice = $('memory-strict-unavailable');
+  const strictRequested = $('memory-enabled').checked && $('memory-strict').checked;
+  const protectedMemory = ['protected-budget', 'protected-excess'].includes(memoryState);
+  memoryNotice.hidden = !strictRequested || memoryState === 'limited' || protectedMemory;
+  document.l10n.setAttributes(memoryNotice, ['checking', 'error'].includes(memoryState)
+    ? `midori-performance-enforcement-${memoryState}` : 'midori-performance-memory-strict-unavailable');
+  const memorySetup = snapshot.memorySetup;
+  $('memory-setup').hidden = !memorySetup.supported || !strictRequested || memoryState === 'limited' || protectedMemory;
+  $('memory-setup-button').disabled = memorySetup.busy || memorySetup.state === 'session-required';
+  document.l10n.setAttributes($('memory-setup-status'), `midori-performance-memory-setup-${memorySetup.state}`);
+  const setup = snapshot.cpuSetup;
+  $('cpu-setup').hidden = !setup.supported || !$('cpu-enabled').checked || cpuState === 'limited';
+  $('cpu-setup-button').disabled = setup.busy || setup.state === 'session-required';
+  document.l10n.setAttributes($('cpu-setup-status'), `midori-performance-cpu-setup-${setup.state}`);
   const networkState = snapshot.enforcement.network;
   const networkNotice = $('network-unavailable');
   networkNotice.hidden = networkState === 'off' || networkState === 'limited';
@@ -295,6 +319,25 @@ function edit(event) {
   } else save();
 }
 
+function measuredMemory(state) {
+  const accounting = state.protectedMemory || state.nativeMemory;
+  const managed = accounting && !['off', 'flexible'].includes(state.enforcement.memory);
+  const native = accounting?.acknowledgement;
+  const measured = accounting?.accountingAvailable &&
+    Number.isSafeInteger(native?.currentBytes) && native.currentBytes >= 0;
+  return managed ? measured ? native.currentBytes : null : state.sample?.memoryBytes ?? null;
+}
+
+function renderReadouts(state, memoryBytes = measuredMemory(state)) {
+  if (state.accessibilityEnabled || visibleReadouts.has('memory-used')) {
+    setText($('memory-used').firstElementChild, memoryBytes === null ? '—' : `${(memoryBytes / GiB).toFixed(2)} GiB`);
+  }
+  if (state.accessibilityEnabled || visibleReadouts.has('cpu-used')) {
+    const sample = state.sample;
+    setText($('cpu-used').firstElementChild, sample?.cpuPercent === null || !sample ? '—' : `${sample.cpuPercent.toFixed(1)} %`);
+  }
+}
+
 function render(state) {
   if (!committing && pending.size) {
     let replaced = false;
@@ -313,12 +356,25 @@ function render(state) {
     }
     if (replaced) status('conflict');
   }
-  if (renderedSettings !== JSON.stringify([state.profile, state.baseProfile, state.configuration, state.capabilities, state.enforcement])) reset(state);
+  if (renderedSettings !== JSON.stringify([state.profile, state.baseProfile, state.configuration, state.capabilities, state.enforcement, state.cpuSetup, state.memorySetup])) reset(state);
   else snapshot = state;
   const sample = state.sample;
   latestSample = sample;
-  setText($('memory-used').firstElementChild, sample ? `${(sample.memoryBytes / GiB).toFixed(2)} GiB` : '—');
-  setText($('cpu-used').firstElementChild, sample?.cpuPercent === null || !sample ? '—' : `${sample.cpuPercent.toFixed(1)} %`);
+  const memoryAccounting = state.protectedMemory || state.nativeMemory;
+  const managedMemory = memoryAccounting && !['off', 'flexible'].includes(state.enforcement.memory);
+  const native = memoryAccounting?.acknowledgement;
+  const nativeMeasured = memoryAccounting?.accountingAvailable &&
+    Number.isSafeInteger(native?.currentBytes) && native.currentBytes >= 0;
+  const memoryBytes = measuredMemory(state);
+  renderReadouts(state, memoryBytes);
+  const applied = $('memory-applied');
+  const limit = !state.protectedMemory && managedMemory && nativeMeasured && native.ownedLimit && native.hasEffectiveLimit &&
+    Number.isSafeInteger(native.effectiveLimitBytes) && native.effectiveLimitBytes > 0 ? native.effectiveLimitBytes : null;
+  if (applied.hidden !== (limit === null)) applied.hidden = limit === null;
+  if (limit !== null && applied.dataset.limitBytes !== String(limit)) {
+    applied.dataset.limitBytes = String(limit);
+    document.l10n.setAttributes(applied, 'midori-performance-memory-applied', { limit: (limit / GiB).toFixed(2) });
+  }
   if (sample?.cpuCapacitySource?.startsWith('parent-') && Number.isFinite(sample.cpuCapacity)) {
     const explanation = sample.cpuCapacitySource === 'parent-affinity-visible-cgroup'
       ? 'midori-performance-cpu-quota-explanation' : 'midori-performance-cpu-available-explanation';
@@ -326,14 +382,15 @@ function render(state) {
   } else {
     document.l10n.setAttributes($('cpu-explanation'), 'midori-performance-cpu-explanation');
   }
-  const pressure = sample ? Math.round(Math.min(1, sample.memoryBytes / state.configuration.memory.budgetBytes) * 1000) / 1000 : 0;
+  const pressure = memoryBytes === null ? 0 : Math.round(Math.min(1, memoryBytes / state.configuration.memory.budgetBytes) * 1000) / 1000;
   const meter = $('memory-pressure');
-  const pressureValue = String(pressure);
+  const pressureValue = memoryBytes === null ? null : String(pressure);
   if (meter.getAttribute('aria-valuenow') !== pressureValue) {
-    meter.setAttribute('aria-valuenow', pressureValue);
+    if (memoryBytes === null) meter.removeAttribute('aria-valuenow');
+    else meter.setAttribute('aria-valuenow', pressureValue);
     $('memory-pressure-fill').style.transform = `scaleX(${pressure})`;
   }
-  document.l10n.setAttributes($('memory-kind'), `midori-performance-measurement-${state.measurementKind}`);
+  document.l10n.setAttributes($('memory-kind'), `midori-performance-measurement-${managedMemory ? 'managed-memory' : state.measurementKind}`);
   document.l10n.setAttributes($('memory-state'), `midori-performance-state-${state.memoryState}`);
   renderProcesses(sample);
   renderTabs();
@@ -345,9 +402,12 @@ function connect() {
   unsubscribe = service.subscribe(render);
   readoutObserver.observe($('memory-used').firstElementChild);
   readoutObserver.observe($('cpu-used').firstElementChild);
+  viewportObserver.observe($('memory-used'));
+  viewportObserver.observe($('cpu-used'));
 }
 
 function disconnect() {
+  viewportObserver.disconnect();
   readoutObserver.disconnect();
   unsubscribe?.();
   unsubscribe = null;
@@ -358,6 +418,8 @@ $('resource-form').addEventListener('change', edit);
 $('resource-form').addEventListener('submit', event => { event.preventDefault(); save(); });
 $('tab-order').addEventListener('change', renderTabs);
 $('process-details').addEventListener('toggle', () => renderProcesses(latestSample));
+$('memory-setup-button').addEventListener('click', () => { save(); service.prepareMemoryControl(); });
+$('cpu-setup-button').addEventListener('click', () => { save(); service.prepareCpuControl(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { save(); disconnect(); }
   else connect();

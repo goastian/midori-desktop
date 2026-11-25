@@ -16,8 +16,6 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/net/SocketProcessChild.h"
-#include "mozilla/net/SocketProcessParent.h"
 #include "nsSocketTransportService2.h"
 #include "nsThreadUtils.h"
 #include "nsITimer.h"
@@ -55,7 +53,6 @@ nsTArray<ProcessMediaSendingCalls> sProcessMediaSendingCalls;
 Atomic<bool, Relaxed> sDownloadUnderused(false);
 Atomic<uint32_t, Relaxed> sBufferedDatagramBytes(0);
 constexpr uint32_t kBufferedDatagramLimit = 8 * 1024 * 1024;
-bool sUseBroker = false;
 thread_local AutoWebRTCAudioSend* sWebRTCAudioSend = nullptr;
 
 struct Bucket {
@@ -72,19 +69,13 @@ struct Bucket {
 
   uint32_t rate = 0;
   double tokens = 0;
-  double processBalance = 0;
   double protocolBalance = 0;
-  uint32_t remoteFlows = 1;
   uint64_t generation = 0;
   TimeStamp updated;
-  TimeStamp requested;
-  TimeStamp localDemand;
-  TimeStamp remoteDemand;
   TimeStamp streamDemand;
   TimeStamp datagramDemand;
   TimeStamp observationStarted;
   uint64_t observedBytes = 0;
-  bool pending = false;
   nsTArray<DatagramFlow> datagramFlows;
 
   void MarkFlowDemand(const void* aFlow, bool aAtomic, TimeStamp aNow) {
@@ -144,7 +135,7 @@ struct Bucket {
   double Capacity() const {
     double capacity = std::max(1.0, rate * 0.05);
 #if defined(XP_LINUX) && !defined(ANDROID)
-    if (upload && !sUseBroker && rate >= 8 * 1024) {
+    if (upload && rate >= 8 * 1024) {
       capacity = std::max(capacity, std::min(rate * 0.15, 64.0 * 1024));
     }
 #endif
@@ -162,21 +153,6 @@ struct Bucket {
     return std::max(count, HasProtocolDemand(aAtomic, aNow) ? 1u : 0u);
   }
 
-  uint32_t FlowCount(TimeStamp aNow) const {
-    return std::max(1u, FlowCount(true, aNow) + FlowCount(false, aNow));
-  }
-
-  bool HasLocalDemand(TimeStamp aNow) const {
-    return FlowCount(true, aNow) || FlowCount(false, aNow) ||
-           (!localDemand.IsNull() &&
-            (aNow - localDemand).ToMilliseconds() < 100);
-  }
-
-  bool HasRemoteDemand(TimeStamp aNow) const {
-    return !remoteDemand.IsNull() &&
-           (aNow - remoteDemand).ToMilliseconds() < 100;
-  }
-
   bool HasProtocolDemand(bool aAtomic, TimeStamp aNow) const {
     const TimeStamp demand = aAtomic ? datagramDemand : streamDemand;
     return !demand.IsNull() && (aNow - demand).ToMilliseconds() < 100;
@@ -184,7 +160,6 @@ struct Bucket {
 
   void MarkDemand(bool aAtomic, TimeStamp aNow) {
     (aAtomic ? datagramDemand : streamDemand) = aNow;
-    if (!sUseBroker) localDemand = aNow;
   }
 
   void RenewDemand(bool aAtomic, TimeStamp aNow) {
@@ -193,9 +168,6 @@ struct Bucket {
   }
 
   bool CanUse(bool aAtomic, TimeStamp aNow) const {
-    if (!sUseBroker && HasRemoteDemand(aNow) && processBalance > 0) {
-      return false;
-    }
     return !HasProtocolDemand(!aAtomic, aNow) ||
            (aAtomic ? protocolBalance <= 0 : protocolBalance >= 0);
   }
@@ -207,20 +179,11 @@ struct Bucket {
       const double used = aAtomic ? share : -share;
       protocolBalance =
           HasProtocolDemand(!aAtomic, aNow) ? protocolBalance + used : used;
-      if (!sUseBroker) {
-        const double localShare = double(aUsed) / FlowCount(aNow);
-        processBalance = HasRemoteDemand(aNow) ? processBalance + localShare
-                                             : localShare;
-      }
     }
     (aAtomic ? datagramDemand : streamDemand) = TimeStamp();
-    if (!sUseBroker && !HasProtocolDemand(!aAtomic, aNow)) {
-      localDemand = TimeStamp();
-    }
   }
 
   void Refill(TimeStamp aNow) {
-    if (sUseBroker) return;
     if (!updated.IsNull()) {
       const double elapsed = std::max(0.0, (aNow - updated).ToSeconds());
       tokens = std::min(Capacity(), tokens + elapsed * rate);
@@ -231,16 +194,12 @@ struct Bucket {
   void SetRate(uint32_t aRate) {
     if (rate == aRate) return;
     rate = aRate;
-    tokens = sUseBroker ? 0 : Capacity();
-    processBalance = protocolBalance = 0;
-    remoteFlows = 1;
+    tokens = Capacity();
+    protocolBalance = 0;
     updated = TimeStamp::Now();
     observationStarted = updated;
     observedBytes = 0;
-    requested = TimeStamp();
-    localDemand = remoteDemand = TimeStamp();
     streamDemand = datagramDemand = TimeStamp();
-    pending = false;
     datagramFlows.Clear();
     ++generation;
   }
@@ -277,60 +236,6 @@ void ObserveDownloadUse(uint32_t aBytes, TimeStamp aNow) {
 
 Bucket& GetBucket(Direction aDirection) {
   return aDirection == Direction::Download ? sDownload : sUpload;
-}
-
-MidoriNetworkBudget::Reservation PrepareSocketRequest(Bucket& aBucket,
-                                                      TimeStamp aNow) {
-  if (!sUseBroker || aBucket.tokens >= 1 || aBucket.pending ||
-      (!aBucket.requested.IsNull() &&
-       (aNow - aBucket.requested).ToMilliseconds() < 10)) {
-    return {0, false, 0};
-  }
-  aBucket.pending = true;
-  aBucket.requested = aNow;
-  return {uint32_t(aBucket.Capacity()), false, aBucket.generation};
-}
-
-void CompleteSocketQuota(Direction aDirection, uint64_t aGeneration,
-                         uint32_t aGranted, uint32_t aRate) {
-  StaticMutexAutoLock lock(sBudgetMutex);
-  Bucket& bucket = GetBucket(aDirection);
-  if (bucket.generation != aGeneration) return;
-  bucket.pending = false;
-  if (!bucket.rate || bucket.rate != aRate) return;
-  bucket.tokens = std::min(bucket.Capacity(), bucket.tokens + aGranted);
-}
-
-void RequestSocketQuota(Direction aDirection, uint64_t aGeneration,
-                        uint32_t aRequested) {
-  const nsresult rv = NS_DispatchToMainThread(
-      NS_NewRunnableFunction("MidoriNetworkBudget::RequestQuota", [=]() {
-        auto* actor = SocketProcessChild::GetSingleton();
-        if (!actor || !actor->CanSend()) {
-          CompleteSocketQuota(aDirection, aGeneration, 0, 0);
-          return;
-        }
-        uint32_t flows;
-        {
-          StaticMutexAutoLock lock(sBudgetMutex);
-          const Bucket& bucket = GetBucket(aDirection);
-          if (bucket.generation != aGeneration) return;
-          flows = bucket.FlowCount(TimeStamp::Now());
-        }
-        actor
-            ->SendRequestMidoriNetworkQuota(aDirection == Direction::Upload,
-                                            aRequested, flows)
-            ->Then(
-                GetMainThreadSerialEventTarget(), __func__,
-                [=](const MidoriNetworkGrant& aGrant) {
-                  CompleteSocketQuota(aDirection, aGeneration, aGrant.mBytes(),
-                                      aGrant.mRate());
-                },
-                [=](ipc::ResponseRejectReason) {
-                  CompleteSocketQuota(aDirection, aGeneration, 0, 0);
-                });
-      }));
-  if (NS_FAILED(rv)) CompleteSocketQuota(aDirection, aGeneration, 0, 0);
 }
 
 void UpdateBudget(const char*, void*) {
@@ -373,30 +278,7 @@ MidoriNetworkBudget::SampleSocketUsage(bool aSocketProcess) {
   RefPtr<SocketUsagePromise::Private> promise =
       new SocketUsagePromise::Private(__func__);
   if (aSocketProcess) {
-    RefPtr<SocketProcessParent> actor = SocketProcessParent::GetSingleton();
-    if (!actor || !actor->CanSend()) {
-      return SocketUsagePromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE,
-                                                 __func__);
-    }
-    const uint64_t pid = actor->OtherPid();
-    actor->SendGetMidoriSocketUsage()->Then(
-        GetMainThreadSerialEventTarget(), __func__,
-        [promise, pid](const MidoriSocketUsage& aUsage) {
-          if (!aUsage.mAvailable()) {
-            promise->Reject(NS_ERROR_NOT_AVAILABLE, __func__);
-            return;
-          }
-          promise->Resolve(
-              SocketUsage{pid, aUsage.mSent(), aUsage.mReceived(),
-                          {aUsage.mDownloadBps(), aUsage.mUploadBps(),
-                           aUsage.mDownloadGeneration(),
-                           aUsage.mUploadGeneration()}},
-              __func__);
-        },
-        [promise](ipc::ResponseRejectReason) {
-          promise->Reject(NS_ERROR_NOT_AVAILABLE, __func__);
-        });
-    return promise;
+    return SocketUsagePromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE, __func__);
   }
   if (!gSocketTransportService) {
     return SocketUsagePromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE,
@@ -707,7 +589,6 @@ void MidoriNetworkBudget::Init() {
   static bool initialized = false;
   if (initialized) return;
   initialized = true;
-  sUseBroker = XRE_IsSocketProcess();
 #if defined(XP_LINUX) && !defined(ANDROID)
   sVideoRecoveryClockOrigin = TimeStamp::Now();
 #endif
@@ -723,7 +604,6 @@ MidoriNetworkBudget::Reservation MidoriNetworkBudget::Reserve(
     const void* aFlow) {
   if (!sEnabled || !aRequested) return {aRequested, false, 0};
   Reservation reservation;
-  Reservation request{};
   {
     StaticMutexAutoLock lock(sBudgetMutex);
     Bucket& bucket = GetBucket(aDirection);
@@ -743,15 +623,11 @@ MidoriNetworkBudget::Reservation MidoriNetworkBudget::Reserve(
     if (!allowed) bucket.MarkDemand(aAtomic, now);
     reservation = {allowed, false, bucket.generation, aAtomic, aFlow};
     MOZ_LOG(sBudgetLog, LogLevel::Debug,
-            ("Reserve upload=%d broker=%d atomic=%d requested=%u allowed=%u "
-             "tokens=%.0f processBalance=%.0f protocolBalance=%.0f",
-             aDirection == Direction::Upload, sUseBroker, aAtomic, aRequested,
-             allowed, bucket.tokens, bucket.processBalance,
-             bucket.protocolBalance));
-    if (!aAtomic || !allowed) request = PrepareSocketRequest(bucket, now);
+            ("Reserve upload=%d atomic=%d requested=%u allowed=%u "
+             "tokens=%.0f protocolBalance=%.0f",
+             aDirection == Direction::Upload, aAtomic, aRequested,
+             allowed, bucket.tokens, bucket.protocolBalance));
   }
-  if (request.bytes)
-    RequestSocketQuota(aDirection, request.generation, request.bytes);
   return reservation;
 }
 
@@ -770,8 +646,8 @@ void MidoriNetworkBudget::Refund(Direction aDirection, Reservation aReservation,
   bucket.tokens =
       std::min(bucket.Capacity(), bucket.tokens + aReservation.bytes - aUsed);
   MOZ_LOG(sBudgetLog, LogLevel::Debug,
-          ("Refund upload=%d broker=%d reserved=%u used=%u tokens=%.0f",
-           aDirection == Direction::Upload, sUseBroker, aReservation.bytes,
+          ("Refund upload=%d reserved=%u used=%u tokens=%.0f",
+           aDirection == Direction::Upload, aReservation.bytes,
            aUsed, bucket.tokens));
 }
 
@@ -796,7 +672,6 @@ uint32_t MidoriNetworkBudget::WaitMilliseconds(Direction aDirection,
                                                bool aAtomic,
                                                const void* aFlow) {
   if (!sEnabled) return 0;
-  Reservation request{};
   uint32_t delay;
   {
     StaticMutexAutoLock lock(sBudgetMutex);
@@ -810,46 +685,11 @@ uint32_t MidoriNetworkBudget::WaitMilliseconds(Direction aDirection,
     if (bucket.tokens >= 1 && bucket.CanUse(aAtomic, now) &&
         (!pendingFlow || bucket.CanUseFlow(aFlow, aAtomic, now)))
       return 0;
-    request = PrepareSocketRequest(bucket, now);
     const double missing = std::max(1.0, 1 - bucket.tokens);
     delay = uint32_t(
         std::clamp(std::ceil(1000.0 * missing / bucket.rate), 10.0, 50.0));
   }
-  if (request.bytes)
-    RequestSocketQuota(aDirection, request.generation, request.bytes);
   return delay;
-}
-
-MidoriNetworkBudget::Grant MidoriNetworkBudget::GrantToSocketProcess(
-    Direction aDirection, uint32_t aRequested, uint32_t aFlows) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(XRE_IsParentProcess());
-  Init();
-  StaticMutexAutoLock lock(sBudgetMutex);
-  Bucket& bucket = GetBucket(aDirection);
-  if (!bucket.rate) return {0, 0};
-  const TimeStamp now = TimeStamp::Now();
-  bucket.Refill(now);
-  if (aRequested) {
-    bucket.remoteDemand = now;
-    bucket.remoteFlows = std::clamp(aFlows, 1u, 65536u);
-  }
-  const bool local = bucket.HasLocalDemand(now);
-  const double available =
-      local && bucket.processBalance < 0 ? 0 : bucket.tokens;
-  const uint32_t allowed =
-      std::min(aRequested, uint32_t(std::max(0.0, available)));
-  bucket.tokens -= allowed;
-  if (aDirection == Direction::Download) ObserveDownloadUse(allowed, now);
-  if (allowed) {
-    const double share = double(allowed) / bucket.remoteFlows;
-    bucket.processBalance = local ? bucket.processBalance - share : -share;
-  }
-  MOZ_LOG(sBudgetLog, LogLevel::Debug,
-          ("Grant upload=%d requested=%u granted=%u tokens=%.0f balance=%.0f",
-           aDirection == Direction::Upload, aRequested, allowed, bucket.tokens,
-           bucket.processBalance));
-  return {allowed, bucket.rate};
 }
 
 extern "C" uint32_t MidoriNetworkReserveDatagram(bool aUpload,

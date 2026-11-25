@@ -1,6 +1,6 @@
 --- a/third_party/libwebrtc/video/video_stream_encoder.cc
 +++ b/third_party/libwebrtc/video/video_stream_encoder.cc
-@@ -95,6 +95,10 @@
+@@ -94,6 +94,10 @@
  #include "video/frame_dumping_encoder.h"
  #include "video/video_stream_encoder_observer.h"
  
@@ -11,7 +11,7 @@
  namespace webrtc {
  
  namespace {
-@@ -1669,6 +1673,9 @@
+@@ -1671,6 +1675,9 @@
  }
  
  void VideoStreamEncoder::OnDiscardedFrame() {
@@ -21,17 +21,17 @@
    encoder_stats_observer_->OnFrameDropped(
        VideoStreamEncoderObserver::DropReason::kSource);
  }
-@@ -1870,6 +1877,9 @@
- void VideoStreamEncoder::MaybeEncodeVideoFrame(const VideoFrame& video_frame,
+@@ -1880,6 +1887,9 @@
                                                 int64_t time_when_posted_us) {
    RTC_DCHECK_RUN_ON(encoder_queue_.get());
+ 
 +  if (MidoriMediaTraceEnabled()) {
 +    MidoriMediaTraceEncode(15, this, video_frame.rtp_timestamp(), nullptr, 0);
 +  }
    input_state_provider_.OnFrameSizeObserved(video_frame.size());
  
    if (!last_frame_info_ || video_frame.width() != last_frame_info_->width ||
-@@ -1935,6 +1945,9 @@
+@@ -1945,6 +1955,9 @@
    }
  
    if (DropDueToSize(video_frame.size())) {
@@ -41,7 +41,7 @@
      RTC_LOG(LS_INFO) << "Dropping frame. Too large for target bitrate.";
      stream_resource_manager_.OnFrameDroppedDueToSize();
      // Storing references to a native buffer risks blocking frame capture.
-@@ -1953,6 +1966,9 @@
+@@ -1963,6 +1976,9 @@
    stream_resource_manager_.OnMaybeEncodeFrame();
  
    if (EncoderPaused()) {
@@ -51,7 +51,7 @@
      // Storing references to a native buffer risks blocking frame capture.
      if (video_frame.video_frame_buffer()->type() !=
          VideoFrameBuffer::Type::kNative) {
-@@ -2164,6 +2180,9 @@
+@@ -2176,6 +2192,9 @@
      frame_instrumentation_generator_->OnCapturedFrame(out_frame);
    }
  
@@ -61,7 +61,7 @@
    const int32_t encode_status = encoder_->Encode(out_frame, &next_frame_types_);
    was_encode_called_since_last_initialization_ = true;
  
-@@ -2278,6 +2297,10 @@
+@@ -2290,6 +2309,10 @@
  EncodedImageCallback::Result VideoStreamEncoder::OnEncodedImage(
      const EncodedImage& encoded_image,
      const CodecSpecificInfo* codec_specific_info) {
@@ -72,7 +72,7 @@
    TRACE_EVENT_INSTANT1("webrtc", "VCMEncodedFrameCallback::Encoded",
                         TRACE_EVENT_SCOPE_GLOBAL, "timestamp",
                         encoded_image.RtpTimestamp());
-@@ -2399,6 +2422,10 @@
+@@ -2411,6 +2434,10 @@
  void VideoStreamEncoder::OnFrameDropped(uint32_t rtp_timestamp,
                                          int spatial_id,
                                          bool is_end_of_temporal_unit) {
@@ -83,7 +83,7 @@
    sink_->OnFrameDropped(rtp_timestamp, spatial_id, is_end_of_temporal_unit);
    encoder_queue_->PostTask([this, rtp_timestamp, is_end_of_temporal_unit] {
      RTC_DCHECK_RUN_ON(encoder_queue_.get());
-@@ -2703,6 +2730,10 @@
+@@ -2664,6 +2691,10 @@
  void VideoStreamEncoder::ProcessDroppedFrame(
      const VideoFrame& frame,
      VideoStreamEncoderObserver::DropReason reason) {

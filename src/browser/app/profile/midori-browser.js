@@ -210,6 +210,9 @@ pref('midori.workspaces.chromeTint', true);
 pref('midori.memory.profile', 0);
 pref('midori.performance.custom.baseProfile', 0);
 pref('midori.msidebar.tools.performance.visible', true);
+#ifdef XP_LINUX
+pref('midori.performance.network.experimental.enabled', true);
+#endif
 
 // Avoid surprise page reloads and form-state loss. Users can explicitly enable
 // Midori Tab Sleep or a memory-saving profile when they prefer RAM savings.

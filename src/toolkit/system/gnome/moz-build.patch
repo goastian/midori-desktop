@@ -1,9 +1,9 @@
 --- a/toolkit/system/gnome/moz.build
 +++ b/toolkit/system/gnome/moz.build
-@@ -27,3 +27,7 @@
- 
- CXXFLAGS += CONFIG["GLIB_CFLAGS"]
- CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
+@@ -33,3 +33,7 @@
+     "nsGIOService.h",
+     "nsSystemAlertsService.h",
+ ]
 +
 +if CONFIG["OS_TARGET"] == "Linux":
 +    DIRS += ["launcher"]

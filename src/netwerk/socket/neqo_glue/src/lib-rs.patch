@@ -1,4 +1,3 @@
-diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/lib.rs
 --- a/netwerk/socket/neqo_glue/src/lib.rs
 +++ b/netwerk/socket/neqo_glue/src/lib.rs
 @@ -14,6 +14,7 @@
@@ -9,7 +8,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
      path::PathBuf,
      ptr,
      rc::Rc,
-@@ -65,6 +66,76 @@
+@@ -64,6 +65,76 @@
  
  std::thread_local! {
      static RECV_BUF: RefCell<neqo_udp::RecvBuf> = RefCell::new(neqo_udp::RecvBuf::default());
@@ -86,7 +85,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
  }
  
  /// Upper bound on the bytes read from the socket in a single `neqo_http3conn_process_input` pass.
-@@ -129,9 +200,11 @@
+@@ -128,9 +199,11 @@
      // would close the file descriptor on `Drop`. The lifetime of the underlying
      // OS socket is managed not by `neqo_glue` but `NSPR`.
      socket: Option<neqo_udp::Socket<BorrowedSocket>>,
@@ -98,7 +97,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
  
      datagram_segment_size_sent: LocalMemoryDistribution<'static>,
      datagram_segment_size_received: LocalMemoryDistribution<'static>,
-@@ -153,6 +226,10 @@
+@@ -152,6 +225,10 @@
  
  impl Drop for NeqoHttp3Conn {
      fn drop(&mut self) {
@@ -109,7 +108,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
          self.record_stats_in_glean();
      }
  }
-@@ -399,6 +476,7 @@
+@@ -402,6 +479,7 @@
          fast_pto: u32,
          pmtud_enabled: bool,
          socket: Option<i64>,
@@ -117,7 +116,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
      ) -> Result<RefPtr<Self>, nsresult> {
          // Nss init.
          init().map_err(|_| NS_ERROR_UNEXPECTED)?;
-@@ -641,7 +719,9 @@
+@@ -645,7 +723,9 @@
              datagram_segments_sent: networking::http_3_udp_datagram_segments_sent.start_buffer(),
              datagram_segments_received: networking::http_3_udp_datagram_segments_received
                  .start_buffer(),
@@ -127,7 +126,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
              would_block_counter: WouldBlockCounter::new(),
              webtransport_send_groups: HashMap::new(),
              #[cfg(not(target_os = "android"))]
-@@ -1119,6 +1199,7 @@
+@@ -1123,6 +1203,7 @@
      fast_pto: u32,
      socket: i64,
      pmtud_enabled: bool,
@@ -135,7 +134,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
      result: &mut *const NeqoHttp3Conn,
  ) -> nsresult {
      *result = ptr::null_mut();
-@@ -1139,6 +1220,7 @@
+@@ -1143,6 +1224,7 @@
          fast_pto,
          pmtud_enabled,
          Some(socket),
@@ -143,7 +142,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
      ) {
          Ok(http3_conn) => {
              http3_conn.forget(result);
-@@ -1164,6 +1246,7 @@
+@@ -1168,6 +1250,7 @@
      qlog_dir: &nsACString,
      idle_timeout: u32,
      fast_pto: u32,
@@ -151,7 +150,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
      result: &mut *const NeqoHttp3Conn,
  ) -> nsresult {
      *result = ptr::null_mut();
-@@ -1182,8 +1265,9 @@
+@@ -1186,8 +1269,9 @@
          qlog_dir,
          idle_timeout,
          fast_pto,
@@ -162,20 +161,20 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
      ) {
          Ok(http3_conn) => {
              http3_conn.forget(result);
-@@ -1239,27 +1323,18 @@
- ) -> ProcessInputResult {
+@@ -1251,27 +1335,18 @@
      let mut bytes_read = 0;
+     let mut segments_received: u64 = 0;
  
--    RECV_BUF.with_borrow_mut(|recv_buf| {
+-    let result = RECV_BUF.with_borrow_mut(|recv_buf| {
 -        loop {
 -            let dgrams = match conn
-+    loop {
++    let result = loop {
 +        let mut reservation =
 +            NetworkReservation::new(false, u32::from(u16::MAX), conn.resource_flow);
 +        if reservation.bytes == 0 {
-+            break;
++            break NS_OK;
 +        }
-+        let receive_batch = |recv_buf: &mut neqo_udp::RecvBuf| -> io::Result<usize> {
++        let receive_batch = |recv_buf: &mut neqo_udp::RecvBuf| -> io::Result<(usize, u64)> {
 +            let dgrams = conn
                  .socket
                  .as_mut()
@@ -188,7 +187,7 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
 -                    break;
 -                }
 -                Err(e) => {
--                    qwarn!("failed to receive datagrams: {}", e);
+-                    warn!("failed to receive datagrams: {}", e);
 -                    return ProcessInputResult {
 -                        result: into_nsresult(&e),
 -                        bytes_read: 0,
@@ -199,16 +198,17 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
  
              // Attach metric instrumentation to `dgrams` iterator.
              let mut sum = 0;
-@@ -1284,22 +1359,44 @@
+@@ -1296,27 +1371,44 @@
  
              conn.datagram_size_received.accumulate(sum as u64);
              conn.datagram_segments_received.accumulate(segment_count);
 -            bytes_read += sum;
+-            segments_received += segment_count;
 -
 -            if bytes_read >= MAX_BYTES_READ_PER_PASS {
--                qwarn!(
+-                warn!(
 -                    "reached the {MAX_BYTES_READ_PER_PASS} byte receive cap in a single pass; \
-+            Ok(sum)
++            Ok((sum, segment_count))
 +        };
 +        let received = if reservation.generation != 0 {
 +            QUOTA_RECV_BUF.with_borrow_mut(receive_batch)
@@ -216,25 +216,23 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
 +            RECV_BUF.with_borrow_mut(receive_batch)
 +        };
 +        match received {
-+            Ok(sum) => {
++            Ok((sum, segment_count)) => {
 +                reservation.used = u32::try_from(sum).unwrap_or(u32::MAX);
 +                bytes_read += sum;
++                segments_received += segment_count;
 +            }
 +            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
 +                conn.increment_would_block_rx();
-+                break;
++                break NS_OK;
 +            }
 +            Err(e) => {
-+                qwarn!("failed to receive datagrams: {}", e);
-+                return ProcessInputResult {
-+                    result: into_nsresult(&e),
-+                    bytes_read: 0,
-+                };
++                warn!("failed to receive datagrams: {}", e);
++                break into_nsresult(&e);
 +            }
 +        }
 +
 +        if bytes_read >= MAX_BYTES_READ_PER_PASS {
-+            qwarn!(
++            warn!(
 +                "reached the {MAX_BYTES_READ_PER_PASS} byte receive cap in a single pass; \
                       yielding to deliver buffered events, will continue on the next RecvData"
 -                );
@@ -246,36 +244,36 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
 -            result: NS_OK,
 -            bytes_read: bytes_read.try_into().unwrap_or(u32::MAX),
 -        }
--    })
+-    });
 +            );
-+            break;
++            break NS_OK;
 +        }
-+    }
-+
++    };
+ 
+     span.record("bytes_received", bytes_read);
+     span.record("segments_received", segments_received);
+-    result
 +    ProcessInputResult {
-+        result: NS_OK,
++        result,
 +        bytes_read: bytes_read.try_into().unwrap_or(u32::MAX),
 +    }
  }
  
  #[no_mangle]
-@@ -1376,6 +1473,14 @@
- ) -> ProcessOutputAndSendResult {
+@@ -1401,6 +1493,11 @@
      let mut bytes_written: usize = 0;
-     loop {
+     let mut segments_sent: u64 = 0;
+     let result = loop {
 +        let mut reservation =
 +            NetworkReservation::new(true, u32::from(u16::MAX), conn.resource_flow);
 +        if reservation.bytes == 0 {
-+            return ProcessOutputAndSendResult {
-+                result: NS_BASE_STREAM_WOULD_BLOCK,
-+                bytes_written: bytes_written.try_into().unwrap_or(u32::MAX),
-+            };
++            break NS_BASE_STREAM_WOULD_BLOCK;
 +        }
          let Ok(max_gso_segments) = min(
              static_prefs::pref!("network.http.http3.max_gso_segments")
                  .try_into()
-@@ -1393,6 +1498,13 @@
-             };
+@@ -1415,6 +1512,13 @@
+             break NS_ERROR_UNEXPECTED;
          };
  
 +        let max_gso_segments = if reservation.generation != 0 {
@@ -288,11 +286,11 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
          let output = conn
              .buffered_outbound_datagram
              .take()
-@@ -1417,18 +1529,37 @@
-                     };
+@@ -1436,17 +1540,36 @@
+                     break NS_ERROR_CONNECTION_REFUSED;
                  }
  
--                let send_result = if mock_udp_send_would_block(dg.destination()) {
+-                let send_result = match mock_udp_send_error(dg.destination()) {
 +                let remaining = dg.data().len() - offset;
 +                let size = if reservation.generation != 0 {
 +                    min(remaining, dg.datagram_size().get())
@@ -309,11 +307,10 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
 +                    )
 +                });
 +                let data = part.as_ref().unwrap_or(&dg);
-+                let send_result = if mock_udp_send_would_block(data.destination()) {
-                     Err(io::Error::from(io::ErrorKind::WouldBlock))
-                 } else {
--                    conn.socket.as_mut().expect("non NSPR IO").send(&dg)
-+                    conn.socket.as_mut().expect("non NSPR IO").send(data)
++                let send_result = match mock_udp_send_error(data.destination()) {
+                     Some(kind) => Err(io::Error::from(kind)),
+-                    None => conn.socket.as_mut().expect("non NSPR IO").send(&dg),
++                    None => conn.socket.as_mut().expect("non NSPR IO").send(data),
                  };
                  match send_result {
 -                    Ok(()) => {}
@@ -324,14 +321,14 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
 +                        if reservation.generation != 0
 +                            || static_prefs::pref!("network.http.http3.pr_poll_write")
 +                        {
-                             qdebug!("Buffer outbound datagram to be sent once UDP socket has write-availability.");
+                             debug!("Buffer outbound datagram to be sent once UDP socket has write-availability.");
                              conn.buffered_outbound_datagram = Some(dg);
 +                            conn.buffered_outbound_offset = offset;
-                             return ProcessOutputAndSendResult {
-                                 // Propagate WouldBlock error, thus indicating that
-                                 // the UDP socket should be polled for
-@@ -1441,7 +1572,7 @@
-                             break;
+                             // Propagate WouldBlock error, thus indicating that
+                             // the UDP socket should be polled for
+                             // write-availability.
+@@ -1456,7 +1579,7 @@
+                             break NS_OK;
                          }
                      }
 -                    Err(e) if e.raw_os_error() == Some(libc::EIO) && dg.num_datagrams() > 1 => {
@@ -339,18 +336,18 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
                          // GSO is unsupported on this send path. quinn-udp has now
                          // disabled GSO for subsequent sends, but the kernel
                          // dropped the current batch. Resend it as individual
-@@ -1455,14 +1586,16 @@
+@@ -1470,14 +1593,16 @@
                          //
                          // Long term this fallback belongs in quinn-udp, see
                          // <https://github.com/quinn-rs/quinn/issues/2399>.
--                        qdebug!("Failed to send datagram batch size {} with error {e}. Missing GSO support? Resending as individual datagrams.", dg.num_datagrams());
-+                        qdebug!("Failed to send datagram batch size {} with error {e}. Missing GSO support? Resending as individual datagrams.", data.num_datagrams());
+-                        debug!("Failed to send datagram batch size {} with error {e}. Missing GSO support? Resending as individual datagrams.", dg.num_datagrams());
++                        debug!("Failed to send datagram batch size {} with error {e}. Missing GSO support? Resending as individual datagrams.", data.num_datagrams());
                          let socket = conn.socket.as_mut().expect("non NSPR IO");
 -                        for single in dg.iter() {
 +                        for single in data.iter() {
                              let single = datagram::Batch::from(single.to_owned());
                              if let Err(e) = socket.send(&single) {
-                                 qwarn!("failed to resend datagram without GSO: {e}");
+                                 warn!("failed to resend datagram without GSO: {e}");
                                  break;
                              }
 +                            reservation.used +=
@@ -358,12 +355,14 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
                          }
                      }
                      Err(e) => {
-@@ -1473,24 +1606,27 @@
-                         };
+@@ -1485,25 +1610,28 @@
+                         break into_nsresult(&e);
                      }
                  }
 -                bytes_written += dg.data().len();
+-                segments_sent += dg.num_datagrams() as u64;
 +                bytes_written += size;
++                segments_sent += data.num_datagrams() as u64;
  
                  // Glean metrics
 -                conn.datagram_size_sent.accumulate(dg.data().len() as u64);
@@ -394,11 +393,110 @@ diff --git a/netwerk/socket/neqo_glue/src/lib.rs b/netwerk/socket/neqo_glue/src/
                  let timeout = if to.is_zero() {
                      Duration::from_millis(1)
                  } else {
-@@ -1506,6 +1642,7 @@
-                 break;
+@@ -1516,6 +1644,7 @@
+                 break NS_OK;
              }
              OutputBatch::None => {
 +                unsafe { MidoriNetworkCancelDatagramDemand(true, conn.resource_flow) };
                  set_timer_func(context, u64::MAX);
-                 break;
+                 break NS_OK;
              }
+@@ -2055,7 +2184,9 @@
+         match event {
+             WebTransportEvent::Negotiated(n) => Self::Negotiated(n),
+             WebTransportEvent::NewSession {
+-                stream_id, status, headers
++                stream_id,
++                status,
++                headers,
+             } => {
+                 if convert_h3_to_h1_headers(&headers, data) != NS_OK {
+                     data.clear();
+@@ -2765,12 +2896,10 @@
+     // prioritization; accept the params from the C++ side but don't forward
+     // them until neqo grows the corresponding API.
+     let _ = (send_group_id, send_order);
+-    match conn.conn.connect_udp_send_datagram(
+-        StreamId::from(session_id),
+-        data,
+-        id,
+-        Instant::now(),
+-    ) {
++    match conn
++        .conn
++        .connect_udp_send_datagram(StreamId::from(session_id), data, id, Instant::now())
++    {
+         Ok(_) => NS_OK,
+         Err(Http3Error::Transport(TransportError::TooMuchData)) => NS_ERROR_NOT_AVAILABLE,
+         Err(_) => NS_ERROR_UNEXPECTED,
+@@ -2880,7 +3009,6 @@
+         Err(_) => NS_ERROR_UNEXPECTED,
+     }
+ }
+-
+ 
+ /// Get the negotiated protocol for a WebTransport session.
+ #[no_mangle]
+@@ -3003,7 +3131,7 @@
+     pub rtt_variation: f64,
+     pub min_rtt: f64,
+     // Congestion-derived
+-    pub estimated_send_rate: i64,  // bits/sec, -1 means null/unknown
++    pub estimated_send_rate: i64, // bits/sec, -1 means null/unknown
+     pub at_send_capacity: bool,
+     // Datagram stats
+     pub datagrams_expired_outgoing: u64,
+@@ -3053,7 +3181,10 @@
+     session_id: u64,
+     stats: &mut WebTransportSessionStats,
+ ) -> nsresult {
+-    match conn.conn.webtransport_session_stats(StreamId::from(session_id)) {
++    match conn
++        .conn
++        .webtransport_session_stats(StreamId::from(session_id))
++    {
+         Ok(session_stats) => {
+             let transport_stats = conn.conn.transport_stats();
+             populate_transport_stats(stats, &transport_stats);
+@@ -3400,24 +3531,28 @@
+     use neqo_common::Ecn;
+     use rustix::{
+         fs::{fcntl_getfl, fcntl_setfl, OFlags},
+-        net::{getsockname, sockopt::{set_socket_timeout, Timeout}},
++        net::{
++            getsockname,
++            sockopt::{set_socket_timeout, Timeout},
++        },
+     };
+ 
+     // Wrap a raw fd in neqo_udp::Socket, enable the fast path, restore blocking
+     // mode (UdpSocketState::new sets non-blocking), and return the socket's
+     // local address.
+-    let make_socket = |fd: c_int| -> io::Result<(neqo_udp::Socket<BorrowedFd<'static>>, SocketAddr)> {
+-        let bfd = unsafe { BorrowedFd::borrow_raw(fd) };
+-        let socket = neqo_udp::Socket::new(bfd)?;
+-        // SAFETY: The C++ caller has verified via dlsym that the APIs are present.
+-        unsafe { socket.enable_apple_fast_path() };
+-        fcntl_setfl(bfd, fcntl_getfl(bfd)? & !OFlags::NONBLOCK)?;
+-        set_socket_timeout(bfd, Timeout::Recv, Some(Duration::from_secs(1)))?;
+-        let addr: SocketAddr = getsockname(bfd)?
+-            .try_into()
+-            .map_err(|e: rustix::io::Errno| io::Error::from_raw_os_error(e.raw_os_error()))?;
+-        Ok((socket, addr))
+-    };
++    let make_socket =
++        |fd: c_int| -> io::Result<(neqo_udp::Socket<BorrowedFd<'static>>, SocketAddr)> {
++            let bfd = unsafe { BorrowedFd::borrow_raw(fd) };
++            let socket = neqo_udp::Socket::new(bfd)?;
++            // SAFETY: The C++ caller has verified via dlsym that the APIs are present.
++            unsafe { socket.enable_apple_fast_path() };
++            fcntl_setfl(bfd, fcntl_getfl(bfd)? & !OFlags::NONBLOCK)?;
++            set_socket_timeout(bfd, Timeout::Recv, Some(Duration::from_secs(1)))?;
++            let addr: SocketAddr = getsockname(bfd)?
++                .try_into()
++                .map_err(|e: rustix::io::Errno| io::Error::from_raw_os_error(e.raw_os_error()))?;
++            Ok((socket, addr))
++        };
+     let (sender, send_addr) = make_socket(send_fd)?;
+     let (receiver, recv_addr) = make_socket(recv_fd)?;
+ 

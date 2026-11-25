@@ -14,18 +14,18 @@
  
  #include "base/command_line.h"
  #include "base/process.h"
-@@ -425,6 +432,10 @@
-   MOZ_RELEASE_ASSERT(mDestroying);
+@@ -419,6 +426,10 @@
  
+ GeckoChildProcessHost::~GeckoChildProcessHost() {
    MOZ_COUNT_DTOR(GeckoChildProcessHost);
 +#ifdef XP_MACOSX
 +  static_cast<void>(
 +      midori::UnregisterManagedCpuTask(reinterpret_cast<uintptr_t>(this)));
 +#endif
  
+   // Clean up the weak pointer from the global GeckoChildProcessHost array.
    {
-     mozilla::AutoWriteLock hLock(mHandleLock);
-@@ -963,6 +974,11 @@
+@@ -947,6 +958,11 @@
  #endif
                      }
                    }
@@ -37,7 +37,7 @@
  #if defined(XP_WIN) && defined(MOZ_SANDBOX)
                    this->mSandboxBroker = std::move(aResults.mSandboxBroker);
  #endif
-@@ -1003,7 +1019,7 @@
+@@ -987,7 +1003,7 @@
  #if defined(XP_WIN)
                      "%s,0x%lx,%s",
  #else
@@ -46,7 +46,7 @@
  #endif
                      aError.FunctionName().get(), aError.ErrorCode(),
                      XRE_GeckoProcessTypeToString(mProcessType));
-@@ -1478,10 +1494,6 @@
+@@ -1462,10 +1478,6 @@
    }
  #  endif  // MOZ_WIDGET_COCOA
  
@@ -57,7 +57,7 @@
  #  ifdef MOZ_ENABLE_FORKSERVER
    // Any unexpected fds given to the fork server could be leaked into
    // child processes if they aren't closed properly; this assertion is
-@@ -1490,6 +1502,34 @@
+@@ -1474,6 +1486,34 @@
                   mChildArgs.mFiles.size() == 2,
               "wrong number of FDs for the fork server");
  #  endif

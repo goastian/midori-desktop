@@ -120,7 +120,7 @@
    if (aType.IsEmpty()) {
      return false;
    }
-@@ -1708,10 +1820,14 @@
+@@ -1738,10 +1850,14 @@
          }
  
          nsCOMPtr<mozIStorageStatement> stmtDeleteExpired;
@@ -138,7 +138,7 @@
          NS_ENSURE_SUCCESS_VOID(rv);
  
          rv = stmtDeleteExpired->BindInt32ByIndex(
-@@ -1907,8 +2023,47 @@
+@@ -1937,8 +2053,47 @@
    // A modificationTime of zero will cause AddInternal to use now().
    int64_t modificationTime = 0;
    MonitorAutoLock lock{mMonitor};
@@ -188,20 +188,7 @@
  }
  
  NS_IMETHODIMP
-@@ -2143,9 +2298,9 @@
-       PermissionEntry oldPermissionEntry = entry->GetPermissions()[index];
-       id = oldPermissionEntry.mID;
- 
--      // If the type we want to remove is EXPIRE_POLICY, we need to reject
--      // attempts to change the permission.
--      if (entry->GetPermissions()[index].mExpireType == EXPIRE_POLICY) {
-+      // Only the policy engine may remove its own managed permission.
-+      if (entry->GetPermissions()[index].mExpireType == EXPIRE_POLICY &&
-+          aExpireType != EXPIRE_POLICY) {
-         NS_WARNING("Attempting to remove EXPIRE_POLICY permission");
-         break;
-       }
-@@ -2337,7 +2492,33 @@
+@@ -2370,7 +2525,33 @@
    ENSURE_NOT_CHILD_PROCESS;
  
    MonitorAutoLock lock{mMonitor};
@@ -236,7 +223,7 @@
  }
  
  nsresult PermissionManager::RemoveFromPrincipalInternal(
-@@ -2503,15 +2684,21 @@
+@@ -2536,15 +2717,21 @@
      EnsureReadCompleted();
  
      int32_t typeIndex = GetTypeIndex(aType, false);
@@ -264,7 +251,7 @@
          });
    }
  
-@@ -3282,7 +3469,10 @@
+@@ -3346,7 +3533,10 @@
      // if the entry is expired, remove and keep looking for others.
      if (HasExpired(permEntry.mExpireType, permEntry.mExpireTime)) {
        entry = nullptr;
@@ -276,7 +263,7 @@
      } else if (permEntry.mPermission == nsIPermissionManager::UNKNOWN_ACTION) {
        entry = nullptr;
      }
-@@ -3354,7 +3544,10 @@
+@@ -3418,7 +3608,10 @@
            return nullptr;
          }
        }
@@ -288,7 +275,7 @@
      } else if (permEntry.mPermission == nsIPermissionManager::UNKNOWN_ACTION) {
        entry = nullptr;
      }
-@@ -3443,6 +3636,49 @@
+@@ -3507,6 +3700,49 @@
    nsresult rv;
    bool hasResult;
    nsCOMPtr<mozIStorageStatement> stmt;
@@ -338,7 +325,7 @@
  
    // Let's retrieve the last used ID.
    rv = data->mDBConn->CreateStatement(
-@@ -4958,6 +5194,7 @@
+@@ -5013,6 +5249,7 @@
      nsCString mType;
      nsCString mOrigin;
      int64_t mModificationTime = 0;
@@ -346,7 +333,7 @@
    };
    nsTArray<ExpireEntry> toExpire;
  
-@@ -5009,6 +5246,7 @@
+@@ -5064,6 +5301,7 @@
        expireEntry.mType = nsCString(permType);
        expireEntry.mOrigin = origin;
        expireEntry.mModificationTime = perm.mModificationTime;
@@ -354,7 +341,7 @@
        toExpire.AppendElement(std::move(expireEntry));
      }
    }
-@@ -5039,7 +5277,10 @@
+@@ -5094,7 +5332,10 @@
    }
  
    for (const auto& entry : toExpire) {
@@ -366,7 +353,7 @@
    }
  }
  
-@@ -5241,6 +5482,348 @@
+@@ -5296,6 +5537,348 @@
      }
    }
  

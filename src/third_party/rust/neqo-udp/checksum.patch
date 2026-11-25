@@ -1,8 +1,7 @@
-diff --git a/third_party/rust/neqo-udp/.cargo-checksum.json b/third_party/rust/neqo-udp/.cargo-checksum.json
 --- a/third_party/rust/neqo-udp/.cargo-checksum.json
 +++ b/third_party/rust/neqo-udp/.cargo-checksum.json
 @@ -1 +1 @@
--{"files":{"Cargo.toml":"89cdd16fe435ee404acb7d77a8cc2a5838019bcb34ee3e1df77ed25299aed632","build.rs":"bf57cd35a78f636c14c442c1926abc2deca3d137e9d207e4f2f960f5b8363b07","src/lib.rs":"c76c2fdd06870e6727134ce00511a11e4a99f058b183af8909b0fcedeff7ac30"},"package":null}
+-{"files":{"Cargo.toml":"df0ab1430e69839190dc3db26fce3ea1d502da1a7a9863ab8d34f8e1e81984d6","build.rs":"bf57cd35a78f636c14c442c1926abc2deca3d137e9d207e4f2f960f5b8363b07","src/lib.rs":"c76c2fdd06870e6727134ce00511a11e4a99f058b183af8909b0fcedeff7ac30"},"package":null}
 \ No newline at end of file
-+{"files":{"Cargo.toml":"89cdd16fe435ee404acb7d77a8cc2a5838019bcb34ee3e1df77ed25299aed632","build.rs":"bf57cd35a78f636c14c442c1926abc2deca3d137e9d207e4f2f960f5b8363b07","src/lib.rs":"dbca2fbb26c8b7db1b348437800673aa98576089f99de940581e96edbcbda525"},"package":null}
++{"files":{"Cargo.toml":"df0ab1430e69839190dc3db26fce3ea1d502da1a7a9863ab8d34f8e1e81984d6","build.rs":"bf57cd35a78f636c14c442c1926abc2deca3d137e9d207e4f2f960f5b8363b07","src/lib.rs":"dbca2fbb26c8b7db1b348437800673aa98576089f99de940581e96edbcbda525"},"package":null}
 \ No newline at end of file

@@ -1,4 +1,3 @@
-diff --git a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp b/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp
 --- a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp
 +++ b/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp
 @@ -30,6 +30,7 @@
@@ -9,7 +8,7 @@ diff --git a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp b/dom/media/webrtc/js
  #include "mozilla/Sprintf.h"
  #include "mozilla/glean/DomMediaWebrtcMetrics.h"
  #include "mozilla/media/MediaUtils.h"
-@@ -149,6 +150,7 @@
+@@ -151,6 +152,7 @@
  #define LOGTAG pciLogTag
  
  static mozilla::LazyLogModule logModuleInfo("signaling");
@@ -17,7 +16,7 @@ diff --git a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp b/dom/media/webrtc/js
  
  // Getting exceptions back down from PCObserver is generally not harmful.
  namespace {
-@@ -3996,6 +3998,39 @@
+@@ -4009,6 +4011,39 @@
    }
  
    nsTArray<RefPtr<dom::RTCStatsPromise>> promises;
@@ -57,7 +56,7 @@ diff --git a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp b/dom/media/webrtc/js
    DOMHighResTimeStamp now = mTimestampMaker.GetNow().ToDom();
  
    nsTArray<dom::RTCCodecStats> codecStats = GetCodecStats(now);
-@@ -4042,15 +4077,16 @@
+@@ -4055,15 +4090,16 @@
                                               rtpStreamPromises)));
    }
  
@@ -77,8 +76,8 @@ diff --git a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp b/dom/media/webrtc/js
 +    appendStats(GetDataChannelStats(now), "data");
    }
  
-   auto pcStatsCollection = MakeUnique<dom::RTCStatsCollection>();
-@@ -4064,8 +4100,9 @@
+   auto pcStatsCollection = std::make_unique<dom::RTCStatsCollection>();
+@@ -4077,8 +4113,9 @@
                                                               fallible)) {
      mozalloc_handle_oom(0);
    }
@@ -90,7 +89,7 @@ diff --git a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp b/dom/media/webrtc/js
  
    // This is what we're going to return; all the stuff in |promises| will be
    // accumulated here.
-@@ -4121,13 +4158,24 @@
+@@ -4134,13 +4171,24 @@
    return dom::RTCStatsPromise::All(GetMainThreadSerialEventTarget(), promises)
        ->Then(
            GetMainThreadSerialEventTarget(), __func__,
@@ -117,7 +116,7 @@ diff --git a/dom/media/webrtc/jsapi/PeerConnectionImpl.cpp b/dom/media/webrtc/js
              return dom::RTCStatsReportPromise::CreateAndReject(rv, __func__);
            });
  }
-@@ -4814,6 +4862,7 @@
+@@ -4840,6 +4888,7 @@
              u"WebrtcCallWrapper shutdown blocker"_ns,
              NS_LITERAL_STRING_FROM_CSTRING(__FILE__), __LINE__),
          ctx->GetSharedWebrtcState());
